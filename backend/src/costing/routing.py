@@ -8,16 +8,18 @@ re-derives a sane material per class and a sane process shortlist.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, is_dataclass
+from math import prod
 from typing import Optional
 
 from src.analysis.models import ProcessType
-from src.analysis.features.base import has_rotational_surface_evidence
+from src.analysis.features.base import turning_dimensions
 from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
 from src.costing.rates import (
     COSTED_PROCESSES,
     MATERIAL_FAMILY,
     RateCard,
+    build_rate_card,
     process_family,
 )
 
@@ -65,19 +67,21 @@ def _inertia_axisymmetric(mesh, tolerance: float = ROTATIONAL_INERTIA_TOL) -> bo
 def is_rotational(geometry, mesh=None, features=None):
     """Rotational predicate (spec §5.1) — CONSISTENT with the DFM gate by design.
 
-    A part is routed to turning only when BOTH signals agree:
+    A part is routed to turning only when all three signals agree:
 
-      1. cross-section roundness + a turnable aspect ratio (the bbox shape IS a
-         round, lathe-friendly profile — this is what correctly separates a round
+      1. cross-section roundness + a turnable aspect ratio in the measured
+         part axis (the geometry IS a round, lathe-friendly profile — this
+         correctly separates a round
          ring from a flat bracket, which the inertia ratio alone does NOT: a flat
          bracket reads *more* axisymmetric than a ring under the loose eigenvalue
          tolerance), AND
       2. inertia-eigenvalue axisymmetry (`_inertia_axisymmetric`) — the SAME test
          `checks.check_rotational_symmetry` runs for CNC turning, at the SAME 0.15
          tolerance, AND
-      3. a measured outer cylindrical surface covering at least 5% of the part's
-         surface area. This rejects boxy L brackets and open enclosures whose
-         similar extents and inertia moments otherwise mimic a round part.
+      3. measured outer cylindrical/conical surfaces covering at least 5% of the
+         part's surface area, or a verified curved revolution profile. This rejects boxy
+         L brackets and open enclosures whose similar extents and inertia
+         moments otherwise mimic a round part.
 
     Requiring (2) makes `rotational ⟹ the engine's rotational-symmetry DFM check
     passes`, so routing can NEVER headline "turnable" on a part the DFM hard-fails
@@ -101,13 +105,14 @@ def is_rotational(geometry, mesh=None, features=None):
         if best is None or roundness > best[0]:
             best = (roundness, axis_len, cross_dia)
     roundness, axis_len, cross_dia = best
+    measured = turning_dimensions(mesh, features) if mesh is not None else None
+    if measured is not None:
+        axis_len, cross_dia, roundness = measured
     ld = (axis_len / cross_dia) if cross_dia > 0 else 0.0
     rotational = (
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
-        and has_rotational_surface_evidence(
-            features, float(getattr(geometry, "surface_area", 0.0) or 0.0)
-        )
+        and measured is not None
         and (cross_dia >= 5.0)
         and (0.25 <= ld <= 8.0)
     )
@@ -115,20 +120,17 @@ def is_rotational(geometry, mesh=None, features=None):
 
 
 def is_long_prismatic_bar(drivers, material_class: str) -> bool:
-    """A slender prismatic solid — bar/rod stock. Saw-to-length + turn/3-axis,
-    never 5-axis. Gate is DISJOINT from prismatic_block (block_aspect<=4.0),
-    sheet_like, rotational, and thin_wall_enclosure so no other shape reclassifies
-    (see F4: `d[2]/d[1] >= 4.0` forces `d[2]/d[0] >= 4.0` since d[0]<=d[1], so a
-    bar never also qualifies as a compact prismatic_block)."""
+    """Bar-like proportions suggest stock and a starting route, not tool access."""
     if material_class == "polymer":
         return False
-    d = drivers.bbox_mm            # sorted ascending
-    if drivers.bbox_volume_cm3 <= 0 or d[1] <= 0:
+    d = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
+    box_volume = prod(d) / 1000
+    if box_volume <= 0 or d[1] <= 0:
         return False
-    solidity = drivers.volume_cm3 / drivers.bbox_volume_cm3
-    bar_aspect = d[2] / d[1]       # longest / MIDDLE extent = slenderness
-    cross_max = d[1]               # largest cross-section extent (mm)
-    return solidity >= 0.6 and bar_aspect >= 4.0 and cross_max <= 60.0
+    solidity = drivers.volume_cm3 / box_volume
+    tol = max(1e-9, getattr(drivers, "sheet_tolerance_mm", 0.0))
+    # Numerical transform noise only; these are heuristic shape thresholds.
+    return solidity >= 0.6 - 1e-9 and d[2] + 5 * tol >= 4 * d[1] and d[1] <= 60 + tol
 
 
 def material_family(material_name: str) -> Optional[str]:
@@ -235,12 +237,6 @@ def _routing_sane(process: ProcessType, material_class: str, drivers) -> bool:
         # only a genuine constant-gauge flat sheet (geometry-gated), never a box
         # or a rotational solid — this is the structural fix for the panel route
         return bool(getattr(drivers, "sheet_like", False))
-    if process == PT.CNC_5AXIS and is_long_prismatic_bar(drivers, material_class):
-        # F4: a slender bar's ordinary features can trip the 3-axis undercut
-        # ERROR while turning is gated out (not rotational) — without this gate
-        # 5-axis becomes the cheapest surviving costed route for plain bar stock.
-        # Saw-to-length + turn/3-axis is the sane route; 5-axis is never it.
-        return False
     return True
 
 
@@ -270,7 +266,7 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
 
     def build(env_for_materials: dict | None) -> list:
         out = []
-        for process in COSTED_PROCESSES:
+        for process in sorted(COSTED_PROCESSES, key=lambda process: process.value):
             ps = by_proc.get(process)
             if ps is None:
                 continue
@@ -350,47 +346,29 @@ def _family_of(proc_value: str) -> str:
     return _EVAL_FAMILY.get(proc_value, "additive")
 
 
-def _avoid_dfm_failed_headline(rec: "RoutingRecommendation",
-                               dfm_failed, dfm_clean=None) -> "RoutingRecommendation":
-    """F2 invariant: the routing HEADLINE is never a process the engine's own DFM
-    hard-fails on this part.
+def _avoid_dfm_failed_headline(rec: "RoutingRecommendation", dfm_failed,
+                               dfm_clean, available) -> Optional[RoutingRecommendation]:
+    """Choose only a material/geometry-compatible, evaluated, DFM-ready route.
 
-    If the archetype's primary process hard-fails as-modeled (e.g. a printed-for-
-    3DP cover whose injection-molding DFM fails for lack of draft, or a round part
-    whose CNC-turning DFM fails on L/D), promote a DFM-clean process to the
-    headline — first an offered alternative, else (rare: the engine hard-fails
-    every offered alternative too) the best DFM-clean process from `dfm_clean`
-    (ordered costed-first) — and keep the original as the at-volume / design-for-
-    process route in the reasoning + alternatives.
-
-    The make-vs-buy tooling crossover (the wedge) is untouched: process selection
-    for costing is `eligible_processes`, which is independent of this — injection
-    molding is still costed and still surfaced as the volume crossover in the
-    decision card. Only the headline badge stops contradicting the DFM matrix
-    shown in the same panel.
+    Cost ranking and tooling crossovers are independent; this helper cannot
+    claim that a demoted geometry suggestion is the actual crossover.
     """
     failed = {p.value for p in (dfm_failed or set())}
-    if rec.process not in failed:
+    rec.alternatives = [p for p in rec.alternatives if p in available and p != rec.process]
+    if rec.process in available and rec.process not in failed:
         return rec
-    replacement = next((a for a in rec.alternatives if a not in failed), None)
+    replacement = next((p for p in [*rec.alternatives, *(dfm_clean or [])]
+                        if p in available and p not in failed), None)
     if replacement is None:
-        # No offered alternative is DFM-clean — fall back to the best DFM-clean
-        # process overall (a part may hard-fail every printable/machinable route
-        # as-modeled and pass only, e.g., sheet metal). estimate.py reconciles a
-        # non-costed headline with its existing "feasibility-only" note.
-        replacement = next((p for p in (dfm_clean or []) if p not in failed), None)
-    if replacement is None:
-        # The engine hard-fails EVERY process as-modeled — there is no
-        # non-contradictory option to promote. Leave the geometric rec; the panel
-        # is uniformly DFM-not-ready (dfm_ready=False on every estimate), so the
-        # headline is contextualized, not a selective contradiction.
-        return rec
+        return None
     demoted = rec.process
-    new_alts = [demoted] + [a for a in rec.alternatives if a != replacement]
-    note = (f" As-modeled the {demoted} route hard-fails the engine's DFM "
-            f"(design-for-process required) — that is the at-volume path, costed "
-            f"and shown as the make-vs-buy crossover below; the DFM-clean "
-            f"{replacement} route is headlined as what you can make as-is.")
+    new_alts = ([demoted] if demoted in available else []) + [
+        a for a in rec.alternatives if a != replacement]
+    reason = ("fails the engine's DFM as modeled" if demoted in failed
+              else "is not eligible under the declared material and route constraints")
+    note = (f" The {demoted} geometry suggestion {reason}. "
+            f"The eligible DFM-ready alternative is {replacement}; "
+            "review the process findings and costed options before selecting it.")
     return RoutingRecommendation(
         archetype=rec.archetype,
         process=replacement,
@@ -403,7 +381,8 @@ def _avoid_dfm_failed_headline(rec: "RoutingRecommendation",
 
 
 def recommend_routing(drivers, material_class: str = "polymer",
-                      dfm_failed=None, dfm_clean=None) -> RoutingRecommendation:
+                      dfm_failed=None, dfm_clean=None,
+                      available_processes=None) -> Optional[RoutingRecommendation]:
     """Classify the part's manufacturing archetype, then guarantee the headline
     is never a process the engine's own DFM hard-fails (F2).
 
@@ -411,13 +390,26 @@ def recommend_routing(drivers, material_class: str = "polymer",
     == "fail", an ERROR-level blocker) on THIS part; `dfm_clean` is the ordered
     (costed-first) list of DFM-clean process values used as the last-resort
     headline when the engine hard-fails every offered alternative too.
+    `available_processes` restricts reports to evaluated routes surviving their
+    material, geometry and environment gates. Without it, use the same material
+    and geometry selectors for a standalone suggestion. No ready route => None.
     `_classify_archetype` names the shape-implied process; then
     `_avoid_dfm_failed_headline` demotes that headline to a DFM-clean process if
     the engine's own DFM fails it, so the routing card and the DFM matrix in the
     same panel can never contradict each other.
     """
     rec = _classify_archetype(drivers, material_class)
-    return _avoid_dfm_failed_headline(rec, dfm_failed, dfm_clean)
+    if available_processes is None:
+        rates = build_rate_card()
+        available = {
+            p.value for p in PT
+            if _routing_sane(p, material_class, drivers)
+            and (select_sheet_material(material_class, rates) if p == PT.SHEET_METAL
+                 else select_material(p, material_class, rates)) is not None
+        }
+    else:
+        available = set(available_processes)
+    return _avoid_dfm_failed_headline(rec, dfm_failed, dfm_clean, available)
 
 
 def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingRecommendation:
@@ -430,13 +422,16 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
       5. compact prismatic block    -> CNC milling
       6. bulky / freeform solid     -> AM or CNC by size
     """
-    d = drivers.bbox_mm
+    # Shape descriptors use the enclosing oriented candidate, not file axes.
+    # This is a routing heuristic, not proof of tool access or machine fit.
+    d = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
     gauge = drivers.sheet_gauge_mm
     wall = drivers.nominal_wall_mm
     aspect = drivers.planar_aspect
 
     # 1) SHEET PANEL ----------------------------------------------------------
     if drivers.sheet_like:
+        d = drivers.sheet_blank_mm or d
         bends = drivers.bend_count
         op = "flat laser/punch blank" if bends == 0 else f"blank + {bends} press-brake bend(s)"
         return RoutingRecommendation(
@@ -446,8 +441,8 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             material_hint=(material_class if material_class in SHEET_METAL_CLASSES else "aluminum"),
             confidence=0.85,
             reasoning=(
-                f"Constant ~{wall:.1f}mm wall over a {d[1]:.0f}×{d[2]:.0f}mm planar "
-                f"footprint (thinnest extent {d[0]:.1f}mm ≈ gauge, planar aspect "
+                f"Constant {gauge:g}mm gauge over a {d[1]:.0f}×{d[2]:.0f}mm planar "
+                f"blank (parallel sheet faces, planar aspect "
                 f"{aspect:.0f}:1) → a flat sheet, not a printed/cut solid. Route to "
                 f"sheet-metal / stamping: {op}, {drivers.outline_perimeter_mm:.0f}mm cut "
                 f"length. Powder-bed/MJF here is a prototyping fallback, not the "
@@ -472,11 +467,13 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
         )
 
     # bulk / wall / shape descriptors for the remaining classes
-    solidity = (drivers.volume_cm3 / drivers.bbox_volume_cm3) if drivers.bbox_volume_cm3 else 0.0
+    box_volume = prod(d) / 1000
+    solidity = drivers.volume_cm3 / box_volume if box_volume else 0.0
     block_aspect = d[2] / d[0] if d[0] > 0 else 0.0
+    tol = max(1e-9, getattr(drivers, "sheet_tolerance_mm", 0.0))
 
     # 3) THIN-WALL ENCLOSURE (hollow box / cover with depth, NOT a flat sheet) -
-    if wall <= 3.5 and solidity < 0.45 and d[0] > 8.0:
+    if wall <= 3.5 + tol and solidity < 0.45 - 1e-9 and d[0] > 8.0 + tol:
         if material_class == "polymer":
             return RoutingRecommendation(
                 archetype="thin_wall_enclosure",
@@ -493,7 +490,7 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             )
         return RoutingRecommendation(
             archetype="thin_wall_enclosure",
-            process=PT.MJF.value, eval_family="additive", material_hint=material_class,
+            process=PT.DMLS.value, eval_family="additive", material_hint=material_class,
             confidence=0.5,
             reasoning=(
                 f"Thin-wall hollow shell (~{wall:.1f}mm wall, {solidity*100:.0f}% filled) "
@@ -501,36 +498,22 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             alternatives=[PT.SHEET_METAL.value, PT.CNC_3AXIS.value],
         )
 
-    # 4) LONG PRISMATIC BAR (slender bar/rod stock) — F4 -----------------------
-    # Placed BEFORE prismatic_block; disjoint from it by construction (a bar's
-    # d[2]/d[1] >= 4.0 forces d[2]/d[0] >= 4.0, which fails the block's <= 4.0
-    # ceiling), so no compact block is reclassified. `drivers.rotational` is
-    # already handled by branch (2) above and is always False here — this check
-    # is kept for robustness in case classification order ever changes.
+    # 4) LONG PRISMATIC BAR. Shape alone cannot exclude multi-axis machining.
     if is_long_prismatic_bar(drivers, material_class):
-        if drivers.rotational:
-            return RoutingRecommendation(
-                archetype="long_prismatic_bar",
-                process=PT.CNC_TURNING.value, eval_family="subtractive",
-                material_hint=material_class, confidence=0.7,
-                reasoning=(
-                    f"Slender round bar ({d[2]:.0f}mm long × Ø{d[1]:.0f}mm): saw to "
-                    f"length, then turn — 5-axis is not warranted for bar stock."),
-                alternatives=[PT.CNC_3AXIS.value],
-            )
         return RoutingRecommendation(
             archetype="long_prismatic_bar",
             process=PT.CNC_3AXIS.value, eval_family="subtractive",
             material_hint=material_class, confidence=0.7,
             reasoning=(
                 f"Slender prismatic bar ({d[2]:.0f}mm long × {d[1]:.0f}×{d[0]:.0f}mm "
-                f"cross-section): saw to length, then 3-axis mill — 5-axis is not "
-                f"warranted for bar stock."),
-            alternatives=[PT.CNC_TURNING.value],
+                f"enclosing cross-section): bar stock and 3-axis milling are a "
+                f"starting route. Confirm setups and tool clearance; features may "
+                f"require multi-axis machining."),
+            alternatives=[PT.CNC_5AXIS.value],
         )
 
     # 5) PRISMATIC BLOCK (compact, machinable from billet) --------------------
-    if solidity >= 0.5 and block_aspect <= 4.0 and material_class != "polymer":
+    if solidity >= 0.5 - 1e-9 and d[2] <= 4 * d[0] + 5 * tol and material_class != "polymer":
         return RoutingRecommendation(
             archetype="prismatic_block",
             process=PT.CNC_3AXIS.value, eval_family="subtractive",
@@ -552,5 +535,6 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             f"General solid ({solidity*100:.0f}% of bbox filled, ~{wall:.1f}mm mean "
             f"wall) with no dominant sheet/rotational/prismatic signature → "
             f"{'additive (MJF/SLS) for a polymer prototype' if material_class=='polymer' else 'CNC machining for a metal part'}."),
-        alternatives=[PT.SLS.value, PT.CNC_3AXIS.value],
+        alternatives=([PT.SLS.value, PT.CNC_3AXIS.value] if material_class == "polymer"
+                      else [PT.CNC_5AXIS.value, PT.DMLS.value]),
     )

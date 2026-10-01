@@ -45,6 +45,7 @@ from src.auth.validation_caps import enforce_validation_caps
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
+from src.costing.units import mesh_source_units
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
 from src.parsers import mesh_cache, parse_pool
@@ -675,9 +676,13 @@ def _parse_overrides(overrides: Optional[str]) -> dict:
                 status_code=400,
                 detail=f"override {k!r} must be a number",
             )
-        if not _math.isfinite(float(v)):
+        try:
+            number = float(v)
+        except OverflowError:
             raise HTTPException(status_code=400, detail=f"override {k!r} must be finite")
-        out[k.strip()] = float(v)
+        if not _math.isfinite(number):
+            raise HTTPException(status_code=400, detail=f"override {k!r} must be finite")
+        out[k.strip()] = number
     return out
 
 
@@ -764,7 +769,7 @@ async def validate_file(
         description=(
             "Declared STL source units: mm|inch (unset => mm). STL stores no "
             "unit metadata; inch scales the mesh ×25.4 into mm exactly once "
-            "before geometry and DFM analysis."
+            "before geometry and DFM analysis. STEP/IGES use their embedded units."
         ),
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
@@ -887,6 +892,27 @@ async def validate_file(
 # ──────────────────────────────────────────────────────────────
 # Two-part context-of-use fit (POST /validate/fit)
 # ──────────────────────────────────────────────────────────────
+async def _parse_fit_mesh_async(data: bytes, filename: str):
+    """The same capped source mesh feeds pair measurements and their preview."""
+    import asyncio
+    from src.services.fit_service import FitGeometryError, parse_supplementary_mesh
+
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".obj", ".3mf"}:
+        return await _parse_mesh_async(data, filename)
+    timeout = _analysis_timeout_sec()
+    try:
+        mesh = await asyncio.wait_for(asyncio.to_thread(
+            parse_supplementary_mesh, data, filename, max_expanded_bytes=_max_upload_bytes(),
+        ), timeout=timeout)
+    except FitGeometryError as exc:
+        raise HTTPException(status_code=422, detail={"code": "FIT_GEOMETRY_UNAVAILABLE", "message": str(exc)}) from exc
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=f"File parsing exceeded {timeout:.0f}s timeout.") from exc
+    enforce_triangle_cap(mesh)
+    return mesh, suffix
+
+
 @router.post("/validate/fit", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("30/hour;200/day")
 async def validate_fit(
@@ -894,10 +920,12 @@ async def validate_fit(
     response: Response,
     part_a: UploadFile = File(...),
     part_b: UploadFile = File(...),
+    part_a_units: str = Query("mm", pattern="^(mm|inch)$"),
+    part_b_units: str = Query("mm", pattern="^(mm|inch)$"),
     seating: str = Query("shared_frame", description="shared_frame or auto"),
-    nudge_x_mm: float = Query(0.0),
-    nudge_y_mm: float = Query(0.0),
-    nudge_z_mm: float = Query(0.0),
+    nudge_x_mm: float = Query(0.0, allow_inf_nan=False),
+    nudge_y_mm: float = Query(0.0, allow_inf_nan=False),
+    nudge_z_mm: float = Query(0.0, allow_inf_nan=False),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -911,18 +939,14 @@ async def validate_fit(
     data_a, data_b = await __import__("asyncio").gather(
         _read_capped(part_a), _read_capped(part_b)
     )
-    async def parse_fit_part(data: bytes, filename: str):
-        if Path(filename).suffix.lower() in {".obj", ".3mf"}:
-            from src.services.fit_service import parse_supplementary_mesh
-            return await __import__("asyncio").to_thread(parse_supplementary_mesh, data, filename)
-        mesh, _suffix = await _parse_mesh_async(data, filename)
-        return mesh
-
     try:
-        mesh_a, mesh_b = await __import__("asyncio").gather(
-            parse_fit_part(data_a, part_a.filename or "part-a"),
-            parse_fit_part(data_b, part_b.filename or "part-b"),
+        (mesh_a, _), (mesh_b, _) = await __import__("asyncio").gather(
+            _parse_fit_mesh_async(data_a, part_a.filename or "part-a"),
+            _parse_fit_mesh_async(data_b, part_b.filename or "part-b"),
         )
+        from src.costing.units import scale_mesh_to_mm
+        mesh_a = scale_mesh_to_mm(mesh_a, mesh_source_units(part_a.filename or "part-a", part_a_units))
+        mesh_b = scale_mesh_to_mm(mesh_b, mesh_source_units(part_b.filename or "part-b", part_b_units))
         if seating not in {"shared_frame", "auto"}:
             raise HTTPException(status_code=400, detail="seating must be shared_frame or auto")
         from src.services.fit_seating import apply_seating, propose_auto_seating
@@ -941,6 +965,21 @@ async def validate_fit(
         final_transform = nudge @ np.asarray(seating_report["transform"], dtype=float)
         seated_b = apply_seating(mesh_b, final_transform.tolist())
         result = await __import__("asyncio").to_thread(analyze_fit, mesh_a, seated_b)
+        result["coordinate_frame"] = "part_a_source_frame"
+        if seating == "shared_frame":
+            result["limits"].append("Shared-frame seating assumes both files were exported in the same assembly coordinate frame.")
+        elif seating_report["accepted"]:
+            result["limits"].append("Automatic seating proposes a bounded surface alignment; it does not verify assembly constraints or a unique mating orientation.")
+        else:
+            result["limits"].append("Automatic seating was ambiguous or high-residual; original file coordinates were retained before any manual offset.")
+        if any(value != 0 for value in (nudge_x_mm, nudge_y_mm, nudge_z_mm)):
+            result["limits"].append(
+                f"Manual XYZ offset ({nudge_x_mm:g}, {nudge_y_mm:g}, {nudge_z_mm:g}) mm "
+                "is applied to the assembly after seating, in your part's coordinate frame."
+            )
+        for label, file, units in [("Your part", part_a, part_a_units), ("Assembly", part_b, part_b_units)]:
+            source = f"source coordinates interpreted as {units}" if Path(file.filename or "").suffix.lower() in {".stl", ".obj"} else "embedded CAD units"
+            result["limits"].append(f"{label}: {source}, normalized to mm before seating and measurement.")
         result["seating"] = {
             **seating_report,
             "transform": final_transform.round(9).tolist(),
@@ -953,8 +992,6 @@ async def validate_fit(
             detail={
                 "code": "FIT_GEOMETRY_UNAVAILABLE",
                 "message": str(exc),
-                "repairable": True,
-                "next_action": "Repair both shells to watertight solids and retry the same two files.",
             },
         ) from exc
 
@@ -991,27 +1028,32 @@ def _preview_faces_max() -> int:
         return 150000
 
 
-def _build_preview_glb(mesh, filename: str) -> tuple[bytes, int, int, bool]:
+def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tuple[bytes, int, int, bool, str]:
     """Decimate the tessellated shell to the browser budget and export GLB bytes.
 
     Reuses the engine's quadric/vertex-cluster decimation (``_decimate_to``, the
     same path ``MAX_ANALYSIS_FACES`` uses) so the preview shares the analysis
     mesh's fidelity story. Returns ``(glb_bytes, original_faces, preview_faces,
-    decimated)``. Pure in-process trimesh — no disk, no network (zero-egress).
+    decimated, face_hash)``. Pure in-process trimesh — no disk, no network.
     """
-    from src.analysis.context import _decimate_to
+    from src.analysis.context import _decimate_to, _maybe_decimate, analysis_mesh_hash
 
     original = int(len(mesh.faces))
     out = mesh
     decimated = False
     target = _preview_faces_target()
-    if original > target:
+    if for_analysis:
+        # Face-index inspection must use the exact same deterministic mesh
+        # policy as GeometryContext; the lighter preview reorders triangles.
+        out, _ = _maybe_decimate(mesh)
+        decimated = len(out.faces) < original
+    elif original > target:
         reduced, _strategy = _decimate_to(mesh, target)
         if reduced is not None and 0 < len(reduced.faces) < original:
             out = reduced
             decimated = True
     glb = out.export(file_type="glb")
-    return bytes(glb), original, int(len(out.faces)), decimated
+    return bytes(glb), original, int(len(out.faces)), decimated, analysis_mesh_hash(out)
 
 
 @router.post("/validate/preview-mesh", dependencies=[Depends(require_kill_switch_open)])
@@ -1019,6 +1061,8 @@ def _build_preview_glb(mesh, filename: str) -> tuple[bytes, int, int, bool]:
 async def validate_preview_mesh(
     request: Request,
     file: UploadFile = File(...),
+    purpose: str = Query("preview", pattern="^(preview|analysis)$"),
+    units: str = Query("mm", pattern="^(mm|inch)$"),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -1032,10 +1076,14 @@ async def validate_preview_mesh(
     other data call. Zero-egress + mesh-level caveat: see the section header.
     """
     data = await _read_capped(file)
-    mesh, suffix = await _parse_mesh_async(data, file.filename or "upload")
+    parse = _parse_fit_mesh_async if purpose == "preview" else _parse_mesh_async
+    mesh, suffix = await parse(data, file.filename or "upload")
+    from src.costing.units import scale_mesh_to_mm
+
+    mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
     try:
-        glb, original_faces, preview_faces, decimated = _build_preview_glb(
-            mesh, file.filename or "upload"
+        glb, original_faces, preview_faces, decimated, face_hash = _build_preview_glb(
+            mesh, file.filename or "upload", for_analysis=purpose == "analysis"
         )
     except HTTPException:
         raise
@@ -1050,6 +1098,8 @@ async def validate_preview_mesh(
         "X-Mesh-Preview-Faces": str(preview_faces),
         "X-Mesh-Decimated": "true" if decimated else "false",
         "X-Mesh-Source": suffix.lstrip("."),
+        "X-Mesh-Face-Space": purpose,
+        "X-Mesh-Face-Hash": face_hash,
         "Cache-Control": "no-store",
     }
     return Response(content=glb, media_type="model/gltf-binary", headers=headers)
@@ -1519,15 +1569,16 @@ async def _run_cost_decision(
         )
     effective_region = region or "US"
     # units: None => unset (DEFAULT mm, byte-identical, silent as it always was); a
-    # supplied value must be a known source unit and is treated USER. The DECLARATION
-    # is what drives the exactly-once mm rescale at the parse seam below.
+    # supplied value must be a known source unit and is treated USER for STL.
+    # STEP/IGES parsers already use embedded units to normalize to mm.
     units_is_user = units is not None
     if units is not None and units not in _SOURCE_UNITS:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
         )
-    effective_units = units or "mm"
+    effective_units = mesh_source_units(file.filename or "unknown", units)
+    units_is_user = units_is_user and Path(file.filename or "").suffix.lower() == ".stl"
     # ── Shop binding: governed (DB) profile first, else the flat-file allowlist ──
     # W4 slice 2: when SHOP_LIBRARY_ENABLED and the caller's org has a PUBLISHED
     # shop profile for this slug in effect now, bind its DECLARED overrides as
@@ -1966,6 +2017,7 @@ async def _run_cost_decision(
             cal_org_id,
             source_hash,
             bytes(costable_stl),
+            source_units=effective_units,
         )
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
@@ -1995,6 +2047,7 @@ async def _run_cost_decision(
                 material_class=material_class,
                 shop=shop_slug,
                 overrides=rate_overrides,
+                source_units=effective_units,
             )
             mesh_hash = compute_mesh_hash(data)
             try:
@@ -2127,9 +2180,10 @@ async def validate_cost(
     ),
     units: Optional[str] = Form(
         None,
-        description="Declared CAD source units: mm|inch (unset => mm, byte-identical). "
-                    "STL/mesh files carry NO units; an inch-authored part read as mm "
-                    "mis-costs by ~16,000× (×25.4³ volume). Declaring inch scales the "
+        description="Declared STL source units: mm|inch (unset => mm). "
+                    "STEP/IGES use their embedded units regardless of this selector. "
+                    "STL/mesh files carry NO units; reading inch coordinates as mm "
+                    "understates volume by about 16,387× (25.4³). Declaring inch scales the "
                     "mesh ×25.4 into mm ONCE before geometry/DFM/cost so the whole "
                     "decision reads the real part. STATED input; a plausibility WARNING "
                     "still fires if the mm-interpreted size looks wrong.",
@@ -2142,14 +2196,12 @@ async def validate_cost(
 ):
     """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
 
-    IP-local compute: the CAD is parsed and costed in-process and no network call
-    is made (the costing layer opens zero sockets). The glass-box decision is
-    then PERSISTED for the authenticated user (Phase 2 gap #3, behind
-    COST_PERSIST_ENABLED) so it can be listed, PDF/JSON/CSV exported, shared, and
-    compared — the response carries a `saved: {id, url}` pointer to that artifact.
-    Only the decision (geometry summary + estimates + assumptions) is stored; the
-    raw CAD blob is never retained. Broken geometry is surfaced as a clean
-    structured 400 (GEOMETRY_INVALID), never a 500.
+    CAD geometry and cost calculations run on this deployment's server.
+    Authenticated organization uploads retain the exact source CAD and a costable
+    mesh in configured organization-scoped storage. When COST_PERSIST_ENABLED is
+    enabled, the decision is also saved for history, PDF/JSON/CSV export, sharing
+    and comparison; the response includes its `saved: {id, url}` pointer.
+    Detected invalid geometry returns a structured 400 (GEOMETRY_INVALID).
 
     Pass `shop` to calibrate the number to a specific shop's real rates (the
     response carries SHOP-tagged drivers/assumptions + a "calibrated to shop X"
@@ -2205,7 +2257,8 @@ async def validate_cost_demo(
     ),
     units: Optional[str] = Form(
         None,
-        description="Declared CAD source units: mm|inch (unset => mm, byte-identical). "
+        description="Declared STL source units: mm|inch (unset => mm). "
+                    "STEP/IGES use their embedded units regardless of this selector. "
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),

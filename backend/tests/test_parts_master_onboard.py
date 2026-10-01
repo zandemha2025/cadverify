@@ -88,7 +88,9 @@ async def _mk_org_user(s, org_id, tag, label):
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_onboard_cold_start_and_isolation():
+async def test_onboard_cold_start_and_isolation(monkeypatch):
+    import threading
+    from types import SimpleNamespace
     import trimesh
     from httpx import ASGITransport, AsyncClient
     from sqlalchemy import text
@@ -97,6 +99,21 @@ async def test_onboard_cold_start_and_isolation():
     import src.db.engine as eng
     from src.services import identity_retrieval_service as ir
     from src.services import parts_master_service as pmsvc
+    from src.api import routes
+
+    loop_thread = threading.get_ident()
+
+    def off_loop(function):
+        def checked(*args, **kwargs):
+            assert threading.get_ident() != loop_thread, "CAD work blocked the API event loop"
+            return function(*args, **kwargs)
+        return checked
+
+    monkeypatch.setattr(routes, "_parse_mesh", off_loop(routes._parse_mesh))
+    monkeypatch.setattr(pmsvc, "compute_mesh_hash", off_loop(pmsvc.compute_mesh_hash))
+    monkeypatch.setattr(pmsvc, "similarity", SimpleNamespace(
+        vector_for_mesh=off_loop(pmsvc.similarity.vector_for_mesh)
+    ))
 
     tag = uuid.uuid4().hex[:10]
     org_a, org_b = str(ULID()), str(ULID())
@@ -244,6 +261,28 @@ async def test_onboard_cold_start_and_isolation():
         b_rows = await sigsvc.list_signatures(s, org_b)
         assert len(b_rows) == 1 and b_rows[0].declared_part_id == "PN-B"
 
+    # Duplicate bytes update one corpus row; the summary must describe its FINAL
+    # identity in both directions (unnamed -> named and named -> unnamed).
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        _act_as(app, uid_a)
+        for names, expected_unnamed in (([None, "Final plate"], 0), (["First plate", None], 1)):
+            import json
+
+            r = await c.post("/api/v1/identity/library/onboard", files=[
+                ("files", ("first.stl", plate_stl, "application/octet-stream")),
+                ("files", ("last.stl", plate_stl, "application/octet-stream")),
+                ("mapping", ("identity.json", json.dumps([
+                    {"filename": filename, "name": name}
+                    for filename, name in zip(("first.stl", "last.stl"), names)
+                ]).encode(), "application/json")),
+            ])
+            assert r.status_code == 200, r.text
+            assert r.json()["onboarded"] == 1, r.text
+            assert r.json()["unnamed"] == expected_unnamed, r.text
+            assert r.json()["library_size"] == 3, r.text
+            recent = (await c.get("/api/v1/identity/library")).json()["recent"]
+            assert recent[0]["declared_name"] == names[-1]
+
     # ── cleanup ─────────────────────────────────────────────────────────────
     async with eng.get_session_factory()() as s:
         for tbl in ("part_signatures", "manifest_parts"):
@@ -264,3 +303,88 @@ async def test_onboard_cold_start_and_isolation():
         )
         await s.commit()
     await eng.dispose_engine()
+
+
+def test_json_mapping_rejects_bad_shapes_and_values_without_losing_valid_rows():
+    import json
+
+    from src.services.parts_master_service import parse_identity_json
+
+    for document in ({}, {"parts": 7}, {"parts": "bad"}, {"parts": {}}, {"mappings": None}):
+        mapping, errors = parse_identity_json(json.dumps(document))
+        assert not mapping and errors, document
+
+    for field in ("filename", "part_id", "name", "program", "material_class"):
+        for value in (1, 0, True, False, [], {}):
+            mapping, errors = parse_identity_json(json.dumps([
+                {"filename": "bad.step", field: value},
+                {"filename": "good.step", "name": " Good part "},
+            ]))
+            assert set(mapping) == {"good.step"}, (field, value, mapping)
+            assert mapping["good.step"]["name"] == "Good part"
+            assert errors == [{"line": 1, "reason": f"{field} must be text or null"}]
+
+    assert parse_identity_json('{"parts": []}') == ({}, [])
+    assert parse_identity_json('[{"filename":"unnamed.step","name":null}]')[0]["unnamed.step"]["name"] is None
+
+
+@pytest.mark.asyncio
+async def test_onboard_rejects_oversized_inputs_before_import(monkeypatch, tmp_path):
+    import io
+    import zipfile
+    from unittest.mock import AsyncMock
+
+    from httpx import ASGITransport, AsyncClient
+    from starlette.datastructures import UploadFile
+
+    from src.api import identity
+    from src.db.engine import get_db_session
+    from src.services import batch_service
+
+    app = _build_app()
+    _act_as(app, 1)
+    session = AsyncMock()
+
+    async def fake_session():
+        yield session
+
+    app.dependency_overrides[get_db_session] = fake_session
+    monkeypatch.setattr(identity, "resolve_org", AsyncMock(return_value="local-limit-test"))
+    importer = AsyncMock(return_value={"onboarded": 0, "unnamed": 0, "skipped": [], "manifest_errors": [], "manifest_registered": 0, "library_size": 0})
+    monkeypatch.setattr(identity.pmsvc, "onboard_library", importer)
+    monkeypatch.setattr(identity, "_ONBOARD_MAX_BYTES", 8)
+    monkeypatch.setattr(batch_service, "BATCH_MAX_MANIFEST_BYTES", 8)
+    monkeypatch.setattr(batch_service, "BATCH_BLOB_DIR", str(tmp_path / "blobs"))
+
+    read_sizes = []
+    original_read = UploadFile.read
+
+    async def observe_read(self, size=-1):
+        read_sizes.append(size)
+        return await original_read(self, size)
+
+    monkeypatch.setattr(UploadFile, "read", observe_read)
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("part.stl", b"123456789")
+    small_archive = io.BytesIO()
+    with zipfile.ZipFile(small_archive, "w") as z:
+        z.writestr("part.stl", b"123456")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        for files, message in (
+            ([("files", ("a.stl", b"1234")), ("files", ("b.stl", b"56789"))], "onboarding upload"),
+            ([("files", ("a.stl", b"123")), ("mapping", ("mapping.csv", b"123456789"))], "identity mapping"),
+            ([("zip", ("library.zip", archive.getvalue()))], "onboarding upload"),
+            ([("files", ("a.stl", b"123")), ("zip", ("library.zip", small_archive.getvalue()))], "onboarding upload"),
+        ):
+            r = await c.post("/api/v1/identity/library/onboard", files=files)
+            assert r.status_code == 413, r.text
+            assert message in r.json()["detail"]
+        r = await c.post("/api/v1/identity/library/onboard", files=[("zip", ("bad.zip", b"not a zip"))])
+        assert r.status_code == 400, r.text
+
+    assert read_sizes and all(size > 0 for size in read_sizes), read_sizes
+    importer.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    assert not list((tmp_path / "blobs").rglob("*.stl"))

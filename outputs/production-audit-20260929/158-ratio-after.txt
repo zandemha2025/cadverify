@@ -1,0 +1,12 @@
+Advisory - NON_UNIFORM_WALLS
+
+12.3457:1 measured - needs 2:1
+
+Aim for uniform 2.5mm. Use ribs, not solid. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS.
+
+Applies to: Injection Molding, Die Casting, Investment Casting, Sand Casting
+
+×
+‹
+12/16
+›

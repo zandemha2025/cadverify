@@ -16,15 +16,12 @@
  * depth panel (the glass box), via onOpenGlassBox.
  */
 
-import * as React from "react";
 import { Boxes, ChevronRight, Crosshair } from "lucide-react";
 import type { CostReport } from "@/lib/api";
-import type { IndexedIssue } from "@/lib/dfm-scope";
-import type { Breakeven } from "@/lib/breakeven";
-import { recommendAt, posToQty, qtyToPos } from "@/lib/breakeven";
-import { pickEstimate } from "@/lib/cost-views";
+import { issueProcesses, type IndexedIssue } from "@/lib/dfm-scope";
+import { pickEstimate, type workspaceSelection } from "@/lib/cost-views";
 import { procLabel } from "@/lib/status";
-import { costPersistUiEnabled } from "@/lib/cost-decision";
+import { costPersistUiEnabled, crossoverSummary } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Odometer } from "@/components/ui/odometer";
@@ -41,7 +38,8 @@ const USD = new Intl.NumberFormat("en-US", {
 
 export function DecisionColumn({
   report,
-  breakeven,
+  selection,
+  onPositionChange,
   filename,
   costBlockers,
   selectedKey,
@@ -50,7 +48,8 @@ export function DecisionColumn({
   onSeeRouting,
 }: {
   report: CostReport;
-  breakeven: Breakeven | null;
+  selection: ReturnType<typeof workspaceSelection>;
+  onPositionChange: (position: number) => void;
   filename: string;
   /** cost-side DFM blockers relinked to locatable rows (dedup across estimates);
    *  each carries the shared `cost:`-namespaced key + its face sample. */
@@ -66,25 +65,15 @@ export function DecisionColumn({
 }) {
   const dec = report.decision;
 
-  // slider position [0,1]; default to the crossover (the decision boundary),
-  // else the largest costed quantity. Mirrors the Decision lens.
-  const [pos, setPos] = React.useState(() => {
-    if (!breakeven) return 1;
-    const dflt =
-      breakeven.crossoverQty ??
-      Math.max(...(report.quantities.length ? report.quantities : [1]));
-    return qtyToPos(breakeven, dflt);
-  });
+  const { breakeven, position: pos, quantity: qty, recommendation: rec, estimate: recEstimate, dfm } = selection;
 
-  if (!breakeven || !dec) {
+  if (!breakeven || !dec || qty == null) {
     // GEOMETRY_INVALID / no decision → the breakdown card renders the honest state
     return <CostDecisionCard report={report} />;
   }
 
-  const qty = posToQty(breakeven, pos);
-  const rec = recommendAt(breakeven, qty);
-  const recEstimate = rec ? pickEstimate(report, rec.curve.process, qty) : null;
-  const recConfidence = recEstimate?.confidence ?? null;
+  const exactQuantity = recEstimate?.quantity === qty;
+  const recConfidence = exactQuantity ? recEstimate?.confidence ?? null : null;
 
   const toolingConditional = !!dec.tooling_process && dec.tooling_dfm_ready === false;
   const toolingBlocker = dec.tooling_process
@@ -97,12 +86,12 @@ export function DecisionColumn({
       <Card className="overflow-hidden">
         <DecisionHeadline
           title={rec ? `Make by ${procLabel(rec.curve.process)}` : "—"}
-          dfmReady={rec?.dfmReady ?? false}
-          sentence={crossoverSentence(report)}
+          verdict={dfm.verdict}
+          sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="space-y-4">
           <NumberReadout
-            label="Cost / unit"
+            label={exactQuantity ? "Cost / unit" : "Approx. cost / unit"}
             value={
               rec ? (
                 <Odometer value={rec.unitCost} format={(n) => USD.format(n)} />
@@ -115,11 +104,11 @@ export function DecisionColumn({
           />
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             <NumberReadout
-              label="Lead time"
+              label={recEstimate ? `Lead time · qty ${recEstimate.quantity.toLocaleString()}` : "Lead time"}
               size="md"
               value={
-                rec && rec.curve.leadLow != null && rec.curve.leadHigh != null
-                  ? `${rec.curve.leadLow}–${rec.curve.leadHigh}`
+                recEstimate?.lead_time
+                  ? `${recEstimate.lead_time.low_days}–${recEstimate.lead_time.high_days}`
                   : "—"
               }
               unit="days"
@@ -149,7 +138,7 @@ export function DecisionColumn({
           <CardContent compact className="space-y-2">
             <div className="flex items-baseline justify-between">
               <span className="cv-eyebrow">Cost blockers</span>
-              <span className="text-micro text-muted-foreground">DFM · on this route</span>
+              <span className="text-micro text-muted-foreground">DFM · across costed processes</span>
             </div>
             <ul className="space-y-1.5">
               {costBlockers.map((b) => {
@@ -159,6 +148,11 @@ export function DecisionColumn({
                   <li key={b.key} className="flex items-start gap-2 text-xs">
                     <span className="flex-1 leading-snug text-muted-foreground">
                       <span className="num text-foreground">{b.issue.code}</span> — {b.issue.message}
+                      {issueProcesses(b).length > 0 && (
+                        <span className="mt-1 block" aria-label="Affected processes">
+                          {issueProcesses(b).map(procLabel).join(", ")}
+                        </span>
+                      )}
                     </span>
                     {locatable && onLocateBlocker ? (
                       <button
@@ -201,7 +195,7 @@ export function DecisionColumn({
             min={0}
             max={1000}
             step={1}
-            onValueChange={([v]) => setPos(v / 1000)}
+            onValueChange={([v]) => onPositionChange(v / 1000)}
             aria-label="Order quantity"
           />
           <div className="num flex justify-between text-[11px] text-muted-foreground">
@@ -256,20 +250,4 @@ export function DecisionColumn({
       )}
     </section>
   );
-}
-
-function crossoverSentence(report: CostReport): string {
-  const dec = report.decision;
-  if (!dec) return "";
-  if (dec.crossover_qty != null) {
-    const n = Math.round(dec.crossover_qty).toLocaleString();
-    const make = procLabel(dec.make_now_process);
-    if (dec.tooling_process) {
-      return `Make below ~${n} units with ${make}; tool up with ${procLabel(
-        dec.tooling_process
-      )} above it.`;
-    }
-    return `${make} wins below ~${n} units; tooling amortizes above it.`;
-  }
-  return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
 }

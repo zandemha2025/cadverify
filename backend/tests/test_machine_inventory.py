@@ -43,6 +43,31 @@ def test_good_machine_validates():
     svc.validate_machine(_good_machine())  # no raise
 
 
+def test_machine_numeric_and_enum_inputs_reject_unsafe_values():
+    for value in (float("nan"), float("inf"), -float("inf"), 10**1000):
+        for patch in ({"hourly_rate_usd": value}, {"max_workpiece_kg": value},
+                      {"capital_frac": value}, {"capabilities": {"x": value}},
+                      {"material_thickness_map": {"steel": value}}):
+            with pytest.raises(ValueError):
+                svc.validate_machine({**_good_machine(), **patch})
+    with pytest.raises(ValueError, match="2147483647"):
+        svc.validate_machine({**_good_machine(), "count": 2**31})
+    svc.validate_machine({**_good_machine(), "count": 2**31 - 1})
+    for field in ("motion_mode", "chamber_type"):
+        with pytest.raises(ValueError, match=field):
+            svc.validate_machine({**_good_machine(), "capabilities": {field: []}})
+
+
+def test_machine_csv_reports_oversized_fields_and_invalid_numbers():
+    rows, errors = svc.parse_machine_csv("process,name\ncnc_3axis," + "x" * 150000)
+    assert rows == [] and errors and "CSV" in errors[0]["reason"]
+    rows, errors = svc.parse_machine_csv(
+        "process,count,hourly_rate_usd\ncnc_3axis,2147483648,75\n"
+        "cnc_3axis,1,Infinity\ncnc_3axis,2,95\n")
+    assert len(rows) == 1 and rows[0]["count"] == 2
+    assert [e["line"] for e in errors] == [2, 3]
+
+
 def test_empty_capabilities_is_valid():
     m = _good_machine()
     m["capabilities"] = {}  # a machine may declare only some gates
@@ -469,6 +494,31 @@ async def _seed_org_user(s, oid: str, label: str) -> int:
         {"id": str(ULID()), "o": oid, "u": uid},
     )
     return uid
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_machine_import_row_failure_preserves_adjacent_rows():
+    from ulid import ULID
+    import src.db.engine as eng
+
+    try:
+        async with eng.get_session_factory()() as s:
+            oid = str(ULID())
+            uid = await _seed_org_user(s, oid, "import-savepoint")
+            summary = await svc.import_machines(s, oid, uid, [
+                {**_good_machine(), "name": "first"},
+                # Exercise a real storage refusal independently of CSV validation.
+                {**_good_machine(), "name": "invalid", "count": 2**31},
+                {**_good_machine(), "name": "last"},
+            ])
+            assert (summary["imported"], summary["skipped"], summary["total"]) == (2, 1, 3)
+            assert "INSERT" not in summary["errors"][0]["reason"]
+            assert "asyncpg" not in summary["errors"][0]["reason"]
+            assert {m.name for m in await svc.load_org_inventory(s, oid)} == {"first", "last"}
+            await s.rollback()
+    finally:
+        await eng.dispose_engine()
 
 
 async def _cleanup(oids: list[str], uids: list[int]) -> None:

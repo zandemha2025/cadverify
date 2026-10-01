@@ -1,0 +1,50 @@
+{
+  "issue": "140",
+  "status": "fixed and verified locally; not deployed",
+  "checked_at": "2026-09-30T19:13:23.647644+00:00",
+  "application": "http://127.0.0.1:3017/verify",
+  "source_base": "b4bd65a152404253f9a53a842e466ccb5d53d985 plus the 140 source changes",
+  "first_divergence": "step 1: opening ? should focus an accessible keyboard-shortcuts dialog; focus remained on Hide assembly and there was no dialog role",
+  "red": {
+    "modal_assertion": "0 !== 1 dialogs",
+    "background_h_key": "closed shortcuts and navigated from Fit in context to Home",
+    "dialog_handoff": "palette/shortcuts transitions could return focus to BODY"
+  },
+  "fix": "Reuse the existing Dialog for modal focus, background isolation and Escape. Both Verify dialogs fall back to the existing workspace command button when the previous focused element is removed. Preserve the original connected trigger for direct entry.",
+  "native_checks": [
+    "Direct ? opens one named dialog and focuses Close keyboard shortcuts; workspace hidden from the accessibility tree.",
+    "Tab and Shift+Tab retain dialog focus; h does not navigate or close it; Your machines remains selected.",
+    "Escape restores Your machines button focus and the same workspace.",
+    "Palette search + Enter opens shortcuts; Enter on Close restores the workspace command button.",
+    "Meta+K from shortcuts opens only Verify commands with focused search; Escape restores the workspace command button.",
+    "Close control measures 44 by 44 CSS px. Command chord stays on one line in the visually inspected screenshot."
+  ],
+  "checks": {
+    "frontend_tests": 499,
+    "typecheck": "pass",
+    "changed_file_lint": "pass",
+    "production_build": "pass",
+    "native_assertions": "pass",
+    "backend": "unchanged from 139 (2560 passed, 3 documented skips)"
+  },
+  "check_limitations": [
+    "Initial npm run typecheck invocation was invalid; corrected to the project command npx tsc --noEmit and passed.",
+    "An early assertion assumed aria-modal; the installed shared Dialog instead hides background siblings. The behavior assertion verifies that isolation and focus.",
+    "No successful mobile viewport override or production verification claimed."
+  ],
+  "evidence": [
+    "140-shortcuts-focus-before.png",
+    "140-shortcuts-navigation-before.png",
+    "140-shortcuts-dialog-fixed.png",
+    "scripts/e2e/command-focus-validation.mjs"
+  ],
+  "ci_context": {
+    "run": 36758849460,
+    "head": "3323a29923620b8155783f851adbcc38a7993858",
+    "conclusion": "failure",
+    "eight_non_image_jobs": "passed including complete browser chain",
+    "remaining_failure": "backend image scan: 5 HIGH vulnerabilities, 0 CRITICAL",
+    "excludes": "137-140"
+  },
+  "production": "unchanged 09555c18121305b7e577c0a76e47e5f97abfb8e8"
+}

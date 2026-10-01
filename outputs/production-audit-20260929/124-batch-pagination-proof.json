@@ -1,0 +1,35 @@
+{
+  "finding": 124,
+  "batch": "01M3SHNSGEEZB9QJST6A7KF4SP",
+  "fixture": "batch-pagination-real.zip",
+  "source": "51 copies of the known actual STEP bored block, plus one deliberately malformed STL; submitted natively at concurrency2",
+  "durable_outcome_before_fix": "50 completed; malformed STL failed; one valid simultaneous STEP failed from the separately fixed125 save race",
+  "first_divergence": "step 4, expected the failed filter to retain only its two persisted failed items, state was a late all-status cursor response appending a completed STEP and duplicating the malformed STL",
+  "native_red_rows": [
+    "page-002.STP (Failed)",
+    "page-052-invalid.stl (Failed)",
+    "page-051.STP (Completed)",
+    "page-052-invalid.stl (Failed)"
+  ],
+  "fix": "Reuse the existing catalog generation-counter pattern for initial and cursor reads; invalidate on filter/refresh/retry/unmount, reset loadingMore, and guard success/error/finally updates. Reject duplicate Load more while pending.",
+  "native_checks": [
+    "Runnable assertBatchFilteredRows fails on original UI and passes after rebuild on the same unchanged batch",
+    "Real second-page HTTP response held4seconds; switch all\u2192failed while pending; only the exact two failed rows remain afterwards",
+    "Same delayed request explicitly returns503 in the local harness; switching filters prevents obsolete error from contaminating the successful current filter",
+    "Return to all and load more normally: exactly52unique filenames, no Load more afterwards"
+  ],
+  "harness": "Existing private history-delay-proxy.py reused on loopback8018 for this exact batch/cursor only; realAPI/DB responses otherwise relayed. Harness stopped and frontend restored to direct8017 after checks.",
+  "checks": {
+    "frontend_passed": 499,
+    "types": "pass",
+    "changed_source_lint": "pass",
+    "production_build": "pass"
+  },
+  "screenshots": [
+    "124-batch-stale-page-before.png",
+    "124-batch-stale-page-fixed.png",
+    "124-batch-stale-error-fixed.png",
+    "124-batch-all-pages-fixed.png"
+  ],
+  "limits": "Local runtime only, not production. Historical failed items retained; no test database rows rewritten or deleted."
+}

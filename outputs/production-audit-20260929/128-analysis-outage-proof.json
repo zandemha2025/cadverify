@@ -1,0 +1,28 @@
+{
+  "finding": "128",
+  "environment": "Local production-built Next.js16.3.6, real FastAPI/PostgreSQL",
+  "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+  "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+  "first_divergence": "step3, expected a failed read of the existing saved analysis to remain a service error, state was Analysis not found with no retry action after the real API was stopped.",
+  "root": "AnalysisDetailPage used one missing-record title for every rejected fetch and did not supply the existing ErrorState retry action.",
+  "fix": "Use a read-failure title, reset prior data/error/repair state, and repeat the existing effect through retryKey; retain the cancellation guard.",
+  "native_checks": {
+    "old_assertion": "failed on Analysis not found",
+    "actual_api_outage": "PASS: truthful read error, enabled Try again, no stale result",
+    "retry_during_outage": "PASS: returns to the same truthful error",
+    "retry_after_api_restart": "PASS: same exact analysisURL/name,20x15x10mm and watertight; no reload or new sign-in",
+    "missing_record_control": "PASS: all-zeroULID receives Analysis not found detail under Could not load analysis; actual saved record recovers via Back"
+  },
+  "checks": {
+    "frontend_tests": 499,
+    "typescript": "pass",
+    "changed_source_lint": "pass",
+    "production_build": "pass",
+    "backend_changes": false
+  },
+  "limits": [
+    "Not deployed",
+    "External-provider and general result accuracy remain open",
+    "Current CI36747006495 runs prior9d1ab39 and excludes127/128"
+  ]
+}

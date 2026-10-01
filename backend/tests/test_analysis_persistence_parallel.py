@@ -26,7 +26,7 @@ async def test_source_and_derivative_are_both_durable_and_overlap():
         await asyncio.sleep(0.08)
         events.append("source-durable")
 
-    async def save_costable(*_args):
+    async def save_costable(*_args, **_kwargs):
         events.append("costable-start")
         await asyncio.sleep(0.08)
         events.append("costable-durable")
@@ -66,7 +66,7 @@ async def test_source_evidence_waits_for_both_and_propagates_a_failed_write():
         await asyncio.sleep(0.01)
         raise OSError("source store unavailable")
 
-    async def save_costable(*_args):
+    async def save_costable(*_args, **_kwargs):
         nonlocal costable_finished
         await asyncio.sleep(0.08)
         costable_finished = True

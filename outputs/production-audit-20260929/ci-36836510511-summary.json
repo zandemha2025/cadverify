@@ -1,0 +1,77 @@
+{
+  "status": "completed",
+  "conclusion": "failure",
+  "headSha": "6edd51360587e451ce3d2c4877fa7e3d7b83efab",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106274"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106310"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106324"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106408"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106542"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106844"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285217805"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110291826997"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110291827071"
+    }
+  ],
+  "passed_jobs": 8,
+  "failed_steps": [
+    {
+      "job": "Container Images & Deploy Config Proof",
+      "step": "Scan backend image (high/critical vulnerabilities)"
+    }
+  ],
+  "coverage": "Audits through 172; excludes 173\u2013176.",
+  "image_scan": {
+    "backend_high": 5,
+    "backend_critical": 0,
+    "frontend": "pass",
+    "actual_image_runtime_probes": "frontend startup/share PNG and backend native STEP passed",
+    "waiver": false
+  }
+}

@@ -163,7 +163,8 @@ def test_real_metric_counts_only_real_records():
     assert ev.metrics_real is not None
     assert ev.n_real == n_real_records
     assert ev.metrics_real["n_parts"] == len(real_parts)
-    assert "VALIDATED" in ev.claim
+    # Two real parts per process cannot borrow each other's residuals.
+    assert "PENDING" in ev.claim
 
 
 def test_real_metric_below_residual_floor_never_claims_validated():
@@ -219,6 +220,48 @@ def test_residual_model_real_data_validates():
     assert ci.method == "measured-residual"
     assert ci.validated is True
     assert ci.low_usd < ci.point_usd < ci.high_usd
+
+
+def test_calibration_and_residuals_never_borrow_another_process(engine_part, tmp_path):
+    from src.costing import calibration_store, estimate_decision, EstimateOptions
+    from src.services.groundtruth_service import load_served_calibration
+
+    records = _mock_records(12, processes=("sls",), stand_in=False)
+    split = split_records(records)
+    calibration = tune(_mock_preds(split.tuning))
+    assert calibration.factor_for("cnc_3axis") == 1.0
+    # Synthetic-only CNC tuning must not move its served assumption-band centre.
+    calibration.process_factors["cnc_3axis"] = 100.0
+    calibration.n_by_process["cnc_3axis"] = 1
+    predictions = _mock_preds(split.test)
+    # One CNC observation still cannot borrow SLS residuals to meet the floor.
+    sparse_cnc = _mock_records(1, processes=("cnc_3axis",), stand_in=False)
+    predictions.extend(_mock_preds(sparse_cnc))
+    evaluation = evaluate(predictions, calibration, "held-out")
+    calibration_store.save_bundle(calibration_store.CalibrationBundle(
+        org_id="ORG_PROCESS_ISOLATION", calibration=calibration,
+        residuals=evaluation.residuals,
+        from_real=True,
+    ), store_dir=str(tmp_path))
+    model, calibration = load_served_calibration("ORG_PROCESS_ISOLATION", str(tmp_path))
+
+    assert model.interval(50.0, process="sls").validated is True
+    for process in ("cnc_3axis", "injection_molding"):
+        assert calibration.factor_for(process) == 1.0
+        interval = model.interval(50.0, process=process)
+        assert interval.method == "assumption-band"
+        assert interval.validated is False
+        assert interval.point_usd == 50.0
+
+    result, mesh, features = engine_part
+    report = estimate_decision(result, mesh, features, EstimateOptions(
+        quantities=[100], residual_model=model, calibration=calibration,
+    ))
+    for process in ("sls", "cnc_3axis", "injection_molding"):
+        estimate = next(e for e in report.estimates if e["process"] == process)
+        assert estimate["confidence"]["validated"] is (process == "sls")
+        if process != "sls":
+            assert estimate["confidence"]["point_usd"] == estimate["unit_cost_usd"]
 
 
 # ── confidence interval fallback behaviour ──────────────────────────────────

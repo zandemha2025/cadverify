@@ -1,0 +1,66 @@
+{
+  "source_commit": "83eafad",
+  "environment": "local production build; Next 16.3.6 direct Node startup; API8017; native Chrome",
+  "status": "PASS for the listed controls",
+  "bracket": {
+    "id": "01M3SN9AWMN6SVBY6G1KNBB7CN",
+    "depth_mm": 50,
+    "thickness_mm": 4,
+    "r1": {
+      "width_mm": 80,
+      "height_mm": 40,
+      "analytic_volume_cm3": 23.2,
+      "displayed_volume_cm3": 23.2,
+      "verify_volume_cm3": 23.2,
+      "watertight": true,
+      "evidence_sha256": "e86336068f0f1c30434fd2f872fe8cd24a85444bffaf31c59748c72d04b352c8",
+      "cost_decision": "01M3SNAJYYS3GTK7JSDJH9QE9N"
+    },
+    "r2": {
+      "width_mm": 80,
+      "height_mm": 60,
+      "analytic_volume_cm3": 27.2,
+      "displayed_volume_cm3": 27.2,
+      "verify_volume_cm3": 27.2,
+      "watertight": true,
+      "evidence_sha256": "71a6592658d1914f259a94112e9e2ee17d67bfcc6aa91f05387f52e7bd4f354e",
+      "cost_decision": "01M3SNDWCB50JX3JHYP7T80KAP"
+    },
+    "native_diff": {
+      "height_delta_mm": 20,
+      "volume_delta_cm3": 4,
+      "plan_changes": 1,
+      "hash_changed": true
+    },
+    "historical_r1_selection": "pass; original dimensions, volume, hash and revision-1 links retained"
+  },
+  "enclosure": {
+    "id": "01M3SNGC4D1PH2T49N4DGNRJD5",
+    "width_mm": 50,
+    "depth_mm": 40,
+    "height_mm": 30,
+    "wall_mm": 2,
+    "analytic_volume_cm3": 13.632,
+    "displayed_volume_cm3": 13.63,
+    "verify_volume_cm3": 13.63,
+    "watertight": true,
+    "evidence_sha256": "3d38c50976b56fb4e556b3a888915a17f8a2dca477181184a26d06845730cabf",
+    "cost_decision": "01M3SNHSERZBEVTG7AWR71NJ0C",
+    "invalid_wall_10_mm": "Rejected with readable error, inputs retained, no extra design created. Correcting to 2mm generated successfully."
+  },
+  "scope": [
+    "Real CAD generation, rendered preview and actual STEP import into Verify completed for both bracket revisions and enclosure.",
+    "Native measurements agree with independent union/difference volume formulas at displayed precision.",
+    "This does not validate real market prices, every manufacturing verdict, production availability or arbitrary generated geometry.",
+    "Browser STEP export remains unverified; no download workaround was used."
+  ],
+  "screenshots": [
+    "design-bracket-native.png",
+    "design-bracket-verify-native.png",
+    "design-bracket-revision-diff-native.png",
+    "design-bracket-r2-verify-native.png",
+    "design-enclosure-invalid-native.png",
+    "design-enclosure-native.png",
+    "design-enclosure-verify-native.png"
+  ]
+}

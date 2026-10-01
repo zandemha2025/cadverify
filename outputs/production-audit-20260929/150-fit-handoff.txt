@@ -1,0 +1,52 @@
+- banner:
+  - link "ProofShape home":
+    - /url: /verify
+    - text: P
+  - button "Open navigation":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - combobox "Verify workspace section":
+      - option "Home"
+      - option "Verify"
+      - option "Fit in context" [selected]
+      - option "Parts"
+      - option "Records"
+      - option "Programs"
+      - option "Your machines"
+      - option "Triage"
+      - option "Calibration & truth"
+    - button "Start here"
+    - button "Check my CAD"
+  - generic: "Solid: your part"
+  - generic: "Ghost: assembly"
+  - button "Hide assembly"
+  - generic: Add both files to see them in context.
+  - paragraph: Results withheld until this pair is checked.
+  - text: Your part
+  - button "Your part 142-torus.step STEP · face count measured after upload"
+  - generic: 142-torus.step
+  - generic: STEP · face count measured after upload
+  - paragraph: Units read from the CAD file; measurements are in millimeters.
+  - text: The assembly it fits into
+  - button "The assembly it fits into No file selected"
+  - generic: No file selected
+  - button "Switch part and context"
+  - text: Seating
+  - combobox "Seating":
+    - option "Shared CAD frame" [selected]
+    - option "Automatic, verify fit"
+  - text: X nudge (mm)
+  - spinbutton "X nudge mm": "0"
+  - text: Y nudge (mm)
+  - spinbutton "Y nudge mm": "0"
+  - text: Z nudge (mm)
+  - spinbutton "Z nudge mm": "0"
+  - button "Check fit in context" [disabled]
+- region "Notifications alt+T"
+- alert

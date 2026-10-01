@@ -1,0 +1,90 @@
+{
+  "observed_at": "2026-09-30T22:47:39.409023+00:00",
+  "tested_code_commit": "3e4c53157fc75c6da25ab45451de34742e8f512f",
+  "integrated_upstream": "bc86ac08d4120def08ca8293339c9c2eabe3ddd3",
+  "scope": "Local integration and contract verification; not production/vendor/supplier proof",
+  "backend_full": {
+    "passed": 2617,
+    "skipped": 3,
+    "seconds": 238.63,
+    "postgres": "isolated55431",
+    "redis": "isolated6398",
+    "protected_skip_policy": true,
+    "skip_reasons": [
+      "real corpus manifest not present",
+      "OCP XDE not available (two AP242 tests)"
+    ],
+    "source_note": "Started on b33a860. Two redundant invariant assertions added afterward were covered by the final focused run."
+  },
+  "backend_final_focused": {
+    "passed": 65,
+    "skipped": 0,
+    "seconds": 1.34
+  },
+  "frontend": {
+    "passed": 500,
+    "skipped": 0,
+    "typescript": "pass",
+    "production_build": "pass",
+    "changed_file_eslint": "pass"
+  },
+  "release_evidence_tests": {
+    "passed": 14,
+    "skipped": 0
+  },
+  "pyright": {
+    "errors": 214,
+    "warnings": 3,
+    "repository_baseline": 228,
+    "gate": "pass",
+    "new_diagnostics_in_changed_code": 0,
+    "note": "Existing connector_adapters.py line113 normalize diagnostic remains; this is not a zero-error claim."
+  },
+  "bandit_changed_backend": {
+    "medium_high_findings": 0
+  },
+  "route_auth": {
+    "routes": 192,
+    "gate": "pass"
+  },
+  "commit_hook_policy": "pass",
+  "independent_review": {
+    "accuracy": "Two findings fixed and regression-tested; follow-up review found no further actionable issue.",
+    "sap": "No actionable source-review findings; actual tenant contract remains unverified."
+  },
+  "evidence_logs": {
+    "backend-full.log": {
+      "sha256": "7abb26ca1681731a5ea2c6e102d78e24d0a23e1dd75f25f0de70354b60ee3a2f",
+      "path": ".gstack/rollout-runtime/backend-full.log"
+    },
+    "backend-final-focused.log": {
+      "sha256": "f75a7e4e26b488476023408160b2b1ebcd12a66e610b546f1eeea03654b9de0b",
+      "path": ".gstack/rollout-runtime/backend-final-focused.log"
+    },
+    "frontend-final-tests.log": {
+      "sha256": "e04958fa065ef3979032fdd05f2d59b043cf349f162732b68856bad7e29c4630",
+      "path": ".gstack/rollout-runtime/frontend-final-tests.log"
+    },
+    "frontend-final-build.log": {
+      "sha256": "27d7fa13eec537cd28779bcdd958ef25cb3a1803ab73c2b0d0710d0d69d6a432",
+      "path": ".gstack/rollout-runtime/frontend-final-build.log"
+    },
+    "release-final-tests.log": {
+      "sha256": "aaf0b05dfc5c7229d70f86c2af08f122ae59a94a82843ca1a9292b7a91b78adb",
+      "path": ".gstack/rollout-runtime/release-final-tests.log"
+    },
+    "pyright-final.json": {
+      "sha256": "6928a14ecd02ac1f32606e7e8454a5da20ae952b6c10addb1b868176efa85cac",
+      "path": ".gstack/rollout-runtime/pyright-final.json"
+    }
+  },
+  "not_proven": [
+    "real email receipt/link exchange",
+    "company IdP and SCIM tenant lifecycle",
+    "real SAP/Windchill connections",
+    "SAP assembly import",
+    "real supplier/manufacturing accuracy",
+    "clean backend container security scan",
+    "deployment and final production feature acceptance"
+  ]
+}

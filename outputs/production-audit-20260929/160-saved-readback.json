@@ -1,0 +1,402 @@
+{
+  "engine_version": "0.3.29",
+  "controls": [
+    {
+      "filename": "159-sheet-30x20x0.5.step",
+      "thickness_mm": 0.5,
+      "volume_mm3": 300.0,
+      "cut_perimeter_mm": 100.0,
+      "source_sha256": "45aee922a148dc18e2cc551fa42cb7d2ae8a3a0e6619a74dbeea324ef21c6075",
+      "analyses": {
+        "id": 1510,
+        "ulid": "01M3TPGFPMAVNKWXZWBZ2KR0PJ",
+        "version": "0.3.29",
+        "result_sha256": "5c9d4d4c5cb8ee054fc5e613c4f84791eebd56e88518aa8fdebf73d1a74fcd47",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5245,
+        "ulid": "01M3TPGFQ46PM5EBW41W5G78V3",
+        "version": "0.3.29",
+        "result_sha256": "40802df53df742cfad049c507767f059ab86b7242f9afa3fe3b1c3fb14f56ce2",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9187,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.0,
+          "sheet_gauge_mm": 0.5,
+          "nominal_wall_mm": 0.48,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    },
+    {
+      "filename": "159-sheet-30x20x0.5-rotated.step",
+      "thickness_mm": 0.5,
+      "volume_mm3": 300.0,
+      "cut_perimeter_mm": 100.0,
+      "source_sha256": "5f154455ca7a1dac6230f3f0f57d91a24d0dac461fbdad942017692069d47d6d",
+      "analyses": {
+        "id": 1519,
+        "ulid": "01M3TPJ8YM8FN2EYGGN8395CMW",
+        "version": "0.3.29",
+        "result_sha256": "bb63f80a1e214471e2628c3efb6d8e36c0b2c4024b0899493bb135e077152d58",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5268,
+        "ulid": "01M3TPJ8Z8RYVEV798JQBT1J33",
+        "version": "0.3.29",
+        "result_sha256": "9c12743eee40e4a4e8951ff2713adc40306464dfb8ba87fbb13c87b384ab2067",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9187,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.0,
+          "sheet_gauge_mm": 0.5000000000163718,
+          "nominal_wall_mm": 0.48,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    },
+    {
+      "filename": "160-thin-rotated.step",
+      "thickness_mm": 0.4,
+      "volume_mm3": 240.0,
+      "cut_perimeter_mm": 100.0,
+      "source_sha256": "9f8d77df487b8ff131820f304c03886139da2c9521ded3a0611aa4ff9d936976",
+      "analyses": {
+        "id": 1520,
+        "ulid": "01M3TPKJX35W1V44Q9ZDAVHCSX",
+        "version": "0.3.29",
+        "result_sha256": "7d07aeebf16526ab1da3486188f8c4bd1a197dee99288524768bf5c42c14735f",
+        "sheet_verdict": "fail",
+        "gauge_issues": [
+          {
+            "code": "TOO_THIN_SHEET",
+            "scope": "whole_part",
+            "message": "Thickness 0.4mm below the default 0.5mm minimum sheet gauge.",
+            "process": "sheet_metal",
+            "severity": "error",
+            "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+            "measured_value": 0.4000000000115689,
+            "required_value": 0.5,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 240.0
+      },
+      "cost_decisions": {
+        "id": 5269,
+        "ulid": "01M3TPKJWR85VQHYP8759NN5JJ",
+        "version": "0.3.29",
+        "result_sha256": "1b340900c46a42f0c0b4157f43babde797b109476ffba06b8a352eacf8a11cf7",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9187,
+              "material": 0.0027,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.4mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.4000000000115689,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0027,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.4mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.4000000000115689,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 50.0,
+          "sheet_gauge_mm": 0.4000000000115689,
+          "nominal_wall_mm": 0.39,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    },
+    {
+      "filename": "160-triangle-rotated.step",
+      "thickness_mm": 0.5,
+      "volume_mm3": 150.0,
+      "cut_perimeter_mm": 86.05551275463989,
+      "source_sha256": "bc58b1a70990263a88c9f7d813f6a93910e2371ff70cfd731cfeeba2a7645862",
+      "analyses": {
+        "id": 1524,
+        "ulid": "01M3TPMHYAPGT336MB60J4JNHM",
+        "version": "0.3.29",
+        "result_sha256": "c5fd4354095dc3a1dc5cffb908283266d86e993355acc647d568f79c58ff8ffb",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 150.0
+      },
+      "cost_decisions": {
+        "id": 5275,
+        "ulid": "01M3TPMHYW5Y76CHG32C981PHE",
+        "version": "0.3.29",
+        "result_sha256": "e2aa2b55f08c5112b9e536a3350b73460fb3f065e73d8ea8a2c7626d122d8d35",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9161,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5617,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.0,
+          "sheet_gauge_mm": 0.5000000000200915,
+          "nominal_wall_mm": 0.47,
+          "outline_perimeter_mm": 86.06
+        }
+      }
+    },
+    {
+      "filename": "160-cutout-rotated.step",
+      "thickness_mm": 0.5,
+      "volume_mm3": 287.5,
+      "cut_perimeter_mm": 120.0,
+      "source_sha256": "ee7146a96b4c0d6fd4b4e87c313bdb041819f526cc256ac9d11424cfb56d18f0",
+      "analyses": {
+        "id": 1525,
+        "ulid": "01M3TPNF9FJQB47QP9DN83RX54",
+        "version": "0.3.29",
+        "result_sha256": "bf1571b74c73881ebae00bb445b0f715b54dbff8f79b46f157cfe6469762bcd1",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 287.5
+      },
+      "cost_decisions": {
+        "id": 5276,
+        "ulid": "01M3TPNFA7T3GZDA2BK2ASW68M",
+        "version": "0.3.29",
+        "result_sha256": "9207668ee84527354f3a94ec47a99b5ca7744aeae16436c76f31ed86850c34a1",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 4.71,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9225,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5656,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.0,
+          "sheet_gauge_mm": 0.5000000000228055,
+          "nominal_wall_mm": 0.48,
+          "outline_perimeter_mm": 120.0
+        }
+      }
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "unverified": true,
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "analyses": {
+        "id": 1526,
+        "ulid": "01M3TPPDQD6M81MKZ7N00X00FF",
+        "version": "0.3.29",
+        "result_sha256": "6006b0fd43d51aee59dabca6b39ee724f6b894cee94e0a6f60f083289faf4c47",
+        "sheet_verdict": "issues",
+        "gauge_issues": [
+          {
+            "code": "SHEET_GAUGE_UNVERIFIED",
+            "scope": "whole_part",
+            "message": "A constant flat-sheet gauge could not be verified from this geometry.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge."
+          }
+        ],
+        "volume_mm3": 49600.0
+      },
+      "cost_decisions": {
+        "id": 5277,
+        "ulid": "01M3TPPDQSZ4930V1RE5SZM5NY",
+        "version": "0.3.29",
+        "result_sha256": "94cf222ef28add8d312d2c712a5c1e2f0d07158802d0325311b23ef3a6c86ed9",
+        "sheet_estimates": [],
+        "routing_drivers": {
+          "rotational": false,
+          "sheet_like": false,
+          "nominal_wall_mm": 0.82
+        }
+      }
+    }
+  ],
+  "historical_records": [
+    {
+      "table": "analyses",
+      "id": 1398,
+      "version": "0.3.21",
+      "result_sha256": "38591b24f3a453c74bb23122a41e70890695b78cbed1e4e4ab9618ca00c9aed9",
+      "unchanged": true
+    },
+    {
+      "table": "analyses",
+      "id": 1337,
+      "version": "0.3.20",
+      "result_sha256": "e09301bdb22365c5174504b4b36f71e63b28a4ec20b5322ba54e2ce1ad17aed2",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4869,
+      "version": "0.3.21",
+      "result_sha256": "e871b15b8cfc2195df6f6ef53511ea0b402b6e5dea6fddca01a3da951427fc1e",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4643,
+      "version": "0.3.20",
+      "result_sha256": "611d750a75ed5a3c2e4460663ecd9887c51e4212c88017ed7b122e22c0e3d60a",
+      "unchanged": true
+    }
+  ],
+  "rotated_rectangular_sheet_cost_exactly_equal": true
+}

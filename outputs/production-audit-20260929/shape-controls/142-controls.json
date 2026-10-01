@@ -1,0 +1,20 @@
+[
+  {
+    "filename": "142-prolate-rotated.step",
+    "sha256": "469d2b92aed7cdc4750354a0de40e0701c20ee7834c9c55e4836a20273ab2fd2",
+    "analytic_volume_mm3": 8377.580409572782,
+    "kernel_integrated_volume_mm3": 8373.916503586528,
+    "kernel_relative_volume_error": -0.00043734656155214324,
+    "axis_length_mm": 40,
+    "diameter_mm": 20
+  },
+  {
+    "filename": "142-torus.step",
+    "sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+    "analytic_volume_mm3": 10659.172753176506,
+    "kernel_integrated_volume_mm3": 10659.172753176506,
+    "kernel_relative_volume_error": 0.0,
+    "axis_length_mm": 12,
+    "diameter_mm": 42
+  }
+]

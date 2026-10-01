@@ -9,12 +9,14 @@ to a door assembly (environment) belongs to a vehicle (total), and
 
 is resolved edge-by-edge from the real hierarchy instead of guessed.
 
-Two honest ingest sources:
+Ingest sources:
   * an extracted STEP/IGES assembly (``assembly_mesher.AssemblyModel``) — edges are
     DERIVED from the real product tree, ``qty_per_parent`` the MEASURED instance
     count of a child design under one parent occurrence (``source='assembly_step'``).
   * a customer ``parent_ref,child_ref,qty_per_parent`` BOM (CSV/JSON) — USER-declared
     structure, per-row validated, bad rows reported + skipped (``source='bom_csv'``).
+  * a complete authenticated Windchill structure — exact part iteration IDs and
+    validated whole-part quantities (``source='windchill_api'``).
 
 HONESTY RAILS (non-negotiable):
   * An edge is only ever a REAL relationship (parsed or declared). We NEVER
@@ -24,7 +26,8 @@ HONESTY RAILS (non-negotiable):
     (byte-identical to the pre-Slice-3 path).
   * A shared component (a nut under two sub-assemblies) is a real DAG:
     ``rolled_up_multiplier`` SUMS the part's count over every path to the root — it
-    never double-counts and never silently drops a path. Cycles are guarded.
+    never silently drops a path. Cycles are rejected before replacement; legacy
+    cycles have no rollup and return an explicit error on the ancestry endpoint.
   * Org-scoped throughout (``WHERE org_id = caller``, FK CASCADE) — a caller can
     never read another org's edges.
 
@@ -38,7 +41,8 @@ from __future__ import annotations
 import csv
 import io
 import json
-import logging
+from collections import deque
+from graphlib import CycleError, TopologicalSorter
 from typing import Any, Iterable, Optional
 
 from sqlalchemy import delete, select
@@ -46,15 +50,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import BomEdge
 
-logger = logging.getLogger("cadverify.bom_service")
-
 SOURCE_ASSEMBLY_STEP = "assembly_step"
 SOURCE_BOM_CSV = "bom_csv"
 
 # Defensive cap on a single BOM ingest (a BOM is text — a small cap is honest).
 BOM_MAX_ROWS = 20000
-# Guard against a pathological/cyclic tree blowing the path enumeration.
+# Bound the ancestry preview, independently of the exact rollup calculation.
 _MAX_PATHS = 100000
+_MAX_PATH_NODES = 100000
+_MAX_SAFE_COUNT = 9_007_199_254_740_991  # Exact JSON integers in the browser.
 
 # ── BOM CSV/JSON contract (mirrors manifest_service's CSV style) ──────────────
 # Required: parent_ref, child_ref. Optional: qty_per_parent (default 1),
@@ -99,10 +103,10 @@ def edges_from_assembly(model: Any) -> list[dict]:
         return []
 
     # (parent_design, child_design) -> {qty_per_occurrence, depth, child_name}.
-    # All occurrences of a parent design are identical in a STEP export; we assert
-    # that and, if occurrences ever disagree, keep the max (honest upper bound,
-    # never a silently-lost child) and log it.
     edges: dict[tuple[str, str], dict] = {}
+    # ponytail: BOM keys are names; reject conflicting structures until stable
+    # product IDs are carried through the parser and customer-context mapping.
+    structures: dict[str, dict[str, int]] = {}
 
     def _design(node: Any) -> str:
         # Prefer the product/design name; fall back to occurrence for a bare node.
@@ -110,32 +114,23 @@ def edges_from_assembly(model: Any) -> list[dict]:
 
     def walk(node: Any, depth: int) -> None:
         children = getattr(node, "children", None) or []
-        if not children:
-            return
         parent_design = _design(node)
         # Count child instances by design under THIS single parent occurrence.
         by_design: dict[str, int] = {}
-        rep_child: dict[str, Any] = {}
         for c in children:
             cd = _design(c)
             by_design[cd] = by_design.get(cd, 0) + 1
-            rep_child.setdefault(cd, c)
+        if structures.setdefault(parent_design, by_design) != by_design:
+            raise ValueError(
+                f"Assembly name {parent_design[:120]!r} has different child structures. "
+                "Give distinct designs unique names before importing their BOM."
+            )
         for cd, qty in by_design.items():
-            key = (parent_design, cd)
-            prior = edges.get(key)
-            child_depth = depth + 1
-            if prior is None:
-                edges[key] = {
-                    "qty_per_parent": qty,
-                    "depth": child_depth,
-                    "child_name": _design(rep_child[cd]) or None,
-                }
-            elif prior["qty_per_parent"] != qty:
-                logger.info(
-                    "bom edges: inconsistent qty for %s->%s (%s vs %s); keeping max",
-                    parent_design, cd, prior["qty_per_parent"], qty,
-                )
-                prior["qty_per_parent"] = max(prior["qty_per_parent"], qty)
+            edges.setdefault((parent_design, cd), {
+                "qty_per_parent": qty,
+                "depth": depth + 1,
+                "child_name": cd or None,
+            })
         for c in children:
             walk(c, depth + 1)
 
@@ -177,6 +172,8 @@ def _coerce_row(parent: str, child: str, qty_raw: str, child_name: str) -> tuple
         else:
             if qty <= 0:
                 errs.append(f"qty_per_parent must be > 0 (got {qty})")
+            elif qty > 2_147_483_647:
+                errs.append("qty_per_parent must be at most 2147483647")
     if errs:
         return None, "; ".join(errs)
     return {
@@ -257,12 +254,14 @@ def parse_bom_json(text: str) -> tuple[list[dict], list[dict]]:
     except (ValueError, TypeError) as exc:
         return rows, [{"line": 0, "reason": f"invalid JSON: {exc}"}]
     if isinstance(doc, dict):
-        raw = doc.get("edges") or doc.get("rows") or []
+        raw = doc.get("edges", doc.get("rows"))
     elif isinstance(doc, list):
         raw = doc
     else:
         return rows, [{"line": 0, "reason": "JSON must be a list or {edges:[...]}"}]
 
+    if not isinstance(raw, list):
+        return rows, [{"line": 0, "reason": "JSON must contain an edges or rows list"}]
     errors: list[dict] = []
     for idx, entry in enumerate(raw):
         if not isinstance(entry, dict):
@@ -294,114 +293,126 @@ def parse_bom(text: str, *, content_hint: str = "") -> tuple[list[dict], list[di
 # Pure ancestry + rollup over an in-memory edge list
 # ---------------------------------------------------------------------------
 def _child_to_parents(edges: Iterable[dict]) -> dict[str, list[tuple[str, int]]]:
-    """child_ref -> [(parent_ref, qty_per_parent), ...] adjacency for upward walks."""
+    """Validate counts and build the child -> parents adjacency."""
     adj: dict[str, list[tuple[str, int]]] = {}
+    seen: set[tuple[str | None, str]] = set()
     for e in edges:
-        child = e["child_ref"]
-        parent = e.get("parent_ref")
-        if parent is None:
-            continue
-        adj.setdefault(child, []).append((parent, int(e.get("qty_per_parent", 1) or 1)))
+        child, parent = e["child_ref"], e.get("parent_ref")
+        pair = (parent, child)
+        if pair in seen:
+            raise ValueError(
+                "Duplicate BOM relationship. Use one row per parent/child pair "
+                "with its total qty_per_parent."
+            )
+        seen.add(pair)
+        qty = e.get("qty_per_parent", 1)
+        if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= 2_147_483_647:
+            raise ValueError("BOM quantities must be integers between 1 and 2147483647.")
+        adj.setdefault(child, [])
+        if parent is not None:
+            adj[child].append((parent, qty))
     return adj
 
 
 def _roots(edges: Iterable[dict]) -> set[str]:
-    """Refs that are a parent but never a child — the tree's root(s)."""
-    parents: set[str] = set()
-    children: set[str] = set()
-    for e in edges:
-        if e.get("parent_ref") is not None:
-            parents.add(e["parent_ref"])
-        children.add(e["child_ref"])
+    parents, children = set(), set()
+    for edge in edges:
+        children.add(edge["child_ref"])
+        if edge.get("parent_ref") is not None:
+            parents.add(edge["parent_ref"])
     return parents - children
 
 
-def ancestry_paths(edges: list[dict], child_ref: str) -> list[list[str]]:
-    """All distinct paths ``[child_ref, parent, ..., root]`` from ``child_ref`` up
-    to a root, over the edge list. A part shared by two sub-assemblies yields two
-    paths (a real DAG). Cycles are guarded (a ref already on the current path is
-    not re-entered). Returns ``[]`` when ``child_ref`` is not a child of any edge."""
+def _checked_graph(edges: list[dict]) -> tuple[dict[str, list[tuple[str, int]]], list[str]]:
     adj = _child_to_parents(edges)
-    if child_ref not in adj:
+    try:
+        order = list(TopologicalSorter({child: [p for p, _ in parents] for child, parents in adj.items()}).static_order())
+    except CycleError as exc:
+        raise ValueError("This BOM contains a cycle. Correct the parent-child relationships before calculating demand.") from exc
+    return adj, order
+
+
+def _ancestry_paths(adj: dict[str, list[tuple[str, int]]], child_ref: str) -> tuple[list[list[str]], bool]:
+    """Iterative bounded preview; the numeric rollup never depends on this list."""
+    paths: list[list[str]] = []
+    path = [child_ref]
+    stack = [iter(adj.get(child_ref, []))]
+    visits = 1
+    returned_nodes = 0
+    while stack:
+        if not adj.get(path[-1]):
+            returned_nodes += len(path)
+            if len(paths) >= _MAX_PATHS or returned_nodes > _MAX_PATH_NODES:
+                return paths, True
+            paths.append(path.copy())
+        parent = next(stack[-1], None)
+        if parent is None:
+            stack.pop()
+            path.pop()
+        else:
+            visits += 1
+            if visits > _MAX_PATH_NODES:
+                return paths, True
+            path.append(parent[0])
+            stack.append(iter(adj.get(parent[0], [])))
+    return paths, False
+
+
+def ancestry_paths(edges: list[dict], child_ref: str) -> list[list[str]]:
+    """Root paths for a valid graph, bounded for display; cycles yield no paths."""
+    try:
+        adj, order = _checked_graph(edges)
+    except ValueError:
         return []
-    out: list[list[str]] = []
-
-    def dfs(node: str, path: list[str]) -> None:
-        if len(out) >= _MAX_PATHS:
-            return
-        parents = adj.get(node)
-        if not parents:  # node is a root (no incoming parents)
-            out.append(list(path))
-            return
-        for parent, _qty in parents:
-            if parent in path:  # cycle guard — never re-enter a node on this path
-                logger.info("bom ancestry: cycle guard hit at %s", parent)
-                out.append(list(path))
-                continue
-            dfs(parent, path + [parent])
-
-    dfs(child_ref, [child_ref])
-    return out
+    return _ancestry_paths(adj, child_ref)[0] if child_ref in order else []
 
 
 def ancestry(edges: list[dict], child_ref: str) -> list[str]:
-    """The child->root chain ``[child, parent, ..., root]`` for ``child_ref``.
-
-    For a part with a single parent path (the founder's canonical
-    handle->door->car, or AS1's bolt->nut-bolt->l-bracket->as1) this is the one
-    unambiguous chain. For a shared part (multiple parents) it returns the FIRST
-    deterministic path — the full DAG is available via ``ancestry_paths``. ``[]``
-    when the part is not in the tree.
-    """
-    paths = ancestry_paths(edges, child_ref)
-    if not paths:
+    """Shortest, then lexicographically first genuine child -> root path."""
+    try:
+        adj, order = _checked_graph(edges)
+    except ValueError:
         return []
-    # Deterministic: shortest then lexicographically-smallest path.
-    paths.sort(key=lambda p: (len(p), p))
-    return paths[0]
+    if child_ref not in order:
+        return []
+    previous: dict[str, str | None] = {child_ref: None}
+    queue = deque([child_ref])
+    while queue:
+        node = queue.popleft()
+        parents = adj.get(node, [])
+        if not parents:
+            path = []
+            cursor: str | None = node
+            while cursor is not None:
+                path.append(cursor)
+                cursor = previous[cursor]
+            return path[::-1]
+        for parent, _ in sorted(parents):
+            if parent not in previous:
+                previous[parent] = node
+                queue.append(parent)
+    return []
 
 
 def rolled_up_multiplier(edges: list[dict], child_ref: str) -> Optional[int]:
-    """Units of ``child_ref`` per ONE root/vehicle = SUM over every root-path of the
-    product of ``qty_per_parent`` along that path.
+    """Sum every root-path using dynamic programming, without enumerating paths.
 
-    Returns ``None`` when ``child_ref`` is not in the tree (neither a child nor a
-    root) — the honest "no rollup, fall back to declared" signal. A ref that is
-    itself a root returns ``1`` (one vehicle per vehicle). A shared component is
-    summed over all paths (AS1's nut = 2 via ROD-ASSEMBLY + 6 via the l-brackets =
-    8) — never double-counted, never a dropped path. Cycles are guarded.
+    A cycle, invalid count or unsupported exact count yields no rollup. A root
+    counts once. Shared components sum all their parents' weighted counts.
     """
-    adj = _child_to_parents(edges)
-    roots = _roots(edges)
-    all_refs = set(adj.keys()) | roots
-    if child_ref not in all_refs and child_ref not in {e["child_ref"] for e in edges}:
+    try:
+        adj, order = _checked_graph(edges)
+    except ValueError:
         return None
-    if child_ref not in adj:
-        # Not a child of anything → it is a root (or the sole node): 1 per vehicle.
-        return 1 if (child_ref in roots or child_ref in all_refs) else None
-
-    total = 0
-    guard = {"paths": 0}
-
-    def dfs(node: str, acc: int, path: frozenset[str]) -> None:
-        nonlocal total
-        parents = adj.get(node)
-        if not parents:
-            total += acc
-            guard["paths"] += 1
-            return
-        for parent, qty in parents:
-            if parent in path:  # cycle — terminate this branch honestly
-                logger.info("bom multiplier: cycle guard hit at %s", parent)
-                total += acc
-                guard["paths"] += 1
-                continue
-            if guard["paths"] >= _MAX_PATHS:
-                return
-            dfs(parent, acc * qty, path | {parent})
-
-    dfs(child_ref, 1, frozenset({child_ref}))
-    return total
+    totals: dict[str, int | None] = {}
+    for node in order:
+        parents = adj.get(node, [])
+        if any(totals[parent] is None for parent, _ in parents):
+            totals[node] = None
+            continue
+        count = sum((totals[parent] or 0) * qty for parent, qty in parents) if parents else 1
+        totals[node] = count if count <= _MAX_SAFE_COUNT else None
+    return totals.get(child_ref)
 
 
 def annual_volume(edges: list[dict], child_ref: str, roots_per_year: int) -> Optional[int]:
@@ -411,7 +422,8 @@ def annual_volume(edges: list[dict], child_ref: str, roots_per_year: int) -> Opt
     mult = rolled_up_multiplier(edges, child_ref)
     if mult is None or roots_per_year is None or roots_per_year <= 0:
         return None
-    return int(mult) * int(roots_per_year)
+    count = int(mult) * int(roots_per_year)
+    return count if count <= _MAX_SAFE_COUNT else None
 
 
 def resolve_annual_volume(
@@ -427,7 +439,8 @@ def resolve_annual_volume(
     ``'bom_rollup' | 'declared' | 'default'``. NEVER fabricates a rollup when there
     is no tree — that is exactly the declared/​default fallback.
     """
-    if multiplier is not None and roots_per_year is not None and roots_per_year > 0:
+    if (multiplier is not None and roots_per_year is not None and roots_per_year > 0
+            and multiplier * roots_per_year <= _MAX_SAFE_COUNT):
         return {
             "annual_volume": int(multiplier) * int(roots_per_year),
             "annual_volume_basis": "bom_rollup",
@@ -478,18 +491,14 @@ async def _replace_tree(
 ) -> int:
     """Idempotent per ``(org_id, assembly_key)``: delete the org's existing edges
     for this key, then insert the given rows. Org-scoped; does NOT commit."""
+    _checked_graph(edge_rows)
     await session.execute(
         delete(BomEdge).where(
             BomEdge.org_id == org_id,
             BomEdge.assembly_key == assembly_key,
         )
     )
-    # Dedupe on (parent_ref, child_ref) so the batch cannot violate the unique
-    # constraint (last wins) — the pure parsers may hand us a repeated pair.
-    seen: dict[tuple, dict] = {}
     for e in edge_rows:
-        seen[(e.get("parent_ref"), e["child_ref"])] = e
-    for e in seen.values():
         session.add(
             BomEdge(
                 org_id=org_id,
@@ -497,13 +506,13 @@ async def _replace_tree(
                 parent_ref=e.get("parent_ref"),
                 child_ref=e["child_ref"],
                 child_name=e.get("child_name"),
-                qty_per_parent=int(e.get("qty_per_parent", 1) or 1),
+                qty_per_parent=e.get("qty_per_parent", 1),
                 depth=int(e.get("depth", 0) or 0),
                 source=source,
             )
         )
     await session.flush()
-    return len(seen)
+    return len(edge_rows)
 
 
 async def load_org_trees(session: AsyncSession, org_id: str) -> dict[str, list[dict]]:
@@ -563,16 +572,18 @@ async def ingest_bom_rows(
     org_id: str,
     assembly_key: str,
     rows: list[dict],
+    *,
+    source: str = SOURCE_BOM_CSV,
 ) -> dict:
     """Persist declared BOM rows (``source='bom_csv'``), idempotently replacing the
     prior tree for ``(org_id, assembly_key)``. ``rows`` are already-validated edge
     dicts from ``parse_bom*``. Returns ``{assembly_key, edges, roots, source}``."""
-    count = await _replace_tree(session, org_id, assembly_key, rows, SOURCE_BOM_CSV)
+    count = await _replace_tree(session, org_id, assembly_key, rows, source)
     return {
         "assembly_key": assembly_key,
         "edges": count,
         "roots": sorted(_roots(rows)),
-        "source": SOURCE_BOM_CSV,
+        "source": source,
     }
 
 
@@ -599,15 +610,25 @@ async def get_ancestry(
             "rolled_up_multiplier": None,
             "roots": [],
         }
-    chain = ancestry(edges, child_ref)
+    try:
+        adj, order = _checked_graph(edges)
+        error = None
+    except ValueError as exc:
+        adj, order, error = {}, [], str(exc)
+    multiplier = rolled_up_multiplier(edges, child_ref) if error is None else None
+    paths, truncated = _ancestry_paths(adj, child_ref) if child_ref in order else ([], False)
+    if error is None and child_ref in order and multiplier is None:
+        error = "The BOM count exceeds the supported exact integer range. Demand was not calculated."
     return {
         "assembly_key": assembly_key,
         "child_ref": child_ref,
-        "has_tree": bool(chain),
-        "ancestry": chain,
-        "ancestry_paths": ancestry_paths(edges, child_ref),
-        "rolled_up_multiplier": rolled_up_multiplier(edges, child_ref),
+        "has_tree": child_ref in order and error is None,
+        "ancestry": ancestry(edges, child_ref) if error is None else [],
+        "ancestry_paths": paths if error is None else [],
+        "ancestry_paths_truncated": truncated,
+        "rolled_up_multiplier": multiplier,
         "roots": sorted(_roots(edges)),
+        "error": error,
     }
 
 

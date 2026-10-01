@@ -1,0 +1,57 @@
+{
+  "scope": "Local quantity-scoped workspace and saved advisory status; production unchanged",
+  "engine_version": "0.3.35",
+  "tests": {
+    "frontend": 523,
+    "lint": "passed",
+    "types": "passed",
+    "production_build": "passed",
+    "peer_focused": 74,
+    "peer_summary_builder_executions": 20,
+    "peer_review": "no remaining scoped findings"
+  },
+  "native_checks": {
+    "quantity_1": {
+      "process": "cnc_5axis",
+      "unit_cost_usd": 195.59,
+      "verdict": "issues"
+    },
+    "quantity_100": {
+      "process": "ded",
+      "unit_cost_usd": 30,
+      "verdict": "issues"
+    },
+    "header_decision_inspector_agree": true,
+    "quantity_100_routing_highlight_agrees": true,
+    "tab_switch_preserves_quantity": true,
+    "uncosted_10000": "approximate price; exact Inspector breakdown withheld",
+    "saved_record": "5602: CNC5 Advisory; estimated cost stamp",
+    "final_build_note": "Final native repeat predates only neutral empty-state copy/icon in compile-time-disabled stage layout."
+  },
+  "unverified": [
+    "Native stage layout",
+    "Clipboard delivery: success toast but browser bridge empty and native paste contains older prototype summary"
+  ],
+  "historical_records_unchanged": {
+    "analyses": 115,
+    "cost_decisions": 124
+  },
+  "files": {
+    "169-approximate-quantity.txt": "626484858753f0aede81dd96143cb1a6ee8bcd401cf3f70846f379216fb5511c",
+    "169-clipboard-unverified.txt": "f3adfac16a1f15b196692b6cc4eca2dc227768c791cc686aa59b07aa52a83ce5",
+    "169-decision-final.png": "7a1ba146b84aec6e5ce9f5662e43bd1d43c331085c970fef8f16d6deaef98289",
+    "169-decision-final.txt": "d7a5a8f28b08e553eff6a78eef8b232437f88e9c98ce60ec369e0e5060d51c8c",
+    "169-glass-box-final.txt": "16e9cb8d0a26f36e4845bab92bf432b68bac85f727b3c19bc6edea84875dd121",
+    "169-inspector-100.txt": "1274f15a606878faf56d6b405868c61a34229e77324045479f0086f90df160d4",
+    "169-inspector-final.txt": "1274f15a606878faf56d6b405868c61a34229e77324045479f0086f90df160d4",
+    "169-quantity-1-after.txt": "f132654528e911208b23956fccdebfbbb4787ed10fd6bdc6b5e8189d06896de7",
+    "169-quantity-1-final.txt": "f132654528e911208b23956fccdebfbbb4787ed10fd6bdc6b5e8189d06896de7",
+    "169-quantity-100-after.png": "84ec93181f9872b55c9a656133e8a91d6ec815714d14f8d5589ae54964525343",
+    "169-quantity-100-after.txt": "d7a5a8f28b08e553eff6a78eef8b232437f88e9c98ce60ec369e0e5060d51c8c",
+    "169-quantity-scope-before.txt": "ef2f85e13f366533e0703aa7f876e3afe56e7cc593bb1d3f40c18d04156e6eaa",
+    "169-routing-1.txt": "4e7f7c8d4f70b70cac38cefe2b0e4437f59e9f4fc395483482733d0228b8e840",
+    "169-routing-100-final.txt": "2dbf9a30a06ddf0cc242fcb05ea3e647c02c9c9c6eaffc34da219882e31dd70e",
+    "169-saved-advisory.txt": "50b0ffaac37662ec524226295493fd50b683de2bdabf625150474e9d5ac6a945",
+    "169-saved-readback.json": "0bd8528ce2102b3366696bad40fe87e94c6e03b2cdf89567f79c280c41ae15c8"
+  }
+}

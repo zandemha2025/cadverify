@@ -68,6 +68,7 @@ export default function BatchUploadForm() {
   const [file, setFile] = useState<File | null>(null);
   const [manifest, setManifest] = useState<File | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [concurrencyLimit, setConcurrencyLimit] = useState(10);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
@@ -112,6 +113,7 @@ export default function BatchUploadForm() {
     try {
       const result = await createBatch(file, {
         webhookUrl: webhookUrl || undefined,
+        webhookSecret: webhookUrl ? webhookSecret : undefined,
         manifest: manifest || undefined,
         concurrencyLimit,
         onUploadProgress: setUploadProgress,
@@ -266,16 +268,29 @@ export default function BatchUploadForm() {
             disabled={uploading}
           />
         </Field>
-        <Field label="Concurrency limit" htmlFor="batch-concurrency-limit">
+        {webhookUrl && (
+          <Field label="Webhook signing secret" htmlFor="batch-webhook-secret" hint="Required for callbacks. Use a long random secret shared with your webhook receiver.">
+            <Input
+              id="batch-webhook-secret"
+              type="password"
+              autoComplete="off"
+              value={webhookSecret}
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              required
+              disabled={uploading}
+            />
+          </Field>
+        )}
+        <Field label="Concurrency limit" htmlFor="batch-concurrency-limit" hint="1–12 files at a time.">
           <Input
             id="batch-concurrency-limit"
             type="number"
             min={1}
-            max={100}
+            max={12}
             value={concurrencyLimit}
             onChange={(e) =>
               setConcurrencyLimit(
-                Math.max(1, Math.min(100, Number(e.target.value) || 10)),
+                Math.max(1, Math.min(12, Number(e.target.value) || 10)),
               )
             }
             disabled={uploading}
@@ -287,7 +302,7 @@ export default function BatchUploadForm() {
       <Button
         type="submit"
         loading={uploading}
-        disabled={uploading || !file}
+        disabled={uploading || !file || (Boolean(webhookUrl) && !webhookSecret.trim())}
         className="w-full"
       >
         {uploading

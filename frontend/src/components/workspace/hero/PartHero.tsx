@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueValue } from "@/lib/inspection-bind";
+
 /**
  * PartHero — the D5 "retable" of the single-part loop (FE-2). When the stage flag
  * is on, this replaces the five-tab workspace with the staged hero:
@@ -39,13 +41,12 @@ import type {
   ShopProfileInfo,
   ValidationResult,
 } from "@/lib/api";
-import { flattenIssues, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
+import { flattenIssues, highestPriorityIssue, issueProcesses, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
 import { reportCostBlockerLocators } from "@/lib/inspection-bind";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
-import { deriveBreakeven } from "@/lib/breakeven";
 import { deriveFindings } from "@/lib/findings";
-import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import type { CalibrationView } from "@/lib/cost-views";
+import { severityLabel, severityTone, verdictLabel, procLabel } from "@/lib/status";
+import { buildAnswerSummary, type workspaceSelection, type CalibrationView } from "@/lib/cost-views";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -99,7 +100,10 @@ export interface PartHeroProps {
   file: File;
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
+  onPositionChange: (position: number) => void;
   opts: CostOptions;
+  sourceUnits: CostOptions["units"];
   setOpt: SetOpt;
   assumptions: CostAssumption[];
   overrideKeys: string[];
@@ -120,6 +124,7 @@ export interface PartHeroProps {
   onSaveScenario: () => void;
   onRecallScenario: (id: string) => void;
   handleRecost: () => void;
+  handleRetryCost: () => void;
   runDfm: (f: File) => void;
   reset: () => void;
 }
@@ -128,7 +133,10 @@ export function PartHero({
   file,
   report,
   validation,
+  selection,
+  onPositionChange,
   opts,
+  sourceUnits,
   setOpt,
   assumptions,
   overrideKeys,
@@ -149,6 +157,7 @@ export function PartHero({
   onSaveScenario,
   onRecallScenario,
   handleRecost,
+  handleRetryCost,
   runDfm,
   reset,
 }: PartHeroProps) {
@@ -158,13 +167,9 @@ export function PartHero({
   const [depth, setDepth] = React.useState<Depth>(null);
   const [showRecost, setShowRecost] = React.useState(false);
 
-  const recProcess =
-    report?.decision?.make_now_process ?? report?.routing?.recommended_process ?? null;
-
-  const breakeven = React.useMemo(
-    () => (report ? deriveBreakeven(report) : null),
-    [report]
-  );
+  const workspaceDfm = selection.dfm;
+  const recProcess = workspaceDfm.process;
+  const breakeven = selection.breakeven;
 
   // ALL issues (canonical keys) for face lookups; the ROUTE subset is displayed.
   const allIssues = React.useMemo(
@@ -178,8 +183,11 @@ export function PartHero({
   const heroIssues = React.useMemo(() => partition?.route ?? [], [partition]);
 
   const findings = React.useMemo(
-    () => (report ? deriveFindings(report, breakeven) : []),
-    [report, breakeven]
+    () => (report ? deriveFindings(report, breakeven, {
+      estimate: selection.estimate?.quantity === selection.quantity ? selection.estimate : null,
+      quantity: selection.quantity,
+    }) : []),
+    [report, breakeven, selection.estimate, selection.quantity]
   );
 
   // Cost-side DFM blockers relinked to locatable rows (the backend relink),
@@ -209,11 +217,10 @@ export function PartHero({
       if (issue.severity !== "error" && issue.severity !== "warning") return [];
       if (row.faces.length === 0 && !issue.region_center) return [];
       const measured = issue.measured_value;
-      const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
-      const valueLabel = measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`;
+      const valueLabel = measured == null ? issue.code : formatIssueValue(issue);
       const requiredLabel = issue.required_value == null
         ? null
-        : `${Number(issue.required_value.toFixed(3))}${units}`;
+        : formatIssueValue(issue, "required_value");
       return [{
         key: row.key,
         code: issue.code,
@@ -247,9 +254,7 @@ export function PartHero({
 
   const onHighlightProcess = React.useCallback(
     (process: string) => {
-      const hit =
-        allIssues.find((i) => i.issue.process === process && i.faces.length) ??
-        allIssues.find((i) => i.issue.process === process);
+      const hit = highestPriorityIssue(allIssues.filter((i) => issueProcesses(i).includes(process)));
       if (hit) setSelectedKey(hit.key);
       else toast(`No geometry-linked faces reported for ${procLabel(process)}.`);
     },
@@ -260,16 +265,18 @@ export function PartHero({
     ? analysisFailureCopy(dfmError || costError)
     : null;
   const analysisFailureMessage = analysisFailure
-    ? `${analysisFailure.explanation} ${analysisFailure.action}`
+    ? report && dfmError
+      ? `${dfmError} Cost results are available; detailed DFM findings could not be loaded.`
+      : `${analysisFailure.explanation} ${analysisFailure.action}`
     : null;
 
-  const headerBadge = validation ? (
-    <StatusBadge
-      verdict={validation.overall_verdict}
-      label={verdictLabel(validation.overall_verdict, true)}
-    />
-  ) : geomError || analysisFailure?.kind === "geometry" ? (
+  const headerBadge = geomError || (!report && analysisFailure?.kind === "geometry") ? (
     <StatusBadge tone="fail" label="Geometry refused" />
+  ) : validation || report ? (
+    <StatusBadge
+      verdict={workspaceDfm.verdict}
+      label={`${workspaceDfm.process ? `${procLabel(workspaceDfm.process)} · ` : ""}${verdictLabel(workspaceDfm.verdict)}`}
+    />
   ) : analysisFailure ? (
     <StatusBadge tone="fail" label="Analysis refused" />
   ) : dfmLoading ? (
@@ -291,7 +298,7 @@ export function PartHero({
               {headerBadge}
             </div>
             <p className="text-xs text-muted-foreground">
-              One drop · inspected and costed in-process
+              Cost and manufacturability workspace
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -335,7 +342,7 @@ export function PartHero({
               onSelect={setSelectedKey}
               analyzing={dfmLoading}
               error={!validation ? analysisFailureMessage : null}
-              onRetry={() => runDfm(file)}
+              onRetry={analysisFailure?.kind === "quota" ? undefined : () => runDfm(file)}
               onOpenDepth={validation ? () => setDepth("inspection") : undefined}
               candidateProcessCount={partition?.candidateProcessCount}
               revealBase={INSPECTION_BASE}
@@ -348,6 +355,8 @@ export function PartHero({
               <div className="relative h-[360px] min-[980px]:h-[440px]">
                 <CadViewer
                   file={file}
+                  units={sourceUnits}
+                  analysisMeshHash={validation?.analysis_mesh_hash}
                   highlightFaces={highlightFaces}
                   highlightColor={highlightColor}
                   ghostUnhighlighted={!!highlightFaces}
@@ -367,9 +376,9 @@ export function PartHero({
                         </p>
                         {selectedIssue.issue.measured_value != null && (
                           <p className="num mt-1 text-xs text-muted-foreground">
-                            {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                            {formatIssueValue(selectedIssue.issue)}
                             {selectedIssue.issue.required_value != null && (
-                              <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                              <> measured - needs {formatIssueValue(selectedIssue.issue, "required_value")}</>
                             )}
                           </p>
                         )}
@@ -453,12 +462,13 @@ export function PartHero({
                 <ErrorState
                   title={analysisFailure?.title ?? "Cost estimate failed"}
                   message={analysisFailureMessage ?? costError}
-                  onRetry={handleRecost}
+                  onRetry={handleRetryCost}
                 />
               ) : report ? (
                 <DecisionColumn
                   report={report}
-                  breakeven={breakeven}
+                  selection={selection}
+                  onPositionChange={onPositionChange}
                   filename={file.name}
                   costBlockers={costLocators}
                   selectedKey={selectedKey}
@@ -482,6 +492,7 @@ export function PartHero({
         <RoutingDfmView
           report={report}
           validation={validation}
+          selection={selection}
           selectedIssueKey={selectedKey}
           onSelectIssue={onSelectIssue}
           onHighlightProcess={onHighlightProcess}
@@ -560,6 +571,7 @@ export function PartHero({
         <HeroHistory
           report={report}
           validation={validation}
+          selection={selection}
           scenarios={scenarios}
           onRecallScenario={onRecallScenario}
         />
@@ -619,15 +631,17 @@ function LoadingPane({ label }: { label: string }) {
 function HeroHistory({
   report,
   validation,
+  selection,
   scenarios,
   onRecallScenario,
 }: {
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
   scenarios: (ScenarioSummary & { opts: CostOptions })[];
   onRecallScenario: (id: string) => void;
 }) {
-  const summary = buildAnswerSummary(report, validation);
+  const summary = buildAnswerSummary(report, validation, selection);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(summary);
@@ -695,41 +709,4 @@ function HeroHistory({
       </Card>
     </div>
   );
-}
-
-function buildAnswerSummary(
-  report: CostReport | null,
-  validation: ValidationResult | null
-): string {
-  const lines: string[] = [];
-  if (report?.decision) {
-    const dec = report.decision;
-    lines.push(`ProofShape — ${report.filename}`);
-    lines.push(`Make by ${procLabel(dec.make_now_process)} / ${dec.make_now_material}`);
-    for (const q of report.quantities) {
-      const r = dec.recommendation[String(q)];
-      if (r) {
-        lines.push(
-          `  qty ${q.toLocaleString()}: ${procLabel(r.process)} — $${r.unit_cost_usd.toFixed(2)}/unit${
-            r.lead_low_days != null && r.lead_high_days != null
-              ? `, ${r.lead_low_days}-${r.lead_high_days} days`
-              : ""
-          }`
-        );
-      }
-    }
-    if (dec.crossover_qty != null) {
-      lines.push(
-        `Crossover ≈ ${Math.round(dec.crossover_qty).toLocaleString()} units${
-          dec.tooling_process ? ` → switch to ${procLabel(dec.tooling_process)} above it` : ""
-        }`
-      );
-    }
-  }
-  if (validation) {
-    lines.push(
-      `DFM: ${verdictLabel(validation.overall_verdict, true)} (${verdictTone(validation.overall_verdict)})`
-    );
-  }
-  return lines.join("\n");
 }

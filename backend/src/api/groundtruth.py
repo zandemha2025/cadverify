@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Literal, Optional
 
 from fastapi import (
     APIRouter,
@@ -143,6 +143,9 @@ class GroundTruthIn(BaseModel):
     )
     evidence_sha256: Optional[str] = Field(
         None, description="SHA-256 of the source artifact, quote, invoice, or job traveler."
+    )
+    source_units: Literal["mm", "inch"] = Field(
+        "mm", description="Source STL coordinates; defaults to mm. STEP/IGES use embedded units."
     )
     evidence_uri: Optional[str] = Field(
         None, description="Customer-controlled reference to the source artifact."
@@ -286,7 +289,7 @@ async def import_template(
         "widget-a.stl,cnc_3axis,100,42.50,aluminum,acme-shop,US,USD,"
         "PO-1001,quote,Q-1001,2026-06-30,1.2,0.4,0.8,0.2,43.2,"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,"
-        "customer://quotes/Q-1001.pdf,,first article"
+        "mm,customer://quotes/Q-1001.pdf,,first article"
     )
     return svc.CSV_HEADER + "\n" + example + "\n"
 

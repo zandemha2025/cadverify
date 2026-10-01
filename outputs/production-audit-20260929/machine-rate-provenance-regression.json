@@ -1,0 +1,71 @@
+{
+  "finding": "047",
+  "environment": "local; API engine 0.3.8; not deployed",
+  "machine": {
+    "name": "Audit local FDM 046",
+    "notes": "Synthetic local QA declaration, not real shop data.",
+    "process": "fdm",
+    "count": 2,
+    "envelope_mm": [
+      200,
+      200,
+      200
+    ],
+    "max_workpiece_kg": 10,
+    "declared_rate_usd_per_hour": 10,
+    "governed_card": false
+  },
+  "native_validation": {
+    "rejected_before_save": [
+      "count 0",
+      "rate -10",
+      "envelope X 0"
+    ],
+    "valid_declaration_survives_reload": true,
+    "real_cube_mm": [
+      10,
+      10,
+      10
+    ],
+    "makeability": "makeable_in_house",
+    "browser_check_red_then_green": true,
+    "driver_provenance_before": "SHOP",
+    "driver_provenance_after": "USER",
+    "declared_rate_labeled_as_declared": true
+  },
+  "saved_before": "01M3R3DMAH71BJ0094R4FVNWHG",
+  "saved_after": "01M3R3SCMPTWKBDBKX0FXNXD1E",
+  "quantities": [
+    1,
+    100,
+    1000,
+    2000,
+    5000,
+    10000
+  ],
+  "estimates_with_identical_prices_and_line_items": 48,
+  "comparison_key": [
+    "process",
+    "quantity"
+  ],
+  "exports": {
+    "before": "64110b66ccc2f62ba987eb74b48ae3e5c1e5875ad2ac48c89546b695b08dff32",
+    "after": "55ab6bb083a938d4b126c46fde97052a0a7322de66b1599af4645a403af7b7fe"
+  },
+  "validation": {
+    "backend_passed": 2383,
+    "backend_skipped": 3,
+    "frontend_passed": 487,
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "pass",
+    "pyright_errors": 217,
+    "pyright_baseline": 228,
+    "bandit_medium_high": 0
+  },
+  "limits": [
+    "Historical saved reports retain their original evidence.",
+    "No actual shop-rate calibration or real-machine certification is claimed.",
+    "Governed-card activation/read-failure branches were not separately replayed in the native browser."
+  ]
+}

@@ -136,3 +136,19 @@ def test_parse_mesh_still_rejects_unsupported_suffix():
         _parse_mesh(b"o cube\nv 0 0 0\n", "part.obj")
     assert exc.value.status_code == 400
     assert "Unsupported file type" in exc.value.detail
+
+
+def test_iges_embedded_units_ignore_stl_selector(box_iges_bytes):
+    import importlib
+    import main
+    from fastapi.testclient import TestClient
+
+    importlib.reload(main)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/validate?units=inch&processes=fdm",
+            files={"file": ("box.IGS", box_iges_bytes, "application/octet-stream")},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["geometry"]["bounding_box_mm"] == pytest.approx([20, 20, 20])
+    assert "source_units" not in response.json()

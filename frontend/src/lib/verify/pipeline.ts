@@ -242,7 +242,7 @@ export function pipelineModelFrom(
   const received = stage(
     "received",
     running || result ? "done" : "pending",
-    "parsed in-process · mesh discarded after measurement"
+    "source CAD retained with saved analysis records"
   );
 
   // ── in flight: received has landed, everything downstream is honestly pending ──

@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
+import zipfile
 from pathlib import Path
 
 
@@ -64,3 +67,51 @@ def test_cross_representation_oracle_rejects_wrong_scale():
     result = corpus.geometry_equivalence(members, ["a", "b"])
     assert result["status"] == "FAIL"
     assert any("bounding-box delta" in failure for failure in result["failures"])
+
+
+def test_worker_timeout_preserves_bounded_diagnostic_output(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise corpus.subprocess.TimeoutExpired(
+            args[0], 90, output=b"partial result", stderr=b"x" * 20000 + b"blocked stack"
+        )
+
+    monkeypatch.setattr(corpus.subprocess, "run", timeout)
+    result = corpus.run_worker(
+        {"zip_path": "fixture.zip"},
+        {"inner_path": "part.stp", "expected_outcome": "OK"},
+    )
+    assert result["outcome"] == "TIMEOUT"
+    assert result["status"] == "FAIL"
+    assert result["stdout_tail"] == "partial result"
+    assert result["stderr_tail"].endswith("blocked stack")
+    assert len(result["stderr_tail"]) <= 12000
+
+
+def test_worker_stack_diagnostics_survive_result_and_interpreter_exit(tmp_path):
+    archive = tmp_path / "control.zip"
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("control.SLDASM", b"unsupported native CAD control")
+    # Preload the backend before starting the short diagnostic clock. A live
+    # non-daemon thread then makes the real interpreter wait after the result.
+    program = """
+import importlib.util, sys, threading, time
+from argparse import Namespace
+from src.api import routes
+from src import costing
+spec = importlib.util.spec_from_file_location("corpus", sys.argv[1])
+corpus = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(corpus)
+corpus.PER_CASE_TIMEOUT_SEC = 5.1
+threading.Thread(target=time.sleep, args=(1.0,)).start()
+raise SystemExit(corpus.run_worker_mode(Namespace(
+    zip=sys.argv[2], inner="control.SLDASM", expected="UNSUPPORTED_SUFFIX"
+)))
+"""
+    run = subprocess.run(
+        [sys.executable, "-c", program, str(SCRIPT), str(archive)],
+        cwd=SCRIPT.parents[2] / "backend",
+        capture_output=True, text=True, timeout=15,
+    )
+    assert run.returncode == 0, run.stderr
+    assert '"outcome": "UNSUPPORTED_SUFFIX"' in run.stdout
+    assert "_shutdown" in run.stderr, "the diagnostic was disarmed before interpreter exit"

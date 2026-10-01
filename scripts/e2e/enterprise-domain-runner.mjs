@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
+import { captureBuildIdentity, hasProcessScopedConfidence, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 import {
   makeGoldenPathEvidence,
   validateGoldenPathMap,
@@ -160,7 +160,7 @@ function isFiniteNumber(n) {
   return typeof n === "number" && Number.isFinite(n);
 }
 
-function approxEqual(a, b, tolerance = Math.max(1, Math.abs(b) * 0.002)) {
+function approxEqual(a, b, tolerance = 0.01) {
   return Math.abs(a - b) <= tolerance;
 }
 
@@ -716,7 +716,8 @@ class EnterpriseDomainQA {
         assert(text.includes(name), `${name} missing from Your machines UI`);
       }
       assert(/\$48\.00?\/hr|\$48\/hr|\$48\.0\/hr/.test(text), "MJF hourly rate missing from UI");
-      assert(/OWNED\s*→\s*MARGINAL/i.test(text), "owned marginal status missing");
+      assert(/OWNED\s*·\s*RATE DECLARED/i.test(text), "owned rate declaration missing");
+      assert(/In-house costing requires a passing machine fit/i.test(text), "machine-fit costing requirement missing");
       const machineShot = await this.shot("declared-machine-floor-ui", true);
 
       await this.clickRail("Calibration & truth");
@@ -899,6 +900,10 @@ class EnterpriseDomainQA {
           rows.map((row) => (row.parentElement?.innerText || row.textContent || "").replace(/\s+/g, " ").trim())
         );
       const screenshot = await this.shot("cad-step-upload-result", true);
+      const initialPick = cost.decision?.recommendation?.["10000"];
+      assert(initialPick && text.replace(/\s+/g, " ").includes(
+        `${usdDisplay(initialPick.unit_cost_usd)}/unit on ${processDisplay(initialPick.process)} at qty 10,000`
+      ), "Verify headline did not follow the selected 10,000-unit recommendation");
       this.evidence.excludedVerification = {
         url: this.page.url(),
         screenshot: excludedScreenshot,
@@ -1329,7 +1334,9 @@ class EnterpriseDomainQA {
       assert(rowBefore.filename === "cube.step", `portfolio filename drifted: ${rowBefore.filename}`);
       assert(rowBefore.unit_cost && isFiniteNumber(rowBefore.unit_cost.usd), "portfolio unit cost missing");
       assert(
-        approxEqual(rowBefore.unit_cost.usd, 133.58, 0.01),
+        // Real-STEP replay: EDM wins qty 1; binder jetting wins qty 12,000.
+        // Evidence: outputs/production-audit-20260929/enterprise-cost-oracle.json.
+        approxEqual(rowBefore.unit_cost.usd, 110.00, 0.01),
         `single-part headline oracle drifted: ${rowBefore.unit_cost.usd}`,
       );
       assert(rowBefore.unit_cost.withheld !== true, "portfolio unit cost was unexpectedly withheld");
@@ -1432,8 +1439,11 @@ class EnterpriseDomainQA {
       assert(stripText.includes(parentAssembly), "stage context strip did not show the declared parent assembly");
       assert(/USER/i.test(stripText), "stage context strip did not show USER provenance");
       assert(/service world/i.test(stripText), "stage context strip did not show declared service world");
-      await this.page.getByRole("button", { name: /^Seat in assembly$/i }).click();
-      await this.page.waitForTimeout(1200);
+      await this.page.getByRole("button", { name: /^Check assembly fit$/i }).click();
+      await this.page.getByTestId("context-fit-panel").waitFor();
+      assert((await this.visibleText()).includes(path.basename(cubePath)), "fit handoff lost the uploaded part");
+      await this.clickRail("Verify");
+      await strip.waitFor({ timeout: 15_000 });
       const text = await this.scanVisibleText("verify-stage-context-product-ui");
       assert(new RegExp(escapeRegExp(parentAssembly)).test(text), "declared parent assembly missing from product UI text");
       const [costResponse, validationResponse] = await Promise.all([costPromise, validationPromise]);
@@ -1461,6 +1471,10 @@ class EnterpriseDomainQA {
           rows.map((row) => (row.parentElement?.innerText || row.textContent || "").replace(/\s+/g, " ").trim())
         );
       const screenshot = await this.shot("VER-06-verify-stage-declared-context-seated", true);
+      const annualPick = cost.decision?.recommendation?.[String(annualVolume)];
+      assert(annualPick && exactText.replace(/\s+/g, " ").includes(
+        `${usdDisplay(annualPick.unit_cost_usd)}/unit on ${processDisplay(annualPick.process)} at qty 12,000`
+      ), "Verify endpoint/headline did not follow the computed annual quantity");
       this.evidence.productStageContext = {
         program: programName,
         parent_assembly: parentAssembly,
@@ -1489,7 +1503,9 @@ class EnterpriseDomainQA {
       assert(rowAfter, "re-verified programmed row disappeared from portfolio");
       const basis = rowAfter.annualized_unit_cost;
       assert(basis && isFiniteNumber(basis.usd), "exact annualized unit-cost basis missing");
-      assert(approxEqual(basis.usd, 10.08), `exact annualized unit-cost oracle drifted: ${basis.usd}`);
+      // Green-size nesting: 240 parts/build; independent arithmetic is covered
+      // by test_enterprise_binder_green_batch_cost_oracle.
+      assert(approxEqual(basis.usd, 3.44, 0.001), `exact annualized unit-cost oracle drifted: ${basis.usd}`);
       assert(basis.qty === annualVolume, `annualized basis quantity drifted: ${basis.qty}`);
       assert(basis.basis === "decision.recommendation", `annualized basis source drifted: ${basis.basis}`);
       const expectedAnnualized = basis.usd * annualVolume;
@@ -1498,12 +1514,12 @@ class EnterpriseDomainQA {
         `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
       );
       assert(
-        approxEqual(rowAfter.annualized_cost_usd, 120_960),
+        approxEqual(rowAfter.annualized_cost_usd, 41_280),
         `annualized cost oracle drifted: ${rowAfter.annualized_cost_usd}`,
       );
       assert(
-        !approxEqual(rowAfter.annualized_cost_usd, 133.58 * annualVolume),
-        "single-part $133.58 headline was incorrectly annualized",
+        !approxEqual(rowAfter.annualized_cost_usd, 110.00 * annualVolume),
+        "single-part $110.00 headline was incorrectly annualized",
       );
       assert(rowAfter.context.program === programName, "portfolio context program mismatch after re-verification");
       assert(rowAfter.context.parent_assembly === parentAssembly, "portfolio parent assembly mismatch after re-verification");
@@ -1555,8 +1571,8 @@ class EnterpriseDomainQA {
         .inputValue();
       assert(annualVolumeInput === String(annualVolume), `Programs annual volume input drifted: ${annualVolumeInput}`);
       text = await this.visibleText();
-      assert(/\$10\.08\s*@ qty\s*12,000/i.test(text), "Programs exact annual unit-cost basis missing");
-      assert(/\$120,960\/yr/i.test(text), "Programs exact annual exposure missing");
+      assert(/\$3\.44\s*@ qty\s*12,000/i.test(text), "Programs exact annual unit-cost basis missing");
+      assert(/\$41,280\/yr/i.test(text), "Programs exact annual exposure missing");
       const programsText = text.replace(/\s+/g, " ").trim();
       const programsShot = await this.shot("ENT-04-program-exposure-ui", true);
       const programsUrl = this.page.url();
@@ -1692,6 +1708,8 @@ class EnterpriseDomainQA {
       assert(recalibration.validated === true, `recalibration did not validate: ${JSON.stringify(recalibration)}`);
       assert(recalibration.from_real === true, "recalibration was not bound to real held-out residuals");
       assert(recalibration.n_real >= 3, `only ${recalibration.n_real} costable real held-out residuals were measured`);
+      const validatedProcesses = recalibration.validated_processes;
+      assert(sameArray(validatedProcesses, ["fdm"]), `FDM-only actuals validated other processes: ${JSON.stringify(validatedProcesses)}`);
       const skippedIds = (recalibration.skipped || []).map((item) => item.part_id).sort();
       const legacyIds = (this.evidence.groundTruth?.records || []).map((record) => record.part_id).sort();
       assert(recalibration.n_skipped === 4, `expected four explicitly unavailable legacy sources, got ${recalibration.n_skipped}`);
@@ -1707,7 +1725,7 @@ class EnterpriseDomainQA {
 
       // Prove the success ripples into the actual product surface.  A green
       // recalibration toast is not enough: upload the source again and require
-      // every served estimate to carry a measured empirical confidence band.
+      // FDM to carry measured bands while unseen processes remain unvalidated.
       await this.clickRail("Verify");
       const servedCostPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
@@ -1719,10 +1737,19 @@ class EnterpriseDomainQA {
       assert(servedCostResponse.status() === 200, `post-calibration should-cost HTTP ${servedCostResponse.status()}`);
       const servedEstimates = Array.isArray(servedCost.estimates) ? servedCost.estimates : [];
       assert(servedEstimates.length > 0, "post-calibration should-cost returned no estimates");
-      assert(
-        servedEstimates.every((estimate) => estimate.confidence?.validated === true),
-        "one or more post-calibration estimates still served an assumption band",
-      );
+      const servedConfidence = servedEstimates.map((estimate) => ({
+        process: estimate.process,
+        confidence: {
+          validated: estimate.confidence?.validated,
+          method: estimate.confidence?.method,
+          n_samples: estimate.confidence?.n_samples,
+        },
+      }));
+      assert(hasProcessScopedConfidence(servedConfidence, validatedProcesses),
+        "served confidence must measure FDM only and retain assumption bands on unseen processes");
+      const selectedProcess = servedCost.decision?.make_now_process;
+      assert(servedEstimates.some((estimate) => estimate.process === selectedProcess), "selected verdict has no served estimate");
+      const selectedValidated = validatedProcesses.includes(selectedProcess);
       await this.page.waitForFunction(() => {
         const text = document.body.innerText;
         return (
@@ -1734,9 +1761,23 @@ class EnterpriseDomainQA {
         state: "hidden",
         timeout: 20_000,
       });
-      const validatedVerdict = this.page.getByText(
-        /this verdict is validated — checked against your actuals/i,
-      );
+      // Changing quantity must not borrow the prototype process's calibration.
+      const quantityChoice = this.page.getByRole("combobox", { name: "Computed quantity", exact: true });
+      await quantityChoice.selectOption("100");
+      const at100 = servedCost.decision?.recommendation?.["100"];
+      const at100Estimate = servedEstimates.find((estimate) => estimate.quantity === 100 &&
+        estimate.process === at100?.process && estimate.material === at100?.material);
+      assert(at100Estimate, "calibration quantity check has no exact recommendation");
+      const at100Text = (await this.visibleText()).replace(/\s+/g, " ");
+      assert(at100Text.includes(`${usdDisplay(at100Estimate.unit_cost_usd)}/unit on ${processDisplay(at100Estimate.process)} at qty 100`),
+        "calibrated Verify headline remained on the prototype quantity");
+      assert(at100Text.includes(`${processDisplay(at100Estimate.process)} · qty 100 · this verdict is ${at100Estimate.confidence?.validated ? "validated" : "unvalidated"}`),
+        "quantity selection borrowed another process's calibration");
+      await quantityChoice.selectOption("1");
+      const verdictPattern = selectedValidated
+        ? /this verdict is validated — checked against your actuals/i
+        : /this verdict is unvalidated — an assumption band/i;
+      const validatedVerdict = this.page.getByText(verdictPattern);
       await validatedVerdict.waitFor({
         timeout: 20_000,
       });
@@ -1744,8 +1785,8 @@ class EnterpriseDomainQA {
       await this.page.waitForTimeout(250);
       const servedText = await this.scanVisibleText("served-measured-band");
       assert(
-        /this verdict is validated — checked against your actuals/i.test(servedText),
-        "measured confidence provenance was not visible on the completed verdict",
+        verdictPattern.test(servedText),
+        "confidence provenance did not match the selected process on the completed verdict",
       );
       const servedScreenshot = await this.shot("ENT-02-served-measured-band", true);
 
@@ -1763,6 +1804,9 @@ class EnterpriseDomainQA {
         served_status: servedCostResponse.status(),
         served_estimate_count: servedEstimates.length,
         served_validated_count: servedEstimates.filter((estimate) => estimate.confidence?.validated === true).length,
+        served_confidence: servedConfidence,
+        selected_process: selectedProcess,
+        selected_validated: selectedValidated,
         served_visible_text: servedText.replace(/\s+/g, " ").trim(),
         served_screenshot: servedScreenshot,
         url: this.page.url(),
@@ -1821,7 +1865,7 @@ class EnterpriseDomainQA {
     const rejectedText = rejected.visible_text || "";
     const exactText = exact.visible_text || "";
     const initialRecommendation = initial.cost?.decision?.recommendation?.["10000"] || null;
-    const exactRecommendation = exact.cost?.decision?.recommendation?.["10000"] || null;
+    const exactRecommendation = exact.cost?.decision?.recommendation?.[String(annualVolume)] || null;
     const annualRecommendation = exact.cost?.decision?.recommendation?.[String(annualVolume)] || null;
     const recommendationCard = (stage, recommendation) => {
       const process = processDisplay(recommendation?.process);
@@ -1914,7 +1958,7 @@ class EnterpriseDomainQA {
         ],
         actions: [
           "Open Verify, select Stainless, 120 °C, sour service, and 35 MPa, then upload cube.step.",
-          "Move the quantity scrubber to its 10,000-unit endpoint and read the displayed recommendation card.",
+          "Move the quantity scrubber to the computed endpoint: 10,000 initially and 12,000 after declaring annual demand; compare the headline and recommendation card.",
           "Persist annual_volume=12000, re-verify the same CAD, and inspect the returned six-point ladder and exact 12,000-unit recommendation.",
         ],
         observed: {
@@ -1935,6 +1979,7 @@ class EnterpriseDomainQA {
             initialQuantities: initial.cost?.quantities || [],
             annualQuantities: exact.cost?.quantities || [],
             selectedQuantity: 10000,
+            exactSelectedQuantity: annualVolume,
             selectedRecommendation: initialRecommendation || "missing",
             exactSelectedRecommendation: exactRecommendation || "missing",
             annualRecommendation: annualRecommendation || "missing",
@@ -1950,6 +1995,7 @@ class EnterpriseDomainQA {
           assertion("base quantity ladder", baseQuantityLadder, initial.cost?.quantities || [], sameArray(initial.cost?.quantities, baseQuantityLadder)),
           assertion("annual quantity ladder", annualQuantityLadder, exact.cost?.quantities || [], sameArray(exact.cost?.quantities, annualQuantityLadder)),
           assertion("selected quantity readout", "QUANTITY 10,000", initial.quantity_readout || "missing", /QUANTITY\s+10,000/i.test(initial.quantity_readout || "")),
+          assertion("annual quantity readout", "QUANTITY 12,000", exact.quantity_readout || "missing", /QUANTITY\s+12,000/i.test(exact.quantity_readout || "")),
           assertion(
             "initial selected recommendation card",
             `${processDisplay(initialRecommendation?.process)} and ${usdDisplay(initialRecommendation?.unit_cost_usd)}`,
@@ -2244,7 +2290,7 @@ class EnterpriseDomainQA {
           "Confirm the visible real-record count and validation floor.",
           "Choose Recalibrate and inspect the exact refusal plus persisted API counts.",
           "Import eight distinct actuals bound to the exact source SHA through the visible CSV control, then choose Recalibrate again.",
-          "Upload cube.step again and require the served should-cost confidence on every estimate—not just the toast—to be measured and validated.",
+          "Upload cube.step again; require measured FDM estimates, unvalidated alternatives, and visible confidence matching the selected process.",
         ],
         observed: {
           url: calibrationRecovery.url || groundTruth.url || "not observed",
@@ -2254,7 +2300,7 @@ class EnterpriseDomainQA {
             visibleSignal(groundTruth.visible_text, /recalibration refused:\s*4 real of 8 needed/i, "missing refusal"),
             visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing measured calibration status"),
             visibleSignal(calibrationRecovery.calibration_visible_text, /4 records could not be costed/i, "missing bounded legacy-source warning"),
-            visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing served measured provenance"),
+            visibleSignal(calibrationRecovery.served_visible_text, calibrationRecovery.selected_validated ? /this verdict is validated — checked against your actuals/i : /this verdict is unvalidated — an assumption band/i, "missing selected-process confidence provenance"),
           ],
           persisted: {
             refusalRecords: groundTruth.records || [],
@@ -2276,9 +2322,11 @@ class EnterpriseDomainQA {
             skippedLegacy: calibrationRecovery.recalibration?.n_skipped ?? "missing",
             servedEstimateCount: calibrationRecovery.served_estimate_count ?? "missing",
             servedValidatedCount: calibrationRecovery.served_validated_count ?? "missing",
+            servedConfidence: calibrationRecovery.served_confidence || [],
+            selectedProcess: calibrationRecovery.selected_process || "missing",
           },
           authorization,
-          recovery: "The first attempt stayed refused. Eight source-bound actuals then imported with zero row skips, three or more costable held-out residuals earned validation, four legacy rows remained explicitly excluded, and a fresh should-cost served measured bands on every estimate.",
+          recovery: "The first attempt stayed refused. Eight source-bound FDM actuals then imported with zero row skips, three or more FDM held-out residuals earned validation, four legacy rows remained excluded, and a fresh should-cost served measured FDM bands with unvalidated alternatives.",
         },
         screenshot: calibrationRecovery.served_screenshot || groundTruth.screenshot,
         assertions: [
@@ -2301,9 +2349,10 @@ class EnterpriseDomainQA {
           assertion("only unavailable legacy sources skipped", expectedActualPartIds, calibrationRecovery.skipped_part_ids || [], sameArray(calibrationRecovery.skipped_part_ids || [], expectedActualPartIds)),
           assertion("all source-bound rows costed", 0, (calibrationRecovery.skipped_part_ids || []).filter((partId) => partId.startsWith("calibration-proof-")).length, (calibrationRecovery.skipped_part_ids || []).every((partId) => !partId.startsWith("calibration-proof-"))),
           assertion("served should-cost status", 200, calibrationRecovery.served_status ?? "missing", calibrationRecovery.served_status === 200),
-          assertion("every served estimate is validated", calibrationRecovery.served_estimate_count ?? "estimate count", calibrationRecovery.served_validated_count ?? "missing", calibrationRecovery.served_estimate_count > 0 && calibrationRecovery.served_validated_count === calibrationRecovery.served_estimate_count),
+          assertion("only FDM is validated", ["fdm"], calibrationRecovery.recalibration?.validated_processes || [], sameArray(calibrationRecovery.recalibration?.validated_processes || [], ["fdm"])),
+          assertion("served confidence respects process scope", "all served estimates: measured FDM and unvalidated alternatives", calibrationRecovery.served_confidence || [], hasProcessScopedConfidence(calibrationRecovery.served_confidence, calibrationRecovery.recalibration?.validated_processes) && calibrationRecovery.served_confidence.length === calibrationRecovery.served_estimate_count),
           assertion("visible measured calibration", "validated (measured)", visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing"), /validated \(measured\)/i.test(calibrationRecovery.calibration_visible_text || "")),
-          assertion("visible served measured provenance", "this verdict is validated — checked against your actuals", visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing"), /this verdict is validated — checked against your actuals/i.test(calibrationRecovery.served_visible_text || "")),
+          assertion("visible selected-process confidence", calibrationRecovery.selected_validated ? "validated" : "unvalidated", calibrationRecovery.served_visible_text || "missing", Boolean(calibrationRecovery.selected_process) && (calibrationRecovery.selected_validated ? /this verdict is validated — checked against your actuals/i : /this verdict is unvalidated — an assumption band/i).test(calibrationRecovery.served_visible_text || "")),
         ],
       }),
 
@@ -2371,7 +2420,7 @@ class EnterpriseDomainQA {
         id: "ENT-04",
         persona: "Program cost owner assigning annual volume and demanding exact-quantity economics",
         preconditions: [
-          "cube.step has the pinned single-part $133.58 headline under the governed organization fixture.",
+          "cube.step has the pinned single-part $110.00 headline under the governed organization fixture.",
           "The part has severe-service USER context but initially has no annual volume.",
         ],
         actions: [
@@ -2383,8 +2432,8 @@ class EnterpriseDomainQA {
           url: program.programs_url || portfolio.exact_url || "not observed",
           visible: [
             visibleSignal(programText, new RegExp(escapeRegExp(programName)), "missing program context"),
-            visibleSignal(programText, /\$10\.08\s*@ qty\s*12,000/i, "missing exact 12,000-unit basis"),
-            visibleSignal(programText, /\$120,960\/yr/i, "missing annual exposure"),
+            visibleSignal(programText, /\$3\.44\s*@ qty\s*12,000/i, "missing exact 12,000-unit basis"),
+            visibleSignal(programText, /\$41,280\/yr/i, "missing annual exposure"),
           ],
           persisted: {
             meshHash: portfolio.mesh_hash || "missing",
@@ -2409,21 +2458,21 @@ class EnterpriseDomainQA {
         screenshot: program.programs_screenshot || portfolio.exact_screenshot || exact.screenshot,
         assertions: [
           authAssertion(),
-          assertion("single-part headline", 133.58, portfolio.headline_unit_cost_usd ?? "missing", approxEqual(portfolio.headline_unit_cost_usd, 133.58, 0.01)),
+          assertion("single-part headline", 110.00, portfolio.headline_unit_cost_usd ?? "missing", approxEqual(portfolio.headline_unit_cost_usd, 110.00, 0.01)),
           assertion("exposure withheld before volume", true, portfolio.withheld_before_volume ?? "missing", portfolio.withheld_before_volume === true),
           assertion("exposure withheld before exact re-verification", true, portfolio.withheld_until_exact_reverification ?? "missing", portfolio.withheld_until_exact_reverification === true),
           assertion("withheld reason gives re-verification action", "Re-verify this CAD", portfolio.exact_reverification_reason || "missing", /Re-verify this CAD/i.test(portfolio.exact_reverification_reason || "")),
           assertion("exact annual quantity", 12000, portfolio.annualized_unit_cost_qty ?? "missing", portfolio.annualized_unit_cost_qty === 12000),
-          assertion("exact annual unit cost", 10.08, portfolio.annualized_unit_cost_usd ?? "missing", approxEqual(portfolio.annualized_unit_cost_usd, 10.08, 0.001)),
-          assertion("annual exposure", 120960, portfolio.annualized_cost_usd ?? "missing", approxEqual(portfolio.annualized_cost_usd, 120960, 0.01)),
+          assertion("exact annual unit cost", 3.44, portfolio.annualized_unit_cost_usd ?? "missing", approxEqual(portfolio.annualized_unit_cost_usd, 3.44, 0.001)),
+          assertion("annual exposure", 41280, portfolio.annualized_cost_usd ?? "missing", approxEqual(portfolio.annualized_cost_usd, 41280, 0.01)),
           assertion("annual exposure multiplication", (portfolio.annualized_unit_cost_usd ?? 0) * annualVolume, portfolio.annualized_cost_usd ?? "missing", approxEqual(portfolio.annualized_cost_usd, (portfolio.annualized_unit_cost_usd ?? 0) * annualVolume, 0.01)),
           assertion("annualization basis", "decision.recommendation", portfolio.annualized_unit_cost_basis || "missing", portfolio.annualized_unit_cost_basis === "decision.recommendation"),
-          assertion("single-part headline is not annualized", false, approxEqual(portfolio.annualized_cost_usd, 133.58 * annualVolume, 0.01), !approxEqual(portfolio.annualized_cost_usd, 133.58 * annualVolume, 0.01)),
+          assertion("single-part headline is not annualized", false, approxEqual(portfolio.annualized_cost_usd, 110.00 * annualVolume, 0.01), !approxEqual(portfolio.annualized_cost_usd, 110.00 * annualVolume, 0.01)),
           assertion("program context", programName, portfolio.program || "missing", portfolio.program === programName),
           assertion("parent assembly context", parentAssembly, portfolio.parent_assembly || "missing", portfolio.parent_assembly === parentAssembly),
           assertion("context provenance", "user", portfolio.context_provenance || "missing", portfolio.context_provenance === "user"),
-          assertion("12,000 recommendation reconciles", 10.08, annualRecommendation?.unit_cost_usd ?? "missing", approxEqual(annualRecommendation?.unit_cost_usd, 10.08, 0.001)),
-          assertion("screenshot oracle: exact Programs economics", "program + $10.08 @ qty 12,000 + $120,960/yr", programText || "missing", new RegExp(escapeRegExp(programName)).test(programText) && /\$10\.08\s*@ qty\s*12,000/i.test(programText) && /\$120,960\/yr/i.test(programText)),
+          assertion("12,000 recommendation reconciles", 3.44, annualRecommendation?.unit_cost_usd ?? "missing", approxEqual(annualRecommendation?.unit_cost_usd, 3.44, 0.001)),
+          assertion("screenshot oracle: exact Programs economics", "program + $3.44 @ qty 12,000 + $41,280/yr", programText || "missing", new RegExp(escapeRegExp(programName)).test(programText) && /\$3\.44\s*@ qty\s*12,000/i.test(programText) && /\$41,280\/yr/i.test(programText)),
         ],
       }),
 
@@ -2444,8 +2493,8 @@ class EnterpriseDomainQA {
           visible: [
             visibleSignal(program.programs_summary_text, new RegExp(escapeRegExp(programName)), "missing program name"),
             visibleSignal(program.programs_text, /cube\.step/i, "missing assigned part"),
-            visibleSignal(program.programs_text, /\$10\.08\s*@ qty\s*12,000/i, "missing exact quantity basis"),
-            visibleSignal(program.programs_text, /\$120,960\/yr/i, "missing annual exposure"),
+            visibleSignal(program.programs_text, /\$3\.44\s*@ qty\s*12,000/i, "missing exact quantity basis"),
+            visibleSignal(program.programs_text, /\$41,280\/yr/i, "missing annual exposure"),
             visibleSignal(program.records_detail_text, /cube\.step/i, "missing source decision detail"),
           ],
           persisted: {
@@ -2476,13 +2525,13 @@ class EnterpriseDomainQA {
           assertion("exposed parts", 1, program.rollup?.exposed_parts ?? "missing", program.rollup?.exposed_parts === 1),
           assertion("program annual volume input", "12000", program.programs_annual_volume_input || "missing", program.programs_annual_volume_input === "12000"),
           assertion("portfolio annual volume", 12000, program.row?.context?.annual_volume ?? "missing", program.row?.context?.annual_volume === 12000),
-          assertion("portfolio exact unit basis", { qty: 12000, usd: 10.08, basis: "decision.recommendation" }, { qty: program.row?.annualized_unit_cost?.qty, usd: program.row?.annualized_unit_cost?.usd, basis: program.row?.annualized_unit_cost?.basis }, program.row?.annualized_unit_cost?.qty === 12000 && approxEqual(program.row?.annualized_unit_cost?.usd, 10.08, 0.001) && program.row?.annualized_unit_cost?.basis === "decision.recommendation"),
-          assertion("row annual exposure", 120960, program.row?.annualized_cost_usd ?? "missing", approxEqual(program.row?.annualized_cost_usd, 120960, 0.01)),
+          assertion("portfolio exact unit basis", { qty: 12000, usd: 3.44, basis: "decision.recommendation" }, { qty: program.row?.annualized_unit_cost?.qty, usd: program.row?.annualized_unit_cost?.usd, basis: program.row?.annualized_unit_cost?.basis }, program.row?.annualized_unit_cost?.qty === 12000 && approxEqual(program.row?.annualized_unit_cost?.usd, 3.44, 0.001) && program.row?.annualized_unit_cost?.basis === "decision.recommendation"),
+          assertion("row annual exposure", 41280, program.row?.annualized_cost_usd ?? "missing", approxEqual(program.row?.annualized_cost_usd, 41280, 0.01)),
           assertion("rollup annual exposure", program.row?.annualized_cost_usd ?? "row exposure", program.rollup?.annualized_cost_usd ?? "missing", approxEqual(program.rollup?.annualized_cost_usd, program.row?.annualized_cost_usd, 0.01)),
           assertion("source decision identity", program.row?.cost_decision?.id || "portfolio source id", program.records_selected_decision_id || "missing", Boolean(program.row?.cost_decision?.id) && program.row.cost_decision.id === program.records_selected_decision_id),
           assertion("source decision appears in Records API", program.row?.cost_decision?.id || "portfolio source id", program.decision_ids || [], program.decision_ids?.includes(program.row?.cost_decision?.id)),
           assertion("source Records URL", `${baseUrl}/cost-decisions/${program.records_selected_decision_id || "missing"}`, program.url || "missing", program.url === `${baseUrl}/cost-decisions/${program.records_selected_decision_id}`),
-          assertion("program detail visible", "cube.step, $10.08 @ qty 12,000, $120,960/yr", program.programs_text || "missing", /cube\.step/i.test(program.programs_text || "") && /\$10\.08\s*@ qty\s*12,000/i.test(program.programs_text || "") && /\$120,960\/yr/i.test(program.programs_text || "")),
+          assertion("program detail visible", "cube.step, $3.44 @ qty 12,000, $41,280/yr", program.programs_text || "missing", /cube\.step/i.test(program.programs_text || "") && /\$3\.44\s*@ qty\s*12,000/i.test(program.programs_text || "") && /\$41,280\/yr/i.test(program.programs_text || "")),
         ],
       }),
     };
@@ -2533,10 +2582,8 @@ class EnterpriseDomainQA {
         sourceBoundSkipped: (this.evidence.calibrationRecovery?.skipped_part_ids || [])
           .filter((partId) => partId.startsWith("calibration-proof-")).length,
         servedEstimateCount: this.evidence.calibrationRecovery?.served_estimate_count,
-        servedValidatedAll:
-          this.evidence.calibrationRecovery?.served_estimate_count > 0 &&
-          this.evidence.calibrationRecovery?.served_validated_count ===
-            this.evidence.calibrationRecovery?.served_estimate_count,
+        validatedProcesses: this.evidence.calibrationRecovery?.recalibration?.validated_processes,
+        servedConfidence: this.evidence.calibrationRecovery?.served_confidence,
       },
       "ENT-04": {
         quantity: this.evidence.portfolio?.annualized_unit_cost_qty,
@@ -2663,7 +2710,7 @@ The test signs up or logs in as a real org admin, proves unauthenticated org dat
 - Governed rate cards are in effect only after publish and remain DEFAULT / not validated.
 - Machine envelopes, rates, and materials round-trip with provenance=user.
 - Ground-truth recalibration refuses with 4 real records because the floor is 8, then eight source-bound actuals import without row loss and produce at least three costable held-out residuals.
-- A successful recalibration is not accepted on its toast alone: every estimate from the next real STEP upload must serve a validated empirical confidence band.
+- A successful recalibration is not accepted on its toast alone: the next real STEP upload must serve measured FDM bands, unvalidated bands for unseen processes, and visible confidence matching the selected process.
 - API key creation reveals the one-time secret on /settings/developer.
 - The Verify UI persists the declared service world to part-context before costing.
 - Portfolio annualized exposure is null before annual_volume and after declaration until re-verification; it then equals the engine recommendation at that exact quantity × declared volume.

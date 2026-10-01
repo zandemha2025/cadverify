@@ -1,0 +1,44 @@
+{
+  "malformedJson": {
+    "status": "PASS",
+    "readout": "Onboarded 1 part · library now 4 (1 unnamed)",
+    "issues": "Mapping row 1 — name must be text or null"
+  },
+  "csvWarnings": {
+    "status": "PASS",
+    "readout": "Onboarded 1 part · library now 4",
+    "issues": "Mapping row 3 — duplicate filename 'audit-cube.STP' — last row wins\nMapping row 4 — missing filename"
+  },
+  "mixed": {
+    "status": "PASS",
+    "readout": "Onboarded 1 part · library now 4 (2 skipped)",
+    "issues": "Mapping row 3 — duplicate filename 'audit-cube.STP' — last row wins\nMapping row 4 — missing filename",
+    "skips": "Onboarded 1 part · library now 4 (2 skipped)\n\n1 registered in the declared parts master\n\nskipped nist_ftc_07_asme1_rd.stp — unknown material_class 'unobtanium' — fix it or leave blank (never coerced)\nskipped bad-library.stl — File is too small to be a valid STL (minimum 84 bytes for header + triangle count).\nMapping row 3 — duplicate filename 'audit-cube.STP' — last row wins\nMapping row 4 — missing filename"
+  },
+  "mobile": {
+    "panel": {
+      "clientWidth": 320,
+      "scrollWidth": 320
+    },
+    "status": {
+      "clientWidth": 280,
+      "scrollWidth": 280
+    },
+    "viewport": 390
+  },
+  "duplicates": {
+    "status": "PASS",
+    "readout": "Onboarded 1 part · library now 4",
+    "issues": "Mapping row 3 — missing filename"
+  },
+  "oversizedMapping": {
+    "error": "onboard failed — identity mapping exceeds 2097152 bytes — split it into smaller batches",
+    "retainedCad": 1,
+    "retryEnabled": true
+  },
+  "sizeRetry": {
+    "status": "PASS",
+    "readout": "Onboarded 1 part · library now 4",
+    "issues": "Mapping row 3 — duplicate filename 'audit-cube.STP' — last row wins\nMapping row 4 — missing filename"
+  }
+}

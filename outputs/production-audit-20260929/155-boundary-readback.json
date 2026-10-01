@@ -1,0 +1,33 @@
+[
+  {
+    "id": "1336",
+    "version": "0.3.20",
+    "file": "155-plate-transformed-0.8.step",
+    "source_sha256": "5de1e5a04500dd1511c1079a8b5f34951b29c7e972ab9121805fd6ed0720f3f5",
+    "fdm_issue_codes": [
+      "OVERHANG",
+      "EXCEEDS_BUILD_VOLUME"
+    ],
+    "thin_wall_expected": false,
+    "thin_wall_observed": false,
+    "serialized_wall_values": [],
+    "result_sha256": "7e7b9d2497a5c30bc032d0e7dde5bff725cb88d77a5f88698a429f930e074246"
+  },
+  {
+    "id": "1337",
+    "version": "0.3.20",
+    "file": "155-plate-transformed-0.79999.step",
+    "source_sha256": "7e94cf86040de1342fc21db8ddc04952fe086cee696914a58fbc3d547f3fa530",
+    "fdm_issue_codes": [
+      "THIN_WALL",
+      "OVERHANG",
+      "EXCEEDS_BUILD_VOLUME"
+    ],
+    "thin_wall_expected": true,
+    "thin_wall_observed": true,
+    "serialized_wall_values": [
+      0.8
+    ],
+    "result_sha256": "f7db260a9b5c083448111c612b5ab2556de90c4f6f653b2935254cf3abf333fc"
+  }
+]

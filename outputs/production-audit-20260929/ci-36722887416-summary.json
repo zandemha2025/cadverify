@@ -1,0 +1,75 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-09-30T13:36:40Z",
+  "headSha": "a980247606355abd97aeb7b7a7a7b11acc44837f",
+  "status": "completed",
+  "updatedAt": "2026-09-30T14:14:52Z",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36722887416",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:44Z",
+      "completed_at": "2026-09-30T13:37:32Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:44Z",
+      "completed_at": "2026-09-30T13:36:54Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:44Z",
+      "completed_at": "2026-09-30T13:37:47Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:45Z",
+      "completed_at": "2026-09-30T13:36:53Z"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:44Z",
+      "completed_at": "2026-09-30T13:37:57Z"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:44Z",
+      "completed_at": "2026-09-30T13:47:18Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:36:58Z",
+      "completed_at": "2026-09-30T13:38:04Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:47:21Z",
+      "completed_at": "2026-09-30T13:53:07Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:47:21Z",
+      "completed_at": "2026-09-30T14:14:52Z"
+    }
+  ],
+  "scope": "Exact remote a980247, through finding107. Does not include local108\u2013113.",
+  "limitations": "Main-only image CVE scans, new-head CI, production deployment/retest and external-provider accuracy evidence remain open."
+}

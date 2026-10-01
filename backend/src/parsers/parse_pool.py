@@ -284,11 +284,7 @@ def recycle_pool(kill: bool = False) -> None:
     if pool is None:
         return
     if kill:
-        for proc in list(getattr(pool, "_processes", {}).values()):
-            try:
-                proc.kill()
-            except Exception:  # already dead / racing shutdown
-                pass
+        _hard_kill(pool)
     try:
         pool.shutdown(wait=False, cancel_futures=True)
     except Exception:  # never let recycle raise into the request path
@@ -319,11 +315,7 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
         pool, _POOL = _POOL, None
     if pool is not None:
         if kill:
-            for proc in list(getattr(pool, "_processes", {}).values()):
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+            _hard_kill(pool)
         try:
             # wait=False abandons the executor's queue/semaphore handles to
             # multiprocessing.resource_tracker at interpreter exit. Once every
@@ -353,7 +345,13 @@ def _hard_kill(ex: ProcessPoolExecutor) -> None:
     each recovery-rung executor owns exactly ONE worker running ONLY this rung —
     no sibling request shares it. The shared pool is hard-killed only through
     ``recycle_pool(kill=True)`` when its state is no longer trustworthy."""
-    for proc in list(getattr(ex, "_processes", {}).values()):
+    # A worker can die mid-pickle. Close the parent's unused sending end first
+    # so recv sees EOF after the workers die instead of waiting forever for the
+    # rest of the payload (and blocking the executor/Python shutdown thread).
+    result_queue = getattr(ex, "_result_queue", None)
+    if result_queue is not None:
+        result_queue._writer.close()
+    for proc in list((getattr(ex, "_processes", None) or {}).values()):
         try:
             proc.kill()
         except Exception:  # already dead / racing shutdown

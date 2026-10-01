@@ -1,0 +1,36 @@
+{
+  "frontend_tests": {
+    "passed": 527,
+    "failed": 0,
+    "skipped": 0,
+    "log": "183-frontend-tests.log"
+  },
+  "focused_selector_tests": {
+    "passed": 19,
+    "failed": 0
+  },
+  "typescript": "pass",
+  "production_build": "pass",
+  "required_lint": {
+    "errors": 0,
+    "existing_unrelated_warnings": 4
+  },
+  "changed_source_lint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "enterprise_runner_syntax": "pass",
+  "enterprise_gate_tests": {
+    "passed": 7,
+    "failed": 0
+  },
+  "browser_new_ci": "not yet run; pending publication after active prior-head CI",
+  "backend": "unchanged from audit182 final 2824 passed / 3 protected skips",
+  "prior_head_ci": {
+    "run_id": 36856572437,
+    "head": "5b391f671312c46d6059a2001e9d73cd08a82a5f",
+    "browser": "still running",
+    "other_jobs_passed": 7,
+    "container": "failed: 5 HIGH / 0 CRITICAL, same Expat/X11/Xrender findings"
+  }
+}

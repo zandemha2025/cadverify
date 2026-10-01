@@ -1,0 +1,53 @@
+{
+  "status": "completed",
+  "conclusion": "failure",
+  "headSha": "dbf58735d2fcbb37ff02be87f957cded45344436",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36816843113",
+  "jobs": [
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure"
+    }
+  ]
+}

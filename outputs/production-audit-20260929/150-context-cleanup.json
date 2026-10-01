@@ -1,0 +1,14 @@
+{
+  "context_restored": true,
+  "old_cost_result_hashes_unchanged": 3,
+  "total_saved_cost_decisions": 4,
+  "reused_cost_decision": "01M3T6YM7HBRA7PC1NQWPJJ8S1",
+  "quantities": [
+    1,
+    100,
+    1008,
+    2000,
+    5000,
+    10000
+  ]
+}

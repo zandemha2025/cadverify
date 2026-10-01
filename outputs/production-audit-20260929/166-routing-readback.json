@@ -1,0 +1,608 @@
+{
+  "engine_version": "0.3.35",
+  "historical_records_unchanged": {
+    "analyses": 112,
+    "cost_decisions": 121
+  },
+  "controls": [
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analyses": {
+        "id": 1629,
+        "ulid": "01M3V0Q2QKBNK2P9B94SXKWEYV",
+        "version": "0.3.35",
+        "result_sha256": "97c21d6b2279941a8749a54fd039d113508cd00ad12b96eca51cc9259c84b37e",
+        "geometry_and_dfm_unchanged": true,
+        "cnc_scores": [
+          {
+            "process": "cnc_3axis",
+            "verdict": "issues",
+            "score": 0.9
+          },
+          {
+            "process": "cnc_5axis",
+            "verdict": "issues",
+            "score": 0.9
+          }
+        ]
+      },
+      "cost_decisions": {
+        "id": 5604,
+        "ulid": "01M3V0Q2RG3EZ3MB5KYGJ6KHKZ",
+        "version": "0.3.35",
+        "result_sha256": "5600217528cff343e5744077c0821a3c39948c18092dd328cd4a70d70b0eb27a",
+        "routing": {
+          "drivers": {
+            "bend_count": 0,
+            "rotational": false,
+            "sheet_like": false,
+            "planar_aspect": 1.0,
+            "sheet_gauge_mm": 12.0,
+            "nominal_wall_mm": 5.58,
+            "outline_perimeter_mm": 184.0
+          },
+          "archetype": "long_prismatic_bar",
+          "reasoning": "Slender prismatic bar (80mm long \u00d7 12\u00d712mm enclosing cross-section): bar stock and 3-axis milling are a starting route. Confirm setups and tool clearance; features may require multi-axis machining.",
+          "confidence": 0.7,
+          "eval_family": "subtractive",
+          "alternatives": [
+            "cnc_5axis"
+          ],
+          "material_hint": "aluminum",
+          "recommended_process": "cnc_3axis"
+        },
+        "previous_estimates_unchanged": 18,
+        "added_estimates": [
+          [
+            "cnc_5axis",
+            1
+          ],
+          [
+            "cnc_5axis",
+            100
+          ]
+        ],
+        "process_quantities": [
+          [
+            "cnc_3axis",
+            1
+          ],
+          [
+            "cnc_3axis",
+            100
+          ],
+          [
+            "cnc_5axis",
+            1
+          ],
+          [
+            "cnc_5axis",
+            100
+          ],
+          [
+            "ded",
+            1
+          ],
+          [
+            "ded",
+            100
+          ],
+          [
+            "die_casting",
+            1
+          ],
+          [
+            "die_casting",
+            100
+          ],
+          [
+            "dmls",
+            1
+          ],
+          [
+            "dmls",
+            100
+          ],
+          [
+            "forging",
+            1
+          ],
+          [
+            "forging",
+            100
+          ],
+          [
+            "investment_casting",
+            1
+          ],
+          [
+            "investment_casting",
+            100
+          ],
+          [
+            "sand_casting",
+            1
+          ],
+          [
+            "sand_casting",
+            100
+          ],
+          [
+            "slm",
+            1
+          ],
+          [
+            "slm",
+            100
+          ],
+          [
+            "waam",
+            1
+          ],
+          [
+            "waam",
+            100
+          ]
+        ],
+        "cnc_estimates": [
+          {
+            "process": "cnc_3axis",
+            "quantity": 1,
+            "unit_cost_usd": 137.95,
+            "line_items": {
+              "nre": 70.0,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 18.55,
+              "consumables": 0.2604,
+              "amortized_fixed": 26.25
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_3axis",
+            "quantity": 100,
+            "unit_cost_usd": 25.34,
+            "line_items": {
+              "nre": 0.7,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 1.225,
+              "consumables": 0.2604,
+              "amortized_fixed": 0.2625
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_5axis",
+            "quantity": 1,
+            "unit_cost_usd": 195.29,
+            "line_items": {
+              "nre": 105.0,
+              "labor": 17.5,
+              "machine": 9.152,
+              "material": 0.1796,
+              "inspection": 28.0,
+              "consumables": 0.4576,
+              "amortized_fixed": 35.0
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_5axis",
+            "quantity": 100,
+            "unit_cost_usd": 30.7,
+            "line_items": {
+              "nre": 1.05,
+              "labor": 17.5,
+              "machine": 9.152,
+              "material": 0.1796,
+              "inspection": 2.0125,
+              "consumables": 0.4576,
+              "amortized_fixed": 0.35
+            },
+            "dfm_verdict": "issues"
+          }
+        ]
+      }
+    },
+    {
+      "filename": "165-stock-bar-rotated.step",
+      "sha256": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+      "analyses": {
+        "id": 1628,
+        "ulid": "01M3V0NJ9634F6MB67HFP9K4Z2",
+        "version": "0.3.35",
+        "result_sha256": "e0ea03de895a2b05e97114a91e012fa25aba284fb1694b080328682a42a5529f",
+        "geometry_and_dfm_unchanged": true,
+        "cnc_scores": [
+          {
+            "process": "cnc_3axis",
+            "verdict": "issues",
+            "score": 0.9
+          },
+          {
+            "process": "cnc_5axis",
+            "verdict": "issues",
+            "score": 0.9
+          }
+        ]
+      },
+      "cost_decisions": {
+        "id": 5603,
+        "ulid": "01M3V0NJ9RH62DDQ3VQBD9N5ZF",
+        "version": "0.3.35",
+        "result_sha256": "cef8c7e023b454c27ad39083f3a1902a226a0bd87886c2cd1d8440ec32dc0051",
+        "routing": {
+          "drivers": {
+            "bend_count": 0,
+            "rotational": false,
+            "sheet_like": false,
+            "planar_aspect": 1.0,
+            "sheet_gauge_mm": 12.0,
+            "nominal_wall_mm": 5.58,
+            "outline_perimeter_mm": 184.0
+          },
+          "archetype": "long_prismatic_bar",
+          "reasoning": "Slender prismatic bar (80mm long \u00d7 12\u00d712mm enclosing cross-section): bar stock and 3-axis milling are a starting route. Confirm setups and tool clearance; features may require multi-axis machining.",
+          "confidence": 0.7,
+          "eval_family": "subtractive",
+          "alternatives": [
+            "cnc_5axis"
+          ],
+          "material_hint": "aluminum",
+          "recommended_process": "cnc_3axis"
+        },
+        "previous_estimates_unchanged": 20,
+        "added_estimates": [],
+        "process_quantities": [
+          [
+            "cnc_3axis",
+            1
+          ],
+          [
+            "cnc_3axis",
+            100
+          ],
+          [
+            "cnc_5axis",
+            1
+          ],
+          [
+            "cnc_5axis",
+            100
+          ],
+          [
+            "ded",
+            1
+          ],
+          [
+            "ded",
+            100
+          ],
+          [
+            "die_casting",
+            1
+          ],
+          [
+            "die_casting",
+            100
+          ],
+          [
+            "dmls",
+            1
+          ],
+          [
+            "dmls",
+            100
+          ],
+          [
+            "forging",
+            1
+          ],
+          [
+            "forging",
+            100
+          ],
+          [
+            "investment_casting",
+            1
+          ],
+          [
+            "investment_casting",
+            100
+          ],
+          [
+            "sand_casting",
+            1
+          ],
+          [
+            "sand_casting",
+            100
+          ],
+          [
+            "slm",
+            1
+          ],
+          [
+            "slm",
+            100
+          ],
+          [
+            "waam",
+            1
+          ],
+          [
+            "waam",
+            100
+          ]
+        ],
+        "cnc_estimates": [
+          {
+            "process": "cnc_3axis",
+            "quantity": 1,
+            "unit_cost_usd": 137.95,
+            "line_items": {
+              "nre": 70.0,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 18.55,
+              "consumables": 0.2604,
+              "amortized_fixed": 26.25
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_3axis",
+            "quantity": 100,
+            "unit_cost_usd": 25.34,
+            "line_items": {
+              "nre": 0.7,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 1.225,
+              "consumables": 0.2604,
+              "amortized_fixed": 0.2625
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_5axis",
+            "quantity": 1,
+            "unit_cost_usd": 195.29,
+            "line_items": {
+              "nre": 105.0,
+              "labor": 17.5,
+              "machine": 9.152,
+              "material": 0.1796,
+              "inspection": 28.0,
+              "consumables": 0.4576,
+              "amortized_fixed": 35.0
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_5axis",
+            "quantity": 100,
+            "unit_cost_usd": 30.7,
+            "line_items": {
+              "nre": 1.05,
+              "labor": 17.5,
+              "machine": 9.152,
+              "material": 0.1796,
+              "inspection": 2.0125,
+              "consumables": 0.4576,
+              "amortized_fixed": 0.35
+            },
+            "dfm_verdict": "issues"
+          }
+        ]
+      }
+    },
+    {
+      "filename": "166-transverse-hole-bar.step",
+      "sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+      "analyses": {
+        "id": 1627,
+        "ulid": "01M3V0K0WBJKRQKW77JPRDQDXK",
+        "version": "0.3.35",
+        "result_sha256": "763bf5aa0be2dd5eb309a9894aa35e7343eae057086416b20b6458735f126a80",
+        "geometry_and_dfm_unchanged": true,
+        "cnc_scores": [
+          {
+            "process": "cnc_5axis",
+            "verdict": "issues",
+            "score": 0.8
+          },
+          {
+            "process": "cnc_3axis",
+            "verdict": "fail",
+            "score": 0.0
+          }
+        ]
+      },
+      "cost_decisions": {
+        "id": 5602,
+        "ulid": "01M3V0K0X8TRKEYZPRCTWAEJZ8",
+        "version": "0.3.35",
+        "result_sha256": "6f1d8a9623e8e7364608305f4c013168c1623c2cba4803bf63149cb06949b225",
+        "routing": {
+          "drivers": {
+            "rotational": false,
+            "sheet_like": false,
+            "nominal_wall_mm": 5.35
+          },
+          "archetype": "long_prismatic_bar",
+          "reasoning": "Slender prismatic bar (80mm long \u00d7 12\u00d712mm enclosing cross-section): bar stock and 3-axis milling are a starting route. Confirm setups and tool clearance; features may require multi-axis machining. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it.",
+          "confidence": 0.7,
+          "eval_family": "subtractive",
+          "alternatives": [
+            "cnc_3axis"
+          ],
+          "material_hint": "aluminum",
+          "recommended_process": "cnc_5axis"
+        },
+        "previous_estimates_unchanged": 18,
+        "added_estimates": [
+          [
+            "cnc_5axis",
+            1
+          ],
+          [
+            "cnc_5axis",
+            100
+          ]
+        ],
+        "process_quantities": [
+          [
+            "cnc_3axis",
+            1
+          ],
+          [
+            "cnc_3axis",
+            100
+          ],
+          [
+            "cnc_5axis",
+            1
+          ],
+          [
+            "cnc_5axis",
+            100
+          ],
+          [
+            "ded",
+            1
+          ],
+          [
+            "ded",
+            100
+          ],
+          [
+            "die_casting",
+            1
+          ],
+          [
+            "die_casting",
+            100
+          ],
+          [
+            "dmls",
+            1
+          ],
+          [
+            "dmls",
+            100
+          ],
+          [
+            "forging",
+            1
+          ],
+          [
+            "forging",
+            100
+          ],
+          [
+            "investment_casting",
+            1
+          ],
+          [
+            "investment_casting",
+            100
+          ],
+          [
+            "sand_casting",
+            1
+          ],
+          [
+            "sand_casting",
+            100
+          ],
+          [
+            "slm",
+            1
+          ],
+          [
+            "slm",
+            100
+          ],
+          [
+            "waam",
+            1
+          ],
+          [
+            "waam",
+            100
+          ]
+        ],
+        "cnc_estimates": [
+          {
+            "process": "cnc_3axis",
+            "quantity": 1,
+            "unit_cost_usd": 138.12,
+            "line_items": {
+              "nre": 70.0,
+              "labor": 17.5,
+              "machine": 5.3713,
+              "material": 0.1796,
+              "inspection": 18.55,
+              "consumables": 0.2686,
+              "amortized_fixed": 26.25
+            },
+            "dfm_verdict": "fail"
+          },
+          {
+            "process": "cnc_3axis",
+            "quantity": 100,
+            "unit_cost_usd": 25.51,
+            "line_items": {
+              "nre": 0.7,
+              "labor": 17.5,
+              "machine": 5.3713,
+              "material": 0.1796,
+              "inspection": 1.225,
+              "consumables": 0.2686,
+              "amortized_fixed": 0.2625
+            },
+            "dfm_verdict": "fail"
+          },
+          {
+            "process": "cnc_5axis",
+            "quantity": 1,
+            "unit_cost_usd": 195.59,
+            "line_items": {
+              "nre": 105.0,
+              "labor": 17.5,
+              "machine": 9.4376,
+              "material": 0.1796,
+              "inspection": 28.0,
+              "consumables": 0.4719,
+              "amortized_fixed": 35.0
+            },
+            "dfm_verdict": "issues"
+          },
+          {
+            "process": "cnc_5axis",
+            "quantity": 100,
+            "unit_cost_usd": 31.0,
+            "line_items": {
+              "nre": 1.05,
+              "labor": 17.5,
+              "machine": 9.4376,
+              "material": 0.1796,
+              "inspection": 2.0125,
+              "consumables": 0.4719,
+              "amortized_fixed": 0.35
+            },
+            "dfm_verdict": "issues"
+          }
+        ]
+      }
+    }
+  ]
+}

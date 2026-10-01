@@ -1,0 +1,121 @@
+{
+  "scope": "Shape routing orientation and five-axis availability, local engine0.3.35",
+  "tests": {
+    "initial_red": {
+      "failed": 5,
+      "passed": 4
+    },
+    "full_backend": {
+      "passed": 2785,
+      "skipped": 3,
+      "seconds": 330.73,
+      "scope": "collected before final threshold/five-axis follow-ups"
+    },
+    "final_focused": {
+      "passed": 179,
+      "seconds": 5.9
+    },
+    "typecheck": {
+      "existing": 2,
+      "new": 0
+    },
+    "bandit_medium_high": 0,
+    "trap": "pass; existing suspicious_scale capability gap remains open",
+    "frontend": "unchanged from164"
+  },
+  "review": "Authorized existing peer, final no additional actionable scoped findings; no subagents",
+  "historical_unchanged": 233,
+  "existing_estimates_unchanged": 56,
+  "new_five_axis_estimates": 4,
+  "production": "Unchanged09555c1; PR107 draft, not deployed",
+  "files": [
+    {
+      "path": "166-header-verdict-open.json",
+      "sha256": "f25f0492b8d9b5f83ec31cd8a5c379a67745000a6ac76b851071a60397aaf9a9"
+    },
+    {
+      "path": "166-hole-after.png",
+      "sha256": "a04925e44ea24bdd9c0e1b193fec3d64a4af3f9b46cf8a14081cdbca19a3b4ac"
+    },
+    {
+      "path": "166-hole-after.txt",
+      "sha256": "003ba47d0dc3a40a424fcd62b6d0fb56b57c83b9f47c660416b0f44c5e56fecb"
+    },
+    {
+      "path": "166-hole-before.png",
+      "sha256": "91abc8b29f8452cb48857d14054911478717ed47de3d8c72c2c8c3fe6a286b89"
+    },
+    {
+      "path": "166-hole-before.txt",
+      "sha256": "47c92ec89da98757785493253785ba1af78017a09be14d472c61f1e0f4a3fc43"
+    },
+    {
+      "path": "166-hole-glass-after.txt",
+      "sha256": "cc7de3a09ed52bbb169239d7e700bb620f7a59cfe9e48ea65b24ecf72762e25e"
+    },
+    {
+      "path": "166-hole-qty100.txt",
+      "sha256": "a319ff4790faa2eba01bea3eee50b6a0a183c029eaaa88bbbd5b59a08ce44617"
+    },
+    {
+      "path": "166-native-checks.json",
+      "sha256": "388e5303b0dab33c612efe7913103a5131b65c5694c3ea38b0a81924e2ee2403"
+    },
+    {
+      "path": "166-rotated-glass-after.txt",
+      "sha256": "ff2d3179a7bfbf4e9fcef79ff371bff297d606a6fe9f3e289dda0a275c8958f2"
+    },
+    {
+      "path": "166-routing-aligned-after.png",
+      "sha256": "4bcb56b1c2a7ca8c70ca3bc781ef75980e420d85f06ee08161580723fd057365"
+    },
+    {
+      "path": "166-routing-aligned-after.txt",
+      "sha256": "af4b471196342b970ab6f1cbe6e10498ade6b04255e965d9a5f772b12e919cb2"
+    },
+    {
+      "path": "166-routing-aligned-before.png",
+      "sha256": "4eed9a640b1d65d5b8577c3ef375954a131583ca8bf78e29e6eacdbc9b69cba6"
+    },
+    {
+      "path": "166-routing-aligned-before.txt",
+      "sha256": "6e39cc6311883806fa5394e1e336f9f77e31fda9af65e8c0501b8b8c19dbd555"
+    },
+    {
+      "path": "166-routing-before.json",
+      "sha256": "32f1323a3f2d9d13f1c0c2124d28da247c31f05c8621d1edb01a710992bf53f5"
+    },
+    {
+      "path": "166-routing-controls.py",
+      "sha256": "01f75bea802936ad175106b85727d68a9826a18af2f47db554b8c8228f11eff6"
+    },
+    {
+      "path": "166-routing-readback.json",
+      "sha256": "d36950e2a80004d6c95cb73db0827158815de100c0f7746b878ea1adefcf6c20"
+    },
+    {
+      "path": "166-routing-rotated-after.png",
+      "sha256": "9739fd72271a28feaea5e65a0643dfd681830bac5bca9c400edbf54d4a17411b"
+    },
+    {
+      "path": "166-routing-rotated-after.txt",
+      "sha256": "b1832ff570e505b4c8f2e1b82ab6dc09b4f877c597ffeb9c8db95d00ab16bf60"
+    },
+    {
+      "path": "166-routing-rotated-before.png",
+      "sha256": "72d122f4a373c8800c12dd7e7e991c0c6e9dd7292568979c54e7f0cc058b6916"
+    },
+    {
+      "path": "166-routing-rotated-before.txt",
+      "sha256": "edfcd0a1901e2584807497cdbbc6251b33e8736be270b322422f920a7b2c9509"
+    },
+    {
+      "path": "shape-controls/166-routing-controls.json",
+      "sha256": "a83a9df706396c9de8b3acb5c7d53c69ded12c1226ebe68d612724d345edb7b1"
+    },
+    {
+      "path": "shape-controls/166-transverse-hole-bar.step",
+      "sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817"
+    }
+  ]
+}

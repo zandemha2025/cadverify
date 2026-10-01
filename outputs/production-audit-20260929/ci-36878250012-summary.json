@@ -1,0 +1,75 @@
+{
+  "checked_at": "2026-10-01T15:28:28.160803+00:00",
+  "run_id": 36878250012,
+  "source_sha": "7bcec0a0cb22ca4fa3eea57ffe1ea7aa2c0b0e23",
+  "status": "completed",
+  "conclusion": "failure",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012",
+  "jobs": [
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423122378"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423122755"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423122951"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423122975"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423122999"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423123046"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110423229448"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110430307587"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36878250012/job/110430307695"
+    }
+  ],
+  "container_findings": {
+    "high": 5,
+    "critical": 0,
+    "cves": [
+      "CVE-2026-93990",
+      "CVE-2026-88806",
+      "CVE-2026-88807"
+    ],
+    "waived": false
+  },
+  "scope": "Preceding revision only. Candidate07d56ea requires its own CI."
+}

@@ -1,0 +1,381 @@
+{
+  "engine_version": "0.3.34",
+  "historical_records_unchanged": {
+    "analyses": 109,
+    "cost_decisions": 118
+  },
+  "controls": [
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "dimensions_mm": [
+        12,
+        12,
+        80
+      ],
+      "volume_mm3": 11520,
+      "rotation_deg": 0,
+      "analyses": {
+        "id": 1605,
+        "ulid": "01M3TZ52SNPXKSSWKQ8T6HHMY1",
+        "version": "0.3.34",
+        "result_sha256": "c82dc1827c85d140aefba2cfabe9112bb67ba2f7b86361ef83cde62527f77058"
+      },
+      "cost_decisions": {
+        "id": 5524,
+        "ulid": "01M3TZ52SQVAXZ9XZS2VD3K44J",
+        "version": "0.3.34",
+        "result_sha256": "e262e83242b21331c9a802eff6d719af87ae0e490f426ed9818838ec27a0673d",
+        "cnc_estimates": [
+          {
+            "process": "cnc_3axis",
+            "quantity": 1,
+            "unit_cost_usd": 137.95,
+            "line_items": {
+              "nre": 70.0,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 18.55,
+              "consumables": 0.2604,
+              "amortized_fixed": 26.25
+            },
+            "drivers": [
+              {
+                "name": "material_cost",
+                "unit": "$",
+                "value": 0.1796,
+                "source": "bounding-box billet 11.52 cm\u00b3 (oriented candidate 12\u00d712\u00d780 mm; minimum not certified) \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.0342 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 5.0
+              },
+              {
+                "name": "machine_cost",
+                "unit": "$",
+                "value": 5.208,
+                "source": "0.0694 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "cycle_time",
+                "unit": "hr",
+                "value": 0.0694,
+                "source": "rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "labor_cost",
+                "unit": "$",
+                "value": 17.5,
+                "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "setup_cost",
+                "unit": "$",
+                "value": 26.25,
+                "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "nre_cost",
+                "unit": "$",
+                "value": 70.0,
+                "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "inspection_cost",
+                "unit": "$",
+                "value": 18.55,
+                "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.03hr/part = 0.5300hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "consumables_cost",
+                "unit": "$",
+                "value": 0.2604,
+                "source": "perishable tooling/consumables 0.05 \u00d7 machine $5.21 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              }
+            ]
+          },
+          {
+            "process": "cnc_3axis",
+            "quantity": 100,
+            "unit_cost_usd": 25.34,
+            "line_items": {
+              "nre": 0.7,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 1.225,
+              "consumables": 0.2604,
+              "amortized_fixed": 0.2625
+            },
+            "drivers": [
+              {
+                "name": "material_cost",
+                "unit": "$",
+                "value": 0.1796,
+                "source": "bounding-box billet 11.52 cm\u00b3 (oriented candidate 12\u00d712\u00d780 mm; minimum not certified) \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.0342 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 5.0
+              },
+              {
+                "name": "machine_cost",
+                "unit": "$",
+                "value": 5.208,
+                "source": "0.0694 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "cycle_time",
+                "unit": "hr",
+                "value": 0.0694,
+                "source": "rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "labor_cost",
+                "unit": "$",
+                "value": 17.5,
+                "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "setup_cost",
+                "unit": "$",
+                "value": 0.2625,
+                "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "nre_cost",
+                "unit": "$",
+                "value": 0.7,
+                "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "inspection_cost",
+                "unit": "$",
+                "value": 1.225,
+                "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.03hr/part = 0.0350hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "consumables_cost",
+                "unit": "$",
+                "value": 0.2604,
+                "source": "perishable tooling/consumables 0.05 \u00d7 machine $5.21 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              }
+            ]
+          }
+        ],
+        "unaffected_other_estimates": 16
+      }
+    },
+    {
+      "filename": "165-stock-bar-rotated.step",
+      "sha256": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+      "dimensions_mm": [
+        12,
+        12,
+        80
+      ],
+      "volume_mm3": 11520,
+      "rotation_deg": 45,
+      "analyses": {
+        "id": 1604,
+        "ulid": "01M3TZ2GC8SEEEV9B6M6N6433S",
+        "version": "0.3.34",
+        "result_sha256": "03c3cba46307342a73b5c459d8bc29435b6b4fefab01cd183804c7b05d5b8d35"
+      },
+      "cost_decisions": {
+        "id": 5523,
+        "ulid": "01M3TZ2GCPNR6MZ1569XVSS90V",
+        "version": "0.3.34",
+        "result_sha256": "b4fc89971ab6b7d33520f2cfd7a7a27d61eb6db49f1a4b8482db8a27b9bdfc6f",
+        "cnc_estimates": [
+          {
+            "process": "cnc_3axis",
+            "quantity": 1,
+            "unit_cost_usd": 137.95,
+            "line_items": {
+              "nre": 70.0,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 18.55,
+              "consumables": 0.2604,
+              "amortized_fixed": 26.25
+            },
+            "drivers": [
+              {
+                "name": "material_cost",
+                "unit": "$",
+                "value": 0.1796,
+                "source": "bounding-box billet 11.52 cm\u00b3 (oriented candidate 12\u00d712\u00d780 mm; minimum not certified) \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.0342 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 5.0
+              },
+              {
+                "name": "machine_cost",
+                "unit": "$",
+                "value": 5.208,
+                "source": "0.0694 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "cycle_time",
+                "unit": "hr",
+                "value": 0.0694,
+                "source": "rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "labor_cost",
+                "unit": "$",
+                "value": 17.5,
+                "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "setup_cost",
+                "unit": "$",
+                "value": 26.25,
+                "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "nre_cost",
+                "unit": "$",
+                "value": 70.0,
+                "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "inspection_cost",
+                "unit": "$",
+                "value": 18.55,
+                "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.03hr/part = 0.5300hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "consumables_cost",
+                "unit": "$",
+                "value": 0.2604,
+                "source": "perishable tooling/consumables 0.05 \u00d7 machine $5.21 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              }
+            ]
+          },
+          {
+            "process": "cnc_3axis",
+            "quantity": 100,
+            "unit_cost_usd": 25.34,
+            "line_items": {
+              "nre": 0.7,
+              "labor": 17.5,
+              "machine": 5.208,
+              "material": 0.1796,
+              "inspection": 1.225,
+              "consumables": 0.2604,
+              "amortized_fixed": 0.2625
+            },
+            "drivers": [
+              {
+                "name": "material_cost",
+                "unit": "$",
+                "value": 0.1796,
+                "source": "bounding-box billet 11.52 cm\u00b3 (oriented candidate 12\u00d712\u00d780 mm; minimum not certified) \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.0342 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 5.0
+              },
+              {
+                "name": "machine_cost",
+                "unit": "$",
+                "value": 5.208,
+                "source": "0.0694 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "cycle_time",
+                "unit": "hr",
+                "value": 0.0694,
+                "source": "rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock oriented candidate bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 50.0
+              },
+              {
+                "name": "labor_cost",
+                "unit": "$",
+                "value": 17.5,
+                "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "setup_cost",
+                "unit": "$",
+                "value": 0.2625,
+                "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+                "provenance": "DEFAULT",
+                "error_band_pct": 20.0
+              },
+              {
+                "name": "nre_cost",
+                "unit": "$",
+                "value": 0.7,
+                "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "inspection_cost",
+                "unit": "$",
+                "value": 1.225,
+                "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.03hr/part = 0.0350hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              },
+              {
+                "name": "consumables_cost",
+                "unit": "$",
+                "value": 0.2604,
+                "source": "perishable tooling/consumables 0.05 \u00d7 machine $5.21 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+                "provenance": "DEFAULT",
+                "error_band_pct": 40.0
+              }
+            ]
+          }
+        ],
+        "unaffected_other_estimates": 16
+      }
+    }
+  ]
+}

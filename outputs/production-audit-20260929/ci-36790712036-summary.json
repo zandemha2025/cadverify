@@ -1,0 +1,636 @@
+{
+  "status": "completed",
+  "conclusion": "failure",
+  "headSha": "6dab0098fa740293dd3b2e903d8a178659df169d",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36790712036",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install scanners",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Production dependency lock is current",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Bandit SAST (fail on medium+ severity)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "pip-audit exact production dependency graph",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Audit production dependency graph",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Typecheck",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Lint",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install native CAD/runtime libraries",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Real-database migration smoke (upgrade -> downgrade -> upgrade)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Postgres restore drill",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run tests",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Alembic migration check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Typecheck",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Stop containers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install native CAD/runtime libraries",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run trap corpus gate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify committed hooks and new-commit attestations",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Check routes.py for auth dependency on every /api/v1/* handler",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Capture scrubbed Sentry dump",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Reject captured auth-material sentinels",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install backend dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Start full local app",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run human and enterprise browser journeys",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload browser E2E artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Stop local app",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Stop containers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up Docker Buildx",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Validate Compose deploy configs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Lint and render Helm chart",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build frontend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build backend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Datestamp for Trivy DB pin",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Restore pinned Trivy DB (daily)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Prepare image security evidence directory",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Scan frontend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Scan backend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Generate frontend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate backend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise frontend image default startup and share image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise backend image native STEP parser",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write source-bound container build manifest",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload container build and security evidence",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Save Trivy DB pin even on scan failure",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Generate backend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Generate frontend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Scan backend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Scan frontend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Build backend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Build frontend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Set up Docker Buildx",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "scope": "Through153 only; excludes local154 and155.",
+  "open_findings": {
+    "backend_image_high": 5,
+    "backend_image_critical": 0,
+    "cves": [
+      "CVE-2026-93990",
+      "CVE-2026-88806",
+      "CVE-2026-88807"
+    ]
+  }
+}

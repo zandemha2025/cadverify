@@ -111,9 +111,9 @@ function costedQuantities(report: CostReport): number[] {
  * name (first source string wins). Each is a "we don't know YOUR number here"
  * caveat — the hollow-marker guess made explicit as a finding.
  */
-export function provenanceCaveats(report: CostReport): DerivedFinding[] {
+export function provenanceCaveats(report: CostReport, estimate?: CostEstimate | null): DerivedFinding[] {
   const rec = report.decision?.make_now_process;
-  const ests = estimatesFor(report, rec);
+  const ests = estimate === undefined ? estimatesFor(report, rec) : estimate ? [estimate] : [];
   const seen = new Map<string, CostDriver>();
   for (const e of ests) {
     for (const d of e.drivers ?? []) {
@@ -154,8 +154,8 @@ function recommendedConfidenceEstimate(report: CostReport): CostEstimate | null 
  * when it is validated the caveat disappears. The wording is the engine's own
  * `label`, never a fabricated ±X%.
  */
-export function confidenceCaveat(report: CostReport): DerivedFinding | null {
-  const est = recommendedConfidenceEstimate(report);
+export function confidenceCaveat(report: CostReport, estimate?: CostEstimate | null): DerivedFinding | null {
+  const est = estimate === undefined ? recommendedConfidenceEstimate(report) : estimate;
   const c = est?.confidence;
   if (!c || c.validated) return null;
   const pct = Math.round(c.half_width_pct);
@@ -182,11 +182,12 @@ export function confidenceCaveat(report: CostReport): DerivedFinding | null {
  */
 export function fragilityFinding(
   report: CostReport,
-  breakeven: Breakeven | null
+  breakeven: Breakeven | null,
+  quantity?: number | null,
 ): DerivedFinding | null {
   const crossover = breakeven?.crossoverQty ?? null;
   if (crossover == null || crossover <= 0) return null;
-  const qtys = costedQuantities(report);
+  const qtys = quantity === undefined ? costedQuantities(report) : quantity != null && quantity > 0 ? [quantity] : [];
   if (!qtys.length) return null;
 
   // the costed quantity whose ratio to the crossover is tightest
@@ -227,13 +228,14 @@ export function fragilityFinding(
  */
 export function deriveFindings(
   report: CostReport,
-  breakeven: Breakeven | null
+  breakeven: Breakeven | null,
+  selection?: { estimate: CostEstimate | null; quantity: number | null },
 ): DerivedFinding[] {
   const out: DerivedFinding[] = [];
-  const frag = fragilityFinding(report, breakeven);
+  const frag = fragilityFinding(report, breakeven, selection?.quantity);
   if (frag) out.push(frag);
-  const conf = confidenceCaveat(report);
+  const conf = confidenceCaveat(report, selection?.estimate);
   if (conf) out.push(conf);
-  out.push(...provenanceCaveats(report));
+  out.push(...provenanceCaveats(report, selection?.estimate));
   return out;
 }

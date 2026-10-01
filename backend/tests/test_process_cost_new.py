@@ -216,8 +216,9 @@ GOLDEN = {
     PT.CNC_5AXIS: (_ALU, "aluminum", 38.9474,
                    {"amortized_fixed": 0.35, "material": 0.7484, "machine": 16.4633,
                     "labor": 17.5, "nre": 1.05, "inspection": 2.0125, "consumables": 0.8232}),
-    PT.CNC_TURNING: (_ALU, "aluminum", 19.0516,
-                     {"amortized_fixed": 0.175, "material": 0.6985, "machine": 6.0125,
+    # Turning updated for the shared round-stock calculation; other goldens unchanged.
+    PT.CNC_TURNING: (_ALU, "aluminum", 18.9458,
+                     {"amortized_fixed": 0.175, "material": 0.5927, "machine": 6.0125,
                       "labor": 10.5, "nre": 0.35, "inspection": 1.015, "consumables": 0.3006}),
     PT.INJECTION_MOLDING: (_POLY, "polymer", 65.3252,
                            {"amortized_fixed": 60.0, "material": 1.8725, "machine": 1.7027,

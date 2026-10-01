@@ -1,0 +1,22 @@
+{
+  "at": "2026-09-30T23:08:11.835749+00:00",
+  "commit": "7846eda8784737c2ca3cd9eb5b05716c9406a1d0",
+  "environment": "isolated local web3019/API8019/PG55431/Redis6398",
+  "method": "native CUA keyboard and form interactions; existing service helpers seeded dummy account/profile",
+  "checks": {
+    "depth_100_blocked_by_native_max_99": true,
+    "private_endpoint_blocked_before_vendor_request": true,
+    "failed_preview_recorded_as_dry_run_zero_imported": true,
+    "preview_retry_enabled": true,
+    "import_button_absent": true,
+    "selector_edit_clears_stale_form_error": true,
+    "test_profile_revoked_after_check": true
+  },
+  "limitations": [
+    "No actual SAP tenant contacted; not a successful vendor read",
+    "Successful response rendering is covered by API fixtures, not this native check",
+    "Stale top-level SAP copy found; audit owner is correcting it"
+  ],
+  "screenshot": "sap-preview-ui.png",
+  "screenshot_sha256": "cc527139a5db69c77fe0cf7013b69e4238632a32dc311ea2ae0265ff88ea021c"
+}

@@ -1,0 +1,20 @@
+{
+  "scope": "Isolated contract tests at PR107 baseline772f3b5; no shared database, no provider traffic",
+  "python_runtime": "Existing Python3.12 venv read-only; sources imported from this worktree",
+  "identity_connector_release": {
+    "passed": 122,
+    "skipped": 1,
+    "skip_reason": "OIDC real PostgreSQL integration test requires DATABASE_URL; local isolated run intentionally has no shared database"
+  },
+  "release_evidence_runner": {
+    "passed": 14,
+    "skipped": 0
+  },
+  "live_evidence": {
+    "email_receipt": false,
+    "email_link_exchange": false,
+    "company_idp": false,
+    "sap": false,
+    "windchill": false
+  }
+}

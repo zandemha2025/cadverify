@@ -1,0 +1,37 @@
+[
+  {
+    "filename": "160-rotated-float32.stl",
+    "engine_version": "0.3.31",
+    "stem": "161-stl-final-after",
+    "gauge_error": null,
+    "precision_warning": true
+  },
+  {
+    "filename": "161-sheet-0.4-mm.stl",
+    "engine_version": "0.3.31",
+    "stem": "161-stl-thin-after",
+    "gauge_error": "TOO_THIN_SHEET",
+    "precision_warning": true
+  },
+  {
+    "filename": "161-sheet-0.499-mm.stl",
+    "engine_version": "0.3.31",
+    "stem": "161-stl-boundary-after",
+    "gauge_error": "TOO_THIN_SHEET",
+    "precision_warning": true
+  },
+  {
+    "filename": "161-sheet-0.5-inch.stl",
+    "engine_version": "0.3.31",
+    "stem": "161-stl-inch-after",
+    "gauge_error": null,
+    "precision_warning": true
+  },
+  {
+    "filename": "161-sheet-5.0-mm.stl",
+    "engine_version": "0.3.31",
+    "stem": "161-stl-classification-after",
+    "gauge_error": null,
+    "precision_warning": true
+  }
+]

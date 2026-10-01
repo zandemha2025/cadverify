@@ -1,0 +1,55 @@
+{
+  "checked_at": "2026-09-30T01:30:58.357583+00:00",
+  "environment": "local disposable audit workspace",
+  "deployed": false,
+  "findings": [
+    "039",
+    "040"
+  ],
+  "scenario": {
+    "before": {
+      "label": "Generic \u00b7 qty 50 $3.80",
+      "recalled_quantity": 123,
+      "recalled_unit_cost": 3.59
+    },
+    "after": {
+      "unsaved_draft_quantity": 123,
+      "saved_and_recalled_quantities": [
+        50,
+        5000
+      ],
+      "saved_and_recalled_unit_cost": 3.8
+    },
+    "runnable_check": "scripts/e2e/cost-scenario-snapshot.mjs",
+    "red_then_green": true
+  },
+  "assumptions": {
+    "daily_machine_hours": {
+      "name": "daily_machine_hours",
+      "unit": "hr/day",
+      "value": 5.0,
+      "source": "fallback daily capacity; process-specific machine hours take precedence",
+      "provenance": "USER"
+    },
+    "margin": {
+      "name": "margin",
+      "unit": "frac",
+      "value": 0.0,
+      "source": "markup on cost: price = cost \u00d7 (1 + margin); 0.25 adds 25%, not a 25% gross margin",
+      "provenance": "DEFAULT"
+    }
+  },
+  "checks": {
+    "backend_focused_passed": 70,
+    "frontend_tests_passed": 485,
+    "typecheck": "PASS",
+    "changed_lint": "PASS",
+    "production_build": "PASS"
+  },
+  "screenshots": {
+    "039-scenario-draft-before.png": "2d87eeba1598869fcd14065076b40d83e1ac059a5607f98edd1c2a58b0cc1416",
+    "040-rate-provenance-before.png": "c3de2a3e275790f7a97c23201a03e5d235fde4b0d6ed99f4886fe3e11637abd7",
+    "039-scenario-draft-fixed-local.png": "a02c1705da140960d19566d5e12defc994004181cff41c677ed3f76179c84206",
+    "040-rate-provenance-fixed-local.png": "7a7a3537637a0506f5dbb97458a5c0a052f54f2ed492314474d750c3d02e22cc"
+  }
+}

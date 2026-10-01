@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-09-30T11:45:05.181415+00:00",
+  "finding": "098",
+  "baseline_head": "d107cbe",
+  "first_divergence": "step 3: expected a killed sender to complete executor teardown and process exit; parent blocked in multiprocessing.connection._recv waiting for the rest of a partial result",
+  "reproduction": {
+    "payload_bytes": 33554432,
+    "boundary": "real spawn ProcessPoolExecutor used by parse_pool.recycle_pool(kill=True); pause receiving until worker kill to deterministically exercise interrupted output",
+    "baseline": {
+      "exit": "outer timeout at 7.010 seconds",
+      "result_marker": "RECYCLED_PARTIAL_RESULT",
+      "stack": [
+        "multiprocessing.connection._recv",
+        "concurrent.futures.process.wait_result_broken_or_wakeup",
+        "concurrent.futures.process._python_exit",
+        "threading._shutdown"
+      ]
+    },
+    "close_parent_writer_control": {
+      "exit_code": 0,
+      "seconds": 0.804
+    },
+    "regression_red": "test_partial_result_termination_exits_and_recovers[recycle] timed out at 15 seconds before the production fix"
+  },
+  "fix": {
+    "mechanism": "Close parent unused result-pipe sending end before killing every worker; receiver observes EOF on incomplete data",
+    "scope": [
+      "shared-pool recycle",
+      "final server shutdown",
+      "single-use rung/assembly termination"
+    ],
+    "recovery": "all three real-subprocess regressions reject the partial result and parse another task in a fresh pool",
+    "diagnostics": "keep faulthandler active through interpreter exit; real delayed-thread test failed before and passes afterward"
+  },
+  "validation": {
+    "focused_parser_and_corpus_checks": 24,
+    "full_backend_passed": 2437,
+    "skipped": 3,
+    "skip_reasons": [
+      "real local corpus manifest absent",
+      "OCP XDE unavailable (2 tests)"
+    ],
+    "full_backend_seconds": 188.74,
+    "type_errors": 216,
+    "type_baseline_limit": 228,
+    "new_type_diagnostics": 0,
+    "bandit_production_parser_medium_high": 0,
+    "bandit_diagnostic_script": "one unchanged baseline B310 at pinned allowlisted NIST download (line 364); no new finding",
+    "frontend": "unchanged; preceding 495 tests/types/lint/build passed"
+  },
+  "ci_relation": "matches the observed after-result exit-hang class; the historical FTC-07 CI timeout did not retain a stack, so its exact cause is not proven",
+  "production": "not deployed; new-head CI required",
+  "real_cad_before_after_identical_fields": [
+    "geometry",
+    "decision",
+    "first_estimate",
+    "estimate_count",
+    "finite_report",
+    "line_items_sum_ok"
+  ],
+  "fixed_worker_exit_seconds": 16.183
+}

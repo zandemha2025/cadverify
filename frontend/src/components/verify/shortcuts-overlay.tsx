@@ -7,6 +7,8 @@
  * shortcut is listed that the shell does not actually implement.
  */
 import { C, MONO } from "@/lib/verify/tokens";
+import { useRef } from "react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const GROUPS: { title: string; rows: { keys: string; label: string }[] }[] = [
   {
@@ -33,25 +35,31 @@ const GROUPS: { title: string; rows: { keys: string; label: string }[] }[] = [
 ];
 
 export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 80,
-        background: "rgba(23,24,26,0.35)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        hideClose
+        className="block"
+        aria-describedby={undefined}
+        onOpenAutoFocus={() => {
+          const active = document.activeElement;
+          returnFocusRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          const target = returnFocusRef.current?.isConnected
+            ? returnFocusRef.current
+            : document.querySelector<HTMLElement>("[data-workspace-command-trigger]");
+          if (target) {
+            event.preventDefault();
+            target.focus();
+          }
+        }}
         style={{
           width: 560,
-          maxWidth: "100%",
+          maxWidth: "calc(100% - 40px)",
+          maxHeight: "calc(100dvh - 40px)",
+          overflowY: "auto",
           background: C.panel,
           border: `1px solid ${C.hair}`,
           borderRadius: 18,
@@ -61,17 +69,18 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center" }}>
-          <p
+          <DialogTitle
             style={{
               margin: 0,
               fontFamily: MONO,
               fontSize: 10,
+              fontWeight: 400,
               letterSpacing: "0.16em",
               color: C.ink45,
             }}
           >
             KEYBOARD SHORTCUTS
-          </p>
+          </DialogTitle>
           <button
             type="button"
             onClick={onClose}
@@ -84,6 +93,8 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
               fontFamily: MONO,
               fontSize: 13,
               color: C.ink40,
+              minWidth: 44,
+              minHeight: 44,
             }}
           >
             ✕
@@ -125,6 +136,8 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
                       fontFamily: MONO,
                       fontSize: 11,
                       minWidth: 34,
+                      flexShrink: 0,
+                      whiteSpace: "nowrap",
                       textAlign: "center",
                       border: `1px solid ${C.hair}`,
                       borderRadius: 6,
@@ -141,7 +154,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

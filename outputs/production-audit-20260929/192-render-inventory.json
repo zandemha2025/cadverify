@@ -1,0 +1,77 @@
+{
+  "observed_at": "2026-10-01T15:27:47.274Z",
+  "services": {
+    "api": {
+      "commit": "https://github.com/zandemha2025/cadverify/commit/09555c18121305b7e577c0a76e47e5f97abfb8e8",
+      "live": "/web/srv-daibaifqj5pc739cvas0/deploys/dep-dau1e07avr4c73faj84g",
+      "keys": [
+        "API_KEY_PEPPER",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "CONTEXT_FIT_ENABLED",
+        "DASHBOARD_ORIGIN",
+        "DASHBOARD_SESSION_SECRET",
+        "DATABASE_URL",
+        "OBJECT_STORE_BACKEND",
+        "OBJECT_STORE_LOCAL_ROOT",
+        "OBJECT_STORE_S3_BUCKET",
+        "OBJECT_STORE_S3_REGION",
+        "PARSE_POOL_WORKERS",
+        "PASSWORD_LOGIN_ENABLED",
+        "PRODUCTION_VERIFIED_SIGNUP_REQUIRED",
+        "PUBLIC_PASSWORD_SIGNUP_ENABLED",
+        "REDIS_URL",
+        "SECRET_KEY",
+        "TURNSTILE_SECRET",
+        "UPLOAD_TICKET_SECRET",
+        "VALIDATION_CAP_PER_USER"
+      ],
+      "nonsecret_flags": {
+        "PUBLIC_PASSWORD_SIGNUP_ENABLED": "true",
+        "PRODUCTION_VERIFIED_SIGNUP_REQUIRED": "false"
+      },
+      "dashboard_signing_key_format_and_length_valid": true,
+      "display_environment_present": false
+    },
+    "worker": {
+      "commit": "https://github.com/zandemha2025/cadverify/commit/09555c18121305b7e577c0a76e47e5f97abfb8e8",
+      "live": "/worker/srv-dajgag0ae00c739s91h0/deploys/dep-dau1e27lk1mc73dai7og",
+      "keys": [
+        "API_KEY_PEPPER",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "DASHBOARD_ORIGIN",
+        "DASHBOARD_SESSION_SECRET",
+        "DATABASE_URL",
+        "OBJECT_STORE_BACKEND",
+        "OBJECT_STORE_LOCAL_ROOT",
+        "OBJECT_STORE_S3_BUCKET",
+        "OBJECT_STORE_S3_REGION",
+        "PARSE_POOL_WORKERS",
+        "PASSWORD_LOGIN_ENABLED",
+        "PRODUCTION_VERIFIED_SIGNUP_REQUIRED",
+        "PUBLIC_PASSWORD_SIGNUP_ENABLED",
+        "REDIS_URL",
+        "SECRET_KEY",
+        "TURNSTILE_SECRET",
+        "UPLOAD_TICKET_SECRET",
+        "VALIDATION_CAP_PER_USER"
+      ]
+    },
+    "web": {
+      "commit": "https://github.com/zandemha2025/cadverify/commit/09555c18121305b7e577c0a76e47e5f97abfb8e8",
+      "live": "/web/srv-daiqvcrm8hqs73duucd0/deploys/dep-dau1dtmk1f9s73a070r0",
+      "keys": [
+        "API_BASE",
+        "AUTH_MODE",
+        "PUBLIC_PASSWORD_SIGNUP_ENABLED",
+        "RELEASE",
+        "TURNSTILE_SITE_KEY"
+      ]
+    }
+  },
+  "secret_values_revealed": false,
+  "nonsecret_signup_flags_revealed_and_reconcealed": true,
+  "configuration_changes": false,
+  "deployment_triggered": false
+}

@@ -1,0 +1,520 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD"
+  - main:
+    - heading "Records" [level=1]
+    - paragraph: Every verification is a keepable, shareable artifact — the org's make-vs-buy memory. A record carries its world, its verdict, its receipts, and whoever decided.
+    - generic: Loaded 50+
+    - generic: immutable · nothing is ever deleted
+    - generic: PART
+    - generic: MAKE-NOW ROUTE
+    - generic: CROSSOVER
+    - generic: QTYS
+    - generic: DATE
+    - button "cube.step FDM / FFF 4,592 6 10/1/2026 open →" [active]:
+      - generic: cube.step
+      - generic: FDM / FFF
+      - generic: 4,592
+      - generic: "6"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "trap-build-300.1mm.stl CNC 3-Axis 31 2 10/1/2026 open →":
+      - generic: trap-build-300.1mm.stl
+      - generic: CNC 3-Axis
+      - generic: "31"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "trap-build-cube-300.1mm.stl CNC 3-Axis 31 2 10/1/2026 open →":
+      - generic: trap-build-cube-300.1mm.stl
+      - generic: CNC 3-Axis
+      - generic: "31"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "trap-build-cube-300.1mm.stl CNC 3-Axis 31 2 10/1/2026 open →":
+      - generic: trap-build-cube-300.1mm.stl
+      - generic: CNC 3-Axis
+      - generic: "31"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "trap-build-300.1mm.stl CNC 3-Axis 31 2 10/1/2026 open →":
+      - generic: trap-build-300.1mm.stl
+      - generic: CNC 3-Axis
+      - generic: "31"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step MJF (HP) 6,153 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: MJF (HP)
+      - generic: 6,153
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "178-priced-envelope-sphere.step CNC 3-Axis 15 2 10/1/2026 open →":
+      - generic: 178-priced-envelope-sphere.step
+      - generic: CNC 3-Axis
+      - generic: "15"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "171-profile-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 171-profile-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "178-priced-envelope-cube.step CNC 3-Axis 27 2 10/1/2026 open →":
+      - generic: 178-priced-envelope-cube.step
+      - generic: CNC 3-Axis
+      - generic: "27"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "178-priced-envelope-cube.step CNC 3-Axis 27 2 10/1/2026 open →":
+      - generic: 178-priced-envelope-cube.step
+      - generic: CNC 3-Axis
+      - generic: "27"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "171-profile-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 171-profile-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "177-envelope-rotated.step CNC 3-Axis 91 2 10/1/2026 open →":
+      - generic: 177-envelope-rotated.step
+      - generic: CNC 3-Axis
+      - generic: "91"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "177-envelope-aligned.step CNC 3-Axis 46 2 10/1/2026 open →":
+      - generic: 177-envelope-aligned.step
+      - generic: CNC 3-Axis
+      - generic: "46"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "177-envelope-aligned.step CNC 3-Axis 46 2 10/1/2026 open →":
+      - generic: 177-envelope-aligned.step
+      - generic: CNC 3-Axis
+      - generic: "46"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "177-envelope-rotated.step WAAM 53 2 10/1/2026 open →":
+      - generic: 177-envelope-rotated.step
+      - generic: WAAM
+      - generic: "53"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "156-plate-with-boss.step DED 2,251 2 10/1/2026 open →":
+      - generic: 156-plate-with-boss.step
+      - generic: DED
+      - generic: 2,251
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "166-transverse-hole-bar.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 166-transverse-hole-bar.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "171-profile-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 171-profile-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "156-plate-with-boss.step DED 2,251 2 10/1/2026 open →":
+      - generic: 156-plate-with-boss.step
+      - generic: DED
+      - generic: 2,251
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "166-transverse-hole-bar.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 166-transverse-hole-bar.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "171-profile-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 171-profile-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "156-plate-with-boss.step DED 2,251 2 10/1/2026 open →":
+      - generic: 156-plate-with-boss.step
+      - generic: DED
+      - generic: 2,251
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "166-transverse-hole-bar.step CNC 5-Axis — 2 10/1/2026 open →":
+      - generic: 166-transverse-hole-bar.step
+      - generic: CNC 5-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "171-profile-bar-rotated.step CNC 5-Axis — 2 10/1/2026 open →":
+      - generic: 171-profile-bar-rotated.step
+      - generic: CNC 5-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "156-plate-with-boss.step DED 2,251 2 10/1/2026 open →":
+      - generic: 156-plate-with-boss.step
+      - generic: DED
+      - generic: 2,251
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "166-transverse-hole-bar.step CNC 5-Axis — 2 10/1/2026 open →":
+      - generic: 166-transverse-hole-bar.step
+      - generic: CNC 5-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "166-transverse-hole-bar.step DMLS (Metal) 961 2 10/1/2026 open →":
+      - generic: 166-transverse-hole-bar.step
+      - generic: DMLS (Metal)
+      - generic: "961"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-rotated.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-rotated.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "165-stock-bar-aligned.step CNC 3-Axis — 2 10/1/2026 open →":
+      - generic: 165-stock-bar-aligned.step
+      - generic: CNC 3-Axis
+      - generic: —
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "163-wall-6.001-mm.stl MJF (HP) 1,461 2 10/1/2026 open →":
+      - generic: 163-wall-6.001-mm.stl
+      - generic: MJF (HP)
+      - generic: 1,461
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "163-wall-6.0-mm.stl MJF (HP) 1,461 2 10/1/2026 open →":
+      - generic: 163-wall-6.0-mm.stl
+      - generic: MJF (HP)
+      - generic: 1,461
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "161-sheet-0.5-inch.stl Sheet Metal 7,444 2 10/1/2026 open →":
+      - generic: 161-sheet-0.5-inch.stl
+      - generic: Sheet Metal
+      - generic: 7,444
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "161-sheet-0.499-mm.stl DLP Resin 791 2 10/1/2026 open →":
+      - generic: 161-sheet-0.499-mm.stl
+      - generic: DLP Resin
+      - generic: "791"
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "160-rotated-float32.stl Sheet Metal 7,444 2 10/1/2026 open →":
+      - generic: 160-rotated-float32.stl
+      - generic: Sheet Metal
+      - generic: 7,444
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "160-rotated-float32.stl Sheet Metal 7,444 2 10/1/2026 open →":
+      - generic: 160-rotated-float32.stl
+      - generic: Sheet Metal
+      - generic: 7,444
+      - generic: "2"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "sample-routing-bracket.stl FDM / FFF — 6 10/1/2026 open →":
+      - generic: sample-routing-bracket.stl
+      - generic: FDM / FFF
+      - generic: —
+      - generic: "6"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "audit-cube.STP FDM / FFF 4,592 6 10/1/2026 open →":
+      - generic: audit-cube.STP
+      - generic: FDM / FFF
+      - generic: 4,592
+      - generic: "6"
+      - generic: 10/1/2026
+      - generic: open →
+    - button "161-sheet-5.0-mm.stl Sheet Metal — 2 9/30/2026 open →":
+      - generic: 161-sheet-5.0-mm.stl
+      - generic: Sheet Metal
+      - generic: —
+      - generic: "2"
+      - generic: 9/30/2026
+      - generic: open →
+    - button "161-sheet-0.5-inch.stl Sheet Metal 7,444 2 9/30/2026 open →":
+      - generic: 161-sheet-0.5-inch.stl
+      - generic: Sheet Metal
+      - generic: 7,444
+      - generic: "2"
+      - generic: 9/30/2026
+      - generic: open →
+    - button "161-sheet-0.499-mm.stl DLP Resin 791 2 9/30/2026 open →":
+      - generic: 161-sheet-0.499-mm.stl
+      - generic: DLP Resin
+      - generic: "791"
+      - generic: "2"
+      - generic: 9/30/2026
+      - generic: open →
+    - button "Load more"
+    - generic: more records beyond the 50 loaded — cursor-paged
+    - paragraph: a shared record renders read-only with full provenance — the receiver can open every number, not edit it
+    - paragraph: RECORD · READ-ONLY
+    - generic: PROVENANCE TRAVELS WITH IT
+    - button "✕"
+    - heading "cube.step — Makeable on your machines." [level=2]
+    - paragraph: cube.step · FDM / FFF (PLA) · 10/1/2026, 7:56:20 AM · engine 0.3.42
+    - paragraph: pinned to the rate version it was computed under — a calibration switch never rewrites it
+    - paragraph: "Receipts and confidence below: FDM / FFF · PLA · quantity 12,000"
+    - generic: RECORDED OUTCOME
+    - strong: Make in-house
+    - generic: FDM / FFF · PLA · qty 1
+    - link "Open governance →":
+      - /url: /cost-decisions/01M3VN583B775TGGSSC1CV2XFY
+    - paragraph: Audit 184 — MJF supplier at 100 parts; α/β <quoted> & reviewed. Note edited while viewing qty 1.
+    - generic: Material
+    - generic: $0.09
+    - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: CAD volume 2.72 cm³ × PLA density 1.24 g/cm³ = 0.0034 kg × $25/kg (material-DB unit price (DEFAULT book value)) × (1+0.1 scrap) × region-material ×1
+    - generic: Parts per build
+    - generic: 43 parts
+    - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: "serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of 'Audit local FDM 046'"
+    - generic: Machine time
+    - generic: $1.16
+    - generic "USER — Declared by your team.": ● USER
+    - paragraph: "0.1791 hr × $10/hr (fitted machine 'Audit local FDM 046', its OWN declared rate) × (1-0.35 capital sunk) OWNED-IN-HOUSE marginal [assumption, not shop-validated] × region-labor ×1 [serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of 'Audit local FDM 046']"
+    - generic: Owned In House
+    - generic: 0.65 ×
+    - generic "USER — Declared by your team.": ● USER
+    - paragraph: "machine 'Audit local FDM 046' OWNED in-house: machine costed at MARGINAL rate $6.5/hr = $10/hr × (1-0.35 capital) — capital purchase/amortization removed (sunk on gear the org already owns; make-it-ourselves, not rent-the-time). USER-declared ownership; the 0.35 capital fraction is DEFAULT [assumption, not shop-validated]"
+    - generic: Cycle Time
+    - generic: 0.179 hr
+    - generic "MODEL — Computed from a DEFAULT assumption — not a measurement.": ○ MODEL
+    - paragraph: "serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of 'Audit local FDM 046'"
+    - generic: Labor
+    - generic: $7.08
+    - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: finish 0.2hr/part + bulk 0.1hr/build ÷ 43 ≈ 0.202326hr × $35/hr × region-labor ×1
+    - generic: Setup
+    - generic: $0.20
+    - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: setup 0.25hr × $35/hr × ceil(12000/43) = 280 setups ÷ 12000 × region-labor ×1
+    - generic: Σ line items = unit resource cost
+    - generic: $8.54 ✓
+    - paragraph:
+      - generic: $5.13 – $11.96 · ±40% [assumption, not shop-validated] · n=0
+    - button "Export PDF"
+    - button "CSV (drivers)"
+    - button "JSON"
+    - button "Create share link"
+    - generic: computed evidence is immutable
+    - paragraph: the receiver can open every number — not edit one. This page is the org's make-vs-buy memory, one record at a time.
+- region "Notifications alt+T"
+- alert
+- status: 1Password menu is available. Press down arrow to select.

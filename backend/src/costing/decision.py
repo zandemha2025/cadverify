@@ -2,14 +2,15 @@
 
 Coherent semantics (resolves weaknesses #6, #7):
 
-  MAKE-NOW set = ADDITIVE ∪ SUBTRACTIVE  (need no hard tooling)
-  TOOLING  set = FORMATIVE               (injection molding / die casting)
+  MAKE-NOW set = polymer/metal additive, CNC, EDM and sheet fabrication
+  TOOLING  set = molding, casting and forging (dies/patterns)
   DFM-ready    = engine verdict != "fail"
 
   make_now      = argmin over DFM-ready MAKE-NOW estimates at q_lo (real unit cost)
                   ≡ recommendation[q_lo].process   (single source — cannot disagree)
   tool_champion = argmin over TOOLING estimates at q_hi (may be DFM-fail)
-  crossover     = tool_champion.fixed / (make_now.var − tool_champion.var)
+  crossover     = tool_champion versus the cheapest eligible MAKE-NOW route
+                  at each quantity (the winning make route may change)
 
 The headline make process is drawn ONLY from DFM-ready make candidates, so it is
 never a process the part currently fails. The tooling route may be DFM-fail; if
@@ -26,7 +27,11 @@ from src.costing.rates import process_family
 
 _PV_TO_PT = {pt.value: pt for pt in ProcessType}
 
-MAKE_NOW_FAMILIES = ("additive", "subtractive", "fabrication")
+MAKE_NOW_FAMILIES = (
+    "additive", "subtractive", "fabrication", "edm",
+    "metal_powder_bed", "binder_jet", "ded",
+)
+TOOLING_FAMILIES = ("formative", "casting", "forging")
 
 
 @dataclass
@@ -60,20 +65,23 @@ def crossover(fixed_a: float, var_a: float, fixed_b: float, var_b: float) -> Opt
     return q if q > 1 else None
 
 
-def _numerical_crossover(unit_cost_fn, make_pv: str, tool_pv: str,
+def _numerical_crossover(unit_cost_fn, make_pv: str | tuple[str, ...], tool_pv: str,
                          q_lo: float, q_cap: int = 10_000_000) -> Optional[float]:
     """Honest crossover for qty-DEPENDENT unit costs (S1 volume/learning).
 
-    Returns the smallest integer quantity q where the tooling route's ACTUAL
-    per-unit cost drops to/below the make route's ACTUAL per-unit cost, found by
+    Finds an integer crossing where the tooling route's ACTUAL per-unit cost
+    drops to/below the cheapest supplied make route's ACTUAL per-unit cost, by
     evaluating both real cost curves (``unit_cost_fn(process_value, q)``) — no
-    fixed/variable reconstruction, so it stays correct when machining variable
-    cost itself falls with volume. None when tooling never overtakes make within
+    fixed/variable reconstruction. Bracketing assumes a sustained transition;
+    batch steps can produce local recrossings, so the result remains approximate.
+    None when tooling does not overtake make in the sampled bracket within
     ``q_cap`` (or is already cheaper at q_lo). Monotone in tooling fixed cost:
     a pricier tool pushes the crossover right, as expected.
     """
+    make_pvs = (make_pv,) if isinstance(make_pv, str) else make_pv
+
     def diff(q: int) -> float:                       # >0 once tooling is the cheaper route
-        return unit_cost_fn(make_pv, int(q)) - unit_cost_fn(tool_pv, int(q))
+        return min(unit_cost_fn(pv, int(q)) for pv in make_pvs) - unit_cost_fn(tool_pv, int(q))
 
     lo = max(2, int(q_lo))
     if diff(lo) >= 0:
@@ -108,10 +116,10 @@ def _caveat(est) -> str:
             reason = "add draft"
         else:
             reason = "redesign for DFM"
-        if fam == "formative":
+        if fam in TOOLING_FAMILIES:
             reason += ", tooling-dominated"
         return reason
-    if fam == "formative":
+    if fam in TOOLING_FAMILIES:
         return "invest in tooling"
     return ""
 
@@ -164,7 +172,7 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
     def tool_ranked(q):
-        cands = [est_at(pv, q) for pv in proc_values if _family(pv) == "formative"]
+        cands = [est_at(pv, q) for pv in proc_values if _family(pv) in TOOLING_FAMILIES]
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
     ready_lo = make_ready_ranked(q_lo) or make_any_ranked(q_lo)
@@ -182,11 +190,20 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     q_star = None
     if tool_champion is not None and tool_champion.process != make_now.process:
         if unit_cost_fn is not None:
-            q_star = _numerical_crossover(unit_cost_fn, make_now.process,
+            q_star = _numerical_crossover(unit_cost_fn, tuple(e.process for e in ready_lo),
                                           tool_champion.process, q_lo)
         else:
-            q_star = crossover(make_now.fixed_cost_usd, make_now.variable_cost_usd,
-                               tool_champion.fixed_cost_usd, tool_champion.variable_cost_usd)
+            # For constant-variable curves, tooling must beat every make route.
+            crossings = []
+            for make in ready_lo:
+                delta_var = make.variable_cost_usd - tool_champion.variable_cost_usd
+                delta_fixed = tool_champion.fixed_cost_usd - make.fixed_cost_usd
+                if delta_var < 0 or (delta_var == 0 and delta_fixed > 0):
+                    break  # this make route remains cheaper at high volume
+                crossings.append(delta_fixed / delta_var if delta_var > 0 else 0)
+            else:
+                candidate = max(crossings)
+                q_star = candidate if candidate > max(1, q_lo) else None
 
     # ---- per-qty tiers --------------------------------------------------
     recommendation: dict = {}
@@ -208,7 +225,7 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         cheaper = [
             est_at(pv, q) for pv in proc_values
             if est_at(pv, q).unit_cost_usd < tier1.unit_cost_usd
-            and (not est_at(pv, q).dfm_ready or _family(pv) == "formative")
+            and (not est_at(pv, q).dfm_ready or _family(pv) in TOOLING_FAMILIES)
         ]
         if cheaper:
             alt = min(cheaper, key=lambda e: e.unit_cost_usd)
@@ -223,7 +240,8 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
 
     note = _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
                        round(make_now.unit_cost_usd, 2),
-                       round(tool_champion.unit_cost_usd, 2) if tool_champion else None)
+                       round(tool_champion.unit_cost_usd, 2) if tool_champion else None,
+                       recommendation)
 
     # State the environment constraint in the note ONLY when it CHANGED the
     # make-as-is headline: the cheapest make candidate over the FULL (unfiltered)
@@ -248,25 +266,26 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
 
 
 def _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
-                make_unit_lo, tool_unit_hi) -> str:
-    head = (f"Make by {make_now.process} ({make_now.material}) — ${make_unit_lo}/unit "
-            f"at qty {q_lo}, the cheapest make-as-is option and your low-volume pick.")
+                make_unit_lo, tool_unit_hi, recommendation) -> str:
+    head = (f"Lowest-cost no-tooling estimate at qty {q_lo}: {make_now.process} "
+            f"({make_now.material}) — ${make_unit_lo}/unit.")
+    picks = "; ".join(f"qty {q}: {pick['process']}" for q, pick in sorted(recommendation.items()))
+    head += f" Costed make-route picks: {picks}."
 
     if tool_champion is not None and q_star is not None and q_star > q_lo:
         crossover_clause = (
-            f" {make_now.process} stays cheapest up to ~{q_star:.0f} units; above "
-            f"~{q_star:.0f}, {tool_champion.process} is cheaper (${tool_unit_hi}/unit "
-            f"at qty {q_hi}).")
+            f" Estimated {tool_champion.process} crossover against the cheapest eligible "
+            f"no-tooling route: ~{q_star:.0f} units. Batch effects can shift this boundary; "
+            f"compare the costed options at your quantity. The tooling estimate is "
+            f"${tool_unit_hi}/unit at qty {q_hi}.")
     else:
-        crossover_clause = (f" {make_now.process} is cheapest at every quantity tested "
-                            f"— no tooling crossover.")
+        crossover_clause = " No tooling crossover identified in this comparison."
 
     tooling_clause = ""
     if tool_champion is not None and not tool_champion.dfm_ready:
         blocker = tool_champion.dfm_blockers[0] if tool_champion.dfm_blockers else "draft DFM"
         tooling_clause = (
-            f" Note: {tool_champion.process} requires design-for-molding — the part "
-            f"currently FAILS draft DFM ({blocker}); the tooling cost shown is 'if "
-            f"redesigned for molding', not a current-capability quote.")
+            f" Note: {tool_champion.process} requires redesign for DFM ({blocker}); "
+            f"its cost is conditional on those changes, not a current-capability quote.")
 
     return head + crossover_clause + tooling_clause

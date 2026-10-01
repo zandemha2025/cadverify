@@ -1,0 +1,42 @@
+{
+  "status": "PASS",
+  "environment": "isolated local Next 3017 \u2192 fault proxy 8018 \u2192 real API 8017/PostgreSQL",
+  "events": [
+    {
+      "method": "POST",
+      "path": "/api/v1/validate",
+      "status": 200,
+      "response_sha256": "854d461b4143bc58c53f88e61f8244ef8d64517739996bc45701ef008a4ad292"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/validate/cost",
+      "source_sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+      "requested_qty": "1,100,1008,2000,5000,10000",
+      "status": 503,
+      "injected": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/validate/cost",
+      "source_sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+      "requested_qty": "1,100,1008,2000,5000,10000",
+      "status": 200,
+      "response_sha256": "38fe43feb8a1ae0ab4bcf46568ea528307eaaa3ccc7c22d78ea365f186e0dc3b",
+      "quantities": [
+        1,
+        100,
+        1008,
+        2000,
+        5000,
+        10000
+      ],
+      "decision": "01M3T6YM7HBRA7PC1NQWPJJ8S1"
+    }
+  ],
+  "validation_requests": 1,
+  "source_and_bom_quantity_preserved": true,
+  "existing_saved_decision_reused": true,
+  "supplier_price_validated": false,
+  "harness_note": "Initial proxy lacked chunked multipart support; corrected before this sequence. Native Retry upload then succeeded."
+}

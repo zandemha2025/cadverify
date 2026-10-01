@@ -1,0 +1,43 @@
+{
+  "findings": [
+    "092",
+    "093"
+  ],
+  "status": "fixed locally; not deployed",
+  "preview_red": "Actual STEP pair had no canvas; native preview assertion failed.",
+  "preview_green": [
+    "Actual bored STEP pair renders solid and ghost in their shared frame, with10mm gap at30mm X.",
+    "Mixed STEP/STL rendering and10mm measurement pass.",
+    "Hide/show preserves the measured result.",
+    "At390px, document and viewport widths both390; both shells fit. Native scrolling reaches collision/clearance cards and tapping the gap opens the10.000mm callout."
+  ],
+  "malformed_red": "20-byte malformed-fit.stl threw out of the Canvas and replaced the entire workspace with Page temporarily unavailable. Input-readiness assertion failed.",
+  "malformed_green": [
+    "Local preview boundary retains file selectors and fit controls.",
+    "Backend still refuses malformedSTL with the real84-byte minimum message and no measurements.",
+    "Replacing the bad file with STEP restores the real mixed-pair preview and10mm measurement."
+  ],
+  "outage_green": [
+    "Stop actual API8017 and replace STL context with real STEP.",
+    "Preview failure retains both STEP files and offers Retry preview; measurement controls remain usable.",
+    "Restore real API and click Retry preview; same files render without re-upload or credentials."
+  ],
+  "implementation": "Reuse fetchPreviewMesh forSTEP/IGES and localSTLLoader forSTL; preserve GLTF nodes/source coordinates and measured transform. Revoke cancelled/stale URLs and gate sources by selected File identity. Use existing Drei Bounds for viewport fit. Local React boundary contains renderer exceptions; explicit retry reloads failed previews.",
+  "checks": {
+    "frontend_tests": 494,
+    "failures": 0,
+    "typecheck": "PASS",
+    "changed_file_lint": "PASS",
+    "production_build": "PASS",
+    "backend_baseline": "091 suite2405passed/3documentedskips; no later backend changes",
+    "runnable_native": "scripts/e2e/context-fit-validation.mjs"
+  },
+  "limits": [
+    "Not deployed.",
+    "Independent two-file IGES native case remains untested.",
+    "OBJ/3MF measurement remains accepted but their previews explicitly unsupported.",
+    "Preview meshes are tessellated browser geometry, separate from fit measurements.",
+    "Production context-fit feature setting remains unverified."
+  ],
+  "cleanup": "Temporary phone tabs closed and viewport reset; API8017 and frontend3017 run directly with documented local QA feature/rate-limit settings."
+}

@@ -1,0 +1,114 @@
+[
+  {
+    "filename": "165-stock-bar-aligned.step",
+    "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "analyses": {
+      "id": 1629,
+      "version": "0.3.35",
+      "result_sha256": "97c21d6b2279941a8749a54fd039d113508cd00ad12b96eca51cc9259c84b37e",
+      "wire_edm": {
+        "verdict": "pass",
+        "score": 1.0,
+        "issues": [
+          {
+            "code": "CONDUCTIVITY_REQUIRED",
+            "scope": "whole_part",
+            "message": "Wire EDM requires electrically conductive material.",
+            "process": "wire_edm",
+            "severity": "info",
+            "fix_suggestion": "Verify material is conductive (metals only). Ceramics / polymers cannot be wire-EDM'd."
+          }
+        ]
+      }
+    },
+    "cost_decisions": {
+      "id": 5604,
+      "version": "0.3.35",
+      "result_sha256": "5600217528cff343e5744077c0821a3c39948c18092dd328cd4a70d70b0eb27a"
+    }
+  },
+  {
+    "filename": "165-stock-bar-rotated.step",
+    "source_sha256": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+    "analyses": {
+      "id": 1628,
+      "version": "0.3.35",
+      "result_sha256": "e0ea03de895a2b05e97114a91e012fa25aba284fb1694b080328682a42a5529f",
+      "wire_edm": {
+        "verdict": "pass",
+        "score": 1.0,
+        "issues": [
+          {
+            "code": "CONDUCTIVITY_REQUIRED",
+            "scope": "whole_part",
+            "message": "Wire EDM requires electrically conductive material.",
+            "process": "wire_edm",
+            "severity": "info",
+            "fix_suggestion": "Verify material is conductive (metals only). Ceramics / polymers cannot be wire-EDM'd."
+          }
+        ]
+      }
+    },
+    "cost_decisions": {
+      "id": 5603,
+      "version": "0.3.35",
+      "result_sha256": "cef8c7e023b454c27ad39083f3a1902a226a0bd87886c2cd1d8440ec32dc0051"
+    }
+  },
+  {
+    "filename": "166-transverse-hole-bar.step",
+    "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+    "analyses": {
+      "id": 1627,
+      "version": "0.3.35",
+      "result_sha256": "763bf5aa0be2dd5eb309a9894aa35e7343eae057086416b20b6458735f126a80",
+      "wire_edm": {
+        "verdict": "pass",
+        "score": 1.0,
+        "issues": [
+          {
+            "code": "CONDUCTIVITY_REQUIRED",
+            "scope": "whole_part",
+            "message": "Wire EDM requires electrically conductive material.",
+            "process": "wire_edm",
+            "severity": "info",
+            "fix_suggestion": "Verify material is conductive (metals only). Ceramics / polymers cannot be wire-EDM'd."
+          }
+        ]
+      }
+    },
+    "cost_decisions": {
+      "id": 5602,
+      "version": "0.3.35",
+      "result_sha256": "6f1d8a9623e8e7364608305f4c013168c1623c2cba4803bf63149cb06949b225"
+    }
+  },
+  {
+    "filename": "156-plate-with-boss.step",
+    "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+    "analyses": {
+      "id": 1630,
+      "version": "0.3.35",
+      "result_sha256": "f9429a473cf130431135d2292a49b1acb4da0a8ef6ad3cf1bf618f0ece6f64ab",
+      "wire_edm": {
+        "verdict": "pass",
+        "score": 1.0,
+        "issues": [
+          {
+            "code": "CONDUCTIVITY_REQUIRED",
+            "scope": "whole_part",
+            "message": "Wire EDM requires electrically conductive material.",
+            "process": "wire_edm",
+            "severity": "info",
+            "fix_suggestion": "Verify material is conductive (metals only). Ceramics / polymers cannot be wire-EDM'd."
+          }
+        ]
+      }
+    },
+    "cost_decisions": {
+      "id": 5605,
+      "version": "0.3.35",
+      "result_sha256": "b09257e681f35a58e894f41010ca46f7338cb161c4c13f5a03850d6e74e3353d"
+    }
+  }
+]

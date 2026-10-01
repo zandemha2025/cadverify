@@ -1,0 +1,130 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD"
+  - paragraph: ACQUISITION CONSIDERATION — TOOLING ALTERNATIVE
+  - button "Close": ✕
+  - heading "Injection Molding — tooling alternative" [level=2]
+  - paragraph: "The lowest-cost no-tooling route varies by quantity. Estimated Injection Molding crossover: ~4,379 units; requires redesign. Compare the costed options at your quantity."
+  - img "Make-vs-acquire crossover":
+    - generic: "1"
+    - generic: 10,000
+  - generic: recommended no-tooling route at each computed quantity
+  - generic: Injection Molding — incl. amortized tooling
+  - generic: crossover ≈ 4,379
+  - generic: AT QUANTITY 5,000 · nearest real point
+  - generic "MODEL — Computed from a DEFAULT assumption — not a measurement.": ○ MODEL
+  - slider "Quantity": "910"
+  - paragraph: MJF (HP) — MAKE NOW
+  - paragraph: $9.59 /unit at this quantity
+  - paragraph: Injection Molding — TOOLING ALTERNATIVE; requires redesign · WINS HERE
+  - paragraph: $8.74 /unit incl. tooling
+  - paragraph: both figures are engine cost-model outputs (○ MODEL — hours & rates modeled from your calibration, not measured). The tooling figure amortizes the engine's fixed tool cost into each unit.
+  - paragraph: Capital & payback, org-wide
+  - paragraph: The engine computes the breakeven quantity (4,379 units). The standalone vendor tool price is not an engine output, so no purchase price is printed here. The org-wide capability ranking below is read from the same makeability projection as Triage.
+  - paragraph: no current triage row names Injection Molding as the single acquisition unlocker
+  - paragraph: "engine note: Lowest-cost no-tooling estimate at qty 1: fdm (PLA) — $38.22/unit. Costed make-route picks: qty 1: fdm; qty 100: mjf; qty 1000: mjf; qty 2000: mjf; qty 5000: mjf; qty 10000: mjf. Estimated injection_molding crossover against the cheapest eligible no-tooling route: ~4379 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $5.74/unit at qty 10000. Note: injection_molding requires redesign for DFM (9694 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.); its cost is conditional on those changes, not a current-capability quote."
+  - button "See parts that need new capability →"
+  - generic: "capability plan source: Triage ranking"
+  - button "Not now"
+- region "Notifications alt+T"
+- alert

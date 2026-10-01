@@ -799,12 +799,20 @@ def dfm_analysis_result_fields(analysis: Analysis | None) -> dict:
             "issue_count": None,
         }
     result = analysis.result_json or {}
-    issues = result.get("issues", [])
+    if "universal_issues" in result or "process_scores" in result:
+        from src.services.catalog_service import scoped_findings
+
+        # Match the linked analysis: part-level issues plus its recommended route,
+        # deduplicated across both. Full analyses have no top-level `issues` list.
+        issue_count = scoped_findings(result, [result.get("best_process") or ""])["total"]
+    else:
+        issues = result.get("issues")  # Legacy quick-analysis shape, if present.
+        issue_count = len(issues) if isinstance(issues, list) else None
     return {
         "analysis_url": f"/api/v1/analyses/{analysis.ulid}",
         "verdict": analysis.verdict or None,
         "best_process": result.get("best_process") or None,
-        "issue_count": len(issues) if isinstance(issues, list) else None,
+        "issue_count": issue_count,
     }
 
 

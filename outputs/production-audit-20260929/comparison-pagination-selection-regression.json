@@ -1,0 +1,68 @@
+{
+  "findings": [
+    "087",
+    "088"
+  ],
+  "environment": "Native Chrome via CUA, local production Next build, real PostgreSQL saved STEP decisions",
+  "selected_record": "01M3R5PQHVPT6BE584E0R6J1J8",
+  "same_cad_default_pair": [
+    "01M3R5PQHVPT6BE584E0R6J1J8",
+    "01M3R5N3JG2VB9XVDMXSX10PA4"
+  ],
+  "pagination": {
+    "control": "GET-only loopback proxy reduces the real cost list page size to 2; responses are not fabricated",
+    "real_records": 42,
+    "verify_older_page_clicks": 20,
+    "standalone_older_page_clicks": 20,
+    "exact_database_id_sets_match": true,
+    "verify_directly_pinned_records_not_duplicated": true,
+    "both_selections_preserved": true,
+    "standalone_labels_distinct": true
+  },
+  "before": {
+    "selected_record_outside_first_page": "A and B blank; shared selected-record assertion failed",
+    "changed_standalone_B": "previous pair prices still shown; assertComparisonCleared failed"
+  },
+  "recovery": {
+    "missing_selected_record": "Real API 404 via zero-ULID lookup; explicit selected-comparison error, no false empty state, Retry restores exact pair",
+    "verify_paging_outage": "4 options and both selected IDs retained; retry adds next 2 real records",
+    "standalone_paging_outage": "4 options and selections retained",
+    "standalone_initial_read_failure": "Real API 404 control; Retry restores first 2 actual decisions",
+    "qa_rate_limit": "Repeated pagination reached the local 60/hour limit. Retry reported429 honestly. Remaining recovery checks used local-only RELEASE unset and RATE_LIMIT_DISABLED=1; production configuration was not changed."
+  },
+  "selection_integrity": {
+    "changing_A_clears_old_result": true,
+    "changing_B_clears_old_result": true,
+    "both_pickers_disabled_while_comparing": true,
+    "pending_control": "2-second delay before forwarding actual compare GET",
+    "new_sphere_pair_q5000": [
+      "$4.22",
+      "$4.22",
+      "no change"
+    ]
+  },
+  "layout": {
+    "desktop_width": 1280,
+    "mobile_widths": [
+      390,
+      320
+    ],
+    "document_overflow": false,
+    "temporary_viewport_reset": true
+  },
+  "checks": {
+    "frontend_tests": 493,
+    "typecheck": "pass",
+    "changed_file_lint": "pass",
+    "production_build": "pass",
+    "browser_checks": "scripts/e2e/compare-route-validation.mjs",
+    "direct_api_connection_restored": true,
+    "temporary_proxy_stopped": true
+  },
+  "limits": [
+    "Not deployed. PR107 approval remains required.",
+    "CI36694513963 is running on previous c02604f and excludes087/088.",
+    "No actual quote, real email, IdP, vendor API or production accuracy certification.",
+    "Whole-API outage redirects an authenticated user to login; separately recorded as open089."
+  ]
+}

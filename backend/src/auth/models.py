@@ -269,18 +269,19 @@ async def get_login_credentials(
         return (int(r[0]), r[1], r[2]) if r else None
 
 
-async def get_user_public(user_id: int) -> tuple[str, str, str] | None:
-    """Return (email, role, auth_provider) for GET /auth/me, else None."""
+async def get_user_public(user_id: int) -> tuple[str, str, str, bool] | None:
+    """Return public account state; never return the password hash."""
     async with _session()() as s:
         r = (
             await s.execute(
                 text(
-                    "SELECT email, role, auth_provider FROM users WHERE id = :u"
+                    "SELECT email, role, auth_provider, password_hash IS NOT NULL "
+                    "FROM users WHERE id = :u"
                 ),
                 {"u": user_id},
             )
         ).first()
-        return (r[0], r[1], r[2]) if r else None
+        return (r[0], r[1], r[2], bool(r[3])) if r else None
 
 
 async def update_password_hash(user_id: int, password_hash: str) -> None:
@@ -293,12 +294,14 @@ async def update_password_hash(user_id: int, password_hash: str) -> None:
         await s.commit()
 
 
-async def set_initial_password_hash(user_id: int, password_hash: str) -> int | None:
-    """Atomically add a password and rotate every existing dashboard session.
+async def set_password_hash(
+    user_id: int, password_hash: str, *, expected_hash: str | None = None,
+) -> int | None:
+    """Atomically set a password, append its audit event and rotate sessions.
 
     Magic-link registration proves control of the email first. This compare-
-    and-set prevents concurrent requests from replacing a credential and keeps
-    ordinary password changes out of a session-only endpoint. Updating the
+    and-set defaults to initial setup only. A change requires the caller to
+    verify the current password and pass that exact hash. Updating the
     password and session version in one statement prevents a committed password
     from being paired with an unrotated session if a second DB call fails.
     """
@@ -308,10 +311,11 @@ async def set_initial_password_hash(user_id: int, password_hash: str) -> int | N
                 text(
                     "UPDATE users SET password_hash = :ph, "
                     "session_version = session_version + 1 "
-                    "WHERE id = :u AND password_hash IS NULL "
+                    "WHERE id = :u AND password_hash IS NOT DISTINCT FROM :expected "
+                    "AND is_active = TRUE "
                     "RETURNING session_version"
                 ),
-                {"ph": password_hash, "u": user_id},
+                {"ph": password_hash, "u": user_id, "expected": expected_hash},
             )
         ).first()
         if row is not None:
@@ -320,7 +324,7 @@ async def set_initial_password_hash(user_id: int, password_hash: str) -> int | N
             await append_audit_entry(
                 s,
                 user_id,
-                "auth.password_initialized",
+                "auth.password_changed" if expected_hash is not None else "auth.password_initialized",
                 "user",
                 str(user_id),
             )

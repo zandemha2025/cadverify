@@ -365,7 +365,33 @@ async def test_batch_progress_reports_exact_completed_failed_skipped_arithmetic(
 
 
 @pytest.mark.asyncio
-async def test_batch_item_and_csv_share_exact_result_fields():
+@pytest.mark.parametrize(
+    ("result", "issue_count"),
+    [
+        ({"issues": [{"code": "LEGACY"}]}, 1),
+        ({}, None),
+        ({"universal_issues": [], "process_scores": []}, 0),
+        (
+            {
+                "universal_issues": [
+                    {"code": "NON_WATERTIGHT", "message": "Open shell"},
+                    {"code": "NOT_SOLID_VOLUME", "message": "No solid"},
+                ],
+                "process_scores": [
+                    {"process": "cnc_milling", "issues": [
+                        {"code": "NON_WATERTIGHT", "message": "Open shell"},
+                        {"code": "TOOL_ACCESS", "message": "Undercut"},
+                    ]},
+                    {"process": "fdm", "issues": [
+                        {"code": "OVERHANG", "message": "Other candidate only"},
+                    ]},
+                ],
+            },
+            3,
+        ),
+    ],
+)
+async def test_batch_item_and_csv_share_exact_result_fields(result, issue_count):
     from src.services import batch_service
 
     item = MagicMock(spec=BatchItem)
@@ -377,12 +403,12 @@ async def test_batch_item_and_csv_share_exact_result_fields():
     analysis = MagicMock(spec=Analysis)
     analysis.ulid = "01ANALYSISBATCHRESULT00001"
     analysis.verdict = "pass"
-    analysis.result_json = {"best_process": "cnc_milling", "issues": [{"id": 1}]}
+    analysis.result_json = {"best_process": "cnc_milling", **result}
     expected = {
         "analysis_url": "/api/v1/analyses/01ANALYSISBATCHRESULT00001",
         "verdict": "pass",
         "best_process": "cnc_milling",
-        "issue_count": 1,
+        "issue_count": issue_count,
     }
     assert batch_service.dfm_analysis_result_fields(analysis) == expected
 
@@ -399,7 +425,7 @@ async def test_batch_item_and_csv_share_exact_result_fields():
         "filename,status,verdict,best_process,issue_count,duration_ms,analysis_url,error"
     )
     assert csv_text.splitlines()[1] == (
-        "fixture.step,completed,pass,cnc_milling,1,125.5,"
+        f"fixture.step,completed,pass,cnc_milling,{'' if issue_count is None else issue_count},125.5,"
         "/api/v1/analyses/01ANALYSISBATCHRESULT00001,"
     )
 
@@ -478,7 +504,14 @@ def test_batch_item_api_and_csv_fields_use_the_same_analysis_identity(monkeypatc
     analysis = MagicMock(spec=Analysis)
     analysis.ulid = "01ANALYSISBATCHRESULT00001"
     analysis.verdict = "pass"
-    analysis.result_json = {"best_process": "cnc_milling", "issues": [{"id": 1}]}
+    analysis.result_json = {
+        "best_process": "cnc_milling",
+        "universal_issues": [
+            {"code": "NON_WATERTIGHT", "message": "Open shell"},
+            {"code": "NOT_SOLID_VOLUME", "message": "No solid"},
+        ],
+        "process_scores": [{"process": "cnc_milling", "issues": []}],
+    }
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_scalar_result(batch))
     monkeypatch.setattr(
@@ -495,7 +528,7 @@ def test_batch_item_api_and_csv_fields_use_the_same_analysis_identity(monkeypatc
     assert row["analysis_url"] == "/api/v1/analyses/01ANALYSISBATCHRESULT00001"
     assert row["verdict"] == "pass"
     assert row["best_process"] == "cnc_milling"
-    assert row["issue_count"] == 1
+    assert row["issue_count"] == 2
     assert row["error_message"] is None
 
 

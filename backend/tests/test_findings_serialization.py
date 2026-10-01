@@ -35,12 +35,56 @@ from src.analysis.processes.base import get_analyzer
 from src.analysis.processes.checks import check_wall_thickness
 from src.analysis.serialization import (
     MAX_SERIALIZED_AFFECTED_FACES,
+    format_measurement,
     serialize_citation,
     serialize_issue,
     serialize_wall_thickness,
 )
 import src.analysis.processes  # noqa: F401  populate registry
 from src.matcher.profile_matcher import rank_processes, score_process
+
+
+def test_formatted_measurements_preserve_comparisons_and_json_stays_finite():
+    import json
+
+    for measured, required in [
+        (0.79999, 0.8), (0.80000000001, 0.8), (0.7999999999999999, 0.8),
+        (0.79999999, 0.80000001), (6.000000001, 6), (1e-8, 0.8),
+        (6000000.1, 6000000), (-0.79999999, -0.80000001), (0.8, 0.8),
+    ]:
+        shown = float(format_measurement(measured, required))
+        limit = float(format_measurement(required, measured))
+        assert (shown < limit, shown > limit) == (measured < required, measured > required)
+        issue = Issue("TEST", Severity.ERROR, "measurement", None,
+                      measured_value=measured, required_value=required)
+        assert json.loads(json.dumps(serialize_issue(issue)))["measured_value"] == measured
+    issue = Issue("TEST", Severity.WARNING, "unavailable", None,
+                  measured_value=float("nan"), required_value=float("inf"))
+    payload = json.loads(json.dumps(serialize_issue(issue), allow_nan=False))
+    assert "measured_value" not in payload and "required_value" not in payload
+
+
+def test_near_threshold_evidence_survives_analysis_cost_and_heatmap_serialization():
+    from src.api.routes import _to_response
+    from src.costing import EstimateOptions, estimate_decision
+
+    result, mesh, ctx = _analyze(trimesh.creation.box(extents=[30, 20, 0.79999]))
+    response = _to_response(result, wall_thickness=ctx.wall_thickness)
+    fdm = next(s for s in response["process_scores"] if s["process"] == "fdm")
+    wall = next(i for i in fdm["issues"] if i["code"] == "THIN_WALL")
+    assert wall["measurement_unit"] == "mm"
+    assert next(i for i in response["priority_fixes"] if i["code"] == "THIN_WALL")["measurement_unit"] == "mm"
+    assert wall["measured_value"] < wall["required_value"] == 0.8
+    assert "0.79999mm" in wall["message"]
+    assert min(response["wall_thickness_map"]["values"]) < 0.8
+    report = estimate_decision(result, mesh, ctx.features, EstimateOptions(quantities=[100]))
+    fdm_estimates = [e for e in report.estimates if e["process"] == "fdm"]
+    assert fdm_estimates
+    for estimate in fdm_estimates:
+        detail = next(i for i in estimate["dfm_blocker_details"] if i["code"] == "THIN_WALL")
+        assert detail["measurement_unit"] == wall["measurement_unit"]
+        assert detail["measured_value"] == wall["measured_value"]
+        assert detail["message"] == wall["message"]
 
 
 # ──────────────────────────────────────────────────────────────
@@ -313,6 +357,45 @@ def test_cost_estimate_carries_structured_blocker_details():
     assert draft["citation"]["standard"]  # structured standard rode through
 
 
+def test_investment_casting_draft_is_tooling_advice_not_a_part_rejection():
+    from src.api.routes import _to_response
+    from src.costing import EstimateOptions, estimate_decision
+
+    for thickness, angle in [(12, 0), (12, 0.7), (0.8, 0)]:
+        mesh = trimesh.creation.box(extents=[80, 12, thickness])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, 0.3]))
+        result, mesh, ctx = _analyze(mesh)
+        scores = {s.process: s for s in result.process_scores}
+        casting = scores[ProcessType.INVESTMENT_CASTING]
+        assert not any(i.code == "INSUFFICIENT_DRAFT" for i in casting.issues)
+        advice = next(i for i in casting.issues if i.code == "PATTERN_TOOLING_REVIEW")
+        assert advice.severity == Severity.INFO
+        assert not advice.affected_faces and advice.required_value is None
+        assert "wax-pattern" in advice.fix_suggestion and "ceramic-core" in advice.fix_suggestion
+        serialized = _to_response(result)
+        detail = next(i for s in serialized["process_scores"]
+                      if s["process"] == "investment_casting" for i in s["issues"]
+                      if i["code"] == "PATTERN_TOOLING_REVIEW")
+        assert detail["scope"] == "whole_part"
+        assert detail["citation"]["standard"] == "Impro Precision"
+        assert casting.verdict == ("fail" if thickness < 1 else "issues")
+        report = estimate_decision(result, mesh, ctx.features,
+                                   EstimateOptions(material_class="aluminum", quantities=[100]))
+        estimates = [e for e in report.estimates if e["process"] == "investment_casting"]
+        assert estimates
+        for estimate in estimates:
+            assert estimate["dfm_ready"] == (thickness >= 1)
+            assert estimate["dfm_verdict"] == casting.verdict
+            codes = {i["code"] for i in estimate["dfm_blocker_details"]}
+            assert "INSUFFICIENT_DRAFT" not in codes
+            assert ("THIN_WALL_MOLDING" in codes) == (thickness < 1)
+        if angle == 0:
+            for process in (ProcessType.INJECTION_MOLDING, ProcessType.DIE_CASTING,
+                            ProcessType.SAND_CASTING, ProcessType.FORGING):
+                assert any(i.code == "INSUFFICIENT_DRAFT" and i.severity == Severity.ERROR
+                           for i in scores[process].issues)
+
+
 def test_cost_dfm_blockers_strings_unchanged_for_legacy_consumers():
     """dfm_blockers stays a list[str] (decision.py / report.py depend on it)."""
     from src.costing import EstimateOptions, estimate_decision
@@ -389,3 +472,26 @@ def test_decimation_issue_serializes_as_whole_part():
     issue = decimation_issue(_Ctx())
     assert issue is not None and issue.code == "DECIMATED_MESH"
     assert serialize_issue(issue)["scope"] == "whole_part"
+
+
+def test_real_geometry_findings_serialize_ratio_and_angle_units():
+    from src.analysis.processes.checks import check_aspect_ratio, check_prismatic, check_bends
+
+    mesh = trimesh.creation.extrude_triangulation(
+        np.array([[0., 0.], [30., 0.], [0., 1.]]), np.array([[0, 1, 2]]), height=10.,
+    )
+    _, ctx = _ctx(mesh)
+    ratio = check_aspect_ratio(ctx, 10, ProcessType.FDM)[0]
+    angle = check_bends(ctx, ProcessType.SHEET_METAL)[0]
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(.5, [1, 1, 0]))
+    _, ctx = _ctx(mesh)
+    assert check_prismatic(ctx, ProcessType.WIRE_EDM) == []
+    for issue, expected in [(ratio, "ratio"), (angle, "deg")]:
+        assert serialize_issue(issue)["measurement_unit"] == expected
+    assert 150 < angle.measured_value < 180
+    assert ratio.measured_value == 30
+    # Old saved percentage findings remain readable; rotation is no longer one.
+    historical = Issue("NOT_PRISMATIC", Severity.ERROR, "old finding", None,
+                       measured_value=80., measurement_unit="percent")
+    assert serialize_issue(historical)["measurement_unit"] == "percent"
+    assert "measurement_unit" not in serialize_issue(Issue("UNKNOWN", Severity.INFO, "unknown", None, measured_value=2))

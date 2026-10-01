@@ -1244,6 +1244,7 @@ class CompareRfqKeyMatrix {
       "user_disposition",
       "user_disposition_label",
       "disposition_note",
+      "disposition_basis",
       "disposition_updated_at",
       "disposition_updated_by_user_id",
       "line_items",
@@ -1292,6 +1293,12 @@ class CompareRfqKeyMatrix {
         packagedCost.estimates.length,
       );
       for (const row of driverCsv.records) {
+        this.equal(
+          id,
+          decision.filename + " driver sourcing basis",
+          row.disposition_basis ? JSON.parse(row.disposition_basis) : null,
+          packagedDecision.disposition_basis ?? null,
+        );
         for (const field of driverGovernanceColumns) {
           this.equal(
             id,

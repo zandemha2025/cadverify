@@ -229,7 +229,7 @@ export default function DesignSystemPage() {
         <Card className="overflow-hidden">
           <DecisionHeadline
             title="Make by MJF (PP)"
-            dfmReady
+            verdict="pass"
             sentence="MJF wins below ~1,962 units; tool up with injection molding above it."
           />
           <div className="space-y-4 p-5">
@@ -274,6 +274,7 @@ export default function DesignSystemPage() {
             feasibility={FEASIBILITY}
             blockers={BLOCKERS}
             costPick="mjf"
+            geometryPick={ROUTING.recommended_process}
             onHighlight={(p) => toast(`Highlight ${p} blocker on the 3D part`)}
           />
         </div>

@@ -1,0 +1,18 @@
+{
+  "filename": "171-profile-bar-rotated.step",
+  "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+  "derived_from": "165-stock-bar-aligned.step",
+  "parent_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+  "rotation_radians": 0.5,
+  "rotation_axis": [
+    1,
+    1,
+    0
+  ],
+  "expected_volume_mm3": 11520,
+  "measured_volume_mm3": 11519.999999999403,
+  "is_volume": true,
+  "face_count": 45666,
+  "old_file_z_prismatic_percent": 0.0,
+  "expected_profile": "straight constant extrusion; same geometry as aligned bar"
+}

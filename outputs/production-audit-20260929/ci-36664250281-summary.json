@@ -1,0 +1,74 @@
+{
+  "run": 36664250281,
+  "head": "f2bd001aea3e3e480f2a80fafee1f267f6fe8355",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36664250281",
+  "status": "completed",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "conclusion": "success"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "conclusion": "success"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "conclusion": "success"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "conclusion": "success"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "conclusion": "success"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "conclusion": "success"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "conclusion": "success"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "conclusion": "failure"
+    }
+  ],
+  "cad_corpus": {
+    "status": "PASS",
+    "cases": 34,
+    "passed": 34,
+    "ftc07": {
+      "id": "NIST-AP203-GEOM-FTC-07",
+      "status": "PASS",
+      "elapsed_sec": 38.766,
+      "inner_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+      "geometry": {
+        "bbox_mm": [
+          311.6,
+          135.9,
+          222.7
+        ],
+        "face_count": 246398,
+        "surface_area_cm2": 3909.71,
+        "volume_cm3": 1725.99,
+        "watertight": true
+      },
+      "failures": []
+    }
+  },
+  "training_failure": {
+    "first_divergence": "step 2, expected stale pinned crossover 923, state was independently verified corrected crossover 4592",
+    "fixture_fix": 4592,
+    "guide_contains_old_number": false,
+    "remaining": "Full training-guide and later training-deck suites must pass on the new head."
+  }
+}

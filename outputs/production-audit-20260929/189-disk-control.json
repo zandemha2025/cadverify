@@ -1,0 +1,13 @@
+{
+  "file": "189-disk-220x8.step",
+  "sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af",
+  "diameter_mm": 220,
+  "height_mm": 8,
+  "volume_mm3": 304106.168867492,
+  "axis_direction": [
+    0.5773502691896258,
+    0.5773502691896258,
+    0.5773502691896258
+  ],
+  "tilted_extent_each_axis_mm": 184.24804995761673
+}

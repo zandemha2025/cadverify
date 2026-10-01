@@ -117,9 +117,11 @@ export function GlassBoxView({
 }) {
   const processes = React.useMemo(() => costedProcesses(report), [report]);
   const quantities = React.useMemo(() => costedQuantities(report), [report]);
+  const defaultProcess = processes.includes(report.decision?.make_now_process ?? "")
+    ? report.decision!.make_now_process : processes[0];
 
   const [process, setProcess] = React.useState(
-    () => report.decision?.make_now_process ?? processes[0]
+    () => defaultProcess
   );
   const [qty, setQty] = React.useState(
     () => quantities[0] ?? report.quantities[0]
@@ -128,7 +130,7 @@ export function GlassBoxView({
   // keep the selection valid if the report changes underneath us
   React.useEffect(() => {
     if (!processes.includes(process)) {
-      setProcess(report.decision?.make_now_process ?? processes[0]);
+      setProcess(defaultProcess);
     }
     if (!quantities.includes(qty)) setQty(quantities[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps

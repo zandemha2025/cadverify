@@ -1,0 +1,39 @@
+{
+  "regression": {
+    "before": "Failed: 1275 exact nearest-surface query points exceeds the work bound of 256; numerical clearance passed.",
+    "after": "Passed with preserved exact mesh clearance."
+  },
+  "focused": "32 passed in 1.10s",
+  "full_backend": "2807 passed, 3 skipped in 248.20s",
+  "protected_skips": [
+    "real corpus manifest not present",
+    "OCP XDE unavailable (2 tests)"
+  ],
+  "changed_source_pyright": {
+    "version": "1.1.411",
+    "errors": 0,
+    "warnings": 0
+  },
+  "bandit": {
+    "new": 0,
+    "existing_low": 2,
+    "medium": 0,
+    "high": 0
+  },
+  "native_api": {
+    "preview_status": 200,
+    "analysis_status": 200,
+    "cost_status": 200,
+    "cost_duration_ms": 9450
+  },
+  "frontend": "Unchanged from final 178 source; existing 525-test/types/lint/build baseline. No frontend test rerun.",
+  "production": "Unchanged; PR107 not approved for merge/deployment.",
+  "private_log_hashes": {
+    "sphere-red.log": "ad17d886b17a3156dff32ab4e83749b6cba4eb845ecc9ca710b3b34a032091f8",
+    "sphere-focused.log": "53d90e7301571ac77e3f7207fe1014e2aba91b272ac0f6ba9006463eff878936",
+    "sphere-backend-full.log": "326b74e128e6d9386776e9006019b5f2624edd91975cb20cb02186907bd7f4b6",
+    "sphere-pyright-final.json": "9877884ffa6c6042f7d168def86988a8bb3aed9dacc99e6b401c2f769046f85d",
+    "sphere-bandit.json": "5cb1e243af6eccc420c161ed9ea638f4ccd68f1eb2e03787df6729b7da3d0836",
+    "sphere-bandit-before.json": "8149c5d4b68d41edd6807a6311d12acd3da6c0869ffb8a1f893202881bbaa3fe"
+  }
+}

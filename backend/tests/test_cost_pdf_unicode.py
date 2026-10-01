@@ -65,3 +65,30 @@ def test_cost_pdf_keeps_special_note_symbols_inline(tmp_path):
     assert "Line 2: $3.80/unit; path C:\\fixtures\\cube.step" in lines
     assert "Disposition: QA edit α/β — “quoted” <tag> & gears ⚙" in lines
     assert "⚙" not in lines, "the symbol must not float onto its own PDF line"
+
+
+def test_cost_pdf_explains_asymptotic_split_and_repeats_table_headers(tmp_path):
+    pdftotext = shutil.which("pdftotext")
+    if not pdftotext:
+        pytest.skip("pdftotext is required for PDF pagination regression coverage")
+
+    decision = _decision()
+    decision.result_json = {"estimates": [{
+        "process": "mjf", "material": "PP", "quantity": 50,
+        "unit_cost_usd": 3.8, "fixed_cost_usd": 0, "variable_cost_usd": 3.48,
+        "line_items": {"material": 0.01, "machine": 0.61, "labor": 2.83, "setup": 0.35},
+    }] * 100}
+    html = render_cost_html(decision)
+    assert "Unit cost = fixed (amortized) + variable" not in html
+    assert "One-time $" in html and "Long-run $/unit" in html
+    pdf_path = tmp_path / "paginated-cost.pdf"
+    pdf_path.write_bytes(_render_cost_pdf_sync(decision, html))
+    pages = subprocess.run(
+        [pdftotext, "-layout", str(pdf_path), "-"],
+        check=True, capture_output=True, text=True,
+    ).stdout.split("\f")
+    assert "mjf" in pages[1]
+    assert "One-time $" in pages[1], "continuation pages must repeat estimate headings"
+    line_item_pages = [p for p in pages if "2.83" in p]
+    assert len(line_item_pages) >= 2
+    assert all("Σ unit" in p for p in line_item_pages), "repeat line-item headings too"

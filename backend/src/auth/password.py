@@ -50,7 +50,7 @@ from src.auth.models import (
     get_user_session_version,
     get_login_credentials,
     get_user_public,
-    set_initial_password_hash,
+    set_password_hash,
     update_password_hash,
 )
 from src.db.engine import get_db_session
@@ -96,6 +96,7 @@ class LoginIn(BaseModel):
 
 class SetInitialPasswordIn(BaseModel):
     password: str = Field(max_length=_PASSWORD_MAX)
+    current_password: str | None = Field(default=None, max_length=_PASSWORD_MAX)
 
 
 class PilotRequestIn(BaseModel):
@@ -475,20 +476,34 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
 
 
 @router.post("/password/initialize")
+@limiter.limit("10/minute;100/hour")
 async def initialize_password(
     body: SetInitialPasswordIn,
+    request: Request,
+    response: Response,
     user_id: int = Depends(require_dashboard_session),
 ) -> dict:
-    """Add a password once, after magic/SSO has proved account ownership."""
+    """Set an initial password, or change one after verifying the current one."""
     _require_password_login()
+    require_auth_proxy_if_enabled(request)
     _validate_password(body.password)
+    expected_hash = None
+    if body.current_password is not None:
+        account = await get_user_public(user_id)
+        creds = await get_login_credentials(normalize_email(account[0])) if account else None
+        candidate = creds[1] if creds and creds[1] else _DUMMY_PASSWORD_HASH
+        valid = await asyncio.to_thread(verify_password, candidate, body.current_password)
+        if not creds or creds[0] != user_id or not creds[1] or not valid:
+            raise _err(401, "invalid_current_password", "The current password is incorrect.")
+        expected_hash = creds[1]
     password_hash = await asyncio.to_thread(hash_password, body.password)
-    version = await set_initial_password_hash(user_id, password_hash)
+    version = await set_password_hash(user_id, password_hash, expected_hash=expected_hash)
     if version is None:
         raise _err(
             409,
-            "password_already_set",
-            "A password is already configured for this account.",
+            "password_changed" if expected_hash else "password_already_set",
+            "The password changed during this request. Sign in again and retry."
+            if expected_hash else "A password is already configured. Enter your current password to change it.",
         )
     # The compare-and-set above rotates every pre-existing session in the same
     # transaction as the credential write. The Next route replaces the caller's
@@ -538,10 +553,11 @@ async def me(user_id: int = Depends(require_dashboard_session)) -> dict:
     if row is None:
         # Valid signature but the user no longer exists.
         raise _err(401, "dashboard_auth_required", "Dashboard session required.")
-    email, role, auth_provider = row
+    email, role, auth_provider, has_password = row
     return {
         "id": user_id,
         "email": email,
         "role": role,
         "auth_provider": auth_provider,
+        "has_password": has_password,
     }

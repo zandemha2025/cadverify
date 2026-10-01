@@ -1,0 +1,63 @@
+{
+  "conclusion": "failure",
+  "headSha": "c868b220d77b6cce3caa646ebcc77476602c716a",
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172",
+  "jobs": [
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310602600"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310602885"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310602905"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310602958"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310602962"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310603109"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110310708786"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110317014090"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172/job/110317014136"
+    }
+  ],
+  "remaining_container_findings": "5 HIGH, 0 CRITICAL: Expat CVE-2026-93990, X11 CVE-2026-88806, Xrender CVE-2026-88807. Backend image scan only; no new waiver. Direct completed-job log inspected in turn 179."
+}

@@ -1,0 +1,39 @@
+{
+  "scope": "Local request independence, partial-result recovery and reset; production unchanged",
+  "tests": {
+    "frontend": 522,
+    "lint": "passed",
+    "production_build_types": "passed",
+    "peer_focused": 13,
+    "peer_actual_callback_checks": 8
+  },
+  "native_checks": {
+    "dfm_failure_first_cost_retained": true,
+    "delayed_dfm_failure_cost_retained": true,
+    "cost_failure_dfm_retained": true,
+    "DFM_retry_cost_POSTs": [
+      3,
+      3
+    ],
+    "reset_pending_upload_enabled": true,
+    "new_part_completes": true,
+    "direct_API_restored": true
+  },
+  "open": "169 quantity-specific header and DFM-ready status scope; stage native layout and clipboard readback unverified",
+  "files": {
+    "168-cost-first-after.txt": "ed2706f08ddaa56ee5573e60c3be3454b4403e1652435b75c0831cfee2df8390",
+    "168-cost-outage.txt": "8b0a74ae4d7b62a5ad89e763c3387149193d88b67be04663f0189df1c512dfec",
+    "168-dfm-first-after.txt": "10e99af78baa495f378ee040e96985977b6fa99ba8fc9ea3389617cee6ca2397",
+    "168-dfm-retained.txt": "c6ba2b06cf13897a717ce70abfdcdf9fb5217fd5bc0b17ebc5cf932f2786a27a",
+    "168-direct-restored.png": "657b76161d2d1457d8358fc7428624a27b2fa9b1d086f658ae662886f56e4096",
+    "168-direct-restored.txt": "ef2f85e13f366533e0703aa7f876e3afe56e7cc593bb1d3f40c18d04156e6eaa",
+    "168-partial-analysis-after.png": "857b2c0d8e5e00c41f2dc2430edf81a4dc5d31b50009938d36dc127ed86aa7ab",
+    "168-partial-analysis-before.png": "b3dae4c9759e29c8cf82e49e1a5c7cb0247549324657cbf5f0a5cf15047e3393",
+    "168-partial-analysis-before.txt": "d79edc038f8bfaf1de11b93b8764f4048ff7b63e93b98bcd519fb00397f42310",
+    "168-proxy-events.json": "79ab413d81f1fd2a9a6c59346e9799e8caee0e6190a842339f61476edae14ded",
+    "168-reset-pending.txt": "0a3f94da0ebeb61683acf40fa4dfb40fc629a19a2349a4b9492d03f105b15126",
+    "168-reset-recovered.txt": "30ef6822e722d8b1b820e4bdfe81f9f38e94e38b1d47f2a2649b6f4bc1da99ed",
+    "168-retry-restored.txt": "eacb9dc405c11ced66749817228af5385472c154f2f680dee6c381e94a8b0d44",
+    "168-saved-readback.json": "c72e3afa8e94c0e754e99cec3aefbf8939014e04615574d755d2d29400baba97"
+  }
+}

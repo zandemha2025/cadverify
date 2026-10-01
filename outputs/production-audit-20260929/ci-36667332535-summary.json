@@ -1,0 +1,21 @@
+{
+  "run": 36667332535,
+  "head": "36b2a499085210619ec17e998feae3c60645c22b",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36667332535",
+  "status": "completed",
+  "conclusion": "failure",
+  "passed_jobs": 8,
+  "failed_job": "Browser E2E (human + enterprise)",
+  "first_divergence": "The pinned CNC headline $133.58 ignored the eligible wire-EDM $110 estimate after the metal-route selector fix. Context declaration stopped before PUT; later program failures were downstream.",
+  "enterprise": {
+    "failed_steps": 4,
+    "golden_passed": 6,
+    "golden_total": 9
+  },
+  "not_reached": [
+    "real CAD corpus",
+    "training guide",
+    "training deck"
+  ],
+  "repair": "Update fixed enterprise oracle and its consumers after independent real-STEP replay; retain assertions and tolerances."
+}

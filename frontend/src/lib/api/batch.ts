@@ -178,6 +178,7 @@ async function apiFetchJson<T>(
  */
 export interface CreateBatchOptions {
   webhookUrl?: string;
+  webhookSecret?: string;
   manifest?: File;
   concurrencyLimit?: number;
   onUploadProgress?: (progress: UploadProgress) => void;
@@ -198,6 +199,9 @@ export async function createBatch(
   file: File,
   options?: CreateBatchOptions,
 ): Promise<BatchCreateResponse> {
+  if (options?.webhookUrl && !options.webhookSecret?.trim()) {
+    throw new Error("A webhook signing secret is required when a webhook URL is provided.");
+  }
   reportUploadProgress(options, {
     stage: "checking",
     percent: null,
@@ -233,6 +237,7 @@ export async function createBatch(
 
   if (options?.webhookUrl) {
     formData.append("webhook_url", options.webhookUrl);
+    formData.append("webhook_secret", options.webhookSecret!);
   }
   if (options?.manifest) {
     formData.append("manifest", options.manifest);

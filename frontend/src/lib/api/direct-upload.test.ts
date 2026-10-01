@@ -26,6 +26,28 @@ function multipartSession(
   };
 }
 
+for (const stage of ["initiate", "complete"] as const) {
+  test(`quota exhaustion during multipart ${stage} does not retry or discard stored work`, async () => {
+    const calls: string[] = [];
+    const file = new File([stage], `quota-${stage}.zip`, { type: "application/zip" });
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input); calls.push(url);
+      if (url === "/api/proxy/uploads/multipart" && stage === "complete") {
+        return Response.json(multipartSession(100, [1]));
+      }
+      if (url.startsWith("https://storage.example.test/")) {
+        return new Response(null, { headers: { etag: "part-etag" } });
+      }
+      return Response.json({ code: "org_quota_exceeded", message: "Daily analyses allowance is used up" }, { status: 429 });
+    };
+    await assert.rejects(uploadBatchZipDirect(file, {
+      fetcher, sleep: async () => { assert.fail("Quota exhaustion must not back off and retry"); },
+    }), /Verification allowance used up/);
+    assert.equal(calls.length, stage === "initiate" ? 1 : 3);
+    assert.ok(calls.every(url => !url.endsWith("/abort")));
+  });
+}
+
 test("multipart upload slices parts, bounds concurrency, and completes in part order", async () => {
   const file = new File(["abcdefghijkl"], "assembly.zip", {
     type: "application/zip",

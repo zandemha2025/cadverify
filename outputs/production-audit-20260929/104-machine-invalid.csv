@@ -1,0 +1,4 @@
+process,name,count,hourly_rate_usd,capabilities
+cnc_3axis,Audit 104 infinite rate,1,Infinity,
+cnc_3axis,Audit 104 invalid enum,1,75,"{""motion_mode"": []}"
+cnc_3axis,Audit 104 nonfinite envelope,1,75,"{""x"":NaN}"

@@ -1,0 +1,149 @@
+{
+  "engine_version": "0.3.22",
+  "records": [
+    {
+      "filename": "155-plate-transformed-0.79999.step",
+      "source_sha256": "7e94cf86040de1342fc21db8ddc04952fe086cee696914a58fbc3d547f3fa530",
+      "analysis_id": 1405,
+      "analysis_version": "0.3.22",
+      "result_sha256": "dd0638c2484fb5959cafecedc917fea6723ec24e8ba3d087585418c499026390",
+      "geometry": {
+        "faces": 48618,
+        "units": "mm",
+        "vertices": 24311,
+        "volume_mm3": 47999.4,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          10073.34,
+          -19836.15,
+          29983.39
+        ],
+        "bounding_box_mm": [
+          333.5,
+          327.8,
+          138.1
+        ],
+        "surface_area_mm2": 120800.0
+      },
+      "fdm_findings": [
+        {
+          "code": "THIN_WALL",
+          "measured_value": 0.7999899966221643,
+          "required_value": 0.8,
+          "message": "47804 faces (98.3%) below 0.8mm min wall for fdm. Thinnest: 0.79999mm."
+        },
+        {
+          "code": "OVERHANG",
+          "measured_value": null,
+          "required_value": null,
+          "message": "23894 faces (49.1%) exceed 45.0\u00b0 overhang threshold for fdm. Supports required."
+        },
+        {
+          "code": "EXCEEDS_BUILD_VOLUME",
+          "measured_value": null,
+          "required_value": null,
+          "message": "Part exceeds build envelope for fdm: X: 333.484mm > 300mm, Y: 327.81mm > 300mm. Bambu Lab X1C / Prusa MK4."
+        }
+      ],
+      "cost_decision_id": 4902,
+      "cost_ulid": "01M3THQNFJPAJPJWENVJ6C92P2",
+      "cost_engine_version": "0.3.22",
+      "cost_result_sha256": "b1a3a4db2182977366fd1e5549e1192d0631377f8258d1c29040b8ad4323208c",
+      "cost_wall_blockers": [
+        {
+          "code": "THIN_WALL",
+          "process": "cnc_3axis",
+          "measured_value": 0.7999899966221643,
+          "required_value": 0.8,
+          "message": "47804 faces (98.3%) below 0.8mm min wall for cnc_3axis. Thinnest: 0.79999mm."
+        },
+        {
+          "code": "THIN_WALL",
+          "process": "cnc_5axis",
+          "measured_value": 0.7999899966221643,
+          "required_value": 0.8,
+          "message": "47804 faces (98.3%) below 0.8mm min wall for cnc_5axis. Thinnest: 0.79999mm."
+        },
+        {
+          "code": "THIN_WALL",
+          "process": "fdm",
+          "measured_value": 0.7999899966221643,
+          "required_value": 0.8,
+          "message": "47804 faces (98.3%) below 0.8mm min wall for fdm. Thinnest: 0.79999mm."
+        }
+      ]
+    },
+    {
+      "filename": "155-plate-transformed-0.8.step",
+      "source_sha256": "5de1e5a04500dd1511c1079a8b5f34951b29c7e972ab9121805fd6ed0720f3f5",
+      "analysis_id": 1420,
+      "analysis_version": "0.3.22",
+      "result_sha256": "59b477ec71efb0797148ba9af96378834798fdbfbf25656fd3f754147ebb8930",
+      "geometry": {
+        "faces": 48630,
+        "units": "mm",
+        "vertices": 24317,
+        "volume_mm3": 48000.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          10073.34,
+          -19836.15,
+          29983.39
+        ],
+        "bounding_box_mm": [
+          333.5,
+          327.8,
+          138.1
+        ],
+        "surface_area_mm2": 120800.0
+      },
+      "fdm_findings": [
+        {
+          "code": "OVERHANG",
+          "measured_value": null,
+          "required_value": null,
+          "message": "23904 faces (49.2%) exceed 45.0\u00b0 overhang threshold for fdm. Supports required."
+        },
+        {
+          "code": "EXCEEDS_BUILD_VOLUME",
+          "measured_value": null,
+          "required_value": null,
+          "message": "Part exceeds build envelope for fdm: X: 333.484mm > 300mm, Y: 327.81mm > 300mm. Bambu Lab X1C / Prusa MK4."
+        }
+      ],
+      "cost_decision_id": 4947,
+      "cost_ulid": "01M3THZ2VD7XTMTN4ZT0GNXQEC",
+      "cost_engine_version": "0.3.22",
+      "cost_result_sha256": "6085d417edfe99d0fc5e5a226acd5e7d6a2cee85b6e498282aa3b4e1c4b6b148",
+      "cost_wall_blockers": []
+    }
+  ],
+  "unchanged_prior_records": [
+    {
+      "table": "analyses",
+      "id": 1398,
+      "version": "0.3.21",
+      "result_sha256": "38591b24f3a453c74bb23122a41e70890695b78cbed1e4e4ab9618ca00c9aed9"
+    },
+    {
+      "table": "analyses",
+      "id": 1337,
+      "version": "0.3.20",
+      "result_sha256": "e09301bdb22365c5174504b4b36f71e63b28a4ec20b5322ba54e2ce1ad17aed2"
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4869,
+      "version": "0.3.21",
+      "result_sha256": "e871b15b8cfc2195df6f6ef53511ea0b402b6e5dea6fddca01a3da951427fc1e"
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4643,
+      "version": "0.3.20",
+      "result_sha256": "611d750a75ed5a3c2e4460663ecd9887c51e4212c88017ed7b122e22c0e3d60a"
+    }
+  ]
+}

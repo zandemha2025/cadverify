@@ -1,0 +1,301 @@
+{
+  "oldRecord": "01M3S5J3S2D8MQADS7FG798BRC",
+  "newRecord": "01M3S63TWJPSB2VSDH5DZKWQ3G",
+  "sourceSha256": "fbb8f571945279eb2d372ff842666eee1f82e6a63da4d40b4fa0238a69c79548",
+  "oldEngine": "0.3.14",
+  "newEngine": "0.3.15",
+  "unchangedGeometryAndFit": true,
+  "unchangedOtherEstimates": true,
+  "finiteAndReconciled": true,
+  "estimateCount": 48,
+  "correctedCosts": [
+    {
+      "process": "cnc_3axis",
+      "quantity": 1,
+      "beforeUsd": 1332.01,
+      "afterUsd": 1762.46
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 100,
+      "beforeUsd": 1219.4,
+      "afterUsd": 1649.85
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 1000,
+      "beforeUsd": 977.22,
+      "afterUsd": 1280.55
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 2000,
+      "beforeUsd": 919.54,
+      "afterUsd": 1192.54
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 5000,
+      "beforeUsd": 852.07,
+      "afterUsd": 1089.58
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 10000,
+      "beforeUsd": 806.94,
+      "afterUsd": 1020.69
+    },
+    {
+      "process": "fdm",
+      "quantity": 1,
+      "beforeUsd": 17725.87,
+      "afterUsd": 26357.52
+    },
+    {
+      "process": "fdm",
+      "quantity": 100,
+      "beforeUsd": 17725.87,
+      "afterUsd": 26357.52
+    },
+    {
+      "process": "fdm",
+      "quantity": 1000,
+      "beforeUsd": 17725.87,
+      "afterUsd": 26357.52
+    },
+    {
+      "process": "fdm",
+      "quantity": 2000,
+      "beforeUsd": 17725.87,
+      "afterUsd": 26357.52
+    },
+    {
+      "process": "fdm",
+      "quantity": 5000,
+      "beforeUsd": 17725.87,
+      "afterUsd": 26357.52
+    },
+    {
+      "process": "fdm",
+      "quantity": 10000,
+      "beforeUsd": 17725.87,
+      "afterUsd": 26357.52
+    }
+  ],
+  "oldDecision": {
+    "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (Delrin (POM)) \u2014 $1332.01/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis; qty 1000: cnc_3axis; qty 2000: cnc_3axis; qty 5000: cnc_3axis; qty 10000: cnc_3axis. Estimated injection_molding crossover against the cheapest eligible no-tooling route: ~77 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $442.53/unit at qty 10000. Note: injection_molding requires redesign for DFM (90384 sidewall faces (100.0% of sidewall area) below 1.0\u00b0 draft for injection_molding.); its cost is conditional on those changes, not a current-capability quote.",
+    "crossover_qty": 77.0,
+    "if_redesigned": {
+      "1": {
+        "caveat": "redesign for DFM",
+        "process": "mjf",
+        "material": "PP (Polypropylene)",
+        "unit_cost_usd": 469.54
+      },
+      "100": {
+        "caveat": "redesign for DFM",
+        "process": "mjf",
+        "material": "PP (Polypropylene)",
+        "unit_cost_usd": 469.54
+      },
+      "1000": {
+        "caveat": "redesign for DFM",
+        "process": "mjf",
+        "material": "PP (Polypropylene)",
+        "unit_cost_usd": 469.54
+      },
+      "2000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "injection_molding",
+        "material": "PP (Molded)",
+        "unit_cost_usd": 466.53
+      },
+      "5000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "injection_molding",
+        "material": "PP (Molded)",
+        "unit_cost_usd": 448.53
+      },
+      "10000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "injection_molding",
+        "material": "PP (Molded)",
+        "unit_cost_usd": 442.53
+      }
+    },
+    "recommendation": {
+      "1": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 7.0,
+        "unit_cost_usd": 1332.01,
+        "lead_high_days": 13.0
+      },
+      "100": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 15.4,
+        "unit_cost_usd": 1219.4,
+        "lead_high_days": 28.6
+      },
+      "1000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 92.4,
+        "unit_cost_usd": 977.22,
+        "lead_high_days": 171.6
+      },
+      "2000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 177.8,
+        "unit_cost_usd": 919.54,
+        "lead_high_days": 330.2
+      },
+      "5000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 434.0,
+        "unit_cost_usd": 852.07,
+        "lead_high_days": 806.0
+      },
+      "10000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 861.0,
+        "unit_cost_usd": 806.94,
+        "lead_high_days": 1599.0
+      }
+    },
+    "tooling_process": "injection_molding",
+    "make_now_process": "cnc_3axis",
+    "make_now_material": "Delrin (POM)",
+    "tooling_dfm_ready": false
+  },
+  "newDecision": {
+    "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (Delrin (POM)) \u2014 $1762.46/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis; qty 1000: cnc_3axis; qty 2000: cnc_3axis; qty 5000: cnc_3axis; qty 10000: cnc_3axis. Estimated injection_molding crossover against the cheapest eligible no-tooling route: ~50 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $442.53/unit at qty 10000. Note: injection_molding requires redesign for DFM (90384 sidewall faces (100.0% of sidewall area) below 1.0\u00b0 draft for injection_molding.); its cost is conditional on those changes, not a current-capability quote.",
+    "crossover_qty": 50.0,
+    "if_redesigned": {
+      "1": {
+        "caveat": "redesign for DFM",
+        "process": "mjf",
+        "material": "PP (Polypropylene)",
+        "unit_cost_usd": 469.54
+      },
+      "100": {
+        "caveat": "redesign for DFM",
+        "process": "mjf",
+        "material": "PP (Polypropylene)",
+        "unit_cost_usd": 469.54
+      },
+      "1000": {
+        "caveat": "redesign for DFM",
+        "process": "mjf",
+        "material": "PP (Polypropylene)",
+        "unit_cost_usd": 469.54
+      },
+      "2000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "injection_molding",
+        "material": "PP (Molded)",
+        "unit_cost_usd": 466.53
+      },
+      "5000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "injection_molding",
+        "material": "PP (Molded)",
+        "unit_cost_usd": 448.53
+      },
+      "10000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "injection_molding",
+        "material": "PP (Molded)",
+        "unit_cost_usd": 442.53
+      }
+    },
+    "recommendation": {
+      "1": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 7.0,
+        "unit_cost_usd": 1762.46,
+        "lead_high_days": 13.0
+      },
+      "100": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 15.4,
+        "unit_cost_usd": 1649.85,
+        "lead_high_days": 28.6
+      },
+      "1000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 92.4,
+        "unit_cost_usd": 1280.55,
+        "lead_high_days": 171.6
+      },
+      "2000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 177.8,
+        "unit_cost_usd": 1192.54,
+        "lead_high_days": 330.2
+      },
+      "5000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 434.0,
+        "unit_cost_usd": 1089.58,
+        "lead_high_days": 806.0
+      },
+      "10000": {
+        "process": "cnc_3axis",
+        "material": "Delrin (POM)",
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 861.0,
+        "unit_cost_usd": 1020.69,
+        "lead_high_days": 1599.0
+      }
+    },
+    "tooling_process": "injection_molding",
+    "make_now_process": "cnc_3axis",
+    "make_now_material": "Delrin (POM)",
+    "tooling_dfm_ready": false
+  },
+  "limitation": "Local controlled CAD. Costs remain assumption-based, not customer quote validation. Production unchanged.",
+  "checks": {
+    "backendPassed": 2455,
+    "documentedLocalSkips": 3,
+    "frontendPassed": 495,
+    "frontendTypesLintBuild": "PASS",
+    "backendTypeErrors": 215,
+    "baselineLimit": 228,
+    "newTypeDiagnosticMessages": 0,
+    "banditMediumHigh": 0,
+    "nativeVerdictAndDriver": "PASS"
+  }
+}

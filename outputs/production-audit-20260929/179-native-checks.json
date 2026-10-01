@@ -1,0 +1,10 @@
+{
+  "filename": "178-priced-envelope-sphere.step",
+  "completedObservedWithinMs": 12798,
+  "previewReady": true,
+  "analysisCompleted": true,
+  "pricedEnvelopeWithholdingRetained": true,
+  "costBreakdownVisible": true,
+  "quantity100Pressed": true,
+  "limitation": "Timing bounds browser observation, not a browser performance trace. Local deployment only."
+}

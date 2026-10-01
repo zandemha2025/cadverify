@@ -5,6 +5,7 @@
  */
 import type { CostReport, CostEstimate, CostDriver } from "@/lib/api";
 import type { Prov } from "./tokens";
+import { recommendationForQty } from "../cost-decision.ts";
 
 /** Normalise the engine's provenance string to a Prov key. Inlined (not imported
  *  at runtime) so this pure module stays free of runtime relative imports and can
@@ -16,11 +17,18 @@ function normProv(p: string | null | undefined): Prov {
   return "DEFAULT";
 }
 
-/** The make-now route's estimate at a given quantity (drivers/confidence/lead). */
+/** The engine's recommended estimate at a quantity; absent qty retains the
+ * prototype process's amortized read for existing record summaries. */
 export function makeNowEstimate(
   cost: CostReport,
   qty?: number
 ): CostEstimate | null {
+  if (qty != null && Object.keys(cost.decision?.recommendation ?? {}).length > 0) {
+    const pick = recommendationForQty(cost.decision, qty);
+    return pick ? cost.estimates.find((e) =>
+      e.quantity === qty && e.process === pick.process && e.material === pick.material && !e.environment_excluded
+    ) ?? null : null;
+  }
   const proc = cost.decision?.make_now_process;
   const estimates = cost.estimates.filter((e) => !e.environment_excluded);
   const pool = proc
@@ -28,8 +36,7 @@ export function makeNowEstimate(
     : estimates;
   if (pool.length === 0) return null;
   if (qty != null) {
-    const exact = pool.find((e) => e.quantity === qty);
-    if (exact) return exact;
+    return pool.find((e) => e.quantity === qty) ?? null;
   }
   // otherwise the largest-quantity estimate (setup fully amortized = the stable read)
   return pool.reduce((a, b) => (b.quantity > a.quantity ? b : a));
@@ -127,12 +134,13 @@ export function toolingEstimate(
 /** qty → unit cost (USD) for a process, from the engine's estimates only. */
 export function unitCostByQty(
   cost: CostReport,
-  process: string | null | undefined
+  process: string | null | undefined,
+  material?: string,
 ): Map<number, number> {
   const out = new Map<number, number>();
   if (!process) return out;
   for (const e of cost.estimates) {
-    if (e.process === process && !e.environment_excluded) {
+    if (e.process === process && !e.environment_excluded && (!material || e.material === material)) {
       out.set(e.quantity, e.unit_cost_usd);
     }
   }

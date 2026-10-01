@@ -1,0 +1,30 @@
+[
+  {
+    "filename": "141-cylinder-r5-h40-axis.stl",
+    "sha256": "7f97dfd4aec80e40c5e6d4b4048671e66b0e5d0a47619976d4be7717819be85a",
+    "angle_rad": 0,
+    "rotation_axis": [
+      1,
+      2,
+      3
+    ],
+    "radius_mm": 5,
+    "length_mm": 40,
+    "analytic_cylinder_volume_mm3": 3141.5926535897934,
+    "polygon_mesh_volume_mm3": 3139.350203046867
+  },
+  {
+    "filename": "141-cylinder-r5-h40-oblique.stl",
+    "sha256": "f6f4d3f12e0e81297312e77e1d085525b8df6da6c44cd5653fcead1b741af3b9",
+    "angle_rad": 1.2,
+    "rotation_axis": [
+      1,
+      2,
+      3
+    ],
+    "radius_mm": 5,
+    "length_mm": 40,
+    "analytic_cylinder_volume_mm3": 3141.5926535897934,
+    "polygon_mesh_volume_mm3": 3139.350203046867
+  }
+]

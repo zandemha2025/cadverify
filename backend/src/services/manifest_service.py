@@ -41,6 +41,7 @@ from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
 
 from src.db.models import Analysis, ManifestPart
 # Reuse the EXACT material-class vocabulary the ground-truth importer validates
@@ -177,6 +178,9 @@ def parse_manifest_csv(text: str):
             if val <= 0:
                 row_errs.append(f"{name} must be > 0 (got {val})")
                 continue
+            if val > 2_147_483_647:
+                row_errs.append(f"{name} must be at most 2147483647")
+                continue
             int_values[name] = val
 
         material_class = cell(record, "material_class")
@@ -250,33 +254,38 @@ async def import_manifest(
     for idx, payload in enumerate(rows):
         part_id = payload["part_id"]
         try:
-            existing = (
-                await session.execute(
-                    select(ManifestPart).where(
-                        ManifestPart.org_id == org_id,
-                        ManifestPart.part_id == part_id,
+            async with session.begin_nested():
+                existing = (
+                    await session.execute(
+                        select(ManifestPart).where(
+                            ManifestPart.org_id == org_id,
+                            ManifestPart.part_id == part_id,
+                        )
                     )
-                )
-            ).scalar_one_or_none()
+                ).scalar_one_or_none()
 
+                if existing is None:
+                    row = ManifestPart(
+                        org_id=org_id,
+                        part_id=part_id,
+                        created_by=created_by,
+                        **{f: payload[f] for f in _DECLARED_FIELDS},
+                    )
+                    session.add(row)
+                    await session.flush()
+                else:
+                    for f in _DECLARED_FIELDS:
+                        setattr(existing, f, payload[f])
+                    existing.updated_at = now
+                    await session.flush()
             if existing is None:
-                row = ManifestPart(
-                    org_id=org_id,
-                    part_id=part_id,
-                    created_by=created_by,
-                    **{f: payload[f] for f in _DECLARED_FIELDS},
-                )
-                session.add(row)
-                await session.flush()
                 imported += 1
             else:
-                for f in _DECLARED_FIELDS:
-                    setattr(existing, f, payload[f])
-                existing.updated_at = now
-                await session.flush()
                 updated += 1
-        except Exception as exc:  # per-row failure — report, never crash batch
-            errors.append({"line": None, "index": idx, "reason": str(exc)})
+        except DBAPIError as exc:
+            if exc.connection_invalidated or str(getattr(exc.orig, "sqlstate", ""))[:2] not in {"22", "23"}:
+                raise  # Availability/schema failures must abort the request.
+            errors.append({"line": None, "index": idx, "reason": "The row could not be saved. Check its values and identifiers."})
 
     skipped = len(rows) - imported - updated
     return {

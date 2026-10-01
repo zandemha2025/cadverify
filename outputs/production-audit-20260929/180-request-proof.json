@@ -1,0 +1,214 @@
+{
+  "local_controlled_http_504": true,
+  "source_step": "shape-controls/165-stock-bar-aligned.step",
+  "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+  "phases": {
+    "dfm_before": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 504,
+        "injected": true
+      }
+    ],
+    "cost_before": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 200
+      }
+    ],
+    "dfm_after_default_options": [
+      {
+        "method": "GET",
+        "path": "/auth/me",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/shops",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 200
+      }
+    ],
+    "dfm_after": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 200
+      }
+    ],
+    "dfm_retry": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 200
+      }
+    ],
+    "cost_after": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 200
+      }
+    ],
+    "cost_retry_before_wiring_fix": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 200
+      }
+    ],
+    "cost_final_after": [
+      {
+        "method": "GET",
+        "path": "/auth/me",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/shops",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      }
+    ],
+    "cost_retry_final": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 200
+      }
+    ],
+    "both_after": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 504,
+        "injected": true
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/preview-mesh",
+        "status": 200
+      }
+    ],
+    "both_retry": [
+      {
+        "method": "POST",
+        "path": "/api/v1/validate",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/validate/cost",
+        "status": 200
+      }
+    ]
+  },
+  "dfm_attempts_before": 3,
+  "dfm_attempts_after": 1,
+  "cost_retry_retains_healthy_dfm": true,
+  "both_failed_requests_recover_once": true,
+  "limits": [
+    "Fault proxy emits the real deadline response shape without spending60s on CPU. Does not establish termination of backend executor threads.",
+    "Native verification uses the currently enabled tab layout. The alternate hero uses the same callback and type-checks; native hero verification remains open.",
+    "Initial rebuilt-page replay used default polymer quantities50,5000; retained separately from final aluminum quantities1,100 checks."
+  ],
+  "normal_local_connection_restored": true
+}

@@ -1,0 +1,39 @@
+{
+  "issue": "Axis swaps alone falsely rejected diagonal enclosing-box placements across DFM, owned-machine fit and additive pricing.",
+  "change": "Reuse the existing continuous 2D bed-fit solver on box faces after preserving already-fitting axis permutations. Fit and cost share the placement.",
+  "engine_version": "0.3.43",
+  "independent_geometry_oracle": "At 45 degrees, a length L by 12mm bar spans (L+12)/sqrt(2) on each horizontal axis: 185.2619767 for L250, 291.3279938 for L400.",
+  "cost_oracle": "250mm bar volume36cm3: material36*1.24/1000*25*1.1 + machine(36/16+12/25)*10*.65 + labor.3*35 + setup.25*35 = 38.2226 USD per part, rounded38.22. One part/build forces setup at every quantity.",
+  "limitations": [
+    "Positive placement only; no exhaustive 3D non-fit proof.",
+    "No support, access or nesting-plan certification.",
+    "400mm FDM price remains withheld in the smaller priced250mm cube; the generic300x300x350 DFM chamber is a separate check.",
+    "Other before/after findings and non-additive prices are preserved; existing rotated400mm molding tooling disparity remains open.",
+    "No deployment or claim that every visible feature is accurate."
+  ],
+  "artifacts": {
+    "185-250-aligned-after.txt": "5ba7b0b27cf95985e6ae33c930423813cffff1f2f636cb74ccd5a4529ab03632",
+    "185-250-aligned-before.txt": "56b8c57c7dce928efa704abf09a46fe76396644c01fbecce02fd6d384e876b9d",
+    "185-250-owned-before.txt": "cd83d73710bec35ef3e13f25cd84615e69f58fd1b68e42c613446f905c35796a",
+    "185-250-rotated-after.txt": "f8fe8e41dd5f850aeb36f8e30a91029a3ec678af2e339e268006c2ceaa235fef",
+    "185-250-rotated-before.txt": "a7444421f097254138df3ae820a73d6af38a24e65272d1f147c8b54617503b19",
+    "185-400-aligned-after.txt": "c2f36a408281dba31c354f9693932266a8e2ca812fb220cffaf6158b2d0273c0",
+    "185-400-aligned-before.txt": "823540847c7d0bf3976ee5ccc1aa3e9fdeb3481f0c582cc08ec3e4562745fa51",
+    "185-400-rotated-after.txt": "ce3679ff6b3f2764d7f9d19280e655f95c3687503ef923b0344989c01c3cf4ac",
+    "185-400-rotated-before.txt": "fe154c14c3562509b57afffb1b23a7ea2238a42beac5358698fb61776cdc6913",
+    "185-checks.json": "7386cd5eb9c5a6af0c6bc687b8e9ec85a64ad6b4ed28d25034940dc5e5791eaa",
+    "185-diagonal-250-aligned.step": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+    "185-diagonal-250-rotated.step": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+    "185-diagonal-400-aligned.step": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+    "185-diagonal-400-rotated.step": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+    "185-diagonal-after.png": "69be724aaba9d0042edd861ce185b3e5a950cac62a14f05033b1675b4c890522",
+    "185-diagonal-before.png": "1e01d7cb2f0201421f99035ec9ccc49f8b9cf791176680fffd181dbc6df70e39",
+    "185-diagonal-controls.json": "4800de41e7dd347c6cd2b1c5863ec017421613d1572c2a6fe24b2f5b81f337d1",
+    "185-diagonal-controls.py": "33603ad6ad127a2401a35417bfbcac5b19ca7a2500454270f696243da2ed6e9a",
+    "185-machine-after.png": "64e23d93a0b15800b49464e6b9b267441e778c73a2678139546d12c571545077",
+    "185-machine-after.txt": "58cb978b6bcecdf5e6c313c8636d9bd61e1cba945b9f72a5530958c7046d8974",
+    "185-machine-before.txt": "5caf114a0176255d5eceebd17fc8d0200a8bd9f7cc684cfea7428b03fb1094df",
+    "185-saved-before.json": "e2c06c0dcb028cf3596f3d399c50dbfb2b1fec8fc1046f8c1c813ae79547cab8",
+    "185-saved-readback.json": "996013106522c716381417dff0eb930b6775c413e12b69fe1a9b1625671f4a01"
+  }
+}

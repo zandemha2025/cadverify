@@ -1,0 +1,30 @@
+{
+  "finding": "086",
+  "environment": "local native Chrome, real STEP decisions, production Next build",
+  "before": {
+    "a": "01M3RR348KARFPN58EASHH8ZVD",
+    "incorrect_default_b": "01M3RK0AGB5F4G386CMJM2AT29",
+    "claim": "Same part / calibration comparison",
+    "recommended_route_delta_pct": -17.5
+  },
+  "after": {
+    "default_a": "01M3RR348KARFPN58EASHH8ZVD",
+    "default_b": "01M3RGVP9JGHDNP6RG30WH24NW",
+    "same_cad_despite_different_names": true,
+    "different_cad_when_explicitly_chosen_is_disclosed": true,
+    "injection_molding_redesign_labels_preserved": 2,
+    "other_driver_noise_claim_removed": true
+  },
+  "checks": {
+    "frontend_tests": 493,
+    "typecheck": "pass",
+    "changed_lint": "pass",
+    "production_build": "pass",
+    "native_identity_assertion": "RED then GREEN"
+  },
+  "limits": [
+    "not deployed",
+    "picker limited to100 recent decisions",
+    "not proof of real quote accuracy"
+  ]
+}

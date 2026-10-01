@@ -1,0 +1,93 @@
+{
+  "scope": "Local production frontend build; generated audit STEP only. Not deployed.",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "cost": {
+    "quantities": [
+      1,
+      923,
+      4591,
+      4592,
+      5000,
+      10000
+    ],
+    "recommendations_usd": [
+      30,
+      3.49,
+      3.48,
+      3.48,
+      3.48,
+      3.48
+    ],
+    "crossover": 4592,
+    "requires_redesign": true,
+    "confidence_process": "fdm",
+    "confidence_quantity": 1,
+    "confidence_band_usd": [
+      18,
+      42
+    ],
+    "public_fields_equal_native_saved_export": [
+      "geometry",
+      "decision",
+      "estimates",
+      "assumptions",
+      "notes",
+      "engine_feasibility",
+      "routing",
+      "status"
+    ],
+    "forbidden_nested_identity_paths": [],
+    "copy_verified_by_native_paste": true,
+    "revoke_api_status": 404,
+    "revoke_proxy_status": 404,
+    "revoke_browser_heading": "Cost decision not available",
+    "reshare_uses_new_link": true,
+    "old_link_remains_404_after_reshare": true,
+    "reshare_payload_unchanged": true,
+    "both_cost_links_revoked_at_end": true
+  },
+  "analysis": {
+    "id": "01M3R06AR7ZJ2225G7S2NPSW6S",
+    "public_fields_equal_stored": [
+      "geometry",
+      "process_scores",
+      "universal_issues",
+      "best_process",
+      "priority_fixes"
+    ],
+    "recommended_route": "fdm",
+    "processes": 21,
+    "universal_issues": 0,
+    "process_findings": 22,
+    "visible_process_findings_after_expanding": 22,
+    "injection_molding_findings": 4,
+    "dimensions_mm": [
+      20,
+      15,
+      10
+    ],
+    "mobile_viewport_px": 390,
+    "mobile_document_width_px": 375,
+    "mobile_table_container_width_px": 341,
+    "mobile_table_scroll_width_px": 645,
+    "mobile_table_overflow": "auto",
+    "revoke_api_status": 404,
+    "revoke_proxy_status": 404,
+    "revoke_browser_heading": "Analysis not available",
+    "stored_is_public_after_revoke": false,
+    "stored_share_short_id_after_revoke": null
+  },
+  "checks": {
+    "native_cua_cost_regression": "red -> green",
+    "native_cua_analysis_regression": "red -> green",
+    "frontend_tests_passed": 487,
+    "typecheck": "PASS",
+    "changed_file_lint": "PASS",
+    "production_build": "PASS"
+  },
+  "limits": [
+    "Native public pages used the existing signed-in Chrome profile; unauthenticated access and revocation were separately proven with cookie-free HTTP requests.",
+    "Public shares intentionally expose report content; tests used generated geometry and default rates, not confidential CAD.",
+    "Production and real external email/IdP/vendor/quote proof remain open."
+  ]
+}

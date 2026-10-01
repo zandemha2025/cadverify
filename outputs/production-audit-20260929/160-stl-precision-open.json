@@ -1,0 +1,12 @@
+{
+  "filename": "160-rotated-float32.stl",
+  "source_sha256": "035c027b337ffa52e25670607f5bf112beb51af92ad63e5ccfd0daee41a7e0c1",
+  "analytic_gauge_mm": 0.5,
+  "before_serialization_dimensions": [
+    0.5000000000000417,
+    20.000000000000032,
+    30.000000000000007
+  ],
+  "after_binary_stl_dimensions": null,
+  "status": "OPEN: float32 coordinate quantization prevents constant-gauge verification; STEP fix does not resolve this format-precision issue"
+}

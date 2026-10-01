@@ -25,6 +25,7 @@ Design notes (the four findings-API fixes this file carries):
 
 from __future__ import annotations
 
+import math
 from typing import Any, Optional, Sequence
 
 from src.analysis.models import Citation, Issue
@@ -34,6 +35,18 @@ from src.analysis.models import Citation, Issue
 # reconstructable, yet bounded so worst-case response size stays sane. Override
 # only with a matching update to the truncation contract below.
 MAX_SERIALIZED_AFFECTED_FACES = 2000
+
+
+def format_measurement(value: float, reference: float | None = None) -> str:
+    """Compact display without changing a measured-versus-limit comparison."""
+    if not math.isfinite(value):
+        return "unavailable"
+    shown = f"{value:.6g}"
+    if reference is not None and math.isfinite(reference):
+        rounded, limit = float(shown), float(f"{reference:.6g}")
+        if (rounded < limit) != (value < reference) or (rounded > limit) != (value > reference):
+            return repr(float(value))
+    return shown
 
 
 def serialize_citation(citation: Optional[Citation]) -> Optional[dict]:
@@ -83,10 +96,13 @@ def serialize_issue(
 
     if issue.region_center:
         d["region_center"] = [round(c, 2) for c in issue.region_center]
-    if issue.measured_value is not None:
-        d["measured_value"] = round(issue.measured_value, 3)
-    if issue.required_value is not None:
-        d["required_value"] = issue.required_value
+    if issue.measured_value is not None and math.isfinite(issue.measured_value):
+        d["measured_value"] = float(issue.measured_value)
+    if issue.required_value is not None and math.isfinite(issue.required_value):
+        d["required_value"] = float(issue.required_value)
+
+    if issue.measurement_unit is not None and ("measured_value" in d or "required_value" in d):
+        d["measurement_unit"] = issue.measurement_unit
 
     citation = serialize_citation(issue.citation)
     if citation is not None:
@@ -116,7 +132,7 @@ def serialize_wall_thickness(
 
     arr = np.asarray(wall_thickness, dtype=float)
     values = [
-        (None if not np.isfinite(v) else round(float(v), 4))
+        (None if not np.isfinite(v) else float(v))
         for v in arr.tolist()
     ]
     payload: dict[str, Any] = {
@@ -124,7 +140,9 @@ def serialize_wall_thickness(
         "units": "mm",
         "values": values,
         "note": (
-            "Per-face inward-ray wall thickness aligned to the analyzed mesh "
+            "Sampled inward-ray wall thickness on the analyzed mesh; unsampled faces "
+            "may contain nearest-sample estimates. Values describe uploaded coordinates, "
+            "not certified source-CAD dimensions. Aligned to the analyzed mesh "
             "face indices (same index space as issue.affected_faces_sample). "
             "null = uncomputable (open/degenerate face)."
         ),

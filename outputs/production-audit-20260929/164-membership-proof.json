@@ -1,0 +1,46 @@
+{
+  "status": "fixed locally; full goal incomplete",
+  "engine_version": "0.3.33 (unchanged)",
+  "root_causes": [
+    "Deduplication discarded affected-process membership.",
+    "Grouping by code/location merged different severities, thresholds and advice.",
+    "Process links selected the first generic advisory instead of the real blocker.",
+    "Complete face unions retained the first count; incomplete sample overlap is unknowable."
+  ],
+  "changes": [
+    "One shared analysis/cost collector retains process membership and uses complete evidence identity.",
+    "Matching findings share labels; different evidence receives distinct selection keys.",
+    "Complete face union metadata is copied, never mutating stored payloads; incomplete samples remain distinct.",
+    "Both workspace process links use existing highestPriorityIssue.",
+    "Alternate stage cost blocker list states across costed processes and displays membership."
+  ],
+  "checks": {
+    "frontend_full": "519 passed,0 failed/skip;620.11ms",
+    "types_lint_build": "Final TypeScript, changed-source ESLint and production build passed",
+    "initial_red": "4 membership failures; later cost-key and grouped-evidence regressions each failed before fix",
+    "native": "Actual 6.001mm STL through browser;19+4 membership comparisons;11 process-specific evidence checks;CNC3 required and CNC5 advisory 3D selections correct",
+    "stored_results": "102 earlier analyses+111 earlier cost records+10 precision controls retain canonical hashes",
+    "peer_review": "No additional findings in grouping/keys/face totals/priority after42 focused and100 generated cases; identified alternate-layout scope label, subsequently fixed with types/lint/build. No final native claim for that disabled layout."
+  },
+  "production_unchanged": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+  "publication": "Local only pending protected CI36816843113 (published dbf5873) completion; seven jobs pass and browser/container active at checkpoint.",
+  "remaining": [
+    "Orientation-dependent non-sheet stock/build/DFM and bent-sheet geometry.",
+    "Customer CAD/quotes and physical accuracy.",
+    "Real email, company IdP/SCIM and vendor/service success proof.",
+    "Five known HIGH backend-image findings; production preflight, explicit PR107 approval and live validation."
+  ],
+  "evidence_sha256": {
+    "164-cnc-blocker-after.png": "efda0ffbc8fb3a28f99047f31fcd1b9eddc5b481a951b4cbb40f1b74d6027a27",
+    "164-cnc-blocker-after.txt": "63c16e844a3906341038ef127e23c5ffcf32bdc094f0a54d09dd2358a61a8daa",
+    "164-cnc-five-axis-after.txt": "64df5330456ad7db8482c924cdec28ce35354d3201f70511be594d5df2a350c9",
+    "164-membership-after.png": "56868fd0e09a832af208477ee4b884689933b0e5451394e540fb1217690cbdca",
+    "164-membership-after.txt": "b35eb970bcc66d14c53ed824a5e77fd830954d76981fb9ed64c66520eee46684",
+    "164-membership-before.png": "bc38cae485312f003860b894bf4e9ce04ab9cb6ee88209fe2c9955d9f4f22eb3",
+    "164-membership-before.txt": "3a0b494a42c9e3b3f4013e91505d2a422f62f433cd8b952a7fef621961431cc0",
+    "164-membership-source.json": "c1c4d2d69587906f9f40249320af7c7046a1fc6c13b05702c66c83aac8004c4a",
+    "164-native-checks.json": "7aa42d294b0db095b50e906a946495b97ceb087a285567f346278c6293173b81",
+    "164-process-evidence-source.json": "535599540030f36de69f16492845c2befdbec4c576f09ff3cc4784b67d6c844e",
+    "164-saved-readback.json": "b6a44736f68ea1dff6ebb87623a4c2127c89fa75751e8ad55b5576fd9d089649"
+  }
+}

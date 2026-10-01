@@ -157,8 +157,8 @@ def test_unlock_not_on_owned_single_envelope_gate():
     assert f["unlock_process"] == "cnc_5axis"
     assert f["unlock_gate"] == "envelope"
     assert f["unlock_single"] is True
-    assert f["unlock_need_num"] == 380.0
-    assert f["unlock_need_label"] is None
+    assert f["unlock_need_num"] is None  # an axis/diameter bound is not a machine size
+    assert f["unlock_need_label"] == pr["cnc_5axis"]["failures"][0]["human"]
     assert f["makeability_gap"]["kind"] == "upgrade"
 
 
@@ -227,8 +227,9 @@ def test_rank_orders_by_parts_unlocked_desc():
     top = r[0]
     assert top["acquisition"]["kind"] == "upgrade"
     assert top["acquisition"]["process"] == "cnc_5axis"
-    # envelope spec aggregates to the MAX need (must clear the largest blocked part)
-    assert top["acquisition"]["spec"]["work_envelope_mm_min"] == 420.0
+    # Legacy scalar gaps cannot prove the full XYZ spec of a fitting machine.
+    assert top["acquisition"]["spec"]["work_envelope_mm_min"] is None
+    assert "verified against each part" in top["acquisition"]["spec"]["summary"]
     # the pure-acquire entry names the process, no fabricated dollar anywhere
     acq = r[1]["acquisition"]
     assert acq["kind"] == "acquire" and acq["gate"] is None
@@ -364,6 +365,51 @@ async def _cleanup(fx):
 
 @_requires_pg
 @pytest.mark.asyncio
+async def test_pg_cost_dedup_retains_changed_machine_and_cost_evidence():
+    """Same upload/form parameters may produce new inventory/rate/calibration evidence."""
+    import copy
+    import json
+    import src.db.engine as eng
+
+    fx = _Fixture(uuid.uuid4().hex[:8])
+    try:
+        async with eng.get_session_factory()() as s:
+            org = await fx.org(s, "snap")
+            user = await fx.user(s, org, "snap")
+            original = _cost_json(verdict="makeable_outsource_only")
+            original["decision"]["recommendation"] = {10: {"process": "cnc_3axis"}}
+            first = await _persist_cost(s, user, fx.tag, original, params="same-form")
+            await s.commit()
+
+            changed = copy.deepcopy(original)
+            changed["verification"] = _verif("makeable_in_house")
+            changed["verification"]["best_machine"] = "New CNC"
+            second = await _persist_cost(s, user, fx.tag, changed, params="same-form")
+            await s.commit()
+            assert second.id != first.id
+            assert second.result_json == changed
+            assert first.result_json == original  # historical evidence is immutable
+
+            changed_rate = copy.deepcopy(changed)
+            changed_rate["estimates"][0]["unit_cost_usd"] = 18.75
+            changed_rate["estimates"][0]["confidence"]["validated"] = True
+            third = await _persist_cost(s, user, fx.tag, changed_rate, params="same-form")
+            await s.commit()
+            assert third.id not in {first.id, second.id}
+            # JSONB round-trips quantity keys to strings; that is not a new result.
+            repeated = await _persist_cost(
+                s, user, fx.tag, json.loads(json.dumps(changed_rate)), params="same-form",
+            )
+            assert repeated.id == third.id
+            await s.commit()
+            roll = await svc.build_makeability_rollup(s, org)
+            assert roll["summary"]["makeable_in_house"] == 1
+    finally:
+        await _cleanup(fx)
+
+
+@_requires_pg
+@pytest.mark.asyncio
 async def test_pg_migration_0023_in_chain():
     """After ``alembic upgrade head`` the 0023 columns + org-leading indexes exist
     on ``part_summaries`` — proving the migration is in the chain and applied."""
@@ -440,8 +486,9 @@ async def test_pg_two_org_isolation_rollup_and_ranking():
             assert top["acquisition"]["process"] == "cnc_5axis"
             assert top["acquisition"]["gate"] == "envelope"
             assert top["parts_unlocked"] == 2
-            # spec aggregates to the MAX blocked dimension (420, not 380)
-            assert top["acquisition"]["spec"]["work_envelope_mm_min"] == 420.0
+            # Stored scalar bounds cannot establish a fitting XYZ machine spec.
+            assert top["acquisition"]["spec"]["work_envelope_mm_min"] is None
+            assert "verified against each part" in top["acquisition"]["spec"]["summary"]
             # B's forging acquisition NEVER appears in A's ranking
             procs_a = {e["acquisition"]["process"] for e in rank_a["ranking"]}
             assert "forging" not in procs_a

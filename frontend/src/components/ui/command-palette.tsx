@@ -103,20 +103,27 @@ export function CommandPaletteProvider({
   const [active, setActive] = React.useState(0);
   const [showDev, setShowDev] = React.useState(DEV_TOOLS_ENV);
   const listRef = React.useRef<HTMLDivElement>(null);
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => setShowDev(devToolsEnabled()), []);
 
   // ⌘K / Ctrl-K anywhere summons the palette; Esc is handled by Radix.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        const workspaceTrigger = !open && document.querySelector<HTMLButtonElement>("[data-workspace-command-trigger]");
+        if (workspaceTrigger) {
+          workspaceTrigger.click();
+          return;
+        }
         setOpen((o) => !o);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [open]);
 
   const openPalette = React.useCallback(() => setOpen(true), []);
 
@@ -203,10 +210,18 @@ export function CommandPaletteProvider({
           <Dialog.Overlay className="fixed inset-0 z-[80] bg-neutral-950/55 backdrop-blur-[2px]" />
           <Dialog.Content
             onOpenAutoFocus={(e) => {
+              returnFocusRef.current = document.activeElement instanceof HTMLElement
+                ? document.activeElement : null;
               // focus the input, not the first item
               e.preventDefault();
               const root = e.currentTarget as HTMLElement | null;
               root?.querySelector<HTMLInputElement>("input")?.focus();
+            }}
+            onCloseAutoFocus={(e) => {
+              if (returnFocusRef.current?.isConnected) {
+                e.preventDefault();
+                returnFocusRef.current.focus();
+              }
             }}
             className="fixed left-1/2 top-[14vh] z-[81] w-[min(92vw,640px)] -translate-x-1/2 overflow-hidden rounded-[var(--radius-lg)] border border-border-strong bg-card shadow-pop focus:outline-none"
           >

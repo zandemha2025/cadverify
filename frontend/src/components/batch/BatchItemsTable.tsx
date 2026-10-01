@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -52,6 +52,7 @@ export default function BatchItemsTable({
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const [retryKey, setRetryKey] = useState(0);
+  const runIdRef = useRef(0);
 
   const fetchPage = useCallback(
     (cursor?: string) =>
@@ -65,8 +66,9 @@ export default function BatchItemsTable({
 
   // Initial load + filter change
   useEffect(() => {
-    let active = true;
+    const runId = ++runIdRef.current;
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
     setItems([]);
     setNextCursor(null);
@@ -75,7 +77,7 @@ export default function BatchItemsTable({
 
     void fetchPage()
       .then((resp) => {
-        if (!active) return;
+        if (runId !== runIdRef.current) return;
         setItems(resp.items);
         setNextCursor(resp.next_cursor);
         setHasMore(resp.has_more);
@@ -83,30 +85,33 @@ export default function BatchItemsTable({
         onLoadStateChange?.("ready");
       })
       .catch((caught) => {
-        if (!active) return;
+        if (runId !== runIdRef.current) return;
         setError(caught instanceof Error ? caught.message : "Failed to load items");
         setLoading(false);
         onLoadStateChange?.("error");
       });
 
     return () => {
-      active = false;
+      ++runIdRef.current;
     };
   }, [fetchPage, onLoadStateChange, refreshKey, retryKey]);
 
   const loadMore = async () => {
-    if (!nextCursor) return;
+    if (!nextCursor || loadingMore) return;
+    const runId = runIdRef.current;
     setLoadingMore(true);
     try {
       const resp = await fetchPage(nextCursor);
+      if (runId !== runIdRef.current) return;
       setItems((prev) => [...prev, ...resp.items]);
       setNextCursor(resp.next_cursor);
       setHasMore(resp.has_more);
       setError(null);
     } catch (caught) {
+      if (runId !== runIdRef.current) return;
       setError(caught instanceof Error ? caught.message : "Failed to load items");
     } finally {
-      setLoadingMore(false);
+      if (runId === runIdRef.current) setLoadingMore(false);
     }
   };
 
@@ -242,6 +247,7 @@ export default function BatchItemsTable({
 
       {error && (
         <ErrorState
+          title="Could not load batch items"
           message={error}
           onRetry={() => {
             setError(null);
@@ -250,7 +256,7 @@ export default function BatchItemsTable({
         />
       )}
 
-      <DataTable
+      {(!error || items.length > 0) && <DataTable
         columns={columns}
         data={items}
         loading={loading}
@@ -260,7 +266,7 @@ export default function BatchItemsTable({
             description="No items match this filter."
           />
         }
-      />
+      />}
 
       {hasMore && (
         <div className="text-center">

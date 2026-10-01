@@ -1,0 +1,47 @@
+{
+  "finding": "126",
+  "scope": "Local dependency patch and browser regression only; not deployed",
+  "first_divergence": "step 5 (Frontend Build & Lint), expected npm dependency audit to pass, state was critical next/og advisory GHSA-vcvr-r3jv-pc5j against pinned Next.js16.3.5.",
+  "advisory": "https://github.com/vercel/next.js/security/advisories/GHSA-vcvr-r3jv-pc5j",
+  "before": {
+    "next": "16.3.5",
+    "audit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 1,
+      "total": 1
+    }
+  },
+  "after": {
+    "next": "16.3.6",
+    "audit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "exposure_review": "Only ImageResponse caller is frontend/src/app/opengraph-image.tsx, with fixed JSX/styles and no request input; advisory exploitation path not observed. Upgrade still required by existing gate.",
+  "checks": {
+    "frontend_tests": 499,
+    "typescript": "pass",
+    "full_lint": "0 errors;3 preexisting warnings",
+    "production_build": "pass",
+    "native_default10_batch": "12 terminal items and12 exact saved-record links",
+    "native_saved_record": "01M3SJWET5E25PMSXVCVM1BHHY;20x15x10mm and watertight",
+    "native_share_image": {
+      "complete": true,
+      "width": 1200,
+      "height": 630
+    }
+  },
+  "limits": [
+    "Production unchanged",
+    "Image operating-system CVEs remain open",
+    "Shared analysis filename differs from selected batch copy; follow-up required"
+  ]
+}

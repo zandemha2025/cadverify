@@ -1,0 +1,256 @@
+{
+  "analyses": [
+    {
+      "id": "1309",
+      "version": "0.3.19",
+      "filename": "155-plate-300x200x0.81.step",
+      "mesh_hash": "df2b559b0227b9bdb748a9a4edac51dadc71c9f996c5ff57e0f121db29a0b0fe",
+      "result_sha256": "a11d64e9fc4b6d830e7b9e662c5198c0fb61651c9318927dc525e4fdddca39bc",
+      "historical_unchanged": true,
+      "geometry": {
+        "faces": 88330,
+        "units": "mm",
+        "vertices": 44167,
+        "volume_mm3": 48600.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          150.0,
+          100.0,
+          0.41
+        ],
+        "bounding_box_mm": [
+          300.0,
+          200.0,
+          0.8
+        ],
+        "surface_area_mm2": 120810.0
+      },
+      "fdm": [
+        {
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "THIN_WALL",
+              "message": "86318 faces (97.7%) below 0.8mm min wall for fdm. Thinnest: 0.77mm.",
+              "severity": "error",
+              "measured_value": 0.774,
+              "required_value": 0.8,
+              "affected_face_count": 86318
+            },
+            {
+              "code": "EXTREME_ASPECT_RATIO",
+              "message": "Aspect ratio 370.4:1 exceeds 8.0:1 for fdm. Tall/thin parts risk failure.",
+              "severity": "warning",
+              "measured_value": 370.37,
+              "required_value": 8.0
+            }
+          ],
+          "process": "fdm",
+          "verdict": "fail",
+          "standards": [
+            "ISO/ASTM 52910:2018 \u2014 AM design guidelines",
+            "Stratasys FDM Design Guide v2.0"
+          ],
+          "recommended_machine": "Bambu Lab X1C",
+          "recommended_material": "PLA",
+          "estimated_cost_factor": 2.43
+        }
+      ]
+    },
+    {
+      "id": "1316",
+      "version": "0.3.20",
+      "filename": "155-plate-300x200x0.81.step",
+      "mesh_hash": "df2b559b0227b9bdb748a9a4edac51dadc71c9f996c5ff57e0f121db29a0b0fe",
+      "result_sha256": "1135c3818d7608b26b6595d6b16c2ecdf35eb22e5bee78d01788eedc53d8bef2",
+      "geometry": {
+        "faces": 88330,
+        "units": "mm",
+        "vertices": 44167,
+        "volume_mm3": 48600.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          150.0,
+          100.0,
+          0.41
+        ],
+        "bounding_box_mm": [
+          300.0,
+          200.0,
+          0.8
+        ],
+        "surface_area_mm2": 120810.0
+      },
+      "fdm": [
+        {
+          "score": 0.9,
+          "issues": [
+            {
+              "code": "EXTREME_ASPECT_RATIO",
+              "message": "Aspect ratio 370.4:1 exceeds 8.0:1 for fdm. Tall/thin parts risk failure.",
+              "severity": "warning",
+              "measured_value": 370.37,
+              "required_value": 8.0
+            }
+          ],
+          "process": "fdm",
+          "verdict": "issues",
+          "standards": [
+            "ISO/ASTM 52910:2018 \u2014 AM design guidelines",
+            "Stratasys FDM Design Guide v2.0"
+          ],
+          "recommended_machine": "Bambu Lab X1C",
+          "recommended_material": "PLA",
+          "estimated_cost_factor": 2.43
+        }
+      ]
+    },
+    {
+      "id": "1317",
+      "version": "0.3.20",
+      "filename": "155-plate-300x200x0.79.step",
+      "mesh_hash": "20d9b6f1b53ec2ad56c27fc4e10ad0bd3da806faebbbd1d5a916d558b4f944f1",
+      "result_sha256": "b626e4c456e458332dca4d88f2d56e3ce29d5fb6e36ed678811832ac09a77ac6",
+      "geometry": {
+        "faces": 88342,
+        "units": "mm",
+        "vertices": 44173,
+        "volume_mm3": 47400.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          150.0,
+          100.0,
+          0.4
+        ],
+        "bounding_box_mm": [
+          300.0,
+          200.0,
+          0.8
+        ],
+        "surface_area_mm2": 120790.0
+      },
+      "fdm": [
+        {
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "THIN_WALL",
+              "message": "86187 faces (97.6%) below 0.8mm min wall for fdm. Thinnest: 0.79mm.",
+              "severity": "error",
+              "measured_value": 0.79,
+              "required_value": 0.8,
+              "affected_face_count": 86187
+            },
+            {
+              "code": "EXTREME_ASPECT_RATIO",
+              "message": "Aspect ratio 379.7:1 exceeds 8.0:1 for fdm. Tall/thin parts risk failure.",
+              "severity": "warning",
+              "measured_value": 379.747,
+              "required_value": 8.0
+            }
+          ],
+          "process": "fdm",
+          "verdict": "fail",
+          "standards": [
+            "ISO/ASTM 52910:2018 \u2014 AM design guidelines",
+            "Stratasys FDM Design Guide v2.0"
+          ],
+          "recommended_machine": "Bambu Lab X1C",
+          "recommended_material": "PLA",
+          "estimated_cost_factor": 2.37
+        }
+      ]
+    },
+    {
+      "id": "1321",
+      "version": "0.3.20",
+      "filename": "155-plate-300x200x0.05.step",
+      "mesh_hash": "95d304007447e6b169cd80c99c854f57213b26c05f726208259b2758868db704",
+      "result_sha256": "7324c06f0b2c58f1533b4cc7e41a7efeb6875644a7839535c1547b51d32a5b0b",
+      "geometry": {
+        "faces": 87220,
+        "units": "mm",
+        "vertices": 43612,
+        "volume_mm3": 3000.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          150.0,
+          100.0,
+          0.03
+        ],
+        "bounding_box_mm": [
+          300.0,
+          200.0,
+          0.1
+        ],
+        "surface_area_mm2": 120050.0
+      },
+      "fdm": [
+        {
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "THIN_WALL",
+              "message": "86107 faces (98.7%) below 0.8mm min wall for fdm. Thinnest: 0.05mm.",
+              "severity": "error",
+              "measured_value": 0.05,
+              "required_value": 0.8,
+              "affected_face_count": 86107
+            },
+            {
+              "code": "SMALL_FEATURES",
+              "message": "4 geometric boundary spans (33.3%) below 0.4mm resolution for fdm. Smallest: 0.050mm.",
+              "severity": "warning",
+              "measured_value": 0.05,
+              "required_value": 0.4
+            }
+          ],
+          "process": "fdm",
+          "verdict": "fail",
+          "standards": [
+            "ISO/ASTM 52910:2018 \u2014 AM design guidelines",
+            "Stratasys FDM Design Guide v2.0"
+          ],
+          "recommended_machine": "Bambu Lab X1C",
+          "recommended_material": "PLA",
+          "estimated_cost_factor": 0.15
+        }
+      ]
+    }
+  ],
+  "cost_decisions": [
+    {
+      "id": "4556",
+      "version": "0.3.19",
+      "filename": "155-plate-300x200x0.81.step",
+      "mesh_hash": "df2b559b0227b9bdb748a9a4edac51dadc71c9f996c5ff57e0f121db29a0b0fe",
+      "result_sha256": "a026cb7b39d5ec2a29eaf907f63a3abc5a2a64d35e2e1d3583d4bce0747cfb2d",
+      "historical_unchanged": true
+    },
+    {
+      "id": "4589",
+      "version": "0.3.20",
+      "filename": "155-plate-300x200x0.81.step",
+      "mesh_hash": "df2b559b0227b9bdb748a9a4edac51dadc71c9f996c5ff57e0f121db29a0b0fe",
+      "result_sha256": "46458e98145d062a274bf2a19488149c0c6efd2c11dd05c4f7f77e78aa83e1b4"
+    },
+    {
+      "id": "4590",
+      "version": "0.3.20",
+      "filename": "155-plate-300x200x0.79.step",
+      "mesh_hash": "20d9b6f1b53ec2ad56c27fc4e10ad0bd3da806faebbbd1d5a916d558b4f944f1",
+      "result_sha256": "86e7706e457a7f66653ce3f619b164f580e1cbd096b9f8c20a2dbea067c2cb18"
+    },
+    {
+      "id": "4608",
+      "version": "0.3.20",
+      "filename": "155-plate-300x200x0.05.step",
+      "mesh_hash": "95d304007447e6b169cd80c99c854f57213b26c05f726208259b2758868db704",
+      "result_sha256": "7f8c450997f2778df3bd26a482a869a013b5f1af549e4be53297fb05376cce41"
+    }
+  ]
+}

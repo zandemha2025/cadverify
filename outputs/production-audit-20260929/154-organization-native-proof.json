@@ -1,0 +1,116 @@
+{
+  "method": "Native Chrome via CUA; temporary selected-GET local proxy; no organization writes",
+  "cases": [
+    {
+      "path": "/api/v1/orgs/members",
+      "status": 503,
+      "failure": "PASS",
+      "recovery": "PASS"
+    },
+    {
+      "path": "/api/v1/orgs/invites",
+      "status": 503,
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs/saml/group-mappings",
+      "status": 503,
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs/members",
+      "status": 200,
+      "body": {},
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs/invites",
+      "status": 200,
+      "body": {
+        "invites": {}
+      },
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs/saml/group-mappings",
+      "status": 200,
+      "body": {
+        "mappings": null
+      },
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs",
+      "status": 503,
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs",
+      "status": 200,
+      "body": {},
+      "failure": "PASS",
+      "recovery": "PASS",
+      "membersUnchanged": true
+    },
+    {
+      "path": "/api/v1/orgs",
+      "status": 503,
+      "page": "/integrations",
+      "failure": "PASS",
+      "recovery": "PASS"
+    },
+    {
+      "path": "/api/v1/orgs",
+      "status": 200,
+      "body": {},
+      "page": "/integrations",
+      "failure": "PASS",
+      "recovery": "PASS"
+    }
+  ],
+  "validEmptyAccess": "retains existing no-organization state",
+  "memberDataUnchanged": true,
+  "firstDivergence": "step 1, expected Organization settings are unavailable on GET members 503, state was No members with Send invite and Add mapping enabled",
+  "frontend_checks": {
+    "typescript": "PASS",
+    "changed_source_eslint": "PASS",
+    "tests_passed": 500,
+    "tests_skipped": 0,
+    "production_build": "PASS",
+    "command": "npx tsc --noEmit && npx eslint <four changed source files> && npm test && npm run build",
+    "session": 65532,
+    "exit_code": 0
+  },
+  "normal_api_restored": "http://127.0.0.1:8017",
+  "fault_proxy_stopped": true,
+  "production_changed": false,
+  "evidence_sha256": {
+    "154-organization-outage-before.png": "21b6b01f8554f1d1617bffaa3de084cc9287d6de91f309b53d156ae983511225",
+    "154-organization-outage-before.txt": "ba17bf4a9a0c68fd8561260b4b20566662272288d1507abfe6cf93758b43bb3a",
+    "154-members-outage-before.png": "54cd35a1c924f29c410e4b34f04475749e449f567505ef62a0810cad86e2f6c5",
+    "154-members-outage-fixed.png": "88f8d3aeb414445d34105f854935481c271cca25f9106ed554444588ecd3d2da",
+    "154-organization-recovered.png": "f1f3c816d213556938641e43a802d5122031d145c79ebbb1307509ba76d80854",
+    "154-organization-recovered.txt": "753d06236437f87f423baaf8b3870c99b26c08fe692fe4a8e7e372a293d01c99"
+  },
+  "proxy_log": {
+    "sha256": "3b9711d727116d8a7ad65e0453c5ca112d4cc04b0cd71fe5906bc7a950bb28c5",
+    "requests": 151,
+    "methods": [
+      "GET"
+    ],
+    "local_path": ".gstack/qa-runtime/organization-read-proxy.log",
+    "headers_and_payloads_logged": false
+  }
+}

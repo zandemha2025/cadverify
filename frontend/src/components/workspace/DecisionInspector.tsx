@@ -12,7 +12,7 @@
  *                  in with a small stagger (the one place motion explains).
  *   • Governance — the honest posture bar (governed vs guessed) + the confidence
  *                  DATA-QUALITY track, verbatim from the engine. Never a
- *                  fabricated ±%. Plus the data-locality LOCAL badge.
+ *                  fabricated ±%. Plus the CAD retention notice.
  *   • Sources    — the driver table, each row provenance-tagged + sourced +
  *                  inline-overridable (re-tags USER, re-costs live).
  *   • Audit      — the applied USER overrides for this estimate.
@@ -380,10 +380,10 @@ function GovernanceView({
       <div className="rounded-[var(--radius-sm)] border border-prov-shop-border bg-prov-shop-bg px-2.5 py-2">
         <p className="flex items-center gap-1.5 text-[11px] font-medium text-prov-shop">
           <Lock className="size-3" aria-hidden />
-          data-locality: LOCAL · zero-egress
+          CAD evidence · organization access
         </p>
         <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-          The CAD is parsed and discarded in-process on the cost/DFM path — CAD-as-IP, audited.
+          Uploaded source CAD and analysis evidence are retained for your organization.
         </p>
       </div>
     </div>

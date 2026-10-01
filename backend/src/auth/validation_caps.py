@@ -101,6 +101,7 @@ def _cap_err(code: str, message: str, windowed: bool) -> HTTPException:
         detail={
             "code": code,
             "message": message,
+            "window_days": _window_days(),
             "doc_url": error_doc_url(code),
         },
     )
@@ -228,15 +229,18 @@ async def enforce_validation_caps(request: Request) -> None:
         # above stays a 429 circuit-breaker.
         raise HTTPException(
             status_code=403,
+            headers={"Retry-After": str(_window_days() * 86400)} if windowed else None,
             detail={
                 "code": "user_validation_cap_exceeded",
                 "message": (
-                    f"this account has used its {_user_cap()} trial checks; "
-                    "talk to the ProofShape team to keep going"
+                    f"this account has used its {_user_cap()} trial checks {period}; "
+                    + ("retry after the rolling allowance becomes available" if windowed
+                       else "talk to the ProofShape team to keep going")
                 ),
                 "used": user_count,
                 "cap": _user_cap(),
                 "remaining": 0,
+                "window_days": _window_days(),
                 "plan": plan,
                 "doc_url": error_doc_url("user_validation_cap_exceeded"),
             },

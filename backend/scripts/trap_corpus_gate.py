@@ -36,6 +36,7 @@ GATE_CODES = {
     "overhangs": {"OVERHANG"},
     "small_features": {"SMALL_FEATURES"},
     "build_volume": {"EXCEEDS_BUILD_VOLUME"},
+    "build_reorientation": {"BUILD_REORIENTATION_REQUIRED"},
     "aspect_ratio": {"EXTREME_ASPECT_RATIO"},
     "trapped_volumes": {"TRAPPED_VOLUME"},
 }

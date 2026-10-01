@@ -169,8 +169,10 @@ cyl.apply_translation((0,0,11))
 m = trimesh.boolean.difference([outer, inner, cyl], engine='manifold')
 save(m, 'trap-hollow-drain-2mm-KNOWN-GAP.stl')
 
-# ---------- borderline build volume pair (FDM 300 limit) ----------
+# ---------- build volume: original axes, fitting reorientation, no fit ----------
+# Retain the legacy filename: its 300.1mm side fits the 350mm machine axis.
 save(box(300.1,290,300, center=(0,0,150)), 'trap-build-300.1mm.stl')
 save(box(299,290,299,  center=(0,0,149.5)), 'control-build-299mm.stl')
+save(box(300.1,300.1,300.1), 'trap-build-cube-300.1mm.stl')
 
 print('generated:', len(os.listdir(OUT)), 'files')

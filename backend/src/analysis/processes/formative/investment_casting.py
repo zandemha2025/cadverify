@@ -1,10 +1,9 @@
 """Investment Casting — lost-wax process."""
 
 from src.analysis.context import GeometryContext
-from src.analysis.models import Issue, ProcessType
+from src.analysis.models import Citation, Issue, ProcessType, Severity
 from src.analysis.processes.base import register
 from src.analysis.processes.checks import (
-    check_draft_angles,
     check_fillet_requirements,
     check_shrinkage_risk,
     check_wall_uniformity,
@@ -21,9 +20,20 @@ class InvestmentCastingAnalyzer:
     ]
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
-        i: list[Issue] = []
-        i.extend(check_draft_angles(ctx, 0.5, self.process,
-                 cite="ICI: 0.5° min — less than other casting methods."))
+        i = [Issue(
+            code="PATTERN_TOOLING_REVIEW",
+            severity=Severity.INFO,
+            message="Investment casting has no universal minimum draft angle; pattern and core tooling need separate review.",
+            process=self.process,
+            fix_suggestion=(
+                "Confirm wax-pattern and ceramic-core release with the foundry. "
+                "Some tooling geometries need draft even though the casting shell is broken away."
+            ),
+            citation=Citation(
+                standard="Impro Precision",
+                text="Draft Angles in Investment Casting — https://www.improprecision.com/draft-angles-investment-casting/",
+            ),
+        )]
         i.extend(check_wall_uniformity(ctx, 1.0, 50.0, 5.0, self.process,
                  cite="ICI: 1mm min wall achievable."))
         i.extend(check_fillet_requirements(ctx, 0.5, self.process,

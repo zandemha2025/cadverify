@@ -1,0 +1,18 @@
+{
+  "source": "189-disk-220x8.step",
+  "source_sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af",
+  "file": "190-disk-rotated.step",
+  "sha256": "1887d51517e943ed05df08250751520fa0695a65cb15e907c49ddff453eec23b",
+  "angle_rad": 0.71,
+  "axis": [
+    1,
+    2,
+    3
+  ],
+  "translation_mm": [
+    100,
+    -200,
+    300
+  ],
+  "brep_volume_mm3": 304106.16886749264
+}

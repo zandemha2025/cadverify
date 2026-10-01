@@ -1,0 +1,165 @@
+{
+  "finding": "071",
+  "engine_version": "0.3.10",
+  "followup_verification_version": "0.3.11 (072 adds spherical turning evidence)",
+  "fixture_construction": "Gmsh/OpenCASCADE: sphere r=10; circular cone r=10 to r=8 over h=20; 20x20x10 block minus an extruded ellipse with semiaxes 6 and 3. Exact analytic volumes and dimensions provide the independent oracle.",
+  "controls": [
+    {
+      "filename": "sphere-r10.step",
+      "sha256": "6767939573a7d8b1dce898f537d89f3a771339ed297f02b480e85727f0ab5a9d",
+      "analytic_volume_mm3": 4188.790204786391,
+      "expected_extents_mm": [
+        20,
+        20,
+        20
+      ],
+      "expected_flats": 0,
+      "expected_rotational_evidence": true,
+      "observed_volume_error_percent": 0.011017923597836616,
+      "observed_features": []
+    },
+    {
+      "filename": "cone-r10-r8-h20.step",
+      "sha256": "badeb144500154ae475890e7c9c27db640df03fdd748d5168fcd90d1e2ba077f",
+      "analytic_volume_mm3": 5110.324049839397,
+      "expected_extents_mm": [
+        20,
+        20,
+        20
+      ],
+      "expected_flats": 2,
+      "expected_rotational_evidence": true,
+      "observed_volume_error_percent": 0.004580798762758147,
+      "observed_features": [
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 201.04630762833918,
+          "confidence": 0.98
+        },
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 314.14357840572984,
+          "confidence": 0.98
+        },
+        {
+          "kind": "curved",
+          "radius": null,
+          "depth": 20.007897832843263,
+          "area": 1136.6011808066582,
+          "confidence": 0.9004959268984
+        }
+      ]
+    },
+    {
+      "filename": "elliptical-bore.step",
+      "sha256": "db45b5083192236f0f56a4e4d60d0e45601d999041fea710cb5ddc170e716309",
+      "analytic_volume_mm3": 3434.5133223538373,
+      "expected_extents_mm": [
+        20,
+        20,
+        10
+      ],
+      "expected_flats": 6,
+      "expected_rotational_evidence": false,
+      "observed_volume_error_percent": 0.002899883801116774,
+      "observed_features": [
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 200.00000000000034,
+          "confidence": 0.98
+        },
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 199.9999999999994,
+          "confidence": 0.98
+        },
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 343.46468317803055,
+          "confidence": 0.98
+        },
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 199.99999999999943,
+          "confidence": 0.98
+        },
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 343.46468317802976,
+          "confidence": 0.98
+        },
+        {
+          "kind": "flat",
+          "radius": null,
+          "depth": null,
+          "area": 200.0,
+          "confidence": 0.98
+        },
+        {
+          "kind": "curved",
+          "radius": null,
+          "depth": 10.000002461192992,
+          "area": 290.6360556267051,
+          "confidence": 0.9952353857680994
+        }
+      ]
+    }
+  ],
+  "native_ellipse": {
+    "same_before_after_sha256": "db45b5083192236f0f56a4e4d60d0e45601d999041fea710cb5ddc170e716309",
+    "before": "cylinder_hole r=4.39mm at 100% plus Hole diameter 8.8mm advice",
+    "after": "six flat surfaces plus one curved surface; no invented radius or 8.8mm advice; dimensions still20x20x10mm"
+  },
+  "native_cone": {
+    "features": "two flat surfaces and one curved surface, no cylinder_boss",
+    "rotational": true,
+    "CNC_turning": "Advisory 90%, no required blocker"
+  },
+  "checks": {
+    "backend_full": {
+      "passed": 2397,
+      "skipped": 3,
+      "skip_reasons": [
+        "real corpus manifest absent",
+        "2 OCP XDE unavailable"
+      ]
+    },
+    "focused_geometry": 22,
+    "enterprise_price_replay": "all66 estimates and line items unchanged",
+    "pyright": "217/228 baseline, no new diagnostics in changed files",
+    "bandit": "zero findings"
+  },
+  "limits": [
+    "Not deployed",
+    "2% relative RMS radius tolerance accounts for tessellation; feature inference is approximate",
+    "Generic curved surfaces do not receive a circular-hole diameter; arbitrary opening-width analysis is not certified",
+    "Sphere geometry/detection checked through the real STEP parser locally; sphere native UI not separately replayed",
+    "No new claim of actual quote accuracy"
+  ],
+  "native_round_positive": {
+    "fixture": "audit-cube.STP",
+    "dimensions_mm": [
+      20,
+      15,
+      10
+    ],
+    "flats": 6,
+    "circular_holes": 1,
+    "radius_mm": 3,
+    "depth_mm": 10
+  }
+}

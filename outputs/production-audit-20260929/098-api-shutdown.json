@@ -1,0 +1,7 @@
+{
+  "api_pid": 39020,
+  "signal": "SIGTERM",
+  "exit_observed": true,
+  "shutdown_seconds": 0.272,
+  "after_real_native_step": "NIST FTC-07, 246354 analysis faces"
+}

@@ -1,0 +1,135 @@
+{
+  "controls": {
+    "seating-part-10mm.stl": {
+      "sha256": "6b2a70aa9bf4c16b7c2c1adca2d34eef942513f3265c53f1a5c544034bbacc8a",
+      "bounds_mm": [
+        [
+          -5.0,
+          -5.0,
+          -5.0
+        ],
+        [
+          5.0,
+          5.0,
+          5.0
+        ]
+      ],
+      "volume_mm3": 1000.0,
+      "watertight": true
+    },
+    "seating-context-translated-10mm.stl": {
+      "sha256": "a565953ae43f6a2f6e729444002ca611181bd24b057e17e78eca22a0f2b3db23",
+      "bounds_mm": [
+        [
+          25.0,
+          -5.0,
+          -5.0
+        ],
+        [
+          35.0,
+          5.0,
+          5.0
+        ]
+      ],
+      "volume_mm3": 1000.0,
+      "watertight": true
+    },
+    "seating-context-unmatched-20x5x3mm.stl": {
+      "sha256": "8b3e7b738d1d0670f89d63a296594b88fc5b9d69e5689f97a18775cf4deb0f7d",
+      "bounds_mm": [
+        [
+          20.0,
+          -2.5,
+          -1.5
+        ],
+        [
+          40.0,
+          2.5,
+          1.5
+        ]
+      ],
+      "volume_mm3": 300.0,
+      "watertight": true
+    }
+  },
+  "independent_expected": {
+    "shared_translated_cube_gap_mm": 20,
+    "auto_translated_cube_overlap_mm3": 1000,
+    "auto_translated_cube_plus20mm_nudge_gap_mm": 10,
+    "unmatched_retained_frame_gap_mm": 15
+  },
+  "diagnostic_auto": {
+    "translated_cube": {
+      "accepted": true,
+      "method": "shared_frame_icp",
+      "transform": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -30.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rmse_mm": 0.0,
+      "second_best_rmse_mm": 5.0,
+      "sample_count": 8,
+      "candidate_count": 4,
+      "reason": "clear low-residual ICP refinement",
+      "manual_nudge_available": true
+    },
+    "unmatched_box": {
+      "accepted": false,
+      "method": "shared_frame_fallback",
+      "transform": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rmse_mm": 5.787918,
+      "second_best_rmse_mm": 5.787918,
+      "sample_count": 8,
+      "candidate_count": 5,
+      "reason": "auto-seating was ambiguous or high-residual; shared frame retained",
+      "manual_nudge_available": true
+    }
+  }
+}

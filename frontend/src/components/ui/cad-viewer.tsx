@@ -1,22 +1,24 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo, Suspense, useCallback } from "react";
-import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
   Html,
-  Center,
   ContactShadows,
   Lightformer,
 } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { cn } from "@/lib/utils";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { severityLabel } from "@/lib/status";
 import { computeHighlightVertexColors, computeLayeredHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
+import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
    during DFM inspection) so the flagged faces still pop against them. Stage
@@ -29,8 +31,8 @@ const BASE_COLOR = new THREE.Color(STAGE_UI ? "#c2bfb8" : "#8ea6c4");
    identical whether the STL is a 6 mm insert or a 600 mm housing. */
 const TARGET = 2;
 
-function STLModel({
-  url,
+function PartModel({
+  geometry,
   highlightFaces,
   // Default face-highlight = the ERROR tone: stage crimson vs legacy coral. The
   // caller (PartWorkspace) passes an explicit severity hex; this is the fallback.
@@ -45,7 +47,7 @@ function STLModel({
   onPinpointProjection,
   pinpointOccluded,
 }: {
-  url: string;
+  geometry: THREE.BufferGeometry;
   highlightFaces?: number[];
   highlightColor?: string;
   ghostUnhighlighted?: boolean;
@@ -55,14 +57,13 @@ function STLModel({
   distanceScale?: number;
   /** reports the normalised half-height so the contact shadow seats at the base. */
   onHalfHeight?: (h: number) => void;
-  /** reports that the real STL bytes were parsed and mounted, not merely requested. */
+  /** reports that the real CAD mesh was parsed and mounted, not merely requested. */
   onReady?: () => void;
   pinpointOverlays?: PinpointOverlay[];
   onSelectPinpoint?: (key: string) => void;
   onPinpointProjection?: (point: { x: number; y: number; occluded: boolean } | null) => void;
   pinpointOccluded?: boolean;
 }) {
-  const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null);
   const hasPinpoints = !!pinpointOverlays?.some((pin) => pin.faces.length > 0);
@@ -75,8 +76,6 @@ function STLModel({
     geometry.computeVertexNormals();
     geometry.computeBoundingBox();
     const sourceCenter = geometry.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
-    geometry.center();
-    geometry.computeBoundingBox();
     const size = new THREE.Vector3();
     geometry.boundingBox?.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
@@ -181,11 +180,12 @@ function STLModel({
   const ghosted = hasHighlights && ghostUnhighlighted;
 
   return (
-    <Center>
+    <group>
       <mesh
         ref={meshRef}
         geometry={geometry}
         scale={norm.scale}
+        position={norm.sourceCenter.clone().multiplyScalar(-norm.scale)}
         onPointerDown={(e) => {
           if (onFaceClick && e.faceIndex != null) {
             e.stopPropagation();
@@ -213,7 +213,7 @@ function STLModel({
         const region = new THREE.Vector3(...pin.regionCenter!);
         region.sub(norm.sourceCenter).multiplyScalar(norm.scale);
         return (
-          <Html key={pin.key} position={[region.x, region.y, region.z]} center distanceFactor={7}>
+          <Html key={pin.key} position={[region.x, region.y, region.z]} center distanceFactor={7} zIndexRange={[10, 0]}>
             <button
               type="button"
               data-testid="pinpoint-marker"
@@ -237,7 +237,7 @@ function STLModel({
           </Html>
         );
       })}
-    </Center>
+    </group>
   );
 }
 
@@ -334,6 +334,8 @@ function StudioRig() {
 export default function CadViewer({
   file,
   src,
+  units = "mm",
+  analysisMeshHash,
   highlightFaces,
   highlightColor,
   ghostUnhighlighted,
@@ -344,7 +346,9 @@ export default function CadViewer({
   surface = "light",
   className,
 }: CadViewerProps) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ file: typeof file; src: typeof src; units: typeof units; geometry: THREE.BufferGeometry; converted: boolean; faceHash: string | null; transform: THREE.Matrix4 } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [halfH, setHalfH] = useState(1);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
@@ -359,27 +363,77 @@ export default function CadViewer({
   }, []);
 
   useEffect(() => {
-    if (file && file.name.toLowerCase().endsWith(".stl")) {
-      const url = URL.createObjectURL(file);
-      setObjectUrl(url);
-      return () => URL.revokeObjectURL(url);
-    }
-    setObjectUrl(null);
-  }, [file]);
-
-  const url = useMemo(() => src ?? objectUrl, [src, objectUrl]);
-
-  useEffect(() => {
+    setLoaded(null);
+    setPreviewError(null);
     setPreviewReady(false);
-  }, [url]);
+    setPinpointProjection(null);
+    if (!src && !file) return;
+    let cancelled = false;
+    let preview: PreviewMesh | null = null;
+    let geometry: THREE.BufferGeometry | null = null;
+    async function load() {
+      const converted = !src && !!file;
+      let faceHash: string | null = null;
+      const transform = new THREE.Matrix4();
+      try {
+        if (src) {
+          geometry = await new STLLoader().loadAsync(src);
+        } else if (file) {
+          // STL also needs the analysis mesh: large inputs are decimated by
+          // GeometryContext, so raw STL triangle IDs can differ from DFM IDs.
+          preview = await fetchPreviewMesh(file, { forAnalysis: true, units });
+          if (!preview) throw new Error("Preview conversion failed");
+          if (cancelled) return;
+          const gltf = await new GLTFLoader().loadAsync(preview.url);
+          faceHash = preview.faceSpace === "analysis" ? preview.faceHash : null;
+          gltf.scene.updateMatrixWorld(true);
+          // The preview endpoint exports one combined mesh, as in Verify.
+          gltf.scene.traverse((obj) => {
+            const mesh = obj as THREE.Mesh;
+            if (mesh.isMesh) {
+              if (!geometry) {
+                transform.copy(mesh.matrixWorld);
+                geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+                geometry.applyMatrix4(transform);
+              }
+              mesh.geometry.dispose();
+              const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+              materials.forEach((material) => material.dispose());
+            }
+          });
+        }
+        if (!geometry?.getAttribute("position")?.count) throw new Error("Empty preview");
+        if (!cancelled) setLoaded({ file, src, units, geometry, converted, faceHash, transform });
+      } catch (error) {
+        if (!cancelled) setPreviewError(error instanceof Error ? error.message : "Preview unavailable");
+      } finally {
+        preview?.revoke();
+        if (cancelled) geometry?.dispose();
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+      preview?.revoke();
+      geometry?.dispose();
+    };
+  }, [file, src, units, retry]);
+
+  const current = loaded?.file === file && loaded?.src === src && loaded?.units === units ? loaded : null;
+  const faceAligned = !!current && (!current.converted || (!!analysisMeshHash && current.faceHash === analysisMeshHash));
+  const mappedOverlays = useMemo(() => current && faceAligned ? pinpointOverlays?.map((pin) => ({
+    ...pin,
+    regionCenter: pin.regionCenter ? new THREE.Vector3(...pin.regionCenter).applyMatrix4(current.transform).toArray() as [number, number, number] : null,
+  })) : undefined, [current, faceAligned, pinpointOverlays]);
 
   const instrument = surface === "instrument";
 
-  if (!url) {
+  if (!current) {
     return (
       <div
+        role={previewError ? "alert" : "status"}
         className={cn(
-          "flex h-full items-center justify-center rounded-[var(--radius)] border",
+          "flex h-full flex-col items-center justify-center gap-3 rounded-[var(--radius)] border px-4 text-center",
           instrument
             ? "border-border bg-card-raised text-muted-foreground"
             : "border-border bg-muted text-muted-foreground",
@@ -387,8 +441,9 @@ export default function CadViewer({
         )}
       >
         <p className="text-sm">
-          {file ? "STEP preview requires backend conversion" : "Upload a file to preview"}
+          {previewError ? isQuotaErrorMessage(previewError) ? previewError : "Could not load the 3D preview. Any completed analysis remains available." : file || src ? "Preparing real 3D preview…" : "Upload a file to preview"}
         </p>
+        {previewError && !isLifetimeQuotaErrorMessage(previewError) && <button type="button" className="min-h-11 rounded border px-3 text-sm" onClick={() => setRetry((value) => value + 1)}>Retry preview</button>}
       </div>
     );
   }
@@ -424,6 +479,8 @@ export default function CadViewer({
     <div
       aria-label={previewReady ? "Interactive 3D preview ready" : "Loading real 3D preview"}
       data-preview-state={previewReady ? "ready" : "loading"}
+      data-preview-source={current.converted ? "converted-cad" : "stl"}
+      data-preview-face-space={faceAligned ? "analysis" : "preview"}
       className={cn(
         "relative h-full min-w-0 w-full max-w-full overflow-hidden rounded-[var(--radius)] border",
         instrument
@@ -463,6 +520,11 @@ export default function CadViewer({
         >
           Loading real 3D preview…
         </div>
+      )}
+      {!faceAligned && ((highlightFaces?.length ?? 0) > 0 || (pinpointOverlays?.length ?? 0) > 0) && (
+        <p role="status" className="absolute inset-x-2 top-2 z-20 rounded bg-card/95 p-2 text-xs text-foreground">
+          The part preview is available. Exact face highlighting is unavailable for this converted mesh; use the finding details below.
+        </p>
       )}
       {pinpointCallout && pinpointProjection && (
         <>
@@ -511,16 +573,16 @@ export default function CadViewer({
           </>
         )}
         <Suspense fallback={null}>
-          <STLModel
-            url={url}
-            highlightFaces={highlightFaces}
+          <PartModel
+            geometry={current.geometry}
+            highlightFaces={faceAligned ? highlightFaces : undefined}
             highlightColor={highlightColor}
             ghostUnhighlighted={ghostUnhighlighted}
-            onFaceClick={onFaceClick}
+            onFaceClick={faceAligned ? onFaceClick : undefined}
             distanceScale={instrument ? 1.55 : 1.9}
             onHalfHeight={onHalfHeight}
             onReady={onPreviewReady}
-            pinpointOverlays={pinpointOverlays}
+            pinpointOverlays={mappedOverlays}
             onSelectPinpoint={onSelectPinpoint}
             onPinpointProjection={setPinpointProjection}
             pinpointOccluded={pinpointProjection?.occluded}
@@ -576,8 +638,12 @@ export interface PinpointOverlay {
 }
 
 interface CadViewerProps {
-  /** STL provided as a File (object URL is created/revoked internally) */
+  /** CAD file rendered from the authenticated, analysis-aligned preview mesh. */
   file?: File | null;
+  /** Declared file units, matching the associated analysis request. */
+  units?: "mm" | "inch";
+  /** Fingerprint from the DFM response; prevents highlighting a different tessellation. */
+  analysisMeshHash?: string;
   /** STL provided as a URL (e.g. reconstruct/label mesh endpoints) */
   src?: string;
   /** face indices to spotlight (recolored to {highlightColor}) */

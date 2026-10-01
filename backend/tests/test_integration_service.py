@@ -131,17 +131,23 @@ def test_connector_registry_declares_offline_no_raw_payloads():
     }
     assert all(c["raw_payload_stored"] is False for c in connectors)
     csv = [c for c in connectors if c["file_format"] == "csv"]
-    sandbox = [c for c in connectors if c["mode"] == "sandbox_api"]
+    live = [c for c in connectors if c["mode"] == "live_readonly"]
     assert all(c["mode"] == "offline_csv" for c in csv)
     assert all(c["boundary_label"] == "exported_fixture" for c in csv)
     assert all(c["live_credentials_required"] is False for c in csv)
-    assert {c["id"] for c in sandbox} == {
+    assert {c["id"] for c in live} == {
         "sap_s4hana_product_bom_readonly",
         "windchill_part_bom_readonly",
     }
-    assert all(c["boundary_label"] == "sandbox" for c in sandbox)
-    assert all(c["configured"] is False for c in sandbox)
-    assert all(c["live_credentials_required"] is True for c in sandbox)
+    assert all(c["boundary_label"] == "live_readonly" for c in live)
+    assert all(c["configured"] is False for c in live)
+    assert all(c["live_credentials_required"] is True for c in live)
+    windchill = next(c for c in connectors if c["id"] == "windchill_part_bom_readonly")
+    assert windchill["mode"] == "live_readonly"
+    assert windchill["boundary_label"] == "live_readonly"
+    assert windchill["source_kind"] == "bom"
+    assert windchill["configured"] is False
+    assert windchill["live_credentials_required"] is True
 
 
 def test_serialize_run_includes_connector_promotion_boundary():

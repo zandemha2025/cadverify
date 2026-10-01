@@ -1,0 +1,116 @@
+{
+  "issue": "141",
+  "status": "fixed and verified locally; not deployed",
+  "checked_at": "2026-09-30T19:33:11.336115+00:00",
+  "first_divergence": "step1: rigidly rotating a radius5mm, length40mm cylinder should preserve turning eligibility and axial stock dimensions; the world bounding box instead changed them",
+  "red": {
+    "angle_0_4_rad": "turning eligibility became false",
+    "angle_1_2_rad": "axis10.9633229mm and diameter35.1793212mm instead of40mm and10mm",
+    "native_qty_100": {
+      "axis": 13.29,
+      "oblique": 13.58
+    }
+  },
+  "fix": "Measure axial extent and enclosing radial diameter in the detected outer cylinder/cone axis; whole spheres use a principal axis. Reuse the shared measurement for routing/cost drivers, lathe build envelope and L/D warnings. Preserve existing outer-surface/inertia/size eligibility guards.",
+  "engine_version": "0.3.17",
+  "previous_engine_version": "0.3.16",
+  "native": {
+    "page": "http://127.0.0.1:3017/verify",
+    "material": "aluminum",
+    "files": "two actual STL controls, hashes and analytical geometry in shape-controls/141-controls.json",
+    "current_records": [
+      "01M3SWH0QJ03NJ8PAF52DGCHZP",
+      "01M3SWMZ8XQT3A9QCEWJ8A9EJG"
+    ],
+    "historical_records": [
+      "01M3SW8TVJ8NYDRP5MPRD4NTDV",
+      "01M3SWDF2KTQEZB5MJPGT1Y17N"
+    ],
+    "all_current_turning_prices_match": [
+      [
+        1,
+        90.0
+      ],
+      [
+        100,
+        13.29
+      ],
+      [
+        1000,
+        9.26
+      ],
+      [
+        2000,
+        8.36
+      ],
+      [
+        5000,
+        7.31
+      ],
+      [
+        10000,
+        6.61
+      ]
+    ],
+    "old_records_requeried_and_unchanged": true,
+    "same_byte_oblique_rerun_reuses_new_record": true
+  },
+  "geometry_controls": {
+    "axis": {
+      "length_mm": 40.0,
+      "diameter_mm": 10.000000381579632,
+      "volume_mm3": 3139.3501770692637
+    },
+    "oblique": {
+      "length_mm": 40.00000141955438,
+      "diameter_mm": 10.000001539394885,
+      "volume_mm3": 3139.350248274819
+    },
+    "analytic_96_sided_cylinder_volume_mm3": 3139.350203046867,
+    "true_smooth_cylinder_volume_mm3": 3141.5926535897934
+  },
+  "validation": {
+    "red_cases": 3,
+    "focused_tests": 40,
+    "full_backend": {
+      "passed": 2564,
+      "skipped": 3,
+      "seconds": 218.06,
+      "skip_policy_enforced": true,
+      "skips": [
+        "real corpus manifest absent",
+        "optional OCP XDE absent (two cases)"
+      ]
+    },
+    "types": {
+      "errors": 214,
+      "warnings": 3,
+      "new_diagnostics": 0,
+      "command": "pyright src --pythonpath .venv/bin/python --outputjson from backend"
+    },
+    "bandit_medium_high": 0,
+    "native_actual_file_replay": "pass",
+    "frontend": "unchanged from140:499 tests/types/lint/build passed"
+  },
+  "additional_controls": [
+    "long, disk and equal-inertia cylinders remain40mm/etc in four rigid orientations with translation",
+    "500mm long part retains L/D25 warning and fits533mm lathe length regardless of file rotation",
+    "600mm length and280mm diameter remain outside the declared lathe envelope"
+  ],
+  "limits": [
+    "Local analytical/test geometry and modeled prices; not independent customer quote validation.",
+    "World-axis display bounding boxes still describe the submitted orientation; this fix concerns physical lathe measurements.",
+    "General curved solids of revolution and unrelated process orientation models remain separate accuracy work.",
+    "Current CI36764251477 covers027d493 through140 and excludes141.",
+    "No production rollout or new external-system proof."
+  ],
+  "evidence": [
+    "141-native-cost-receipts.json",
+    "141-turning-axis-controls.py",
+    "141-rotated-cylinder-before.png",
+    "141-axis-cylinder-before.png",
+    "141-rotated-cylinder-fixed.png",
+    "141-axis-cylinder-fixed.png",
+    "141-rotated-cylinder-price-fixed.png"
+  ]
+}

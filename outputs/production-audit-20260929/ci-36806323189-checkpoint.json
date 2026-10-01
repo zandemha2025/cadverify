@@ -1,0 +1,209 @@
+{
+  "run": 36806323189,
+  "head": "7041796704a033545995fad5379b7c8cff43a600",
+  "status": "in_progress",
+  "conclusion": "",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191349773
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191349878
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191349910
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191349959
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191349987
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191349992
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 110191421550
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "databaseId": 110195876915
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "in_progress",
+      "conclusion": "",
+      "databaseId": 110195876928
+    }
+  ],
+  "container_steps": [
+    {
+      "name": "Set up job",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+      "conclusion": "success"
+    },
+    {
+      "name": "Set up Docker Buildx",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4",
+      "conclusion": "success"
+    },
+    {
+      "name": "Validate Compose deploy configs",
+      "conclusion": "success"
+    },
+    {
+      "name": "Lint and render Helm chart",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build frontend production image",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build backend production image",
+      "conclusion": "success"
+    },
+    {
+      "name": "Datestamp for Trivy DB pin",
+      "conclusion": "success"
+    },
+    {
+      "name": "Restore pinned Trivy DB (daily)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Prepare image security evidence directory",
+      "conclusion": "success"
+    },
+    {
+      "name": "Scan frontend image (high/critical vulnerabilities)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Scan backend image (high/critical vulnerabilities)",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Generate frontend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Generate backend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Exercise frontend image default startup and share image",
+      "conclusion": "success"
+    },
+    {
+      "name": "Exercise backend image native STEP parser",
+      "conclusion": "success"
+    },
+    {
+      "name": "Write source-bound container build manifest",
+      "conclusion": "success"
+    },
+    {
+      "name": "Upload container build and security evidence",
+      "conclusion": "success"
+    },
+    {
+      "name": "Save Trivy DB pin even on scan failure",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Post Generate backend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Generate frontend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Scan backend image (high/critical vulnerabilities)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Scan frontend image (high/critical vulnerabilities)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Build backend production image",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Build frontend production image",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Set up Docker Buildx",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "conclusion": "success"
+    }
+  ],
+  "backend_scan": {
+    "high": 5,
+    "critical": 0,
+    "findings": [
+      {
+        "packages": [
+          "libexpat1"
+        ],
+        "version": "2.8.3-1~deb13u1",
+        "cve": "CVE-2026-93990"
+      },
+      {
+        "packages": [
+          "libx11-6",
+          "libx11-data",
+          "libx11-xcb1"
+        ],
+        "version": "2:1.8.12-1",
+        "cve": "CVE-2026-88806"
+      },
+      {
+        "packages": [
+          "libxrender1"
+        ],
+        "version": "1:0.9.12-1",
+        "cve": "CVE-2026-88807"
+      }
+    ]
+  }
+}

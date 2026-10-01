@@ -1,0 +1,92 @@
+{
+  "finding": "132",
+  "status": "fixed locally; not deployed",
+  "base_commit": "dc9564e839ac87b8c6d9917d5281367bdb7ffd5b",
+  "first_divergence": "step 2, expected the prompt numeric value to be preserved, state was -80 and .80 extracted as80 and labelled Safe dimensions extracted",
+  "cause": "Shared unsigned numeric regex began matching at the first digit, dropping a leading minus or decimal point in sequences and suffix-named dimensions.",
+  "fix": "Preserve optional signs and leading decimals in the existing shared numeric expression; normalize the Unicode minus sign before extraction. Existing strict plan bounds still validate the actual value.",
+  "regressions": {
+    "new_cases_red": 10,
+    "new_cases_green": 10,
+    "focused_tests_passed": 24,
+    "covered": [
+      "ASCII and Unicode negative width",
+      "leading-decimal width",
+      "negative and fractional numbers before dimension labels",
+      "negative bracket height/enclosure wall",
+      "valid0.6mm thickness in sequences and named fields",
+      "explicit positive signs"
+    ]
+  },
+  "native_before": [
+    {
+      "prompt": "-80 x 50 x 6 mm plate",
+      "width_mm": 80,
+      "claim": "Safe dimensions extracted"
+    },
+    {
+      "prompt": ".80 x 50 x 6 mm plate",
+      "width_mm": 80,
+      "claim": "Safe dimensions extracted"
+    }
+  ],
+  "native_after": [
+    {
+      "prompt": "-80 x 50 x 6 mm plate",
+      "width_mm": -80,
+      "result": "needs_input; Generate design blocked by positive-number validation"
+    },
+    {
+      "prompt": ".80 x 50 x 6 mm plate",
+      "width_mm": 0.8,
+      "result": "needs_input; existing10mmwidthminimum unchanged"
+    },
+    {
+      "prompt": "plate 80 mm wide, 50 mm deep, .6 mm thick",
+      "thickness_mm": 0.6,
+      "result": "ready; generated actual CAD and imported exact revision into Verify"
+    }
+  ],
+  "real_cad": {
+    "design_id": "01M3SPP4H100DJTFH4K6HWZJA6",
+    "revision": 1,
+    "name": "Audit decimal plate0.6mm",
+    "bbox_mm": [
+      80,
+      50,
+      0.6
+    ],
+    "analytic_volume_cm3": 2.4,
+    "generated_volume_cm3": 2.4,
+    "verified_volume_cm3": 2.4,
+    "watertight": true,
+    "evidence_sha256": "1ba5748b36fce39b1c769f2c5a0e84251cc8acb3f6436b05664b18ea5418ed91",
+    "cost_decision_id": "01M3SPQKP8BZH1VVCYKMZTG9TH"
+  },
+  "validation": {
+    "backend_passed": 2536,
+    "backend_documented_skips": 3,
+    "backend_seconds": 215.84,
+    "skip_policy_enforced": true,
+    "pyright_errors": 214,
+    "pyright_warnings": 3,
+    "new_diagnostic_messages": 0,
+    "changed_source_bandit_medium_high": 0,
+    "frontend": "unchanged from131;499tests/types/lint/build passed"
+  },
+  "screenshots": [
+    "132-negative-dimension-before.png",
+    "132-decimal-dimension-before.png",
+    "132-negative-dimension-fixed.png",
+    "132-decimal-dimension-fixed.png",
+    "132-fractional-dimension-fixed.png",
+    "132-fractional-cad-generated.png",
+    "132-fractional-step-verified.png"
+  ],
+  "limits": [
+    "No production deployment.",
+    "No claim of arbitrary natural-language interpretation, general manufacturing/price accuracy or external-provider success.",
+    "No STEP export download or workaround used; the app imported its own generated revision through its normal visible Verify link.",
+    "CurrentCI36752779298 runs dc9564e through131 and does not cover132."
+  ]
+}

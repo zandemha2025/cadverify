@@ -22,7 +22,7 @@ import time
 import warnings
 
 
-def _run_engine(path: str):
+def _run_engine(path: str, *, source_units: str = "mm"):
     """Canonical engine sequence (mirrors routes.py::validate_public)."""
     import trimesh
     import src.analysis.processes  # noqa: F401  populate registry
@@ -38,7 +38,13 @@ def _run_engine(path: str):
     from src.analysis.processes import base as pbase
     from src.analysis.models import AnalysisResult
 
-    mesh = trimesh.load(path, force="mesh")
+    from src.parsers.stl_parser import parse_stl
+    mesh = parse_stl(path) if os.path.splitext(path)[1].lower() == ".stl" else trimesh.load(path, force="mesh")
+    from src.costing.units import mesh_source_units, scale_mesh_to_mm
+
+    mesh = scale_mesh_to_mm(mesh, mesh_source_units(path, source_units))
+    if not isinstance(mesh, trimesh.Trimesh):
+        raise ValueError("Source did not produce a triangle mesh")
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
     # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on

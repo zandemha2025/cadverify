@@ -6,7 +6,7 @@ const workspace = await readFile(new URL("./PartWorkspace.tsx", import.meta.url)
 const hero = await readFile(new URL("./hero/PartHero.tsx", import.meta.url), "utf8");
 const api = await readFile(new URL("../../lib/api.ts", import.meta.url), "utf8");
 
-test("Analyze preserves the canonical geometry refusal over a sibling transport failure", () => {
+test("Analyze keeps request states independent and preserves the geometry diagnosis when both fail", () => {
   const dfm = workspace.slice(
     workspace.indexOf("const runDfm"),
     workspace.indexOf("const handleFile"),
@@ -15,23 +15,28 @@ test("Analyze preserves the canonical geometry refusal over a sibling transport 
     workspace.indexOf("const runCost"),
     workspace.indexOf("const runDfm"),
   );
-  assert.match(dfm, /dfmTerminalFailureRef\.current = message/);
-  assert.match(dfm, /setCostError\(message\)/);
-  assert.match(dfm, /setCostLoading\(false\)/);
+  assert.doesNotMatch(dfm, /setCostError|setCostLoading/);
+  assert.match(dfm, /setDfmError\(message\)/);
   assert.match(dfm, /setDfmLoading\(false\)/);
   assert.match(dfm, /attempt !== analysisAttemptRef\.current/);
-  assert.match(cost, /dfmTerminalFailureRef\.current \?\?/);
+  assert.doesNotMatch(cost, /setDfmError|setDfmLoading/);
+  assert.match(workspace, /title=\{dfmError \? analysisFailureCopy\(dfmError\).title : "Cost estimate failed"\}/);
   assert.match(cost, /attempt !== analysisAttemptRef\.current/);
 });
 
 test("Analyze retains concurrent work for accepted geometry", () => {
+  const submit = workspace.slice(
+    workspace.indexOf("const runAnalyses"),
+    workspace.indexOf("const handleFile"),
+  );
   const handler = workspace.slice(
     workspace.indexOf("const handleFile"),
     workspace.indexOf("Seed from a caller-provided file"),
   );
-  assert.match(handler, /const attempt = \+\+analysisAttemptRef\.current/);
-  assert.match(handler, /void runCost\(selected, opts, attempt\)/);
-  assert.match(handler, /void runDfm\(selected, opts\.units, attempt\)/);
+  assert.match(handler, /runAnalyses\(selected, opts\)/);
+  assert.match(submit, /const attempt = \+\+analysisAttemptRef\.current/);
+  assert.match(submit, /void runCost\(theFile, theOpts, attempt\)/);
+  assert.match(submit, /void runDfm\(theFile, theOpts\.units, attempt\)/);
 });
 
 test("Analyze maps terminal geometry failures to refusal and replacement guidance", () => {

@@ -1,0 +1,35 @@
+{
+  "part": "142-torus.step",
+  "source_sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+  "assembly_key": "QA BOM linkage 147",
+  "context": {
+    "mesh_hash": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+    "program": null,
+    "parent_assembly": null,
+    "units_per_parent": null,
+    "annual_volume": null,
+    "provenance": "user",
+    "service_environment": {},
+    "bom_assembly_key": "QA BOM linkage 147",
+    "bom_child_ref": "torus-test-part",
+    "bom_roots_per_year": 125
+  },
+  "per_root": 8,
+  "root_paths": 2,
+  "roots_per_year": 125,
+  "annual_volume": 1000,
+  "annual_volume_basis": "bom_rollup",
+  "annualized_cost_usd": 10960.0,
+  "annualized_unit_cost": {
+    "usd": 10.96,
+    "qty": 1000,
+    "currency": "USD",
+    "process": "cnc_turning",
+    "material": "6061-T6 Aluminum",
+    "validated": false,
+    "basis": "decision.recommendation"
+  },
+  "unrelated_context_preserved": true,
+  "immutable_decisions_preserved": 3,
+  "bom_origin": "local declared test fixture, not a physical assembly or vendor proof"
+}

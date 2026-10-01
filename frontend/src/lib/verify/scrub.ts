@@ -18,19 +18,21 @@
  */
 import type { CostReport } from "@/lib/api";
 
-/** qty → unit cost (USD) for a process, from the engine's estimates only. Inlined
- *  (not imported at runtime) so this pure module stays free of runtime relative
- *  imports and runs under the repo's `node --test` type-stripping runner. */
-function unitCostByQty(
-  cost: CostReport,
-  process: string | null | undefined
-): Map<number, number> {
-  const out = new Map<number, number>();
-  if (!process) return out;
-  for (const e of cost.estimates) {
-    if (e.process === process) out.set(e.quantity, e.unit_cost_usd);
-  }
-  return out;
+import { fractionToQty, makeNowEstimate, nearestQty, unitCostByQty } from "./derive.ts";
+
+/** The Verify walk shares the engine's nearest computed route. Only an exact
+ * quantity can carry its confidence; intermediate prices remain approximate. */
+export function scrubSelection(cost: CostReport, fraction: number) {
+  const quantities = cost.quantities.length ? cost.quantities : [1];
+  const min = Math.min(...quantities);
+  const max = Math.max(...quantities);
+  const quantity = fractionToQty(fraction, min, max);
+  const computedQuantity = nearestQty(quantities, quantity);
+  const estimate = makeNowEstimate(cost, computedQuantity);
+  const price = interpUnitCost(cost, estimate?.process, quantity, estimate?.material);
+  const exact = price.exact && estimate?.quantity === quantity;
+  const confidence = exact ? estimate?.confidence ?? null : null;
+  return { min, max, quantity, computedQuantity, estimate, price, exact, confidence };
 }
 
 export interface InterpPoint {
@@ -54,9 +56,10 @@ export interface InterpPoint {
 export function interpUnitCost(
   cost: CostReport,
   process: string | null | undefined,
-  qty: number
+  qty: number,
+  material?: string,
 ): InterpPoint {
-  const map = unitCostByQty(cost, process);
+  const map = unitCostByQty(cost, process, material);
   const qs = [...map.keys()].sort((a, b) => a - b);
   if (qs.length === 0) return { unit: null, lo: qty, hi: qty, exact: false, clamped: false };
 

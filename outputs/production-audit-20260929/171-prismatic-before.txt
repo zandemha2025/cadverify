@@ -1,0 +1,816 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 156-plate-with-boss.step
+    - text: WAAM · Advisory
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "156-plate-with-boss.step" [level=1]
+  - text: WAAM · Advisory
+  - paragraph: Cost and manufacturability workspace
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision":
+      - text: Decision
+    - tab "Routing & DFM" [selected]:
+      - text: Routing & DFM
+    - tab "Glass Box":
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - generic: Volume
+  - generic: 49.6 cm³
+  - generic: Bounding box
+  - generic: 300 × 200 × 11 mm
+  - generic: Faces
+  - generic: 90,808
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - tabpanel "Routing & DFM":
+    - generic: Geometric routing
+    - heading "DMLS (Metal)" [level=3]
+    - generic: "archetype: thin_wall_enclosure"
+    - generic: confidence 0.50
+    - paragraph: Thin-wall hollow shell (~0.8mm wall, 8% filled) in a metal class — sheet-fab or AM depending on intent.
+    - paragraph: "alternatives: CNC 3-Axis"
+    - generic: Decided by
+    - generic: rotational
+    - generic: "no"
+    - generic: sheet_like
+    - generic: "no"
+    - generic: nominal_wall_mm
+    - generic: "0.82"
+    - generic: DFM matrix · all processes
+    - table:
+      - rowgroup:
+        - row "Process Verdict Suitability First blocker":
+          - columnheader "Process"
+          - columnheader "Verdict"
+          - columnheader "Suitability"
+          - columnheader "First blocker"
+      - rowgroup:
+        - row "FDM / FFFfeasibility-only Advisory 80% —":
+          - cell "FDM / FFFfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - 'row "SLA Resinfeasibility-only Required 0% Part exceeds build envelope for sla: X: 300mm > 200mm, Y: 200mm > 125mm. Formlabs Form 4."':
+          - cell "SLA Resinfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for sla: X: 300mm > 200mm, Y: 200mm > 125mm. Formlabs Form 4."':
+            - 'button "Part exceeds build envelope for sla: X: 300mm > 200mm, Y: 200mm > 125mm. Formlabs Form 4."':
+              - generic: "Part exceeds build envelope for sla: X: 300mm > 200mm, Y: 200mm > 125mm. Formlabs Form 4."
+        - 'row "DLP Resinfeasibility-only Required 0% Part exceeds build envelope for dlp: X: 300mm > 218mm, Y: 200mm > 123mm. Elegoo Saturn 4 Ultra."':
+          - cell "DLP Resinfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for dlp: X: 300mm > 218mm, Y: 200mm > 123mm. Elegoo Saturn 4 Ultra."':
+            - 'button "Part exceeds build envelope for dlp: X: 300mm > 218mm, Y: 200mm > 123mm. Elegoo Saturn 4 Ultra."':
+              - generic: "Part exceeds build envelope for dlp: X: 300mm > 218mm, Y: 200mm > 123mm. Elegoo Saturn 4 Ultra."
+        - row "SLS (Powder)feasibility-only Advisory 80% —":
+          - cell "SLS (Powder)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "MJF (HP)feasibility-only Advisory 80% —":
+          - cell "MJF (HP)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "DMLS (Metal) Advisory 80% —":
+          - cell "DMLS (Metal)"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "SLM (Metal) Advisory 80% —":
+          - cell "SLM (Metal)"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "EBM (Metal)feasibility-only Advisory 90% —":
+          - cell "EBM (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "Binder Jettingfeasibility-only Advisory 80% —":
+          - cell "Binder Jettingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "DED Advisory 80% —":
+          - cell "DED"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "WAAMcost pick · qty 2,251 Advisory 80% —":
+          - cell "WAAMcost pick · qty 2,251":
+            - text: WAAM
+            - generic: cost pick · qty 2,251
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "CNC 3-Axis Advisory 80% —":
+          - cell "CNC 3-Axis"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "CNC 5-Axis Advisory 80% —":
+          - cell "CNC 5-Axis"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - 'row "CNC Turningfeasibility-only Required 0% Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."':
+          - cell "CNC Turningfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."':
+            - 'button "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."':
+              - generic: "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."
+        - row "Wire EDMfeasibility-only Pass 100% —":
+          - cell "Wire EDMfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "Injection Moldingfeasibility-only Required 0% 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.":
+          - cell "Injection Moldingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.":
+            - button "2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.":
+              - generic: 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.
+        - row "Die Casting Required 0% 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.":
+          - cell "Die Casting"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.":
+            - button "2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.":
+              - generic: 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.
+        - row "Investment Casting Required 0% 2584 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.":
+          - cell "Investment Casting"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "2584 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.":
+            - button "2584 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.":
+              - generic: 2584 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.
+        - row "Sand Casting Required 0% 2584 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.":
+          - cell "Sand Casting"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "2584 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.":
+            - button "2584 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.":
+              - generic: 2584 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.
+        - row "Sheet Metalfeasibility-only Advisory 90% —":
+          - cell "Sheet Metalfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "Forging Required 0% 2584 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.":
+          - cell "Forging"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "2584 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.":
+            - button "2584 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.":
+              - generic: 2584 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.
+    - paragraph:
+      - text: "Cost pick at quantity 2,251: WAAM. Geometric routing: DMLS (Metal). Review the routing reasons and DFM findings when choosing."
+    - generic: Per-process DFM audit
+    - text: Wire EDM · Pass
+    - paragraph: 156-plate-with-boss.step (STEP) — analyzed in 3383.6ms
+    - paragraph: Geometry checks only. Confirm material compatibility and review the chosen manufacturing route.
+    - paragraph: Geometry ranking
+    - paragraph: Wire EDM
+    - paragraph: Dimensions
+    - paragraph: 300 × 200 × 10.8 mm
+    - paragraph: Volume
+    - paragraph: 49.6 cm³
+    - paragraph: Faces
+    - paragraph: 90,808
+    - paragraph: Watertight
+    - paragraph: "Yes"
+    - heading "Manufacturability issues" [level=3]
+    - generic: matching findings grouped · affected processes attached
+    - text: Required fixes
+    - generic: "11"
+    - 'button "Required EXCEEDS_BUILD_VOLUME Affected processes Part exceeds build envelope for sla: X: 300mm > 200mm, Y: 200mm > 125mm. Formlabs Form 4. Scale down, split part, or use a larger machine. Alternative: Switch to FDM/SLS for larger build volumes."':
+      - text: Required
+      - generic: EXCEEDS_BUILD_VOLUME
+      - generic "Affected processes":
+        - generic: sla
+      - paragraph: "Part exceeds build envelope for sla: X: 300mm > 200mm, Y: 200mm > 125mm. Formlabs Form 4."
+      - paragraph: "Scale down, split part, or use a larger machine. Alternative: Switch to FDM/SLS for larger build volumes."
+    - 'button "Required EXCEEDS_BUILD_VOLUME Affected processes Part exceeds build envelope for dlp: X: 300mm > 218mm, Y: 200mm > 123mm. Elegoo Saturn 4 Ultra. Scale down, split part, or use a larger machine."':
+      - text: Required
+      - generic: EXCEEDS_BUILD_VOLUME
+      - generic "Affected processes":
+        - generic: dlp
+      - paragraph: "Part exceeds build envelope for dlp: X: 300mm > 218mm, Y: 200mm > 123mm. Elegoo Saturn 4 Ultra."
+      - paragraph: Scale down, split part, or use a larger machine.
+    - 'button "Required NOT_ROTATIONALLY_SYMMETRIC Affected processes Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning. CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC."':
+      - text: Required
+      - generic: NOT_ROTATIONALLY_SYMMETRIC
+      - generic "Affected processes":
+        - generic: cnc_turning
+      - paragraph: "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."
+      - paragraph: CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.
+    - 'button "Required EXCEEDS_BUILD_VOLUME Affected processes Part exceeds build envelope for cnc_turning: X: 300mm > 254mm. Haas ST-20 (10in chuck). Scale down, split part, or use a larger machine."':
+      - text: Required
+      - generic: EXCEEDS_BUILD_VOLUME
+      - generic "Affected processes":
+        - generic: cnc_turning
+      - paragraph: "Part exceeds build envelope for cnc_turning: X: 300mm > 254mm. Haas ST-20 (10in chuck)."
+      - paragraph: Scale down, split part, or use a larger machine.
+    - 'button "Required INSUFFICIENT_DRAFT locate Affected processes 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding. Add >= 1.0° draft to all walls in pull direction. Protolabs: 1° min external, 2° internal. Alternative: Add 1-3° draft to all vertical walls. No draft needed for CNC or additive."':
+      - text: Required
+      - generic: INSUFFICIENT_DRAFT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.
+      - paragraph: "Add >= 1.0° draft to all walls in pull direction. Protolabs: 1° min external, 2° internal. Alternative: Add 1-3° draft to all vertical walls. No draft needed for CNC or additive."
+    - 'button "Required INSUFFICIENT_DRAFT locate Affected processes 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting. Add >= 1.0° draft to all walls in pull direction. NADCA §3: 1° min external, 2° internal."':
+      - text: Required
+      - generic: INSUFFICIENT_DRAFT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: die_casting
+      - paragraph: 2584 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.
+      - paragraph: "Add >= 1.0° draft to all walls in pull direction. NADCA §3: 1° min external, 2° internal."
+    - 'button "Required INSUFFICIENT_DRAFT locate Affected processes 2584 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting. Add >= 0.5° draft to all walls in pull direction. ICI: 0.5° min — less than other casting methods."':
+      - text: Required
+      - generic: INSUFFICIENT_DRAFT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: investment_casting
+      - paragraph: 2584 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.
+      - paragraph: "Add >= 0.5° draft to all walls in pull direction. ICI: 0.5° min — less than other casting methods."
+    - 'button "Required THIN_WALL_MOLDING 0.81 mm / 1 mm required Affected processes Min wall 0.81mm < 1.0mm for investment_casting. Increase to >= 1.0mm. ICI: 1mm min wall achievable."':
+      - text: Required
+      - generic: THIN_WALL_MOLDING
+      - generic: 0.81 mm / 1 mm required
+      - generic "Affected processes":
+        - generic: investment_casting
+      - paragraph: Min wall 0.81mm < 1.0mm for investment_casting.
+      - paragraph: "Increase to >= 1.0mm. ICI: 1mm min wall achievable."
+    - 'button "Required INSUFFICIENT_DRAFT locate Affected processes 2584 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting. Add >= 3.0° draft to all walls in pull direction. AFS: 3° min — rougher mold surface."':
+      - text: Required
+      - generic: INSUFFICIENT_DRAFT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: sand_casting
+      - paragraph: 2584 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.
+      - paragraph: "Add >= 3.0° draft to all walls in pull direction. AFS: 3° min — rougher mold surface."
+    - 'button "Required THIN_WALL_MOLDING 0.81 mm / 3 mm required Affected processes Min wall 0.81mm < 3.0mm for sand_casting. Increase to >= 3.0mm. AFS: 3mm min gray iron, 5mm steel."':
+      - text: Required
+      - generic: THIN_WALL_MOLDING
+      - generic: 0.81 mm / 3 mm required
+      - generic "Affected processes":
+        - generic: sand_casting
+      - paragraph: Min wall 0.81mm < 3.0mm for sand_casting.
+      - paragraph: "Increase to >= 3.0mm. AFS: 3mm min gray iron, 5mm steel."
+    - 'button "Required INSUFFICIENT_DRAFT locate Affected processes 2584 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging. Add >= 5.0° draft to all walls in pull direction. FIA: 5° external, 7-10° internal."':
+      - text: Required
+      - generic: INSUFFICIENT_DRAFT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: forging
+      - paragraph: 2584 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.
+      - paragraph: "Add >= 5.0° draft to all walls in pull direction. FIA: 5° external, 7-10° internal."
+    - text: Advisory
+    - generic: "28"
+    - button "Advisory WALL_THICKNESS_PRECISION Affected processes Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain. Confirm critical wall thicknesses in the source CAD before manufacturing.":
+      - text: Advisory
+      - generic: WALL_THICKNESS_PRECISION
+      - generic "Affected processes":
+        - generic: ebm
+        - generic: fdm
+        - generic: sls
+        - generic: mjf
+        - generic: dmls
+        - generic: slm
+        - generic: binder_jetting
+        - generic: ded
+        - generic: waam
+        - generic: cnc_3axis
+        - generic: cnc_5axis
+        - generic: sla
+        - generic: dlp
+        - generic: cnc_turning
+        - generic: injection_molding
+        - generic: die_casting
+        - generic: investment_casting
+        - generic: sand_casting
+        - generic: forging
+      - paragraph: Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.
+      - paragraph: Confirm critical wall thicknesses in the source CAD before manufacturing.
+    - button "Advisory SHEET_GAUGE_UNVERIFIED Affected processes A constant flat-sheet gauge could not be verified from this geometry. Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.":
+      - text: Advisory
+      - generic: SHEET_GAUGE_UNVERIFIED
+      - generic "Affected processes":
+        - generic: sheet_metal
+      - paragraph: A constant flat-sheet gauge could not be verified from this geometry.
+      - paragraph: Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.
+    - button "Advisory EXTREME_ASPECT_RATIO 27.7521:1 / 8:1 required Affected processes Aspect ratio 27.7521:1 exceeds 8.0:1 for fdm. Tall/thin parts risk failure. Split into segments, add bracing, or reorient.":
+      - text: Advisory
+      - generic: EXTREME_ASPECT_RATIO
+      - generic: 27.7521:1 / 8:1 required
+      - generic "Affected processes":
+        - generic: fdm
+      - paragraph: Aspect ratio 27.7521:1 exceeds 8.0:1 for fdm. Tall/thin parts risk failure.
+      - paragraph: Split into segments, add bracing, or reorient.
+    - button "Advisory EXTREME_ASPECT_RATIO 27.7521:1 / 10:1 required Affected processes Aspect ratio 27.7521:1 exceeds 10.0:1 for sls. Tall/thin parts risk failure. Split into segments, add bracing, or reorient.":
+      - text: Advisory
+      - generic: EXTREME_ASPECT_RATIO
+      - generic: 27.7521:1 / 10:1 required
+      - generic "Affected processes":
+        - generic: sls
+      - paragraph: Aspect ratio 27.7521:1 exceeds 10.0:1 for sls. Tall/thin parts risk failure.
+      - paragraph: Split into segments, add bracing, or reorient.
+    - button "Advisory EXTREME_ASPECT_RATIO 27.7521:1 / 10:1 required Affected processes Aspect ratio 27.7521:1 exceeds 10.0:1 for mjf. Tall/thin parts risk failure. Split into segments, add bracing, or reorient.":
+      - text: Advisory
+      - generic: EXTREME_ASPECT_RATIO
+      - generic: 27.7521:1 / 10:1 required
+      - generic "Affected processes":
+        - generic: mjf
+      - paragraph: Aspect ratio 27.7521:1 exceeds 10.0:1 for mjf. Tall/thin parts risk failure.
+      - paragraph: Split into segments, add bracing, or reorient.
+    - 'button "Advisory RESIDUAL_STRESS_RISK Affected processes Large horizontal surface (59900mm², 49% of total) — curl risk in dmls. Add breakup features or reorient. HIP recommended. AMS 7003: HIP/stress-relief mandatory for Ti."':
+      - text: Advisory
+      - generic: RESIDUAL_STRESS_RISK
+      - generic "Affected processes":
+        - generic: dmls
+      - paragraph: Large horizontal surface (59900mm², 49% of total) — curl risk in dmls.
+      - paragraph: "Add breakup features or reorient. HIP recommended. AMS 7003: HIP/stress-relief mandatory for Ti."
+    - button "Advisory RESIDUAL_STRESS_RISK Affected processes Large horizontal surface (59900mm², 49% of total) — curl risk in slm. Add breakup features or reorient. HIP recommended. Stress relief required per AMS 7003.":
+      - text: Advisory
+      - generic: RESIDUAL_STRESS_RISK
+      - generic "Affected processes":
+        - generic: slm
+      - paragraph: Large horizontal surface (59900mm², 49% of total) — curl risk in slm.
+      - paragraph: Add breakup features or reorient. HIP recommended. Stress relief required per AMS 7003.
+    - 'button "Advisory THIN_WALL 0.81 mm / 1 mm required locate Affected processes 4891 faces (5.4%) below 1.0mm min wall for binder_jetting. Thinnest: 0.81mm. Increase wall thickness to >= 1.0mm. Green part: 1mm min wall; 0.8mm post-sinter."':
+      - text: Advisory
+      - generic: THIN_WALL
+      - generic: 0.81 mm / 1 mm required
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: binder_jetting
+      - paragraph: "4891 faces (5.4%) below 1.0mm min wall for binder_jetting. Thinnest: 0.81mm."
+      - paragraph: "Increase wall thickness to >= 1.0mm. Green part: 1mm min wall; 0.8mm post-sinter."
+    - 'button "Advisory THIN_WALL 0.81 mm / 1.5 mm required locate Affected processes 4891 faces (5.4%) below 1.5mm min wall for ded. Thinnest: 0.81mm. Increase wall thickness to >= 1.5mm. DED bead width ~2-4mm; 1.5mm min wall."':
+      - text: Advisory
+      - generic: THIN_WALL
+      - generic: 0.81 mm / 1.5 mm required
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: ded
+      - paragraph: "4891 faces (5.4%) below 1.5mm min wall for ded. Thinnest: 0.81mm."
+      - paragraph: Increase wall thickness to >= 1.5mm. DED bead width ~2-4mm; 1.5mm min wall.
+    - 'button "Advisory THIN_WALL 0.81 mm / 2 mm required locate Affected processes 4891 faces (5.4%) below 2.0mm min wall for waam. Thinnest: 0.81mm. Increase wall thickness to >= 2.0mm. WAAM bead width 4-8mm; 2mm min wall."':
+      - text: Advisory
+      - generic: THIN_WALL
+      - generic: 0.81 mm / 2 mm required
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: waam
+      - paragraph: "4891 faces (5.4%) below 2.0mm min wall for waam. Thinnest: 0.81mm."
+      - paragraph: Increase wall thickness to >= 2.0mm. WAAM bead width 4-8mm; 2mm min wall.
+    - 'button "Advisory SHARP_INTERNAL_CORNERS Affected processes 24 sharp concave edges — tool radius 0.5mm cannot reach. Applies to cnc_3axis. Add fillets >= 0.5mm to internal corners. Sandvik: smallest end mill 1mm Ø → 0.5mm radius."':
+      - text: Advisory
+      - generic: SHARP_INTERNAL_CORNERS
+      - generic "Affected processes":
+        - generic: cnc_3axis
+      - paragraph: 24 sharp concave edges — tool radius 0.5mm cannot reach. Applies to cnc_3axis.
+      - paragraph: "Add fillets >= 0.5mm to internal corners. Sandvik: smallest end mill 1mm Ø → 0.5mm radius."
+    - 'button "Advisory SHARP_INTERNAL_CORNERS Affected processes 24 sharp concave edges — tool radius 0.5mm cannot reach. Applies to cnc_5axis. Add fillets >= 0.5mm to internal corners. Sandvik: 1mm end mill → 0.5mm radius min."':
+      - text: Advisory
+      - generic: SHARP_INTERNAL_CORNERS
+      - generic "Affected processes":
+        - generic: cnc_5axis
+      - paragraph: 24 sharp concave edges — tool radius 0.5mm cannot reach. Applies to cnc_5axis.
+      - paragraph: "Add fillets >= 0.5mm to internal corners. Sandvik: 1mm end mill → 0.5mm radius min."
+    - button "Advisory CUPPING_RISK Affected processes Large downward-facing area (60000mm², 50%) — resin cupping / suction risk during peel. Add drain holes, tilt part 10-15°, or orient concave side up.":
+      - text: Advisory
+      - generic: CUPPING_RISK
+      - generic "Affected processes":
+        - generic: sla
+      - paragraph: Large downward-facing area (60000mm², 50%) — resin cupping / suction risk during peel.
+      - paragraph: Add drain holes, tilt part 10-15°, or orient concave side up.
+    - 'button "Advisory THIN_WALL 0.81 mm / 1 mm required locate Affected processes 4891 faces (5.4%) below 1.0mm min wall for cnc_turning. Thinnest: 0.81mm. Increase wall thickness to >= 1.0mm. Turning thin walls chatter; 1.0mm min."':
+      - text: Advisory
+      - generic: THIN_WALL
+      - generic: 0.81 mm / 1 mm required
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: cnc_turning
+      - paragraph: "4891 faces (5.4%) below 1.0mm min wall for cnc_turning. Thinnest: 0.81mm."
+      - paragraph: Increase wall thickness to >= 1.0mm. Turning thin walls chatter; 1.0mm min.
+    - 'button "Advisory WALL_UNIFORMITY_SAMPLED Affected processes Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker. Confirm critical wall sections in the source CAD."':
+      - text: Advisory
+      - generic: WALL_UNIFORMITY_SAMPLED
+      - generic "Affected processes":
+        - generic: injection_molding
+        - generic: die_casting
+        - generic: investment_casting
+        - generic: sand_casting
+      - paragraph: "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker."
+      - paragraph: Confirm critical wall sections in the source CAD.
+    - 'button "Advisory THICK_WALL 10 mm / 6 mm required Affected processes Sampled thick section 10mm > 6.0mm — sink marks / long cycle risk. Core out thick sections. Target 2.5mm. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."':
+      - text: Advisory
+      - generic: THICK_WALL
+      - generic: 10 mm / 6 mm required
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: Sampled thick section 10mm > 6.0mm — sink marks / long cycle risk.
+      - paragraph: "Core out thick sections. Target 2.5mm. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."
+    - 'button "Advisory NON_UNIFORM_WALLS 12.3457:1 / 2:1 required Affected processes Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in injection_molding. Aim for uniform 2.5mm. Use ribs, not solid. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."':
+      - text: Advisory
+      - generic: NON_UNIFORM_WALLS
+      - generic: 12.3457:1 / 2:1 required
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in injection_molding.
+      - paragraph: "Aim for uniform 2.5mm. Use ribs, not solid. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."
+    - button "Advisory UNDERCUT_MOLDING locate Affected processes 45074 faces form undercuts requiring side actions in injection_molding tooling. Redesign to eliminate undercuts or add slides. Side actions add $5–15K tooling.":
+      - text: Advisory
+      - generic: UNDERCUT_MOLDING
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: 45074 faces form undercuts requiring side actions in injection_molding tooling.
+      - paragraph: Redesign to eliminate undercuts or add slides. Side actions add $5–15K tooling.
+    - 'button "Advisory NON_UNIFORM_WALLS 12.3457:1 / 2:1 required Affected processes Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in die_casting. Aim for uniform 3.0mm. Use ribs, not solid. NADCA: 0.8–12mm, uniform preferred."':
+      - text: Advisory
+      - generic: NON_UNIFORM_WALLS
+      - generic: 12.3457:1 / 2:1 required
+      - generic "Affected processes":
+        - generic: die_casting
+      - paragraph: Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in die_casting.
+      - paragraph: "Aim for uniform 3.0mm. Use ribs, not solid. NADCA: 0.8–12mm, uniform preferred."
+    - 'button "Advisory MISSING_FILLETS Affected processes 24 sharp concave mesh edges need >= 1.0mm fillets for die_casting flow and stress distribution. Add 1.0mm+ fillets. NADCA: 1mm min fillet at internal corners."':
+      - text: Advisory
+      - generic: MISSING_FILLETS
+      - generic "Affected processes":
+        - generic: die_casting
+      - paragraph: 24 sharp concave mesh edges need >= 1.0mm fillets for die_casting flow and stress distribution.
+      - paragraph: "Add 1.0mm+ fillets. NADCA: 1mm min fillet at internal corners."
+    - button "Advisory UNDERCUT_MOLDING locate Affected processes 45074 faces form undercuts requiring side actions in die_casting tooling. Redesign to eliminate undercuts or add slides. Slides required — adds tooling cost.":
+      - text: Advisory
+      - generic: UNDERCUT_MOLDING
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: die_casting
+      - paragraph: 45074 faces form undercuts requiring side actions in die_casting tooling.
+      - paragraph: Redesign to eliminate undercuts or add slides. Slides required — adds tooling cost.
+    - 'button "Advisory NON_UNIFORM_WALLS 12.3457:1 / 2:1 required Affected processes Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in investment_casting. Aim for uniform 5.0mm. Use ribs, not solid. ICI: 1mm min wall achievable."':
+      - text: Advisory
+      - generic: NON_UNIFORM_WALLS
+      - generic: 12.3457:1 / 2:1 required
+      - generic "Affected processes":
+        - generic: investment_casting
+      - paragraph: Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in investment_casting.
+      - paragraph: "Aim for uniform 5.0mm. Use ribs, not solid. ICI: 1mm min wall achievable."
+    - 'button "Advisory MISSING_FILLETS Affected processes 24 sharp concave mesh edges need >= 0.5mm fillets for investment_casting flow and stress distribution. Add 0.5mm+ fillets. ICI: 0.5mm min fillet."':
+      - text: Advisory
+      - generic: MISSING_FILLETS
+      - generic "Affected processes":
+        - generic: investment_casting
+      - paragraph: 24 sharp concave mesh edges need >= 0.5mm fillets for investment_casting flow and stress distribution.
+      - paragraph: "Add 0.5mm+ fillets. ICI: 0.5mm min fillet."
+    - 'button "Advisory NON_UNIFORM_WALLS 12.3457:1 / 2:1 required Affected processes Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in sand_casting. Aim for uniform 8.0mm. Use ribs, not solid. AFS: 3mm min gray iron, 5mm steel."':
+      - text: Advisory
+      - generic: NON_UNIFORM_WALLS
+      - generic: 12.3457:1 / 2:1 required
+      - generic "Affected processes":
+        - generic: sand_casting
+      - paragraph: Sampled wall ratio 12.3457:1 (0.81–10mm) may increase warping risk in sand_casting.
+      - paragraph: "Aim for uniform 8.0mm. Use ribs, not solid. AFS: 3mm min gray iron, 5mm steel."
+    - 'button "Advisory MISSING_FILLETS Affected processes 24 sharp concave mesh edges need >= 3.0mm fillets for sand_casting flow and stress distribution. Add 3.0mm+ fillets. AFS: 3mm min fillet — hot tear prevention."':
+      - text: Advisory
+      - generic: MISSING_FILLETS
+      - generic "Affected processes":
+        - generic: sand_casting
+      - paragraph: 24 sharp concave mesh edges need >= 3.0mm fillets for sand_casting flow and stress distribution.
+      - paragraph: "Add 3.0mm+ fillets. AFS: 3mm min fillet — hot tear prevention."
+    - 'button "Advisory MISSING_FILLETS Affected processes 24 sharp concave mesh edges need >= 3.0mm fillets for forging flow and stress distribution. Add 3.0mm+ fillets. FIA: 3mm min corner radius for die life."':
+      - text: Advisory
+      - generic: MISSING_FILLETS
+      - generic "Affected processes":
+        - generic: forging
+      - paragraph: 24 sharp concave mesh edges need >= 3.0mm fillets for forging flow and stress distribution.
+      - paragraph: "Add 3.0mm+ fillets. FIA: 3mm min corner radius for die life."
+    - 'button "Advisory THIN_WALL 0.81 mm / 3 mm required locate Affected processes 4891 faces (5.4%) below 3.0mm min wall for forging. Thinnest: 0.81mm. Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness."':
+      - text: Advisory
+      - generic: THIN_WALL
+      - generic: 0.81 mm / 3 mm required
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: forging
+      - paragraph: "4891 faces (5.4%) below 3.0mm min wall for forging. Thinnest: 0.81mm."
+      - paragraph: "Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness."
+    - button "Advisory HIGH_RIB_RATIO 27.7521:1 / 6:1 required Affected processes Aspect ratio 27.7521:1 exceeds 6:1 max rib height:width for forging. Reduce rib height or increase web thickness. FIA §4.2.":
+      - text: Advisory
+      - generic: HIGH_RIB_RATIO
+      - generic: 27.7521:1 / 6:1 required
+      - generic "Affected processes":
+        - generic: forging
+      - paragraph: Aspect ratio 27.7521:1 exceeds 6:1 max rib height:width for forging.
+      - paragraph: Reduce rib height or increase web thickness. FIA §4.2.
+    - heading "Detected features(11 total)" [level=3]:
+      - text: Detected features
+      - generic: (11 total)
+    - generic: flat
+    - generic: "11"
+    - generic: 444 faces
+    - generic: 98%
+    - paragraph: 162.0mm²
+    - generic: 668 faces
+    - generic: 98%
+    - paragraph: 243.0mm²
+    - generic: 45074 faces
+    - generic: 98%
+    - paragraph: 59900.0mm²
+    - generic: 668 faces
+    - generic: 98%
+    - paragraph: 243.0mm²
+    - generic: 43060 faces
+    - generic: 98%
+    - paragraph: 60000.0mm²
+    - generic: 444 faces
+    - generic: 98%
+    - paragraph: 162.0mm²
+    - generic: 90 faces
+    - generic: 98%
+    - paragraph: 100.0mm²
+    - generic: 90 faces
+    - generic: 98%
+    - paragraph: 100.0mm²
+    - generic: 90 faces
+    - generic: 98%
+    - paragraph: 100.0mm²
+    - generic: 90 faces
+    - generic: 98%
+    - paragraph: 100.0mm²
+    - generic: 90 faces
+    - generic: 98%
+    - paragraph: 100.0mm²
+    - heading "Process suitability" [level=3]
+    - heading "Wire EDM" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: API 13Cr"
+    - paragraph: "Machine: Sodick ALC600G"
+    - paragraph: "Est. cost factor: ×24.80"
+    - paragraph: 1 issue
+    - heading "EBM (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: Arcam Q20plus"
+    - paragraph: "Est. cost factor: ×124.00"
+    - paragraph: 1 issue
+    - heading "Sheet Metal" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Est. cost factor: ×1.49"
+    - paragraph: 1 issue
+    - heading "FDM / FFF" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: PLA"
+    - paragraph: "Machine: Bambu Lab X1C"
+    - paragraph: "Est. cost factor: ×2.48"
+    - paragraph: 2 issues
+    - heading "SLS (Powder)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: EOS P 396"
+    - paragraph: "Est. cost factor: ×9.92"
+    - paragraph: 2 issues
+    - heading "MJF (HP)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: HP Jet Fusion 5200"
+    - paragraph: "Est. cost factor: ×8.93"
+    - paragraph: 2 issues
+    - heading "DMLS (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: EOS M 400-4"
+    - paragraph: "Est. cost factor: ×99.20"
+    - paragraph: 2 issues
+    - heading "SLM (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: SLM 500"
+    - paragraph: "Est. cost factor: ×99.20"
+    - paragraph: 2 issues
+    - heading "Binder Jetting" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Machine: ExOne S-Max Pro"
+    - paragraph: "Est. cost factor: ×39.68"
+    - paragraph: 3 issues
+    - heading "DED" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Est. cost factor: ×74.40"
+    - paragraph: 3 issues
+    - heading "WAAM" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Est. cost factor: ×49.60"
+    - paragraph: 3 issues
+    - heading "CNC 3-Axis" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas VF-2"
+    - paragraph: "Est. cost factor: ×4.96"
+    - paragraph: 2 issues
+    - heading "CNC 5-Axis" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: DMG MORI DMU 50"
+    - paragraph: "Est. cost factor: ×12.40"
+    - paragraph: 2 issues
+    - heading "SLA Resin" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Formlabs Form 4"
+    - paragraph: "Est. cost factor: ×7.44"
+    - paragraph: 3 issues
+    - heading "DLP Resin" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Carbon M2"
+    - paragraph: "Est. cost factor: ×5.95"
+    - paragraph: 2 issues
+    - heading "CNC Turning" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas ST-20"
+    - paragraph: "Est. cost factor: ×3.97"
+    - paragraph: 4 issues
+    - heading "Injection Molding" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: ABS"
+    - paragraph: "Est. cost factor: ×0.99"
+    - paragraph: 7 issues
+    - heading "Die Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×1.49"
+    - paragraph: 6 issues
+    - heading "Investment Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×14.88"
+    - paragraph: 6 issues
+    - heading "Sand Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×2.48"
+    - paragraph: 6 issues
+    - heading "Forging" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×1.98"
+    - paragraph: 5 issues
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert
+- status: 1Password menu is available. Press down arrow to select.
+- generic: $0

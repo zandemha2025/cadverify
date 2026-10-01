@@ -13,27 +13,10 @@ import { SiteShell } from "@/components/site/site-shell";
 import styles from "./developers.module.css";
 
 /**
- * /developers — "The engine is an API." (dark-theater marketing).
- *
- * Faithful production port of
- * handoff_cadverify_2026-07-04/site/Developers.dc.html. A document page: shared
- * chrome via <SiteShell> (SiteNav document + SiteFooter), copy VERBATIM from the
- * canonical design, the hero "record arriving" JSON reveal reproduced with the
- * page-local `.jl` line-in stagger + blinking caret (developers.module.css).
- *
- * MUST-KEEP (present, real fields): the /validate vs /validate/cost split and
- * the real fixture record — unit_cost 14.14 · routing bulk_solid → mjf 0.40 · drivers
- * (labor_cost 6.39, provenance SHOP) · confidence low 8.49 / high 19.80 /
- * validated false / n_samples 0 · line_items 6.39/3.89/3.82/0.04 (Σ = 14.14 ✓).
- *
- * HONESTY: audited against DESIGN-DECISIONS.md. Only the real fixture is shown
- * as engine output; it sums. No fabricated cost figure, no filled provenance
- * chip on invented data, no compliance badge, no accuracy/residual claimed as
- * measured. The 412ms latency and example rate-limit headers are conventional
- * illustrative HTTP chrome (not cost/accuracy/compliance), left verbatim.
- *
- * No client interactivity — the two reveals are pure CSS, so this prerenders
- * static (SiteShell's client boundary only wraps the shared nav/footer).
+ * Public quickstart. The recorded example keeps its original values and
+ * provenance, but only shows selected response fields. Cost fields belong to
+ * estimates[]; routing describes the report. The deployment origin is runtime
+ * configuration, and /scalar opens the actual backend OpenAPI console.
  */
 
 export const metadata: Metadata = {
@@ -111,10 +94,10 @@ export default function DevelopersPage() {
               className="st-mono"
               style={{ fontSize: 11, letterSpacing: "0.14em", color: "var(--st-ink-40)" }}
             >
-              POST /api/v1/validate → routing + DFM · POST /api/v1/validate/cost → the record below
+              POST /api/v1/validate/cost · selected response fields
             </span>
             <span className="st-mono" style={{ fontSize: 11, color: PASS, whiteSpace: "nowrap" }}>
-              200 · 412ms
+              Example · 200
             </span>
           </div>
           <div
@@ -125,20 +108,26 @@ export default function DevelopersPage() {
               {"{"}
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "550ms" }}>
-              {I1}&quot;unit_cost_usd&quot;: <span style={{ color: "#f5f5f7", fontWeight: 600 }}>14.14</span>,
-            </p>
-            <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "800ms" }}>
               {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4 {"}"},
             </p>
+            <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "800ms" }}>
+              {I1}&quot;estimates&quot;: [{"{"}
+            </p>
+            <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "900ms" }}>
+              {I2}&quot;unit_cost_usd&quot;: <span style={{ color: "#f5f5f7", fontWeight: 600 }}>14.14</span>,
+            </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1050ms" }}>
-              {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;(0.08 + 0.5/223) hr × $52/hr × 1.3 markup × 1.15 overhead&quot;</span> {"}"}, <span style={{ color: "rgba(245,245,247,0.35)" }}>…4 more</span> ],
+              {I2}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;(0.08 + 0.5/223) hr × $52/hr × 1.3 markup × 1.15 overhead&quot;</span> {"}"}, <span style={{ color: "rgba(245,245,247,0.35)" }}>…4 more</span> ],
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1300ms" }}>
-              {I1}&quot;confidence&quot;: {"{"} &quot;low_usd&quot;: 8.49, &quot;high_usd&quot;: 19.8, &quot;validated&quot;: <span style={{ color: COND }}>false</span>, &quot;n_samples&quot;: 0 {"}"},
+              {I2}&quot;confidence&quot;: {"{"} &quot;low_usd&quot;: 8.49, &quot;high_usd&quot;: 19.8, &quot;validated&quot;: <span style={{ color: COND }}>false</span>, &quot;n_samples&quot;: 0 {"}"},
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1550ms" }}>
-              {I1}&quot;line_items&quot;: {"{"} &quot;labor&quot;: 6.39, &quot;amortized_fixed&quot;: 3.89, &quot;machine&quot;: 3.82, &quot;material&quot;: 0.04 {"}"}{I1}
+              {I2}&quot;line_items&quot;: {"{"} &quot;labor&quot;: 6.39, &quot;amortized_fixed&quot;: 3.89, &quot;machine&quot;: 3.82, &quot;material&quot;: 0.04 {"}"}{I1}
               <span style={{ color: PASS }}>{"// Σ = 14.14 ✓"}</span>
+            </p>
+            <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1800ms" }}>
+              {I1}{"}"}]
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1800ms" }}>
               {"}"}
@@ -152,7 +141,7 @@ export default function DevelopersPage() {
           className="st-mono"
           style={{ margin: "14px 0 0", fontSize: 11, color: "rgba(245,245,247,0.35)", textAlign: "right" }}
         >
-          the same report the product renders — nothing withheld from the API
+          Selected fields from a recorded example. Prices depend on the part, quantity and rates.
         </p>
       </section>
 
@@ -171,8 +160,8 @@ export default function DevelopersPage() {
         <div>
           <h2 style={sectionH2}>1 — Validate a part with curl</h2>
           <div style={codeBlock}>
-            <p style={{ margin: 0, color: "rgba(245,245,247,0.35)" }}># manufacturability + cost in one request</p>
-            <p style={codeLine}>curl -X POST {apiOrigin}/api/v1/validate \</p>
+            <p style={{ margin: 0, color: "rgba(245,245,247,0.35)" }}># should-cost with routing and DFM evidence for each estimate</p>
+            <p style={codeLine}>curl -X POST {apiOrigin}/api/v1/validate/cost \</p>
             <p style={codeLine}>
               {I1}-H <span style={{ color: STR }}>&quot;Authorization: Bearer cv_live_YOUR_KEY&quot;</span> \
             </p>
@@ -180,32 +169,34 @@ export default function DevelopersPage() {
               {I1}-F <span style={{ color: STR }}>&quot;file=@part.stl&quot;</span> \
             </p>
             <p style={codeLine}>
-              {I1}-F <span style={{ color: STR }}>&quot;processes=fdm,cnc_3axis&quot;</span>
+              {I1}-F <span style={{ color: STR }}>&quot;qty=50,5000&quot;</span>
             </p>
           </div>
           <div style={responseBlock}>
             <p style={{ margin: 0, color: "rgba(245,245,247,0.35)" }}>
-              {"// two calls, one record: /validate answers makeability (routing + DFM); /validate/cost returns the resource-cost record — nothing withheld"}
+              {"// Selected fields from an example response. Read estimates[] by process, material and quantity. Use /validate separately for the full DFM report."}
             </p>
             <p style={respLine}>{"{"}</p>
             <p style={respLine}>
-              {I1}&quot;unit_cost_usd&quot;: <span style={{ color: "#f5f5f7" }}>14.14</span>,
+              {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4 {"}"},
+            </p>
+            <p style={respLine}>{I1}&quot;estimates&quot;: [{"{"}</p>
+            <p style={respLine}>
+              {I2}&quot;unit_cost_usd&quot;: <span style={{ color: "#f5f5f7" }}>14.14</span>,
             </p>
             <p style={respLine}>
-              {I1}&quot;confidence&quot;: {"{"} &quot;low_usd&quot;: 8.49, &quot;high_usd&quot;: 19.8, &quot;validated&quot;: <span style={{ color: COND }}>false</span>, &quot;n_samples&quot;: 0,
+              {I2}&quot;confidence&quot;: {"{"} &quot;low_usd&quot;: 8.49, &quot;high_usd&quot;: 19.8, &quot;validated&quot;: <span style={{ color: COND }}>false</span>, &quot;n_samples&quot;: 0,
             </p>
             <p style={respLine}>
               {I2}&quot;label&quot;: <span style={{ color: STR }}>&quot;assumption-based, not yet validated&quot;</span> {"}"},
             </p>
             <p style={respLine}>
-              {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4, &quot;reasoning&quot;: <span style={{ color: STR }}>&quot;General solid (48% of bbox filled…&quot;</span> {"}"},
+              {I2}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;(0.08 + 0.5/223) hr × $52/hr × 1.3 markup × 1.15 overhead&quot;</span> {"}"}, … ],
             </p>
             <p style={respLine}>
-              {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;(0.08 + 0.5/223) hr × $52/hr × 1.3 markup × 1.15 overhead&quot;</span> {"}"}, … ],
+              {I2}&quot;line_items&quot;: {"{"} &quot;material&quot;: 0.04, &quot;machine&quot;: 3.82, &quot;labor&quot;: 6.39, &quot;amortized_fixed&quot;: 3.89 {"}"}
             </p>
-            <p style={respLine}>
-              {I1}&quot;line_items&quot;: {"{"} &quot;material&quot;: 0.04, &quot;machine&quot;: 3.82, &quot;labor&quot;: 6.39, &quot;amortized_fixed&quot;: 3.89 {"}"}
-            </p>
+            <p style={respLine}>{I1}{"}"}]</p>
             <p style={respLine}>{"}"}</p>
           </div>
         </div>
@@ -294,9 +285,9 @@ export default function DevelopersPage() {
           <Link href="/signup" className="st-pill st-pill-solid" style={{ padding: "14px 32px", fontSize: 15 }}>
             Get an API key
           </Link>
-          <Link href="/docs" className="st-pill st-pill-ghost" style={{ padding: "14px 32px", fontSize: 15 }}>
+          <a href="/scalar" className="st-pill st-pill-ghost" style={{ padding: "14px 32px", fontSize: 15 }}>
             Full API reference
-          </Link>
+          </a>
         </div>
       </section>
     </SiteShell>

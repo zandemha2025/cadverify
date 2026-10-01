@@ -17,14 +17,18 @@ Design contract:
 from __future__ import annotations
 
 import os
+import hashlib
+from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import cached_property
+from itertools import permutations, product
 from typing import TYPE_CHECKING, Any
 
 import logging
 
 import numpy as np
 import trimesh
-from scipy.spatial import KDTree
+from scipy.spatial import ConvexHull, KDTree
 
 from src.analysis.models import FeatureSegment, GeometryInfo
 
@@ -102,6 +106,174 @@ if TYPE_CHECKING:  # avoid circular import at runtime
     from src.analysis.features.base import Feature
 
 
+def enclosing_box_dimensions(mesh: trimesh.Trimesh) -> tuple[tuple[float, ...], str]:
+    """An enclosing stock/build candidate, padded for source-coordinate error."""
+    blank = np.sort(mesh.extents)
+    basis = "file-axis fallback"
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    if not np.isfinite(error) or error < 0:
+        raise ValueError("Invalid source coordinate uncertainty")
+    try:
+        # ponytail: bounded stock candidates, not a certified minimum or setup.
+        # Large hulls avoid trimesh's quadratic oriented-bound projection arrays.
+        if len(mesh.convex_hull.vertices) <= 2048:
+            _, candidate = trimesh.bounds.oriented_bounds(mesh)
+            candidate_basis = "oriented candidate"
+        else:
+            axes = mesh.principal_inertia_transform[:3, :3]
+            candidate = np.ptp((mesh.vertices - mesh.bounds.mean(axis=0)) @ axes.T, axis=0)
+            candidate_basis = "principal-axis candidate"
+        if np.all(np.isfinite(candidate)) and np.all(candidate > 0):
+            blank = np.sort(candidate)
+            basis = candidate_basis
+    except Exception:
+        pass  # The uploaded-axis box remains an enclosing, labeled fallback.
+    return tuple(float(d) + 2 * error for d in blank), basis
+
+
+def enclosing_cylinder_dimensions(mesh, features=None):
+    """Measured axial length and enclosing diameter, padded for source error."""
+    from src.analysis.features.base import turning_dimensions
+
+    # ponytail: reuse the detected revolution axis; not a minimum-cylinder search.
+    measured = turning_dimensions(mesh, features)
+    if measured is None:
+        return None
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    if not np.isfinite(error) or error < 0:
+        raise ValueError("Invalid source coordinate uncertainty")
+    # Both radial and axial endpoint displacement is bounded by sqrt(3)*error.
+    return tuple(d + 2 * np.sqrt(3) * error for d in measured[:2])
+
+
+def fitting_box_dimensions(box, envelope, cylinder=None) -> tuple[float, ...] | None:
+    """A proved enclosing-box placement, expressed in the machine's XYZ axes.
+
+    Preserve existing axis-permutation setups; otherwise reuse the continuous
+    2D bed-fit check on each box face, then try body-diagonal placements.
+    A measured cylindrical enclosure can establish a fit missed by the box.
+    None means no setup was established, not a proof of non-fit.
+    """
+    if len(box) != 3 or len(envelope) != 3 or any(
+        not np.isfinite(v) or v <= 0 for v in (*box, *envelope)
+    ):
+        return None
+    fits = lambda d: all(v <= limit + 1e-9 for v, limit in zip(d, envelope))
+    height_order = lambda d: (d[2], d[0], d[1])
+    direct = [d for d in permutations(box) if fits(d)]
+    if direct:
+        return min(direct, key=height_order)
+    candidates = []
+    for dims in permutations(box):
+        for fixed in range(3):
+            if dims[fixed] > envelope[fixed] + 1e-9:
+                continue
+            i, j = [axis for axis in range(3) if axis != fixed]
+            a, b = dims[i], dims[j]
+            plane = sheet_envelope_dimensions(((0, 0), (a, 0), (a, b), (0, b)),
+                                              (envelope[i], envelope[j]))
+            candidate = list(dims)
+            candidate[i], candidate[j] = plane if envelope[i] <= envelope[j] else plane[::-1]
+            if fits(candidate):
+                candidates.append(tuple(candidate))
+    if candidates:
+        return min(candidates, key=height_order)
+    # ponytail: six constructive 3D placements, not a global orientation search.
+    # Align the longest box edge with the chamber diagonal. Each orthonormal
+    # frame proves an enclosing XYZ box; the two cross-section edges may swap.
+    along = np.array(envelope, dtype=float)
+    along /= np.max(along)
+    along /= np.linalg.norm(along)
+    small, middle, long = sorted(box)
+    for axis in np.eye(3):
+        across = np.cross(along, axis)
+        norm = np.linalg.norm(across)
+        if norm == 0:
+            continue
+        across /= norm
+        up = np.cross(along, across)
+        frame = np.column_stack((across, up, along))
+        for cross_section in ((small, middle), (middle, small)):
+            candidate = tuple(float(d) for d in np.abs(frame) @ (*cross_section, long))
+            if fits(candidate):
+                candidates.append(candidate)
+    if candidates:
+        return min(candidates, key=height_order)
+    if cylinder is not None and len(cylinder) == 2 and all(np.isfinite(v) and v > 0 for v in cylinder):
+        length, diameter = cylinder
+        # For unit cylinder axis u, each extent is L*|u_i| + D*sqrt(1-u_i²).
+        # Its concavity leaves at most two allowed intervals per component.
+        # Work in squared components: the only coupling is sx + sy + sz = 1.
+        radius = np.hypot(length, diameter)
+        axial, radial = length / radius, diameter / radius
+        intervals = []
+        for cap in envelope:
+            allowed = []
+            if cap >= radius:
+                allowed = [(0.0, 1.0)]
+            else:
+                ratio = cap / radius
+                root = np.sqrt(max(0.0, 1 - ratio**2))
+                if cap >= diameter:
+                    allowed.append((0.0, max(0.0, axial * ratio - radial * root)**2))
+                if cap >= length:
+                    allowed.append((min(1.0, axial * ratio + radial * root)**2, 1.0))
+            intervals.append(allowed)
+        for (lx, hx), (ly, hy), (lz, hz) in product(*intervals):
+            zlow, zhigh = max(lz, 1 - hx - hy), min(hz, 1 - lx - ly)
+            if zlow > zhigh + 1e-14:
+                continue
+            # The extent is concave in each squared component too: minimum
+            # build height, then X/Y, occurs at these feasible endpoints.
+            for z in (zlow, zhigh):
+                for x in (max(lx, 1 - z - hy), min(hx, 1 - z - ly)):
+                    squared = np.clip((x, 1 - z - x, z), 0, 1)
+                    squared /= squared.sum()
+                    candidate = tuple(float(d) for d in
+                                      length * np.sqrt(squared) + diameter * np.sqrt(1 - squared))
+                    if fits(candidate):
+                        candidates.append(candidate)
+    return min(candidates, key=height_order, default=None)
+
+
+def minimum_width_lower_bound(mesh: trimesh.Trimesh) -> float:
+    """A sphere inside the convex hull bounds the part's width in every direction."""
+    try:
+        hull = mesh.convex_hull
+        if not hull.is_volume:
+            return 0.0
+        # ponytail: sphere at the hull centroid; not the exact minimum caliper width.
+        distances = np.einsum("ij,ij->i", hull.triangles_center - hull.center_mass, hull.face_normals)
+        diameter = 2 * float(distances.min())
+        return max(0.0, diameter) if np.isfinite(diameter) else 0.0
+    except Exception:
+        logger.warning("Minimum-width bound unavailable", exc_info=True)
+        return 0.0
+
+
+def envelope_nonfit_bound(box, envelope, minimum_width=0.0, precision=0.0):
+    """Necessary geometric bounds; never infer non-fit from a failed box search.
+
+    box is a tight measured projection, without source-error padding. A source
+    coordinate error of precision/2 per axis moves a vertex by at most sqrt(3)
+    times that amount; allow both ends of every measured span.
+    """
+    if len(box) != 3 or len(envelope) != 3 or any(
+        not np.isfinite(v) or v <= 0 for v in (*box, *envelope)
+    ):
+        return None
+    error = np.sqrt(3) * precision
+    for axis, need, have, label, capacity in (
+        ("minimum_width_mm", minimum_width - error, min(envelope), "minimum width", "smallest chamber span"),
+        ("diameter_mm", max(box) - error, np.linalg.norm(envelope), "diameter", "chamber diagonal"),
+    ):
+        if need > have:
+            human = (f"Part {label} is at least {need:.9g}mm > {capacity} {have:.9g}mm. "
+                     "This necessary bound is not a machine specification; verify the full XYZ setup.")
+            return axis, float(need), float(have), human
+    return None
+
+
 @dataclass
 class GeometryContext:
     """Precomputed, shared geometry state handed to every ProcessAnalyzer."""
@@ -121,7 +293,7 @@ class GeometryContext:
     wall_thickness: np.ndarray       # (N,)   float — inward ray cast, inf on failure
 
     # Per-edge arrays
-    edge_lengths: np.ndarray         # (E,) float
+    edge_lengths: np.ndarray         # physical sharp-edge spans / closed-rim widths
     dihedral_angles_rad: np.ndarray  # (A,) float — from face_adjacency_angles
     face_adjacency: np.ndarray       # (A, 2) int  — from face_adjacency
     concave_mask: np.ndarray         # (A,) bool   — ~face_adjacency_convex
@@ -137,6 +309,175 @@ class GeometryContext:
 
     # Room for extensions (symmetry axis, SAM-3D labels, ...)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Upper bounds apply only to persistent, directly cast hits. They are not
+    # two-sided intervals: a perturbed ray can encounter another surface first.
+    wall_thickness_upper: np.ndarray | None = None
+    edge_length_precision: np.ndarray | None = None
+    edge_topology_stable: bool = True
+
+    @cached_property
+    def enclosing_box(self):
+        return enclosing_box_dimensions(self.mesh)
+
+    @cached_property
+    def minimum_width_bound(self):
+        return minimum_width_lower_bound(self.mesh)
+
+    @cached_property
+    def enclosing_cylinder(self):
+        return enclosing_cylinder_dimensions(self.mesh, self.features)
+
+    @cached_property
+    def flat_sheet_geometry(self):
+        return flat_sheet_geometry(self.mesh)
+
+    @cached_property
+    def straight_profile_geometry(self):
+        """Verify extrusion geometry without treating the file's Z as the wire axis."""
+        if self.metadata.get("decimation", {}).get("succeeded") or not self.mesh.is_volume:
+            return None
+        if self.flat_sheet_geometry is not None:
+            return self.flat_sheet_geometry
+        normals = self.mesh.face_normals
+        first = int(np.argmax(self.mesh.area_faces))
+        second = int(np.argmin(np.abs(normals @ normals[first])))
+        # An extrusion's normals are axial or transverse. If neither of two
+        # independent normals is axial, their cross product is. Choose an
+        # actual face so the existing source-normal precision bound still holds.
+        axis = np.cross(normals[first], normals[second])
+        third = int(np.argmax(np.abs(normals @ axis)))
+        for face in dict.fromkeys((first, second, third)):
+            measured = flat_sheet_geometry(self.mesh, normal_face=face)
+            if measured is not None:
+                return measured
+        return None
+
+    @cached_property
+    def undercut_free_geometry(self) -> bool:
+        """Positive geometry evidence with reorientation; not a toolpath/fixture check."""
+        mesh = self.mesh
+        if (self.metadata.get("decimation", {}).get("succeeded")
+                or mesh.metadata.get("coordinate_error", 0.0) != 0
+                or not mesh.is_volume or mesh.body_count != 1
+                or np.any(self.face_areas <= 0)
+                or not np.all(np.linalg.norm(self.normals, axis=1) > .99)):
+            return False
+        tol = wall_thickness_tolerance(mesh, self.scale_eps)
+        # Local projections only nominate a convex candidate: skinny triangles
+        # can make concave-edge projections arbitrarily small. Certify each
+        # entire triangle against a global supporting plane of its convex hull.
+        projections = mesh.face_adjacency_projections
+        if len(projections) and np.all(np.isfinite(projections) & (projections <= tol)):
+            try:
+                hull = mesh.convex_hull
+                batch = max(1, min(_wall_thickness_ray_batch(), _wall_thickness_ray_budget() // len(hull.faces)))
+                for start in range(0, len(mesh.faces), batch):
+                    surface, _, face = hull.nearest.on_surface(self.centroids[start:start + batch])
+                    offsets = mesh.triangles[start:start + batch] - surface[:, None, :]
+                    distances = np.einsum("nvi,ni->nv", offsets, hull.face_normals[face])
+                    if not np.all(np.abs(distances) <= tol):
+                        break
+                else:
+                    return True
+            except Exception:
+                logger.warning("Convex setup verification failed", exc_info=True)
+        if self.straight_profile_geometry is not None:
+            return True
+        vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
+        # ponytail: eight dominant planar faces bound this setup search; leave
+        # other orientations unverified until explicit CAM setup axes exist.
+        facets = sorted(self.facet_groups, key=lambda f: -float(self.face_areas[f].sum()))[:8]
+        for facet in facets:
+            normal = self.normals[int(facet[np.argmax(self.face_areas[facet])])]
+            for axis in (normal, -normal):
+                downward = self.normals @ axis < -1e-7
+                heights = vertices @ axis
+                # Only the actual planar base is exempt. A percentage band
+                # near the bottom can contain a real pocket or closed cavity.
+                if np.all(heights[mesh.faces[downward]] <= heights.min() + tol):
+                    return True
+        return False
+
+    @property
+    def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
+        measured = self.flat_sheet_geometry
+        return measured[0] if measured is not None else None
+
+    @property
+    def sheet_precision(self) -> float:
+        measured = self.flat_sheet_geometry
+        return measured[2] if measured is not None else 0.0
+
+    @cached_property
+    def maximum_inscribed_diameter(self) -> float | None:
+        """Largest *observed* interior sphere, shared by molding/casting checks.
+
+        A normal chord across a plate edge measures its length, not its wall.
+        Nearest-surface distance at an interior point instead bounds a sphere
+        that actually fits in material. This is a sampled lower bound on the
+        largest thick section, not certification of unsampled geometry.
+        """
+        try:
+            if not self.mesh.is_volume:
+                return None
+            n = len(self.centroids)
+            # Reuse only the faces actually ray-cast, never interpolated values.
+            stride = max(1, n // 5000) if n > _raycast_sample_threshold() else 1
+            ids = np.arange(0, n, stride)
+            ids = ids[::max(1, (len(ids) + 4999) // 5000)]
+            ids = ids[np.isfinite(self.wall_thickness[ids])]
+            points = _wall_sample_points(self.mesh)[ids] - self.normals[ids] * self.wall_thickness[ids, None] / 2
+            batch = min(_wall_thickness_ray_batch(), max(8, _wall_thickness_ray_budget() // n))
+            tol = wall_thickness_tolerance(self.mesh, self.scale_eps)
+            # Facet centers recover broad planar sections even on coarse CAD
+            # triangulations. A concave facet's centroid can lie in a hole;
+            # accept it only when it lies on the actual surface.
+            # ponytail: capped surface samples can miss small sections; use an
+            # adaptive medial-axis solver if certified global maxima are needed.
+            facets = self.facet_groups[::max(1, (len(self.facet_groups) + 4999) // 5000)]
+            facet_points = np.asarray([
+                np.average(self.centroids[f], axis=0, weights=self.face_areas[f])
+                for f in facets if self.face_areas[f].sum() > 0
+            ])
+            extra = []
+            for start in range(0, len(facet_points), batch):
+                p, distance, face = self.mesh.nearest.on_surface(facet_points[start:start + batch])
+                valid = distance <= tol
+                p, face = p[valid], face[valid]
+                directions = -self.normals[face]
+                chord = _cast_inward_rays_batched(
+                    self.mesh, p - directions * self.scale_eps, directions,
+                    self.scale_eps, face, source_points=p,
+                )
+                finite = np.isfinite(chord)
+                extra.extend(p[finite] + directions[finite] * chord[finite, None] / 2)
+            if extra:
+                points = np.vstack([points, extra])
+            points = np.unique(np.vstack([points, self.mesh.center_mass]), axis=0)
+            # Distance to any actual triangle bounds nearest-surface distance
+            # from above. Try the most promising samples first, then skip only
+            # those that cannot improve the measured maximum.
+            _, nearest = KDTree(self.centroids).query(points)
+            surface = trimesh.triangles.closest_point(self.mesh.triangles[nearest], points)
+            upper = np.linalg.norm(points - surface, axis=1)
+            order = np.argsort(-upper)
+            points, upper = points[order], upper[order]
+            best = 0.0
+            for start in range(0, len(points), batch):
+                candidates = points[start:start + batch]
+                candidates = candidates[upper[start:start + batch] + tol > best / 2]
+                if not len(candidates):
+                    break
+                # Concavities, cavities and separate bodies must not turn an
+                # exterior clearance into material thickness.
+                candidates = candidates[self.mesh.contains(candidates)]
+                if len(candidates):
+                    _, distance, _ = self.mesh.nearest.on_surface(candidates)
+                    best = max(best, float(distance.max()) * 2)
+            return best if np.isfinite(best) and best > tol else None
+        except Exception:
+            logger.warning("Maximum wall thickness measurement failed", exc_info=True)
+            return None
 
     # ──────────────────────────────────────────────────────────
     # Builder
@@ -172,9 +513,13 @@ class GeometryContext:
             cos_z = np.clip(normals @ np.array([0.0, 0.0, 1.0]), -1.0, 1.0)
             angles_from_up_deg = np.degrees(np.arccos(cos_z))
 
-        wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps)
+        wall_upper = np.full(len(centroids), np.inf)
+        wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps, wall_upper)
 
-        edge_lengths = _safe_attr(mesh, "edges_unique_length", default=np.empty(0))
+        edge_lengths, edge_precision, edge_stable = manufacturing_edge_measurements(mesh)
+        if decimation and decimation.get("succeeded"):
+            wall_upper[:] = np.inf
+            edge_precision[:] = np.inf
         adjacency = _safe_attr(mesh, "face_adjacency", default=np.empty((0, 2), dtype=int))
         dihedral = _safe_attr(mesh, "face_adjacency_angles", default=np.empty(0))
         try:
@@ -238,7 +583,10 @@ class GeometryContext:
             face_areas=face_areas,
             angles_from_up_deg=angles_from_up_deg,
             wall_thickness=wall_thickness,
+            wall_thickness_upper=wall_upper,
             edge_lengths=np.asarray(edge_lengths, dtype=np.float64),
+            edge_length_precision=edge_precision,
+            edge_topology_stable=edge_stable and not bool(decimation and decimation.get("succeeded")),
             dihedral_angles_rad=np.asarray(dihedral, dtype=np.float64),
             face_adjacency=np.asarray(adjacency, dtype=np.int64),
             concave_mask=concave_mask,
@@ -254,6 +602,97 @@ class GeometryContext:
                 if v
             },
         )
+
+
+def analysis_mesh_hash(mesh: trimesh.Trimesh) -> str:
+    """Identity of face order and coordinates at the GLB's float32 precision."""
+    return hashlib.sha256(np.asarray(mesh.triangles, dtype="<f4").tobytes()).hexdigest()
+
+
+def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:
+    return manufacturing_edge_measurements(mesh)[0]
+
+
+def manufacturing_edge_measurements(mesh: trimesh.Trimesh) -> tuple[np.ndarray, np.ndarray, bool]:
+    """Measure geometric boundaries, never the edges of the export triangles.
+
+    Join subdivision segments until a junction or a real corner. A smooth
+    closed rim contributes its in-plane width (e.g. bore diameter), not its
+    individual tessellation chords. The work is linear in boundary size.
+    """
+    angles = np.asarray(mesh.face_adjacency_angles)
+    edges = np.asarray(mesh.face_adjacency_edges)[angles > np.radians(30)]
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    # Both selected AND omitted adjacencies must stay on the same side of the
+    # sharp-edge threshold; otherwise chain membership itself is uncertain.
+    stable = True
+    if error:
+        normal_error = _normal_precision(mesh, error)
+        angle_error = 2 * np.arcsin(np.minimum(1., normal_error / 2))
+        stable = bool(np.all(np.abs(angles - np.radians(30)) >
+                             angle_error[mesh.face_adjacency].sum(axis=1)))
+    if len(edges) == 0:
+        return np.empty(0), np.empty(0), stable
+    vertices = np.asarray(mesh.vertices)
+    neighbors: dict[int, list[int]] = defaultdict(list)
+    for index, (a, b) in enumerate(edges):
+        neighbors[int(a)].append(index)
+        neighbors[int(b)].append(index)
+
+    breaks = set()
+    for vertex, incident in neighbors.items():
+        if len(incident) != 2:
+            breaks.add(vertex)
+            continue
+        ends = [int(edges[i].sum()) - vertex for i in incident]
+        directions = vertices[ends] - vertices[vertex]
+        lengths = np.linalg.norm(directions, axis=1)
+        if error:
+            # Unit-vector change for a segment whose endpoints each move <= e.
+            direction_error = np.minimum(2., 4 * error / np.maximum(lengths - 2 * error, 1e-300))
+            cosine = float(np.dot(*directions) / max(float(np.prod(lengths)), 1e-300))
+            stable &= abs(cosine + np.cos(np.radians(30))) > direction_error.sum()
+        if np.any(lengths <= 1e-12) or np.dot(*directions) > -np.cos(np.radians(30)) * np.prod(lengths):
+            breaks.add(vertex)
+
+    visited: set[int] = set()
+    sizes = []
+    precisions = []
+    # Start open chains at their ends; the remaining components are closed rims.
+    for start in [*breaks, *neighbors]:
+        for first in neighbors[start]:
+            if first in visited:
+                continue
+            path = [start]
+            vertex, edge = start, first
+            while edge not in visited:
+                visited.add(edge)
+                vertex = int(edges[edge].sum()) - vertex
+                path.append(vertex)
+                if vertex == start or vertex in breaks:
+                    break
+                edge = next(i for i in neighbors[vertex] if i != edge)
+            points = vertices[path]
+            precision = 2 * error * (len(path) - 1) if stable else float("inf")
+            if path[-1] == start:
+                # ponytail: planar rim width; freeform openings need B-rep
+                # feature measurements before claiming full feature coverage.
+                points = points[:-1]
+                centered = points - points.mean(axis=0)
+                _, singular, axes = np.linalg.svd(centered, full_matrices=False)
+                if len(singular) < 2 or singular[1] <= 1e-12:
+                    continue
+                size = float(np.ptp(centered @ axes[:2].T, axis=0).min())
+                # PCA axes can jump at repeated singular values. Do not claim
+                # a coordinate-rounding bound for this heuristic rim width.
+                if error:
+                    precision = float("inf")
+            else:
+                size = float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum())
+            if np.isfinite(size) and size > 1e-12:
+                sizes.append(size)
+                precisions.append(precision)
+    return np.asarray(sizes, dtype=np.float64), np.asarray(precisions, dtype=np.float64), bool(stable)
 
 
 def _max_split_bodies() -> int:
@@ -321,23 +760,164 @@ def _finite_body_volume(mesh: trimesh.Trimesh) -> float:
 # ──────────────────────────────────────────────────────────────
 # Vectorized wall-thickness ray cast
 # ──────────────────────────────────────────────────────────────
+def wall_thickness_tolerance(mesh: trimesh.Trimesh, eps: float) -> float:
+    """Numerical distance tolerance, including translated CAD coordinates."""
+    bounds = mesh.bounds
+    magnitude = float(np.abs(bounds).max()) if bounds is not None else 0.0
+    return max(eps * 1e-6, float(np.spacing(magnitude)) * 8)
+
+
+def _normal_precision(mesh: trimesh.Trimesh, error: float) -> np.ndarray:
+    """Euclidean unit-normal change when each triangle vertex moves <= error."""
+    if not error:
+        return np.zeros(len(mesh.faces))
+    edges = mesh.triangles[:, 1:] - mesh.triangles[:, :1]
+    cross_error = 2 * error * np.linalg.norm(edges, axis=2).sum(axis=1) + 4 * error**2
+    cross_length = 2 * mesh.area_faces
+    return np.minimum(2., 2 * cross_error / np.maximum(cross_length - cross_error, 1e-300))
+
+
+def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] | None:
+    measured = flat_sheet_geometry(mesh)
+    return measured[0] if measured is not None else None
+
+
+def flat_sheet_geometry(mesh: trimesh.Trimesh, *, normal_face: int | None = None) -> tuple[tuple[float, float, float], np.ndarray, float] | None:
+    """Gauge and in-plane blank extents of a verified straight, flat extrusion.
+
+    Opposing caps must bound all vertices; every other surface must run through
+    the gauge. This rejects bosses, pockets, bent sheets and open/multiple bodies
+    instead of calling their overall envelope a measured material thickness.
+    """
+    try:
+        if not mesh.is_volume or mesh.body_count != 1:
+            return None
+        largest_face = normal_face
+        if largest_face is None:
+            largest_face = int(np.argmax(mesh.area_faces))
+            if len(mesh.facets_area) and mesh.facets_area.max() > mesh.area_faces[largest_face]:
+                facet = mesh.facets[int(np.argmax(mesh.facets_area))]
+                largest_face = int(facet[np.argmax(mesh.area_faces[facet])])
+        normal = mesh.face_normals[largest_face]
+        vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
+        heights = vertices @ normal
+        low, high = float(heights.min()), float(heights.max())
+        gauge = high - low
+        eps = max(1e-4, min(float(np.linalg.norm(mesh.extents)) * 1e-4, .1))
+        tol = wall_thickness_tolerance(mesh, eps)
+        error = float(mesh.metadata.get("coordinate_error", 0.0))
+        if not np.isfinite(error) or error < 0:
+            return None
+        # If each vertex moves at most e, either triangle edge moves at most
+        # 2e. Bound its cross-product change, then the unit-normal change.
+        normal_error = _normal_precision(mesh, error)
+        precision = 2 * error + float(np.linalg.norm(mesh.extents)) * normal_error[largest_face]
+        angular_tol = 1e-7 + normal_error + normal_error[largest_face]
+        if np.any(angular_tol >= np.sqrt(.5)):
+            return None  # Cap and rim directions cannot be distinguished.
+        alignment = np.abs(mesh.face_normals @ normal)
+        caps = np.linalg.norm(np.cross(mesh.face_normals, normal), axis=1) <= angular_tol
+        if gauge <= tol + precision or not np.all(caps | (alignment <= angular_tol)):
+            return None
+        cap_heights = heights[mesh.faces[caps]]
+        if not np.all((np.abs(cap_heights - low) <= tol + precision) | (np.abs(cap_heights - high) <= tol + precision)):
+            return None
+        rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
+        footprint = (vertices @ rotation.T)[:, :2]
+        hull = footprint[ConvexHull(footprint).vertices]
+        edges = np.roll(hull, -1, axis=0) - hull
+        lengths = np.linalg.norm(edges, axis=1)
+        directions = edges[lengths > tol] / lengths[lengths > tol, None]
+        # Same hull-edge projections as trimesh.oriented_bounds_2D, bounded in
+        # memory and with a stable minimum-perimeter tie break for equal areas.
+        # ponytail: quadratic hull scan; use rotating calipers if very detailed
+        # curved flat outlines make this a measured bottleneck.
+        batch = max(1, min(512, _wall_thickness_ray_budget() // len(hull)))
+        rectangles = []
+        for start in range(0, len(directions), batch):
+            axes = directions[start:start + batch]
+            widths = np.ptp(axes @ hull.T, axis=1)
+            heights_2d = np.ptp((axes[:, ::-1] * [-1, 1]) @ hull.T, axis=1)
+            rectangles.extend(zip(widths, heights_2d))
+        extents = np.sort(np.asarray(rectangles), axis=1)
+        areas = np.prod(extents, axis=1)
+        area_tol = tol * float(np.linalg.norm(np.ptp(hull, axis=0))) * 4
+        candidates = extents[areas <= areas.min() + area_tol]
+        widths = candidates[int(np.argmin(candidates.sum(axis=1)))]
+        if not np.all(np.isfinite(widths)) or widths[0] <= tol:
+            return None
+        return (gauge, float(widths[0]), float(widths[1])), hull, float(precision)
+    except Exception:
+        logger.warning("Flat sheet measurement failed", exc_info=True)
+        return None
+
+
+def sheet_envelope_dimensions(outline, envelope) -> tuple[float, float]:
+    """Best in-plane orientation for a particular rectangular machine bed.
+
+    Between hull-edge angles the four supporting vertices stay fixed. Each
+    span is a positive sinusoid (concave); the maximum normalized span can
+    minimize only at an interval endpoint or where the two spans cross.
+    Checking both bed-axis assignments therefore covers every orientation.
+    """
+    hull = np.asarray(outline, dtype=np.float64)
+    edges = np.roll(hull, -1, axis=0) - hull
+    angles = np.unique(np.r_[0., np.mod(np.arctan2(edges[:, 1], edges[:, 0]), np.pi / 2), np.pi / 2])
+    mids = (angles[1:] + angles[:-1]) / 2
+    candidates = list(angles)
+    batch = max(1, min(512, _wall_thickness_ray_budget() // len(hull)))
+    for start in range(0, len(mids), batch):
+        theta = mids[start:start + batch]
+        u = np.column_stack([np.cos(theta), np.sin(theta)])
+        v = u[:, ::-1] * [-1, 1]
+        x, y = u @ hull.T, v @ hull.T
+        dx = hull[x.argmax(axis=1)] - hull[x.argmin(axis=1)]
+        dy = hull[y.argmax(axis=1)] - hull[y.argmin(axis=1)]
+        for width, height in (envelope, envelope[::-1]):
+            a = dx[:, 0] / width - dy[:, 1] / height
+            b = dx[:, 1] / width + dy[:, 0] / height
+            roots = np.mod(np.arctan2(-a, b), np.pi)
+            inside = (roots >= angles[start:start + len(theta)]) & (roots <= angles[start + 1:start + len(theta) + 1])
+            candidates.extend(roots[inside])
+    best, best_ratio = (float("inf"), float("inf")), float("inf")
+    for start in range(0, len(candidates), batch):
+        theta = np.asarray(candidates[start:start + batch])
+        u = np.column_stack([np.cos(theta), np.sin(theta)])
+        dims = np.sort(np.column_stack([np.ptp(u @ hull.T, axis=1),
+                                        np.ptp((u[:, ::-1] * [-1, 1]) @ hull.T, axis=1)]), axis=1)
+        ratios = (dims / np.sort(envelope)).max(axis=1)
+        i = int(ratios.argmin())
+        if ratios[i] < best_ratio:
+            best, best_ratio = (float(dims[i, 0]), float(dims[i, 1])), float(ratios[i])
+    return best
+
+
+def _wall_sample_points(mesh: trimesh.Trimesh) -> np.ndarray:
+    if mesh.metadata.get("coordinate_error"):
+        # Symmetric CAD centroid rays often hit an export diagonal exactly.
+        # A fixed interior barycentric point avoids that common ambiguous hit.
+        return np.einsum("ijk,j->ik", mesh.triangles, [1 / 2, 1 / 3, 1 / 6])
+    return np.asarray(mesh.triangles_center)
+
+
 def _compute_wall_thickness(
     mesh: trimesh.Trimesh,
     normals: np.ndarray,
     centroids: np.ndarray,
     eps: float,
+    upper_bounds: np.ndarray | None = None,
 ) -> np.ndarray:
     """Measure per-face wall thickness via inward ray cast.
 
-    For each face, fires one ray from slightly-inside the surface along -normal.
-    The nearest valid hit (not the source face itself) is the wall thickness.
-    Old code did this with a Python per-face loop; this version uses
-    np.minimum.at to scatter-min distances back to their source rays, which is
-    strictly vectorized and correctly handles the multi-hit case.
+    For each face, fires one ray from slightly outside the surface along -normal.
+    With source rounding, prefer the persistent hit having the smallest upper
+    bound and retain its actual distance. Otherwise retain the nearest valid
+    hit. A finite raw value without a finite bound is an uncertain estimate.
 
     Returns an array of length N_faces. Uncomputable faces get np.inf, which
     analyzers interpret as 'unknown' rather than 'thick'.
     """
+    centroids = _wall_sample_points(mesh)
     n = len(centroids)
     thickness = np.full(n, np.inf, dtype=np.float64)
     if n == 0:
@@ -345,14 +925,14 @@ def _compute_wall_thickness(
 
     threshold = _raycast_sample_threshold()
     if n > threshold:
-        return _compute_wall_thickness_sampled(mesh, normals, centroids, eps, n)
+        return _compute_wall_thickness_sampled(mesh, normals, centroids, eps, n, upper_bounds)
 
     # Below threshold we cast one ray per face — but in memory-bounded batches,
     # so even here peak RSS is capped instead of spiking to gigabytes.
-    origins = centroids - normals * eps  # start just inside the surface
+    origins = centroids + normals * eps  # do not step past a thin opposite wall
     directions = -normals
     source_face_idx = np.arange(n, dtype=np.int64)
-    return _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx)
+    return _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx, upper_bounds=upper_bounds)
 
 
 def _cast_inward_rays_batched(
@@ -361,12 +941,17 @@ def _cast_inward_rays_batched(
     directions: np.ndarray,
     eps: float,
     source_face_idx: np.ndarray,
+    *,
+    source_points: np.ndarray | None = None,
+    upper_bounds: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Cast inward rays in memory-bounded batches; return per-ray min thickness.
+    """Cast inward rays in memory-bounded batches; return per-ray hit distances.
 
     ``source_face_idx[i]`` is the mesh-face index ray ``i`` originates from,
     used to drop self-hits. Returns an array of length ``len(origins)`` with the
-    nearest non-self hit distance per ray (``np.inf`` where none).
+    inward distance from the original face, not the offset ray origin (``np.inf``
+    where none). When requested, upper_bounds selects a persistent hit and the
+    returned distance stays paired with that hit, even if a closer hit is uncertain.
 
     The pure-Python ``RayMeshIntersector`` allocates (rays × candidate-triangle)
     intermediates *per call*. Casting only ``WALL_THICKNESS_RAY_BATCH`` rays at a
@@ -384,6 +969,12 @@ def _cast_inward_rays_batched(
     max_batch = _wall_thickness_ray_batch()
     budget = _wall_thickness_ray_budget()
     batch = int(min(max_batch, max(8, budget // n_faces)))
+    # Reject numerical self-hits without discarding walls thinner than the
+    # scale-dependent ray offset. Account for translated CAD coordinates too.
+    surface_tol = wall_thickness_tolerance(mesh, eps)
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    normal_error = _normal_precision(mesh, error) if upper_bounds is not None else np.empty(0)
+    samples = _wall_sample_points(mesh) if source_points is None else source_points
     for start in range(0, m, batch):
         stop = min(start + batch, m)
         b_origins = origins[start:stop]
@@ -404,14 +995,41 @@ def _cast_inward_rays_batched(
         if len(locs) == 0:
             continue
 
-        # distance from each hit to its (batch-local) source ray origin
-        dists = np.linalg.norm(locs - b_origins[idx_ray], axis=1)
-
-        # Exclude self-hits (source face reports itself) and numerical noise
-        # right at the origin (< 2*eps).
-        valid = (idx_tri != b_source[idx_ray]) & (dists > 2.0 * eps)
+        # Measure from the actual surface; the offset must not bias thickness.
+        # Signed projection also excludes any hit outside the source surface.
+        reference = samples[b_source] if source_points is None else samples[start:stop]
+        offsets = locs - reference[idx_ray]
+        dists = np.einsum("ij,ij->i", offsets, b_directions[idx_ray])
+        valid = (idx_tri != b_source[idx_ray]) & (dists > surface_tol)
         if np.any(valid):
             np.minimum.at(out, start + idx_ray[valid], dists[valid])
+            if upper_bounds is not None:
+                rays, targets, distances = idx_ray[valid], idx_tri[valid], dists[valid]
+                if not error:
+                    np.minimum.at(upper_bounds, start + rays, distances)
+                    continue
+                source_error = normal_error[b_source[rays]]
+                denominator = (np.abs(np.einsum("ij,ij->i", b_directions[rays], mesh.face_normals[targets]))
+                               - source_error - normal_error[targets])
+                bound = np.full(len(rays), np.inf)
+                positive = denominator > 0
+                bound[positive] = (2 * error + distances[positive] * source_error[positive]) / denominator[positive]
+                triangles = mesh.triangles[targets]
+                edges = np.roll(triangles, -1, axis=1) - triangles
+                edge_distance = np.linalg.norm(np.cross(edges, locs[valid, None] - triangles), axis=2)
+                edge_distance /= np.maximum(np.linalg.norm(edges, axis=2), 1e-300)
+                # A corresponding plane hit must stay forward and inside its
+                # triangle. A new nearer hit can only make the wall thinner.
+                persistent = ((distances > bound + surface_tol) &
+                              (edge_distance.min(axis=1) > 2 * error + distances * source_error + bound))
+                candidates = np.flatnonzero(persistent)
+                order = candidates[np.lexsort(((distances + bound)[candidates], rays[candidates]))]
+                _, first = np.unique(rays[order], return_index=True)
+                chosen = order[first]
+                # Keep the measured chord paired with the hit that supplies
+                # the bound, even when a closer hit is ambiguous.
+                upper_bounds[start + rays[chosen]] = (distances + bound)[chosen]
+                out[start + rays[chosen]] = distances[chosen]
 
     return out
 
@@ -422,20 +1040,25 @@ def _compute_wall_thickness_sampled(
     centroids: np.ndarray,
     eps: float,
     n: int,
+    upper_bounds: np.ndarray | None = None,
 ) -> np.ndarray:
     """Sampled wall thickness: ray-cast ~5000 faces (batched), propagate via KDTree."""
+    centroids = _wall_sample_points(mesh)
     thickness = np.full(n, np.inf, dtype=np.float64)
     stride = max(1, n // 5000)
     sample_idx = np.arange(0, n, stride)
 
-    origins = centroids[sample_idx] - normals[sample_idx] * eps
+    origins = centroids[sample_idx] + normals[sample_idx] * eps
     directions = -normals[sample_idx]
 
     # Reuse the memory-bounded batched caster. `sample_idx` doubles as the
     # per-ray source-face index used to drop self-hits.
+    sampled_upper = np.full(len(sample_idx), np.inf) if upper_bounds is not None else None
     sampled_thickness = _cast_inward_rays_batched(
-        mesh, origins, directions, eps, sample_idx
+        mesh, origins, directions, eps, sample_idx, upper_bounds=sampled_upper
     )
+    if upper_bounds is not None:
+        upper_bounds[sample_idx] = sampled_upper
     if not np.any(np.isfinite(sampled_thickness)):
         return thickness
 
@@ -506,6 +1129,8 @@ def _maybe_decimate(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, dict | None
         "via base_analyzer.decimation_issue.",
         n, len(reduced.faces), strategy, cap,
     )
+    if "coordinate_error" in mesh.metadata:
+        reduced.metadata["coordinate_error"] = mesh.metadata["coordinate_error"]
     return reduced, {
         "attempted": True,
         "succeeded": True,

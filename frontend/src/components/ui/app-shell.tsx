@@ -48,6 +48,7 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { CommandPaletteProvider, useCommandPalette } from "@/components/ui/command-palette";
 import { InstrumentChromeProvider, useInstrumentChrome } from "@/components/instrument/instrument-chrome";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { procLabel, verdictLabel } from "@/lib/status";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 /* Routes that render full-fluid (the workspace needs its width); everything
@@ -55,7 +56,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 const FLUID = new Set(["/verify", "/cost", "/analyze"]);
 /* The genuinely local cost/DFM decision path — the ONLY place we assert
    zero-egress (image→mesh reconstruction is out of scope, handled elsewhere). */
-const LOCAL_PATHS = ["/cost", "/analyze", "/cost-decisions", "/history", "/batch", "/rfq-packages"];
+const CAD_EVIDENCE_PATHS = ["/cost", "/analyze", "/cost-decisions", "/history", "/batch", "/rfq-packages"];
 
 /* ── L1 icon rail — the object domains you fly between (catalog-forward). ──── */
 type RailItem = {
@@ -287,7 +288,7 @@ function ContextBar({
   const pathname = usePathname();
   const { part } = useInstrumentChrome();
   const { open } = useCommandPalette();
-  const isLocal = LOCAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const hasCadEvidence = CAD_EVIDENCE_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
   const domain = pathname.startsWith("/verify")
     ? "verify"
     : pathname.startsWith("/designs")
@@ -329,7 +330,8 @@ function ContextBar({
             <ChevronRight className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
             <span className="num truncate font-medium text-foreground">{part.name}</span>
             {part.verdict ? (
-              <StatusBadge verdict={part.verdict} size="sm" />
+              <StatusBadge verdict={part.verdict} size="sm"
+                label={`${part.verdictProcess ? `${procLabel(part.verdictProcess)} · ` : ""}${verdictLabel(part.verdict)}`} />
             ) : part.analyzing ? (
               <span className="num text-[11px] text-subtle-foreground">analyzing…</span>
             ) : null}
@@ -339,14 +341,14 @@ function ContextBar({
 
       <div className="flex-1" />
 
-      {/* data-locality — asserted ONLY on the genuinely local cost/DFM path */}
-      {isLocal && (
+      {/* Authenticated CAD evidence is retained; the route does not imply local hosting. */}
+      {hasCadEvidence && (
         <span
-          title="CAD is parsed and discarded in-process — zero network egress on the cost/DFM decision path."
+          title="CAD is processed on this deployment’s server and retained with your workspace’s decision evidence."
           className="hidden items-center gap-1.5 rounded-[var(--radius-sm)] border border-prov-shop-border bg-prov-shop-bg px-2 py-1 text-[11px] font-medium text-prov-shop sm:inline-flex"
         >
           <Lock className="size-3" aria-hidden />
-          LOCAL · zero-egress
+          Workspace CAD evidence
         </span>
       )}
       <button

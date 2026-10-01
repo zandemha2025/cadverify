@@ -1,0 +1,14 @@
+[
+  {
+    "file": "156-plate-with-boss.step",
+    "sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+    "analytic_volume_mm3": 49600.0,
+    "analytic_max_material_thickness_mm": 10.0
+  },
+  {
+    "file": "156-tube.step",
+    "sha256": "c6c45b989fed0c347f45a7ff03338cf6626325f163e812e5f1f70d8fbf5270fa",
+    "analytic_volume_mm3": 1790.707812546182,
+    "analytic_max_material_thickness_mm": 1.0
+  }
+]

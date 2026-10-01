@@ -95,6 +95,25 @@ test("makeNowEstimate follows decision.make_now_process and picks the stable hig
   assert.equal(makeNowEstimate(r, 10)?.quantity, 10); // exact qty honored
 });
 
+test("quantity-specific reads follow the saved winner, including material, and never borrow another quantity", () => {
+  const low = est("wire_edm", 1, 110);
+  const high = est("binder_jetting", 10000, 2.46);
+  const r = report([low, est("wire_edm", 10000, 15.6), { ...high, material: "other", unit_cost_usd: 1 }, high], {
+    make_now_process: low.process, make_now_material: low.material,
+    tooling_process: null, tooling_dfm_ready: false, crossover_qty: null,
+    recommendation: Object.fromEntries([low, high].map((e) => [String(e.quantity), {
+      process: e.process, material: e.material, unit_cost_usd: e.unit_cost_usd,
+      dfm_ready: e.dfm_ready, dfm_verdict: e.dfm_verdict,
+      lead_low_days: null, lead_high_days: null,
+    }])), if_redesigned: {}, note: "",
+  });
+  assert.equal(makeNowEstimate(r, 1), low);
+  assert.equal(makeNowEstimate(r, 10000), high);
+  assert.equal(makeNowEstimate(r, 12000), null);
+  high.environment_excluded = true;
+  assert.equal(makeNowEstimate(r, 10000), null);
+});
+
 test("prototypeEstimate headlines the smallest computed rung of the make-now pool", () => {
   const r = report(
     [est("mjf", 10, 14.14), est("mjf", 10000, 6.45), est("injection_molding", 10000, 5.9)],

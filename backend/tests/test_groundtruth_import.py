@@ -34,6 +34,16 @@ GOOD_CSV = (
 )
 
 
+def test_csv_source_units_are_preserved_and_validated():
+    header = "part_id,process,quantity,actual_unit_cost_usd,source_units\n"
+    rows, errors = svc.parse_ground_truth_csv(
+        header + "inch.stl,fdm,50,4.2,inch\nmetric.stl,fdm,50,4.2,\nbad.stl,fdm,50,4.2,feet\n"
+    )
+    assert [row["source_units"] for row in rows] == ["inch", "mm"]
+    assert len(errors) == 1 and errors[0]["line"] == 4
+    assert "source_units" in errors[0]["reason"]
+
+
 def test_good_csv_yields_all_real_rows():
     rows, errors = svc.parse_ground_truth_csv(GOOD_CSV)
     assert errors == []
@@ -340,14 +350,20 @@ async def test_import_persists_real_org_scoped_and_isolated():
     app = _build_app()
     transport = ASGITransport(app=app)
     csv_body = (
-        "part_id,process,quantity,actual_unit_cost_usd,material_class,source\n"
-        "imp-a.stl,cnc_3axis,100,42.50,aluminum,PO-1\n"
-        "imp-b.stl,sls,50,12.00,polymer,PO-2\n"
-        "imp-bad.stl,not_a_process,10,5.00,polymer,PO-3\n"  # reported, skipped
+        "part_id,process,quantity,actual_unit_cost_usd,material_class,source,source_units\n"
+        "imp-a.stl,cnc_3axis,100,42.50,aluminum,PO-1,inch\n"
+        "imp-b.stl,sls,50,12.00,polymer,PO-2,mm\n"
+        "imp-bad.stl,not_a_process,10,5.00,polymer,PO-3,mm\n"  # reported, skipped
     )
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             _act_as(app, a1)
+            template = await ac.get("/api/v1/ground-truth/import/template")
+            template_rows, template_errors = svc.parse_ground_truth_csv(template.text)
+            assert template.status_code == 200 and template_errors == []
+            assert template_rows[0]["source_units"] == "mm"
+            assert template_rows[0]["evidence_uri"] == "customer://quotes/Q-1001.pdf"
+            assert template_rows[0]["notes"] == "first article"
             files = {"file": ("hist.csv", csv_body.encode(), "text/csv")}
             r = await ac.post("/api/v1/ground-truth/import", files=files)
             assert r.status_code == 200, r.text
@@ -361,6 +377,7 @@ async def test_import_persists_real_org_scoped_and_isolated():
             body = (await ac.get("/api/v1/ground-truth")).json()
             assert body["total"] == 2
             assert all(rec["stand_in"] is False for rec in body["records"])
+            assert {rec["part_id"]: rec["source_units"] for rec in body["records"]} == {"imp-a.stl": "inch", "imp-b.stl": "mm"}
 
             # cross-tenant: org B sees NONE of A's imported rows
             _act_as(app, b1)

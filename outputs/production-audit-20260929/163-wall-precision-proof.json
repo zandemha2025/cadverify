@@ -1,0 +1,47 @@
+{
+  "status": "fixed locally; full goal incomplete",
+  "engine_version": "0.3.33",
+  "root_cause": "Non-sheet wall and feature checks compared rounded binary STL coordinates directly against exact thresholds.",
+  "changes": [
+    "Reuse the parser coordinate bound and shared triangle-normal bound; retain numerical ray self-hit tolerance unchanged.",
+    "Persistent forward triangle hits provide upper bounds on minimum wall; each bound stays paired with its measured hit. Fixed interior STL sample points avoid symmetric export-seam hits.",
+    "Interpolated faces and successful decimation have unknown bounds. Interior-sphere witnesses subtract2e for maximum/ratio comparisons; unsampled maxima remain unverified.",
+    "Sharp-edge and corner classification stability gates open-chain2eN bounds. Binary closed PCA rims are explicitly uncertain; legacy and current feature checks share the same predicate.",
+    "Surface precision and sampling coverage as advisories; retain real threshold failures and unrounded measured evidence. Heatmap note discloses sample interpolation and source-coordinate limits."
+  ],
+  "checks": {
+    "initial_red": "3 failed /6 passed after correcting a test enum typo",
+    "backend_full": "2775 passed,3 protected skips in331.39s; collected before final hit/measurement pairing follow-up",
+    "final_focused": "104 passed in2.18s including final pairing regressions; later changes type narrowing/docs only",
+    "types": "4files;3existing diagnostics,0new vs program-demand-final baseline; explicit bundled typeshed path required",
+    "bandit": "0medium/high",
+    "trap_corpus": "PASS; preexisting unit_flag/suspicious_scale gap remains open",
+    "peer_review": "No remaining actionable findings in precision scope after pairing fix. Independent persistent-hit perturbation and ordering checks passed.",
+    "native": "5actual STL uploads;10source-bound .33 records with expected min/max/feature outcomes;102analysis+111cost historical hashes unchanged",
+    "frontend": "Unchanged; prior513tests/types/lint/build baseline"
+  },
+  "known_remaining": [
+    "Grouped findings lose affected process names when identical code/message rows were deduplicated before grouping; native wall warning shows onlyDLP though MJF and others also carry it.",
+    "Orientation-dependent non-sheet stock/build/DFM, bent-sheet unfolding and physical bend-radius checks.",
+    "Customer CAD/quotes, real email/companyIdP/SCIM/vendor/storage/webhook/reconstruction verification.",
+    "5HIGH backend-image findings, production configuration and explicit PR107 merge/deployment approval."
+  ],
+  "production_unchanged": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+  "evidence_sha256": {
+    "163-native-controls.json": "f3ce77108b007da1ad67fa94605a563349f0644e95e46c695caaba2191b853a2",
+    "163-saved-readback.json": "2900568435afcbb91ec3188ab8da0ea02c0b3808723c439956ca07d5b55d0e00",
+    "163-wall-boundary.png": "4ef5d6dd581d9e51604fb19ddacce45069f21914459038c977a74c7704a5667f",
+    "163-wall-boundary.txt": "9596b5a6e1374215f421cb7abfed69d5b2eb5a5857aefdfbf94267f1a631d354",
+    "163-wall-inch.png": "f109f8191c7b55396525a03851669e4334b71e07ddac021dcacb1871582f5a77",
+    "163-wall-inch.txt": "9385fab12b38024628e36fc7ea01267e369491dea9ac78ffb96c97f377d0d210",
+    "163-wall-maximum-boundary.png": "1f386fa429c4b6a0d83f09008eb18ba5db3dd16023bb38e8bc3eb44279d77055",
+    "163-wall-maximum-boundary.txt": "53641bfc0ea5339743da0f59bda2cbfc3dd1c6e3417e9e86d1473d6b8008dc69",
+    "163-wall-thick.png": "53f74486ba109cc986381457e4d4eb3ef898e7281d790a9f337539d8e764a351",
+    "163-wall-thick.txt": "3a0b494a42c9e3b3f4013e91505d2a422f62f433cd8b952a7fef621961431cc0",
+    "163-wall-thin.png": "354b69fde949884f07e312e1fa4553afd705122ba634f0e351b1a01b9f334338",
+    "163-wall-thin.txt": "77e9ea0fec35689934907d32a2593d4701d540f502a2726d2d1ed36104401315",
+    "ci-36811342637-summary.json": "70d2f81508ead543b13256d25615e1fce7ba3087191902f6a19f4c5ca9dbc563",
+    "shape-controls/163-wall-6.0-mm.stl": "f94b68cd10075c4f4643345eac37820669e9ff43ec6c8b05113c45e86860a6de",
+    "shape-controls/163-wall-6.001-mm.stl": "9ed3993874e1e1a19c1d4793d19f4455db7c8420b434e3af28941e4b803b70e8"
+  }
+}

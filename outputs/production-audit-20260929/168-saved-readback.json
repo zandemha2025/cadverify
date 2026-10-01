@@ -1,0 +1,36 @@
+{
+  "engine_version": "0.3.35",
+  "historical_records_unchanged": {
+    "analyses": 115,
+    "cost_decisions": 124
+  },
+  "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+  "analyses": {
+    "id": 1627,
+    "result_sha256": "763bf5aa0be2dd5eb309a9894aa35e7343eae057086416b20b6458735f126a80",
+    "overall_verdict": "pass",
+    "best_process": "wire_edm",
+    "best_process_basis": "geometry-manufacturability; material not declared"
+  },
+  "cost_decisions": {
+    "id": 5602,
+    "result_sha256": "6f1d8a9623e8e7364608305f4c013168c1623c2cba4803bf63149cb06949b225",
+    "selected_process": "cnc_5axis",
+    "estimates": [
+      {
+        "process": "cnc_5axis",
+        "material": "6061-T6 Aluminum",
+        "quantity": 1,
+        "unit_cost_usd": 195.59,
+        "dfm_verdict": "issues"
+      },
+      {
+        "process": "cnc_5axis",
+        "material": "6061-T6 Aluminum",
+        "quantity": 100,
+        "unit_cost_usd": 31.0,
+        "dfm_verdict": "issues"
+      }
+    ]
+  }
+}

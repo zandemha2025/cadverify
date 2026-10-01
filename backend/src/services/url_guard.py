@@ -9,7 +9,7 @@ any URL that resolves to a private / loopback / link-local / reserved range
 (incl. the 169.254.169.254 cloud metadata address and IPv6 fc00::/7 / ::1).
 
 Validation runs twice: at request time (batch creation → 400) and again at
-delivery time as defense-in-depth, since DNS can be rebound between the two.
+delivery time, which pins the returned addresses instead of resolving again.
 
 Off-switch: WEBHOOK_SSRF_GUARD_ENABLED=0 disables the guard entirely (default
 on). It exists only for closed-network operators who deliberately deliver to
@@ -56,7 +56,7 @@ def guard_enabled() -> bool:
     return os.getenv("WEBHOOK_SSRF_GUARD_ENABLED", "1") != "0"
 
 
-def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """True if the address falls in a range we must never egress to.
 
     Covers loopback (127/8, ::1), private (10/8, 172.16/12, 192.168/16,
@@ -87,7 +87,7 @@ def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
     )
 
 
-def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
+def _resolve_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     """Resolve a hostname to every A/AAAA address, or parse an IP literal.
 
     Raises UnsafeURLError when the host cannot be resolved (a webhook we can
@@ -103,9 +103,9 @@ def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
     except socket.gaierror as exc:
         raise UnsafeURLError(f"host does not resolve: {host}") from exc
 
-    ips: list[ipaddress._BaseAddress] = []
+    ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for info in infos:
-        addr = info[4][0]
+        addr = str(info[4][0])
         # Strip IPv6 scope id (fe80::1%eth0) before parsing.
         addr = addr.split("%", 1)[0]
         try:
@@ -117,8 +117,8 @@ def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
     return ips
 
 
-def validate_public_host(host: str) -> None:
-    """Require every address for ``host`` to be publicly routable.
+def resolve_public_host(host: str) -> list[str]:
+    """Resolve once and require every address to be publicly routable.
 
     Unlike :func:`validate_outbound_url`, this primitive cannot be disabled by
     the webhook-specific compatibility switch. Security-sensitive clients such
@@ -128,19 +128,27 @@ def validate_public_host(host: str) -> None:
     """
     if not host:
         raise UnsafeURLError("URL has no host")
-    for ip in _resolve_ips(host):
+    ips = _resolve_ips(host)
+    for ip in ips:
         if _ip_is_blocked(ip):
             raise UnsafeURLError(
                 f"URL host '{host}' resolves to a non-routable address ({ip})"
             )
+    return [str(ip) for ip in ips]
 
 
-def validate_outbound_url(url: str | None) -> None:
+def validate_public_host(host: str) -> None:
+    """Validate a public host without returning its addresses."""
+    resolve_public_host(host)
+
+
+def validate_outbound_url(url: str | None) -> list[str] | None:
     """Validate a user-supplied outbound URL, raising UnsafeURLError if unsafe.
 
     No-op when the guard is disabled or the URL is falsy. Enforces http(s)
     scheme, a present host, and that EVERY resolved address is a public,
-    routable one.
+    routable one. Returns the validated addresses for delivery to pin, or None
+    when validation is disabled/not applicable.
     """
     if not url or not guard_enabled():
         return
@@ -156,7 +164,7 @@ def validate_outbound_url(url: str | None) -> None:
     if not host:
         raise UnsafeURLError("URL has no host")
 
-    validate_public_host(host)
+    return resolve_public_host(host)
 
 
 def is_safe_outbound_url(url: str | None) -> bool:

@@ -1,0 +1,50 @@
+{
+  "scope": "Local production frontend build and actual API, CUA native uploads; not deployed",
+  "114": {
+    "before": "An inch-authored STL against its millimeter OBJ equivalent measured1.000mm3; no per-file units choice existed.",
+    "fix": "Independent mm/inch choices for STL/OBJ flow to both preview and fit; shared unit helper scales before seating/nudge. Every preview uses the bounded GLB path. Embedded STEP/IGES/3MF units retain their reader normalization.",
+    "native_checks": {
+      "inch_stl_mm_obj_overlap_mm3": 16387.064,
+      "unit_change": "Previous measurements withheld and preview rebuilt; explicit mm rerun returns1.000mm3",
+      "nudge_x_mm": 35.4,
+      "measured_gap_mm": 10,
+      "swap": "mm and inch declarations follow their files; overlap retained",
+      "inch_obj_inch_stl_overlap_mm3": 16387.064,
+      "embedded_3mf": "No manual unit override offered; correct16387.064mm3 with mm OBJ",
+      "malformed_stl": "Recoverable parse/preview error with no stale result; valid3MF replacement recovers"
+    },
+    "regressions": "STL/OBJ independent declarations, embedded3MF override ignored, unchanged cached source on default-mm replay, invalid declaration rejection, preview/measurement transport units, existing main analysis/cost unit behavior"
+  },
+  "115": {
+    "before": "A non-origin cube had its lower projected corner clipped by the pair camera default margin",
+    "root_cause": "Installed Bounds fits the largest axis dimension with1.2margin, insufficient for rotated cube corners and perspective depth",
+    "fix": "Use existing Bounds margin2 with unchanged camera/geometry; no substitute box",
+    "native_evidence": "115-complete-cube-frame.png shows all projected corners contained with matching16387.064mm3 result"
+  },
+  "validation": {
+    "backend_passed": 2474,
+    "backend_skips": 3,
+    "backend_seconds": 210.92,
+    "skip_reasons": [
+      "missing real evaluation corpus",
+      "optional OCP XDE (two tests)"
+    ],
+    "focused_backend_tests": 58,
+    "frontend_tests": 498,
+    "frontend_types_lint_build": "PASS",
+    "backend_types": "215/228 baseline, zero new diagnostic messages",
+    "changed_source_bandit": "PASS no medium/high findings",
+    "contract_update": "Existing16-percent ghost material assertion now matches the retained GLB material; the duplicate localSTL renderer was removed."
+  },
+  "files": [
+    {
+      "name": "114-one-inch-cube.stl",
+      "sha256": "eefc48a1a64b01d1988b74d160a1f8f954a857b81d7d96c7c4d599d76f65f2bc"
+    },
+    {
+      "name": "114-one-inch-cube.obj",
+      "sha256": "61123f98ca81f195384eaa72abef3dc0ea927da56d39d69a9ba5d1f7890bcf8d"
+    }
+  ],
+  "remaining": "Production rollout, external email/IdP/vendor services, actual quote accuracy, curvedIGES and remaining feature ledger unverified. No new responsive assertion; native viewport2560x1233."
+}

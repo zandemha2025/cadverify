@@ -1,0 +1,43 @@
+{
+  "engine_version": "0.3.47",
+  "source_parent": "7bcec0a0cb22ca4fa3eea57ffe1ea7aa2c0b0e23",
+  "placement": "Shared continuous support-function fit for the measured enclosing cylinder; minimum feasible build height when box placement fails. Detected axis reused, no general minimum-cylinder search.",
+  "precision": "Both cylinder dimensions are padded by 2*sqrt(3)*source coordinate error; binder green dimensions scale with shrinkage.",
+  "native_price": "Both real disk STEP poses: owned FDM $191.22, 24.8611 model hours, one part/build, approximately (200,200,146.3725)mm. Independent geometric and cost oracle passed.",
+  "immutable": "351 historical records, 200 unaffected estimates, six analysis payloads except runtime, 14 geometry controls unchanged.",
+  "artifacts": {
+    "outputs/production-audit-20260929/190-bar-250-aligned.txt": "fbc1e5290ed019979978580369572bec12edd1879fc8b7ed46593d8bbb43925c",
+    "outputs/production-audit-20260929/190-bar-250-rotated.txt": "d3917e3c34edee1437cf1d47e69501a5ff6a8430982f69c94f8e04c8d8baf6cf",
+    "outputs/production-audit-20260929/190-bar-400-aligned.txt": "6f241b10be1c1c6df80b659109bbf1938a98fd4bc6f8210a83527284db2bf4c8",
+    "outputs/production-audit-20260929/190-bar-400-rotated.txt": "e85fc1ad5486cb4c3496b2745892cd4df26c1f387ac97240bbf4ceaca987a946",
+    "outputs/production-audit-20260929/190-checks.json": "f9942900a8cf03218d231b570d5a38398b5eeb4a7391e5bd807ab5705af7e9fb",
+    "outputs/production-audit-20260929/190-cylinder-oracle.json": "6bdcfcdbd162afa202ca2413f5e92345323d46fef5433fe82a3a7806c8c1f90c",
+    "outputs/production-audit-20260929/190-cylinder-oracle.py": "11739265a0f03b5d91e3333f98d73b510c829269d553b8fd2281babaadfda449",
+    "outputs/production-audit-20260929/190-disk-fdm-price.png": "8a05bef46b05a4988d93eb6072596e804b1c3105f637c2446a591527218e17b3",
+    "outputs/production-audit-20260929/190-disk-original-after.png": "97a84222df2086d6d52e44da23a8843d6361343435df8f1fd19386acb9d3bbe0",
+    "outputs/production-audit-20260929/190-disk-original-after.txt": "dbd4927da20dfb1cb353da595bc28d897335efc2917d2113b1d1e54edd8f495b",
+    "outputs/production-audit-20260929/190-disk-original-record.txt": "6680c91124a28bf2649c5444fd956e8b380bb11287a4ac1abe3e3ae069c57ba6",
+    "outputs/production-audit-20260929/190-disk-rotated-after.png": "9729168fb3ac1f94f48eadee09c0d11a2852c9a015c47df95b50f9a943cd86ca",
+    "outputs/production-audit-20260929/190-disk-rotated-after.txt": "1aa41d6476d9c00ae06e6a4e1d2c15ec39d7e9fe7d758bf59501b54d9e487b03",
+    "outputs/production-audit-20260929/190-disk-rotated-before.txt": "86771ab7500343a815069d98ebe952d4b7feb8574d59167bbc4f52398e17bdb5",
+    "outputs/production-audit-20260929/190-disk-rotated.json": "d99b62aa6ff77f8900e06b5cdd76a3907a9315762fcb4d535340f20d280e56f5",
+    "outputs/production-audit-20260929/190-disk-rotated.py": "3f926bb31441f6f75a8b60f984be206701a31f6cd3e00a8886d7acf0702ac053",
+    "outputs/production-audit-20260929/190-disk-rotated.step": "1887d51517e943ed05df08250751520fa0695a65cb15e907c49ddff453eec23b",
+    "outputs/production-audit-20260929/190-owned-negative.txt": "f2da75ba05a47fe98706a736a76550f615cf9cdbb9dbbffc20c3a3a6e19b5fbb",
+    "outputs/production-audit-20260929/190-owned-positive.txt": "66eaa61e8a27bf1a73abed6b6a97cad7083cc1356d424dd9007096cf6ae79aa4",
+    "outputs/production-audit-20260929/190-saved-before.json": "fb451f6be08e218d3c053eccf6fccb6cc5dfdaa8eb9e67ed88284a088a4ab538",
+    "outputs/production-audit-20260929/190-saved-readback.json": "3703ca7ac05db2c744107773c789e7058f9ecbbb103ff5fdbe7baa1dd30cd021",
+    "outputs/production-audit-20260929/190-upload-throttle.txt": "fc12df81638428dd590d297f49c28321e48ecfcd28c988996599741e0b88b351"
+  },
+  "source": {
+    "backend/src/__init__.py": "225af0e3c3bf540cb853e1e86151df9679c2eead7fc06619dd632da0b7894277",
+    "backend/src/analysis/context.py": "a322e45845f4d7efdc672288b4c9266dfec7220a28a41f6c1c3a43fe710ddf2a",
+    "backend/src/analysis/processes/checks.py": "e719813627d06eb519220ac8c27fe8daab9628dd9739046025260917dfdc6cfb",
+    "backend/src/costing/cost_model.py": "d0b054dba2b0825eefb13cd63476660a1affe97fe360e8546ee753cb721452ae",
+    "backend/src/costing/drivers.py": "0d67e95398e87df3b8eb6af7c5e1206facd73281a23374b80f6419d7d7409c36",
+    "backend/src/costing/estimate.py": "6f1bd28510f1dcaaaeca420af24bc81b5ddd8381c82146c0755051976f3970b5",
+    "backend/src/costing/makeability.py": "a198c4b514aecf948ee919e7540597e0562b1f90f1b76e1bd1729eb3d7473a9d",
+    "backend/tests/test_priced_build_envelope.py": "743ce177a522f20036309841804f3b91f456b82635790ad1a1e42892095aefb2"
+  },
+  "scope": "Local proof of cylinder placement and model arithmetic only. Real calibrated prices, external services, other geometry limits and production deployment remain unfinished."
+}

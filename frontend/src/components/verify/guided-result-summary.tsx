@@ -1,6 +1,10 @@
 "use client";
 
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
+import { formatIssueValue } from "@/lib/inspection-bind";
+
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
+import type { Issue } from "@/lib/api";
 import type { CSSProperties } from "react";
 import {
   Dialog,
@@ -101,7 +105,7 @@ export function GuidedResultSummary({
     ?? result?.costGeometryInvalid?.message
     ?? "No priority issue was returned in this result.";
   const issueEvidence = firstIssue
-    ? formatIssueEvidence(firstIssue.measured_value ?? null, firstIssue.required_value ?? null)
+    ? formatIssueEvidence(firstIssue)
     : null;
   const issueDetail = firstIssue?.fix_suggestion
     ?? (issueTitle.startsWith("No priority issue")
@@ -122,7 +126,9 @@ export function GuidedResultSummary({
     : result?.costGeometryInvalid
       ? "Resource cost stopped at the geometry gate."
       : result?.validation
-        ? "Routing and DFM are ready. Resource cost needs another try."
+        ? isQuotaErrorMessage(result.costError)
+          ? "Routing and DFM are ready. Resource cost is blocked by your allowance."
+          : "Routing and DFM are ready. Resource cost needs another try."
         : "No resource cost was produced because analysis did not finish.";
   const costDetail = estimate
     ? `At quantity ${NUM(estimate.quantity)} · engine-computed resource cost, not a supplier quote.`
@@ -259,9 +265,11 @@ export function GuidedResultSummary({
             <button type="button" onClick={onBack} style={summaryButton(true)}>
               Back to start
             </button>
-            <button type="button" onClick={onUpload} style={summaryButton(true)}>
+            {isLifetimeQuotaErrorMessage(result?.costError) || isLifetimeQuotaErrorMessage(result?.validationError) ? (
+              <a href="/history" style={summaryButton(true)}>Review usage and contact options</a>
+            ) : <button type="button" onClick={onUpload} style={summaryButton(true)}>
               Check my own CAD
-            </button>
+            </button>}
             <button type="button" onClick={() => onOpenChange(false)} style={summaryButton(false)}>
               Show full technical result <ArrowRight aria-hidden size={15} />
             </button>
@@ -285,14 +293,15 @@ function formatMeasure(value: number): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function formatIssueEvidence(measured: number | null, required: number | null): string | null {
+function formatIssueEvidence(issue: Issue): string | null {
+  const { measured_value: measured, required_value: required } = issue;
   if (measured == null && required == null) return null;
   if (measured != null && required != null) {
-    return `measured ${formatMeasure(measured)} · threshold ${formatMeasure(required)}`;
+    return `measured ${formatIssueValue(issue)} · threshold ${formatIssueValue(issue, "required_value")}`;
   }
   return measured != null
-    ? `measured ${formatMeasure(measured)}`
-    : `threshold ${formatMeasure(required as number)}`;
+    ? `measured ${formatIssueValue(issue)}`
+    : `threshold ${formatIssueValue(issue, "required_value")}`;
 }
 
 function shopFitSummary(result: VerifyResult | null): { title: string; detail: string } {

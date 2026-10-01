@@ -1,0 +1,12 @@
+{
+  "analyses": {
+    "before": 102,
+    "after": 102,
+    "all_hashes_unchanged": true
+  },
+  "cost_decisions": {
+    "before": 111,
+    "after": 111,
+    "all_hashes_unchanged": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "finding": "A sourcing choice did not persist the selected route/material/quantity and accepted Make in-house for outsource-only routes.",
+  "fix": "Nullable outcome basis copied from an exact immutable engine recommendation; selected owned-route and DFM checks at the API boundary and both editors; basis in Records, JSON, CSV, PDF, RFQ snapshot and audit trail; changed basis reopens approval; note-only edits preserve current and legacy scopes.",
+  "migration": "0048_disposition_basis (additive nullable JSONB, no historical backfill)",
+  "engine_version": "0.3.42 (cost evidence unchanged)",
+  "historical_artifacts_preserved": 298,
+  "unchanged_control_estimates": 48,
+  "limitations": [
+    "Does not certify customer pricing or actual manufacturing.",
+    "Native browser cases precede the backend-only legacy-note follow-up; final tests cover that follow-up.",
+    "RFQ package is a local download; no external supplier delivery or raw-CAD inclusion requested.",
+    "Five HIGH image findings, external-service proof, remaining geometry/UI work and PR107 production approval remain open.",
+    "The RFQ ZIP and original CRLF CSV are retained locally; their hashes and inspected contents are recorded in this proof."
+  ],
+  "artifacts": {
+    "184-checks.json": "f5dc34964640f89bf55415107a0ae77c53975285caf3e9a73bfccd008840339a",
+    "184-disposition-after.png": "c1a83b9f6844848de5656f6f38882fadbec0c4bb9df3064ba9be499cca087f56",
+    "184-disposition-approval-reopened.txt": "eb4284df04942290b4434d3867a989404a4a9d4917dc56456c0711ed457816ff",
+    "184-disposition-before.png": "8fb665faf29096dda1e8b3eca5b4a0e271f17d321d9542239030a1440784711a",
+    "184-disposition-before.txt": "832f203fec1dff7051efadf3643781a60db9bf3c90c378226128de40739bdd27",
+    "184-disposition-blocked.txt": "feb69acbca369dca1231491973c1e3ea2f4bc4b467be61a689cc8718d4e5ec0d",
+    "184-disposition-inhouse-reloaded.txt": "3aa98dafe8ab33df63d049755351b176fab9e55f9ce3d13a5aa5411e4a06464c",
+    "184-disposition-interpolated.txt": "fbd8271342c61254fd152b1b9bd69e6f48e97e6b9d8389aa73d4d2888d4b902e",
+    "184-disposition-note-edited.txt": "52b679cd009ee5e378ce6724d92bdc542fda240cdeaaf6b89afb8c2ce50374e2",
+    "184-disposition-other-quantity.txt": "4f3ea8ff8655b3ca5809f8f93f874eb9417b595fb4a48e2faf7169b50e1eb328",
+    "184-disposition-record.txt": "bc658a3c5186ab81e56a0c5c5d492f041ee7634b67ee16e2a925e4fbbe7b662c",
+    "184-disposition-records.txt": "f47b464dfbedbda3247288a7b0fc9d89f331f2aa347d248d8b12ff3e4d80af92",
+    "184-disposition-saved.txt": "3f64e7e92f7187227f14f0aa9352e27ceba1650488fffcb494c3bbdca569cad4",
+    "184-disposition-withdraw-reloaded.txt": "50fe9c0500caf0e6ed9784c72c0217795f1d584fdc1ec960fc77e984ac65dad7",
+    "184-disposition-withdrawn.txt": "0a8175adbb1b311d7cc01e9f921c583f528bb763c1abb885d4faf1282b01faa4",
+    "184-native-checks.json": "43e67bc75bab9a984d57b9f980e036ffb71bceafdbfc2eb382326ceebb34d8d6",
+    "184-outcome-export.json": "a284564b99c3f0ba32f9b25212e4b5993ea977b6f488110b0eb5f316749514be",
+    "184-outcome-export.pdf": "08a309850d62e1de3517a1a7e025602446470f5b9d131e855babc391a5611880",
+    "184-saved-readback.json": "c0a099f3f76cc476fa33fd48b1bc0cb0d1fbc6cafdb690066f4315fcb14c2bf9"
+  },
+  "local_only_downloads": {
+    "184-outcome-export.zip": "fcbbdb2b0ee289a129d02b2620d45019062a65e7682819b95e1479db3041d451",
+    "184-outcome-export.csv": "d1e8266186cdff3b3c4b1a9ba2307fecd1081238807bbd846e51cd31bc62a374"
+  }
+}

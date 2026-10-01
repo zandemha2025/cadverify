@@ -10,9 +10,8 @@
  *    ONLY when a volume was declared (else null + a reason), never a fabricated
  *    demand quantity. `summary.programs` is the per-program roll-up.
  *  - PUT /part-context/{mesh} assigns a part to a program and/or declares its
- *    annual volume. We MERGE-then-write (see `assignContext`) so a program
- *    assignment never silently clobbers the part's declared world
- *    (`service_environment`) — the world that stays attached to each assigned part.
+ *    annual volume. Only the edited fields are sent; the server preserves every
+ *    omitted field, including the part's service environment and BOM linkage.
  *    Its response also carries a `portfolio_delta` (Wave-B W6-1) so the view PATCHES
  *    local state instead of refetching the whole (rate-limited) portfolio per edit.
  *
@@ -27,6 +26,7 @@
  */
 import { API_BASE } from "@/lib/api-base";
 import type { Portfolio, PortfolioDelta } from "./program-rollup";
+import type { PartContext } from "./part-context-read";
 
 export type {
   PortfolioUnitCost,
@@ -61,15 +61,7 @@ export async function getPortfolio(): Promise<Portfolio> {
 
 /** The single declared context for a part (GET /part-context/{mesh}); 404 → null
  *  (no declaration yet). */
-export interface DeclaredContext {
-  mesh_hash: string;
-  program: string | null;
-  parent_assembly: string | null;
-  units_per_parent: number | null;
-  annual_volume: number | null;
-  provenance: string;
-  service_environment?: Record<string, unknown> | null;
-}
+export type DeclaredContext = PartContext;
 
 /** The PUT /part-context response: the declared context plus the portfolio delta. */
 export interface AssignResult {
@@ -96,17 +88,16 @@ export async function getContext(
 export interface ContextPatch {
   program?: string | null;
   annual_volume?: number | null;
+  bom_assembly_key?: string | null;
+  bom_child_ref?: string | null;
+  bom_roots_per_year?: number | null;
 }
 
 /**
  * Assign a part to a program and/or declare its annual volume.
  *
- * MERGE-then-PUT: the backend's upsert overwrites ALL declared fields, so a naïve
- * `PUT {program}` would wipe the part's declared world and volume. We first read
- * the existing context and re-send the untouched fields (including
- * `service_environment` — the world the part keeps while assigned), applying only
- * the caller's patch. This keeps the honesty invariant: assigning to a program
- * never silently discards a part's declared world.
+ * Send only the requested fields. The server updates supplied fields and keeps
+ * omitted fields unchanged; null explicitly clears a field. No stale read/merge.
  *
  * Returns the declared context AND the write's `portfolio_delta` (W6-1) so the
  * caller can patch its in-memory portfolio instead of a full refetch.
@@ -115,29 +106,12 @@ export async function assignContext(
   meshHash: string,
   patch: ContextPatch
 ): Promise<AssignResult> {
-  const existing = await getContext(meshHash).catch(() => null);
-
-  const body: Record<string, unknown> = {
-    program:
-      patch.program !== undefined ? patch.program : existing?.program ?? null,
-    parent_assembly: existing?.parent_assembly ?? null,
-    units_per_parent: existing?.units_per_parent ?? null,
-    annual_volume:
-      patch.annual_volume !== undefined
-        ? patch.annual_volume
-        : existing?.annual_volume ?? null,
-  };
-  // Preserve the declared world verbatim — never re-declared, never dropped.
-  if (existing?.service_environment != null) {
-    body.service_environment = existing.service_environment;
-  }
-
   const res = await fetch(
     `${API_BASE}/part-context/${encodeURIComponent(meshHash)}`,
     {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(patch),
       cache: "no-store",
     }
   );

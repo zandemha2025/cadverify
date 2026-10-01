@@ -1,0 +1,58 @@
+{
+  "fixtures": 30,
+  "known_gaps": 1,
+  "raw_mesh_gate": "PASS; the old300.1x290x300 block requires reorientation, and new300.1mm cube requires rejection.",
+  "same_legacy_control_bytes": "0e34ab9b3292e3fd4ff2209c4602c77f35cfdb41182b9544b934102bb2da8e4e",
+  "new_cube_sha256": "faf4a5ef77a53353c333f6e64d03167b67f7207d5c28e97e367e221df4617527",
+  "sha_manifest_verified": true,
+  "sha_manifest_note": "Reconciled one preexisting stale hash for the unchanged historical expansion manifest. All original STL bytes remain unchanged.",
+  "production_precision_gap": [
+    {
+      "file": "trap-build-300.1mm.stl",
+      "bounds": [
+        300.1000061035156,
+        290.0,
+        300.0
+      ],
+      "enclosing": [
+        [
+          290.0000373762473,
+          300.0000373762473,
+          300.1000434797629
+        ],
+        "oriented candidate"
+      ],
+      "issues": [
+        {
+          "code": "EXCEEDS_BUILD_VOLUME",
+          "severity": "error",
+          "message": "Part exceeds build envelope for fdm: X: 300.1mm > 300mm. "
+        }
+      ]
+    },
+    {
+      "file": "trap-build-cube-300.1mm.stl",
+      "bounds": [
+        300.1000061035156,
+        300.1000061035156,
+        300.1000061035156
+      ],
+      "enclosing": [
+        [
+          300.1000325325135,
+          300.1000325325135,
+          300.1000325325135
+        ],
+        "oriented candidate"
+      ],
+      "issues": [
+        {
+          "code": "EXCEEDS_BUILD_VOLUME",
+          "severity": "error",
+          "message": "Part exceeds build envelope for fdm: X: 300.1mm > 300mm, Y: 300.1mm > 300mm. "
+        }
+      ]
+    }
+  ],
+  "production_precision_gap_note": "Separate unresolved behavior: production STL parsing attaches coordinate uncertainty. Padding the nominal300mm edge to300.000037mm removes the positive fit, then the current check falls back to an unjustified file-axis ERROR. Needs an uncertainty warning instead of a false non-fit claim. The direct-mesh corpus does not certify this parser path."
+}

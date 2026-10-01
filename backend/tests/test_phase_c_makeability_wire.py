@@ -11,7 +11,7 @@ Covers the Phase-C deliverables against the REAL orchestrator (estimate_decision
     makeable_in_house / makeable_not_on_owned (+ concrete gap) /
     makeable_outsource_only / unknown-no-inventory.
   * machine-specific MARGINAL rate: a passing owned machine re-costs its process
-    at its OWN declared rate; the machine_cost driver is SHOP-tagged and NAMES
+    at its OWN declared rate; the machine_cost driver is USER-tagged and NAMES
     the machine; owned_in_house flips; other processes are untouched.
   * real-profile service-environment integration: a declared sour environment
     excludes a non-NACE material with a CITED exclusion, straight off the loader's
@@ -48,12 +48,12 @@ def _mill(name="Haas VF-2 #3", x=762, y=406, z=508, materials=("steel", "Mild St
 
 
 def _report(inventory=(), env=None, shop_caps=None, material_class="steel",
-            qtys=(10, 1000)):
+            qtys=(10, 1000), owned=frozenset()):
     result, mesh, feats = _analyze(_bulky_block())
     opts = EstimateOptions(quantities=list(qtys), material_class=material_class,
                            material_class_is_user=True,
                            inventory=tuple(inventory), service_environment=env,
-                           shop_caps=shop_caps)
+                           shop_caps=shop_caps, owned_processes=owned)
     return estimate_decision(result, mesh, feats, opts)
 
 
@@ -79,6 +79,33 @@ def test_no_inventory_no_env_is_byte_identical_and_adds_no_key():
 def test_report_has_no_verification_attr_leak_when_unused():
     rep = _report()
     assert rep.verification is None
+
+
+@pytest.mark.parametrize("machine", [
+    _mill(materials=("aluminum",)),
+    _mill(x=1, y=1, z=1),
+    _mill(max_kg=None),
+    _mill(process="cnc_5axis"),
+])
+def test_owned_declaration_cannot_override_failed_or_unknown_machine_fit(machine):
+    from src.analysis.models import ProcessType
+
+    base = report_to_dict(_report(inventory=[machine]))
+    declared = report_to_dict(_report(
+        inventory=[machine], owned=frozenset({ProcessType.CNC_3AXIS})))
+    assert declared["estimates"] == base["estimates"]
+    # Covers the arbitrary-quantity evaluator used for crossover, not only rows.
+    assert declared["decision"] == base["decision"]
+    assert not any(a["name"] == "machine_capital_frac" for a in declared["assumptions"])
+
+
+def test_passing_machine_without_rate_retains_declared_ownership_discount():
+    from src.analysis.models import ProcessType
+
+    report = report_to_dict(_report(
+        inventory=[_mill(rate=None)], owned=frozenset({ProcessType.CNC_3AXIS})))
+    assert report["verification"]["per_route"]["cnc_3axis"]["verdict"] == "makeable_in_house"
+    assert _est_dict(report, "cnc_3axis", 10)["owned_in_house"] is True
 
 
 def test_estimates_byte_identical_when_no_machine_matches_a_route():
@@ -127,7 +154,9 @@ def test_makeable_not_on_owned_carries_concrete_gap():
     g0 = v["gap"][0]
     assert g0["gate"] == "envelope"
     assert g0["have"] is not None and g0["need"] is not None  # quantified
-    assert g0["have"] == 20  # cites the owned machine's real envelope
+    assert g0["axis"] == "minimum_width_mm"
+    assert g0["have"] == pytest.approx(20)  # smallest chamber span, with numeric tolerance
+    assert g0["need"] == pytest.approx(25)  # inscribed diameter of the 40×30×25 solid
 
 
 def test_makeable_outsource_only_when_family_unowned():
@@ -166,9 +195,9 @@ def test_unknown_when_capability_undeclared_not_fabricated_pass():
 # ─────────────────────────────────────────────────────────────────────────────
 # MACHINE-SPECIFIC MARGINAL RATE + provenance (spec C2)
 # ─────────────────────────────────────────────────────────────────────────────
-def test_marginal_rate_substituted_and_shop_tagged_naming_machine():
+def test_marginal_rate_substituted_and_user_tagged_naming_machine():
     """A passing owned machine re-costs cnc_3axis at its OWN rate: the machine_cost
-    driver is SHOP-tagged, NAMES the machine, and owned_in_house flips."""
+    driver is USER-tagged, NAMES the machine, and owned_in_house flips."""
     base = report_to_dict(_report())
     e0 = _est_dict(base, "cnc_3axis", 10)
     machine_line_base = _driver(e0, "machine_cost")
@@ -176,7 +205,7 @@ def test_marginal_rate_substituted_and_shop_tagged_naming_machine():
     rep = report_to_dict(_report(inventory=[_mill(rate=200.0, capital_frac=0.5)]))
     e1 = _est_dict(rep, "cnc_3axis", 10)
     md = _driver(e1, "machine_cost")
-    assert md["provenance"] == "SHOP"
+    assert md["provenance"] == "USER"
     assert "Haas VF-2 #3" in md["source"]
     assert "200" in md["source"]  # the machine's own declared rate appears
     # the machine cost genuinely changed vs the generic rate-card path
@@ -214,7 +243,7 @@ def test_per_machine_capital_frac_drives_the_marginal_seam():
     e = _est_dict(report_to_dict(_report(inventory=[m0])), "cnc_3axis", 10)
     assert e.get("owned_in_house") is None  # no marginal seam when cap_frac == 0
     md = _driver(e, "machine_cost")
-    assert md["provenance"] == "SHOP" and "100" in md["source"]
+    assert md["provenance"] == "USER" and "100" in md["source"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,8 +275,11 @@ def test_sour_env_makes_decision_coherent_with_the_exclusion():
       * ``decision.note`` states the environment constraint that changed the pick.
     Cross-checked against the no-env decision to prove the env genuinely flipped
     it (the defect was byte-identical make/buy under sour service)."""
-    base = report_to_dict(_report(inventory=[_mill()]))
-    rep = report_to_dict(_report(inventory=[_mill()], env={"sour_service": True}))
+    # At qty 10, eligible EDM already wins with AISI 4130 even without an
+    # environment. At qty 100, Mild Steel wins first: retain the actual flip oracle.
+    base = report_to_dict(_report(inventory=[_mill()], qtys=(100, 1000)))
+    rep = report_to_dict(_report(inventory=[_mill()], env={"sour_service": True},
+                               qtys=(100, 1000)))
 
     excluded = {"Mild Steel", "Ductile Iron"}
     dec = rep["decision"]
@@ -510,7 +542,9 @@ async def test_pg_route_machine_plus_sour_env_is_coherent(monkeypatch):
             r = await c.post(
                 "/api/v1/validate/cost",
                 files={"file": ("block.stl", box, "application/octet-stream")},
-                data={"qty": "10,1000", "material_class": "steel", "region": "US"},
+                # Mild Steel wins at qty 100 before the environment exclusion;
+                # qty 10 now correctly selects the already-qualified EDM route.
+                data={"qty": "100,1000", "material_class": "steel", "region": "US"},
             )
         assert r.status_code == 200, r.text
         body = r.json()

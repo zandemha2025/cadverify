@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
+from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions, envelope_nonfit_bound
 from src.costing.rates import (
     MATERIAL_FAMILY,
     normalize_tolerance_class,
@@ -88,13 +89,19 @@ class PartReq:
     required_secondary_ops: tuple = ()
     thickness_mm: "float | None" = None
     sheet_like: bool = False
+    geometry_tolerance_mm: float = 0.0  # numerical measurement noise only
+    geometry_precision_mm: float = 0.0  # source uncertainty; near-limit fit is unknown
+    sheet_outline_xy: tuple = ()
+    minimum_width_bound_mm: float = 0.0
+    enclosing_cylinder_mm: tuple | None = None
 
 
 @dataclass(frozen=True)
 class FitFailure:
     """A single failed (or unknown) gate.
 
-    ``have is None`` is the sentinel for UNKNOWN (capability not declared) — it
+    ``have is None`` is the sentinel for UNKNOWN (undeclared capability or
+    source precision overlapping its limit) — it
     is NOT a hard geometric/material failure, and verify_part maps a machine
     whose only failures are unknown to the ``unknown`` verdict, never a gap.
     """
@@ -272,6 +279,13 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
     # thickness (stock/gauge) for laser/EDM/sheet gates: sheet gauge when the
     # part reads as a flat blank, else the thinnest bbox extent (blank thickness)
     bbox = tuple(drivers.bbox_mm)
+    if pt == ProcessType.SHEET_METAL and getattr(drivers, "sheet_blank_mm", None):
+        bbox = tuple(drivers.sheet_blank_mm)
+    elif pt != ProcessType.CNC_TURNING and getattr(drivers, "billet_bbox_mm", None):
+        # Compare the same enclosing orientation used by build checks and cost.
+        # Keep source uncertainty separate so borderline fits remain unknown.
+        precision = float(getattr(drivers, "bbox_precision_mm", 0.0))
+        bbox = tuple(d - precision for d in drivers.billet_bbox_mm)
     sheet_like = bool(getattr(drivers, "sheet_like", False))
     if sheet_like and getattr(drivers, "sheet_gauge_mm", 0.0):
         thickness_mm = float(drivers.sheet_gauge_mm)
@@ -297,6 +311,14 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
         required_secondary_ops=req_ops,
         thickness_mm=thickness_mm,
         sheet_like=sheet_like,
+        geometry_tolerance_mm=float(getattr(drivers, "sheet_tolerance_mm", 0.0)),
+        geometry_precision_mm=(float(getattr(drivers, "sheet_precision_mm", 0.0))
+                               if pt == ProcessType.SHEET_METAL else
+                               float(getattr(drivers, "bbox_precision_mm", 0.0))),
+        sheet_outline_xy=(getattr(drivers, "sheet_outline_xy", ())
+                          if pt == ProcessType.SHEET_METAL else ()),
+        minimum_width_bound_mm=float(getattr(drivers, "minimum_width_bound_mm", 0.0)),
+        enclosing_cylinder_mm=getattr(drivers, "enclosing_cylinder_mm", None),
     )
 
 
@@ -360,22 +382,60 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
                 f"(need >={need_len:.0f}mm)"))
         return fails
 
-    # rectangular / sheet — orientation permutation (sorted vs sorted)
+    # Rectangular box placements / sheet outline placements.
     if env is None:
         return [FitFailure("envelope", "envelope", tuple(part.bbox_mm), None,
                            "work envelope not declared")]
     if kind == "sheet":
         b = part.bbox_mm
         need = sorted([b[1], b[2]]) if len(b) >= 3 else sorted(b)
+        if part.sheet_outline_xy and all(d > 0 for d in env):
+            need = list(sheet_envelope_dimensions(part.sheet_outline_xy, env))
         labels = ("footprint", "footprint")
     else:
         need = list(part.bbox_mm)
         labels = ("shortest", "mid", "longest")
+        limits = tuple(d + part.geometry_tolerance_mm for d in env)
+        if fitting_box_dimensions(tuple(d + part.geometry_precision_mm for d in need), limits,
+                                  part.enclosing_cylinder_mm) is not None:
+            return []
+        if part.geometry_precision_mm and fitting_box_dimensions(
+            tuple(d - part.geometry_precision_mm for d in need), limits
+        ) is not None:
+            return [FitFailure(
+                "envelope", "envelope", tuple(need), None,
+                f"STL coordinate uncertainty ±{part.geometry_precision_mm:.3g}mm overlaps the declared "
+                f"{tuple(env)}mm envelope; confirm fit using source CAD")]
+        bound = envelope_nonfit_bound(need, limits, part.minimum_width_bound_mm,
+                                      part.geometry_precision_mm)
+        if bound is not None:
+            axis, measured, capacity, human = bound
+            return [FitFailure("envelope", axis, measured, capacity, human)]
+        return [FitFailure(
+            "envelope", "orientation", tuple(need), None,
+            f"No fitting placement established in the {tuple(env)}mm envelope. "
+            "This limited search does not prove the part is too large; "
+            "verify the planned XYZ setup.")]
+    if part.geometry_precision_mm and kind == "sheet" and part.sheet_outline_xy:
+        smaller = [d - part.geometry_precision_mm for d in env]
+        if all(d > 0 for d in smaller):
+            certain = sheet_envelope_dimensions(part.sheet_outline_xy, smaller)
+            if all(d <= cap + part.geometry_tolerance_mm for d, cap in zip(certain, smaller)):
+                return []
+        larger = [d + part.geometry_precision_mm for d in env]
+        if all(d > 0 for d in larger):
+            possible = sheet_envelope_dimensions(part.sheet_outline_xy, larger)
+            if all(d <= cap + part.geometry_tolerance_mm for d, cap in zip(possible, larger)):
+                return [FitFailure(
+                    "envelope", "envelope", tuple(need), None,
+                    f"STL coordinate uncertainty ±{part.geometry_precision_mm:.3g}mm overlaps the declared "
+                    f"{tuple(env)}mm envelope; confirm fit using source CAD")]
+            need = list(possible)
     # compare best-orientation sorted-vs-sorted; report the single worst axis
     n = min(len(need), len(env))
     worst = None
     for i in range(n):
-        if need[i] > env[i]:
+        if need[i] > env[i] + part.geometry_tolerance_mm + part.geometry_precision_mm:
             delta = need[i] - env[i]
             if worst is None or delta > worst[0]:
                 worst = (delta, need[i], env[i], labels[min(i, len(labels) - 1)])
@@ -384,6 +444,13 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
         fails.append(FitFailure(
             "envelope", "envelope", round(nd, 2), round(hv, 2),
             f"{lbl} {nd:.0f}mm > machine {hv:.0f}mm (need >={nd:.0f}mm)"))
+    elif part.geometry_precision_mm and any(
+        need[i] + part.geometry_precision_mm >= env[i] - part.geometry_tolerance_mm for i in range(n)
+    ):
+        fails.append(FitFailure(
+            "envelope", "envelope", tuple(need), None,
+            f"STL coordinate uncertainty ±{part.geometry_precision_mm:.3g}mm overlaps the declared "
+            f"{tuple(env)}mm envelope; confirm fit using source CAD"))
     return fails
 
 
@@ -495,13 +562,19 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             max_t = tmap.get(part_req.material_class)
         if max_t is None:
             max_t = tmap.get("@" + part_req.material_class)
-        if _is_number(max_t) and part_req.thickness_mm > max_t:
+        if max_t is not None and _is_number(max_t) and part_req.thickness_mm > max_t + part_req.geometry_tolerance_mm + part_req.geometry_precision_mm:
             failures.append(FitFailure(
                 "thickness", "cut_thickness_mm", round(part_req.thickness_mm, 2),
                 round(float(max_t), 2),
                 f"thickness {part_req.thickness_mm:.1f}mm > machine max "
                 f"{float(max_t):.1f}mm for "
                 f"{part_req.material_name or part_req.material_class}"))
+        elif (max_t is not None and _is_number(max_t) and part_req.geometry_precision_mm
+              and part_req.thickness_mm + part_req.geometry_precision_mm >= max_t - part_req.geometry_tolerance_mm):
+            failures.append(FitFailure(
+                "thickness", "cut_thickness_mm", part_req.thickness_mm, None,
+                f"STL coordinate uncertainty ±{part_req.geometry_precision_mm:.3g}mm overlaps "
+                f"the {float(max_t):g}mm machine thickness limit; confirm using source CAD"))
 
     if pt == ProcessType.WIRE_EDM and cap.get("conductive_required"):
         if not part_req.material_props.get("conductive"):
@@ -582,6 +655,9 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             "hourly_rate_usd": machine_cap.hourly_rate_usd,
             "capital_frac": machine_cap.capital_frac,
             "secondary_ops": tuple(dict.fromkeys(needed_secondary)),
+            **({"build_env_mm": tuple(cap[k] for k in ("x", "y", "z"))}
+               if part_req.process in {"fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting"}
+               and all(_is_number(cap.get(k)) for k in ("x", "y", "z")) else {}),
         }
     return FitResult(machine=machine_cap.name, passes=passes,
                      failures=tuple(failures), resource_hint=resource_hint)

@@ -17,7 +17,7 @@ import {
 } from "@/lib/verify/run";
 import { geometryFromResult } from "@/lib/verify/pipeline";
 import { isCurrentRun } from "@/lib/verify/run-gates";
-import { listMachines } from "@/lib/verify/machine-api";
+import { effectiveRateCard } from "@/lib/verify/rate-api";
 import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
 import { clientStlIntegrityError } from "@/lib/stl-validation";
@@ -49,6 +49,8 @@ import {
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
 import type { OrganizationAccess } from "@/lib/organization-access";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
+import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -64,7 +66,7 @@ const HOTKEY_NAV: Record<string, Screen> = {
   c: "calibration",
 };
 
-type Screen = WorkspaceScreen | "part" | "program" | "context-fit" | "acquisition" | "palette";
+type Screen = WorkspaceScreen | "part" | "program" | "context-fit" | "acquisition";
 
 const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "home", label: "Home", d: "M3 10.5 12 3l9 7.5M5 9v11h14V9" },
@@ -88,6 +90,8 @@ export function VerifyApp({
   ) ?? null;
   const hasActiveOrganization = activeOrganization !== null;
   const [screen, setScreen] = useState<Screen>("home");
+  const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
+  const [selectedComparisonRecord, setSelectedComparisonRecord] = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [guidedSampleState, setGuidedSampleState] = useState<
     "idle" | "running" | "ready" | "error"
@@ -115,11 +119,12 @@ export function VerifyApp({
   // (~15s on AS1). null until it lands; `assemblyAnalyzing` drives the honest
   // "analysing per-part…" state while it is in flight.
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
+  const [assemblyAnalysisError, setAssemblyAnalysisError] = useState<string | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  // A REAL signal for the rail footer: are any of the org's machines declaring an
-  // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
-  // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // A declared machine rate is USER evidence; only an effective governed card
+  // establishes this SHOP indicator. null means the context is unconfirmed.
   const [ratesBound, setRatesBound] = useState<boolean | null>(null);
   const [designImport, setDesignImport] = useState<
     | { state: "loading"; message: string }
@@ -134,6 +139,7 @@ export function VerifyApp({
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
   const latestFile = useRef<File | null>(null);
+  const inventoryDirty = useRef(false);
   // Monotonic run token. Selecting a material class (or toggling the world) while a
   // prior verification is still in flight dispatches a NEW run; without this guard the
   // two async runs can resolve OUT OF ORDER and a stale result clobbers the fresh one
@@ -144,14 +150,25 @@ export function VerifyApp({
   // invalidates its completion callback even if the underlying request finishes.
   const guidedRunSeq = useRef(0);
 
+  const onInventoryChanged = useCallback(() => {
+    inventoryDirty.current = true;
+    ++runSeq.current;
+    setResult(null);
+    setRunning(false);
+    setAssemblyAnalysis(null);
+    setAssemblyAnalyzing(false);
+  }, []);
+
   const nav = useCallback((s: string) => {
+    if (s === "palette") return setPaletteOpen(true);
+    setPaletteOpen(false);
+    if (s !== "compare") setSelectedComparisonRecord(null);
     if (s !== "verify") {
       ++guidedRunSeq.current;
       setGuidedSampleState("idle");
       setGuidedSummaryOpen(false);
     }
     if (s === "acquisition") return setScreen("acquisition");
-    if (s === "palette") return setScreen("palette");
     setScreen(s as Screen);
   }, []);
 
@@ -165,14 +182,21 @@ export function VerifyApp({
 
   const runAssemblyAnalysis = useCallback(async (f: File, seq: number) => {
     setAssemblyAnalyzing(true);
-    const analysis = await fetchAssemblyAnalysis(f).catch(() => null);
+    setAssemblyAnalysisError(null);
+    let failure: string | null = null;
+    const analysis = await fetchAssemblyAnalysis(f).catch((error) => {
+      failure = error instanceof Error ? error.message : "Assembly analysis could not finish.";
+      return null;
+    });
     if (runSeq.current !== seq) return;
     setAssemblyAnalysis(analysis);
+    setAssemblyAnalysisError(failure);
     setAssemblyAnalyzing(false);
   }, []);
 
   const runVerify = useCallback(
     async (f: File): Promise<VerifyResult | null> => {
+      inventoryDirty.current = false;
       if (!isSupportedCad(f.name)) {
         const guidance = unsupportedCadGuidance(f.name);
         ++runSeq.current;
@@ -378,7 +402,7 @@ export function VerifyApp({
       const retried = await retryVerificationCost(
         { file, env, materialClass },
         previous.machines,
-        previous.partContext?.annual_volume
+        resolvedAnnualVolume(previous.partContext)
       );
       if (runSeq.current === seq) setResult({ ...previous, ...retried });
     } finally {
@@ -494,16 +518,25 @@ export function VerifyApp({
       });
   }, [hasActiveOrganization, runVerify]);
 
+  // Recompute the retained file when returning from a changed machine inventory.
+  useEffect(() => {
+    if (screen === "verify" && inventoryDirty.current && latestFile.current) {
+      void runVerify(latestFile.current);
+    }
+  }, [screen, runVerify]);
+
   // The rail footer's bound-rate signal.
   useEffect(() => {
     if (!hasActiveOrganization) {
       setRatesBound(null);
       return;
     }
-    listMachines().then(
-      (p) => setRatesBound(p.machines.some((m) => typeof m.hourly_rate_usd === "number" && Number.isFinite(m.hourly_rate_usd))),
-      () => setRatesBound(false)
+    let live = true;
+    effectiveRateCard().then(
+      (card) => { if (live) setRatesBound(card.using_governed); },
+      () => { if (live) setRatesBound(null); }
     );
+    return () => { live = false; };
   }, [hasActiveOrganization]);
 
   // The environment door is REAL: when the declared world changes and a part is
@@ -529,22 +562,19 @@ export function VerifyApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialClass]);
 
-  // hotkeys — ⌘K palette · H/V/P/R/G/M/T/C nav · ? shortcuts · Esc closes all
+  // AppShell owns ⌘K and delegates to this workspace's command trigger.
+  // Local hotkeys: H/V/P/R/G/M/T/C nav, ? shortcuts, Esc closes overlays.
   // (matches the design's keydown handler in support.js). Typing in a field never
   // triggers nav; modifier chords other than ⌘K are left to the browser.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = ((e.target as HTMLElement | null)?.tagName ?? "").toLowerCase();
+      const element = e.target as HTMLElement | null;
+      if (e.defaultPrevented || element?.closest?.('[role="dialog"]')) return;
+      const tag = (element?.tagName ?? "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select";
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setShortcutsOpen(false);
-        setScreen((s) => (s === "palette" ? "home" : "palette"));
-        return;
-      }
       if (e.key === "Escape") {
         setShortcutsOpen(false);
-        setScreen((s) => (s === "palette" || s === "acquisition" ? "verify" : s));
+        setScreen((s) => (s === "acquisition" ? "verify" : s));
         return;
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -573,8 +603,9 @@ export function VerifyApp({
       selectedName: sel ? sel.name || sel.occurrence || sel.id : null,
       selectedTreePath: sel?.tree_path ?? null,
       analysisReady: !!assemblyAnalysis,
+      analysisLoading: assemblyAnalyzing,
     };
-  }, [assembly, assemblySelectedId, assemblyAnalysis]);
+  }, [assembly, assemblySelectedId, assemblyAnalysis, assemblyAnalyzing]);
   const stageGeometry = result ? geometryFromResult(result) : null;
 
   const activeWorkspaceSection: Screen =
@@ -674,9 +705,11 @@ export function VerifyApp({
             type="button"
             onClick={() => setScreen("calibration")}
             title={
-              ratesBound
-                ? "Your shop rates are bound · ● SHOP — open Calibration & truth"
-                : "Calibration & truth — no shop rate bound yet"
+              ratesBound === null
+                ? "Rate context unconfirmed — open Calibration & truth"
+                : ratesBound
+                  ? "Governed rate card in effect · ● SHOP — open Calibration & truth"
+                  : "Default rate card — open Calibration & truth"
             }
             className="cv-verify-rate-dot"
             style={{ width: 36, height: 36, border: `1px solid ${C.hair}`, borderRadius: 999, background: "#fff", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -702,7 +735,7 @@ export function VerifyApp({
           >
             Start here
           </button>
-          <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
+          <button className="cv-verify-command-button" type="button" data-workspace-command-trigger onClick={() => { setShortcutsOpen(false); setPaletteOpen((open) => !open); }} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
           <button className="cv-verify-primary-action" type="button" onClick={pickOwnFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Check my CAD</button>
         </div>
       </nav>
@@ -736,6 +769,8 @@ export function VerifyApp({
               <Link href="/login?next=%2Fverify" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
                 Sign in again
               </Link>
+            ) : isLifetimeQuotaErrorMessage(uploadRejection.action) ? (
+              <a href="/history" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>Review usage and contact options</a>
             ) : <button
               type="button"
               onClick={() => uploadRejection.retryFile ? void runVerify(uploadRejection.retryFile) : pickOwnFile()}
@@ -788,6 +823,7 @@ export function VerifyApp({
         {guidedSampleState !== "idle" && screen === "verify" && (
           <GuidedExampleBar
             state={guidedSampleState}
+            error={uploadRejection?.action ?? result?.costError ?? result?.validationError ?? null}
             onUpload={pickOwnFile}
             onBack={() => {
               setGuidedSummaryOpen(false);
@@ -838,6 +874,7 @@ export function VerifyApp({
               context={result?.partContext ?? null}
               contextError={result?.partContextError ?? null}
               assembly={stageAssembly}
+              onCheckFit={() => setScreen("context-fit")}
             />
             {stageAssembly && assembly ? (
               <AssemblyPanel
@@ -847,6 +884,7 @@ export function VerifyApp({
                 onSelect={setAssemblySelectedId}
                 analysis={assemblyAnalysis}
                 analyzing={assemblyAnalyzing}
+                error={assemblyAnalysisError}
                 onRetryAnalysis={() => file && void runAssemblyAnalysis(file, runSeq.current)}
               />
             ) : (
@@ -874,25 +912,33 @@ export function VerifyApp({
             )}
           </div>
         )}
-        {screen === "context-fit" && <ContextFitPanel />}
-        {screen === "machines" && <MachinesScreen nav={nav} />}
+        {screen === "context-fit" && <ContextFitPanel initialPart={file} />}
+        {screen === "machines" && <MachinesScreen onChanged={onInventoryChanged} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}
-        {screen === "part" && <PartScreen nav={nav} />}
-        {screen === "compare" && <CompareScreen nav={nav} />}
-        {(screen === "programs" || screen === "program") && <ProgramScreen nav={nav} screen={screen} />}
+        {screen === "part" && <PartScreen nav={nav} onOpenProgram={(name) => {
+          setSelectedProgram(name);
+          nav("program");
+        }} onCompare={(recordId) => {
+          setSelectedComparisonRecord(recordId);
+          nav("compare");
+        }} />}
+        {screen === "compare" && <CompareScreen nav={nav} initialRecordId={selectedComparisonRecord} />}
+        {(screen === "programs" || screen === "program") && (
+          <ProgramScreen nav={nav} screen={screen} selected={selectedProgram} onSelect={setSelectedProgram} />
+        )}
         {screen === "triage" && <TriageScreen nav={nav} />}
         {screen === "calibration" && <CalibrationScreen />}
       </div>
 
       {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} result={result} nav={nav} />}
-      {screen === "palette" && (
+      {paletteOpen && (
         <CommandPalette
-          onClose={() => setScreen("home")}
+          onClose={() => setPaletteOpen(false)}
           nav={nav}
           onVerify={pickOwnFile}
           onSample={startGuidedSample}
-          onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
+          onShortcuts={() => { setPaletteOpen(false); setShortcutsOpen(true); }}
         />
       )}
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
@@ -903,16 +949,20 @@ export function VerifyApp({
 
 function GuidedExampleBar({
   state,
+  error,
   onUpload,
   onBack,
   onRetry,
 }: {
   state: "running" | "ready" | "error";
+  error: string | null;
   onUpload: () => void;
   onBack: () => void;
   onRetry: () => void;
 }) {
-  const failed = state === "error";
+  const quota = isQuotaErrorMessage(error);
+  const failed = state === "error" || quota;
+  const lifetimeQuota = isLifetimeQuotaErrorMessage(error);
   return (
     <section
       role={failed ? "alert" : "status"}
@@ -951,19 +1001,21 @@ function GuidedExampleBar({
         <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650 }}>
           {state === "running"
             ? "Guided example: analyzing a real routing bracket"
-            : failed
-              ? "The guided example was interrupted"
-              : "Example complete: this is a manufacturing answer"}
+            : quota && state === "ready"
+              ? "Example partially complete: allowance used up"
+              : failed ? "The guided example was interrupted" : "Example complete: this is a manufacturing answer"}
         </p>
         <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
           {state === "running"
             ? "ProofShape is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
-            : failed
+            : quota ? error : failed
               ? "No completed result was created. Retry the example or check one of your own CAD files."
               : "Read geometry and DFM first; route, first issue, resource cost, and shop fit follow in decision order."}
         </p>
       </div>
-      {failed ? (
+      {lifetimeQuota ? (
+        <a href="/history" style={guidedBarButton(C.cond)}>Review usage and contact options</a>
+      ) : failed ? (
         <button type="button" onClick={onRetry} style={guidedBarButton(C.cond)}>
           Retry example
         </button>
@@ -1122,10 +1174,14 @@ const KEYFRAMES = `
   .cv-verify-stage {
     width: 100% !important;
     min-width: 0 !important;
-    height: 420px;
-    min-height: 420px;
+    height: auto;
+    min-height: 580px;
     border-right: none !important;
     border-bottom: 1px solid #dedee2;
+  }
+  .cv-verify-stage-canvas {
+    flex: none !important;
+    height: 320px;
   }
 }
 
@@ -1205,23 +1261,8 @@ const KEYFRAMES = `
   .cv-verify-walk-scroll {
     padding: 22px 14px 18px !important;
   }
-  .cv-verify-stage-title {
-    top: 18px !important;
-    left: 16px !important;
-    right: 16px;
-    max-height: 108px;
-    overflow: hidden;
-  }
-  .cv-verify-stage-title h1 {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cv-verify-stage-context-card {
-    top: 140px !important;
-    left: 16px;
-    right: 16px !important;
-    width: auto !important;
+  .cv-verify-stage-heading {
+    padding: 18px 16px 0 !important;
   }
   .cv-verify-pipeline-rail {
     top: 112px !important;

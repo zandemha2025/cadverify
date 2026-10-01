@@ -1,0 +1,72 @@
+{
+  "conclusion": "failure",
+  "headSha": "d59a9950cff11071af0282c259e2b617eb6b464b",
+  "jobs": [
+    {
+      "name": "Frontend Build & Lint",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:46:50Z",
+      "completedAt": "2026-09-30T06:48:36Z"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:46:50Z",
+      "completedAt": "2026-09-30T06:47:44Z"
+    },
+    {
+      "name": "Backend Tests",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:46:50Z",
+      "completedAt": "2026-09-30T06:59:09Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:46:50Z",
+      "completedAt": "2026-09-30T06:47:53Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:46:50Z",
+      "completedAt": "2026-09-30T06:47:01Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:46:50Z",
+      "completedAt": "2026-09-30T06:47:00Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:47:04Z",
+      "completedAt": "2026-09-30T06:47:53Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:59:12Z",
+      "completedAt": "2026-09-30T07:03:49Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "conclusion": "failure",
+      "startedAt": "2026-09-30T06:59:13Z",
+      "completedAt": "2026-09-30T07:10:10Z"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36680024807",
+  "browser_evidence": {
+    "site_design": "PASS",
+    "human": "PASS",
+    "design_studio": "15 steps / 12 golden paths PASS",
+    "enterprise": "9/9 golden paths PASS, including unchanged-rerun VER-08",
+    "p7": "28 passed, one required skip; release gate failed",
+    "later_chain": "Not reached, including real CAD corpus and training."
+  },
+  "first_divergence": "step 18, expected newly returned cost-decision ID to be immediately readable, state was HTTP 404 on its first detail lookup.",
+  "diagnosis": "Shared DB dependency commits after sending success. Deterministic local ASGI regression proves premature 200, including when commit fails. CI did not retain the database commit trace, so exact CI attribution remains inferred pending rerun."
+}

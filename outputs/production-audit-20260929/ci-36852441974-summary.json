@@ -1,0 +1,66 @@
+{
+  "conclusion": "failure",
+  "headSha": "07ae63749d5295b56b10c013e75d3197e6abff05",
+  "jobs": [
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337010949"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337011163"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337011214"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337011292"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337011368"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337011517"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110337104993"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110342094073"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974/job/110342094259"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36852441974",
+  "remaining_container_findings": "5 HIGH, 0 CRITICAL: Expat CVE-2026-93990, X11 CVE-2026-88806, Xrender CVE-2026-88807; no waiver.",
+  "trap_failure": "Old 300.1x290x300 raw-mesh FDM rejection expectation; corrected in audit180, with a new true oversize cube control. Parsed source-precision classification remains open.",
+  "browser_failure": "Enterprise expected $2.46/unit and $29,520/year at 12,000; API returned $3.44 and $41,280 after audit178 green-size binder packing. VER-06, ENT-04, ENT-05 failed. No console or request failures in this suite.",
+  "artifact_build_identity": "7cbf8f0cf3700800ef733d599a9a23896448dfd3 (GitHub pull-request merge build); workflow headSha above is the source branch revision."
+}

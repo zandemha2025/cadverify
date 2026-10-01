@@ -1,0 +1,5 @@
+{
+  "first_divergence": "Native replay after backend restart expected the existing local audit allowance; startup omitted VALIDATION_CAP_PER_ORG/PER_USER and correctly enforced the default 100 lifetime cap.",
+  "correction": "Restored the already-used local 10000 allowance using the actual configuration names. No source/security-rule change or production change.",
+  "result": "All four final native STEP replays completed with ready previews and persisted0.3.39 analysis/cost records."
+}

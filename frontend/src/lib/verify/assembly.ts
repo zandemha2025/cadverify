@@ -23,7 +23,7 @@
  * under the repo's `node --test` TS-stripping runner.
  */
 
-import { apiProblemDetail, apiRecoveryMessage } from "../api-recovery.ts";
+import { apiProblemDetail, apiQuotaMessage, isLifetimeQuotaErrorMessage, apiRecoveryMessage } from "../api-recovery.ts";
 
 /** STEP/IGES suffixes the assembly endpoint accepts — only these are probed, so
  *  STL and everything else stay on the unchanged single-part path. */
@@ -313,16 +313,17 @@ async function refusalFromResponse(response: Response, fallback: string): Promis
   const body: unknown = await response.json().catch(() => null);
   const { status } = response;
   if (status >= 500 || status === 429 || status === 401 || status === 403) {
-    return {
-      kind: "refused",
-      title: "CAD verification could not start",
-      action: apiRecoveryMessage({
+    const action = apiRecoveryMessage({
         status,
         payload: body,
         resource: "verification",
         retryAfter: response.headers.get("retry-after"),
-      }),
-      recovery: status === 401 ? "sign_in" : status === 403 ? undefined : "retry",
+      });
+    return {
+      kind: "refused",
+      title: "CAD verification could not start",
+      action,
+      recovery: status === 401 ? "sign_in" : isLifetimeQuotaErrorMessage(action) || (status === 403 && !apiQuotaMessage(body)) ? undefined : "retry",
     };
   }
   return {
@@ -447,13 +448,19 @@ export async function fetchAssembly(file: File): Promise<AssemblyRender | null> 
  *
  * The response is a SUPERSET of `format=json` (the model plus an `analysis`
  * block); we only need the `analysis` here since the model already rendered.
- * Returns null on any failure so the panel shows an honest "analysis
- * unavailable" state and NEVER fabricates a verdict/cost.
+ * Preserve server failures for recovery copy; absent analysis remains null.
  */
-export async function fetchAssemblyAnalysis(file: File): Promise<AssemblyAnalysis | null> {
+export async function fetchAssemblyAnalysis(
+  file: File,
+  post: typeof postAssembly = postAssembly,
+): Promise<AssemblyAnalysis | null> {
   if (!isAssemblyCandidate(file.name)) return null;
-  const res = await postAssembly(file, "analysis");
-  if (!res || !res.ok) return null;
+  const res = await post(file, "analysis");
+  if (!res) return null;
+  if (!res.ok) throw new Error(apiRecoveryMessage({
+    status: res.status, payload: await res.json().catch(() => null),
+    resource: "assembly analysis", retryAfter: res.headers.get("retry-after"),
+  }));
   try {
     const body = (await res.json()) as { analysis?: AssemblyAnalysis };
     return body.analysis ?? null;

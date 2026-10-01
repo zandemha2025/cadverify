@@ -27,12 +27,13 @@ from src.analysis.base_analyzer import (
     decimation_issue,
     run_universal_checks,
 )
-from src.analysis.context import GeometryContext
+from src.analysis.context import GeometryContext, analysis_mesh_hash
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, ProcessType, Severity
 from src.analysis.processes import get_analyzer
 from src.analysis.rules import get_rule_pack
 from src.auth.require_api_key import AuthedUser
+from src.costing.units import mesh_source_units
 from src.db.models import Analysis, UsageEvent
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
@@ -152,7 +153,7 @@ async def _persist_source_evidence(
     )
 
     async def _ensure_costable_derivative() -> None:
-        if await costable_mesh_exists(org_id, mesh_hash):
+        if await costable_mesh_exists(org_id, mesh_hash, source_units=source_units):
             return
         mesh = parsed_mesh
         if mesh is None:
@@ -166,7 +167,7 @@ async def _persist_source_evidence(
         payload = await asyncio.to_thread(mesh.export, file_type="stl")
         if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
             raise RuntimeError("CAD parser did not produce a costable STL derivative")
-        await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload))
+        await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload), source_units=source_units)
 
     # The exact source object and the canonical derivative have independent,
     # deterministic keys. Persist them concurrently, but await both before the
@@ -456,9 +457,7 @@ async def run_analysis(
     # Keep that interpretation in the cache key or an earlier mm result can be
     # returned as a plausible-looking but 25.4×-too-small analysis. Explicit mm
     # remains byte/cache-identical to the historical unset default.
-    effective_units = source_units or "mm"
-    if effective_units not in {"mm", "inch"}:
-        raise ValueError("source_units must be 'mm', 'inch', or None")
+    effective_units = mesh_source_units(filename, source_units)
     process_fingerprint = [p.value for p in target_processes]
     if effective_units != "mm":
         process_fingerprint.append(f"source_units={effective_units}")
@@ -658,6 +657,7 @@ async def run_analysis(
 
     stage_started = time.perf_counter()
     result_dict = to_response_fn(result, features, pack)
+    result_dict["analysis_mesh_hash"] = analysis_mesh_hash(ctx.mesh)
     stage_timings_ms["serialize"] = _elapsed_ms(stage_started)
     if effective_units != "mm":
         result_dict["source_units"] = {
@@ -781,7 +781,11 @@ async def run_analysis(
             detail={"process_set_hash": process_set_hash, "file_name": filename},
             org_id=analysis.org_id,
         )
-    except IntegrityError:
+    except (IntegrityError, ExceptionGroup) as exc:
+        # TaskGroup wraps a racing insert; unrelated source/storage failures
+        # (including mixed groups) must still fail the durable-write boundary.
+        if isinstance(exc, ExceptionGroup) and exc.split(IntegrityError)[1] is not None:
+            raise
         # T-03B-01: Race condition — concurrent duplicate insert.
         # Roll back the failed flush and re-query the winning row.
         await session.rollback()

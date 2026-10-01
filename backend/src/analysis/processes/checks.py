@@ -19,12 +19,14 @@ from typing import Optional
 import numpy as np
 
 from src.analysis.citations import parse_citation
-from src.analysis.constants import STANDARD_GAUGES
-from src.analysis.context import GeometryContext
+from src.analysis.serialization import format_measurement
+from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
+from src.analysis.context import GeometryContext, fitting_box_dimensions, wall_thickness_tolerance, envelope_nonfit_bound
 from src.analysis.features.base import (
     Feature,
     FeatureKind,
     has_rotational_surface_evidence,
+    turning_dimensions,
 )
 from src.analysis.models import Issue, ProcessType, Severity
 
@@ -34,6 +36,29 @@ logger = logging.getLogger("cadverify.checks")
 # ──────────────────────────────────────────────────────────────
 # Wall thickness
 # ──────────────────────────────────────────────────────────────
+def _wall_upper(ctx: GeometryContext) -> np.ndarray:
+    upper = ctx.wall_thickness_upper
+    if upper is None:
+        upper = (np.full(len(ctx.wall_thickness), np.inf) if ctx.mesh.metadata.get("coordinate_error")
+                 else ctx.wall_thickness)
+    return np.where(np.isfinite(ctx.wall_thickness), upper, np.inf)
+
+
+def _wall_precision_issues(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
+    upper = _wall_upper(ctx)
+    if not ctx.mesh.metadata.get("coordinate_error") and np.all(np.isfinite(upper)):
+        return []
+    return [Issue(
+        code="WALL_THICKNESS_PRECISION", severity=Severity.WARNING, process=process,
+        message=(
+            f"Wall checks have stable measurements for {int(np.isfinite(upper).sum())} of {len(upper)} faces. "
+            "Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and "
+            "unsampled faces cannot verify a minimum wall; a result near the limit is uncertain."
+        ),
+        fix_suggestion="Confirm critical wall thicknesses in the source CAD before manufacturing.",
+    )]
+
+
 def check_wall_thickness(
     ctx: GeometryContext,
     min_wall_mm: float,
@@ -43,20 +68,22 @@ def check_wall_thickness(
 ) -> list[Issue]:
     wt = ctx.wall_thickness
     finite = np.isfinite(wt)
-    thin = finite & (wt < min_wall_mm)
+    thin = finite & (_wall_upper(ctx) < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
     thin_faces = np.where(thin)[0]
+    issues = _wall_precision_issues(ctx, process)
     if len(thin_faces) == 0:
-        return []
+        return issues
     pct = len(thin_faces) / max(len(ctx.centroids), 1) * 100
     min_measured = float(wt[thin].min())
     region = _region_center(ctx, thin_faces)
     sev = Severity.ERROR if pct > 10 else Severity.WARNING
-    return [Issue(
+    issues.append(Issue(
         code="THIN_WALL",
+        measurement_unit="mm",
         severity=sev,
         message=(
             f"{len(thin_faces)} faces ({pct:.1f}%) below {min_wall_mm}mm "
-            f"min wall for {process.value}. Thinnest: {min_measured:.2f}mm."
+            f"min wall for {process.value}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
         ),
         process=process,
         affected_faces=thin_faces.tolist(),
@@ -65,7 +92,8 @@ def check_wall_thickness(
         required_value=min_wall_mm,
         fix_suggestion=f"Increase wall thickness to >= {min_wall_mm}mm. {cite}",
         citation=parse_citation(cite),
-    )]
+    ))
+    return issues
 
 
 # ──────────────────────────────────────────────────────────────
@@ -124,28 +152,49 @@ def check_small_features(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    if len(ctx.edge_lengths) == 0:
-        return []
-    small = ctx.edge_lengths[ctx.edge_lengths < min_size_mm]
+    precision = ctx.edge_length_precision
+    if precision is None:
+        precision = np.full(len(ctx.edge_lengths), np.inf if ctx.mesh.metadata.get("coordinate_error") else 0.)
+    return small_feature_issues(ctx.edge_lengths, precision, min_size_mm, process,
+                               cite=cite, topology_stable=ctx.edge_topology_stable)
+
+
+def small_feature_issues(
+    lengths: np.ndarray, precision: np.ndarray, min_size_mm: float,
+    process: ProcessType, *, cite: str = "", topology_stable: bool = True,
+) -> list[Issue]:
+    issues: list[Issue] = []
+    uncertain = (~np.isfinite(precision) | ((lengths - precision <= min_size_mm) &
+                                         (lengths + precision >= min_size_mm) & (precision > 0)))
+    if np.any(uncertain) or not topology_stable:
+        issues.append(Issue(
+            code="FEATURE_SIZE_PRECISION", severity=Severity.WARNING, process=process,
+            message=("Some geometric boundaries cannot be compared reliably with "
+                     f"the {min_size_mm}mm resolution limit because of source precision or unstable rim measurements."),
+            fix_suggestion="Measure these features in the source CAD before manufacturing.",
+        ))
+    small = lengths[lengths + precision < min_size_mm]
     if len(small) == 0:
-        return []
-    pct = len(small) / len(ctx.edge_lengths) * 100
+        return issues
+    pct = len(small) / len(lengths) * 100
     if pct < 5:
-        return []  # not significant
+        return issues  # not significant
     smallest = float(small.min())
-    return [Issue(
+    issues.append(Issue(
         code="SMALL_FEATURES",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
-            f"{len(small)} edges ({pct:.1f}%) below {min_size_mm}mm "
-            f"resolution for {process.value}. Smallest: {smallest:.3f}mm."
+            f"{len(small)} geometric boundary spans ({pct:.1f}%) below {min_size_mm}mm "
+            f"resolution for {process.value}. Smallest: {format_measurement(smallest, min_size_mm)}mm."
         ),
         process=process,
         measured_value=smallest,
         required_value=min_size_mm,
         fix_suggestion=f"Enlarge features to >= {min_size_mm}mm. {cite}",
         citation=parse_citation(cite),
-    )]
+    ))
+    return issues
 
 
 # ──────────────────────────────────────────────────────────────
@@ -159,12 +208,72 @@ def check_build_volume(
     cite: str = "",
 ) -> list[Issue]:
     dims = ctx.info.bounding_box.dimensions
+    if process == ProcessType.CNC_TURNING:
+        measured = turning_dimensions(ctx.mesh, ctx.features)
+        if measured is not None:
+            length, diameter, _ = measured
+            dims = (diameter, diameter, length)
     exceeds = []
     for dim, limit, axis in zip(dims, max_dims_mm, ("X", "Y", "Z")):
         if dim > limit:
-            exceeds.append(f"{axis}: {dim:.0f}mm > {limit}mm")
-    if not exceeds:
+            exceeds.append(f"{axis}: {format_measurement(dim, limit)}mm > {limit}mm")
+    tolerance = 0.0 if process == ProcessType.CNC_TURNING else wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    precision = 0.0 if process == ProcessType.CNC_TURNING else 2 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+    if not exceeds and all(d + precision <= cap + tolerance for d, cap in zip(dims, max_dims_mm)):
         return []
+    uncertain = bool(precision and not exceeds)
+    bound = None
+    if process != ProcessType.CNC_TURNING and not ctx.metadata.get("decimation", {}).get("succeeded"):
+        enclosing, basis = ctx.enclosing_box
+        fitting = fitting_box_dimensions(enclosing, tuple(cap + tolerance for cap in max_dims_mm))
+        if fitting is None:
+            fitting = fitting_box_dimensions(enclosing, tuple(cap + tolerance for cap in max_dims_mm),
+                                             ctx.enclosing_cylinder)
+            basis = "measured enclosing cylinder"
+        if fitting is not None:
+            if not exceeds:
+                return []
+            return [Issue(
+                code="BUILD_REORIENTATION_REQUIRED",
+                severity=Severity.INFO,
+                message=(
+                    f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process.value}, "
+                    f"but a {tuple(round(d, 6) for d in fitting)}mm enclosing box fits after reorientation "
+                    f"({basis})."
+                ),
+                process=process,
+                fix_suggestion=(
+                    "Reorient in the manufacturing setup. Review supports, tool access and fixtures "
+                    "in that orientation; this envelope check does not clear other DFM findings."
+                ),
+                citation=parse_citation(cite),
+            )]
+        # The enclosure already includes +precision. Subtract it twice for
+        # the lower bound; overlap cannot establish either fit or non-fit.
+        uncertain = uncertain or bool(precision and fitting_box_dimensions(
+            tuple(d - 2 * precision for d in enclosing),
+            tuple(cap + tolerance for cap in max_dims_mm)) is not None)
+        bound = envelope_nonfit_bound(
+            tuple(d - precision for d in enclosing),
+            tuple(cap + tolerance for cap in max_dims_mm), ctx.minimum_width_bound, precision)
+    if uncertain:
+        return [Issue(
+            code="BUILD_ENVELOPE_PRECISION", severity=Severity.WARNING, process=process,
+            message=(f"Source-coordinate rounding (enclosing dimensions up to ±{precision:.3g}mm) "
+                     f"overlaps the {max_dims_mm}mm envelope for {process.value}; fit remains uncertain."),
+            fix_suggestion="Confirm dimensions and the planned orientation in source CAD, or use a larger machine.",
+            citation=parse_citation(cite),
+        )]
+    if process != ProcessType.CNC_TURNING:
+        return [Issue(
+            code="EXCEEDS_BUILD_VOLUME" if bound else "BUILD_ENVELOPE_UNVERIFIED",
+            severity=Severity.ERROR, process=process,
+            message=(bound[3] if bound else
+                     f"No fitting setup established for the {max_dims_mm}mm envelope for {process.value}. "
+                     "The limited geometry/orientation check does not prove the part is too large."),
+            fix_suggestion="Verify the full XYZ setup in source CAD, including tool access, supports and fixtures.",
+            citation=parse_citation(cite),
+        )]
     return [Issue(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,
@@ -194,9 +303,10 @@ def check_aspect_ratio(
         return []
     return [Issue(
         code="EXTREME_ASPECT_RATIO",
+        measurement_unit="ratio",
         severity=Severity.WARNING,
         message=(
-            f"Aspect ratio {ratio:.1f}:1 exceeds {max_ratio}:1 for "
+            f"Aspect ratio {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for "
             f"{process.value}. Tall/thin parts risk failure."
         ),
         process=process,
@@ -229,9 +339,10 @@ def check_trapped_volumes(
             diameter, cavity_center, affected_faces = undersized
             issues.append(Issue(
                 code="TRAPPED_VOLUME",
+                measurement_unit="mm",
                 severity=Severity.ERROR,
                 message=(
-                    f"Drain opening {diameter:.2f}mm is below the {min_drain_mm}mm "
+                    f"Drain opening {format_measurement(diameter, min_drain_mm)}mm is below the {min_drain_mm}mm "
                     f"minimum for {process.value}; material can remain trapped."
                 ),
                 process=process,
@@ -417,6 +528,7 @@ def check_draft_angles(
     pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
     return [Issue(
         code="INSUFFICIENT_DRAFT",
+        measurement_unit="deg",
         severity=Severity.ERROR,
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
@@ -444,43 +556,77 @@ def check_wall_uniformity(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    issues: list[Issue] = []
+    issues = _wall_precision_issues(ctx, process)
     wt = ctx.wall_thickness
-    finite_mask = np.isfinite(wt)
-    if not np.any(finite_mask):
-        return issues
-    t = wt[finite_mask]
-    t_min, t_max = float(t.min()), float(t.max())
+    upper = _wall_upper(ctx)
+    t_min_upper = float(upper.min()) if len(upper) else float("inf")
+    t_min = float(wt[np.argmin(upper)]) if np.isfinite(t_min_upper) else float("inf")
+    t_max = ctx.maximum_inscribed_diameter
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
 
-    if t_min < min_wall:
+    if t_min_upper < min_wall - tolerance:
         issues.append(Issue(
             code="THIN_WALL_MOLDING",
+            measurement_unit="mm",
             severity=Severity.ERROR,
-            message=f"Min wall {t_min:.2f}mm < {min_wall}mm for {process.value}.",
+            message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process.value}.",
             process=process,
             measured_value=t_min,
             required_value=min_wall,
             fix_suggestion=f"Increase to >= {min_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    if t_max > max_wall:
+    if t_max is None or not np.isfinite(t_min):
+        missing = "Maximum" if t_max is None else "Minimum"
+        if t_max is None and not np.isfinite(t_min):
+            missing = "Minimum and maximum"
+        issues.append(Issue(
+            code="WALL_UNIFORMITY_UNAVAILABLE",
+            severity=Severity.WARNING,
+            message=f"{missing} wall thickness and uniformity could not be verified.",
+            process=process,
+            fix_suggestion="Check wall sections in the source CAD before manufacturing.",
+        ))
+        if t_max is None:
+            return issues
+    issues.append(Issue(
+        code="WALL_UNIFORMITY_SAMPLED",
+        measurement_unit="mm",
+        severity=Severity.WARNING,
+        message=(
+            f"Largest sampled interior section: {t_max:.6g}mm. "
+            "Thickness uses interior clearances; unsampled sections may be thicker."
+        ),
+        process=process,
+        measured_value=t_max,
+        fix_suggestion="Confirm critical wall sections in the source CAD.",
+    ))
+    # The observed interior point remains inside only when its clearance is
+    # larger than source rounding. This bounds this witness, not global maxima.
+    diameter_error = 2 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+    if (ctx.metadata.get("decimation", {}).get("succeeded") or t_max <= diameter_error):
+        diameter_error = float("inf")
+    t_max_lower = t_max - diameter_error
+    if t_max_lower > max_wall + tolerance:
         issues.append(Issue(
             code="THICK_WALL",
+            measurement_unit="mm",
             severity=Severity.WARNING,
-            message=f"Max wall {t_max:.1f}mm > {max_wall}mm — sink marks / long cycle.",
+            message=f"Sampled thick section {format_measurement(t_max, max_wall)}mm > {max_wall}mm — sink marks / long cycle risk.",
             process=process,
             measured_value=t_max,
             required_value=max_wall,
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    if t_max > 0 and t_min > 0 and (t_max / t_min) > 2.0:
+    if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max_lower > 2.0 * t_min_upper + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
+            measurement_unit="ratio",
             severity=Severity.WARNING,
             message=(
-                f"Wall ratio {t_max / t_min:.1f}:1 ({t_min:.1f}–{t_max:.1f}mm) "
-                f"causes warping in {process.value}."
+                f"Sampled wall ratio {format_measurement(t_max / t_min, 2.0)}:1 ({format_measurement(t_min)}–{format_measurement(t_max)}mm) "
+                f"may increase warping risk in {process.value}."
             ),
             process=process,
             measured_value=t_max / t_min,
@@ -494,32 +640,32 @@ def check_wall_uniformity(
 # ──────────────────────────────────────────────────────────────
 # Undercuts (CNC / molding)
 # ──────────────────────────────────────────────────────────────
-def check_undercuts_from_z(
+def check_setup_access(
     ctx: GeometryContext,
     process: ProcessType,
     *,
-    severity: Severity = Severity.ERROR,
     cite: str = "",
 ) -> list[Issue]:
-    """Faces unreachable from +Z direction (3-axis CNC, mold pull)."""
-    bottom_z = float(ctx.info.bounding_box.min_z)
-    height = float(ctx.info.bounding_box.max_z - bottom_z)
-    margin = height * 0.05
-
-    downward = ctx.normals[:, 2] < -0.1
-    not_bottom = ctx.centroids[:, 2] > (bottom_z + margin)
-    undercut_mask = downward & not_bottom
-    uc_faces = np.where(undercut_mask)[0]
-    if len(uc_faces) == 0:
+    """Find geometry without re-entrant surfaces; otherwise request setup review."""
+    if ctx.undercut_free_geometry:
         return []
-    pct = len(uc_faces) / max(len(ctx.centroids), 1) * 100
+    faces = np.empty(0, dtype=int)
+    if len(ctx.mesh.faces) and not ctx.metadata.get("decimation", {}).get("succeeded"):
+        tol = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+        z = ctx.mesh.vertices[:, 2]
+        base = np.all(z[ctx.mesh.faces] <= z.min() + tol, axis=1)
+        faces = np.where((ctx.normals[:, 2] < -1e-7) & ~base)[0]
     return [Issue(
-        code="UNDERCUT",
-        severity=severity,
-        message=f"{len(uc_faces)} faces ({pct:.1f}%) are undercuts for {process.value}.",
+        code="SETUP_ACCESS_UNVERIFIED",
+        severity=Severity.WARNING,
+        message=(
+            "A setup without re-entrant surfaces could not be verified from this mesh. "
+            + (f"{len(faces)} mesh faces point away from file +Z above its base. " if len(faces) else "")
+            + "Part orientation and the actual tooling may change access."
+        ),
         process=process,
-        affected_faces=uc_faces.tolist(),
-        fix_suggestion=f"Remove undercuts or plan multi-setup machining. {cite}",
+        affected_faces=faces.tolist(),
+        fix_suggestion=f"Review setup direction, fixturing/tooling and clearance. {cite}".strip(),
         citation=parse_citation(cite),
     )]
 
@@ -574,6 +720,7 @@ def check_internal_radii(
         return []
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
             f"{sharp_count} sharp concave edges — tool radius {min_radius_mm}mm "
@@ -624,15 +771,18 @@ def check_fillet_requirements(
         return []
     # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
     # outer corners) and coplanar seams need no fillet for material flow.
-    sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
+    # trimesh stores the angle BETWEEN normals: 0 is smooth/coplanar, not
+    # a sharp interior angle. An interior angle below 120° turns normals >60°.
+    sharp = (ctx.dihedral_angles_rad > np.radians(60)) & ctx.concave_mask
     count = int(np.sum(sharp))
-    if count < 5:
+    if count == 0:
         return []
     return [Issue(
         code="MISSING_FILLETS",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
-            f"{count} sharp internal corners need >= {min_fillet_mm}mm fillets "
+            f"{count} sharp concave mesh edges need >= {min_fillet_mm}mm fillets "
             f"for {process.value} flow and stress distribution."
         ),
         process=process,
@@ -660,9 +810,10 @@ def check_shrinkage_risk(
         return []
     return [Issue(
         code="SHRINKAGE_RISK",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
-            f"V/SA ratio {compactness:.1f}mm — bulky sections cause shrinkage "
+            f"V/SA ratio {format_measurement(compactness, max_compactness)}mm — bulky sections cause shrinkage "
             f"porosity in {process.value}."
         ),
         process=process,
@@ -732,15 +883,15 @@ def check_rotational_symmetry(
         is_symmetric = (
             (abs(1.0 - ratio_01) < tolerance)
             or (abs(1.0 - ratio_12) < tolerance)
-        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area)
+        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area, mesh=ctx.mesh)
         if not is_symmetric:
             return [Issue(
                 code="NOT_ROTATIONALLY_SYMMETRIC",
                 severity=Severity.ERROR,
                 message=(
                     f"Part lacks positive rotational geometry (eigenvalue ratios: "
-                    f"{ratio_01:.2f}, {ratio_12:.2f}; no material outer cylindrical "
-                    f"surface). Required for {process.value}."
+                    f"{ratio_01:.2f}, {ratio_12:.2f}; insufficient outer rotational "
+                    f"surface evidence). Required for {process.value}."
                 ),
                 process=process,
                 fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",
@@ -778,14 +929,18 @@ def check_length_diameter_ratio(
         return []
     length = dims[2]
     diameter = dims[1]
+    measured = turning_dimensions(ctx.mesh, ctx.features)
+    if measured is not None:
+        length, diameter, _ = measured
     ld = length / diameter
     if ld <= max_ld:
         return []
     return [Issue(
         code="HIGH_LD_RATIO",
+        measurement_unit="ratio",
         severity=Severity.WARNING,
         message=(
-            f"L/D ratio {ld:.1f}:1 exceeds {max_ld}:1 — deflection risk "
+            f"L/D ratio {format_measurement(ld, max_ld)}:1 exceeds {max_ld}:1 — deflection risk "
             f"on {process.value}. Steady rest recommended."
         ),
         process=process,
@@ -796,7 +951,7 @@ def check_length_diameter_ratio(
 
 
 # ──────────────────────────────────────────────────────────────
-# Prismatic / 2.5D check (wire EDM / sheet metal)
+# Straight-profile check (wire EDM)
 # ──────────────────────────────────────────────────────────────
 def check_prismatic(
     ctx: GeometryContext,
@@ -804,27 +959,22 @@ def check_prismatic(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    """Test if part is approximately a 2D profile extruded along Z."""
-    normals = ctx.normals
-    # Prismatic = all faces are either horizontal (|n_z| > 0.95) or
-    # vertical (|n_z| < 0.05). Anything else is non-prismatic.
-    horiz = np.abs(normals[:, 2]) > 0.95
-    vert = np.abs(normals[:, 2]) < 0.05
-    prismatic_faces = horiz | vert
-    pct = np.mean(prismatic_faces) * 100
-    if pct > 85:
+    """Confirm a straight extrusion; other wire paths require setup review."""
+    measured = ctx.straight_profile_geometry
+    if measured is not None and measured[2] == 0:
         return []
     return [Issue(
-        code="NOT_PRISMATIC",
-        severity=Severity.ERROR,
+        code="PRISMATIC_PROFILE_PRECISION" if measured is not None else "PRISMATIC_PROFILE_UNVERIFIED",
+        severity=Severity.WARNING,
         message=(
-            f"Only {pct:.0f}% of faces are prismatic (horizontal or vertical). "
-            f"{process.value} requires a 2.5D extruded profile."
+            "A straight extrusion is consistent with the mesh within source-coordinate rounding; "
+            "confirm the exact wire profile in the source CAD."
+            if measured is not None else
+            "A constant straight extrusion could not be verified. "
+            "Tapered or multi-axis wire EDM may be possible and requires setup review."
         ),
         process=process,
-        measured_value=pct,
-        required_value=85.0,
-        fix_suggestion=f"Redesign as a 2D profile extruded along Z. {cite}",
+        fix_suggestion=f"Review the CAM wire path, threading access, taper, fixturing and required setups. {cite}".strip(),
         citation=parse_citation(cite),
     )]
 
@@ -837,29 +987,51 @@ def check_sheet_gauge(
     process: ProcessType,
 ) -> list[Issue]:
     issues: list[Issue] = []
-    dims = sorted(ctx.info.bounding_box.dimensions)
+    dims = ctx.flat_sheet_dimensions
+    if dims is None:
+        return [Issue(
+            code="SHEET_GAUGE_UNVERIFIED", severity=Severity.WARNING,
+            message="A constant flat-sheet gauge could not be verified from this geometry.",
+            process=process,
+            fix_suggestion="Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.",
+        )]
     t = dims[0]
-    if t < 0.3:
+    precision = ctx.sheet_precision
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + precision
+    if precision:
+        issues.append(Issue(
+            code="SHEET_GAUGE_PRECISION", severity=Severity.WARNING,
+            measurement_unit="mm", measured_value=t, process=process,
+            message=f"Estimated sheet gauge {t:.6g}mm has up to ±{precision:.3g}mm uncertainty from binary STL coordinate rounding.",
+            fix_suggestion="Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+        ))
+    if t < SHEET_GAUGE_MIN_MM - tolerance:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,
-            message=f"Thickness {t:.2f}mm below 0.5mm min gauge.",
-            process=process, measured_value=t, required_value=0.5,
-            fix_suggestion="Increase to >= 0.5mm.",
+            measurement_unit="mm",
+            message=f"Thickness {format_measurement(t, SHEET_GAUGE_MIN_MM)}mm below the default {SHEET_GAUGE_MIN_MM:g}mm minimum sheet gauge.",
+            process=process, measured_value=t, required_value=SHEET_GAUGE_MIN_MM,
+            fix_suggestion=f"Use >= {SHEET_GAUGE_MIN_MM:g}mm for default sheet profiles; confirm material-specific stock and machine limits.",
         ))
-    elif t > 8.0:
+    elif t > SHEET_GAUGE_MAX_MM + tolerance:
         issues.append(Issue(
             code="TOO_THICK_SHEET", severity=Severity.WARNING,
-            message=f"Thickness {t:.1f}mm exceeds sheet range (0.5–6mm).",
-            process=process, measured_value=t,
-            fix_suggestion="Use plate CNC machining for thick stock.",
+            measurement_unit="mm",
+            message=f"Thickness {format_measurement(t, SHEET_GAUGE_MAX_MM)}mm exceeds the default {SHEET_GAUGE_MAX_MM:g}mm maximum sheet gauge.",
+            process=process, measured_value=t, required_value=SHEET_GAUGE_MAX_MM,
+            fix_suggestion="Confirm stock and machine capacity for this thickness, or consider plate machining.",
         ))
     closest = min(STANDARD_GAUGES, key=lambda g: abs(g - t))
-    if abs(closest - t) > 0.1 and 0.5 <= t <= 6.0:
+    if (
+        abs(closest - t) > 0.1 + tolerance
+        and SHEET_GAUGE_MIN_MM - tolerance <= t <= SHEET_GAUGE_MAX_MM + tolerance
+    ):
         issues.append(Issue(
             code="NON_STANDARD_GAUGE", severity=Severity.INFO,
-            message=f"Thickness {t:.2f}mm — nearest standard: {closest}mm.",
+            measurement_unit="mm",
+            message=f"Thickness {format_measurement(t, closest)}mm is not in the default stock list; nearest listed gauge: {closest:g}mm.",
             process=process, measured_value=t,
-            fix_suggestion=f"Use {closest}mm standard gauge for cost savings.",
+            fix_suggestion=f"Confirm supplier stock; {closest:g}mm is the nearest gauge in the default catalog.",
         ))
     return issues
 
@@ -897,8 +1069,9 @@ def check_bends(
     tightest_deg = float(np.degrees(ctx.dihedral_angles_rad[knife].max()))
     return [Issue(
         code="SHARP_BEND", severity=Severity.ERROR,
+        measurement_unit="deg",
         message=(
-            f"{count} knife-edge folds (normal divergence up to {tightest_deg:.0f}° "
+            f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, 150.0)}° "
             f"≈ included bend angle < 30°) — bend radius must be >= material "
             f"thickness. DIN 6935."
         ),
@@ -979,9 +1152,10 @@ def check_hole_depth_ratio(
         if ratio > max_ratio:
             issues.append(Issue(
                 code="DEEP_HOLE",
+                measurement_unit="ratio",
                 severity=Severity.WARNING,
                 message=(
-                    f"Hole depth/diameter {ratio:.1f}:1 exceeds {max_ratio}:1 "
+                    f"Hole depth/diameter {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 "
                     f"for {process.value} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
                 ),
                 process=process,

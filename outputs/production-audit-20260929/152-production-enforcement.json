@@ -1,0 +1,26 @@
+{
+  "observed_at": "2026-09-30T22:57:00.891254+00:00",
+  "health": {
+    "status": "ok",
+    "version": "dev",
+    "build_id": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+    "postgres": true,
+    "redis": true,
+    "async": {
+      "redis": true,
+      "worker": "ok",
+      "expected": true,
+      "worker_strict": false
+    },
+    "reconstruction": {
+      "available": false,
+      "backend": "none",
+      "egress": false
+    }
+  },
+  "deployed_guard_source": "09555c18121305b7e577c0a76e47e5f97abfb8e8:backend/src/config/production.py",
+  "production_guard_with_reported_version": false,
+  "production_guard_with_release_sha": true,
+  "scope": "Read-only health + execution of extracted pure deployed guard, no live configuration or startup mutation",
+  "limitation": "Does not reveal secret strength or each optional production flag; version=dev bypasses the RELEASE-based startup enforcement."
+}

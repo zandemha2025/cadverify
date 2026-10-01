@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueValue } from "@/lib/inspection-bind";
+
 /**
  * PART STANDING PAGE — the org's memory of what was asked, answered, and decided
  * about ONE part (design: `renderPart`). There is NO single part-detail endpoint;
@@ -8,7 +10,7 @@
  *
  *   GET /api/v1/catalog                     → the row (identity + latest verdict)
  *   GET /api/v1/part-context/{mesh_hash}    → lineage (program→assembly→part) + volume
- *   GET /api/v1/cost-decisions              → this file's decision history
+ *   GET /api/v1/cost-decisions?mesh_hash=…  → this part's decision history
  *   GET /api/v1/cost-decisions/{id}         → a record's full glass-box detail
  *
  * Honesty (adversarial): every number is a real engine/DB field or is WITHHELD.
@@ -30,9 +32,12 @@ import {
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
+import { assignContext } from "@/lib/verify/program-api";
+import { Button } from "@/components/ui/button";
 import {
   fetchBomAncestry,
   bomBreadcrumbView,
+  bomAnnualVolume,
   basisChip,
   type BomAncestry,
 } from "@/lib/verify/bom";
@@ -41,7 +46,6 @@ import {
   deriveStanding,
   extractBlockers,
   lineageView,
-  historyForFile,
   standingTag,
   type PartStanding,
   type Blocker,
@@ -63,7 +67,11 @@ const TONE: Record<"pass" | "cond" | "fail" | "neutral", string> = {
   neutral: C.ink45,
 };
 
-export function PartScreen({ nav }: { nav: (s: string) => void }) {
+export function PartScreen({ nav, onOpenProgram, onCompare }: {
+  nav: (s: string) => void;
+  onOpenProgram: (name: string) => void;
+  onCompare: (recordId: string) => void;
+}) {
   const [rows, setRows] = useState<CatalogRowApi[] | null>(null);
   const [catError, setCatError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -74,16 +82,22 @@ export function PartScreen({ nav }: { nav: (s: string) => void }) {
     setCatError(null);
     try {
       const page = await fetchCatalog({ pageSize: 100 });
+      const pending = getSelectedPart();
+      if (pending && !page.rows.some((r) => r.part_key === pending)) {
+        const match = await fetchCatalog({ partKey: pending });
+        const exact = match.rows.find((r) => r.part_key === pending);
+        if (!exact) throw new Error("The selected part is unavailable in this organization. Return to Parts to choose another.");
+        page.rows = [...page.rows, exact];
+      }
       setRows(page.rows);
       setTruncated(page.truncated);
       // Prefer an explicit hand-off (from catalog/records/machine links); else the
       // most-recently-updated part. Never a hardcoded demo part.
-      const pending = getSelectedPart();
-      const has = (k: string | null) => !!k && page.rows.some((r) => r.part_key === k);
-      setSelected(has(pending) ? pending : page.rows[0]?.part_key ?? null);
+      setSelected(pending ?? page.rows[0]?.part_key ?? null);
     } catch (e) {
       setCatError(e instanceof Error ? e.message : "Could not load parts");
       setRows([]);
+      setSelected(null);
     }
   }, []);
 
@@ -126,7 +140,7 @@ export function PartScreen({ nav }: { nav: (s: string) => void }) {
         </p>
       )}
 
-      {rows === null ? (
+      {catError ? null : rows === null ? (
         <div style={{ marginTop: 24 }}>
           <Spinner label="loading the org's parts…" />
         </div>
@@ -144,7 +158,7 @@ export function PartScreen({ nav }: { nav: (s: string) => void }) {
       ) : (
         <>
           <PartSwitcher rows={rows} selected={selected} onSelect={setSelected} truncated={truncated} />
-          {row && <Standing key={row.part_key} row={row} nav={nav} />}
+          {row && <Standing key={row.part_key} row={row} nav={nav} onOpenProgram={onOpenProgram} onCompare={onCompare} />}
         </>
       )}
     </main>
@@ -216,12 +230,18 @@ function PartSwitcher({
   );
 }
 
-function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }) {
+function Standing({ row, nav, onOpenProgram, onCompare }: {
+  row: CatalogRowApi;
+  nav: (s: string) => void;
+  onOpenProgram: (name: string) => void;
+  onCompare: (recordId: string) => void;
+}) {
   const [detail, setDetail] = useState<CostDecisionDetail | null>(null);
   const [context, setContext] = useState<PartContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [bom, setBom] = useState<BomAncestry | null>(null);
-  const [history, setHistory] = useState<CostDecisionSummary[] | null>(null);
+  const [bomError, setBomError] = useState<string | null>(null);
+  const [bomAttempt, setBomAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -231,7 +251,6 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
     setContext(null);
     setCtxError(null);
     setBom(null);
-    setHistory(null);
 
     const recordId = row.cost_decision?.id ?? null;
     const jobs: Promise<void>[] = [
@@ -241,15 +260,6 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
         setContext(r.context);
         setCtxError(r.error);
       }),
-      // this file's decision history (list items carry filename, not mesh_hash)
-      fetchCostDecisions({ limit: 100 }).then(
-        (page) => {
-          if (!cancelled) setHistory(historyForFile(page.cost_decisions, row.filename));
-        },
-        () => {
-          if (!cancelled) setHistory([]);
-        }
-      ),
     ];
     if (recordId) {
       jobs.push(
@@ -278,18 +288,21 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
   const bomKey = context?.bom_assembly_key ?? null;
   const bomChild = context?.bom_child_ref ?? null;
   useEffect(() => {
+    setBom(null);
+    setBomError(null);
     if (!bomKey || !bomChild) {
-      setBom(null);
       return;
     }
     let cancelled = false;
     void fetchBomAncestry(bomKey, bomChild).then((a) => {
       if (!cancelled) setBom(a);
+    }).catch((e) => {
+      if (!cancelled) setBomError(e instanceof Error ? e.message : "Could not load the BOM. Please retry.");
     });
     return () => {
       cancelled = true;
     };
-  }, [bomKey, bomChild]);
+  }, [bomKey, bomChild, bomAttempt]);
 
   const standing = deriveStanding(row, detail);
   const blockers = extractBlockers(row, detail);
@@ -301,14 +314,15 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
       style={{
         marginTop: 16,
         display: "grid",
-        gridTemplateColumns: "360px 1fr",
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
         gap: 18,
         alignItems: "start",
         maxWidth: 1100,
+        overflowWrap: "anywhere",
       }}
     >
       {/* ── identity (left) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         <div
           style={{
             border: `1px solid ${C.hair}`,
@@ -363,7 +377,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
               Re-verify
             </GhostButton>
             {standing.recordId && (
-              <GhostButton onClick={() => nav("compare")} title="Compare this part across calibrations / routes">
+              <GhostButton onClick={() => onCompare(standing.recordId!)} title="Compare this part across calibrations / routes">
                 Compare
               </GhostButton>
             )}
@@ -396,7 +410,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
           </p>
           <button
             type="button"
-            onClick={() => nav("programs")}
+            onClick={() => lin.program ? onOpenProgram(lin.program) : nav("programs")}
             style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
           >
             {lin.hasHome ? "open program →" : "assign →"}
@@ -408,10 +422,20 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
             volume with its BASIS chip (BOM ROLLUP vs DECLARED). Never invented. */}
         <BomContextBar
           view={bomBreadcrumbView(bom)}
-          basis={basisChip(bom?.has_tree ? "bom_rollup" : context?.annual_volume != null ? "declared" : "default")}
+          pathsTruncated={bom?.ancestry_paths_truncated ?? false}
           rootsPerYear={context?.bom_roots_per_year ?? null}
           declaredVolume={context?.annual_volume ?? null}
         />
+        {(bomError || bom?.error || (bom && !bom.has_tree)) && (
+          <div role="alert" style={{ fontFamily: MONO, fontSize: 11, color: C.cond }}>
+            <p>BOM unavailable — {bomError || bom?.error || "The linked assembly does not contain this part."}</p>
+            <GhostButton onClick={() => setBomAttempt((n) => n + 1)}>Retry BOM</GhostButton>
+          </div>
+        )}
+        {!loading && !ctxError && <BomLinkEditor meshHash={row.part_key} context={context} onSaved={(next) => {
+          setContext(next);
+          setBomAttempt((n) => n + 1);
+        }} />}
         {ctxError && (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.cond }}>
             lineage unavailable — {ctxError}
@@ -420,7 +444,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
       </div>
 
       {/* ── standing (right) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         {loading && !detail && (
           <div style={{ padding: "4px 2px" }}>
             <Spinner label="assembling this part's standing…" />
@@ -429,24 +453,72 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
 
         <StandingCard standing={standing} blockers={blockers} nav={nav} />
 
-        {(history?.length ?? 0) > 0 ? (
-          <HistoryCard history={history ?? []} currentId={standing.recordId} />
-        ) : (
-          standing.kind !== "costed" &&
-          blockers.length === 0 && (
-            <EmptyState
-              title="No saved decision yet."
-              body="This part has a standing page waiting for its first costed verdict. Nothing here will ever be invented to fill the space."
-            >
-              <GhostButton primary onClick={() => nav("verify")}>
-                Verify it now
-              </GhostButton>
-            </EmptyState>
-          )
-        )}
+        <HistoryCard key={row.cost_decision?.id ?? "uncosted"} partKey={row.part_key} currentId={standing.recordId} />
       </div>
     </div>
   );
+}
+
+function BomLinkEditor({ meshHash, context, onSaved }: {
+  meshHash: string; context: PartContext | null; onSaved: (context: PartContext) => void;
+}) {
+  const [assembly, setAssembly] = useState(context?.bom_assembly_key ?? "");
+  const [child, setChild] = useState(context?.bom_child_ref ?? "");
+  const [roots, setRoots] = useState(context?.bom_roots_per_year?.toString() ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function save(remove = false) {
+    if (busy) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const key = assembly.trim(), ref = child.trim();
+      const yearly = roots.trim() ? Number(roots) : null;
+      if (!remove) {
+        if (!key || !ref) throw new Error("Enter the saved assembly name and this part's BOM reference.");
+        if (yearly !== null && (!Number.isInteger(yearly) || yearly < 1 || yearly > 2147483647)) {
+          throw new Error("Root assemblies per year must be a whole number between 1 and 2147483647.");
+        }
+        const ancestry = await fetchBomAncestry(key, ref);
+        if (!ancestry?.has_tree || ancestry.error || ancestry.rolled_up_multiplier == null) {
+          throw new Error(ancestry?.error || "This saved assembly does not contain that part. Check the assembly name and exact BOM reference.");
+        }
+        if (yearly !== null && bomAnnualVolume(ancestry.rolled_up_multiplier, yearly) === null) {
+          throw new Error("BOM annual demand exceeds the supported exact integer range.");
+        }
+      }
+      const result = await assignContext(meshHash, {
+        bom_assembly_key: remove ? null : key,
+        bom_child_ref: remove ? null : ref,
+        bom_roots_per_year: remove ? null : yearly,
+      });
+      onSaved(result.context);
+      if (remove) { setAssembly(""); setChild(""); setRoots(""); }
+      setMessage(remove ? "BOM link removed. Any flat annual-volume declaration is preserved." : "BOM link saved. The current hierarchy is shown above.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the BOM link. Please retry.");
+    } finally { setBusy(false); }
+  }
+
+  return <details style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
+    <summary className="cursor-pointer font-medium">Link this part to a saved BOM</summary>
+    <form aria-label="Part BOM link" className="mt-3 space-y-3 text-sm" onSubmit={(event) => { event.preventDefault(); void save(); }} onChange={() => { setError(""); setMessage(""); }}>
+      <p>Match this CAD part to an imported assembly. This is your declaration of part identity. Annual demand follows the saved hierarchy and your yearly assembly count; saved cost decisions stay unchanged.</p>
+      <fieldset disabled={busy} className="grid gap-3">
+        <label className="grid gap-1"><span>Saved BOM assembly name</span><input className="rounded border border-border bg-background px-3 py-2" value={assembly} onChange={(e) => setAssembly(e.target.value)} required /></label>
+        <label className="grid gap-1"><span>Part reference in BOM</span><input className="rounded border border-border bg-background px-3 py-2" value={child} onChange={(e) => setChild(e.target.value)} required /></label>
+        <label className="grid gap-1"><span>Root assemblies per year (optional)</span><input className="rounded border border-border bg-background px-3 py-2" type="number" min={1} max={2147483647} step={1} value={roots} onChange={(e) => setRoots(e.target.value)} /></label>
+        <p className="text-xs text-muted-foreground">Use the exact child reference from your BOM. For Windchill, use its part iteration ID. Without a yearly count, the flat annual-volume declaration is used when present.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit">{busy ? "Saving…" : "Save BOM link"}</Button>
+          <Button type="button" variant="secondary" disabled={!context?.bom_assembly_key && !context?.bom_child_ref} onClick={() => void save(true)}>Remove BOM link</Button>
+        </div>
+      </fieldset>
+      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {message && <p role="status">{message}</p>}
+    </form>
+  </details>;
 }
 
 // BOM ancestry breadcrumb (Slice 3). Renders NOTHING unless a real tree grounds
@@ -455,22 +527,20 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
 // rolled-up per-vehicle count, and the annual volume with its BASIS chip.
 function BomContextBar({
   view,
-  basis,
+  pathsTruncated,
   rootsPerYear,
   declaredVolume,
 }: {
   view: ReturnType<typeof bomBreadcrumbView>;
-  basis: ReturnType<typeof basisChip>;
+  pathsTruncated: boolean;
   rootsPerYear: number | null;
   declaredVolume: number | null;
 }) {
   if (!view.present) return null;
+  const perYear = bomAnnualVolume(view.perVehicle, rootsPerYear);
+  const basis = basisChip(perYear != null ? "bom_rollup" : declaredVolume != null ? "declared" : "default");
   const rollup = basis?.tone === "rollup";
   const chipColor = rollup ? C.measured : C.user;
-  const perYear =
-    view.perVehicle != null && rootsPerYear != null
-      ? view.perVehicle * rootsPerYear
-      : declaredVolume;
   return (
     <div
       style={{
@@ -506,19 +576,28 @@ function BomContextBar({
             shared · summed over {view.chain.length ? "all paths" : "paths"}
           </span>
         )}
+        {pathsTruncated && <span style={{ fontFamily: MONO, fontSize: 9, color: C.ink40 }}>path preview limited · count includes all paths</span>}
       </div>
       <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, lineHeight: 1.6, color: C.ink70 }}>
         {view.chain.join("  →  ")}
       </p>
       {view.perVehicle != null && (
         <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
-          {`${NUM(view.perVehicle)} per vehicle`}
+          {`${NUM(view.perVehicle)} per root assembly`}
           {rootsPerYear != null && perYear != null && (
             <span style={{ color: C.ink40 }}>
               {`  ·  ${NUM(view.perVehicle)} × ${NUM(rootsPerYear)}/yr = ${NUM(perYear)}/yr`}
               {rollup ? " (BOM rollup)" : ""}
             </span>
           )}
+        </p>
+      )}
+      {perYear == null && (
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+          {rootsPerYear == null
+            ? "Yearly root assembly production has not been supplied."
+            : "BOM annual demand exceeds the supported exact integer range."}
+          {declaredVolume != null ? ` Using ${NUM(declaredVolume)}/yr declared.` : " Annual demand is unavailable."}
         </p>
       )}
     </div>
@@ -660,7 +739,8 @@ function StandingCard({
 
 function BlockerRow({ b }: { b: Blocker }) {
   const bits: string[] = [];
-  if (b.measured != null && b.required != null) bits.push(`measured ${b.measured} vs required ${b.required}`);
+  const evidence = { code: b.code, measurement_unit: b.measurement_unit, measured_value: b.measured ?? undefined, required_value: b.required ?? undefined };
+  if (b.measured != null && b.required != null) bits.push(`measured ${formatIssueValue(evidence)} vs required ${formatIssueValue(evidence, "required_value")}`);
   if (b.affectedFaces != null) bits.push(`${NUM(b.affectedFaces)} face${b.affectedFaces === 1 ? "" : "s"}`);
   if (b.citation) bits.push(b.citation);
   return (
@@ -676,20 +756,47 @@ function BlockerRow({ b }: { b: Blocker }) {
   );
 }
 
-function HistoryCard({ history, currentId }: { history: CostDecisionSummary[]; currentId: string | null }) {
+function HistoryCard({ partKey, currentId }: { partKey: string; currentId: string | null }) {
+  const [history, setHistory] = useState<CostDecisionSummary[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void fetchCostDecisions({ meshHash: partKey, limit: 20, cursor }).then((page) => {
+      // Fail closed if an older/incompatible API ignores the identity filter.
+      if (page.cost_decisions.some((d) => d.mesh_hash !== partKey)) {
+        throw new Error("The history response does not match this part.");
+      }
+      if (cancelled) return;
+      setHistory((prev) => cursor ? [...prev, ...page.cost_decisions] : page.cost_decisions);
+      setNextCursor(page.has_more ? page.next_cursor : null);
+    }).catch((e) => {
+      if (!cancelled) setError(e instanceof Error ? e.message : "History could not be loaded.");
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [partKey, cursor, retry]);
+
   return (
-    <div style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
-      <Kicker color={C.ink45}>HISTORY — EVERY VERIFICATION APPENDS HERE</Kicker>
+    <section aria-label="Part cost history" style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+      <Kicker color={C.ink45}>HISTORY — SAVED COST DECISIONS</Kicker>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
         {history.map((h) => (
-          <div key={h.id} style={{ borderBottom: `1px solid #f0f0f3` }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 14, padding: "12px 2px" }}>
+          <div key={h.id} data-cost-decision-id={h.id} style={{ borderBottom: `1px solid #f0f0f3` }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 14, padding: "12px 2px" }}>
               <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink40, minWidth: 92 }}>
                 {new Date(h.created_at).toLocaleDateString()}
               </span>
-              <span style={{ flex: 1, fontSize: 13, color: C.ink }}>
-                Cost decision — {procLabel(h.make_now_process)}
+              <span style={{ flex: "1 1 150px", fontSize: 13, color: C.ink }}>
+                {h.filename} — {procLabel(h.make_now_process)}
                 {h.crossover_qty != null ? ` · crossover ${NUM(h.crossover_qty)}` : ""}
                 {h.id === currentId ? "  · current" : ""}
               </span>
@@ -705,10 +812,23 @@ function HistoryCard({ history, currentId }: { history: CostDecisionSummary[]; c
           </div>
         ))}
       </div>
+      {loading && <Spinner label="loading part history…" />}
+      {error && (
+        <div role="alert">
+          <p style={{ fontSize: 12, color: C.fail }}>History unavailable — {error}</p>
+          <GhostButton onClick={() => setRetry((n) => n + 1)}>Retry history</GhostButton>
+        </div>
+      )}
+      {!loading && !error && history.length === 0 && (
+        <p style={{ fontSize: 12, color: C.ink45 }}>No saved cost decisions for this part yet.</p>
+      )}
+      {!loading && !error && nextCursor && (
+        <GhostButton onClick={() => setCursor(nextCursor)}>Load older decisions</GhostButton>
+      )}
       <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>
         this page is the part&apos;s standing — the org&apos;s memory of what was asked, answered, and decided
       </p>
-    </div>
+    </section>
   );
 }
 
@@ -755,7 +875,7 @@ function RecordInline({ id }: { id: string }) {
               {drivers.map((d) => (
                 <div
                   key={d.name}
-                  style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: `1px solid #eceef1` }}
+                  style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: `1px solid #eceef1` }}
                 >
                   <span style={{ fontSize: 12, color: C.ink, minWidth: 120 }}>{d.label}</span>
                   <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>

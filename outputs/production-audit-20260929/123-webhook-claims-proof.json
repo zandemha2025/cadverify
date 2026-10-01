@@ -1,0 +1,29 @@
+{
+  "finding": 123,
+  "before": "Native Calibration & truth promised full verification-record payloads and four event names with no webhook publishers",
+  "producer_evidence": {
+    "file": "backend/src/jobs/batch_tasks.py",
+    "events": [
+      "batch.completed",
+      "batch_item.completed"
+    ],
+    "payloads": "batch counts/status and item status/result references; optional cost extras"
+  },
+  "native_after": [
+    "Displays the two actual event names",
+    "Describes signed JSON summaries and where the full records are available",
+    "Explains callback URL and shared secret configuration at batch submission",
+    "Retains actual legacy delivery1: batch.completed, failed, no HTTP response, zero attempts"
+  ],
+  "checks": {
+    "frontend_passed": 499,
+    "types": "pass",
+    "changed_source_lint": "pass",
+    "production_build": "pass"
+  },
+  "screenshots": [
+    "123-webhook-claims-before.png",
+    "123-webhook-claims-fixed.png"
+  ],
+  "limits": "Description correction only; no new event publisher or claim of actual external callback receipt. Not deployed."
+}

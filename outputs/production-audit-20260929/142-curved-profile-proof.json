@@ -1,0 +1,106 @@
+{
+  "issue": "142",
+  "status": "fixed and verified locally; not deployed",
+  "checked_at": "2026-09-30T19:55:29.029370+00:00",
+  "first_divergence": "step1: actual rotational ellipsoid and torus STEP uploads had no turning estimates and were routed to CNC 5-Axis; general curved rotational surfaces lacked positive evidence",
+  "fix": "Retain sphere/cylinder/cone evidence. For other curved solids, use the installed Trimesh inertia axis only as a candidate, verify all face-normal rotational tangents and 17 closed circular/concentric cross-sections including edge midpoints, then reuse that measured axis for turning dimensions.",
+  "engine_version": "0.3.18",
+  "previous_engine_version": "0.3.17",
+  "validation": {
+    "red": "4 new shape regressions failed; 1 negative control passed",
+    "focused_passed": 13,
+    "full_backend": {
+      "passed": 2569,
+      "skipped": 3,
+      "seconds": 218.09,
+      "skip_policy_enforced": true,
+      "skips": [
+        "real corpus manifest absent",
+        "optional OCP XDE absent (two cases)"
+      ]
+    },
+    "types": {
+      "errors": 214,
+      "warnings": 3,
+      "new_diagnostics": 0
+    },
+    "bandit_medium_high": 0,
+    "frontend": "unchanged; prior140:499 tests/types/lint/build passed",
+    "actual_step_controls": "pass: source hashes, positive watertight volumes, independent surface equations, analytic volume and measured dimensions",
+    "native_saved_record_receipts": "pass: six DFM-ready turning estimates per corrected record; old result JSON hashes unchanged"
+  },
+  "native": {
+    "page": "http://127.0.0.1:3017/verify",
+    "material": "aluminum",
+    "historical_records": [
+      "01M3SXDG2T146KR8ECDGFBHJWC",
+      "01M3SXTAA3WH6W6X6TY0TE771A"
+    ],
+    "current_records": [
+      "01M3SXZ6WXAR8R8309PB5HSQQP",
+      "01M3SXZPXRKXQKT521G2Y9ZS2F"
+    ],
+    "corrected_routes": "CNC Turning for both; prolate axis40mm/diameter20mm, torus axis12mm/diameter42mm",
+    "record_page": "native linked prolate record shows turning, same source hash, six matching quantities, correct bounding-cylinder machine-time derivation"
+  },
+  "controls": [
+    {
+      "filename": "142-prolate-rotated.step",
+      "faces": 34660,
+      "volume_mm3": 8374.435311658273,
+      "analytic_volume_mm3": 8377.580409572782,
+      "mesh_volume_relative_error": -0.0003754184097015667,
+      "surface_equation_max_residual": 6.828981824469338e-13,
+      "length_mm": 39.999999999988816,
+      "diameter_mm": 20.000009661196568,
+      "routing_check_seconds": 0.0662
+    },
+    {
+      "filename": "142-torus.step",
+      "faces": 79160,
+      "volume_mm3": 10655.29215034299,
+      "analytic_volume_mm3": 10659.172753176506,
+      "mesh_volume_relative_error": -0.00036406228920160544,
+      "surface_equation_max_residual": 2.1711028037114174e-15,
+      "length_mm": 12.000003766641797,
+      "diameter_mm": 42.00001078373126,
+      "routing_check_seconds": 0.1745
+    }
+  ],
+  "negative_controls": [
+    "fourfold lobed solid with matching radial inertia",
+    "triaxial ellipsoid",
+    "20x20x40 box",
+    "icosahedron",
+    "existing open/inverted sphere cases"
+  ],
+  "limits": [
+    "2% bounded mesh-profile acceptance, not exact B-rep or tolerance certification",
+    "coarsely tessellated or unsupported profiles may still be rejected; arbitrary geometry not proven",
+    "fixture measurements do not validate shop prices, workholding or general manufacturability",
+    "next cost investigation: material mass still uses convex hull while turning machine time uses enclosing round stock",
+    "real email/IdP/vendor/customer quote/external transport and production verification still open"
+  ],
+  "harness_notes": [
+    "OCC mass integration for the affine ellipsoid differs from its analytic volume by0.0437%; independent vertex surface equation is the geometry control, and the approximation is retained in the manifest",
+    "initial receipt extraction requested a nonexistent dfm field; read actual dfm_ready/dfm_blockers fields and verified the saved results; no application defect or DB write"
+  ],
+  "ci": {
+    "run": "36764251477",
+    "head": "027d4939a2e73d8eed44e243270845f6dd9ead5a",
+    "scope": "through140; excludes141/142",
+    "status": "still running browser chain; seven independent jobs pass; image job fails only five remaining backend HIGH package findings; both runtime probes pass"
+  },
+  "production_sha": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+  "deployed": false,
+  "evidence": [
+    "142-curved-step-controls.py",
+    "shape-controls/142-controls.json",
+    "142-native-cost-receipts.json",
+    "142-prolate-turning-before.png",
+    "142-torus-turning-before.png",
+    "142-prolate-turning-fixed.png",
+    "142-torus-turning-fixed.png",
+    "142-prolate-saved-record.png"
+  ]
+}

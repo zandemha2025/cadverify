@@ -21,7 +21,7 @@
  *       calibrated, the real name when a note says so, and an honest
  *       "your shop profile" fallback only when SHOP-tagged rates exist
  *       without a note;
- *   (f) buildCompareRows / blockersByProcess transform real estimates only,
+ *   (f) comparison rows and blockers preserve real report evidence,
  *       sorted cheapest-at-high-volume first.
  */
 import { test } from "node:test";
@@ -37,14 +37,32 @@ import {
   costedProcesses,
   costedQuantities,
   pickEstimate,
-  makeNowStableEstimate,
   estimateHalfWidth,
   fmtAssumptionValue,
   parseCalibration,
   buildCompareRows,
   blockersByProcess,
+  costOverrideError,
+  workspaceDfmSummary,
+  workspaceSelection,
+  buildAnswerSummary,
 } from "./cost-views.ts";
-import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision } from "@/lib/api";
+import { qtyToPos } from "./breakeven.ts";
+import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision, ValidationResult } from "@/lib/api";
+
+test("cost overrides reject malformed and impossible values, retaining valid zero rates", () => {
+  for (const [name, value] of [
+    ["labor_rate", "-35"], ["machine_cost", "-1"], ["material_cost", "-1"],
+    ["margin", "-2"], ["overhead", "-1"], ["utilization", "0"],
+    ["utilization", "1.1"], ["stock_allowance", "0.9"],
+    ["daily_machine_hours", "25"], ["daily_machine_hours", "0"],
+    ["n_cavities", "1.5"], ["n_cavities", "0"],
+    ["labor_rate", "35oops"], ["labor_rate", "Infinity"], ["labor_rate", ""],
+  ]) assert.ok(costOverrideError(name, value), `${name}=${value}`);
+  for (const [name, value] of [["labor_rate", "0"], ["margin", ".25"],
+    ["utilization", ".1"], ["stock_allowance", "1"], ["n_cavities", "2"],
+    ["daily_machine_hours", "24"]]) assert.equal(costOverrideError(name, value), null);
+});
 
 /* ---- fixture helpers -------------------------------------------- */
 
@@ -99,6 +117,97 @@ function report(over: Partial<CostReport>): CostReport {
     ...over,
   };
 }
+
+test("workspace verdict follows the cost route, keeping advisories and unknowns honest", () => {
+  const validation: ValidationResult = {
+    filename: "hole.step", file_type: "step", overall_verdict: "pass", best_process: "wire_edm",
+    analysis_time_ms: 1, geometry: {} as ValidationResult["geometry"], segments: [],
+    universal_issues: [], priority_fixes: [], process_scores: [
+      { process: "wire_edm", score: 1, verdict: "pass", issues: [], recommended_material: null,
+        recommended_machine: null, estimated_cost_factor: null },
+      { process: "cnc_5axis", score: .8, verdict: "issues", recommended_material: null,
+        recommended_machine: null, estimated_cost_factor: null,
+        issues: [{ code: "UNDERCUT", severity: "warning", message: "Verify tool clearance", fix_suggestion: null }] },
+    ],
+  };
+  const route = est({ process: "cnc_5axis", quantity: 1, unit_cost_usd: 195.59, dfm_verdict: "issues" });
+  const cost = report({ decision: decision({ make_now_process: "cnc_5axis" }), estimates: [route] });
+  assert.deepEqual(workspaceDfmSummary(cost, validation), { process: "cnc_5axis", verdict: "issues" });
+  assert.deepEqual(workspaceDfmSummary(null, validation), { process: "wire_edm", verdict: "pass" });
+  assert.deepEqual(workspaceDfmSummary(report({}), validation), { process: null, verdict: "unknown" });
+  cost.decision!.make_now_process = "not_evaluated";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "unknown");
+  cost.decision!.make_now_process = "cnc_5axis";
+  assert.equal(workspaceDfmSummary(cost, null).verdict, "issues", "cost advisories survive absent validation");
+  route.dfm_verdict = "pass";
+  assert.equal(workspaceDfmSummary(cost, null).verdict, "unknown");
+  route.dfm_blockers = ["Tool cannot reach"];
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  route.dfm_blockers = [];
+  validation.universal_issues = [{ code: "OPEN", severity: "error", message: "Open mesh", fix_suggestion: null }];
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  validation.universal_issues = [];
+  validation.process_scores[1].verdict = "fail";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail", "a route failure outranks its warning rows");
+  assert.equal(workspaceDfmSummary(report({ status: "GEOMETRY_INVALID" }), null).verdict, "fail");
+});
+
+test("workspace verdict matches selected material and routing-only cost evidence", () => {
+  const validation = {
+    overall_verdict: "pass", best_process: "cnc_3axis", universal_issues: [],
+    process_scores: [{ process: "cnc_3axis", verdict: "pass", issues: [] }],
+  } as unknown as ValidationResult;
+  const aluminum = est({ process: "cnc_3axis", quantity: 1, unit_cost_usd: 1 });
+  const steel = est({ process: "cnc_3axis", quantity: 1, unit_cost_usd: 2,
+    material: "steel", dfm_verdict: "fail", dfm_ready: false });
+  const cost = report({ decision: decision({ make_now_process: "cnc_3axis", make_now_material: "steel" }),
+    estimates: [aluminum, steel] });
+  for (const estimates of [[aluminum, steel], [steel, aluminum]]) {
+    cost.estimates = estimates;
+    assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  }
+  cost.decision!.make_now_material = "aluminum-6061";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "pass");
+  cost.decision!.make_now_material = "missing";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "unknown");
+  cost.decision = null;
+  cost.routing = { recommended_process: "cnc_3axis" } as CostReport["routing"];
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  steel.environment_excluded = true;
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "pass");
+});
+
+test("workspace verdict follows the displayed quantity's route instead of the prototype", () => {
+  const cnc = est({ process: "cnc_5axis", material: "6061", quantity: 1, unit_cost_usd: 195.59, dfm_verdict: "issues" });
+  const ded = est({ process: "ded", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 30, dfm_verdict: "issues" });
+  const cost = report({ decision: decision({ make_now_process: "cnc_5axis", make_now_material: "6061" }), estimates: [cnc, ded] });
+  assert.deepEqual(workspaceDfmSummary(cost, null, ded), { process: "ded", verdict: "issues" });
+  assert.deepEqual(workspaceDfmSummary(cost, null, null), { process: null, verdict: "unknown" });
+});
+
+test("one workspace selection keeps quantity, price, material, evidence and advisory status together", () => {
+  const cost = report({ quantities: [1, 100], decision: decision({ make_now_process: "cnc_5axis", make_now_material: "6061" }), estimates: [
+    est({ process: "cnc_5axis", material: "6061", quantity: 1, unit_cost_usd: 195.59, dfm_verdict: "issues" }),
+    est({ process: "cnc_5axis", material: "6061", quantity: 100, unit_cost_usd: 31, dfm_verdict: "issues" }),
+    est({ process: "ded", material: "AlSi10Mg", quantity: 1, unit_cost_usd: 300, dfm_verdict: "issues" }),
+    est({ process: "ded", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 30, dfm_verdict: "issues" }),
+    est({ process: "excluded", quantity: 100, unit_cost_usd: .01, environment_excluded: true }),
+  ] });
+  const at100 = workspaceSelection(cost, null);
+  assert.equal(at100.quantity, 100);
+  assert.equal(at100.recommendation?.unitCost, 30);
+  assert.equal(at100.estimate?.material, "AlSi10Mg");
+  assert.deepEqual(at100.dfm, { process: "ded", verdict: "issues" });
+  const at1 = workspaceSelection(cost, null, 0);
+  assert.equal(at1.quantity, 1);
+  assert.equal(at1.recommendation?.unitCost, 195.59);
+  assert.equal(at1.estimate?.quantity, 1);
+  assert.deepEqual(at1.dfm, { process: "cnc_5axis", verdict: "issues" });
+  const between = workspaceSelection(cost, null, qtyToPos(at100.breakeven!, 10));
+  assert.equal(between.quantity, 10);
+  assert.notEqual(between.estimate?.quantity, 10, "interpolation cannot invent exact driver evidence");
+  assert.equal(workspaceSelection(report({}), null).recommendation, null);
+});
 
 /* ---- (a) override-key mapping ------------------------------------ */
 
@@ -218,54 +327,6 @@ function decision(over: Partial<CostDecision> = {}): CostDecision {
   };
 }
 
-test("makeNowStableEstimate anchors the drivers to the amortized headline qty, not the first (F5)", () => {
-  // The reported mismatch: the Inspector drivers reconciled to qty 100 ($8.72)
-  // while the should-cost headline reads the amortized qty 10,000 ($8.68).
-  const r = report({
-    decision: decision({ make_now_process: "cnc_milling" }),
-    estimates: [
-      est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 }),
-      est({ process: "cnc_milling", quantity: 10000, unit_cost_usd: 8.68 }),
-    ],
-  });
-  // pickEstimate(no qty) returned the FIRST (smallest) — the bug we replaced.
-  assert.equal(pickEstimate(r, "cnc_milling")?.quantity, 100, "guards the old bug");
-  // makeNowStableEstimate anchors to the LARGEST costed qty (setup amortized).
-  const e = makeNowStableEstimate(r);
-  assert.equal(e?.quantity, 10000, "drivers now read the headline's amortized qty");
-  assert.equal(e?.unit_cost_usd, 8.68, "reconciles to the headline's unit cost");
-});
-
-test("makeNowStableEstimate ignores other processes and is order-independent", () => {
-  const r = report({
-    decision: decision({ make_now_process: "cnc_milling" }),
-    estimates: [
-      est({ process: "cnc_milling", quantity: 10000, unit_cost_usd: 8.68 }),
-      est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 }),
-      est({ process: "die_casting", quantity: 100000, unit_cost_usd: 2.1 }),
-    ],
-  });
-  assert.equal(makeNowStableEstimate(r)?.quantity, 10000, "largest cnc qty even when listed first");
-});
-
-test("makeNowStableEstimate returns null (never fabricates) with no decision or no make-now estimate", () => {
-  assert.equal(
-    makeNowStableEstimate(report({ estimates: [est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 })] })),
-    null,
-    "no decision => null"
-  );
-  assert.equal(
-    makeNowStableEstimate(
-      report({
-        decision: decision({ make_now_process: "cnc_milling" }),
-        estimates: [est({ process: "die_casting", quantity: 100, unit_cost_usd: 2.1 })],
-      })
-    ),
-    null,
-    "no estimate for the make-now route => null"
-  );
-});
-
 test("pickEstimate returns null (never a fabricated estimate) for an uncosted process", () => {
   const r = report({ estimates: [est({ process: "cnc_milling", quantity: 50, unit_cost_usd: 22 })] });
   assert.equal(pickEstimate(r, "die_casting", 50), null);
@@ -377,7 +438,17 @@ test("costedProcesses/costedQuantities dedup in first-seen / ascending order res
   assert.deepEqual(costedQuantities(r), [50, 5000]);
 });
 
-test("blockersByProcess only reports processes with a real dfm_blockers entry", () => {
+test("glass-box controls only offer estimates that pickEstimate can return", () => {
+  const r = report({ estimates: [
+    est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 12 }),
+    est({ process: "ded", quantity: 10, unit_cost_usd: 1, environment_excluded: true }),
+  ] });
+  assert.deepEqual(costedProcesses(r), ["cnc_milling"]);
+  assert.deepEqual(costedQuantities(r), [100]);
+  for (const process of costedProcesses(r)) assert.ok(pickEstimate(r, process));
+});
+
+test("blockersByProcess keeps uncosted findings and supports older estimate-only reports", () => {
   const r = report({
     estimates: [
       est({ process: "cnc_milling", quantity: 50, unit_cost_usd: 42.5, dfm_blockers: [] }),
@@ -393,4 +464,40 @@ test("blockersByProcess only reports processes with a real dfm_blockers entry", 
   assert.equal(Object.keys(blockers).length, 1, "clean process is absent, not blank");
   assert.equal(blockers.injection_molding, "needs draft angle", "first blocker, verbatim");
   assert.equal(blockers.cnc_milling, undefined);
+  r.engine_feasibility = [
+    { process: "cnc_turning", verdict: "fail", score: 0, costed: false,
+      blockers: ["not rotationally symmetric"] },
+  ];
+  assert.deepEqual(blockersByProcess(r), {
+    injection_molding: "needs draft angle",
+    cnc_turning: "not rotationally symmetric",
+  });
+});
+
+
+test("copied decisions preserve conditional tooling and approximate quantities", () => {
+  const cost = report({ filename: "boss.step", quantities: [1, 100],
+    decision: decision({ tooling_process: "sand_casting", tooling_dfm_ready: false, crossover_qty: 2251,
+      recommendation: { "1": { process: "ded", material: "AlSi10Mg", unit_cost_usd: 300, dfm_ready: true, dfm_verdict: "issues" },
+        "100": { process: "waam", material: "AlSi10Mg", unit_cost_usd: 30, dfm_ready: true, dfm_verdict: "issues" } } }),
+    estimates: [est({ process: "ded", material: "AlSi10Mg", quantity: 1, unit_cost_usd: 300, dfm_verdict: "issues" }),
+      est({ process: "ded", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 60, dfm_verdict: "issues" }),
+      est({ process: "waam", material: "AlSi10Mg", quantity: 1, unit_cost_usd: 500, dfm_verdict: "issues" }),
+      est({ process: "waam", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 30, dfm_verdict: "issues" })],
+  });
+  const approximate = buildAnswerSummary(cost, null, workspaceSelection(cost, null));
+  assert.match(approximate, /requires redesign/);
+  assert.match(approximate, /[Aa]pproximate/);
+  assert.match(approximate, /DFM · WAAM: Advisory/);
+  assert.doesNotMatch(approximate, /switch to|Manufacturable/);
+  const exact = buildAnswerSummary(cost, null, workspaceSelection(cost, null, 0));
+  assert.match(exact, /Make by DED.*quantity 1/);
+  assert.doesNotMatch(exact, /[Aa]pproximate recommendation/);
+  cost.decision!.tooling_dfm_ready = true;
+  const ready = buildAnswerSummary(cost, null, workspaceSelection(cost, null));
+  assert.match(ready, /Estimated Sand Casting crossover/);
+  assert.doesNotMatch(ready, /requires redesign|switch to/);
+  cost.decision!.crossover_qty = null;
+  assert.match(buildAnswerSummary(cost, null, workspaceSelection(cost, null)), /No tooling crossover/);
+  assert.equal(buildAnswerSummary(null, null, workspaceSelection(null, null)), "");
 });

@@ -1,6 +1,6 @@
 """Sheet Metal — bend, punch, laser cut."""
 
-from src.analysis.context import GeometryContext
+from src.analysis.context import GeometryContext, wall_thickness_tolerance
 from src.analysis.models import Issue, ProcessType, Severity
 from src.analysis.processes.base import register
 from src.analysis.processes.checks import (
@@ -31,11 +31,14 @@ class SheetMetalAnalyzer:
         holes = [f for f in ctx.features if f.kind == FeatureKind.CYLINDER_HOLE]
         if not holes:
             return []
-        dims = sorted(ctx.info.bounding_box.dimensions)
+        dims = ctx.flat_sheet_dimensions
+        if dims is None:
+            return []  # check_sheet_gauge already reports the missing measurement.
         t = dims[0]
+        tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + ctx.sheet_precision
         issues: list[Issue] = []
         for h in holes:
-            if h.radius and h.radius * 2 < t:
+            if h.radius and h.radius * 2 < t - tolerance:
                 issues.append(Issue(
                     code="SMALL_HOLE_SHEET",
                     severity=Severity.WARNING,

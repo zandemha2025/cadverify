@@ -9,7 +9,7 @@
  *  - GET /api/v1/catalog/portfolio (via program-api) → declared programs, the
  *    parts assigned to each, and the honest annualized `$/year` (engine unit cost
  *    × USER-declared volume, withheld when no volume is declared).
- *  - PUT /api/v1/part-context/{mesh} (merge-then-write) → assign a part to a
+ *  - PUT /api/v1/part-context/{mesh} (partial update) → assign a part to a
  *    program / declare its annual volume, without clobbering its declared world.
  *
  * Honesty (binding): every figure is engine/DB output or is WITHHELD. Exposure is
@@ -41,6 +41,9 @@ import {
   Spinner,
 } from "./primitives";
 import { useToast } from "./toast";
+import { parseAnnualVolume, resolvedAnnualVolume, annualDemandFeedback } from "@/lib/verify/program-rollup";
+
+const VOLUME_ERROR = "Enter a whole number from 1 to 2,147,483,647, or leave blank to clear the volume.";
 
 /** Exposure formatting matching the design: $X.XXM at scale, else $X,XXX. */
 function fmtExposure(n: number): string {
@@ -106,13 +109,14 @@ interface ProgramScreenProps {
   nav: (s: string) => void;
   /** the shell screen key — "programs" shows the index, "program" the detail. */
   screen: string;
+  selected: string | null;
+  onSelect: (name: string) => void;
 }
 
-export function ProgramScreen({ nav, screen }: ProgramScreenProps) {
+export function ProgramScreen({ nav, screen, selected, onSelect }: ProgramScreenProps) {
   const toast = useToast();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -139,10 +143,10 @@ export function ProgramScreen({ nav, screen }: ProgramScreenProps) {
 
   const open = useCallback(
     (name: string) => {
-      setSelected(name);
+      onSelect(name);
       nav("program");
     },
-    [nav]
+    [nav, onSelect]
   );
 
   const back = useCallback(() => {
@@ -201,7 +205,7 @@ function ProgramIndex({
       <h1 style={h1Style}>Programs</h1>
       <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
         Group verified parts into programs, see whether their declared worlds align, and roll up exposure
-        from the engine&apos;s verified unit cost × your declared annual volume.
+        from the engine&apos;s estimated unit cost × your declared or BOM-derived annual demand.
       </p>
 
       {error && (
@@ -235,7 +239,7 @@ function ProgramIndex({
           />
         </div>
       ) : (
-        <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16, maxWidth: 1100 }}>
+        <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 16, maxWidth: 1100 }}>
           {programs.map((g) => (
             <ProgramCard key={g.program} g={g} onOpen={() => onOpen(g.program)} />
           ))}
@@ -263,11 +267,16 @@ function ProgramCard({ g, onOpen }: { g: ProgramRollup; onOpen: () => void }) {
         ) : (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.cond }}>
             {(g.declared_volume_parts ?? 0) > 0
-              ? "exposure withheld — no engine recommendation at the declared quantity"
-              : "exposure withheld — no declared volume yet"}
+              ? "exposure withheld — no engine recommendation at the annual demand quantity"
+              : "exposure withheld — no annual demand yet"}
           </p>
         )}
       </div>
+      {g.annualized_cost_usd != null && g.exposed_parts != null && g.exposed_parts < g.parts && (
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, color: C.cond }}>
+          Partial total · {NUM(g.exposed_parts)} of {NUM(g.parts)} parts included. Other parts need a volume or an exact-quantity cost.
+        </p>
+      )}
       <div style={{ marginTop: "auto", paddingTop: 4 }}>
         <GhostButton aria-label={`Open ${g.program}`} primary onClick={onOpen}>Open →</GhostButton>
       </div>
@@ -301,7 +310,7 @@ function ProgramDetail({
   // Exposure = Σ of each assigned part's honest annualized $/year (the engine's
   // exact recommendation at the USER-declared volume × that volume). A declared
   // quantity without an exact computed point is withheld — never interpolated.
-  const declaredVolumeRows = assigned.filter((r) => r.context?.annual_volume != null);
+  const demandRows = assigned.filter((r) => resolvedAnnualVolume(r) != null);
   const withExposure = assigned.filter((r) => r.annualized_cost_usd != null);
   const exposureSum = withExposure.length
     ? withExposure.reduce((s, r) => s + (r.annualized_cost_usd ?? 0), 0)
@@ -324,12 +333,7 @@ function ProgramDetail({
         // an older backend didn't return one.
         if (delta) patch(row.part_key, delta);
         else await refresh();
-        const exposed = delta?.row?.annualized_cost_usd != null;
-        toast(volume == null
-          ? `${row.filename} assigned to ${program} — exposure computes once a volume is declared`
-          : exposed
-            ? `${row.filename} assigned to ${program} — exact-quantity exposure computed`
-            : `${row.filename} assigned — volume saved; re-verify the CAD for an exact-quantity exposure`);
+        toast(`${row.filename} assigned to ${program} — ${delta?.row ? annualDemandFeedback(delta.row) : "portfolio refreshed"}`);
       } catch (e) {
         toast(`Couldn't assign ${row.filename} — ${e instanceof Error ? e.message : "write failed"}`);
       } finally {
@@ -346,12 +350,7 @@ function ProgramDetail({
         const { delta } = await assignContext(row.part_key, { annual_volume: volume });
         if (delta) patch(row.part_key, delta);
         else await refresh();
-        const exposed = delta?.row?.annualized_cost_usd != null;
-        toast(volume == null
-          ? `${row.filename}: volume cleared · exposure withheld`
-          : exposed
-            ? `${row.filename}: ${NUM(volume)} units/yr · exact-quantity exposure updated`
-            : `${row.filename}: ${NUM(volume)} units/yr saved · re-verify the CAD to compute this quantity`);
+        toast(`${row.filename}: flat volume ${volume == null ? "cleared" : "saved"} · ${delta?.row ? annualDemandFeedback(delta.row) : "portfolio refreshed"}`);
       } catch (e) {
         toast(`Couldn't update ${row.filename} — ${e instanceof Error ? e.message : "write failed"}`);
       } finally {
@@ -386,7 +385,7 @@ function ProgramDetail({
         <h1 style={{ ...h1Style, fontSize: 26 }}>{program}</h1>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.user }}>● USER — declared by your team</span>
         <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: C.ink50 }}>
-          {NUM(assigned.length)} assigned · {NUM(declaredVolumeRows.length)} with a declared volume
+          {NUM(assigned.length)} assigned · {NUM(demandRows.length)} with annual demand
         </span>
       </div>
 
@@ -399,7 +398,7 @@ function ProgramDetail({
         </span>
       </div>
 
-      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 16, maxWidth: 1100, alignItems: "start" }}>
         {/* Assigned parts */}
         <section style={cardStyle}>
           <Kicker>ASSIGNED PARTS — {NUM(assigned.length)}</Kicker>
@@ -436,9 +435,14 @@ function ProgramDetail({
                 {fmtExposure(exposureSum)} <span style={{ fontSize: 13, color: C.ink45 }}>/yr</span>
               </p>
               <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, lineHeight: 1.7, color: C.ink50 }}>
-                = Σ (engine recommendation at each declared annual volume × that volume) over {NUM(withExposure.length)}{" "}
-                {withExposure.length === 1 ? "part" : "parts"} · exact quantity basis · <span style={{ color: C.user }}>● USER</span> volume
+                = Σ (engine recommendation at each annual demand quantity × that quantity) over {NUM(withExposure.length)}{" "}
+                {withExposure.length === 1 ? "part" : "parts"} · exact quantity basis · declared or BOM-derived demand
               </p>
+              {withExposure.length < assigned.length && (
+                <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.cond }}>
+                  Partial total · {NUM(withExposure.length)} of {NUM(assigned.length)} parts included. Other parts need a volume or an exact-quantity cost.
+                </p>
+              )}
               <div style={{ marginTop: 12, position: "relative", height: 5, borderRadius: 3, background: "#ececef", overflow: "hidden" }}>
                 <span aria-hidden style={{ position: "absolute", inset: 0, ...(allValidated ? { background: "rgba(31,138,91,0.5)" } : { backgroundImage: HATCH }) }} />
               </div>
@@ -453,17 +457,17 @@ function ProgramDetail({
               <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>
                 {assigned.length === 0
                   ? "No verified parts assigned."
-                  : declaredVolumeRows.length === 0
-                    ? "No declared volume yet."
+                  : demandRows.length === 0
+                    ? "No annual demand yet."
                     : "Exposure withheld at this quantity."}
               </p>
               <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink50 }}>
                 Exposure is not computed — not guessed, not extrapolated.{" "}
                 {assigned.length === 0
                   ? "Assign a verified part below."
-                  : declaredVolumeRows.length === 0
-                    ? "Declare a part's annual volume to compute it."
-                    : "Re-verify the same CAD; the declared annual volume will be included as an exact engine quantity automatically."}
+                  : demandRows.length === 0
+                    ? "Declare a part's annual volume or link it to BOM demand to compute it."
+                    : "Re-verify the same CAD; its annual demand will be included as an exact engine quantity automatically."}
               </p>
             </div>
           )}
@@ -509,6 +513,8 @@ function AssignedRow({
   onReverify: () => void;
 }) {
   const declared = row.context?.annual_volume ?? null;
+  const demand = resolvedAnnualVolume(row);
+  const fromBom = row.annual_volume_basis === "bom_rollup";
   const [draft, setDraft] = useState<string>(declared != null ? String(declared) : "");
 
   // Keep the input in sync when the underlying declared volume changes (refresh).
@@ -516,16 +522,15 @@ function AssignedRow({
     setDraft(declared != null ? String(declared) : "");
   }, [declared]);
 
-  const parsed = draft.trim() === "" ? null : parseInt(draft.replace(/[^0-9]/g, ""), 10);
-  const normalized = parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  const changed = normalized !== declared;
+  const normalized = parseAnnualVolume(draft);
+  const changed = normalized !== undefined && normalized !== declared;
 
   const unit = row.unit_cost;
   const basis = row.annualized_unit_cost;
   const process = basis?.process ?? row.make_now_process;
   const priceLabel = basis
     ? USD(basis.usd)
-    : declared != null
+    : demand != null
       ? "no exact cost"
       : unit?.withheld
         ? "cost withheld"
@@ -539,11 +544,11 @@ function AssignedRow({
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink, minWidth: 170, flex: "1 1 170px" }}>{row.filename}</span>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45, minWidth: 96 }}>{procLabel(process)}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 11, color: basis || (!unit?.withheld && declared == null) ? C.ink : C.cond }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 11, color: basis || (!unit?.withheld && demand == null) ? C.ink : C.cond }}>
           {priceLabel}
           {basis && <span style={{ color: C.ink45 }}>@ qty {NUM(basis.qty)}</span>}
           {basis && <ProvChip p={basis.validated ? "MEASURED" : "MODEL"} />}
-          {!basis && declared == null && !unit?.withheld && unit?.usd != null && (
+          {!basis && demand == null && !unit?.withheld && unit?.usd != null && (
             <><span style={{ color: C.ink45 }}>@ qty {NUM(unit.qty ?? 1)}</span><ProvChip p={unit.validated ? "MEASURED" : "MODEL"} /></>
           )}
         </span>
@@ -553,11 +558,14 @@ function AssignedRow({
             list={listId}
             inputMode="numeric"
             disabled={busy}
-            onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
-            onKeyDown={(e) => { if (e.key === "Enter" && changed) onSetVolume(normalized); }}
-            onBlur={() => { if (changed) onSetVolume(normalized); }}
-            placeholder="volume"
-            title={`annual volume — USER-declared; engine points: ${row.quantities.join(", ")}`}
+            aria-label={`${fromBom ? "Flat fallback annual volume" : "Annual volume"} for ${row.filename}`}
+            aria-invalid={normalized === undefined}
+            aria-describedby={normalized === undefined ? `${listId}-error` : undefined}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && changed && normalized !== undefined && !busy) onSetVolume(normalized); }}
+            onBlur={() => { if (changed && normalized !== undefined && !busy) onSetVolume(normalized); }}
+            placeholder={fromBom ? "fallback" : "volume"}
+            title={`${fromBom ? "flat fallback volume; BOM demand takes precedence" : "annual volume — USER-declared"}; engine points: ${row.quantities.join(", ")}`}
             style={{ width: 96, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
           />
           <datalist id={listId}>{row.quantities.map((quantity) => <option key={quantity} value={quantity} />)}</datalist>
@@ -570,7 +578,11 @@ function AssignedRow({
           remove
         </button>
       </div>
-      {declared != null && row.annualized_cost_usd == null && row.annualized_reason && (
+      {demand != null && <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink50 }}>
+        {NUM(demand)} parts/yr · {fromBom ? "BOM rollup. The flat volume field is a fallback; edit the BOM link in Parts to change current demand." : "declared annual demand"}
+      </p>}
+      {normalized === undefined && <p id={`${listId}-error`} role="alert" style={{ fontSize: 11, color: C.fail }}>{VOLUME_ERROR}</p>}
+      {demand != null && row.annualized_cost_usd == null && row.annualized_reason && (
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <p style={{ margin: 0, flex: "1 1 360px", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.cond }}>{row.annualized_reason}</p>
           <button type="button" onClick={onReverify} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}>Open Verify →</button>
@@ -590,12 +602,17 @@ function CandidateRow({
   busy: boolean;
   onAssign: (v: number | null) => void;
 }) {
-  const [draft, setDraft] = useState("");
-  const parsed = draft.trim() === "" ? null : parseInt(draft.replace(/[^0-9]/g, ""), 10);
-  const volume = parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  const declared = row.context?.annual_volume ?? null;
+  const [draft, setDraft] = useState(declared != null ? String(declared) : "");
+  useEffect(() => {
+    setDraft(declared != null ? String(declared) : "");
+  }, [declared]);
+  const volume = parseAnnualVolume(draft);
 
   const unit = row.unit_cost;
   const inOther = row.context?.program;
+  const demand = resolvedAnnualVolume(row);
+  const fromBom = row.annual_volume_basis === "bom_rollup";
   const priceLabel = unit?.withheld ? "cost withheld" : unit?.usd != null ? USD(unit.usd) : "—";
   const listId = `candidate-volume-${row.part_key.slice(0, 12)}`;
 
@@ -612,13 +629,18 @@ function CandidateRow({
         list={listId}
         inputMode="numeric"
         disabled={busy}
-        onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
-        placeholder="volume (opt)"
-        title={`optional annual volume — engine points: ${row.quantities.join(", ")}`}
+        aria-label={`${fromBom ? "Optional flat fallback annual volume" : "Optional annual volume"} for ${row.filename}`}
+        aria-invalid={volume === undefined}
+        aria-describedby={volume === undefined ? `${listId}-error` : undefined}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={fromBom ? "fallback (opt)" : "volume (opt)"}
+        title={`optional ${fromBom ? "flat fallback; BOM demand takes precedence" : "annual volume"} — engine points: ${row.quantities.join(", ")}`}
         style={{ width: 104, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
       />
       <datalist id={listId}>{row.quantities.map((quantity) => <option key={quantity} value={quantity} />)}</datalist>
-      <GhostButton disabled={busy} onClick={() => onAssign(volume)}>Assign →</GhostButton>
+      <GhostButton disabled={busy || volume === undefined} onClick={() => { if (volume !== undefined) onAssign(volume); }}>Assign →</GhostButton>
+      {fromBom && demand != null && <p style={{ flexBasis: "100%", margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.ink50 }}>{NUM(demand)} parts/yr from BOM; assigning preserves this demand. The flat volume is a fallback.</p>}
+      {volume === undefined && <p id={`${listId}-error`} role="alert" style={{ flexBasis: "100%", margin: 0, fontSize: 11, color: C.fail }}>{VOLUME_ERROR}</p>}
     </div>
   );
 }

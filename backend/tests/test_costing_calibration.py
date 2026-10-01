@@ -239,6 +239,21 @@ def test_driver_formulas_disclose_applied_markup_and_overhead():
             "nre_cost", "inspection_cost", "support_material", "sinter_cost"} <= seen
 
 
+def test_global_assumptions_explain_markup_and_preserve_capacity_provenance():
+    from src.costing.estimate import _global_assumptions
+
+    for kwargs, expected in [({}, Provenance.DEFAULT),
+                             ({"shop_overrides": {"daily_machine_hours": 4}}, Provenance.SHOP),
+                             ({"overrides": {"daily_machine_hours": 4}}, Provenance.USER)]:
+        assumptions = {a.name: a for a in _global_assumptions(
+            build_rate_card(**kwargs), EstimateOptions(), "US")}
+        assert assumptions["daily_machine_hours"].provenance == expected
+        assert "fallback" in assumptions["daily_machine_hours"].source
+        assert "process-specific" in assumptions["daily_machine_hours"].source
+        assert "markup on cost" in assumptions["margin"].source
+        assert "0.25 adds 25%" in assumptions["margin"].source
+
+
 # ── region binding ───────────────────────────────────────────────────────────
 def test_shop_region_binds_and_user_region_overrides():
     result, mesh, feats = _analyze(_block())

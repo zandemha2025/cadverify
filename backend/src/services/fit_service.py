@@ -33,7 +33,7 @@ def _sample_budget() -> int:
 
 
 def _max_pair_faces() -> int:
-    """Hard admission bound before boolean or proximity allocates from faces."""
+    """Hard bound on collision faces after removing redundant tessellation."""
     try:
         return max(1_000, min(2_000_000, int(os.getenv("FIT_MAX_PAIR_FACES", "150000"))))
     except ValueError:
@@ -134,7 +134,33 @@ def _max_region_mesh_faces() -> int:
 
 def _collision(a: trimesh.Trimesh, b: trimesh.Trimesh) -> tuple[float, dict[str, Any] | None]:
     try:
-        intersection = trimesh.boolean.intersection([a, b], engine="manifold")
+        from manifold3d import Error, Manifold, Mesh64
+
+        pair_faces = len(a.faces) + len(b.faces)
+        max_faces = _max_pair_faces()
+        # Keep source precision even for small meshes far from assembly origin.
+        solids = [Manifold(Mesh64(
+            vert_properties=np.asarray(mesh.vertices, dtype=np.float64),
+            tri_verts=np.asarray(mesh.faces, dtype=np.uint64),
+        )) for mesh in (a, b)]
+        if pair_faces > max_faces:
+            # Preserve the source meshes for clearance and face locators. Remove
+            # redundant tessellation only at the kernel's native tolerance;
+            # never increase that tolerance to make a complex pair fit the cap.
+            solids = [solid.simplify(0) for solid in solids]
+        if any(solid.status() != Error.NoError or solid.is_empty() for solid in solids):
+            raise FitGeometryError("Collision geometry could not be prepared; measurements are withheld.")
+        if sum(solid.num_tri() for solid in solids) > max_faces:
+            raise FitGeometryError(
+                f"Pair has {pair_faces} triangle faces, above the {max_faces} fit-check limit even after removing redundant triangles. Reduce tessellation and retry."
+            )
+        overlap = solids[0] ^ solids[1]
+        if overlap.status() != Error.NoError:
+            raise FitGeometryError("Exact collision boolean failed; measurements are withheld.")
+        shell = overlap.to_mesh64()
+        intersection = trimesh.Trimesh(vertices=shell.vert_properties, faces=shell.tri_verts, process=False)
+    except FitGeometryError:
+        raise
     except BaseException as exc:
         raise FitGeometryError(
             "Exact collision boolean failed; collision is withheld rather than estimated."
@@ -158,7 +184,9 @@ def _collision(a: trimesh.Trimesh, b: trimesh.Trimesh) -> tuple[float, dict[str,
     _, b_faces = b_tree.query(vertices, k=1)
     face_count = int(len(intersection.faces))
     if face_count <= _max_region_mesh_faces():
-        payload = bytes(intersection.export(file_type="glb"))
+        payload = intersection.export(file_type="glb")
+        if not isinstance(payload, bytes):
+            raise FitGeometryError("Collision shell could not be exported; measurements are withheld.")
         render_geometry = {
             "available": True,
             "media_type": "model/gltf-binary",
@@ -188,12 +216,6 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     """Measure exact intersection and sampled surface clearance in a shared frame."""
     _require_volume_mesh(mesh_a, "part_a")
     _require_volume_mesh(mesh_b, "part_b")
-    pair_faces = int(len(mesh_a.faces) + len(mesh_b.faces))
-    max_faces = _max_pair_faces()
-    if pair_faces > max_faces:
-        raise FitGeometryError(
-            f"Pair has {pair_faces} triangle faces, above the {max_faces} fit-check limit. Reduce tessellation and retry."
-        )
     pair_start = time.perf_counter()
     collision_start = time.perf_counter()
     volume, collision_region = _collision(mesh_a, mesh_b)
@@ -211,15 +233,16 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     pair_ms = (time.perf_counter() - pair_start) * 1000
     limits = [
         "Clearance is sampled on submitted tessellation and is not an analytic B-rep tolerance result.",
-        "Shared-frame seating assumes both files were exported in the same assembly coordinate frame.",
     ]
+    if len(mesh_a.faces) + len(mesh_b.faces) > _max_pair_faces():
+        limits.append(
+            "Collision uses the submitted shell with redundant triangles removed at the geometry kernel's native numerical tolerance; clearance and face locators retain the submitted meshes."
+        )
     if len(mesh_a.faces) > 25_000 or len(mesh_b.faces) > 25_000:
         limits.append(
             "The true tightest spot may be smaller than the closest measured gap; a 25,000-face proxy was sampled."
         )
     return {
-        "coordinate_frame": "shared_source_frame",
-        "seating": {"method": "shared_source_frame", "transform_applied": False},
         "collision": {
             "intersects": bool(volume > 1e-9),
             "volume_mm3": round(volume, 6),
@@ -240,8 +263,8 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     }
 
 
-def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
-    """Parse fit-only OBJ/3MF bytes after a small structural gate.
+def parse_supplementary_mesh(data: bytes, filename: str, *, max_expanded_bytes: int = 100 * 1024 * 1024) -> trimesh.Trimesh:
+    """Parse OBJ/3MF fit/preview bytes after a bounded structural gate.
 
     The canonical parser remains the source for STL/STEP/IGES. This helper adds
     the two mesh exchange formats needed by the pair endpoint without widening
@@ -249,6 +272,7 @@ def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
     """
     from io import BytesIO
     from pathlib import Path
+    from zipfile import BadZipFile, ZipFile
 
     suffix = Path(filename).suffix.lower()
     if suffix == ".obj":
@@ -259,6 +283,12 @@ def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
     elif suffix == ".3mf":
         if not data.startswith(b"PK"):
             raise FitGeometryError("part is not a structurally valid 3MF package.")
+        try:
+            with ZipFile(BytesIO(data)) as archive:
+                if sum(info.file_size for info in archive.infolist()) > max_expanded_bytes:
+                    raise FitGeometryError("3MF expanded package exceeds the upload limit; reduce its contents and retry.")
+        except BadZipFile as exc:
+            raise FitGeometryError("part is not a structurally valid 3MF package.") from exc
         kind = "3mf"
     else:
         raise FitGeometryError(f"Unsupported fit file type: {suffix or 'none'}.")
@@ -272,4 +302,9 @@ def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
         raise FitGeometryError(f"Could not parse {suffix} mesh.") from exc
     if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
         raise FitGeometryError(f"{suffix} contained no triangle geometry.")
+    if kind == "3mf":
+        if mesh.units not in {"micron", "millimeter", "millimeters", "centimeter", "inch", "foot", "meter"}:
+            raise FitGeometryError("3MF units are unsupported; re-export with standard length units.")
+        # Convert after baking instance transforms so translations scale too.
+        mesh.convert_units("mm", guess=False)
     return mesh

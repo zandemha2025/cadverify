@@ -1,0 +1,65 @@
+{
+  "old_record": "01M3S1TBH6VZTK11QYESVYEBTV",
+  "new_record": "01M3S2XNGHH6342NM253012Y2D",
+  "source_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+  "old_engine": "0.3.12",
+  "new_engine": "0.3.13",
+  "old_routing": {
+    "drivers": {
+      "bend_count": 1,
+      "rotational": false,
+      "sheet_like": false,
+      "planar_aspect": 1.64,
+      "sheet_gauge_mm": 135.89,
+      "nominal_wall_mm": 8.83,
+      "outline_perimeter_mm": 2690.18
+    },
+    "archetype": "bulk_solid",
+    "reasoning": "General solid (18% of bbox filled, ~8.8mm mean wall) with no dominant sheet/rotational/prismatic signature \u2192 CNC machining for a metal part. As-modeled the cnc_3axis route hard-fails the engine's DFM (design-for-process required) \u2014 that is the at-volume path, costed and shown as the make-vs-buy crossover below; the DFM-clean sls route is headlined as what you can make as-is.",
+    "confidence": 0.4,
+    "eval_family": "additive",
+    "alternatives": [
+      "cnc_3axis",
+      "cnc_3axis"
+    ],
+    "material_hint": "aluminum",
+    "recommended_process": "sls"
+  },
+  "new_routing": {
+    "drivers": {
+      "bend_count": 1,
+      "rotational": false,
+      "sheet_like": false,
+      "planar_aspect": 1.64,
+      "sheet_gauge_mm": 135.89,
+      "nominal_wall_mm": 8.83,
+      "outline_perimeter_mm": 2690.18
+    },
+    "archetype": "bulk_solid",
+    "reasoning": "General solid (18% of bbox filled, ~8.8mm mean wall) with no dominant sheet/rotational/prismatic signature \u2192 CNC machining for a metal part. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it.",
+    "confidence": 0.4,
+    "eval_family": "subtractive",
+    "alternatives": [
+      "cnc_3axis",
+      "dmls"
+    ],
+    "material_hint": "aluminum",
+    "recommended_process": "cnc_5axis"
+  },
+  "unchanged": {
+    "geometry": true,
+    "estimates": true,
+    "decision": true,
+    "assumptions": true,
+    "engine_feasibility": true
+  },
+  "estimate_count": 60,
+  "finite_and_line_items_reconcile": true,
+  "new_notes": [
+    "DFM note: processes cnc_3axis, die_casting, forging, investment_casting, sand_casting are costed but flagged NOT DFM-ready as-modeled (see their process-specific blockers). Their cost shows the tooling economics *if* the part is redesigned for that process. Set strict_dfm=True to exclude them entirely.",
+    "Geometric routing: this part reads as a 'bulk_solid' \u2192 cnc_5axis. General solid (18% of bbox filled, ~8.8mm mean wall) with no dominant sheet/rotational/prismatic signature \u2192 CNC machining for a metal part. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it.",
+    "Note: the cost-cheapest make-as-is pick at low qty is waam, but the geometry-recommended process is cnc_5axis \u2014 both are costed above; pick on intent, not just the marginal $.",
+    "Prices and crossover quantities are assumption-based and can shift with cycle times, tooling, batch sizes and shop rates. Validate against actual quotes before making a sourcing commitment."
+  ],
+  "limitation": "Controlled public CAD and assumption-based costs; not customer quote calibration or production verification."
+}

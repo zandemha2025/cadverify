@@ -1,0 +1,28 @@
+{
+  "frontend_tests": "526 passed,0failed,0skipped; final source7244.726ms",
+  "types": "PASS standalone tsc and final production build",
+  "changed_source_lint": "0errors/0warnings across api.ts,PartWorkspace.tsx,PartHero.tsx",
+  "repository_lint": "PASS with4preexisting unrelated warnings; changed sources subsequently linted clean after final retry callback.",
+  "production_build": "PASS final source",
+  "backend": "Production backend source unchanged from179/engine0.3.41/2807passed3protectedskips. Full backend suite not repeated.",
+  "trap_corpus": "30fixtures:29ordinary checks pass,1preexisting known-gap report. Full SHA manifest verified.",
+  "regressions_before": [
+    "api-retry.test.ts failed3requests vs1 after a504.",
+    "Native old client sent3DFM requests and displayed generic Server error504 for cost.",
+    "Native manual cost retry also sent a second healthy DFM request; corrected shared callback."
+  ],
+  "limits": [
+    "Controlled local HTTP failures, not backend CPU cancellation proof.",
+    "Native alternate hero layout remains unverified.",
+    "Parsed-STL precision boundary issue remains open."
+  ],
+  "log_sha256": {
+    "180-retry-red.log": "bc0fb661571096e30fdafe3f640ee3aa87bb55abf2007ebae873cf32c0285010",
+    "180-frontend-tests-final.log": "352514359c725fa6b3d5cf115764e598ef4559d1d80d213ac4739f17dec59186",
+    "180-frontend-types-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "180-frontend-changed-lint-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "180-frontend-build-final.log": "67c95e345a0315d96f3cd835aa706aaa59c35dde85fc8fa474b5ca3230502aec",
+    "180-trap-before.log": "d4fe1a42dfd32c9af56be4008e8bdbdf77f1bedc6e9c7cd1bc8d013f6d14e038",
+    "180-trap-after.log": "0e66e6a07058174e59513afb655c3714f92c0e4489a24e023a3004c961a1d0d8"
+  }
+}

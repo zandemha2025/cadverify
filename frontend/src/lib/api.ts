@@ -2,13 +2,14 @@ import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
 import {
   apiProblemDetail,
+  apiQuotaMessage,
   apiRecoveryMessage,
   apiResourceFromUrl,
   networkRecoveryMessage,
 } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
-import type { CostDisposition } from "./cost-disposition";
+import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
 import { createReconstructionSubmissionId } from "./reconstruction-id";
 
 export interface GeometryInfo {
@@ -63,6 +64,7 @@ export interface Issue {
   region_center?: [number, number, number];
   measured_value?: number;
   required_value?: number;
+  measurement_unit?: "mm" | "deg" | "ratio" | "percent";
   /** structured standard reference; absent when the issue is uncited. */
   citation?: IssueCitation;
   /** "localized" when the finding has faces or a region center; "whole_part"
@@ -99,6 +101,7 @@ export interface PriorityFix {
   fix: string | null;
   measured_value: number | null;
   required_value: number | null;
+  measurement_unit?: Issue["measurement_unit"];
 }
 
 export interface FeatureInfo {
@@ -138,6 +141,7 @@ export interface WallThicknessMap {
 }
 
 export interface ValidationResult {
+  analysis_mesh_hash?: string;
   filename: string;
   file_type: string;
   overall_verdict: "pass" | "issues" | "fail" | "unknown";
@@ -319,6 +323,9 @@ const apiClient = {
     // Next proxy forwards it to the backend. No Authorization header needed.
     const headers = new Headers(options.headers);
     const resource = apiResourceFromUrl(url);
+    // A failed response does not prove that compute or a write never ran.
+    // Only replay reads or submissions protected by a server idempotency key.
+    if (!/^(GET|HEAD)$/i.test(options.method ?? "GET") && !headers.get("Idempotency-Key")) retries = 0;
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -337,9 +344,9 @@ const apiClient = {
           throw err;
         }
         // Network error / timeout
-        lastError = err instanceof Error ? err : new Error(String(err));
+        lastError = new Error(networkRecoveryMessage(resource), { cause: err });
         if (attempt === retries) {
-          toast.error("Connection timed out. Check your network.");
+          toast.error(lastError.message);
           throw lastError;
         }
         continue;
@@ -349,19 +356,13 @@ const apiClient = {
       const rl = extractRateLimits(res.headers);
       if (rl) _latestRateLimits = rl;
 
-      // 429 — rate limited, no retry
+      // 429 may mean an exhausted allowance or a temporary throttle.
       if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
-        toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
-        throw new Error(
-          apiRecoveryMessage({
-            status: 429,
-            payload: err,
-            resource,
-            retryAfter: String(retryAfter),
-          }),
-        );
+        const message = apiRecoveryMessage({ status: 429, payload: err, resource,
+          retryAfter: res.headers.get("Retry-After") });
+        toast.error(message);
+        throw new Error(message);
       }
 
       // 5xx — retry with backoff
@@ -376,7 +377,7 @@ const apiClient = {
           }),
         );
         if (attempt === retries) {
-          toast.error("Server error. We've been notified.");
+          toast.error(lastError.message);
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
           throw lastError;
         }
@@ -387,7 +388,7 @@ const apiClient = {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(
-          apiProblemDetail(err) ||
+          apiQuotaMessage(err) || apiProblemDetail(err) ||
             apiRecoveryMessage({ status: res.status, payload: err, resource }),
         );
       }
@@ -883,6 +884,8 @@ export interface CostFeasibility {
   verdict: string;
   score: number;
   costed: boolean;
+  blockers?: string[];
+  cost_exclusion_reason?: string;
 }
 
 export interface CostUnitWarning {
@@ -1039,18 +1042,15 @@ async function _costEstimate(
     .catch(() => ({ message: res.statusText }));
 
   if (res.status === 429) {
-    const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
-    toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
-    throw new Error(
-      (body.message as string) ||
-        (body.detail as string) ||
-        "Rate limit exceeded"
-    );
+    const message = apiRecoveryMessage({ status: res.status, payload: body,
+      resource: "verification", retryAfter: res.headers.get("Retry-After") });
+    toast.error(message);
+    throw new Error(message);
   }
 
   if (res.status >= 500) {
-    const e = new Error(`Server error ${res.status}`);
-    toast.error("Server error. We've been notified.");
+    const e = new Error(apiRecoveryMessage({ status: res.status, payload: body, resource: "verification" }));
+    toast.error(e.message);
     Sentry.captureException(e, { extra: { url, status: res.status } });
     throw e;
   }
@@ -1065,8 +1065,7 @@ async function _costEstimate(
 
   // Other 4xx — structured {code,message,doc_url} or legacy {detail}.
   throw new Error(
-    (body.message as string) ||
-      (body.detail as string) ||
+    apiQuotaMessage(body) || apiProblemDetail(body) ||
       `Request failed: ${res.status}`
   );
 }
@@ -1099,12 +1098,14 @@ export interface CostDecisionGovernance {
   user_disposition?: CostDisposition | null;
   user_disposition_label?: string | null;
   disposition_note?: string | null;
+  disposition_basis?: CostDispositionBasis | null;
   disposition_updated_at?: string | null;
   disposition_updated_by_user_id?: number | null;
 }
 
 export interface CostDecisionSummary extends CostDecisionGovernance {
   id: string;
+  mesh_hash?: string;
   filename: string;
   file_type: string;
   label: string | null;
@@ -1300,6 +1301,7 @@ export async function fetchCostDecisions(params: {
   cursor?: string;
   limit?: number;
   process?: string;
+  meshHash?: string;
   createdAfter?: string;
   createdBefore?: string;
 }): Promise<CostDecisionsPage> {
@@ -1307,6 +1309,7 @@ export async function fetchCostDecisions(params: {
   if (params.cursor) url.searchParams.set("cursor", params.cursor);
   if (params.limit) url.searchParams.set("limit", String(params.limit));
   if (params.process) url.searchParams.set("process", params.process);
+  if (params.meshHash) url.searchParams.set("mesh_hash", params.meshHash);
   if (params.createdAfter) url.searchParams.set("created_after", params.createdAfter);
   if (params.createdBefore) url.searchParams.set("created_before", params.createdBefore);
 
@@ -1350,7 +1353,8 @@ export async function reopenCostDecisionApproval(
 export async function setCostDecisionDisposition(
   id: string,
   disposition: CostDisposition | null,
-  note?: string
+  note?: string,
+  quantity?: number,
 ): Promise<CostDispositionResult> {
   return apiClient.fetchJson<CostDispositionResult>(
     `${API_BASE}/cost-decisions/${id}/disposition`,
@@ -1360,6 +1364,7 @@ export async function setCostDecisionDisposition(
       body: JSON.stringify({
         disposition,
         note: disposition ? note?.trim() || null : null,
+        ...(disposition && quantity != null ? { quantity } : {}),
       }),
     }
   );
@@ -1481,6 +1486,7 @@ export interface CatalogPage {
 export interface CatalogQuery {
   page?: number;
   pageSize?: number;
+  partKey?: string;
   state?: "Drafted" | "Costed" | null;
   route?: string | null;
   hasFindings?: boolean | null;
@@ -1491,6 +1497,7 @@ export async function fetchCatalog(params: CatalogQuery = {}): Promise<CatalogPa
   const url = new URL(`${API_BASE}/catalog`, window.location.origin);
   if (params.page) url.searchParams.set("page", String(params.page));
   if (params.pageSize) url.searchParams.set("page_size", String(params.pageSize));
+  if (params.partKey) url.searchParams.set("part_key", params.partKey);
   if (params.state) url.searchParams.set("state", params.state);
   if (params.route) url.searchParams.set("route", params.route);
   if (params.hasFindings != null) {

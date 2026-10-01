@@ -16,6 +16,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  formatIssueMeasure,
+  formatIssueValue,
   citationRef,
   citationChipLabel,
   affectedFacesSummary,
@@ -24,6 +26,22 @@ import {
   hasLocatableCostBlocker,
   reportCostBlockerLocators,
 } from "./inspection-bind.ts";
+import { groupPinpointIssues } from "./pinpoint-groups.ts";
+
+test("issue evidence never rounds a distinct measurement onto its threshold", () => {
+  for (const [measured, required] of [
+    [0.79999, 0.8], [0.80000000001, 0.8], [0.7999999999999999, 0.8],
+    [0.79999999, 0.80000001], [6.000000001, 6], [1e-8, 0.8],
+    [6000000.1, 6000000], [-0.79999999, -0.80000001], [0.8, 0.8],
+  ]) {
+    const shown = Number(formatIssueMeasure(measured, required));
+    const limit = Number(formatIssueMeasure(required, measured));
+    assert.equal(Math.sign(shown - limit), Math.sign(measured - required));
+  }
+  assert.equal(formatIssueMeasure(0.799989999996, 0.8), "0.79999");
+  assert.equal(formatIssueMeasure(1e-8), "1e-8");
+  assert.equal(formatIssueMeasure(Number.NaN), "—");
+});
 
 /* ---- 1. citations -------------------------------------------------- */
 
@@ -187,6 +205,7 @@ test("reportCostBlockerLocators: merges blockers across estimates, unioning face
   assert.deepEqual([...rows[0].faces].sort((a, b) => a - b), [1, 2, 3]);
   // key stays cost:-namespaced (never collides with a dfm-scope finding key).
   assert.match(rows[0].key, /^cost:/);
+  assert.deepEqual(groupPinpointIssues(rows)[0].processes, ["cnc_milling", "injection_molding"]);
 });
 
 test("reportCostBlockerLocators: keeps a non-localizable blocker (faces=[]) but as an un-locatable row", () => {
@@ -209,4 +228,30 @@ test("reportCostBlockerLocators: keeps a non-localizable blocker (faces=[]) but 
 
 test("reportCostBlockerLocators: [] for a report whose estimates predate the relink", () => {
   assert.deepEqual(reportCostBlockerLocators([est({}) as never, est({}) as never]), []);
+});
+
+test("different evidence on repeated cost processes keeps distinct selection keys", () => {
+  const rows = reportCostBlockerLocators([.4, .5].map((measured_value) => est({
+    dfm_blocker_details: [{ code: "THIN_WALL", severity: "error", message: "Thin wall",
+      measured_value, required_value: .8, fix_suggestion: null }],
+  }) as never));
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map((r) => r.key)).size, 2);
+});
+
+
+test("finding values use explicit or known legacy units, never geometry units", () => {
+  for (const [code, unit, suffix] of [
+    ["THIN_WALL", "mm", " mm"], ["NON_UNIFORM_WALLS", "ratio", ":1"],
+    ["NOT_PRISMATIC", "percent", "%"], ["SHARP_BEND", "deg", "°"],
+  ] as const) {
+    const issue = { code, measured_value: 0.79999, required_value: 0.8 };
+    assert.equal(formatIssueValue(issue), `0.79999${suffix}`);
+    assert.equal(formatIssueValue(issue, "required_value"), `0.8${suffix}`);
+    assert.equal(formatIssueValue({ ...issue, code: "NEW_CHECK", measurement_unit: unit }), `0.79999${suffix}`);
+  }
+  assert.equal(formatIssueValue({ code: "UNKNOWN", measured_value: 2 }), "2");
+  assert.equal(formatIssueValue({ code: "THIN_WALL", measured_value: 2, measurement_unit: "percent" }), "2%");
+  assert.equal(formatIssueValue({ code: "SHARP_BEND", measured_value: Infinity }), "—");
+  assert.equal(formatIssueValue({ code: "INSUFFICIENT_DRAFT", required_value: 5 }, "required_value"), "5°");
 });

@@ -1,0 +1,80 @@
+{
+  "conclusion": "failure",
+  "headSha": "d107cbe94fc42f6028253658eb9d63f0d639b126",
+  "jobs": [
+    {
+      "completedAt": "2026-09-30T11:28:42Z",
+      "conclusion": "success",
+      "name": "Frontend Build & Lint",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:27:25Z",
+      "conclusion": "success",
+      "name": "Commit hook integrity policy",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:39:39Z",
+      "conclusion": "success",
+      "name": "Backend Tests",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:28:27Z",
+      "conclusion": "success",
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:27:28Z",
+      "conclusion": "success",
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:28:09Z",
+      "conclusion": "success",
+      "name": "Trap Corpus Gate",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:28:19Z",
+      "conclusion": "success",
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T12:06:43Z",
+      "conclusion": "failure",
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-09-30T11:44:28Z",
+      "conclusion": "success",
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36708617787",
+  "scope": "PR head d107cbe through097; excludes local098 and099. Not production or real external-service proof.",
+  "cad_corpus": {
+    "passed": 33,
+    "total": 34,
+    "failed_case": {
+      "id": "NIST-AP203-GEOM-FTC-07",
+      "elapsed_sec": 90.074,
+      "error": "case exceeded 90.0s subprocess timeout",
+      "expected_outcome": "OK",
+      "outcome": "TIMEOUT",
+      "status": "FAIL",
+      "inner_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481"
+    },
+    "stdout_ending": "s\": 42.451, \"inspection\": 1.4, \"labor\": 17.5, \"machine\": 849.0192, \"material\": 147.0418, \"nre\": 1.4}, \"material\": \"6061-T6 Aluminum\", \"process\": \"cnc_3axis\", \"quantity\": 50, \"unit_cost_usd\": 1059.34, \"variable_cost_usd\": 1057.5}, \"geometry\": {\"bbox_mm\": [311.6, 135.9, 222.7], \"face_count\": 246398, \"surface_area_cm2\": 3909.71, \"volume_cm3\": 1725.99, \"watertight\": true}, \"line_items_sum_ok\": true, \"network_egress_blocked\": true, \"outcome\": \"OK\", \"pmi_check\": {\"has_pmi\": null, \"status\": \"skipped_xde_unavailable\"}, \"provenance_values\": [\"DEFAULT\", \"USER\"], \"runtime_warning_details\": [], \"runtime_warnings\": [], \"status\": \"PASS\", \"suffix\": \".stp\"}\n",
+    "stderr_empty": true,
+    "downstream_restore_load_readiness_training": "NOT_REACHED",
+    "interpretation": "The worker emitted a result ending in OK/PASS but did not exit within90seconds. Later missing-data failures are symptoms of the timeout. Local098 fixes a separately reproduced exit hang; this pre-fix run lacks the shutdown stack needed to prove the exact historical mechanism."
+  }
+}

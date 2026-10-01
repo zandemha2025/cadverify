@@ -1,0 +1,65 @@
+{
+  "finding": "155",
+  "first_divergence": "step 1, expected no FDM thin-wall finding for a real 300x200x0.81 mm STEP plate, state was 0.774 mm measured wall and FDM Required/0%. A 0.05 mm plate separately lost its wall finding.",
+  "fix": "Shared full/sampled rays start outside and measure signed distance from the original face centroid. Shared numerical tolerance rejects self-hits and stabilizes min/max/ratio thresholds.",
+  "engine_version": "0.3.20",
+  "source_fidelity": "Identical source bytes; old 0.3.19 analysis/cost JSON hashes unchanged; fresh analysis and cost IDs under 0.3.20.",
+  "numerical_tolerance": "max(scale_eps * 1e-6, 8 ULPs at maximum absolute mesh bounds); not a physical manufacturing allowance.",
+  "focused_tests": {
+    "passed": 46,
+    "new_transformed_plate_cases": 12,
+    "molding_boundary_cases": 3,
+    "red": "8 original offset/missing-wall cases; then 2 exact0.8 cases fail before corresponding corrections"
+  },
+  "full_backend_initial": {
+    "passed": 2625,
+    "skipped": 3,
+    "seconds": 233.46,
+    "protected_skip_policy": true
+  },
+  "full_backend_final": {
+    "passed": 2632,
+    "skipped": 3,
+    "seconds": 239.04,
+    "protected_skip_policy": true,
+    "command": "backend/.venv/bin/python -m pytest tests -q (cwd backend; isolated CI-style environment)",
+    "exit_code": 0
+  },
+  "trap_corpus": "PASS; existing unit-inference KNOWN-GAP remains explicit",
+  "static_checks": {
+    "context_only_initial_pyright_errors": 0,
+    "final_two_source_pyright_existing_errors": 2,
+    "new_errors": 0,
+    "bandit_medium_high": 0,
+    "diff_check": "PASS"
+  },
+  "peer_review": {
+    "source": "User-authorized parallel chat01a0f470-3e39-77a0-9d23-72d463a323d4",
+    "result": "No remaining actionable finding after equality follow-up",
+    "independent_checks": "12 transformed full/sampled cases; separate closely spaced plates; four molding numerical-boundary probes; empty-mesh tolerance; all pass"
+  },
+  "native_cad": "Five native Chrome STEP uploads via CUA. Exact0.8 transformed has no THIN_WALL while 0.79999 does; independent build-envelope/overhang findings remain.0.81 clears the0.8wall gate;0.79/0.05 reject at true measured values.",
+  "native_provider_mutations": false,
+  "deployment": "unchanged; PR107 remains draft and154/155 are not in published CI yet",
+  "remaining_observed_errors": [
+    "Molding maximum/uniformity uses long edge-normal chord lengths as wall thickness, falsely calling the uniform0.81mm plate300mm thick.",
+    "Issue text/serialized measured values round0.79999mm to0.80/0.8, hiding the small distinction from the0.8limit."
+  ],
+  "evidence_sha256": {
+    "155-plate-before.png": "089b29b29ca609442f507382dae4a8ce011d40186bfc9ac9dbc8fd2c1f67cb90",
+    "155-plate-before.txt": "ddc39204d51356f94888353c4d11d8101d27d29f81955688bfdc684a9a368971",
+    "155-plate-after.png": "8b17afdef042e6ff283f9b8e5e5ef12f146eb16a86aa3e14ffbf4a9fd96cbf78",
+    "155-plate-after.txt": "0febec03a1e2496f1ba96999fad221473f4aa043bceaa32e4aeb887487a71a2f",
+    "155-thin-plate-after.png": "f307716547a116461e1ed224a4c48fa9676ed406671f0ecfc9ecc9c128915707",
+    "155-native-controls.json": "68169e5dd163a9adec9281eecbb7c4c593e6c194b5e84f83f79cceea70948a35",
+    "155-saved-readback.json": "e1f8e19fa52154c2db476ac9f665ef427c9e1fade4a3b8da07c5948d78df0ad2",
+    "155-boundary-readback.json": "653b42b584cd0dc352312ed12e35e08746cbcef8d515fe23034ba8d67dc8a05f",
+    "shape-controls/155-controls.json": "2363763892314bfc6314cc48e8714de9598d0b82a022b20e512d9dafe36b2cc6"
+  },
+  "validation_log_sha256": {
+    "wall-distance-backend-full.log": "66d332bc63d2ba85656902e98113129853af53cba07e116a2c498585c85e9b7b",
+    "wall-distance-backend-final.log": "f1d0e824c9f4a369323cf326f15554c53cc4ad39a648e4f5c8cf87a9e71a11d6",
+    "wall-distance-trap-final.log": "432b4323528aea9a61bc47ae5e294249087cd662b83d060b30b63a9207bd612f",
+    "wall-distance-pyright-final.json": "4e8078b896473a7bffeda8a5b7335d503752f2a3afe7a42baf27e901619a0722"
+  }
+}

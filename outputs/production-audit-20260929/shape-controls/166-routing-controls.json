@@ -1,0 +1,12 @@
+{
+  "filename": "166-transverse-hole-bar.step",
+  "sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+  "dimensions_mm": [
+    80,
+    12,
+    12
+  ],
+  "bore_diameter_mm": 4,
+  "bore_axis": "Y",
+  "volume_mm3": 11369.20355262769
+}

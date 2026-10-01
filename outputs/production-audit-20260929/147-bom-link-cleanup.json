@@ -1,0 +1,10 @@
+{
+  "context_restored": true,
+  "immutable_decisions_preserved": 3,
+  "rejected_replacement_preserved_saved_link": true,
+  "other_part_form_empty": true,
+  "other_part_remove_disabled": true,
+  "reload_preserved_saved_link": true,
+  "native_unlink_cleared_form_and_breadcrumb": true,
+  "test_bom_retained": "QA BOM linkage 147; four explicitly declared local test rows"
+}

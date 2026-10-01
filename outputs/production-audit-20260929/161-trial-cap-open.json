@@ -1,0 +1,21 @@
+{
+  "status": "OPEN",
+  "observed": "After 100 local analyses, the trial organization cap returns HTTP429; UI calls it temporarily busy and offers retry. Retrying cannot reset a lifetime cap.",
+  "org_analysis_count": 100,
+  "user_analysis_count": 100,
+  "plan": "trial",
+  "source": [
+    "backend/src/auth/validation_caps.py",
+    "frontend/src/lib/api-recovery.ts",
+    "frontend/src/lib/verify/failure-copy.ts"
+  ],
+  "native_evidence": [
+    "161-stl-inch-busy.png",
+    "161-stl-inch-busy.txt"
+  ],
+  "audit_runtime_only": {
+    "VALIDATION_CAP_PER_ORG": 10000,
+    "VALIDATION_CAP_PER_USER": 10000
+  },
+  "production_changed": false
+}

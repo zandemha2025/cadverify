@@ -18,6 +18,7 @@ _SENSITIVE_KEY_LC = {
     "cookie",
     "set-cookie",
     "password",
+    "current_password",
     "token",
     "access_token",
     "refresh_token",

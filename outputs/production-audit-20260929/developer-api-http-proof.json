@@ -1,0 +1,15 @@
+{
+  "environment": "local Next 3017 \u2192 API 8017 \u2192 PostgreSQL",
+  "dfm_endpoint_contains_no_cost_fields": true,
+  "cost_endpoint_has_report_routing_and_estimates": true,
+  "price_drivers_confidence_and_dfm_are_per_estimate": true,
+  "quantities": [
+    50,
+    5000
+  ],
+  "estimate_count": 16,
+  "all_line_items_reconcile": true,
+  "source": "audit-cube.STP",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "isolated_fixture_cleaned_up": true
+}

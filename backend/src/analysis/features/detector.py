@@ -19,14 +19,18 @@ from src.analysis.features.threads import infer_tapped_holes
 def detect_all(mesh: trimesh.Trimesh) -> list[Feature]:
     """Run every registered detector and return a flat feature list.
 
-    Detection order: flats, cylinders, then chamfers/fillets (both operate
+    Output order: flats, cylinders, then chamfers/fillets (both operate
     on the facet graph independently of the cylinder/flat pass). Tapped-hole
     inference runs last and only ever *annotates* existing CYLINDER_HOLE
     features' metadata — it never adds, removes, or reclassifies a feature.
     """
-    features: list[Feature] = []
-    features.extend(detect_flats(mesh))
-    features.extend(detect_cylinders(mesh))
+    cylinders = detect_cylinders(mesh)
+    curved_faces = {face for feature in cylinders for face in feature.face_indices}
+    # Nearly coplanar tessellation strips on an already recognized curved patch
+    # are not separate physical planes. Keep real polygonal sides intact.
+    features = [feature for feature in detect_flats(mesh)
+                if curved_faces.isdisjoint(feature.face_indices)]
+    features.extend(cylinders)
     features.extend(detect_chamfers(mesh))
     features.extend(detect_fillets(mesh))
     infer_tapped_holes(features)

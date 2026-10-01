@@ -77,7 +77,9 @@ async def create_batch(
     file: Optional[UploadFile] = File(None),
     direct_upload_id: Optional[str] = Form(None),
     webhook_url: Optional[str] = Form(None),
-    webhook_secret: Optional[str] = Form(None),
+    webhook_secret: Optional[str] = Form(
+        None, description="Required with webhook_url. Shared HMAC signing secret; never returned in batch responses."
+    ),
     concurrency_limit: Optional[int] = Form(
         None,
         description="Concurrent item jobs for this batch (1-12; default 10).",
@@ -188,6 +190,15 @@ async def create_batch(
                 "code": "BATCH_INPUT_REQUIRED",
                 "message": "Provide either a ZIP file upload or direct_upload_id.",
                 "doc_url": error_doc_url("BATCH_INPUT_REQUIRED"),
+            },
+        )
+
+    if webhook_url and (not webhook_secret or not webhook_secret.strip()):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "WEBHOOK_SECRET_REQUIRED",
+                "message": "A webhook signing secret is required when a webhook URL is provided.",
             },
         )
 

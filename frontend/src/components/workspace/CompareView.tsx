@@ -15,7 +15,7 @@
 import * as React from "react";
 import { Scale, Info } from "lucide-react";
 import type { CostReport } from "@/lib/api";
-import { procLabel } from "@/lib/status";
+import { crossoverSummary } from "@/lib/cost-decision";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { buildCompareRows, costedQuantities } from "@/lib/cost-views";
 import { Card } from "@/components/ui/card";
@@ -48,16 +48,7 @@ export function CompareView({
   const rows = buildCompareRows(report, qtyA, qtyB);
   const dec = report.decision;
 
-  const crossover =
-    dec.crossover_qty != null
-      ? `${procLabel(dec.make_now_process)} is cheapest up to ~${Math.round(
-          dec.crossover_qty
-        ).toLocaleString()} units${
-          dec.tooling_process
-            ? `; ${procLabel(dec.tooling_process)} wins above it (tooling amortizes)`
-            : ""
-        }.`
-      : `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested — no tooling crossover.`;
+  const crossover = crossoverSummary(dec);
 
   return (
     <div className="space-y-4">

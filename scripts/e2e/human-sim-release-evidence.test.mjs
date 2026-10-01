@@ -1,3 +1,4 @@
+import { assertWeakPasswordRejection, isExpectedSignupConsoleError } from "./signup-rejection-validation.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { coverageFor, requirements } from "./human-sim-journey-coverage.mjs";
@@ -6,6 +7,7 @@ import {
   RELEASE_EVIDENCE_SCHEMA_VERSION,
   validateBuildIdentities,
   validateCriticalEvidence,
+  hasProcessScopedConfidence,
 } from "./human-sim-release-evidence.mjs";
 
 const cubeSha = "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a";
@@ -114,13 +116,17 @@ function completeReports() {
             calibrationFromReal: true,
             heldoutReal: 3,
             sourceBoundSkipped: 0,
-            servedEstimateCount: 24,
-            servedValidatedAll: true,
+            servedEstimateCount: 2,
+            validatedProcesses: ["fdm"],
+            servedConfidence: [
+              { process: "fdm", confidence: { validated: true, method: "measured-residual", n_samples: 3 } },
+              { process: "mjf", confidence: { validated: false, method: "assumption-band", n_samples: 0 } },
+            ],
           },
           "ENT-04": {
             quantity: 12000,
-            unitCostUsd: 10.08,
-            annualExposureUsd: 120960,
+            unitCostUsd: 3.44,
+            annualExposureUsd: 41280,
             basis: "decision.recommendation",
             withheldBeforeExactQuantity: true,
           },
@@ -187,6 +193,26 @@ test("complete structured critical evidence satisfies every hardened contract", 
   assert.equal(result.valid, result.total);
 });
 
+test("calibration evidence rejects cross-process leakage, missing bands and insufficient real residuals", () => {
+  const base = completeReports().enterprise.data.releaseEvidence.criticalPaths["ENT-02"];
+  assert.equal(hasProcessScopedConfidence(base.servedConfidence, ["fdm"]), true);
+  for (const mutate of [
+    (entry) => { entry.servedConfidence[1].confidence = entry.servedConfidence[0].confidence; },
+    (entry) => { entry.servedConfidence[0].confidence = entry.servedConfidence[1].confidence; },
+    (entry) => { entry.servedConfidence[0].confidence.n_samples = 2; },
+    (entry) => { entry.servedConfidence[0].confidence.method = "assumption-band"; },
+    (entry) => { entry.servedConfidence = entry.servedConfidence.slice(0, 1); },
+    (entry) => { entry.servedConfidence = entry.servedConfidence.slice(1); },
+    (entry) => { entry.servedConfidence = []; },
+    (entry) => { entry.validatedProcesses = ["mjf"]; },
+    (entry) => { entry.servedEstimateCount += 1; },
+  ]) {
+    const reports = completeReports();
+    mutate(reports.enterprise.data.releaseEvidence.criticalPaths["ENT-02"]);
+    assert.ok(validateCriticalEvidence(reports).problems.some((item) => item.requirementId === "ENT-02"));
+  }
+});
+
 test("critical evidence failures identify the exact missing field", () => {
   const reports = completeReports();
   delete reports.enterprise.data.releaseEvidence.criticalPaths["ENT-04"].annualExposureUsd;
@@ -225,4 +251,24 @@ test("a dirty release workspace cannot qualify as exact current HEAD", () => {
   );
   const problems = validateBuildIdentities(reports, expected);
   assert.ok(problems.some((item) => item.type === "dirty_worktree" && item.report === "gate"));
+});
+
+test("only the verified weak-password rejection can classify its exact HTTP console error", () => {
+  const body = { code: "weak_password", message: "Password must be at least 8 characters." };
+  assertWeakPasswordRejection(400, body);
+  for (const status of [200, 401, 422, 500, 503]) {
+    assert.throws(() => assertWeakPasswordRejection(status, body));
+  }
+  assert.throws(() => assertWeakPasswordRejection(400, { ...body, code: "signup_disabled" }));
+  assert.throws(() => assertWeakPasswordRejection(400, {}));
+  const resourceUrl = "http://localhost:3000/api/auth/signup";
+  const error = { sourceUrl: resourceUrl, text: "Failed to load resource: the server responded with a status of 400 (Bad Request)" };
+  assert.equal(isExpectedSignupConsoleError(error, resourceUrl), true);
+  for (const changed of [
+    { sourceUrl: "http://localhost:3000/api/auth/login" },
+    { sourceUrl: "http://localhost:3000/signup" },
+    { sourceUrl: undefined },
+    { text: "Failed to load resource: the server responded with a status of 500 (Internal Server Error)" },
+    { text: "Uncaught TypeError" },
+  ]) assert.equal(isExpectedSignupConsoleError({ ...error, ...changed }, resourceUrl), false);
 });

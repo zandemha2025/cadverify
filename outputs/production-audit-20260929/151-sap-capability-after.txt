@@ -1,0 +1,359 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: integrations
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - paragraph: Integrations
+  - heading "Integration runs" [level=1]
+  - paragraph: Run ERP, PLM, and actual-cost CSV exports through the same parsers that feed manifests and validation records. CSV runs do not connect to vendor systems. Vendor API connections are listed separately below.
+  - button "Refresh":
+    - text: Refresh
+  - heading "SAP manifest CSV" [level=3]:
+    - text: SAP manifest CSV
+  - paragraph: Declared part, demand, program, and material export.
+  - generic: SAP ERP
+  - generic: manifest
+  - generic: offline csv
+  - generic: "raw stored: no"
+  - generic: CSV
+  - generic: "live creds: no"
+  - heading "PLM manifest CSV" [level=3]:
+    - text: PLM manifest CSV
+  - paragraph: Declared part registry export from a PLM/BOM system.
+  - generic: PLM
+  - generic: manifest
+  - generic: offline csv
+  - generic: "raw stored: no"
+  - generic: CSV
+  - generic: "live creds: no"
+  - heading "Quote/actuals CSV" [level=3]:
+    - text: Quote/actuals CSV
+  - paragraph: Historical quote, invoice, or actual-cost export.
+  - generic: Supplier quotes / ERP actuals
+  - generic: ground_truth
+  - generic: offline csv
+  - generic: "raw stored: no"
+  - generic: CSV
+  - generic: "live creds: no"
+  - heading "SAP S/4HANA Product/BOM read-only" [level=3]:
+    - text: SAP S/4HANA Product/BOM read-only
+  - paragraph: Read-only product access and SAP BOM explosion previews. Assembly import is not supported; hierarchy and manufacturing quantities require tenant validation.
+  - paragraph: Organization admins can test a connection and preview a SAP BOM explosion. Assembly import is not supported.
+  - generic: SAP S/4HANA
+  - generic: manifest
+  - generic: live readonly
+  - generic: "raw stored: no"
+  - generic: ODATA
+  - generic: "live creds: yes"
+  - heading "PTC Windchill Part/BOM read-only" [level=3]:
+    - text: PTC Windchill Part/BOM read-only
+  - paragraph: Read-only product access and complete BOM preview/import with exact part identities and whole-part counts.
+  - paragraph: Organization admins can test a connection, preview a complete BOM and import whole-part counts.
+  - generic: PTC Windchill
+  - generic: bom
+  - generic: live readonly
+  - generic: "raw stored: no"
+  - generic: ODATA
+  - generic: "live creds: yes"
+  - heading "New connector run" [level=3]:
+    - text: New connector run
+  - generic: Connector
+  - combobox "Connector":
+    - option "SAP manifest CSV"
+    - option "PLM manifest CSV"
+    - option "Quote/actuals CSV"
+    - option "SAP S/4HANA Product/BOM read-only" [selected]
+    - option "PTC Windchill Part/BOM read-only"
+  - status: Choose a saved connection below to preview a SAP BOM explosion. Assembly import is not supported. For a CSV export, choose SAP manifest CSV.
+  - region "Vendor connection settings":
+    - heading "Test a vendor connection" [level=3]
+    - paragraph: Save a read-only credential, then test product-read access. The test requests at most one product and discards its contents. Use a saved connection to preview a SAP BOM explosion below. SAP assembly import is not available yet.
+    - paragraph: Use your SAP host or API_PRODUCT_SRV service root. The service must be reachable over public HTTPS.
+    - group "New connection":
+      - generic: New connection
+      - text: Connection name
+      - textbox "Connection name" [disabled]
+      - text: Service URL
+      - textbox "Service URL" [disabled]:
+        - /placeholder: https://your-sap-host
+      - text: Authentication
+      - combobox "Authentication" [disabled]:
+        - option "Bearer token" [disabled] [selected]
+        - option "Username and password" [disabled]
+        - option "OAuth client credentials" [disabled]
+        - option "API key header" [disabled]
+      - text: Access token
+      - textbox "Access token" [disabled]
+      - paragraph: Credentials are encrypted on the server and are never returned in the saved profile. Use an account limited to read access.
+      - button "Save connection" [disabled]
+    - heading "Saved connections" [level=3]
+    - paragraph: Loading connections…
+  - heading "Recent runs" [level=3]
+  - table:
+    - rowgroup:
+      - row "Status Connector Rows Mode File hash Completed":
+        - columnheader "Status"
+        - columnheader "Connector"
+        - columnheader "Rows"
+        - columnheader "Mode"
+        - columnheader "File hash"
+        - columnheader "Completed"
+    - rowgroup:
+      - row "failed windchill_part_bom_readonly PTC Windchill 0/0 valid dry_run 4f53cda18c... 9/30/2026, 5:03:48 PM":
+        - cell "failed":
+          - text: failed
+        - cell "windchill_part_bom_readonly PTC Windchill":
+          - generic: windchill_part_bom_readonly
+          - text: PTC Windchill
+        - cell "0/0 valid"
+        - cell "dry_run"
+        - cell "4f53cda18c..."
+        - cell "9/30/2026, 5:03:48 PM"
+      - row:
+        - cell:
+          - generic "Run details"
+          - paragraph: Dry-run only. No data imported.
+          - list:
+            - listitem: Use an exact Windchill part iteration ID (OR:wt.part.WTPart:…).
+      - row "partial plm_manifest_csv PLM 2/3 valid1 flagged dry_run a93e26888e... 9/30/2026, 7:01:59 AM":
+        - cell "partial":
+          - text: partial
+        - cell "plm_manifest_csv PLM":
+          - generic: plm_manifest_csv
+          - text: PLM
+        - cell "2/3 valid1 flagged":
+          - text: 2/3 valid
+          - generic: 1 flagged
+        - cell "dry_run"
+        - cell "a93e26888e..."
+        - cell "9/30/2026, 7:01:59 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-overflow.csv"
+          - paragraph: Dry-run only. No data imported.
+          - list:
+            - listitem: "Line 3: quantity must be at most 2147483647"
+      - row "failed plm_manifest_csv PLM 0/1 valid1 flagged import ebec20eab1... 9/30/2026, 7:01:58 AM":
+        - cell "failed":
+          - text: failed
+        - cell "plm_manifest_csv PLM":
+          - generic: plm_manifest_csv
+          - text: PLM
+        - cell "0/1 valid1 flagged":
+          - text: 0/1 valid
+          - generic: 1 flagged
+        - cell "import"
+        - cell "ebec20eab1..."
+        - cell "9/30/2026, 7:01:58 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-rejected.csv"
+          - paragraph: 0 imported · 0 updated · 1 skipped
+          - list:
+            - listitem: "Line 2: quantity must be at most 2147483647"
+      - row "partial plm_manifest_csv PLM 2/3 valid1 flagged import a93e26888e... 9/30/2026, 7:01:45 AM":
+        - cell "partial":
+          - text: partial
+        - cell "plm_manifest_csv PLM":
+          - generic: plm_manifest_csv
+          - text: PLM
+        - cell "2/3 valid1 flagged":
+          - text: 2/3 valid
+          - generic: 1 flagged
+        - cell "import"
+        - cell "a93e26888e..."
+        - cell "9/30/2026, 7:01:45 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-overflow.csv"
+          - paragraph: 0 imported · 2 updated · 1 skipped
+          - list:
+            - listitem: "Line 3: quantity must be at most 2147483647"
+      - row "partial ground_truth_csv Supplier quotes / ERP actuals 1/4 valid3 flagged import 34bcc521b7... 9/30/2026, 6:56:45 AM":
+        - cell "partial":
+          - text: partial
+        - cell "ground_truth_csv Supplier quotes / ERP actuals":
+          - generic: ground_truth_csv
+          - text: Supplier quotes / ERP actuals
+        - cell "1/4 valid3 flagged":
+          - text: 1/4 valid
+          - generic: 3 flagged
+        - cell "import"
+        - cell "34bcc521b7..."
+        - cell "9/30/2026, 6:56:45 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-nonfinite-cost.csv"
+          - paragraph: 1 imported · 0 updated · 3 skipped
+          - list:
+            - listitem: "Line 3: actual_unit_cost_usd must be a finite number > 0 (got inf)"
+            - listitem: "Line 4: actual_machine_hours must be a finite number >= 0 (got nan)"
+            - listitem: "Line 5: quantity must be at most 2147483647"
+      - row "partial ground_truth_csv Supplier quotes / ERP actuals 1/4 valid3 flagged dry_run 34bcc521b7... 9/30/2026, 6:56:32 AM":
+        - cell "partial":
+          - text: partial
+        - cell "ground_truth_csv Supplier quotes / ERP actuals":
+          - generic: ground_truth_csv
+          - text: Supplier quotes / ERP actuals
+        - cell "1/4 valid3 flagged":
+          - text: 1/4 valid
+          - generic: 3 flagged
+        - cell "dry_run"
+        - cell "34bcc521b7..."
+        - cell "9/30/2026, 6:56:32 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-nonfinite-cost.csv"
+          - paragraph: Dry-run only. No data imported.
+          - list:
+            - listitem: "Line 3: actual_unit_cost_usd must be a finite number > 0 (got inf)"
+            - listitem: "Line 4: actual_machine_hours must be a finite number >= 0 (got nan)"
+            - listitem: "Line 5: quantity must be at most 2147483647"
+      - row "passed ground_truth_csv Supplier quotes / ERP actuals 4/4 valid dry_run 34bcc521b7... 9/30/2026, 6:55:05 AM":
+        - cell "passed":
+          - text: passed
+        - cell "ground_truth_csv Supplier quotes / ERP actuals":
+          - generic: ground_truth_csv
+          - text: Supplier quotes / ERP actuals
+        - cell "4/4 valid"
+        - cell "dry_run"
+        - cell "34bcc521b7..."
+        - cell "9/30/2026, 6:55:05 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-nonfinite-cost.csv"
+      - row "partial sap_manifest_csv SAP ERP 2/3 valid1 flagged import a93e26888e... 9/30/2026, 6:54:00 AM":
+        - cell "partial":
+          - text: partial
+        - cell "sap_manifest_csv SAP ERP":
+          - generic: sap_manifest_csv
+          - text: SAP ERP
+        - cell "2/3 valid1 flagged":
+          - text: 2/3 valid
+          - generic: 1 flagged
+        - cell "import"
+        - cell "a93e26888e..."
+        - cell "9/30/2026, 6:54:00 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-overflow.csv"
+          - paragraph: 2 imported · 0 updated · 1 skipped
+          - list:
+            - listitem: "Line 3: quantity must be at most 2147483647"
+      - row "passed sap_manifest_csv SAP ERP 3/3 valid dry_run a93e26888e... 9/30/2026, 6:51:40 AM":
+        - cell "passed":
+          - text: passed
+        - cell "sap_manifest_csv SAP ERP":
+          - generic: sap_manifest_csv
+          - text: SAP ERP
+        - cell "3/3 valid"
+        - cell "dry_run"
+        - cell "a93e26888e..."
+        - cell "9/30/2026, 6:51:40 AM"
+      - row:
+        - cell:
+          - generic "Run details · import-overflow.csv"
+      - row "passed sap_manifest_csv SAP ERP 1/1 valid dry_run 0b25b7f532... 9/29/2026, 5:04:53 PM":
+        - cell "passed":
+          - text: passed
+        - cell "sap_manifest_csv SAP ERP":
+          - generic: sap_manifest_csv
+          - text: SAP ERP
+        - cell "1/1 valid"
+        - cell "dry_run"
+        - cell "0b25b7f532..."
+        - cell "9/29/2026, 5:04:53 PM"
+      - row:
+        - cell:
+          - generic "Run details · integration-valid.csv"
+      - row "partial sap_manifest_csv SAP ERP 1/2 valid1 flagged dry_run b10cd96b90... 9/29/2026, 5:04:53 PM":
+        - cell "partial":
+          - text: partial
+        - cell "sap_manifest_csv SAP ERP":
+          - generic: sap_manifest_csv
+          - text: SAP ERP
+        - cell "1/2 valid1 flagged":
+          - text: 1/2 valid
+          - generic: 1 flagged
+        - cell "dry_run"
+        - cell "b10cd96b90..."
+        - cell "9/29/2026, 5:04:53 PM"
+      - row:
+        - cell:
+          - generic "Run details · integration-audit.csv"
+          - paragraph: Dry-run only. No data imported.
+          - list:
+            - listitem: "Line 3: missing part_id"
+- region "Notifications alt+T"
+- alert

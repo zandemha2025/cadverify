@@ -118,29 +118,29 @@ CONNECTORS: tuple[Connector, ...] = (
         source_system="SAP S/4HANA",
         source_kind=SOURCE_MANIFEST,
         file_format="odata",
-        mode=CONNECTOR_MODE_SANDBOX_API,
-        boundary_label=BOUNDARY_SANDBOX,
-        description="Read-only product/material and BOM adapter for vendor or customer sandbox tenants.",
+        mode=CONNECTOR_MODE_LIVE_READONLY,
+        boundary_label=BOUNDARY_LIVE_READONLY,
+        description="Read-only product access and SAP BOM explosion previews. Assembly import is not supported; hierarchy and manufacturing quantities require tenant validation.",
         template_endpoint="",
         configured=False,
         live_credentials_required=True,
         api_name="SAP S/4HANA Product/BOM OData",
-        api_version="sandbox-readonly",
+        api_version="API_PRODUCT_SRV / API_BILL_OF_MATERIAL_SRV;v=2",
     ),
     Connector(
         id="windchill_part_bom_readonly",
         label="PTC Windchill Part/BOM read-only",
         source_system="PTC Windchill",
-        source_kind=SOURCE_MANIFEST,
+        source_kind="bom",
         file_format="odata",
-        mode=CONNECTOR_MODE_SANDBOX_API,
-        boundary_label=BOUNDARY_SANDBOX,
-        description="Read-only part, revision, and BOM adapter for Windchill sandbox tenants.",
+        mode=CONNECTOR_MODE_LIVE_READONLY,
+        boundary_label=BOUNDARY_LIVE_READONLY,
+        description="Read-only product access and complete BOM preview/import with exact part identities and whole-part counts.",
         template_endpoint="",
         configured=False,
         live_credentials_required=True,
         api_name="PTC Windchill REST Product Management",
-        api_version="sandbox-readonly",
+        api_version="WRS 2.5+ completeness fields",
     ),
 )
 
@@ -211,6 +211,11 @@ async def run_connector_csv(
     ``mode=dry_run`` only parses and records what would happen.
     """
     connector = get_connector(connector_id)
+    if connector.mode != CONNECTOR_MODE_OFFLINE_CSV:
+        raise HTTPException(
+            status_code=400,
+            detail="This connector requires a vendor API connection. Select a CSV connector for file imports.",
+        )
     if mode not in VALID_MODES:
         raise HTTPException(status_code=400, detail="mode must be dry_run or import")
     if not raw:
@@ -243,9 +248,9 @@ async def run_connector_csv(
 
     all_errors = _safe_errors(list(parse_errors) + list(import_errors))
     rows_total = len(rows) + len(parse_errors)
-    rows_valid = len(rows)
-    rows_invalid = len(parse_errors) + len(import_errors)
-    skipped = rows_total - rows_valid + len(import_errors)
+    rows_valid = imported + updated if mode == MODE_IMPORT else len(rows)
+    rows_invalid = rows_total - rows_valid
+    skipped = rows_invalid
     status = _status(rows_valid, all_errors)
 
     run = IntegrationRun(
@@ -265,7 +270,7 @@ async def run_connector_csv(
         file_sha256=file_hash,
         file_size_bytes=len(raw),
         source_record_count=rows_total,
-        normalized_record_count=rows_valid,
+        normalized_record_count=len(rows),
         rows_total=rows_total,
         rows_valid=rows_valid,
         rows_invalid=rows_invalid,

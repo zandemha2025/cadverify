@@ -18,12 +18,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyPortfolioDelta,
+  parseAnnualVolume,
+  resolvedAnnualVolume,
+  annualDemandFeedback,
   declaredPrograms,
   rowsInProgram,
   type Portfolio,
   type PortfolioRow,
   type PortfolioDelta,
 } from "./program-rollup.ts";
+
+test("annual volume preserves whole counts and distinguishes clearing from invalid input", () => {
+  for (const text of ["", "  "]) assert.equal(parseAnnualVolume(text), null);
+  for (const text of ["1", " 50 ", "2147483647"]) assert.equal(parseAnnualVolume(text), Number(text));
+  for (const text of ["0", "-5", "1.5", "1e3", "1,000", "abc", "2147483648", "9007199254740993"]) {
+    assert.equal(parseAnnualVolume(text), undefined, text);
+  }
+});
 
 function row(over: Partial<PortfolioRow> = {}): PortfolioRow {
   return {
@@ -39,6 +50,26 @@ function row(over: Partial<PortfolioRow> = {}): PortfolioRow {
     ...over,
   };
 }
+
+test("BOM demand stays visible and counted even when exact-quantity cost is withheld", () => {
+  const linked = row({
+    context: { program: "Assembly", parent_assembly: null, units_per_parent: null, annual_volume: 55, provenance: "user" },
+    resolved_annual_volume: 1008, annual_volume_basis: "bom_rollup", annualized_cost_usd: null,
+  });
+  assert.equal(resolvedAnnualVolume(linked), 1008);
+  assert.match(annualDemandFeedback(linked), /1,008 parts\/yr from BOM/);
+  assert.match(annualDemandFeedback(linked), /re-verify/);
+  const portfolio: Portfolio = { summary: summary(undefined), rows: [linked] };
+  assert.equal(declaredPrograms(portfolio)[0].declared_volume_parts, 1);
+  assert.equal(declaredPrograms(portfolio)[0].exposed_parts, 0);
+  assert.equal(resolvedAnnualVolume({ ...linked, resolved_annual_volume: null }), null);
+  assert.equal(resolvedAnnualVolume({ ...linked, resolved_annual_volume: undefined }), 55);
+  assert.match(annualDemandFeedback({ ...linked, resolved_annual_volume: 1000, annualized_cost_usd: 10960 }), /exact-quantity exposure computed/);
+  assert.equal(resolvedAnnualVolume({ annual_volume: 55, resolved_annual_volume: 1008 }), 1008);
+  assert.equal(resolvedAnnualVolume({ annual_volume: 55, resolved_annual_volume: null }), null);
+  assert.equal(resolvedAnnualVolume({ annual_volume: 55 }), 55);
+  assert.equal(resolvedAnnualVolume(null), null);
+});
 
 /** The delta the backend PUT returns = the slice of a full (re)build_portfolio. */
 function deltaFromRefetch(refetched: Portfolio, mesh: string): PortfolioDelta {

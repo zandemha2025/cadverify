@@ -1,0 +1,34 @@
+[
+  {
+    "file": "159-sheet-30x20x0.4.step",
+    "status": "Required",
+    "code": "TOO_THIN_SHEET",
+    "row": "Sheet Metal\t\nRequired\t0%\t\nThickness 0.4mm below the default 0.5mm minimum sheet gauge."
+  },
+  {
+    "file": "159-sheet-30x20x0.5.step",
+    "status": "Pass",
+    "row": "Sheet Metal\t\nPass\t100%\t—"
+  },
+  {
+    "file": "159-sheet-30x20x6.step",
+    "status": "Pass",
+    "row": "Sheet Metalfeasibility-only\t\nPass\t100%\t—"
+  },
+  {
+    "file": "159-sheet-30x20x7.step",
+    "status": "Advisory",
+    "code": "TOO_THICK_SHEET",
+    "row": "Sheet Metalfeasibility-only\t\nAdvisory\t90%\t—"
+  },
+  {
+    "file": "159-sheet-translated-0.5.step",
+    "status": "Pass",
+    "row": "Sheet Metal\t\nPass\t100%\t—"
+  },
+  {
+    "file": "159-sheet-translated-6.step",
+    "status": "Pass",
+    "row": "Sheet Metalfeasibility-only\t\nPass\t100%\t—"
+  }
+]

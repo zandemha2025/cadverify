@@ -1,6 +1,7 @@
 import { API_BASE } from "../api-base";
 import {
   apiRecoveryMessage,
+  isQuotaErrorMessage,
   networkRecoveryMessage,
 } from "../api-recovery";
 
@@ -683,7 +684,8 @@ async function initiateMultipartUpload(
       if (!(error instanceof DirectUploadError)) throw error;
       lastError = error;
       const retryable =
-        error.status === undefined || isTransientStatus(error.status);
+        !isQuotaErrorMessage(error.message) &&
+        (error.status === undefined || isTransientStatus(error.status));
       if (!retryable || attempt === INITIATE_MAX_ATTEMPTS) throw error;
       await sleep(MULTIPART_RETRY_BASE_MS * 2 ** (attempt - 1));
     }
@@ -739,7 +741,8 @@ async function completeMultipartWithRecovery(
     return;
   } catch (initialError) {
     let lastError = initialError;
-    for (let attempt = 1; attempt <= COMPLETE_RECOVERY_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= COMPLETE_RECOVERY_ATTEMPTS &&
+      !(lastError instanceof Error && isQuotaErrorMessage(lastError.message)); attempt += 1) {
       let statusPayload: unknown;
       try {
         statusPayload = await apiRequestJson(
@@ -750,6 +753,7 @@ async function completeMultipartWithRecovery(
         );
       } catch (statusError) {
         lastError = statusError;
+        if (statusError instanceof Error && isQuotaErrorMessage(statusError.message)) break;
         if (attempt < COMPLETE_RECOVERY_ATTEMPTS) {
           await sleep(MULTIPART_RETRY_BASE_MS * 2 ** (attempt - 1));
           continue;
@@ -778,6 +782,7 @@ async function completeMultipartWithRecovery(
         return;
       } catch (retryError) {
         lastError = retryError;
+        if (retryError instanceof Error && isQuotaErrorMessage(retryError.message)) break;
         if (attempt < COMPLETE_RECOVERY_ATTEMPTS) {
           await sleep(MULTIPART_RETRY_BASE_MS * 2 ** (attempt - 1));
         }
@@ -786,6 +791,11 @@ async function completeMultipartWithRecovery(
 
     const detail =
       lastError instanceof Error ? lastError.message : "completion was not confirmed";
+    if (isQuotaErrorMessage(detail)) {
+      throw new CompletionOutcomeUnknownError(
+        `${detail} The ZIP reached storage; its upload reference is retained. After your allowance is available, submit the same ZIP to resume.`,
+      );
+    }
     throw new CompletionOutcomeUnknownError(
       `The ZIP reached storage, but completion could not be confirmed (${detail}). Retry the same ZIP; ProofShape will resume the same upload instead of creating a duplicate.`,
     );

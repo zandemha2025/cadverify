@@ -159,14 +159,14 @@ async def test_credential_profile_probe_route_redacts_secret(monkeypatch):
     monkeypatch.setattr(
         integrations.creds,
         "probe_profile",
-        lambda row: {
+        AsyncMock(return_value={
             "credential_profile_id": "01CRED",
             "connector_id": "sap_s4hana_product_bom_readonly",
             "configured": True,
             "read_only": True,
             "boundary_label": "sandbox",
             "secret_fingerprint": "abc123",
-        },
+        }),
     )
 
     app = _build_app(session)

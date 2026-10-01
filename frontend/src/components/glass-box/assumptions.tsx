@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import type { CostAssumption } from "@/lib/api";
 import { provMeta } from "@/lib/status";
 import { ProvenanceChip } from "./provenance";
+import { costOverrideError } from "@/lib/cost-views";
 
 function fmtValue(a: Pick<CostAssumption, "value" | "unit">): string {
   if (a.unit === "$/hr") return `$${a.value}/hr`;
@@ -34,19 +35,23 @@ function AssumptionItem({
 }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(String(assumption.value));
+  const [error, setError] = React.useState<string | null>(null);
+  const errorId = React.useId();
   const m = provMeta(assumption.provenance);
   const editable = !!onOverride && (canOverride ? canOverride(assumption) : true);
 
   const commit = () => {
-    const v = parseFloat(draft);
-    if (!Number.isNaN(v)) onOverride?.(assumption.name, v);
+    const message = costOverrideError(assumption.name, draft);
+    setError(message);
+    if (message) return;
+    onOverride?.(assumption.name, Number(draft));
     setEditing(false);
   };
 
   return (
     <div
       className={cn(
-        "flex items-center gap-2 rounded-[var(--radius)] border px-3 py-2",
+        "flex flex-wrap items-center gap-2 rounded-[var(--radius)] border px-3 py-2",
         editing ? "border-prov-user-border bg-prov-user-bg/40" : "border-border bg-card"
       )}
     >
@@ -59,13 +64,15 @@ function AssumptionItem({
           <input
             autoFocus
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => { setDraft(e.target.value); setError(null); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") commit();
               if (e.key === "Escape") setEditing(false);
             }}
             inputMode="decimal"
             aria-label={`Override ${assumption.name}`}
+            aria-invalid={!!error}
+            aria-describedby={error ? errorId : undefined}
             className="num h-7 w-20 rounded-sm border border-prov-user-border bg-card px-2 text-right text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <button
@@ -84,6 +91,7 @@ function AssumptionItem({
           >
             <X className="size-4" />
           </button>
+          {error && <p id={errorId} role="alert" className="w-full text-xs text-fail">{error}</p>}
         </>
       ) : (
         <>
@@ -96,6 +104,7 @@ function AssumptionItem({
               type="button"
               onClick={() => {
                 setDraft(String(assumption.value));
+                setError(null);
                 setEditing(true);
               }}
               aria-label={`Override ${assumption.name}`}

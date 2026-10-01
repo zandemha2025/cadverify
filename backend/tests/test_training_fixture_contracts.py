@@ -15,11 +15,11 @@ from src.services.connector_adapters import (
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "docs" / "training" / "fixtures"
 CONTRACTS = {
-    "README.md": "8f0f70354d3672ebe2effe743ee486c45c7912b06c0c2f0a463ec09fdceca9f3",
+    "README.md": "cd26a3133a9dadab0ad45c86c9c5bbd515fb99b9ef259d813e29e111225edb4f",
     "ground-truth-mixed.csv": "16cd702c4e063170bffcc496515b10e5fcf988e7f3bd77e0c28d3625d9f7762a",
     "parts-manifest-mixed.csv": "567fc0c2853324d0401e2001208bf8d2c5a6ec65d099a882c05a9aab87281268",
     "parts-master-map.csv": "118e15d195c0666533187aef6f598106c64d9aae6ab94d50bfbafa81b2d05ac5",
-    "sap-s4hana-sandbox.json": "31aa45fef08c44fc7cb8cd7cc30340a294d2fa620092200f6f7f83b588f2664f",
+    "sap-s4hana-sandbox.json": "36cd555b4997b4015576c6d82a8ec7962efcf9210c98b075e6c2cd82288dbfe6",
     "windchill-sandbox.json": "5ff55031f13a1dc53f3c185f87c98f84101a81c23b72019774892ffe22117307",
     "wire-only-unmeshable.step": "a5d464dce37e9160691f7cb721ca9d9b94d3dcabd75eb776f837430985fa23a7",
 }

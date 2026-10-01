@@ -16,6 +16,7 @@
  * analytic-surface semantics.
  */
 import { API_BASE } from "@/lib/api-base";
+import { apiQuotaMessage } from "../api-recovery.ts";
 
 export interface PreviewMesh {
   /** object URL for the GLB blob (caller revokes via `revoke`). */
@@ -28,6 +29,9 @@ export interface PreviewMesh {
   decimated: boolean;
   /** parsed source suffix (step/stp/iges/igs/stl), if reported. */
   source: string | null;
+  /** Only analysis-space meshes preserve the DFM result's face indices. */
+  faceSpace: "analysis" | "preview";
+  faceHash: string | null;
   revoke: () => void;
 }
 
@@ -39,24 +43,31 @@ function readNum(res: Response, header: string): number | null {
 }
 
 /**
- * Fetch the decimated GLB shell for `file`. Returns null on any failure
- * (network, unauthorized, unparseable) so the stage can fall back to the HONEST
- * bounding-box envelope — we never fabricate geometry.
+ * Fetch the decimated GLB shell for `file`. An exhausted allowance throws its
+ * actionable message; other failures return null so callers show an unavailable
+ * preview instead of fabricated geometry.
  */
-export async function fetchPreviewMesh(file: File): Promise<PreviewMesh | null> {
+export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boolean; units?: "mm" | "inch" }): Promise<PreviewMesh | null> {
   const form = new FormData();
   form.append("file", file);
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/validate/preview-mesh`, {
+    const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : options?.units ? `?units=${options.units}` : "";
+    res = await fetch(`${API_BASE}/validate/preview-mesh${query}`, {
       method: "POST",
       body: form,
     });
   } catch {
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 429) {
+      const quota = apiQuotaMessage(await res.json().catch(() => null));
+      if (quota) throw new Error(quota);
+    }
+    return null;
+  }
 
   let blob: Blob;
   try {
@@ -73,6 +84,8 @@ export async function fetchPreviewMesh(file: File): Promise<PreviewMesh | null> 
     previewFaces: readNum(res, "x-mesh-preview-faces"),
     decimated: res.headers.get("x-mesh-decimated") === "true",
     source: res.headers.get("x-mesh-source"),
+    faceSpace: res.headers.get("x-mesh-face-space") === "analysis" ? "analysis" : "preview",
+    faceHash: res.headers.get("x-mesh-face-hash"),
     revoke: () => URL.revokeObjectURL(url),
   };
 }

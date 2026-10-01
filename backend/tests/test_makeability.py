@@ -97,13 +97,14 @@ def test_envelope_orientation_permutation_passes():
     assert fr.passes
 
 
-def test_envelope_exceeds_longest_axis():
+def test_envelope_search_failure_is_unknown_without_a_nonfit_bound():
     m = mill(x=305, y=305, z=305)
     fr = fit_machine(part(bbox=(100, 200, 380)), m)
     assert not fr.passes
     env = [f for f in fr.failures if f.gate == "envelope"]
-    assert env and env[0].need == 380 and env[0].have == 305
-    assert "380mm > machine 305mm" in env[0].human
+    assert env and env[0].need == (100, 200, 380) and env[0].have is None
+    assert "does not prove the part is too large" in env[0].human
+    assert gap_analysis([fr]) == ()
 
 
 def test_envelope_exceeds_each_axis_reported():
@@ -584,26 +585,26 @@ def test_env_gate_on_real_loaded_profiles_flips_sour_exclusion():
 
 def test_gap_single_failure():
     m = mill(x=305, y=305, z=305, materials=("aluminum",))
-    fr = fit_machine(part(bbox=(100, 200, 380)), m)
+    fr = fit_machine(part(bbox=(100, 200, 600)), m)
     gap = gap_analysis([fr])
-    assert len(gap) == 1 and gap[0].gate == "envelope" and gap[0].need == 380
+    assert len(gap) == 1 and gap[0].gate == "envelope" and gap[0].need == 600
 
 
 def test_gap_minimal_delta_across_machines():
-    # two machines both too small on Z; closest is 305 → gap cites the 305, not 250
+    # A 600mm span exceeds both chamber diagonals; report the larger diagonal.
     m1 = mill(name="small", x=305, y=305, z=250, materials=("aluminum",))
     m2 = mill(name="bigger", x=305, y=305, z=305, materials=("aluminum",))
-    p = part(bbox=(100, 200, 380))
+    p = part(bbox=(100, 200, 600))
     fits = [fit_machine(p, m1), fit_machine(p, m2)]
     gap = gap_analysis(fits)
     env = [g for g in gap if g.gate == "envelope"][0]
-    assert env.have == 305  # smallest delta = closest machine
+    assert env.have == pytest.approx(305 * 3**.5)  # smallest proved delta
 
 
 def test_gap_binding_constraint_first():
     # machine fails BOTH material (categorical) and envelope; envelope leads
     m = mill(x=100, y=100, z=100, materials=("steel",))
-    fr = fit_machine(part(bbox=(150, 150, 150), material_name="Inconel 718",
+    fr = fit_machine(part(bbox=(200, 200, 200), material_name="Inconel 718",
                           material_class="nickel"), m)
     gap = gap_analysis([fr])
     gates = [g.gate for g in gap]
@@ -653,9 +654,9 @@ def test_verdict_makeable_with_secondary_op():
 
 def test_verdict_makeable_not_on_owned_with_gap():
     inv = [mill(x=305, y=305, z=305, materials=("aluminum",))]
-    v = verify_part({"cnc_3axis": part(bbox=(100, 200, 380))}, inv)
+    v = verify_part({"cnc_3axis": part(bbox=(100, 200, 600))}, inv)
     assert v.verdict == "makeable_not_on_owned"
-    assert v.gap and v.gap[0].gate == "envelope" and v.gap[0].need == 380
+    assert v.gap and v.gap[0].gate == "envelope" and v.gap[0].need == 600
 
 
 def test_verdict_not_on_owned_when_required_op_absent():
@@ -759,9 +760,10 @@ def test_honesty_never_pass_on_missing_field():
 
 def test_honesty_gap_is_quantified():
     m = mill(x=305, y=305, z=305, materials=("aluminum",))
-    v = verify_part({"cnc_3axis": part(bbox=(100, 200, 380))}, [m])
+    v = verify_part({"cnc_3axis": part(bbox=(100, 200, 600))}, [m])
     g = v.gap[0]
-    assert g.need == 380 and g.have == 305  # concrete measured-vs-declared delta
+    assert g.need == 600 and g.have == pytest.approx(305 * 3**.5)
+    assert g.axis == "diameter_mm" and "not a machine specification" in g.human
 
 
 def test_env_exclusion_cites_property():

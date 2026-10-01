@@ -1,0 +1,49 @@
+{
+  "finding": "138",
+  "environment": "Local native Chrome, frontend3017 and API8017. Not deployed.",
+  "before": {
+    "prompt": "plate width 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 mm, depth50 mm, thickness6 mm",
+    "native_error": "The design service could not finish this request. Try again; existing saved data is unchanged.",
+    "stale_status": "Safe dimensions extracted. Review the fields, then generate.",
+    "backend_error": "ValueError: Out of range float values are not JSON compliant: inf"
+  },
+  "causes": [
+    "Python float conversion overflows to infinity, which was retained in the interpreter prefill even after validation rejected the geometry. JSON serialization then failed.",
+    "Starting another interpretation did not clear the preceding success status, including when the new request failed."
+  ],
+  "fix": [
+    "Require finite dimensions in the shared prefill dictionary. Existing missing-field validation asks for a valid replacement and cannot expose infinity in JSON.",
+    "Clear the prior interpretation message when the next check begins; preserve inputs and the existing request/error/retry behavior."
+  ],
+  "red": [
+    "Actual endpoint regression fails in JSONResponse serialization on infinity.",
+    "Native failure assertion fails because the old safe status is still visible after an actual500 response."
+  ],
+  "green": [
+    "Existing API regression exercises named/sequence plate, bracket, enclosure and incomplete prompts with310-digit dimensions; each returns200 needs_input, validJSON and no plan.",
+    "Rebuilt frontend against the still-running pre-finite-guard API receives the same actual500 but shows no old success message; retry stays enabled.",
+    "After API restart, native oversized width receives a normal needs-width notice with no server error.",
+    "Corrected80x50x6mm prompt fills exactly80/50/6 and returns ready for review."
+  ],
+  "checks": {
+    "focused_pass": 44,
+    "frontend_tests": 499,
+    "frontend_types_lint_build": "pass",
+    "backend_types": "214errors/3warnings, zero new diagnostics versus137",
+    "bandit": "zero medium/high",
+    "full_backend": {
+      "passed": 2557,
+      "skipped": 3,
+      "seconds": 212.84,
+      "skip_policy": "enforced",
+      "log": ".gstack/qa-runtime/design-overflow-backend-full.log"
+    }
+  },
+  "screenshots": [
+    "138-design-overflow-before.png",
+    "138-design-failure-status-fixed.png",
+    "138-design-overflow-validation-fixed.png",
+    "138-design-overflow-recovered.png"
+  ],
+  "scope": "No new geometry or stored design was generated. This verifies validation and request-state recovery, not arbitrary natural-language correctness or manufacturing/pricing accuracy."
+}

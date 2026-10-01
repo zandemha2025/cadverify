@@ -37,7 +37,9 @@ const pinnedCube = {
   quantities: [1, 100, 1000, 2000, 5000, 10000],
   estimates: 48,
   makeNowProcess: "fdm",
-  crossoverQty: 923,
+  // Tooling must beat the cheapest eligible make route (MJF), not only FDM.
+  // Independently checked at 4,591/4,592 in crossover-routes-regression.json.
+  crossoverQty: 4592,
   recommendation: {
     1: ["fdm", 30.0],
     100: ["mjf", 3.62],
@@ -146,6 +148,7 @@ const costDriverHeaders = [
   "user_disposition",
   "user_disposition_label",
   "disposition_note",
+  "disposition_basis",
   "disposition_updated_at",
   "disposition_updated_by_user_id",
   "line_items",
@@ -923,6 +926,11 @@ async function main() {
         assert(row.confidence_label === estimate.confidence.label, `RFQ driver confidence label drifted for ${estimate.process} qty ${estimate.quantity}`);
         assert(row.confidence_validated.toLowerCase() === String(Boolean(estimate.confidence.validated)), `RFQ driver validation flag drifted for ${estimate.process} qty ${estimate.quantity}`);
         assert(row.dfm_ready.toLowerCase() === String(Boolean(estimate.dfm_ready)), `RFQ driver DFM flag drifted for ${estimate.process} qty ${estimate.quantity}`);
+        assertJsonEqual(
+          row.disposition_basis ? JSON.parse(row.disposition_basis) : null,
+          durableCostDetail.disposition_basis ?? null,
+          `RFQ driver sourcing basis for ${estimate.process} qty ${estimate.quantity}`,
+        );
         for (const field of governanceColumns) {
           assert(
             row[field] === String(durableCostDetail[field] ?? ""),

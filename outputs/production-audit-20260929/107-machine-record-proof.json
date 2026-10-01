@@ -1,0 +1,22 @@
+{
+  "scope": "Local native Chrome, actual saved inch-IGES decision",
+  "before": {
+    "selected": "01M3S63TWJPSB2VSDH5DZKWQ3G",
+    "destination": "/verify",
+    "result": "Generic Records list with47 rows; selected detail did not open"
+  },
+  "after": {
+    "href": "/cost-decisions/01M3S63TWJPSB2VSDH5DZKWQ3G",
+    "destination": "http://127.0.0.1:3017/cost-decisions/01M3S63TWJPSB2VSDH5DZKWQ3G",
+    "heading": "box-inch.igs",
+    "unitPrice": 1762.46,
+    "sourceSha256": "fbb8f571945279eb2d372ff842666eee1f82e6a63da4d40b4fa0238a69c79548"
+  },
+  "checks": {
+    "frontendPassed": 496,
+    "types": "PASS",
+    "changedLint": "PASS",
+    "build": "PASS",
+    "backendUnchangedPassed": 2458
+  }
+}

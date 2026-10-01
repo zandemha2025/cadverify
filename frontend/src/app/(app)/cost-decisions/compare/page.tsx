@@ -74,6 +74,9 @@ export default function CompareCostDecisionsPage() {
   const [options, setOptions] = useState<CostDecisionSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [retryList, setRetryList] = useState(0);
 
   const [idA, setIdA] = useState<string>("");
   const [idB, setIdB] = useState<string>("");
@@ -83,9 +86,13 @@ export default function CompareCostDecisionsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setListLoading(true);
+    setListError(null);
     fetchCostDecisions({ limit: 100 })
       .then((page) => {
-        if (!cancelled) setOptions(page.cost_decisions);
+        if (cancelled) return;
+        setOptions(page.cost_decisions);
+        setNextCursor(page.has_more ? page.next_cursor : null);
       })
       .catch((e) => {
         if (!cancelled)
@@ -97,7 +104,22 @@ export default function CompareCostDecisionsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryList]);
+
+  const loadOlder = async () => {
+    if (!nextCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    setListError(null);
+    try {
+      const page = await fetchCostDecisions({ cursor: nextCursor, limit: 100 });
+      setOptions((prev) => [...prev, ...page.cost_decisions]);
+      setNextCursor(page.has_more ? page.next_cursor : null);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Failed to load older decisions");
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   const runCompare = useCallback(async () => {
     if (!idA || !idB || idA === idB) return;
@@ -116,7 +138,7 @@ export default function CompareCostDecisionsPage() {
   const canCompare = idA && idB && idA !== idB;
 
   const optionLabel = (o: CostDecisionSummary) =>
-    `${o.label || o.filename}${o.make_now_process ? ` · ${procLabel(o.make_now_process)}` : ""}`;
+    `${o.label || o.filename}${o.make_now_process ? ` · ${procLabel(o.make_now_process)}` : ""} · ${new Date(o.created_at).toLocaleString()} · #${o.id.slice(-6)}`;
 
   return (
     <div className="space-y-6">
@@ -143,9 +165,12 @@ export default function CompareCostDecisionsPage() {
             <div className="flex justify-center py-6">
               <Spinner />
             </div>
-          ) : listError ? (
-            <ErrorState message={listError} />
-          ) : options.length < 2 ? (
+          ) : listError && options.length === 0 ? (
+            <>
+              <ErrorState message={listError} />
+              <Button onClick={() => setRetryList((n) => n + 1)}>Retry records</Button>
+            </>
+          ) : options.length < 2 && !nextCursor ? (
             <p className="text-sm text-muted-foreground">
               You need at least two saved cost decisions to compare.{" "}
               <button
@@ -159,9 +184,13 @@ export default function CompareCostDecisionsPage() {
             </p>
           ) : (
             <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <label className="cv-eyebrow">Decision A</label>
-                <Select value={idA} onValueChange={setIdA}>
+                <Select value={idA} disabled={comparing} onValueChange={(id) => {
+                  setIdA(id);
+                  setComparison(null);
+                  setCompareError(null);
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a decision" />
                   </SelectTrigger>
@@ -174,9 +203,13 @@ export default function CompareCostDecisionsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <label className="cv-eyebrow">Decision B</label>
-                <Select value={idB} onValueChange={setIdB}>
+                <Select value={idB} disabled={comparing} onValueChange={(id) => {
+                  setIdB(id);
+                  setComparison(null);
+                  setCompareError(null);
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a decision" />
                   </SelectTrigger>
@@ -198,6 +231,12 @@ export default function CompareCostDecisionsPage() {
               </Button>
             </div>
           )}
+          {!listLoading && nextCursor && (
+            <Button variant="secondary" className="mt-3" loading={loadingOlder} onClick={loadOlder}>
+              Load older records
+            </Button>
+          )}
+          {listError && options.length > 0 && <ErrorState message={listError} />}
         </CardContent>
       </Card>
 

@@ -99,7 +99,7 @@ def test_hostname_resolving_to_public_ip_is_accepted():
         "src.services.url_guard.socket.getaddrinfo",
         return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
     ):
-        validate_outbound_url("https://webhooks.example.com/hook")
+        assert validate_outbound_url("https://webhooks.example.com/hook") == ["93.184.216.34"]
 
 
 def test_hostname_resolving_to_private_ip_is_rejected():
@@ -170,7 +170,10 @@ def test_create_batch_rejects_internal_webhook_url():
         resp = client.post(
             "/api/v1/batch",
             files={"file": ("test.zip", buf, "application/zip")},
-            data={"webhook_url": "http://169.254.169.254/latest/meta-data/"},
+            data={
+                "webhook_url": "http://169.254.169.254/latest/meta-data/",
+                "webhook_secret": "local-test-only-signing-sentinel",
+            },
         )
 
     assert resp.status_code == 400

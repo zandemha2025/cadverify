@@ -126,6 +126,19 @@ function breakeven(crossoverQty: number | null): Breakeven {
 
 /* ---- provenance caveats ----------------------------------------- */
 
+test("selected quantity findings use its exact estimate without borrowing prototype evidence", () => {
+  const prototype = estimate({ quantity: 100, drivers: [driver("labor_cost", "DEFAULT")], confidence: confidence({ half_width_pct: 20 }) });
+  const selected = estimate({ process: "ded", quantity: 5000, material: "AlSi10Mg", drivers: [driver("machine_cost", "DEFAULT")], confidence: confidence({ half_width_pct: 45 }) });
+  const r = report({ estimates: [prototype, selected] });
+  const findings = deriveFindings(r, breakeven(5000), { estimate: selected, quantity: 5000 });
+  assert.match(findings.find((f) => f.cls === "confidence-caveat")!.detail, /±45%/);
+  assert.deepEqual(findings.filter((f) => f.cls === "provenance-caveat").map((f) => f.key), ["prov:machine_cost"]);
+  assert.ok(findings.some((f) => f.cls === "fragility"));
+  const lowQuantity = deriveFindings(r, breakeven(5000), { estimate: prototype, quantity: 100 });
+  assert.ok(!lowQuantity.some((f) => f.cls === "fragility"));
+  assert.deepEqual(deriveFindings(r, breakeven(5000), { estimate: null, quantity: 10 }), []);
+});
+
 test("provenance caveats surface only DEFAULT drivers on the recommended route", () => {
   const r = report({
     decision: decision({ make_now_process: "cnc_3axis" }),

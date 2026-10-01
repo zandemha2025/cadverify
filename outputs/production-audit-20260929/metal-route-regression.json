@@ -1,0 +1,133 @@
+{
+  "fixture": "NIST-PMI-STEP-Files/AP203 geometry only/nist_ftc_07_asme1_rd.stp",
+  "sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+  "engine_version_after": "0.3.9",
+  "first_divergence": "Native headline showed WAAM while engine note and recommendation called CNC 5-axis the cheapest no-tooling option.",
+  "before": {
+    "note": "Lowest-cost no-tooling estimate at qty 50: cnc_5axis (6061-T6 Aluminum) \u2014 $1627.63/unit. Costed make-route picks: qty 50: cnc_5axis; qty 5000: cnc_5axis. Estimated die_casting crossover against the cheapest eligible no-tooling route: ~57 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $44.58/unit at qty 5000. Note: die_casting requires redesign for DFM (135913 sidewall faces (98.9% of sidewall area) below 1.0\u00b0 draft for die_casting.); its cost is conditional on those changes, not a current-capability quote.",
+    "crossover_qty": 57.0,
+    "if_redesigned": {
+      "50": {
+        "caveat": "add draft",
+        "process": "sand_casting",
+        "material": "A356 Aluminum",
+        "unit_cost_usd": 479.87
+      },
+      "5000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "die_casting",
+        "material": "A356 Aluminum",
+        "unit_cost_usd": 44.58
+      }
+    },
+    "recommendation": {
+      "50": {
+        "process": "cnc_5axis",
+        "material": "6061-T6 Aluminum",
+        "dfm_ready": true,
+        "dfm_verdict": "issues",
+        "lead_low_days": 14.7,
+        "unit_cost_usd": 1627.63,
+        "lead_high_days": 27.3
+      },
+      "5000": {
+        "process": "cnc_5axis",
+        "material": "6061-T6 Aluminum",
+        "dfm_ready": true,
+        "dfm_verdict": "issues",
+        "lead_low_days": 698.6,
+        "unit_cost_usd": 962.77,
+        "lead_high_days": 1297.4
+      }
+    },
+    "tooling_process": "die_casting",
+    "make_now_process": "cnc_5axis",
+    "make_now_material": "6061-T6 Aluminum",
+    "tooling_dfm_ready": false
+  },
+  "after": {
+    "note": "Lowest-cost no-tooling estimate at qty 50: waam (AlSi10Mg) \u2014 $909.74/unit. Costed make-route picks: qty 50: waam; qty 5000: waam. Estimated die_casting crossover against the cheapest eligible no-tooling route: ~102 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $44.58/unit at qty 5000. Note: die_casting requires redesign for DFM (135913 sidewall faces (98.9% of sidewall area) below 1.0\u00b0 draft for die_casting.); its cost is conditional on those changes, not a current-capability quote.",
+    "crossover_qty": 102.0,
+    "if_redesigned": {
+      "50": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "sand_casting",
+        "material": "A356 Aluminum",
+        "unit_cost_usd": 479.87
+      },
+      "5000": {
+        "caveat": "add draft, tooling-dominated",
+        "process": "die_casting",
+        "material": "A356 Aluminum",
+        "unit_cost_usd": 44.58
+      }
+    },
+    "recommendation": {
+      "50": {
+        "process": "waam",
+        "material": "AlSi10Mg",
+        "dfm_ready": true,
+        "dfm_verdict": "issues",
+        "lead_low_days": 14.0,
+        "unit_cost_usd": 909.74,
+        "lead_high_days": 26.0
+      },
+      "5000": {
+        "process": "waam",
+        "material": "AlSi10Mg",
+        "dfm_ready": true,
+        "dfm_verdict": "issues",
+        "lead_low_days": 166.6,
+        "unit_cost_usd": 909.74,
+        "lead_high_days": 309.4
+      }
+    },
+    "tooling_process": "die_casting",
+    "make_now_process": "waam",
+    "make_now_material": "AlSi10Mg",
+    "tooling_dfm_ready": false
+  },
+  "all_20_original_prices_and_line_items_unchanged": true,
+  "boundary_prices": [
+    {
+      "quantity": 50,
+      "waam": 909.74,
+      "die_casting": 1826.58,
+      "waam_dfm_ready": true,
+      "die_casting_dfm_ready": false
+    },
+    {
+      "quantity": 57,
+      "waam": 909.93,
+      "die_casting": 1605.53,
+      "waam_dfm_ready": true,
+      "die_casting_dfm_ready": false
+    },
+    {
+      "quantity": 101,
+      "waam": 910.06,
+      "die_casting": 917.67,
+      "waam_dfm_ready": true,
+      "die_casting_dfm_ready": false
+    },
+    {
+      "quantity": 102,
+      "waam": 910.02,
+      "die_casting": 908.93,
+      "waam_dfm_ready": true,
+      "die_casting_dfm_ready": false
+    },
+    {
+      "quantity": 5000,
+      "waam": 909.74,
+      "die_casting": 44.58,
+      "waam_dfm_ready": true,
+      "die_casting_dfm_ready": false
+    }
+  ],
+  "all_5_quantity_recommendations_match_cheapest_eligible_non_tooling_estimate": true,
+  "test": "backend/tests/test_costing_crossover_routes.py: seven added metal-process cases fail before and pass after; material exclusion and DFM blocking remain enforced",
+  "boundary": "Model consistency proof, not physical process certification or calibration against actual quotes.",
+  "saved_record_id": "01M3R5PQHVPT6BE584E0R6J1J8",
+  "saved_export_exactly_equals_native_live_export": true
+}

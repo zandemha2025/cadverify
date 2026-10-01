@@ -61,6 +61,8 @@ from src.parsers.step_mesher import (
     _TARGET_DIAG_SEGMENTS,
     _EmptyMeshError,
     _StepReadError,
+    _configure_cad_import,
+    _import_cad_shapes,
     is_step_supported,
 )
 
@@ -453,7 +455,6 @@ def _configure_mesh(curvature_pts: float, heal: bool) -> None:
     the assembly mesh shares the single-part fidelity/robustness story. (MeshSizeMax
     + Mesh.Algorithm are set post-import in _extract_once, once the bbox is known.)"""
     gmsh.option.setNumber("General.Terminal", 0)
-    gmsh.option.setString("Geometry.OCCTargetUnit", "MM")
     if heal:
         for opt in _OCC_HEAL_OPTS:
             gmsh.option.setNumber(opt, 1)
@@ -525,10 +526,11 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> Ass
     generic exception (mesh failure, caller advances the ladder)."""
     gmsh.initialize(interruptible=False)
     try:
+        _configure_cad_import(path)
         _configure_mesh(curvature_pts, heal)
         gmsh.model.add("assembly")
         try:
-            gmsh.model.occ.importShapes(path)
+            _import_cad_shapes(path)
             gmsh.model.occ.synchronize()
         except Exception as exc:
             raise _StepReadError(str(exc)) from exc

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.analysis.serialization import serialize_issue
 from src.analysis.models import (
     AnalysisResult,
     Issue,
@@ -79,14 +80,16 @@ def get_priority_fixes(analysis: AnalysisResult) -> list[dict]:
             continue
         seen_codes.add(issue.code)
 
+        evidence = serialize_issue(issue)
         fixes.append({
             "code": issue.code,
             "severity": issue.severity.value,
             "message": issue.message,
             "process": process.value if process else "all",
             "fix": issue.fix_suggestion,
-            "measured_value": issue.measured_value,
-            "required_value": issue.required_value,
+            "measured_value": evidence.get("measured_value"),
+            "required_value": evidence.get("required_value"),
+            **({"measurement_unit": evidence["measurement_unit"]} if "measurement_unit" in evidence else {}),
         })
 
     return fixes

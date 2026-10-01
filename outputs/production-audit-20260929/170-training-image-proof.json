@@ -1,0 +1,170 @@
+{
+  "source_ci": "36822820964",
+  "source_head": "2a524e0881a3b168e74880e55f5c0df882e2929f",
+  "status": "Runner fix pending execution in CI; local file UI blocked by browser policy",
+  "checks": [
+    "node --check passed",
+    "git diff --check passed",
+    "all26 aborted asset paths exist in checkout"
+  ],
+  "change": "Wait for networkidle and existing active-image validator before file-page reload and close; retain all request failure gates",
+  "failures": [
+    {
+      "path": "docs/training/assets/23-login-recovery.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 43973,
+      "sha256": "df70b07b855282929eec82891cbf2520a84e56069228710bf1bfe9d56879b5c1"
+    },
+    {
+      "path": "docs/training/assets/30-rfq-detail.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 100011,
+      "sha256": "964c16044725b737c40f0029b7330a574cb80c0d0380b674b396a69b057b5cdd"
+    },
+    {
+      "path": "docs/training/assets/20-program-exposure.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 100475,
+      "sha256": "6fcc08ed1f016d63ae74c0f50ddac7be328d2bb1c4e4ffa4e91151c84e150a08"
+    },
+    {
+      "path": "docs/training/assets/05-notifications.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 83176,
+      "sha256": "63242f99d1e2c32e99a1fcc0c6a14de08a7b793db1929068c6c6ca62bcfaca67"
+    },
+    {
+      "path": "docs/training/assets/29-organization-settings.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 125157,
+      "sha256": "7bc9a32f6f94d8ab0566393663f3f48c937fd897b6498fc292da3c618c030428"
+    },
+    {
+      "path": "docs/training/assets/24-mobile-verify.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 45844,
+      "sha256": "340bedc0c0c8d7e9a95d5ca478841aa4b7012e0dd5683748d84dc5b310cacd3c"
+    },
+    {
+      "path": "docs/training/assets/22-viewer-gate.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 165534,
+      "sha256": "8eb2217fe8847816609160e1a12b6bdc3cef299d2b04f241275549066dac0af8"
+    },
+    {
+      "path": "docs/training/assets/13-design-bracket.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 263830,
+      "sha256": "7ef6bb95cfe90f25d730ebc6176b69b8a296d12c474f9d3a9f9d73a22bac9750"
+    },
+    {
+      "path": "docs/training/assets/14-design-enclosure.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 242459,
+      "sha256": "3c529a4787be9a4bea21f8320a18d465d7fade53a172a3cb8559f16d10b3dd69"
+    },
+    {
+      "path": "docs/training/assets/10-design-plate.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 289755,
+      "sha256": "ff13accfaa6886b499a7e08f7bb19206ca7eefee016f750b79abd3e59cbb1ab7"
+    },
+    {
+      "path": "docs/training/assets/28-security-settings.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 74787,
+      "sha256": "6504a5309ec5f4c35413a4e473f48f577a93174bfc9c15e2bb3e654f171f3af7"
+    },
+    {
+      "path": "docs/training/assets/19-portfolio-exposure.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 332485,
+      "sha256": "47fd1189c72a9cce0246e22e0ce435e4507fc9c56f602c53c3b457fb92dff89e"
+    },
+    {
+      "path": "docs/training/assets/26-rfq-packages.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 111558,
+      "sha256": "84700199880b3db02290b4c36654b580f698b3652364026e7842c33ac4f608bc"
+    },
+    {
+      "path": "docs/training/assets/18-calibration.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 176494,
+      "sha256": "eefabd76a59a190b6e51e11c6b03e21aab3bd1cd69fe0ed64dc2d32e4c13514f"
+    },
+    {
+      "path": "docs/training/assets/15-decision-approve.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 168568,
+      "sha256": "9ec6c3f263e212f8361cbcd68fa56c6ab55b21f83f22cb03d905009a3aa72687"
+    },
+    {
+      "path": "docs/training/assets/25-integrations.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 158966,
+      "sha256": "a30cafda6fcdebcd0e8b8dce465b67df652e38759a6daa8585546f691059a9c7"
+    },
+    {
+      "path": "docs/training/assets/03-day-zero.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 130803,
+      "sha256": "9eff1c44a7c0b32e552030d48bcc83961ee1e81b321199dee1470c515e42259f"
+    },
+    {
+      "path": "docs/training/assets/04-command-palette.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 115843,
+      "sha256": "d0d97461824745b61a7d994a7536ace7c91b35b33e053ec8c425a1db9eda3a95"
+    },
+    {
+      "path": "docs/training/assets/21-developer-settings.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 82965,
+      "sha256": "27f3202afdd9e6ee8fda999944d7682450f2af7863dfcd356054251926074f52"
+    },
+    {
+      "path": "docs/training/assets/07-design-unsupported.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 132848,
+      "sha256": "fc156ce9bcd538c7ff0e0b2ee050b5674ef53e2410f1eaed3278d0e2ee8f36f2"
+    },
+    {
+      "path": "docs/training/assets/11-design-revisions.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 291548,
+      "sha256": "5806665d3aa165917cddb1285971abec5a883e1528f6882dbdd01ea650eda3fb"
+    },
+    {
+      "path": "docs/training/assets/17-machine-floor.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 126236,
+      "sha256": "477d2637152399f5cb1ac51a31a2be527effb1aa98c4317e351be60310ae1b8f"
+    },
+    {
+      "path": "docs/training/assets/16-decision-stale.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 162985,
+      "sha256": "7f437e48d613372e6a2f8b9f3cef23e95a1c62aaba70022d2b0081b022eebc05"
+    },
+    {
+      "path": "docs/training/assets/27-batch.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 75518,
+      "sha256": "7457fc5cc3adfb4f6114958f01d0acb8589891bb57d84e1384691f4a35d0777f"
+    },
+    {
+      "path": "docs/training/assets/12-design-verify-r1.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 290055,
+      "sha256": "e52ebc5968aa678914e86d2886271180467a61dd1670a4cc3e5cb53acb58f020"
+    },
+    {
+      "path": "docs/training/assets/06-verify-result.png",
+      "error": "net::ERR_ABORTED",
+      "bytes": 131049,
+      "sha256": "da81971121f45e2ac7f865d2f44967a72034f64ac880c92c244318d96620dce0"
+    }
+  ],
+  "peer_review": "No actionable diff findings. In-memory checks retain broken-image and ERR_ABORTED failures; all26 recorded asset sizes/hashes match. Actual fixed file-path run still pending CI."
+}

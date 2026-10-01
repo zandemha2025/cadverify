@@ -1,0 +1,114 @@
+{
+  "audit": 181,
+  "workflow_source_head": "07ae63749d5295b56b10c013e75d3197e6abff05",
+  "run": 36852441974,
+  "artifact": "browser-e2e-36852441974-1",
+  "report_sha256": "14ad1afee233b5349fdeb60c51b7a56ff2be4bc4dbbb7dec233e3cca0d76901f",
+  "build_identity": {
+    "schemaVersion": 1,
+    "gitHead": "7cbf8f0cf3700800ef733d599a9a23896448dfd3",
+    "buildId": "7cbf8f0cf3700800ef733d599a9a23896448dfd3",
+    "buildIdSource": "GITHUB_SHA",
+    "gitDirty": false,
+    "capturedAt": "2026-10-01T11:27:25.385Z"
+  },
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "scope": "Correct stale test oracles after audit178; production calculation unchanged. Model assumptions, not measured customer quote accuracy.",
+  "binder_at_12000": {
+    "quantity": 12000,
+    "unit_cost_usd": 3.44,
+    "line_items": {
+      "amortized_fixed": 0.0729,
+      "material": 0.1962,
+      "machine": 1.6667,
+      "labor": 0,
+      "sinter": 1.5
+    },
+    "drivers": [
+      {
+        "name": "material_cost",
+        "value": 0.1962,
+        "unit": "$",
+        "provenance": "DEFAULT",
+        "source": "green part = net 0.0217 kg \u00d7 (1+0.18)\u00b3 = \u00d71.643 sinter-shrink oversize (CAD volume 2.72 cm\u00b3 \u00d7 SS316L density 7.99 g/cm\u00b3); powder $/kg at material-DB value [binder-jet assumption, not shop-validated] = 0.0357 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+        "error_band_pct": 5
+      },
+      {
+        "name": "parts_per_build",
+        "value": 240,
+        "unit": "parts",
+        "provenance": "DEFAULT",
+        "source": "build-job 250mm \u00f7 25mm/hr = 10.0hr full build \u00f7 240 parts/build (packing 0.12, env (400, 250, 250)) = 0.042hr/part; oriented candidate oriented XYZ (17.7, 23.6, 11.8)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); green dimensions \u00d71.18 for sinter shrinkage",
+        "error_band_pct": null
+      },
+      {
+        "name": "machine_cost",
+        "value": 1.6667,
+        "unit": "$",
+        "provenance": "DEFAULT",
+        "source": "0.0417 hr \u00d7 $40/hr \u00d7 region-labor \u00d71  [build-job 250mm \u00f7 25mm/hr = 10.0hr full build \u00f7 240 parts/build (packing 0.12, env (400, 250, 250)) = 0.042hr/part; oriented candidate oriented XYZ (17.7, 23.6, 11.8)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); green dimensions \u00d71.18 for sinter shrinkage]",
+        "error_band_pct": 55
+      },
+      {
+        "name": "cycle_time",
+        "value": 0.0417,
+        "unit": "hr",
+        "provenance": "DEFAULT",
+        "source": "build-job 250mm \u00f7 25mm/hr = 10.0hr full build \u00f7 240 parts/build (packing 0.12, env (400, 250, 250)) = 0.042hr/part; oriented candidate oriented XYZ (17.7, 23.6, 11.8)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); green dimensions \u00d71.18 for sinter shrinkage",
+        "error_band_pct": 55
+      },
+      {
+        "name": "labor_cost",
+        "value": 0,
+        "unit": "$",
+        "provenance": "DEFAULT",
+        "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+        "error_band_pct": 20
+      },
+      {
+        "name": "setup_cost",
+        "value": 0.0729,
+        "unit": "$",
+        "provenance": "DEFAULT",
+        "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(12000/240) = 50 setups \u00f7 12000 \u00d7 region-labor \u00d71",
+        "error_band_pct": 20
+      },
+      {
+        "name": "sinter_cost",
+        "value": 1.5,
+        "unit": "$",
+        "provenance": "DEFAULT",
+        "source": "debind+sinter furnace 24hr/batch \u00f7 240 parts/batch = 0.100hr \u00d7 $15/hr furnace \u00d7 region-machine \u00d71 [binder-jet assumption, not shop-validated]",
+        "error_band_pct": 55
+      }
+    ]
+  },
+  "arithmetic": {
+    "green_dimensions_mm": [
+      23.6,
+      17.7,
+      11.8
+    ],
+    "spacing_mm": 6,
+    "packing_fraction": 0.12,
+    "build_envelope_mm": [
+      400,
+      250,
+      250
+    ],
+    "parts_per_build": 240,
+    "material_usd": 0.1962,
+    "print_usd": "(250/25)*40/240 = 1.6667",
+    "sinter_usd": "24*15/240 = 1.5",
+    "setup_usd": "ceil(12000/240)*0.5*35/12000 = 0.0729",
+    "sum_rounded_line_items": 3.4358,
+    "rounded_unit_usd": 3.44,
+    "annual_exposure_usd": 41280
+  },
+  "checks": {
+    "backend_focused": "17 passed, 0 skipped, 0.15s",
+    "enterprise_gate_tests": "14 passed, 0 skipped",
+    "browser_reexecution": "pending new CI; historical failed report is not relabeled",
+    "default_money_tolerance": "tightened from at least $1 to $0.01; unit oracle explicit $0.001"
+  }
+}

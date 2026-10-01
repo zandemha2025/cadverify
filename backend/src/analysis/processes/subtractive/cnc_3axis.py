@@ -8,7 +8,7 @@ from src.analysis.processes.checks import (
     check_fixture_surfaces,
     check_hole_depth_ratio,
     check_internal_radii,
-    check_undercuts_from_z,
+    check_setup_access,
     check_wall_thickness,
 )
 
@@ -24,8 +24,8 @@ class CNC3AxisAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
-        i.extend(check_undercuts_from_z(ctx, self.process,
-                 cite="3-axis: tool access from +Z only."))
+        i.extend(check_setup_access(ctx, self.process,
+                 cite="Protolabs CNC design guidance: 3-axis machining may use multiple setups."))
         i.extend(check_internal_radii(ctx, 0.5, self.process,
                  cite="Sandvik: smallest end mill 1mm Ø → 0.5mm radius."))
         i.extend(check_wall_thickness(ctx, 0.8, self.process,

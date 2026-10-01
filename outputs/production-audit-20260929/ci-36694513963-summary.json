@@ -1,0 +1,74 @@
+{
+  "conclusion": "success",
+  "headSha": "c02604fa8df0eea68dbddd735b67c0fac2fc1674",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:20:27Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:11:40Z"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:12:59Z"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:12:09Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:11:41Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:12:25Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:12:40Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:48:36Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:24:54Z"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36694513963",
+  "scope": "PR head c02604f through086; excludes087-089; not production or real external-tenant proof. PR image job skips the main-only CVE gate.",
+  "browser_evidence": {
+    "human_steps_passed": 54,
+    "design_studio_steps_passed": 15,
+    "design_studio_goldens": "12/12",
+    "enterprise_steps_passed": 17,
+    "enterprise_goldens": "9/9",
+    "p7_steps_passed": 31,
+    "p7_skipped": 0,
+    "real_cad_cases_passed": 34,
+    "full_restore_load_readiness_training_chain": "PASS"
+  }
+}

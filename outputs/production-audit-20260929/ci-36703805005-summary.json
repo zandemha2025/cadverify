@@ -1,0 +1,104 @@
+{
+  "conclusion": "failure",
+  "headSha": "bea9a77113fed749697d4a05487aa9129ce02d54",
+  "jobs": [
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:10Z",
+      "completedAt": "2026-09-30T10:41:02Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849189959"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:10Z",
+      "completedAt": "2026-09-30T10:52:09Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849189962"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:10Z",
+      "completedAt": "2026-09-30T10:40:19Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849189989"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:10Z",
+      "completedAt": "2026-09-30T10:40:20Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849190118"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:10Z",
+      "completedAt": "2026-09-30T10:41:36Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849190134"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:11Z",
+      "completedAt": "2026-09-30T10:40:56Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849190151"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:40:22Z",
+      "completedAt": "2026-09-30T10:41:14Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109849267036"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-09-30T10:52:13Z",
+      "completedAt": "2026-09-30T11:19:19Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109853146342"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T10:52:13Z",
+      "completedAt": "2026-09-30T10:57:18Z",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005/job/109853146471"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36703805005",
+  "checked_at": "2026-09-30T11:26:20.285732+00:00",
+  "failure": {
+    "case": "NIST-AP203-GEOM-FTC-07",
+    "source_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+    "elapsed_sec": 90.046,
+    "first_divergence": "step 3: expected the outer corpus subprocess to exit and return its result within 90 seconds; it timed out after emitting JSON ending in OK/PASS",
+    "observed_stdout_tail": {
+      "outcome": "OK",
+      "status": "PASS",
+      "line_items_sum_ok": true,
+      "network_egress_blocked": true,
+      "geometry": {
+        "face_count": 246398,
+        "volume_cm3": 1725.99,
+        "watertight": true
+      }
+    },
+    "stderr_tail": "empty",
+    "cause": "unresolved; shutdown or inherited output pipe is an inference, not a confirmed root cause",
+    "symptoms": "additional missing geometry, finite values and network guard failures are downstream of the absent parsed worker result",
+    "cad_cases_passed": 33,
+    "cad_cases_total": 34,
+    "later_chain": "restore/load/readiness/training not reached"
+  }
+}

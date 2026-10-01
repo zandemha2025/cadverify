@@ -1,0 +1,110 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD"
+  - paragraph: ACQUISITION CONSIDERATION — TOOLING ALTERNATIVE
+  - button "Close": ✕
+  - paragraph: No cost decision to consider yet
+  - paragraph: An acquisition consideration is computed from a part's cost decision — capex against your owned marginal route. Verify a part first; if it needs capability you don't own, its consideration is stated here.
+  - button "Go to Verify →"
+- region "Notifications alt+T"
+- alert

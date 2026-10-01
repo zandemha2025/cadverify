@@ -25,6 +25,9 @@
 
   <!-- Section 3: Issue summary by severity -->
   <h2>Issue Summary</h2>
+  <p>Includes universal checks and all evaluated candidate processes.
+    Each process-specific finding applies to the named process; an overall pass
+    does not mean every candidate process passes. See Process Ranking for each route's verdict.</p>
   {% set all_issues = [] %}
   {% for issue in result.get('universal_issues', []) %}
     {% set _ = all_issues.append(issue | merge_key('_process', '')) %}
@@ -48,8 +51,9 @@
             {% if issue.get('_process') or issue.get('process') %}
             <tr><th>Process</th><td>{{ issue.get('_process') or issue.get('process') }}</td></tr>
             {% endif %}
-            {% if issue.get('measured_value') is not none %}
-            <tr><th>Evidence</th><td>measured {{ issue.measured_value }}{% if issue.get('required_value') is not none %} &middot; required {{ issue.required_value }}{% endif %}</td></tr>
+            {% if issue.get('measured_value') is not none or issue.get('required_value') is not none %}
+            {% set unit = {'mm': ' mm', 'deg': '°', 'ratio': ':1', 'percent': '%'}.get(issue.get('measurement_unit'), '') %}
+            <tr><th>Evidence</th><td>{% if issue.get('measured_value') is not none %}measured {{ issue.measured_value }}{{ unit }}{% if issue.get('required_value') is not none %} &middot; {% endif %}{% endif %}{% if issue.get('required_value') is not none %}required {{ issue.required_value }}{{ unit }}{% endif %}</td></tr>
             {% endif %}
             <tr><th>Location</th><td>
               {%- if issue.get('scope') == 'whole_part' -%}

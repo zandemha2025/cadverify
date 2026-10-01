@@ -1,0 +1,189 @@
+{
+  "engine_version": "0.3.24",
+  "records": [
+    {
+      "filename": "155-plate-transformed-0.79999.step",
+      "table": "analyses",
+      "id": 1446,
+      "ulid": "01M3TKGQ2K9GYX144MD5FVHSZS",
+      "version": "0.3.24",
+      "source_sha256": "7e94cf86040de1342fc21db8ddc04952fe086cee696914a58fbc3d547f3fa530",
+      "result_sha256": "6b0de300e95d4e4d510e81807f507e9ca038f29d52130567b03b666662526c8d",
+      "numeric_finding_count": 22,
+      "unit_examples": {
+        "mm": {
+          "code": "THIN_WALL",
+          "process": "fdm",
+          "measurement_unit": "mm",
+          "measured_value": 0.7999899966221643,
+          "required_value": 0.8
+        },
+        "percent": {
+          "code": "NOT_PRISMATIC",
+          "process": "wire_edm",
+          "measurement_unit": "percent",
+          "measured_value": 0.0,
+          "required_value": 85.0
+        }
+      }
+    },
+    {
+      "filename": "155-plate-transformed-0.79999.step",
+      "table": "cost_decisions",
+      "id": 5029,
+      "ulid": "01M3TKGQ337X2FVTDZ1DG4512V",
+      "version": "0.3.24",
+      "source_sha256": "7e94cf86040de1342fc21db8ddc04952fe086cee696914a58fbc3d547f3fa530",
+      "result_sha256": "4743fa82156cb22d3976e9969604597934205cb816cab1c957c47c1d9401bffe",
+      "numeric_finding_count": 6,
+      "unit_examples": {
+        "mm": {
+          "code": "THIN_WALL",
+          "process": "cnc_3axis",
+          "measurement_unit": "mm",
+          "measured_value": 0.7999899966221643,
+          "required_value": 0.8
+        }
+      }
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "table": "analyses",
+      "id": 1445,
+      "ulid": "01M3TKEVTKXDCB3H61JW0RN3W7",
+      "version": "0.3.24",
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "result_sha256": "6cb46ff038d88a310e249e2a9f25fa650d71b3077cbc18e460125b11e63d01ec",
+      "numeric_finding_count": 43,
+      "unit_examples": {
+        "mm": {
+          "code": "THIN_WALL",
+          "process": "binder_jetting",
+          "measurement_unit": "mm",
+          "measured_value": 0.8099999999999999,
+          "required_value": 1.0
+        },
+        "deg": {
+          "code": "INSUFFICIENT_DRAFT",
+          "process": "injection_molding",
+          "measurement_unit": "deg",
+          "measured_value": null,
+          "required_value": 1.0
+        },
+        "ratio": {
+          "code": "EXTREME_ASPECT_RATIO",
+          "process": "fdm",
+          "measurement_unit": "ratio",
+          "measured_value": 27.75208140610546,
+          "required_value": 8.0
+        }
+      }
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "table": "cost_decisions",
+      "id": 5028,
+      "ulid": "01M3TKEVT9E4Q2AB2ZEE0Y0ZNF",
+      "version": "0.3.24",
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "result_sha256": "7225e415963602a22f49c4d2d5650988b1ba398418cd2dbae8018a83007aa1a0",
+      "numeric_finding_count": 2,
+      "unit_examples": {
+        "deg": {
+          "code": "INSUFFICIENT_DRAFT",
+          "process": "injection_molding",
+          "measurement_unit": "deg",
+          "required_value": 1.0
+        }
+      }
+    },
+    {
+      "filename": "158-triangular-prism.stl",
+      "table": "analyses",
+      "id": 1444,
+      "ulid": "01M3TKC82Y6G9NW60K40B2VWDR",
+      "version": "0.3.24",
+      "source_sha256": "53a48fdc30941edc70742fafe9efe7638c7e2fd68bc88a2b72a162215da5b433",
+      "result_sha256": "e34955bd656506bbe39e6b0fdef6f54679f17bb3fda563d318bc1e54f100f710",
+      "numeric_finding_count": 39,
+      "unit_examples": {
+        "mm": {
+          "code": "THIN_WALL",
+          "process": "fdm",
+          "measurement_unit": "mm",
+          "measured_value": 0.33333333333333337,
+          "required_value": 0.8
+        },
+        "deg": {
+          "code": "INSUFFICIENT_DRAFT",
+          "process": "injection_molding",
+          "measurement_unit": "deg",
+          "measured_value": null,
+          "required_value": 1.0
+        },
+        "ratio": {
+          "code": "EXTREME_ASPECT_RATIO",
+          "process": "fdm",
+          "measurement_unit": "ratio",
+          "measured_value": 30.0,
+          "required_value": 8.0
+        }
+      }
+    },
+    {
+      "filename": "158-triangular-prism.stl",
+      "table": "cost_decisions",
+      "id": 5027,
+      "ulid": "01M3TKC83JHARPT10B5RRAYDD2",
+      "version": "0.3.24",
+      "source_sha256": "53a48fdc30941edc70742fafe9efe7638c7e2fd68bc88a2b72a162215da5b433",
+      "result_sha256": "ab3ef022bb8d8b316e5287919ef5c39cbd3724b077477fcb47226d08c936fe42",
+      "numeric_finding_count": 18,
+      "unit_examples": {
+        "mm": {
+          "code": "THIN_WALL",
+          "process": "cnc_3axis",
+          "measurement_unit": "mm",
+          "measured_value": 0.33333333333333337,
+          "required_value": 0.8
+        },
+        "deg": {
+          "code": "INSUFFICIENT_DRAFT",
+          "process": "injection_molding",
+          "measurement_unit": "deg",
+          "required_value": 1.0
+        }
+      }
+    }
+  ],
+  "historical_records": [
+    {
+      "table": "analyses",
+      "id": 1398,
+      "version": "0.3.21",
+      "result_sha256": "38591b24f3a453c74bb23122a41e70890695b78cbed1e4e4ab9618ca00c9aed9",
+      "unchanged": true
+    },
+    {
+      "table": "analyses",
+      "id": 1337,
+      "version": "0.3.20",
+      "result_sha256": "e09301bdb22365c5174504b4b36f71e63b28a4ec20b5322ba54e2ce1ad17aed2",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4869,
+      "version": "0.3.21",
+      "result_sha256": "e871b15b8cfc2195df6f6ef53511ea0b402b6e5dea6fddca01a3da951427fc1e",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4643,
+      "version": "0.3.20",
+      "result_sha256": "611d750a75ed5a3c2e4460663ecd9887c51e4212c88017ed7b122e22c0e3d60a",
+      "unchanged": true
+    }
+  ]
+}

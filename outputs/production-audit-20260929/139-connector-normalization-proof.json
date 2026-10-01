@@ -1,0 +1,57 @@
+{
+  "finding": "139",
+  "scope": "Shared offline connector normalization and its CI replay; no live vendor BOM request or import implemented or proven.",
+  "red": [
+    "SAP Material part identifier was also assigned as physical material.",
+    "SAP BOM ID was used as parent part identity.",
+    "Both adapters invented default1 for invalid/missing/zero quantities, accepted negative/non-finite values and raised on huge integers.",
+    "The JS replay duplicated these normalizers instead of exercising backend production code."
+  ],
+  "fix": [
+    "Use SAP Material for parent identity and BillOfMaterial only as the separate BOM identifier. Physical material requires explicit declared lower-case metadata.",
+    "Shared positive finite quantity check reports unsupported rows and preserves valid neighbors; explicit invalid vendor fields cannot fall back to another quantity.",
+    "Remove both JS copies; the fixture replay invokes real Python adapters with bounded subprocess I/O. Exact parent/child/quantity assertions remain in the replay.",
+    "Correct documented synthetic fixture fields and matching asset hash/byte contracts. No claim that the fixture is a raw vendor response."
+  ],
+  "validation": {
+    "focused_connector_and_boundary_tests": 46,
+    "latest_adapter_and_fixture_checks": 8,
+    "actual_backend_replay": {
+      "SAP": [
+        "VALVE-100",
+        "STEM-200",
+        2
+      ],
+      "Windchill": [
+        "PUMP-10",
+        "SEAL-20",
+        4
+      ],
+      "zero_quantity": "NEEDS_FIXES with one warning and the original valid edge retained"
+    },
+    "full_backend": {
+      "passed": 2560,
+      "skipped": 3,
+      "seconds": 214.3,
+      "skip_policy": "enforced"
+    },
+    "types": "214errors/3warnings, zero added diagnostics",
+    "bandit": "zero medium/high",
+    "javascript_syntax": "three changed runners pass"
+  },
+  "native_read_only_observation": {
+    "url": "http://127.0.0.1:3017/integrations",
+    "notice": "Product connection tests available to organization admins. BOM reads and API imports are not available yet.",
+    "run_button": "disabled for current selection; no credential fields read or changed"
+  },
+  "sources": [
+    "https://help.sap.com/docs/SAP_S4HANA_ON-PREMISE/9f047b05da4545ca8f9ebfc22acefd06/ac29c05833e44980ab6b236e409f2429.html",
+    "https://help.sap.com/docs/SAP_S4HANA_CLOUD/7489fa08cede494cbdf08fa3651598af/55bb035e98214256abd9cbacfdf8e5d0.html",
+    "https://support.ptc.com/help/windchill_rest_services/r2.5/en/windchill_rest_services/wccg_restapiaccessexamples_ProdMgmt_getPartstructure.html"
+  ],
+  "remaining": [
+    "Actual vendor-native BOM transport/import",
+    "Authorized tenant reconciliation, API versions, units/base quantities and revision context",
+    "Fresh exact-head CI and deployment"
+  ]
+}

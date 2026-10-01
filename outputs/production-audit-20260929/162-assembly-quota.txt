@@ -1,0 +1,221 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD"
+  - main:
+    - heading "as1-tu-203.stp" [level=1]
+    - paragraph: assembly · 18 parts in world position
+    - paragraph: ● real assembly shell · 18 parts
+    - paragraph:
+      - text: ◆ selected plate
+      - text: as1/PLATE/plate
+    - paragraph: ASSEMBLY
+    - generic: ● real shell
+    - paragraph: 18 parts in world position
+    - generic: part in context
+    - generic: per-part analysis unavailable
+    - button "X-ray": X-ray
+    - generic: drag to orbit
+  - paragraph: ASSEMBLY CONTEXT
+  - heading "as1-tu-203.stp" [level=2]
+  - generic: ● 18 parts
+  - paragraph: Real STEP assembly — 18 solids, 5 unique designs, in their baked world positions. Pick the part of interest to highlight it in context.
+  - paragraph: PER-PART ANALYSIS — UNAVAILABLE
+  - paragraph: The per-part DFM + should-cost run did not return for this upload. The render and measured geometry below are real; no verdict or cost is asserted without the engine.
+  - alert: Verification allowance used up. this organization has reached its cap of 100 validations in total. Contact your workspace administrator or the ProofShape team to review your allowance.
+  - link "Review usage and contact options →":
+    - /url: /history
+  - paragraph: PRODUCT TREE · PART OF INTEREST
+  - generic "MEASURED — Measured directly from your CAD geometry.": ● MEASURED
+  - button "plate as1/PLATE/plate":
+    - generic: plate
+    - generic: as1/PLATE/plate
+  - button "l-bracket as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/L-BRACKET/l-bracket":
+    - generic: l-bracket
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/L-BRACKET/l-bracket
+  - button "l-bracket as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/L-BRACKET/l-bracket":
+    - generic: l-bracket
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/L-BRACKET/l-bracket
+  - button "rod as1/ROD-ASSEMBLY/rod-assembly/ROD/rod":
+    - generic: rod
+    - generic: as1/ROD-ASSEMBLY/rod-assembly/ROD/rod
+  - button "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt hardware":
+    - generic: bolt
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+    - generic: hardware
+  - button "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt hardware":
+    - generic: bolt
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt
+    - generic: hardware
+  - button "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt hardware":
+    - generic: bolt
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt
+    - generic: hardware
+  - button "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt hardware":
+    - generic: bolt
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt
+    - generic: hardware
+  - button "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt hardware":
+    - generic: bolt
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt
+    - generic: hardware
+  - button "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt hardware":
+    - generic: bolt
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+    - generic: hardware
+  - button "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut hardware":
+    - text: nut
+    - generic: ·3
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut
+    - generic: hardware
+  - button "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut hardware":
+    - text: nut
+    - generic: ·3
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut
+    - generic: hardware
+  - button "nut as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut hardware":
+    - generic: nut
+    - generic: as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut
+    - generic: hardware
+  - button "nut ·2 as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut hardware":
+    - text: nut
+    - generic: ·2
+    - generic: as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut
+    - generic: hardware
+  - button "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut hardware":
+    - text: nut
+    - generic: ·3
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut
+    - generic: hardware
+  - button "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut hardware":
+    - text: nut
+    - generic: ·3
+    - generic: as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut
+    - generic: hardware
+  - button "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut hardware":
+    - text: nut
+    - generic: ·3
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut
+    - generic: hardware
+  - button "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut hardware":
+    - text: nut
+    - generic: ·3
+    - generic: as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut
+    - generic: hardware
+  - paragraph: SELECTED PART
+  - generic "MEASURED — Measured directly from your CAD geometry.": ● MEASURED
+  - heading "plate" [level=3]
+  - paragraph: as1/PLATE/plate
+  - paragraph: BBOX (MM)
+  - paragraph: 180.0 × 150.0 × 20.0
+  - paragraph: VOLUME (CM³)
+  - paragraph: "530.57"
+  - paragraph: B-REP FACES
+  - paragraph: "18"
+  - paragraph: TRIANGLES
+  - paragraph: "95698"
+  - paragraph: CENTROID (MM)
+  - paragraph: 90, 75, 10
+  - paragraph: INSTANCE
+  - paragraph: "#1"
+- region "Notifications alt+T"
+- alert

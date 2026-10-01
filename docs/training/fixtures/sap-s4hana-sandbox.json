@@ -1,5 +1,23 @@
 [
-  {"kind":"product","Product":"VALVE-100","ProductDescription":"Valve body","Material":"316L"},
-  {"kind":"product","Product":"STEM-200","ProductDescription":"Valve stem","Material":"17-4PH"},
-  {"kind":"bom_item","BillOfMaterial":"VALVE-100","BillOfMaterialComponent":"STEM-200","BillOfMaterialItemQuantity":"2","BillOfMaterialItemUnit":"EA","BillOfMaterialItemNumber":"0010"}
+  {
+    "kind": "product",
+    "Product": "VALVE-100",
+    "ProductDescription": "Valve body",
+    "material": "316L"
+  },
+  {
+    "kind": "product",
+    "Product": "STEM-200",
+    "ProductDescription": "Valve stem",
+    "material": "17-4PH"
+  },
+  {
+    "kind": "bom_item",
+    "BillOfMaterial": "00000123",
+    "BillOfMaterialComponent": "STEM-200",
+    "BillOfMaterialItemQuantity": "2",
+    "BillOfMaterialItemUnit": "EA",
+    "BillOfMaterialItemNumber": "0010",
+    "Material": "VALVE-100"
+  }
 ]

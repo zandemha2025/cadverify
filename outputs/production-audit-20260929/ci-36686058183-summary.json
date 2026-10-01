@@ -1,0 +1,75 @@
+{
+  "status": "completed",
+  "conclusion": "success",
+  "headSha": "1c64bb9150c636e3188f400e9f5f351e78ece528",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792078124"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792078332"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792078390"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792078393"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792078426"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792078486"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109792139089"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109796248894"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36686058183/job/109796248939"
+    }
+  ],
+  "scope": "CI for PR head 1c64bb9 and its GitHub merge build; local080\u2013083 not included; no production or real external-tenant claim.",
+  "browser_evidence": {
+    "human_steps_passed": 54,
+    "design_studio_steps_passed": 15,
+    "design_studio_goldens": "12/12",
+    "enterprise_steps_passed": 17,
+    "enterprise_goldens": "9/9",
+    "p7_steps_passed": 31,
+    "p7_skipped": 0,
+    "real_cad_cases_passed": 34,
+    "real_cad_cases_total": 34,
+    "complete_restore_load_readiness_training_chain": "PASS"
+  }
+}

@@ -28,11 +28,11 @@ const EXPECTED_FAILURE_PATHS = 10;
 const GOLDEN_PATHS_FILE = path.join(repoRoot, "docs", "HUMAN_SIMULATION_GOLDEN_PATHS.md");
 const CUBE_SHA256 = "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a";
 const STATIC_FIXTURES = {
-  "README.md": { bytes: 1_655, sha256: "8f0f70354d3672ebe2effe743ee486c45c7912b06c0c2f0a463ec09fdceca9f3" },
+  "README.md": { bytes: 1_834, sha256: "cd26a3133a9dadab0ad45c86c9c5bbd515fb99b9ef259d813e29e111225edb4f" },
   "ground-truth-mixed.csv": { bytes: 1_671, sha256: "16cd702c4e063170bffcc496515b10e5fcf988e7f3bd77e0c28d3625d9f7762a" },
   "parts-manifest-mixed.csv": { bytes: 444, sha256: "567fc0c2853324d0401e2001208bf8d2c5a6ec65d099a882c05a9aab87281268" },
   "parts-master-map.csv": { bytes: 230, sha256: "118e15d195c0666533187aef6f598106c64d9aae6ab94d50bfbafa81b2d05ac5" },
-  "sap-s4hana-sandbox.json": { bytes: 382, sha256: "31aa45fef08c44fc7cb8cd7cc30340a294d2fa620092200f6f7f83b588f2664f" },
+  "sap-s4hana-sandbox.json": { bytes: 503, sha256: "36cd555b4997b4015576c6d82a8ec7962efcf9210c98b075e6c2cd82288dbfe6" },
   "windchill-sandbox.json": { bytes: 358, sha256: "5ff55031f13a1dc53f3c185f87c98f84101a81c23b72019774892ffe22117307" },
   "wire-only-unmeshable.step": { bytes: 2_036, sha256: "a5d464dce37e9160691f7cb721ca9d9b94d3dcabd75eb776f837430985fa23a7" },
 };
@@ -736,9 +736,12 @@ async function main() {
       const filePage = await fileContext.newPage();
       monitorPage(filePage, consoleErrors, requestFailures, responseErrors);
       const guideFile = pathToFileURL(path.join(repoRoot, "docs", "training", "proofshape-platform-guide.html")).href;
-      await filePage.goto(`${guideFile}#slide=access`, { waitUntil: "load" });
+      // Lazy images can outlive `load`; don't cancel them with our next reload.
+      await filePage.goto(`${guideFile}#slide=access`, { waitUntil: "networkidle" });
+      await waitForActiveImages(filePage);
       await filePage.evaluate(() => localStorage.removeItem("proofshapePlatformBase"));
-      await filePage.reload({ waitUntil: "load" });
+      await filePage.reload({ waitUntil: "networkidle" });
+      await waitForActiveImages(filePage);
       assert(await filePage.evaluate(() => window.__proofshapeGuide.appBase) === null, "Direct-file guide invented a platform origin");
       await filePage.locator(".slide.active [data-needs-base]").first().click();
       assert(await filePage.evaluate(() => document.activeElement?.id) === "platformBase", "Disabled direct-file action did not focus platform setup");
@@ -750,6 +753,8 @@ async function main() {
         filePage.waitForEvent("load"),
         filePage.locator("#platformConfig").getByRole("button", { name: /Use this platform URL/i }).click(),
       ]);
+      await filePage.waitForLoadState("networkidle");
+      await waitForActiveImages(filePage);
       assert(await filePage.evaluate(() => window.__proofshapeGuide.appBase) === "https://staging.proofshape.test", "Direct-file platform configuration did not persist");
       await fileContext.close();
       return { separateHost: true, unsafeProtocolRejected: true, directFileConfigured: true };

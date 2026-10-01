@@ -192,6 +192,7 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
             "user_disposition": "make_in_house",
             "user_disposition_label": "Make in-house",
             "disposition_note": "Release to cell 4",
+            "disposition_basis": {"process": "cnc", "material": "steel", "quantity": 100},
             "disposition_updated_at": disposition_at.isoformat(),
             "disposition_updated_by_user_id": 12,
             "is_stale": False,
@@ -260,9 +261,25 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
         assert driver_rows[0]["approval_note"] == "Reviewed against governed rates"
         assert driver_rows[0]["user_disposition"] == "make_in_house"
         assert driver_rows[0]["user_disposition_label"] == "Make in-house"
+        assert json.loads(driver_rows[0]["disposition_basis"]) == item["decision"]["disposition_basis"]
         assert driver_rows[0]["disposition_note"] == "Release to cell 4"
         assert driver_rows[0]["disposition_updated_at"] == disposition_at.isoformat()
         assert driver_rows[0]["disposition_updated_by_user_id"] == "12"
+
+    # The live decision is unreviewed; the package was approved when captured.
+    pdf_decision = svc.cached_cost_pdf.call_args.args[0]
+    assert pdf_decision.approval_status == "approved"
+    assert pdf_decision.approval_note == item["decision"]["approval_note"]
+    assert pdf_decision.disposition_note == "Release to cell 4"
+    assert pdf_decision.disposition_basis == item["decision"]["disposition_basis"]
+    assert pdf_decision.disposition_updated_at == disposition_at
+    assert pdf_decision.result_json == item["cost_decision"]
+    assert decision.approval_status == "unreviewed", "rendering must not mutate the live row"
+
+    # Historical evidence must remain downloadable after the source is removed.
+    session.execute.return_value = _Result(first=None)
+    with zipfile.ZipFile(io.BytesIO(await svc.build_zip(session, package))) as zf:
+        assert any(name.endswith("/should-cost-report.pdf") for name in zf.namelist())
 
 
 def test_supplier_brief_html_preserves_all_warning_truth_and_escapes_text():

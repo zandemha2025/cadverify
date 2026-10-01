@@ -1,0 +1,344 @@
+{
+  "engine_version": "0.3.21",
+  "records": [
+    {
+      "analysis_id": 1375,
+      "filename": "155-plate-300x200x0.81.step",
+      "source_sha256": "df2b559b0227b9bdb748a9a4edac51dadc71c9f996c5ff57e0f121db29a0b0fe",
+      "analysis_version": "0.3.21",
+      "result_sha256": "be7eb8d1d1a035a721f5dcf4a30283421e6f76a11b9aea339296a26045f35737",
+      "geometry": {
+        "faces": 88330,
+        "units": "mm",
+        "vertices": 44167,
+        "volume_mm3": 48600.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          150.0,
+          100.0,
+          0.41
+        ],
+        "bounding_box_mm": [
+          300.0,
+          200.0,
+          0.8
+        ],
+        "surface_area_mm2": 120810.0
+      },
+      "analysis_time_ms": 4074.7,
+      "wall_findings": [
+        {
+          "process": "injection_molding",
+          "issues": [
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 0.81mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 0.81,
+              "required_value": null
+            }
+          ]
+        },
+        {
+          "process": "die_casting",
+          "issues": [
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 0.81mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 0.81,
+              "required_value": null
+            }
+          ]
+        },
+        {
+          "process": "investment_casting",
+          "issues": [
+            {
+              "code": "THIN_WALL_MOLDING",
+              "severity": "error",
+              "message": "Min wall 0.81mm < 1.0mm for investment_casting.",
+              "measured_value": 0.81,
+              "required_value": 1.0
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 0.81mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 0.81,
+              "required_value": null
+            }
+          ]
+        },
+        {
+          "process": "sand_casting",
+          "issues": [
+            {
+              "code": "THIN_WALL_MOLDING",
+              "severity": "error",
+              "message": "Min wall 0.81mm < 3.0mm for sand_casting.",
+              "measured_value": 0.81,
+              "required_value": 3.0
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 0.81mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 0.81,
+              "required_value": null
+            }
+          ]
+        }
+      ],
+      "cost_decision_id": 4792,
+      "cost_engine_version": "0.3.21",
+      "cost_result_sha256": "8577136c67917f31e698875d7be5b9f4fdef6b698c922f54a39308cdc258b9fb"
+    },
+    {
+      "analysis_id": 1376,
+      "filename": "156-plate-with-boss.step",
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "analysis_version": "0.3.21",
+      "result_sha256": "521e7b766701bb9a7882379869405181ce66bb018f3b24bfbb36369ea2e07d14",
+      "geometry": {
+        "faces": 90808,
+        "units": "mm",
+        "vertices": 45406,
+        "volume_mm3": 49600.0,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          0.0,
+          0.0,
+          0.11
+        ],
+        "bounding_box_mm": [
+          300.0,
+          200.0,
+          10.8
+        ],
+        "surface_area_mm2": 121210.0
+      },
+      "analysis_time_ms": 4037.4,
+      "wall_findings": [
+        {
+          "process": "injection_molding",
+          "issues": [
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 10.0,
+              "required_value": null
+            },
+            {
+              "code": "THICK_WALL",
+              "severity": "warning",
+              "message": "Sampled thick section 10mm > 6.0mm \u2014 sink marks / long cycle risk.",
+              "measured_value": 10.0,
+              "required_value": 6.0
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "severity": "warning",
+              "message": "Sampled wall ratio 12.3457:1 (0.81\u201310mm) may increase warping risk in injection_molding.",
+              "measured_value": 12.346,
+              "required_value": 2.0
+            }
+          ]
+        },
+        {
+          "process": "die_casting",
+          "issues": [
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 10.0,
+              "required_value": null
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "severity": "warning",
+              "message": "Sampled wall ratio 12.3457:1 (0.81\u201310mm) may increase warping risk in die_casting.",
+              "measured_value": 12.346,
+              "required_value": 2.0
+            }
+          ]
+        },
+        {
+          "process": "investment_casting",
+          "issues": [
+            {
+              "code": "THIN_WALL_MOLDING",
+              "severity": "error",
+              "message": "Min wall 0.81mm < 1.0mm for investment_casting.",
+              "measured_value": 0.81,
+              "required_value": 1.0
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 10.0,
+              "required_value": null
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "severity": "warning",
+              "message": "Sampled wall ratio 12.3457:1 (0.81\u201310mm) may increase warping risk in investment_casting.",
+              "measured_value": 12.346,
+              "required_value": 2.0
+            }
+          ]
+        },
+        {
+          "process": "sand_casting",
+          "issues": [
+            {
+              "code": "THIN_WALL_MOLDING",
+              "severity": "error",
+              "message": "Min wall 0.81mm < 3.0mm for sand_casting.",
+              "measured_value": 0.81,
+              "required_value": 3.0
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 10.0,
+              "required_value": null
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "severity": "warning",
+              "message": "Sampled wall ratio 12.3457:1 (0.81\u201310mm) may increase warping risk in sand_casting.",
+              "measured_value": 12.346,
+              "required_value": 2.0
+            }
+          ]
+        }
+      ],
+      "cost_decision_id": 4793,
+      "cost_engine_version": "0.3.21",
+      "cost_result_sha256": "c4b94350149459ef92f08927a49a427bd28d4147bbce101b0cdf8dbcc426d553"
+    },
+    {
+      "analysis_id": 1380,
+      "filename": "156-tube.step",
+      "source_sha256": "c6c45b989fed0c347f45a7ff03338cf6626325f163e812e5f1f70d8fbf5270fa",
+      "analysis_version": "0.3.21",
+      "result_sha256": "b60f5f37cf3fb9323cc50f84d422f23e2d394690b839505da20bf376647b34b7",
+      "geometry": {
+        "faces": 202786,
+        "units": "mm",
+        "vertices": 101393,
+        "volume_mm3": 1790.7,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          0.0,
+          0.0,
+          15.0
+        ],
+        "bounding_box_mm": [
+          20.0,
+          20.0,
+          30.0
+        ],
+        "surface_area_mm2": 3700.7
+      },
+      "analysis_time_ms": 23378.3,
+      "wall_findings": [
+        {
+          "process": "injection_molding",
+          "issues": [
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 1.00047mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 1.0,
+              "required_value": null
+            }
+          ]
+        },
+        {
+          "process": "die_casting",
+          "issues": [
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 1.00047mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 1.0,
+              "required_value": null
+            }
+          ]
+        },
+        {
+          "process": "investment_casting",
+          "issues": [
+            {
+              "code": "THIN_WALL_MOLDING",
+              "severity": "error",
+              "message": "Min wall 1.00mm < 1.0mm for investment_casting.",
+              "measured_value": 1.0,
+              "required_value": 1.0
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 1.00047mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 1.0,
+              "required_value": null
+            }
+          ]
+        },
+        {
+          "process": "sand_casting",
+          "issues": [
+            {
+              "code": "THIN_WALL_MOLDING",
+              "severity": "error",
+              "message": "Min wall 1.00mm < 3.0mm for sand_casting.",
+              "measured_value": 1.0,
+              "required_value": 3.0
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "severity": "warning",
+              "message": "Largest sampled interior section: 1.00047mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "measured_value": 1.0,
+              "required_value": null
+            }
+          ]
+        }
+      ],
+      "cost_decision_id": 4798,
+      "cost_engine_version": "0.3.21",
+      "cost_result_sha256": "0bb45cca1623153a4f4f21b836e86497a4428db3f3e8570f9fb034d9a376d844"
+    }
+  ],
+  "unchanged_prior_records": [
+    {
+      "table": "analyses",
+      "id": 1309,
+      "result_sha256": "0d4b9371ad20ac7839c84757c988a2d062e04cbabb07375b97aa86147826d8bb"
+    },
+    {
+      "table": "analyses",
+      "id": 1316,
+      "result_sha256": "0423eb0b8ac8888914a58aa4113e4eca2dc4262773b722061c419515550d1887"
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4556,
+      "result_sha256": "94110d0a0ef311db20d2279706e902dab5b26bc7cc94928d07f4b98ec3672662"
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4589,
+      "result_sha256": "8577136c67917f31e698875d7be5b9f4fdef6b698c922f54a39308cdc258b9fb"
+    }
+  ]
+}

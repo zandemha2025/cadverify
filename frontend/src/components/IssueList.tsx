@@ -1,12 +1,14 @@
 "use client";
 
+import { formatIssueValue } from "@/lib/inspection-bind";
+
 import { useEffect, useRef } from "react";
 import { Crosshair } from "lucide-react";
 import { severityTone, type Tone } from "@/lib/status";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { flattenIssues, type IndexedIssue } from "@/lib/dfm-scope";
+import { flattenIssues, issueProcesses, type IndexedIssue } from "@/lib/dfm-scope";
 
 /* ------------------------------------------------------------------ */
 /*  Flattened issue index — the pure flatten/scoping logic now lives   */
@@ -84,7 +86,7 @@ export default function IssueList({
                 item={it}
                 selected={selectedKey === it.key}
                 onSelect={onSelect}
-                processes={processImplications?.get(it.key)}
+                processes={processImplications?.get(it.key) ?? issueProcesses(it)}
               />
             ))}
           </div>
@@ -147,7 +149,7 @@ function IssueRow({
           {issue.measured_value !== undefined &&
             issue.required_value !== undefined && (
               <span className="num text-xs text-muted-foreground">
-                {issue.measured_value.toFixed(2)} / {issue.required_value}{" "}
+                {formatIssueValue(issue)} / {formatIssueValue(issue, "required_value")}{" "}
                 required
               </span>
             )}

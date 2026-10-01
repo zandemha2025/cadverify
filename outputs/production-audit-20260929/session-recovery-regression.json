@@ -1,0 +1,29 @@
+{
+  "finding": "089",
+  "environment": "Local production Next build and real API; native Chrome via CUA",
+  "before": "Valid signed-in session is redirected from protected page to /login when API is stopped",
+  "after": {
+    "shared_gate": "401/403 or missing cookie still redirect; failed or malformed verification throws into the existing retry boundary",
+    "bounded_verification_ms": 55000,
+    "comparison_path_preserved": "/cost-decisions/compare",
+    "verify_path_preserved": "/verify",
+    "protected_shell_withheld_during_failure": true,
+    "native_retry_restores_both_routes": true,
+    "credentials_entered": false,
+    "cookies_read_or_modified_by_browser_automation": false
+  },
+  "checks": {
+    "dal_regression": "RED at HTTP429 redirect; GREEN for missing/401/403/429/404/5xx/network/timeout/malformed/valid and optional password flag",
+    "public_http": "6 missing/invalid-session cases preserve login return paths; session-recovery-http-proof.json",
+    "frontend_tests": 494,
+    "typecheck": "PASS",
+    "changed_file_lint": "PASS",
+    "production_build": "PASS",
+    "browser_regression": "scripts/e2e/session-recovery-validation.mjs"
+  },
+  "limits": [
+    "Not deployed. Requires fresh CI for087-089.",
+    "Local API retains the documented QA-only no-release/rate-limit switch from087; production settings unchanged.",
+    "No proof of real email delivery, company IdP login, actual vendor API imports or real quote accuracy."
+  ]
+}

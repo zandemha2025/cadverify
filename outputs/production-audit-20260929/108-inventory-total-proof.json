@@ -1,0 +1,25 @@
+{
+  "scope": "Local QA inventory readback; no data changes",
+  "database": {
+    "entries": 4,
+    "declaredCounts": [
+      2,
+      1,
+      1,
+      2
+    ],
+    "machines": 6,
+    "machinesWithRates": 6
+  },
+  "nativeHomeBefore": 4,
+  "nativeHomeAfter": 6,
+  "nativeOnboardingAfter": "6 machines added",
+  "nativeFloorAfter": "6 machines owned \u00b7 all rates declared",
+  "checks": {
+    "frontendPassed": 497,
+    "types": "PASS",
+    "changedLint": "PASS",
+    "build": "PASS",
+    "backendUnchangedPassed": 2458
+  }
+}

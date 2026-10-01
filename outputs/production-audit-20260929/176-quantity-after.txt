@@ -1,0 +1,188 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 165-stock-bar-aligned.step
+    - text: CNC 3-Axis · Advisory
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "165-stock-bar-aligned.step" [level=1]
+  - text: CNC 3-Axis · Advisory
+  - paragraph: Cost and manufacturability workspace
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision" [selected]:
+      - text: Decision
+    - tab "Routing & DFM":
+      - text: Routing & DFM
+    - tab "Glass Box":
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - generic: Volume
+  - generic: 11.5 cm³
+  - generic: Bounding box
+  - generic: 80 × 12 × 12 mm
+  - generic: Faces
+  - generic: 57,916
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - tabpanel "Decision":
+    - generic: Recommended decision · make-vs-buy
+    - heading "Make by CNC 3-Axis" [level=2]
+    - text: Advisory
+    - paragraph: CNC 3-Axis is the lowest-cost eligible no-tooling route at the costed quantities. No tooling crossover is identified.
+    - generic: Cost / unit
+    - paragraph:
+      - generic: $137.95
+    - generic: $68.97
+    - generic: $138
+    - generic: $207
+    - paragraph:
+      - generic: ±50% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate — no ground truth yet
+    - generic: Lead time · qty 1
+    - paragraph:
+      - generic: 7–13
+      - generic: days
+    - generic: At quantity
+    - paragraph:
+      - generic: "1"
+      - generic: units
+    - paragraph:
+      - generic: Sand Casting needs a design change first
+      - text: (31160 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.) — the cost shown is “if redesigned,” not a current quote.
+      - button "See Routing & DFM"
+    - generic: Order quantity
+    - generic: 1 units
+    - generic "Order quantity":
+      - slider [active]
+    - generic: "1"
+    - generic: 10,000
+    - heading "Make-vs-buy breakeven" [level=3]
+    - generic: $/unit vs quantity
+    - application:
+      - generic: "1"
+      - generic: "10"
+      - generic: "100"
+      - generic: 1k
+      - generic: 10k
+      - generic: quantity
+      - generic: $0
+      - generic: $8,000
+      - generic: $16,000
+      - generic: $24,000
+      - generic: $32,000
+      - generic: $ / unit
+      - generic: qty 1
+    - paragraph: Curves between and beyond costed quantities are approximate. Re-cost a quantity to include its batch rounding and minimum charges.
+    - paragraph: "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) — $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31160 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote."
+    - button "View glass boxdrivers · provenance · Σ = unit cost · confidence":
+      - generic: View glass boxdrivers · provenance · Σ = unit cost · confidence
+    - button "Adjust inputs & re-costmaterial · region · complexity · cavities · costed quantities":
+      - generic: Adjust inputs & re-costmaterial · region · complexity · cavities · costed quantities
+    - button "Why trust this":
+      - generic: Why trust this
+    - text: Saved to cost history
+    - button "open":
+      - text: open
+    - button "Open in history":
+      - text: Open in history
+    - button "PDF":
+      - text: PDF
+    - button "JSON":
+      - text: JSON
+    - button "CSV":
+      - text: CSV
+    - button "RFQ ZIP":
+      - text: RFQ ZIP
+    - button "Share":
+      - text: Share
+    - paragraph: Saved, exported and shared copies keep the provenance tags and the confidence band labeled assumption-based, not yet validated — an explainable should-cost, not a validated quote.
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert
+- generic: $0
+- status: 1Password menu is available. Press down arrow to select.

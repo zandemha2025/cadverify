@@ -1,0 +1,74 @@
+{
+  "run_id": 36864623761,
+  "head_sha": "ce97b8f546ffd0a6497bad77f978983080c47e1f",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36864623761",
+  "status": "completed",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure"
+    }
+  ],
+  "browser_failure": {
+    "runner": "training-guide-e2e.mjs",
+    "cause": "Exact RFQ CSV headers did not include newly persisted disposition_basis; actual23 columns vs expected22.",
+    "passed_training_steps": 4,
+    "failed_training_steps": 1,
+    "console_errors": 0,
+    "request_failures": 0,
+    "artifact_name": "browser-e2e-36864623761-1"
+  },
+  "container_failure": {
+    "high": 5,
+    "critical": 0,
+    "cves": [
+      "CVE-2026-93990",
+      "CVE-2026-88806",
+      "CVE-2026-88807"
+    ],
+    "waived": false
+  },
+  "scope": "Completed run covers published audit184, not subsequent185-187 corrections. Failed state retained."
+}

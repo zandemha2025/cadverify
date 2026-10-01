@@ -112,6 +112,8 @@ def validate_context(fields: dict) -> None:
             raise ValueError(f"{key} must be an integer, got {val!r}")
         if val <= 0:
             raise ValueError(f"{key} must be positive (> 0), got {val}")
+        if val > 2_147_483_647:
+            raise ValueError(f"{key} must be at most 2147483647")
     # The declared service environment (machine-inventory §6) — USER-declared,
     # never inferred. Validated when present; absent → the gate is a no-op.
     validate_service_environment(fields.get("service_environment"))

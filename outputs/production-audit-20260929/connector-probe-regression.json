@@ -1,0 +1,31 @@
+{
+  "feedback": {
+    "status": "PASS",
+    "profiles": [
+      {
+        "connectorId": "sap_s4hana_product_bom_readonly",
+        "name": "QA blocked endpoint SAP 1790722136601"
+      },
+      {
+        "connectorId": "windchill_part_bom_readonly",
+        "name": "QA blocked endpoint Windchill 1790722136601"
+      }
+    ],
+    "checks": [
+      "four authentication forms",
+      "encrypted save flow",
+      "secret field cleared",
+      "saved is not connected",
+      "private egress blocked",
+      "actionable failure and retry"
+    ]
+  },
+  "revocation": {
+    "status": "PASS",
+    "checks": [
+      "saved profiles survive reload",
+      "revoke prevents further probes",
+      "revocation survives reload"
+    ]
+  }
+}

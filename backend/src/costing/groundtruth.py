@@ -91,6 +91,7 @@ class GroundTruthRecord:
     actual_inspection_hours: Optional[float] = None
     actual_cycle_seconds: Optional[float] = None
     evidence_sha256: Optional[str] = None
+    source_units: str = "mm"
     evidence_uri: Optional[str] = None
     stand_in: bool = True             # True = synthetic STAND-IN; False = real ground truth
     part_path: Optional[str] = None   # explicit STL path; else resolved from part_id under parts_dir
@@ -125,12 +126,20 @@ class GroundTruthRecord:
         }
 
     def __post_init__(self) -> None:
+        if self.source_units not in {"mm", "inch"}:
+            raise ValueError("source_units must be mm or inch")
         if not self.part_id:
             raise ValueError("GroundTruthRecord requires a part_id")
-        if self.actual_unit_cost_usd is None or self.actual_unit_cost_usd <= 0:
+        if (self.actual_unit_cost_usd is None or not math.isfinite(self.actual_unit_cost_usd)
+                or self.actual_unit_cost_usd <= 0):
             raise ValueError(
                 f"GroundTruthRecord {self.part_id}/{self.process}: "
-                "actual_unit_cost_usd must be a positive number")
+                "actual_unit_cost_usd must be a finite positive number")
+        for name in ("actual_machine_hours", "actual_setup_hours", "actual_labor_hours",
+                     "actual_inspection_hours", "actual_cycle_seconds"):
+            value = getattr(self, name)
+            if value is not None and (not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be a finite number >= 0")
         if self.stand_in and "STAND-IN" not in (self.source or "").upper():
             # make the synthetic origin self-documenting in the persisted record
             self.source = (self.source + " " if self.source else "") + "[STAND-IN — not real]"
@@ -292,13 +301,13 @@ class EngineCostCache:
         self.parts_dir = parts_dir
         self._reports: dict = {}
 
-    def _report(self, path, qty, shop, material_class, region):
-        key = (path, int(qty), shop or "", material_class, region or "")
+    def _report(self, path, qty, shop, material_class, region, source_units="mm"):
+        key = (path, int(qty), shop or "", material_class, region or "", source_units)
         if key in self._reports:
             return self._reports[key]
         from src.costing.cli import _run_engine
         from src.costing import estimate_decision, EstimateOptions
-        result, mesh, feats = _run_engine(path)
+        result, mesh, feats = _run_engine(path, source_units=source_units)
         opts = EstimateOptions(
             quantities=[int(qty)], material_class=material_class,
             material_class_is_user=True, shop=shop,
@@ -314,7 +323,7 @@ class EngineCostCache:
                               f"part file not found for '{record.part_id}'")
         try:
             rep = self._report(path, record.quantity, record.shop,
-                               record.material_class, record.region)
+                               record.material_class, record.region, record.source_units)
         except Exception as exc:  # pragma: no cover - corrupt mesh / engine error
             return Prediction(record, None, False, f"engine error: {exc}")
         if rep.status != "OK":
@@ -348,7 +357,8 @@ class Calibration:
     def factor_for(self, process: str) -> float:
         if process in self.process_factors and self.n_by_process.get(process, 0) >= 1:
             return self.process_factors[process]
-        return self.global_factor
+        # A correction learned from one process says nothing about another.
+        return 1.0
 
     def correct(self, baseline_usd: float, process: str) -> float:
         return baseline_usd * self.factor_for(process)
@@ -472,16 +482,20 @@ class Evaluation:
     @property
     def claim(self) -> str:
         """The one honest headline sentence for this split."""
-        if self.metrics_real is not None and self.n_real >= MIN_RESIDUALS:
-            m = self.metrics_real
+        validated_processes = ResidualModel(self.residuals).validated_processes
+        if validated_processes:
+            m = _aggregate([r for r in self.residuals
+                            if not r.stand_in and r.process in validated_processes])
+            assert m is not None  # Each validated process has real residuals.
             return (f"VALIDATED within ±{m['band_covers_80pct']:g}% across "
                     f"{m['n_parts']} real held-out part(s) "
+                    f"for {', '.join(validated_processes)} "
                     f"(mean abs error {m['mean_abs_pct']:g}%).")
         if self.metrics_real is not None:
             return (
                 "PENDING enough costable held-out ground truth. "
-                f"Only {self.n_real} real held-out residual(s) were available "
-                f"(< {MIN_RESIDUALS} required for an empirical band)."
+                f"{self.n_real} real held-out residual(s) were available, "
+                f"but no process has {MIN_RESIDUALS} required for an empirical band."
             )
         if self.metrics_all is not None:
             m = self.metrics_all
@@ -528,13 +542,18 @@ class ResidualModel:
             self._by_proc.setdefault(r.process, []).append(r.signed_err)
         self._pooled = [r.signed_err for r in pool]
 
+    @property
+    def validated_processes(self) -> list[str]:
+        return sorted(p for p, residuals in self._by_proc.items()
+                      if self.from_real and len(residuals) >= MIN_RESIDUALS)
+
     def __call__(self, process: Optional[str]):
-        proc_res = self._by_proc.get(process)
-        if proc_res is not None and len(proc_res) >= MIN_RESIDUALS:
-            return proc_res, self.from_real, len(proc_res)
-        if self._pooled and len(self._pooled) >= MIN_RESIDUALS:
-            return self._pooled, self.from_real, len(self._pooled)
-        return None, self.from_real, len(self._pooled)
+        # Pool only for an explicitly process-agnostic report. Sparse or unseen
+        # processes must not become "validated" using another process's quotes.
+        residuals = self._pooled if process is None else self._by_proc.get(process, [])
+        if len(residuals) >= MIN_RESIDUALS:
+            return residuals, self.from_real, len(residuals)
+        return None, self.from_real, len(residuals)
 
     def interval(self, point_usd: float, process: Optional[str] = None,
                  assumption_band_pct: float = 40.0, level: float = 0.80) -> ConfidenceInterval:
@@ -687,7 +706,7 @@ def build_report(loop: LoopResult, *, title_suffix: str = "") -> str:
     L.append("|---------|-------:|-----------:|")
     for p, fac in sorted(loop.calibration.process_factors.items()):
         L.append(f"| {p} | ×{fac:.3f} | {loop.calibration.n_by_process.get(p, 0)} |")
-    L.append(f"| _(global fallback)_ | ×{loop.calibration.global_factor:.3f} | — |")
+    L.append("| _(unrepresented process)_ | ×1.000 | — |")
     L.append("")
 
     # ---- held-out vs tuning (no-overfit evidence) ----

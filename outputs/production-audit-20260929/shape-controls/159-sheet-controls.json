@@ -1,0 +1,40 @@
+[
+  {
+    "filename": "159-sheet-30x20x0.4.step",
+    "thickness_mm": 0.4,
+    "volume_mm3": 240.0,
+    "source_sha256": "7a5bcd3db5067e6188d33a66b4385935174b211769d8b1bd8bd9600806205d0f"
+  },
+  {
+    "filename": "159-sheet-30x20x0.5.step",
+    "thickness_mm": 0.5,
+    "volume_mm3": 300.0,
+    "source_sha256": "45aee922a148dc18e2cc551fa42cb7d2ae8a3a0e6619a74dbeea324ef21c6075"
+  },
+  {
+    "filename": "159-sheet-30x20x6.step",
+    "thickness_mm": 6.0,
+    "volume_mm3": 3600.0,
+    "source_sha256": "1b86564697a45d2fc7ff2b9ad31ddd31380db9c542209d54104e72f7c94d1367"
+  },
+  {
+    "filename": "159-sheet-30x20x7.step",
+    "thickness_mm": 7.0,
+    "volume_mm3": 4200.0,
+    "source_sha256": "512d6689a81dd3cd8c8ba5facac671a6852373aa3c34f87b2b9829e269828d84"
+  },
+  {
+    "filename": "159-sheet-translated-0.5.step",
+    "thickness_mm": 0.5,
+    "z_translation_mm": 511.8,
+    "volume_mm3": 300.0,
+    "source_sha256": "03cb682ae7686b84d54d95c9bb8fe01c67556ac9d051e01aacefa27702daa18f"
+  },
+  {
+    "filename": "159-sheet-translated-6.step",
+    "thickness_mm": 6.0,
+    "z_translation_mm": 253.1,
+    "volume_mm3": 3600.0,
+    "source_sha256": "b2d58ef57770b5e8c2bd03d0c45e25ba3e6a017211ac00da27ccaa4a3af57117"
+  }
+]

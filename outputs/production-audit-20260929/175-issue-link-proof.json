@@ -1,0 +1,169 @@
+{
+  "scope": "Issue-link restoration and New part selection reset",
+  "root_cause": "New part cleared React selection but left the issue query parameter. Positional code/region keys can also be reassigned when earlier same-code findings disappear. Link restoration trusted only that key and had no geometry or evidence binding.",
+  "fix": "Reuse clearPinpoint on reset and clear both issue parameters and pending state. Compute a native SHA-256 digest of the analysis mesh hash and canonical grouped finding evidence once per completed DFM response. Write that digest beside the selected issue key. Restore only when both evidence and key match; otherwise clear selection and explain the mismatch. Missing digest support leaves local analysis/selection available and withholds an unverified share link.",
+  "native": {
+    "legacyWithoutEvidenceRejected": true,
+    "newPartClearsUrlAndSelection": true,
+    "matchingGeometryAndFindingsRestored": true,
+    "wrongStepGeometryRejected": true,
+    "sameGeometryChangedFindingRejected": true,
+    "sourceStep": "165-stock-bar-aligned.step",
+    "differentStep": "156-plate-with-boss.step",
+    "verifiedIssueUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "changedFindingTestUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=b261b2f54fdef4b9a16e7c903c0794305cfb736b5642b7149ce6307b7e791f87",
+    "readyPreviews": true
+  },
+  "checks": {
+    "focused_passed": 24,
+    "full_frontend_passed": 525,
+    "typecheck": "pass",
+    "changed_source_lint": "pass, zero warnings",
+    "production_build": "pass",
+    "backend_unchanged": true,
+    "engine_version": "0.3.38",
+    "historical_results_unchanged": {
+      "analyses": 128,
+      "cost_decisions": 137
+    },
+    "existing_control_costs_unchanged": [
+      5918,
+      5919,
+      5920,
+      5921
+    ],
+    "frontend_duration_ms": 616.702667
+  },
+  "historical_case": {
+    "old_analysis": 1696,
+    "current_analysis": 1719,
+    "analysis_mesh_hash": "fd89b62af571c5d5e682297aa5123e04c9f4aa8d56690cda130efaa675569ed1",
+    "key": "INSUFFICIENT_DRAFT|faces:2",
+    "old_processes": [
+      "investment_casting"
+    ],
+    "current_processes_at_same_key": [
+      "sand_casting"
+    ],
+    "old_evidence": "b261b2f54fdef4b9a16e7c903c0794305cfb736b5642b7149ce6307b7e791f87",
+    "current_evidence": "4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "old_link": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=b261b2f54fdef4b9a16e7c903c0794305cfb736b5642b7149ce6307b7e791f87"
+  },
+  "limits": [
+    "Legacy links without evidence metadata cannot safely identify their original part or finding. They explain the mismatch and require selecting the finding again.",
+    "The fingerprint compares geometry and finding evidence; it is not server authorization, a digital signature or stored CAD.",
+    "Alternate stage-layout native verification, system clipboard delivery, external services, remaining physical accuracy, image security and approved production rollout remain open."
+  ],
+  "ci": {
+    "run_id": 36836510511,
+    "head": "6edd51360587e451ce3d2c4877fa7e3d7b83efab",
+    "status": "in_progress",
+    "jobs": [
+      {
+        "name": "Backend Tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Frontend Build & Lint",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Commit hook integrity policy",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Every /api/v1 route calls require_api_key",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Trap Corpus Gate",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Auth material never appears in captured Sentry payload",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Browser E2E (human + enterprise)",
+        "status": "in_progress",
+        "conclusion": ""
+      },
+      {
+        "name": "Container Images & Deploy Config Proof",
+        "status": "completed",
+        "conclusion": "failure"
+      }
+    ],
+    "covers_173_175": false
+  },
+  "release": "Local fix; PR107 remains draft and undeployed, recorded production09555c1. Preserve active CI before publishing173\u2013175.",
+  "files": [
+    {
+      "path": "175-source-before.txt",
+      "sha256": "f8fb6e49ca0437c11946209bbf50bc7cade5ce4c14fc8cab0080059c42447192"
+    },
+    {
+      "path": "175-wrong-part-before.txt",
+      "sha256": "aa061cbbe8d3080b54416e10162e7fc284489d863d99cb8a0bc99c5320ed93b4"
+    },
+    {
+      "path": "175-reset-before.json",
+      "sha256": "a53ea6cb0113f96198dd541cca511a22ba4c68b059768f3a926782b7bf2a42b1"
+    },
+    {
+      "path": "175-selection-before.png",
+      "sha256": "0de5a393283fbf97f266bbd1ab7f20ecb07685c971f36503b2b84160327cdd60"
+    },
+    {
+      "path": "175-legacy-rejected.txt",
+      "sha256": "72750e112a3de17f3d99419689e62e13ea16b6c83f3f451cb78ffe830ee48a62"
+    },
+    {
+      "path": "175-reset-after.json",
+      "sha256": "7224eba68aa9e2f8338ea84fb41f4250cb9fcf55bf1eeb73fb6f12af6d43653a"
+    },
+    {
+      "path": "175-new-part-after.txt",
+      "sha256": "8949c43497df792072f720038fd203b946f4ca5c44d6a0cb7742bf6324eb21ef"
+    },
+    {
+      "path": "175-valid-restored.txt",
+      "sha256": "348c9e16ff0638a93542a04e07404f80dccb6c69fc7d51dfc8f9c04fa111f694"
+    },
+    {
+      "path": "175-wrong-source-rejected.txt",
+      "sha256": "98091342ed909d4d775c7b3a3c90bd6f867ac49896d5760370a277f1c25c7994"
+    },
+    {
+      "path": "175-selection-after.png",
+      "sha256": "9f946a500d00ce4f9a9af4478995a71dc7d4923460b1abdee47cd3f590d1242a"
+    },
+    {
+      "path": "175-analysis-change-link.json",
+      "sha256": "b285bce8105f88b896ee666de6e260e15286fa9ec3d83cfa4659110fdabd42d6"
+    },
+    {
+      "path": "175-changed-findings-rejected.txt",
+      "sha256": "72750e112a3de17f3d99419689e62e13ea16b6c83f3f451cb78ffe830ee48a62"
+    },
+    {
+      "path": "175-native-checks.json",
+      "sha256": "4b716011617f5f52d57f2cc88632d9226a257a9e745dd462cc8247d1c434cc28"
+    },
+    {
+      "path": "175-saved-readback.json",
+      "sha256": "c094b542bb56a123c4fe573e7c77463b18d2469f86c563de9a33e94dd00934f0"
+    }
+  ]
+}

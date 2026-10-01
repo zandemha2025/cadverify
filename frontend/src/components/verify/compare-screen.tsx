@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * COMPARE — the same part, two questions: which calibration, and which route.
+ * COMPARE — two saved decisions and their route options.
  * Real GET /api/v1/cost-decisions/compare?ids=a,b (engine-computed structured
  * diff) for the deltas + crossover, plus each decision's /cost-decisions/{id}
  * detail for the honest confidence band on every figure (the compare endpoint
@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { fractionToQty, qtyToFraction, nearestQty, makeNowEstimate } from "@/lib/verify/derive";
+import { crossoverSummary, recommendationForQty, recommendedQuantities } from "@/lib/cost-decision";
 import { Kicker, ProvChip, GhostButton, EmptyState, Spinner } from "./primitives";
 
 /* ---- band lookup: process → qty → {pct, validated, n} from a detail report --- */
@@ -32,6 +33,7 @@ interface Band {
   pct: number | null;
   validated: boolean;
   n: number;
+  condition: "environment excluded" | "requires redesign" | null;
 }
 function bandIndex(detail: CostDecisionDetail | null): Map<string, Map<number, Band>> {
   const idx = new Map<string, Map<number, Band>>();
@@ -42,6 +44,7 @@ function bandIndex(detail: CostDecisionDetail | null): Map<string, Map<number, B
       pct: Number.isFinite(e.est_error_band_pct) ? e.est_error_band_pct : null,
       validated: e.confidence?.validated ?? false,
       n: e.confidence?.n_samples ?? 0,
+      condition: e.environment_excluded ? "environment excluded" : e.dfm_ready === false ? "requires redesign" : null,
     });
     idx.set(e.process, inner);
   }
@@ -57,9 +60,15 @@ function bandText(b: Band | null): string {
   return b.validated ? `±${Math.round(b.pct)}% validated` : `±${Math.round(b.pct)}% n=${b.n}`;
 }
 
-export function CompareScreen({ nav }: { nav: (s: string) => void }) {
+export function CompareScreen({ nav, initialRecordId }: {
+  nav: (s: string) => void;
+  initialRecordId: string | null;
+}) {
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [retryList, setRetryList] = useState(0);
   const [idA, setIdA] = useState<string | null>(null);
   const [idB, setIdB] = useState<string | null>(null);
 
@@ -76,30 +85,69 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
 
   // 1) the record picker — the org's own saved decisions (most recent first).
   useEffect(() => {
-    fetchCostDecisions({ limit: 100 }).then(
-      (page) => {
-        setRecords(page.cost_decisions);
-        if (page.cost_decisions.length >= 2) {
-          setIdA(page.cost_decisions[0].id);
-          setIdB(page.cost_decisions[1].id);
+    let cancelled = false;
+    setRecords(null);
+    setListErr(null);
+    setIdA(null);
+    setIdB(null);
+    void (async () => {
+      try {
+        const page = await fetchCostDecisions({ limit: 100 });
+        const records = [...page.cost_decisions];
+        let selected = initialRecordId ? records.find((r) => r.id === initialRecordId) : records[0];
+        if (initialRecordId && !selected) {
+          selected = await fetchCostDecision(initialRecordId);
+          records.push(selected);
         }
-      },
-      (e) => {
+        let other = records.find((r) => r.id !== selected?.id && selected?.mesh_hash && r.mesh_hash === selected.mesh_hash);
+        if (selected?.mesh_hash && !other && page.has_more) {
+          const samePart = await fetchCostDecisions({ meshHash: selected.mesh_hash, limit: 2 });
+          other = samePart.cost_decisions.find((r) => r.id !== selected?.id && r.mesh_hash === selected?.mesh_hash);
+          if (other && !records.some((r) => r.id === other?.id)) records.push(other);
+        }
+        if (cancelled) return;
+        setRecords(records);
+        setNextCursor(page.has_more ? page.next_cursor : null);
+        if (selected) {
+          other ??= records.find((r) => r.id !== selected.id);
+          setIdA(selected.id);
+          setIdB(other?.id ?? null);
+        }
+      } catch (e) {
+        if (cancelled) return;
         setRecords([]);
+        setNextCursor(null);
         setListErr(e instanceof Error ? e.message : "Could not load records");
       }
-    );
-  }, []);
+    })();
+    return () => { cancelled = true; };
+  }, [initialRecordId, retryList]);
+
+  const loadOlder = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setListErr(null);
+    try {
+      const page = await fetchCostDecisions({ cursor: nextCursor, limit: 100 });
+      setRecords((prev) => [...(prev ?? []), ...page.cost_decisions.filter((r) => !prev?.some((p) => p.id === r.id))]);
+      setNextCursor(page.has_more ? page.next_cursor : null);
+    } catch (e) {
+      setListErr(e instanceof Error ? e.message : "Could not load older records");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // 2) load the engine-computed diff + both details whenever the pair changes.
   useEffect(() => {
+    const seq = ++reqRef.current;
     if (!idA || !idB || idA === idB) {
       setCmp(null);
       setDetA(null);
       setDetB(null);
+      setLoading(false);
       return;
     }
-    const seq = ++reqRef.current;
     setLoading(true);
     setCmpErr(null);
     Promise.all([
@@ -124,6 +172,7 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
         setLoading(false);
       }
     );
+    return () => { reqRef.current++; };
   }, [idA, idB]);
 
   const idxA = useMemo(() => bandIndex(detA), [detA]);
@@ -151,7 +200,15 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
       </Frame>
     );
   }
-  if (records.length < 2) {
+  if (records.length === 0 && listErr) {
+    return (
+      <Frame nav={nav}>
+        <p role="alert">Could not load the selected comparison — {listErr}</p>
+        <GhostButton onClick={() => setRetryList((n) => n + 1)}>Retry records</GhostButton>
+      </Frame>
+    );
+  }
+  if (records.length < 2 && !nextCursor) {
     return (
       <Frame>
         <div style={{ marginTop: 24, maxWidth: 640 }}>
@@ -182,12 +239,18 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
       {/* the pair picker — real records, A vs B */}
       <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, maxWidth: 1100 }}>
         <Kicker color={C.ink45}>PICK TWO RECORDS</Kicker>
-        <RecordSelect label="A" value={idA} onChange={setIdA} records={records} disabledId={idB} />
+        <RecordSelect label="A" value={idA} onChange={(id) => { setIdA(id); setListErr(null); }} records={records} disabledId={idB} />
         <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink40 }}>vs</span>
         <RecordSelect label="B" value={idB} onChange={setIdB} records={records} disabledId={idA} />
+        {nextCursor && (
+          <GhostButton disabled={loadingMore} onClick={loadOlder}>
+            {loadingMore ? "Loading records…" : "Load older records"}
+          </GhostButton>
+        )}
       </div>
 
-      {idA === idB && (
+      {listErr && <p role="alert" style={{ margin: "14px 0 0", fontSize: 12, color: C.cond }}>{listErr}</p>}
+      {idA && idA === idB && (
         <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.cond }}>
           pick two different records — a decision compared to itself has no delta.
         </p>
@@ -196,7 +259,7 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
       {loading && <div style={{ marginTop: 20 }}><Spinner label="building the comparison…" /></div>}
 
       {cmp && detA && detB && !loading && (
-        <div style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+        <div style={{ marginTop: 22, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 16, maxWidth: 1100, alignItems: "start", overflowWrap: "anywhere" }}>
           <CalibrationPanel
             cmp={cmp}
             detA={detA}
@@ -210,7 +273,7 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
             onQty={setQty}
           />
           <RoutePanel
-            cmp={cmp}
+            detail={routeSide === "a" ? detA : detB}
             idxA={idxA}
             idxB={idxB}
             labelA={labelOf(idA)}
@@ -235,7 +298,7 @@ function Frame({ children, nav }: { children: React.ReactNode; nav?: (s: string)
       )}
       <h1 style={{ margin: nav ? "14px 0 0" : 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>Compare</h1>
       <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
-        Same part, two questions: which calibration, and which route. Every figure is the engine&apos;s — banded, never fake-exact.
+        Compare saved decisions at shared quantities, then inspect each decision&apos;s route options.
       </p>
       {children}
     </main>
@@ -256,16 +319,18 @@ function RecordSelect({
   disabledId: string | null;
 }) {
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+    <label style={{ display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%", minWidth: 0 }}>
       <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink50 }}>{label}</span>
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        style={{ maxWidth: 300, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, cursor: "pointer" }}
+        style={{ maxWidth: 300, minWidth: 0, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, cursor: "pointer" }}
       >
+        <option value="" disabled>Choose a record</option>
         {records.map((r) => (
           <option key={r.id} value={r.id} disabled={r.id === disabledId}>
             {(r.label || r.filename)}{r.make_now_process ? ` · ${procLabel(r.make_now_process)}` : ""}
+            {` · ${new Date(r.created_at).toLocaleString()} · #${r.id.slice(-6)}`}
           </option>
         ))}
       </select>
@@ -323,9 +388,9 @@ function CalibrationPanel({
   const divergent = useMemo(() => topDivergentDriver(detA, detB, q ?? undefined), [detA, detB, q]);
 
   return (
-    <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+    <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Kicker color={C.ink45}>CALIBRATION VS CALIBRATION</Kicker>
+        <Kicker color={C.ink45}>DECISION VS DECISION</Kicker>
         {sharedQtys.length > 0 ? (
           <div style={{ marginLeft: "auto", display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
             {sharedQtys.map((sq) => (
@@ -344,24 +409,34 @@ function CalibrationPanel({
         )}
       </div>
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{labelA} vs {labelB} · QTY {q != null ? NUM(q) : "—"}</p>
-
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink40, paddingBottom: 8, borderBottom: `1px solid ${C.hair2}` }}>
-        <span>PROCESS</span><span style={{ textAlign: "right" }}>A</span><span style={{ textAlign: "right" }}>B</span><span style={{ textAlign: "right" }}>Δ</span>
-      </div>
-      {rows.length === 0 ? (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>no per-process figures at this quantity.</p>
-      ) : (
-        rows.map((r) => (
-          <div key={r.p} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, padding: "10px 0", borderBottom: `1px solid #f0f0f3`, fontFamily: MONO, fontSize: 11.5, alignItems: "baseline" }}>
-            <span style={{ color: C.ink }}>{procLabel(r.p)}</span>
-            <Figure cost={r.a} band={r.bandA} />
-            <Figure cost={r.b} band={r.bandB} />
-            <span style={{ textAlign: "right", color: r.delta == null ? C.ink35 : r.delta < 0 ? C.pass : C.shop }}>
-              {r.delta == null ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta}%`}
-            </span>
-          </div>
-        ))
+      {detA.mesh_hash !== detB.mesh_hash && (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: C.cond }}>
+          Different CAD inputs. Price differences may reflect geometry as well as costing inputs.
+        </p>
       )}
+
+      <div role="region" aria-label="Per-process cost comparison" tabIndex={0} style={{ overflowX: "auto" }}>
+        <div style={{ minWidth: 340 }}>
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink40, paddingBottom: 8, borderBottom: `1px solid ${C.hair2}` }}>
+            <span>PROCESS</span><span style={{ textAlign: "right" }}>A</span><span style={{ textAlign: "right" }}>B</span><span style={{ textAlign: "right" }}>Δ</span>
+          </div>
+          {rows.length === 0 ? (
+            <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>no per-process figures at this quantity.</p>
+          ) : (
+            rows.map((r) => (
+              <div key={r.p} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, padding: "10px 0", borderBottom: `1px solid #f0f0f3`, fontFamily: MONO, fontSize: 11.5, alignItems: "baseline" }}>
+                <span style={{ color: C.ink }}>{procLabel(r.p)}</span>
+                <Figure cost={r.a} band={r.bandA} />
+                <Figure cost={r.b} band={r.bandB} />
+                <span style={{ textAlign: "right", color: r.delta == null ? C.ink35 : r.delta < 0 ? C.pass : C.shop }}>
+                  {r.delta == null ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta}%`}
+                </span>
+              </div>
+            ))
+          )}
+
+        </div>
+      </div>
 
       {recRow && recRow.delta_pct != null && (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
@@ -372,14 +447,14 @@ function CalibrationPanel({
 
       {divergent ? (
         <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.shop, display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 6 }}>
-          divergent driver: {divergent.label} {NUM(divergent.aVal)}{divergent.unit ? ` ${divergent.unit}` : ""}
+          largest relative driver difference: {divergent.label} {NUM(divergent.aVal)}{divergent.unit ? ` ${divergent.unit}` : ""}
           <ProvChip p={divergent.aProv} /> vs {NUM(divergent.bVal)}{divergent.unit ? ` ${divergent.unit}` : ""}
-          <ProvChip p={divergent.bProv} /> — the rest track within noise
+          <ProvChip p={divergent.bProv} />
         </p>
       ) : (
-        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>drivers track closely across both — the gap is mostly quantity effects</p>
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>No comparable driver difference above 5% was identified.</p>
       )}
-      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>negotiate the driver, not the total</p>
+      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>Other drivers may also differ. Review each saved decision before attributing the price change.</p>
     </section>
   );
 }
@@ -391,13 +466,14 @@ function Figure({ cost, band }: { cost: number | null; band: Band | null }) {
     <span style={{ textAlign: "right", color: C.ink70, display: "inline-flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.35 }}>
       <span>{USD(cost)}</span>
       <span style={{ fontSize: 9.5, color: band?.validated ? C.pass : C.cond }}>{bandText(band)}</span>
+      {band?.condition && <span style={{ fontSize: 9.5, color: C.cond }}>{band.condition}</span>}
     </span>
   );
 }
 
 /* ============================== PANEL 2 — routes =========================== */
 function RoutePanel({
-  cmp,
+  detail,
   idxA,
   idxB,
   labelA,
@@ -407,7 +483,7 @@ function RoutePanel({
   scrubFrac,
   onScrub,
 }: {
-  cmp: CostComparison;
+  detail: CostDecisionDetail;
   idxA: Map<string, Map<number, Band>>;
   idxB: Map<string, Map<number, Band>>;
   labelA: string;
@@ -417,15 +493,20 @@ function RoutePanel({
   scrubFrac: number;
   onScrub: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
-  const sideIdx = side === "a" ? 0 : 1;
   const idx = side === "a" ? idxA : idxB;
-  const makeProc = cmp.diff.make_now_process[sideIdx];
-  const toolProc = cmp.diff.tooling_process[sideIdx];
-  const crossover = cmp.diff.crossover_qty[sideIdx];
-  const costs = side === "a" ? cmp.unit_costs_by_process.a : cmp.unit_costs_by_process.b;
+  const report = detail.result;
+  const decision = report.decision;
+  const toolProc = decision?.tooling_process;
+  const crossover = decision?.crossover_qty;
 
-  const makeCurve = useMemo(() => toPoints(makeProc ? costs[makeProc] : undefined), [costs, makeProc]);
-  const toolCurve = useMemo(() => toPoints(toolProc ? costs[toolProc] : undefined), [costs, toolProc]);
+  const makeCurve = useMemo(() => recommendedQuantities(decision).flatMap((q) => {
+    const recommendation = recommendationForQty(decision, q);
+    return recommendation ? [{ q, c: recommendation.unit_cost_usd }] : [];
+  }), [decision]);
+  const toolCurve = useMemo(() => report.estimates
+    .filter((e) => e.process === toolProc && !e.environment_excluded)
+    .map((e) => ({ q: e.quantity, c: e.unit_cost_usd }))
+    .sort((a, b) => a.q - b.q), [report.estimates, toolProc]);
 
   const quantities = useMemo(() => {
     const s = new Set<number>([...makeCurve.map((p) => p.q), ...toolCurve.map((p) => p.q)]);
@@ -443,7 +524,7 @@ function RoutePanel({
   );
 
   const header = (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       <Kicker color={C.ink45}>ROUTE VS ROUTE</Kicker>
       {sideToggle}
     </div>
@@ -454,14 +535,14 @@ function RoutePanel({
   // No acquire/tooling alternative → honest: nothing crosses over.
   if (!toolProc || toolCurve.length === 0 || makeCurve.length === 0) {
     return (
-      <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+      <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
         {header}
         <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{label}</p>
         <div style={{ marginTop: 16, border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "22px 18px", textAlign: "center" }}>
-          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>No acquire route to cross over.</p>
+          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>No route comparison available.</p>
           <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink50 }}>
-            The engine offers make-now {makeProc ? `(${procLabel(makeProc)})` : ""} only for this decision — there is no
-            tooling/acquisition route, so no crossover is computed. It is withheld, not invented.
+            This record needs both a recommended no-tooling estimate and a tooling estimate.
+            Missing values are withheld.
           </p>
         </div>
       </section>
@@ -478,6 +559,7 @@ function RoutePanel({
   const pathOf = (pts: { q: number; c: number }[]) => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xOf(p.q).toFixed(1)} ${yOf(p.c).toFixed(1)}`).join(" ");
 
   const snapQty = nearestQty(quantities, fractionToQty(scrubFrac, minQ, maxQ));
+  const makeProc = recommendationForQty(decision, snapQty)?.process ?? null;
   const makeAt = makeCurve.find((p) => p.q === snapQty)?.c ?? null;
   const toolAt = toolCurve.find((p) => p.q === snapQty)?.c ?? null;
   const makeBand = bandFor(idx, makeProc, snapQty);
@@ -489,15 +571,15 @@ function RoutePanel({
       ? "one route has no figure at this qty"
       : makeWins
       ? `make-now ${procLabel(makeProc)} is cheaper here`
-      : `acquire ${procLabel(toolProc)} is cheaper here`;
+      : `acquire ${procLabel(toolProc)} is cheaper here${decision?.tooling_dfm_ready ? "" : "; requires redesign"}`;
 
   const crossX = crossover != null && crossover >= minQ && crossover <= maxQ ? xOf(crossover) : null;
 
   return (
-    <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+    <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       {header}
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-        {label} · <span style={{ color: C.pass }}>{procLabel(makeProc)}</span> (make-now) vs <span style={{ color: C.cond }}>{procLabel(toolProc)}</span> (acquire)
+        {label} · <span style={{ color: C.pass }}>{procLabel(makeProc)}</span> (make-now) vs <span style={{ color: C.cond }}>{procLabel(toolProc)}</span> (acquire{decision?.tooling_dfm_ready ? "" : "; requires redesign"})
       </p>
 
       <svg viewBox="0 0 360 150" style={{ width: "100%", display: "block", marginTop: 14 }}>
@@ -533,19 +615,14 @@ function RoutePanel({
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
         the scrub snaps to computed quantities — costs between engine points are not interpolated
       </p>
+      <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink55 }}>
+        {crossoverSummary(decision)}
+      </p>
     </section>
   );
 }
 
 /* ------------------------------ pure helpers ------------------------------- */
-function toPoints(byQty: Record<string, number> | undefined): { q: number; c: number }[] {
-  if (!byQty) return [];
-  return Object.entries(byQty)
-    .map(([k, v]) => ({ q: Number(k), c: v }))
-    .filter((p) => Number.isFinite(p.q) && p.c != null && Number.isFinite(p.c))
-    .sort((a, b) => a.q - b.q);
-}
-
 interface DivergentDriver {
   label: string;
   unit: string;
@@ -566,7 +643,7 @@ function topDivergentDriver(
   if (!ea || !eb) return null;
   const bMap = new Map(eb.drivers.map((d) => [d.name, d]));
   let best: DivergentDriver | null = null;
-  let bestRel = 0.05; // ignore sub-5% noise
+  let bestRel = 0.05; // display threshold, not a claim about statistical noise
   for (const da of ea.drivers) {
     const db = bMap.get(da.name);
     if (!db) continue;

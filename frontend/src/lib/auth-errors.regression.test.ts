@@ -16,6 +16,7 @@ test("auth failures distinguish outages and throttling from rejected credentials
   }
   assert.equal(authErrorMessage(403, { detail: "Password sign-in is disabled." }, "Failed"), "Password sign-in is disabled.");
   assert.equal(authErrorMessage(422, { detail: [{ msg: "Enter a valid email." }] }, "Failed"), "Enter a valid email.");
+  assert.equal(authErrorMessage(422, { detail: [{ type: "string_too_long", loc: ["body", "password"], msg: "String should have at most 128 characters" }] }, "Failed"), "String should have at most 128 characters");
   assert.equal(authErrorMessage(400, { detail: { message: { malformed: true } } }, "Failed"), "Failed");
   assert.equal(authErrorMessage(503, { detail: { message: "Authentication is temporarily unavailable." } }, "Failed"), "Authentication is temporarily unavailable.");
 });

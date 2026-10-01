@@ -1,0 +1,12 @@
+{
+  "legacyWithoutEvidenceRejected": true,
+  "newPartClearsUrlAndSelection": true,
+  "matchingGeometryAndFindingsRestored": true,
+  "wrongStepGeometryRejected": true,
+  "sameGeometryChangedFindingRejected": true,
+  "sourceStep": "165-stock-bar-aligned.step",
+  "differentStep": "156-plate-with-boss.step",
+  "verifiedIssueUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+  "changedFindingTestUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=b261b2f54fdef4b9a16e7c903c0794305cfb736b5642b7149ce6307b7e791f87",
+  "readyPreviews": true
+}

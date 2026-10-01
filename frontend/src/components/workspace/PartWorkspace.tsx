@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueValue } from "@/lib/inspection-bind";
+
 /**
  * PartWorkspace — the L2 DECISION object frame (the re-founded home of the
  * single-part loop). A CAD drop runs the full should-cost decision + the DFM
@@ -37,8 +39,8 @@ import {
   type ShopProfileInfo,
   type ValidationResult,
 } from "@/lib/api";
-import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import { parseCalibration, makeNowStableEstimate } from "@/lib/cost-views";
+import { severityLabel, severityTone, verdictLabel, procLabel } from "@/lib/status";
+import { buildAnswerSummary, parseCalibration, workspaceSelection } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
@@ -71,7 +73,8 @@ import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/gl
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
 import { STAGE_UI } from "@/lib/stage-flag";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
-import { groupForIssueKey, groupPinpointIssues } from "@/lib/pinpoint-groups";
+import { groupForIssueKey, groupPinpointIssues, pinpointLinkEvidence } from "@/lib/pinpoint-groups";
+import { highestPriorityIssue, issueProcesses } from "@/lib/dfm-scope";
 
 /* PartHero (~1900 lines, stage-only) is code-split into its own lazy chunk so a
    flag-off build never ships it in the main bundle: it is rendered solely from
@@ -155,12 +158,15 @@ export default function PartWorkspace({
 }) {
   const [file, setFile] = useState<File | null>(initialFile ?? null);
   const [opts, setOpts] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
+  const [submittedOptions, setSubmittedOptions] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
   const [role, setRole] = useState<RoleId>(defaultRole);
   const [tab, setTab] = useState<WorkTab>(() => landingTab(defaultRole));
   const [inspectorOpen, setInspectorOpen] = useState(() => defaultRole === "cost");
 
   // cost state
   const [report, setReport] = useState<CostReport | null>(null);
+  const [quantityPosition, setQuantityPosition] = useState<{ report: CostReport; position: number } | null>(null);
+  const reportOptionsRef = useRef<CostOptions | null>(null);
   const [assumptions, setAssumptions] = useState<CostAssumption[]>([]);
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
@@ -173,13 +179,11 @@ export default function PartWorkspace({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [dfmLoading, setDfmLoading] = useState(false);
   const [dfmError, setDfmError] = useState<string | null>(null);
-  // Both analysis requests share one parse but have separate HTTP lifecycles. A
-  // canonical /validate 4xx outranks a sibling transport exception.
-  const dfmTerminalFailureRef = useRef<string | null>(null);
   const analysisAttemptRef = useRef(0);
 
   // analyze ↔ geometry linking
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
+  const [issueLinkEvidence, setIssueLinkEvidence] = useState<string | null>(null);
   const [pendingIssueLink, setPendingIssueLink] = useState<string | null>(null);
   useEffect(() => {
     setPendingIssueLink(new URLSearchParams(window.location.search).get("issue"));
@@ -192,6 +196,14 @@ export default function PartWorkspace({
 
   const activeRole = roleById(role);
   const { setPart } = useInstrumentChrome();
+  const selection = useMemo(() => workspaceSelection(report, validation,
+    quantityPosition?.report === report ? quantityPosition?.position : undefined),
+  [report, validation, quantityPosition]);
+  const workspaceDfm = selection.dfm;
+  const workspaceVerdict = geomError ? "fail" : workspaceDfm.verdict;
+  const onPositionChange = useCallback((position: number) => {
+    if (report) setQuantityPosition({ report, position });
+  }, [report]);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,7 +245,6 @@ export default function PartWorkspace({
   const pinpointOverlays = useMemo<PinpointOverlay[]>(() => {
     if (!validation || !selectedGroup) return [];
     const issue = selectedGroup.issue;
-    const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
     const measured = issue.measured_value;
     return [{
       key: selectedGroup.key,
@@ -241,8 +252,8 @@ export default function PartWorkspace({
       severity: selectedGroup.severity,
       faces: selectedGroup.faces,
       regionCenter: selectedGroup.regionCenter,
-      valueLabel: measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`,
-      requiredLabel: issue.required_value == null ? null : `${Number(issue.required_value.toFixed(3))}${units}`,
+      valueLabel: measured == null ? issue.code : formatIssueValue(issue),
+      requiredLabel: issue.required_value == null ? null : formatIssueValue(issue, "required_value"),
       markerLabel: "",
       suggestion: issue.fix_suggestion ?? issue.message,
       color: selectedGroup.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
@@ -254,9 +265,11 @@ export default function PartWorkspace({
 
   const clearPinpoint = useCallback(() => {
     setSelectedIssueKey(null);
+    setPendingIssueLink(null);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.delete("issue");
+      url.searchParams.delete("issue_evidence");
       window.history.replaceState(window.history.state, "", url);
     }
   }, []);
@@ -270,10 +283,17 @@ export default function PartWorkspace({
     setTab("routing");
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      url.searchParams.set("issue", key);
+      if (issueLinkEvidence) {
+        url.searchParams.set("issue", key);
+        url.searchParams.set("issue_evidence", issueLinkEvidence);
+      } else {
+        url.searchParams.delete("issue");
+        url.searchParams.delete("issue_evidence");
+        toast("A shareable issue link is unavailable for this analysis.");
+      }
       window.history.replaceState(window.history.state, "", url);
     }
-  }, [clearPinpoint, selectedIssueKey]);
+  }, [clearPinpoint, selectedIssueKey, issueLinkEvidence]);
 
   const selectGroupAt = useCallback((index: number) => {
     const count = pinpointGroups.length;
@@ -282,8 +302,12 @@ export default function PartWorkspace({
   }, [pinpointGroups, selectPinpoint]);
 
   useEffect(() => {
-    if (!selectedGroup) return;
+    if (!selectedGroup || tab !== "routing" || STAGE_UI) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement | null;
+      if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey
+          || event.altKey || event.shiftKey || element?.isContentEditable
+          || element?.closest?.('input, textarea, select, [role="slider"], [role="spinbutton"], [role="combobox"], [role="listbox"], [role="menu"], [role="dialog"], [role="tablist"]')) return;
       if (event.key === "Escape") {
         event.preventDefault();
         clearPinpoint();
@@ -297,32 +321,30 @@ export default function PartWorkspace({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearPinpoint, selectGroupAt, selectedGroup, selectedIndex]);
+  }, [clearPinpoint, selectGroupAt, selectedGroup, selectedIndex, tab]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || pinpointGroups.length === 0) return;
-    const linked = new URLSearchParams(window.location.search).get("issue");
-    if (linked && pinpointGroups.some((group) => group.key === linked)) {
+    if (typeof window === "undefined" || !validation) return;
+    const params = new URLSearchParams(window.location.search);
+    const linked = params.get("issue");
+    if (!linked) return;
+    if (issueLinkEvidence && params.get("issue_evidence") === issueLinkEvidence
+        && pinpointGroups.some((group) => group.key === linked)) {
       setSelectedIssueKey(linked);
+      setTab("routing");
+    } else {
+      clearPinpoint();
+      toast("This issue link does not match the current geometry and findings. Select a finding to create a new link.");
     }
-  }, [pinpointGroups]);
+  }, [pinpointGroups, validation, issueLinkEvidence, clearPinpoint]);
 
   const calibration = useMemo(
     () => (report ? parseCalibration({ ...report, assumptions }) : null),
     [report, assumptions]
   );
 
-  // the resident Inspector anchors to the Decision's make-now recommendation —
-  // the number the whole frame is about — and traces it to its governed sources.
-  const inspectorEstimate = useMemo(() => {
-    if (!report?.decision) return null;
-    // Anchor to the make-now route's STABLE (largest, setup-amortized) quantity —
-    // the reading the should-cost headline shows — so the Inspector's drivers
-    // reconcile to the SAME qty's unit cost. (F5: this used pickEstimate() with no
-    // qty, which returns the FIRST/smallest-qty estimate and disagreed with the
-    // headline — drivers @qty 100 under a headline @qty 10,000.)
-    return makeNowStableEstimate(report);
-  }, [report]);
+  // Interpolated prices have no exact driver breakdown; never substitute another quantity.
+  const inspectorEstimate = selection.estimate?.quantity === selection.quantity ? selection.estimate : null;
   const overrideKeys = useMemo(() => Object.keys(opts.overrides ?? {}), [opts.overrides]);
 
   const setOpt = useCallback(
@@ -342,9 +364,9 @@ export default function PartWorkspace({
   const recostWith = useCallback(
     (next: CostOptions) => {
       setOpts(next);
-      if (file && !validateQty(next.qty)) void runCost(file, next);
+      if (file && !validateQty(next.qty)) runAnalyses(file, next);
     },
-    // runCost is stable (useCallback []); safe.
+    // runAnalyses is stable; all submission paths use the same geometry inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [file]
   );
@@ -381,11 +403,12 @@ export default function PartWorkspace({
   }, [opts, recostWith]);
 
   const onSaveScenario = useCallback(() => {
-    if (!report?.decision) return;
+    const reportOptions = reportOptionsRef.current;
+    if (!report?.decision || !reportOptions) return;
     const firstQty = report.quantities[0];
     const rec = report.decision.recommendation[String(firstQty)];
-    const shopName = shops.find((s) => s.id === opts.shop)?.name;
-    const ovr = Object.keys(opts.overrides ?? {}).length;
+    const shopName = shops.find((s) => s.id === reportOptions.shop)?.name;
+    const ovr = Object.keys(reportOptions.overrides ?? {}).length;
     const label = `${shopName ?? "Generic"}${ovr ? ` · ${ovr} ovr` : ""} · qty ${firstQty.toLocaleString()}`;
     setScenarios((prev) => [
       ...prev,
@@ -394,11 +417,11 @@ export default function PartWorkspace({
         label,
         unitCost: rec?.unit_cost_usd ?? null,
         process: rec?.process ?? report.decision?.make_now_process ?? null,
-        opts,
+        opts: reportOptions,
       },
     ]);
     toast.success("Saved to this session — click it to recall and re-cost.");
-  }, [report, opts, shops]);
+  }, [report, shops]);
 
   const onRecallScenario = useCallback(
     (id: string) => {
@@ -422,16 +445,15 @@ export default function PartWorkspace({
     try {
       const result = await costEstimate(theFile, theOpts);
       if (attempt !== analysisAttemptRef.current) return;
+      // Save the inputs that produced this result, never the editable draft.
+      reportOptionsRef.current = theOpts;
       setReport(result);
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;
       if (err instanceof CostGeometryInvalidError) {
         setGeomError({ reason: err.message, geometry: err.geometry });
       } else {
-        setCostError(
-          dfmTerminalFailureRef.current ??
-            (err instanceof Error ? err.message : "Cost estimate failed."),
-        );
+        setCostError(err instanceof Error ? err.message : "Cost estimate failed.");
       }
     } finally {
       if (attempt === analysisAttemptRef.current) setCostLoading(false);
@@ -447,24 +469,30 @@ export default function PartWorkspace({
     setDfmError(null);
     setValidation(null);
     setSelectedIssueKey(null);
+    setIssueLinkEvidence(null);
     try {
       const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits);
+      const evidence = await pinpointLinkEvidence(groupPinpointIssues(flattenIssues(data)), data.analysis_mesh_hash);
       if (attempt !== analysisAttemptRef.current) return;
+      setIssueLinkEvidence(evidence);
       setValidation(data);
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;
       const message = err instanceof Error ? err.message : "Analysis failed";
-      dfmTerminalFailureRef.current = message;
       setDfmError(message);
-      // /validate is the canonical geometry-analysis response. If it refuses the
-      // upload, end the sibling cost loader and retain this server diagnosis even
-      // when the other streamed request failed at the transport layer.
-      setCostError(message);
-      setCostLoading(false);
     } finally {
       if (attempt === analysisAttemptRef.current) setDfmLoading(false);
     }
   }, []);
+
+  const runAnalyses = useCallback((theFile: File, theOpts: CostOptions) => {
+    // Draft edits must not change the preview or leave DFM on an older scale.
+    // A new submission also invalidates both responses from the previous one.
+    const attempt = ++analysisAttemptRef.current;
+    setSubmittedOptions(theOpts);
+    void runCost(theFile, theOpts, attempt);
+    void runDfm(theFile, theOpts.units, attempt);
+  }, [runCost, runDfm]);
 
   const handleFile = useCallback(
     async (selected: File) => {
@@ -489,14 +517,11 @@ export default function PartWorkspace({
           return;
         }
       }
-      dfmTerminalFailureRef.current = null;
-      const attempt = ++analysisAttemptRef.current;
       setFile(selected);
       setTab(landingTab(role));
-      void runCost(selected, opts, attempt);
-      void runDfm(selected, opts.units, attempt);
+      runAnalyses(selected, opts);
     },
-    [opts, role, runCost, runDfm]
+    [opts, role, runAnalyses]
   );
 
   /* Seed from a caller-provided file (FE-3 part door hands off here). `file`
@@ -514,11 +539,14 @@ export default function PartWorkspace({
 
   const handleRecost = useCallback(() => {
     if (!file || validateQty(opts.qty)) return;
-    void runCost(file, opts);
-    // Source units change geometry, not just price. Re-run DFM from the same
-    // declaration so Routing and Decision can never describe different parts.
-    void runDfm(file, opts.units);
-  }, [file, opts, runCost, runDfm]);
+    runAnalyses(file, opts);
+  }, [file, opts, runAnalyses]);
+
+  const handleRetryCost = useCallback(() => {
+    if (!file) return;
+    void runCost(file, submittedOptions);
+    if (dfmError) void runDfm(file, submittedOptions.units);
+  }, [file, submittedOptions, dfmError, runCost, runDfm]);
 
   const reset = useCallback(() => {
     setFile(null);
@@ -527,14 +555,16 @@ export default function PartWorkspace({
     setCostError(null);
     setValidation(null);
     setDfmError(null);
-    dfmTerminalFailureRef.current = null;
+    setCostLoading(false);
+    setDfmLoading(false);
     ++analysisAttemptRef.current;
-    setSelectedIssueKey(null);
+    clearPinpoint();
+    setIssueLinkEvidence(null);
     setScenarios([]);
     // Part-door mode: hand control back to the door landing instead of showing
     // this workspace's own cold-start dropzone. No-op on flag-off / direct routes.
     onExit?.();
-  }, [onExit]);
+  }, [onExit, clearPinpoint]);
 
   const onFaceClick = useCallback(
     (faceIndex: number) => {
@@ -548,14 +578,15 @@ export default function PartWorkspace({
 
   const onHighlightProcess = useCallback(
     (process: string) => {
-      const hit = pinpointGroups.find((group) => group.processes.includes(process));
-      if (hit) {
-        selectPinpoint(hit.key);
+      const hit = highestPriorityIssue(dfmIssues.filter((row) => issueProcesses(row).includes(process)));
+      const group = groupForIssueKey(pinpointGroups, hit?.key ?? null);
+      if (group) {
+        selectPinpoint(group.key);
       } else {
         toast(`No geometry-linked faces reported for ${procLabel(process)}.`);
       }
     },
-    [pinpointGroups, selectPinpoint]
+    [dfmIssues, pinpointGroups, selectPinpoint]
   );
 
   /* ---- publish the loaded part's identity to the context-bar breadcrumb --- */
@@ -583,11 +614,12 @@ export default function PartWorkspace({
     setPart({
       name: file.name,
       facts,
-      verdict: validation?.overall_verdict ?? null,
+      verdict: validation || report || geomError ? workspaceVerdict : null,
+      verdictProcess: workspaceDfm.process,
       analyzing: dfmLoading,
       onReset: reset,
     });
-  }, [file, facts, validation, dfmLoading, reset, setPart]);
+  }, [file, facts, validation, report, geomError, workspaceVerdict, workspaceDfm.process, dfmLoading, reset, setPart]);
   useEffect(() => () => setPart(null), [setPart]);
 
   /* ---- cold start ------------------------------------------------- */
@@ -609,14 +641,14 @@ export default function PartWorkspace({
         {pendingIssueLink && (
           <Card className="border-warn/40 bg-warn-bg p-4" role="status">
             <p className="font-medium text-foreground">Issue link ready: {pendingIssueLink}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload the original CAD file to restore this issue. The file is not stored in the URL.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload the original CAD file to restore this issue only if the geometry and findings still match. The file is not stored in the URL.</p>
           </Card>
         )}
         <Dropzone
           accept={CAD_ACCEPT}
           onFiles={(files) => files[0] && handleFile(files[0])}
           isLoading={costLoading}
-          hint="STL, STEP, STP, IGES or IGS · CAD is parsed and discarded in-process · zero egress"
+          hint="STL, STEP, STP, IGES or IGS · source CAD is retained as workspace evidence"
         />
         {costError && <ErrorState message={costError} onRetry={() => setCostError(null)} />}
         <Card>
@@ -650,7 +682,10 @@ export default function PartWorkspace({
         file={file}
         report={report}
         validation={validation}
+        selection={selection}
+        onPositionChange={onPositionChange}
         opts={opts}
+        sourceUnits={submittedOptions.units}
         setOpt={setOpt}
         assumptions={assumptions}
         overrideKeys={overrideKeys}
@@ -671,7 +706,8 @@ export default function PartWorkspace({
         onSaveScenario={onSaveScenario}
         onRecallScenario={onRecallScenario}
         handleRecost={handleRecost}
-        runDfm={(candidate) => void runDfm(candidate, opts.units)}
+        handleRetryCost={handleRetryCost}
+        runDfm={(candidate) => void runDfm(candidate, submittedOptions.units)}
         reset={reset}
       />
     );
@@ -682,10 +718,10 @@ export default function PartWorkspace({
   const geo = validation?.geometry;
   const costGeo = report?.geometry ?? geomError?.geometry ?? null;
 
-  const headerBadge = validation ? (
-    <StatusBadge verdict={validation.overall_verdict} label={verdictLabel(validation.overall_verdict, true)} />
-  ) : geomError ? (
+  const headerBadge = geomError ? (
     <StatusBadge tone="fail" label="Geometry invalid" />
+  ) : validation || report ? (
+    <StatusBadge verdict={workspaceVerdict} label={`${workspaceDfm.process ? `${procLabel(workspaceDfm.process)} · ` : ""}${verdictLabel(workspaceVerdict)}`} />
   ) : dfmLoading ? (
     <StatusBadge tone="neutral" label="Analyzing…" icon={false} />
   ) : undefined;
@@ -708,7 +744,7 @@ export default function PartWorkspace({
                 <h1 className="num truncate text-lg font-semibold text-foreground">{file.name}</h1>
                 {headerBadge}
               </div>
-              <p className="text-xs text-muted-foreground">One drop · costed and analyzed in-process</p>
+              <p className="text-xs text-muted-foreground">Cost and manufacturability workspace</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {report && calibration && (
@@ -733,6 +769,14 @@ export default function PartWorkspace({
 
           <UnitWarningBanner warnings={report?.unit_warnings} />
 
+          {dfmError && report && (
+            <ErrorState
+              title="Detailed DFM analysis unavailable"
+              message={`${dfmError} Cost results are available below.`}
+              onRetry={() => void runDfm(file, submittedOptions.units)}
+            />
+          )}
+
           <Tabs value={tab} onValueChange={(v) => setTab(v as WorkTab)}>
             <TabsList className="w-full justify-start overflow-x-auto">
               {WORK_TABS.map(({ value, label, icon: Icon }) => (
@@ -749,6 +793,8 @@ export default function PartWorkspace({
                 <div className="relative h-[340px]">
                   <CadViewer
                     file={file}
+                    units={submittedOptions.units}
+                    analysisMeshHash={validation?.analysis_mesh_hash}
                     highlightFaces={highlightFaces}
                     highlightColor={highlightColor}
                     ghostUnhighlighted={!!highlightFaces}
@@ -773,9 +819,9 @@ export default function PartWorkspace({
                           </p>
                           {selectedIssue.issue.measured_value != null && (
                             <p className="num mt-1 text-xs text-muted-foreground">
-                              {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                              {formatIssueValue(selectedIssue.issue)}
                               {selectedIssue.issue.required_value != null && (
-                                <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                                <> measured - needs {formatIssueValue(selectedIssue.issue, "required_value")}</>
                               )}
                             </p>
                           )}
@@ -852,11 +898,19 @@ export default function PartWorkspace({
                       filename={file.name}
                     />
                   ) : costError ? (
-                    <ErrorState title="Cost estimate failed" message={costError} onRetry={handleRecost} />
+                    <ErrorState
+                      title={dfmError ? analysisFailureCopy(dfmError).title : "Cost estimate failed"}
+                      message={dfmError
+                        ? `${analysisFailureCopy(dfmError).explanation} ${analysisFailureCopy(dfmError).action}`
+                        : costError}
+                      onRetry={handleRetryCost}
+                    />
                   ) : report ? (
                     <div className="space-y-5">
                       <CostDecisionView
                         report={report}
+                        selection={selection}
+                        onPositionChange={onPositionChange}
                         opts={opts}
                         setOpt={setOpt}
                         onRecost={handleRecost}
@@ -885,6 +939,7 @@ export default function PartWorkspace({
                     <RoutingDfmView
                       report={report}
                       validation={validation}
+                      selection={selection}
                       selectedIssueKey={selectedIssueKey}
                       onSelectIssue={(it) => selectPinpoint(it.key)}
                       onHighlightProcess={onHighlightProcess}
@@ -937,6 +992,7 @@ export default function PartWorkspace({
                   <HistoryPanel
                     report={report}
                     validation={validation}
+                    selection={selection}
                     scenarios={scenarios}
                     onRecallScenario={onRecallScenario}
                   />
@@ -952,8 +1008,8 @@ export default function PartWorkspace({
         open={inspectorOpen}
         onToggle={() => setInspectorOpen((o) => !o)}
         estimate={inspectorEstimate}
-        process={report?.decision?.make_now_process ?? ""}
-        qty={inspectorEstimate?.quantity ?? report?.quantities[0] ?? 0}
+        process={selection.dfm.process ?? ""}
+        qty={selection.quantity ?? 0}
         materialClass={report?.material_class ?? opts.material_class}
         overrideKeys={overrideKeys}
         onOverride={onApplyOverride}
@@ -989,16 +1045,18 @@ function LoadingPane({ label }: { label: string }) {
 function HistoryPanel({
   report,
   validation,
+  selection,
   scenarios,
   onRecallScenario,
 }: {
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
   scenarios: (ScenarioSummary & { opts: CostOptions })[];
   onRecallScenario: (id: string) => void;
 }) {
   const router = useRouter();
-  const summary = buildAnswerSummary(report, validation);
+  const summary = buildAnswerSummary(report, validation, selection);
 
   const copy = async () => {
     try {
@@ -1067,41 +1125,4 @@ function HistoryPanel({
       </Card>
     </div>
   );
-}
-
-function buildAnswerSummary(
-  report: CostReport | null,
-  validation: ValidationResult | null
-): string {
-  const lines: string[] = [];
-  if (report?.decision) {
-    const dec = report.decision;
-    lines.push(`ProofShape — ${report.filename}`);
-    lines.push(`Make by ${procLabel(dec.make_now_process)} / ${dec.make_now_material}`);
-    for (const q of report.quantities) {
-      const r = dec.recommendation[String(q)];
-      if (r) {
-        lines.push(
-          `  qty ${q.toLocaleString()}: ${procLabel(r.process)} — $${r.unit_cost_usd.toFixed(2)}/unit${
-            r.lead_low_days != null && r.lead_high_days != null
-              ? `, ${r.lead_low_days}-${r.lead_high_days} days`
-              : ""
-          }`
-        );
-      }
-    }
-    if (dec.crossover_qty != null) {
-      lines.push(
-        `Crossover ≈ ${Math.round(dec.crossover_qty).toLocaleString()} units${
-          dec.tooling_process ? ` → switch to ${procLabel(dec.tooling_process)} above it` : ""
-        }`
-      );
-    }
-  }
-  if (validation) {
-    lines.push(
-      `DFM: ${verdictLabel(validation.overall_verdict, true)} (${verdictTone(validation.overall_verdict)})`
-    );
-  }
-  return lines.join("\n");
 }

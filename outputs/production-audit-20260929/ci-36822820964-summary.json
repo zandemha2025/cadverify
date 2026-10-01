@@ -1,0 +1,57 @@
+{
+  "status": "completed",
+  "conclusion": "failure",
+  "headSha": "2a524e0881a3b168e74880e55f5c0df882e2929f",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36822820964",
+  "jobs": [
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "failure"
+    }
+  ],
+  "failure_evidence": {
+    "container": "Backend scan 5 HIGH, 0 CRITICAL: Expat CVE-2026-93990, X11 CVE-2026-88806, Xrender CVE-2026-88807. Frontend scan and both actual-image runtime probes passed. No waiver.",
+    "browser": "Final training-deck-ui-e2e.mjs: 18 checks, 0 console errors, 0 HTTP response errors, 26 file asset requests net::ERR_ABORTED. Earlier browser journey steps passed. Root cause still under investigation."
+  }
+}

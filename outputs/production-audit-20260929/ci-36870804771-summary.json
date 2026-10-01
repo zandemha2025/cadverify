@@ -1,0 +1,63 @@
+{
+  "run_id": 36870804771,
+  "revision": "ea71b013a833672d91feb71060a01ec3d64a2207",
+  "status": "completed",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397758639"
+    },
+    {
+      "name": "Backend Tests",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397758752"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397758867"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397758980"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397759084"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397760273"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110397857891"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110403074886"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36870804771/job/110403075036"
+    }
+  ],
+  "container_findings": {
+    "high": 5,
+    "critical": 0,
+    "cves": [
+      "CVE-2026-93990",
+      "CVE-2026-88806",
+      "CVE-2026-88807"
+    ]
+  },
+  "scope": "Exact published audit187 revision; does not certify unpublished188/189 follow-ups."
+}

@@ -33,8 +33,10 @@ export interface BomAncestry {
   has_tree: boolean;
   /** [child, parent, …, root] — the one canonical chain (empty when no tree). */
   ancestry: string[];
-  /** every distinct root-path when the part is shared (a real DAG); usually one. */
+  /** Bounded root-path preview; the multiplier always includes every path. */
   ancestry_paths: string[][];
+  ancestry_paths_truncated?: boolean;
+  error?: string | null;
   /** units of this part per ONE root/vehicle, or null when there is no rollup. */
   rolled_up_multiplier: number | null;
   roots: string[];
@@ -76,10 +78,16 @@ export function basisChip(
   return null;
 }
 
+/** Keep browser demand arithmetic exact, matching the backend count limit. */
+export function bomAnnualVolume(multiplier: number | null, rootsPerYear: number | null): number | null {
+  if (multiplier == null || rootsPerYear == null || multiplier <= 0 || rootsPerYear <= 0) return null;
+  const count = multiplier * rootsPerYear;
+  return Number.isSafeInteger(multiplier) && Number.isSafeInteger(rootsPerYear) && Number.isSafeInteger(count) ? count : null;
+}
+
 /** Fetch a part's ancestry through the authed proxy. A missing tree is NOT an
  *  error — it returns `has_tree: false` (the backend never 500s on an absent
- *  tree), which `bomBreadcrumbView` renders as "not present". Returns null on a
- *  genuine failure so the caller silently keeps the existing state. */
+ *  tree). Transport failures are surfaced so the caller can offer a retry. */
 export async function fetchBomAncestry(
   assemblyKey: string,
   childRef: string
@@ -93,9 +101,9 @@ export async function fetchBomAncestry(
       )}`,
       { credentials: "include" }
     );
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error("Could not load the BOM. Please retry.");
     return (await res.json()) as BomAncestry;
   } catch {
-    return null;
+    throw new Error("Could not load the BOM. Please retry.");
   }
 }

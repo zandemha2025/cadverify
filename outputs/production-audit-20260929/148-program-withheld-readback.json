@@ -1,0 +1,72 @@
+{
+  "row": {
+    "part_key": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+    "filename": "142-torus.step",
+    "lifecycle_state": "Costed",
+    "make_now_process": "cnc_turning",
+    "unit_cost": {
+      "usd": 90.0,
+      "qty": 1,
+      "currency": "USD",
+      "withheld": false,
+      "withheld_reason": null,
+      "validated": false
+    },
+    "quantities": [
+      1,
+      100,
+      1000,
+      2000,
+      5000,
+      10000
+    ],
+    "validated": false,
+    "posture": {
+      "measured": 0,
+      "shop": 0,
+      "user": 0,
+      "default": 9,
+      "total": 9,
+      "grounded": 0,
+      "guess": 9,
+      "grounded_pct": 0.0
+    },
+    "crossover_qty": 2088.0,
+    "cost_decision": {
+      "id": "01M3SYQWWS60A6949FFMFH2GES",
+      "url": "/api/v1/cost-decisions/01M3SYQWWS60A6949FFMFH2GES"
+    },
+    "savings": {
+      "basis": "decision.if_redesigned",
+      "qty": 10000,
+      "make_now_unit_usd": 7.88,
+      "redesigned_unit_usd": 6.44,
+      "save_unit_usd": 1.44,
+      "save_pct": 0.1827,
+      "redesigned_process": "die_casting",
+      "caveat": "add draft, tooling-dominated"
+    },
+    "context": {
+      "program": "QA BOM demand 148",
+      "parent_assembly": null,
+      "units_per_parent": null,
+      "annual_volume": null,
+      "service_environment": {},
+      "provenance": "user"
+    },
+    "annual_volume_basis": "bom_rollup",
+    "resolved_annual_volume": 1008,
+    "annualized_unit_cost": null,
+    "annualized_cost_usd": null,
+    "annualized_savings_usd": null,
+    "annualized_reason": "no engine-computed recommendation at annual_volume 1008; available quantities: 1, 100, 1000, 2000, 5000, 10000. Re-verify this CAD after declaring the volume to compute that exact point"
+  },
+  "program": {
+    "program": "QA BOM demand 148",
+    "parts": 1,
+    "annualized_cost_usd": null,
+    "annualized_savings_usd": null,
+    "declared_volume_parts": 1,
+    "exposed_parts": 0
+  }
+}

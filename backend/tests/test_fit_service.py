@@ -45,6 +45,53 @@ def test_obj_pair_format_parser_keeps_shared_coordinates():
     assert parsed.extents.tolist() == pytest.approx([2, 3, 4])
 
 
+@pytest.mark.parametrize("units,scale", [
+    (None, 1), ("millimeter", 1), ("inch", 25.4), ("foot", 304.8),
+    ("centimeter", 10), ("meter", 1000), ("micron", 0.001),
+    ("unknown", None), ("nan * meter", None),
+])
+def test_3mf_units_scale_geometry_and_assembly_positions(units, scale):
+    from io import BytesIO
+    from zipfile import ZipFile, ZIP_DEFLATED
+    from src.services.fit_service import parse_supplementary_mesh
+
+    scene = trimesh.Scene()
+    transform = np.eye(4)
+    transform[:3, 3] = [3, 4, 5]
+    scene.add_geometry(trimesh.creation.box(), transform=transform)
+    payload = BytesIO()
+    with ZipFile(BytesIO(scene.export(file_type="3mf"))) as source, ZipFile(payload, "w", ZIP_DEFLATED) as dest:
+        for name in source.namelist():
+            data = source.read(name)
+            if name.endswith(".model"):
+                declaration = b"" if units is None else f'unit="{units}"'.encode()
+                data = data.replace(b'unit="millimeter"', declaration)
+            dest.writestr(name, data)
+    if scale is None:
+        with pytest.raises(FitGeometryError, match="units"):
+            parse_supplementary_mesh(payload.getvalue(), "assembly.3mf")
+        return
+    parsed = parse_supplementary_mesh(payload.getvalue(), "assembly.3mf")
+    np.testing.assert_allclose(parsed.bounds, np.array([[2.5, 3.5, 4.5], [3.5, 4.5, 5.5]]) * scale)
+    assert parsed.volume == pytest.approx(scale ** 3)
+    assert parsed.units == "mm"
+
+
+def test_collision_keeps_sub_millimeter_precision_in_shared_frame():
+    # A small physical part can be far from the assembly origin. Float32
+    # loses its gap and overlap long before the source's float64 coordinates.
+    a = trimesh.creation.box(extents=[25.4, 25.4, 25.4])
+    a.apply_translation([1_000_000, 0, 0])
+    b = a.copy()
+    b.apply_translation([25.3, 0, 0])
+    out = analyze_fit(a, b)
+    assert out["collision"]["volume_mm3"] == pytest.approx(64.516, abs=1e-6)
+    b.apply_translation([0.2, 0, 0])
+    separate = analyze_fit(a, b)
+    assert separate["collision"]["intersects"] is False
+    assert separate["clearance"]["closest_sampled_gap_mm"] == pytest.approx(0.1, abs=1e-6)
+
+
 def test_proximity_target_keeps_source_face_locator_mapping():
     from src.services.fit_service import _proximity_target
     mesh = trimesh.creation.icosphere(subdivisions=3)
@@ -60,6 +107,26 @@ def test_pair_face_admission_refuses_before_geometry_work(monkeypatch):
     b = trimesh.creation.icosphere(subdivisions=3)
     with pytest.raises(FitGeometryError, match="2560 triangle faces, above the 1000 fit-check limit"):
         analyze_fit(a, b)
+
+
+def test_redundant_tessellation_keeps_fit_and_original_face_locators(monkeypatch):
+    monkeypatch.setenv("FIT_MAX_PAIR_FACES", "1000")
+    a = trimesh.creation.box(extents=[10, 10, 10])
+    for _ in range(4):
+        a = a.subdivide()
+    b = a.copy()
+    b.apply_translation([9.9, 0, 0])
+    faces_before = a.faces.copy()
+    out = analyze_fit(a, b)
+    assert out["collision"]["volume_mm3"] == pytest.approx(10, abs=1e-5)
+    assert out["clearance"]["closest_sampled_gap_mm"] == 0
+    assert max(out["collision"]["region"]["part_a_faces"]) > 12
+    assert np.array_equal(a.faces, faces_before)
+    assert any("redundant" in line for line in out["limits"])
+    b.apply_translation([10.1, 0, 0])
+    separate = analyze_fit(a, b)
+    assert separate["collision"]["intersects"] is False
+    assert separate["clearance"]["closest_sampled_gap_mm"] == pytest.approx(10, abs=1e-6)
 
 
 def test_near_zero_volume_is_refused():

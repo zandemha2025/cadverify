@@ -6,6 +6,7 @@ import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import IssueList from "@/components/IssueList";
 import {
   Table,
   TableHeader,
@@ -14,7 +15,7 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { verdictTone, verdictLabel } from "@/lib/status";
+import { procLabel, verdictTone, verdictLabel } from "@/lib/status";
 
 /* ------------------------------------------------------------------ */
 /*  OG Meta Tags for link previews (Slack, email, social)             */
@@ -41,7 +42,7 @@ export async function generateMetadata({
       robots: { index: false, follow: false },
     };
   } catch {
-    return { title: "Shared Analysis - ProofShape" };
+    return { title: "Shared Analysis - ProofShape", robots: { index: false, follow: false } };
   }
 }
 
@@ -149,6 +150,11 @@ export default async function SharedAnalysisPage({
               {new Date(data.created_at).toLocaleDateString()} ·{" "}
               {data.duration_ms}ms
             </p>
+            {data.best_process && (
+              <p className="mt-2 text-sm text-foreground">
+                Recommended route: {procLabel(data.best_process)}
+              </p>
+            )}
           </div>
           <StatusBadge
             verdict={data.verdict}
@@ -190,7 +196,7 @@ export default async function SharedAnalysisPage({
       {/* Issues */}
       {sortedIssues.length > 0 && (
         <section>
-          <SectionHeading>Issues ({sortedIssues.length})</SectionHeading>
+          <SectionHeading>Part-level issues ({sortedIssues.length})</SectionHeading>
           <div className="space-y-2">
             {sortedIssues.map((issue: Issue, i: number) => (
               <Card key={i} className="p-3">
@@ -216,12 +222,16 @@ export default async function SharedAnalysisPage({
       {sortedProcesses.length > 0 && (
         <section>
           <SectionHeading>Process ranking</SectionHeading>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Findings below apply to each named process. A failure on another
+            candidate process does not mean the recommended route fails.
+          </p>
           <Card className="overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Process</TableHead>
-                  <TableHead numeric>Score</TableHead>
+                  <TableHead numeric>Suitability</TableHead>
                   <TableHead>Verdict</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead>Machine</TableHead>
@@ -231,9 +241,23 @@ export default async function SharedAnalysisPage({
                 {sortedProcesses.map((ps: ProcessScore) => (
                   <TableRow key={ps.process} className="h-11">
                     <TableCell className="font-medium text-foreground">
-                      {ps.process}
+                      {procLabel(ps.process)}
+                      {ps.issues.length > 0 && (
+                        <details className="mt-2 min-w-48 max-w-md font-normal">
+                          <summary className="cursor-pointer text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            {procLabel(ps.process)} issues ({ps.issues.length})
+                          </summary>
+                          <div className="mt-2 whitespace-normal">
+                            <IssueList items={ps.issues.map((issue, i) => ({
+                              key: `${ps.process}#${i}`,
+                              issue,
+                              faces: [],
+                            }))} />
+                          </div>
+                        </details>
+                      )}
                     </TableCell>
-                    <TableCell numeric>{ps.score}</TableCell>
+                    <TableCell numeric>{Math.round(ps.score * 100)}%</TableCell>
                     <TableCell>
                       <StatusBadge verdict={ps.verdict} size="sm" />
                     </TableCell>

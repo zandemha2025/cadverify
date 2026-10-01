@@ -1,0 +1,36 @@
+{
+  "finding": "080",
+  "environment": "Local production frontend3017/API8017; not deployed",
+  "first_divergence": "Full API reference follows /docs back to /developers; curl calls DFM-only /validate while promising cost and displaying cost fields at the response root.",
+  "fix": "Use /scalar for the actual runtime OpenAPI console, /validate/cost with qty for the cost request, and place prices/drivers/confidence/line_items inside estimates[]. Label examples as selected fields with input-dependent amounts. Published OpenAPI now accurately describes organization-scoped source CAD/mesh retention and identifies 25.4 cubed as a volume ratio, not a guaranteed price ratio.",
+  "native": {
+    "reference_loop_reproduced": true,
+    "fixed_reference_opens": "http://127.0.0.1:8017/docs",
+    "cost_operation_visible": true,
+    "quickstart_endpoint_and_qty_visible": true,
+    "saved_source_record": "01M3RK0AGB5F4G386CMJM2AT29",
+    "fresh_json_export": "/Users/nazeem/Downloads/audit-cube-cost (14).json",
+    "json_sha256": "d2fadd49bb4d1a53757abef61eede3478c5a7187cb7024d3c8d04970bd657328",
+    "report_routing_and_estimates_present": true,
+    "cost_fields_present_per_estimate": true,
+    "top_level_price_absent": true,
+    "estimates_checked": 16,
+    "quantities": [
+      50,
+      5000
+    ],
+    "all_line_items_reconcile": true,
+    "live_openapi_file_qty_schema": true
+  },
+  "validation": {
+    "frontend_tests": 494,
+    "types_lint_build": "passed",
+    "python_compile": "passed; backend changes are docstrings/parameter descriptions only"
+  },
+  "limits": "Fresh isolated HTTP fixture signup returned429 before creating an account, so no new end-to-end curl request is claimed. Schema verification uses the existing real-STEP native export plus source/OpenAPI. No live customer quote accuracy, new API-key flow or production proof.",
+  "screenshots": [
+    "080-developer-reference-loop-before.png",
+    "080-developer-quickstart-fixed.png",
+    "080-api-console-fixed.png"
+  ]
+}

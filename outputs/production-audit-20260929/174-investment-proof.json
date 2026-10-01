@@ -1,0 +1,210 @@
+{
+  "scope": "Investment-casting draft eligibility and visible tooling caveats",
+  "root_cause": "The investment analyzer imposed a universal 0.5-degree draft rejection using file Z. Lost-wax shell release generally needs no draft; tooling exceptions require foundry review. The workspace physical-defect grouping also hid all informational notes.",
+  "fix": "Remove only the investment-casting draft check. Add an informational pattern/core tooling review without a fabricated threshold or face location. Reuse the existing IssueList to show informational notes alongside canonical physical defects. Preserve other casting checks and other processes.",
+  "sources": [
+    {
+      "url": "https://www.improprecision.com/draft-angles-investment-casting/",
+      "finding": "Shell destruction removes casting-release draft requirements; wax shrinkage usually permits release, with wax-pattern and ceramic-core exceptions for tooling review."
+    }
+  ],
+  "checks": {
+    "backend_regression_red": 1,
+    "backend_focused_passed": 78,
+    "backend_full_passed": 2803,
+    "backend_documented_environment_skips": 3,
+    "backend_seconds": 354.42,
+    "changed_backend_pyright_errors": 0,
+    "changed_backend_bandit_findings": 0,
+    "frontend_passed": 524,
+    "frontend_types": "pass",
+    "changed_frontend_lint": "pass",
+    "frontend_production_build": "pass",
+    "engine_version": "0.3.38",
+    "historical_records_unchanged": {
+      "analyses": 124,
+      "cost_decisions": 133
+    },
+    "other_process_scores_unchanged_per_control": 20,
+    "unit_prices_unchanged_per_control": 20
+  },
+  "native": {
+    "aligned": {
+      "verdict": "Advisory 80%",
+      "note": true,
+      "preview": true,
+      "unit_cost_quantity1": 13571.59
+    },
+    "controls": [
+      {
+        "filename": "171-profile-bar-rotated.step",
+        "row": "        - row \"Investment Casting Advisory 80% \u2014\":",
+        "note": true,
+        "preview": true
+      },
+      {
+        "filename": "166-transverse-hole-bar.step",
+        "row": "        - row \"Investment Casting Advisory 70% \u2014\":",
+        "note": true,
+        "preview": true
+      },
+      {
+        "filename": "156-plate-with-boss.step",
+        "row": "        - row \"Investment Casting Required 0% Min wall 0.81mm < 1.0mm for investment_casting.\":",
+        "note": true,
+        "preview": true
+      }
+    ],
+    "boss_wait": "Initial automation wait timed out; next DOM inspection showed completed routing, expected verdict and ready preview."
+  },
+  "controls": [
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analysis": 1719,
+      "cost": 5918,
+      "verdict": "issues"
+    },
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+      "analysis": 1720,
+      "cost": 5919,
+      "verdict": "issues"
+    },
+    {
+      "filename": "166-transverse-hole-bar.step",
+      "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+      "analysis": 1721,
+      "cost": 5920,
+      "verdict": "issues"
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "analysis": 1722,
+      "cost": 5921,
+      "verdict": "fail"
+    }
+  ],
+  "limits": [
+    "Does not certify wax-pattern/core tooling, wall thresholds, foundry acceptance, physical manufacture or customer quote accuracy.",
+    "Other processes retain their separate draft and molding-pull heuristics, including known orientation limitations.",
+    "Clipboard delivery and alternate stage-layout native proof remain pending.",
+    "Production, real external systems, image vulnerabilities and the full visible-feature goal remain unverified."
+  ],
+  "ci": {
+    "run_id": 36836510511,
+    "head": "6edd51360587e451ce3d2c4877fa7e3d7b83efab",
+    "status": "in_progress",
+    "conclusion": "",
+    "jobs": [
+      {
+        "name": "Backend Tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Frontend Build & Lint",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Commit hook integrity policy",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Every /api/v1 route calls require_api_key",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Trap Corpus Gate",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Auth material never appears in captured Sentry payload",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Browser E2E (human + enterprise)",
+        "status": "in_progress",
+        "conclusion": ""
+      },
+      {
+        "name": "Container Images & Deploy Config Proof",
+        "status": "completed",
+        "conclusion": "failure"
+      }
+    ],
+    "container_failure": "Backend image scan: 5 HIGH / 0 CRITICAL Expat/X11/Xrender; frontend scan and both actual-image runtime probes pass.",
+    "covers_173_174": false
+  },
+  "release": "Local revision; PR107 remains draft and undeployed. Recorded production baseline09555c1. Do not cancel active CI with another push.",
+  "files": [
+    {
+      "path": "174-investment-before.txt",
+      "sha256": "37f6b7e123ed46b07a440ea6b79df8e1c7f3954ebf46f8b8d45ab7b004bcf1d2"
+    },
+    {
+      "path": "174-investment-before.png",
+      "sha256": "1c89cb01e330945fe0085f40693777e919f27bf7e1bad8610c5f51696940b84b"
+    },
+    {
+      "path": "174-saved-before.json",
+      "sha256": "8bb169a4cbe56eaff829a98284dc070dc5af61a5ea994394268849aa84ac1310"
+    },
+    {
+      "path": "174-notes-hidden-before.txt",
+      "sha256": "9558481281ea71ddcf53c3cb2c6323456d222b2e50b08e01575c7f5fbecdd3b5"
+    },
+    {
+      "path": "174-investment-after.png",
+      "sha256": "10ced71ea90a8d48066c55acb8f737b07fdb355af6dbb7760c16ee5ff70b1c72"
+    },
+    {
+      "path": "174-aligned-after.txt",
+      "sha256": "348c9e16ff0638a93542a04e07404f80dccb6c69fc7d51dfc8f9c04fa111f694"
+    },
+    {
+      "path": "174-rotated-after.txt",
+      "sha256": "e63af6b7b921b4cb5838115416c00bf3bc04b94e2add66265642f9ba3ced90a6"
+    },
+    {
+      "path": "174-hole-after.txt",
+      "sha256": "1a67136634651131d832af02b6d3fc8369a8a01f639cd46569113fe4ef22a482"
+    },
+    {
+      "path": "174-boss-after.txt",
+      "sha256": "555982d53975fe93d5417cd322ad3f19fdad7b754e449fe5b38ed93c4ad1415a"
+    },
+    {
+      "path": "174-cost-before.txt",
+      "sha256": "0150ca2aa288e125b5e7aea64317a55fc1b7777940354a3bbef6c0e8d6edf955"
+    },
+    {
+      "path": "174-investment-cost-before.txt",
+      "sha256": "b708bb2345bd7b110959afcffd61eb19032f6cf4e01be7a876809907bcce3855"
+    },
+    {
+      "path": "174-investment-cost-after.txt",
+      "sha256": "b708bb2345bd7b110959afcffd61eb19032f6cf4e01be7a876809907bcce3855"
+    },
+    {
+      "path": "174-native-checks.json",
+      "sha256": "acdde1ad1dfd1ca1550ab0851aa7bc3775e57ba24d8181fbc9cae5cd444237fc"
+    },
+    {
+      "path": "174-saved-readback.json",
+      "sha256": "b99fe4e2aeec949b950d813f42bc54f7c687d154fe524487e8ae7f6b7ec1307b"
+    }
+  ]
+}

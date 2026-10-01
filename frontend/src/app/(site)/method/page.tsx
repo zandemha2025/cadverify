@@ -272,7 +272,7 @@ function Stages() {
       <StageShell
         index="01"
         title="Measure the geometry."
-        lede="The engine reads the part itself — volume, bounding box, wall thickness, watertightness. These are MEASURED facts taken directly from your CAD, the ground everything else stands on. The mesh is parsed in-process and discarded."
+        lede="The engine reads the part itself — volume, bounding box, wall thickness, watertightness. These are MEASURED facts taken directly from your CAD, the ground everything else stands on. Signed-in workspaces retain source CAD and analysis evidence."
       >
         <div className="st-card" style={{ marginTop: 22, padding: 22 }}>
           <div className="st-mono" style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>

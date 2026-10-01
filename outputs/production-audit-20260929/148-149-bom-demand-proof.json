@@ -1,0 +1,107 @@
+{
+  "findings": [
+    148,
+    149
+  ],
+  "status": "fixed locally; not deployed",
+  "first_divergences": {
+    "148": "step1, expected Programs to count the linked part's BOM demand, state was $10,960/year alongside 0 parts with a volume and a false volume-missing assignment message",
+    "149": "step1, expected a same-byte STEP re-verification to compute BOM demand1008, state was the old six quantities without1008, the old saved decision, and annual volume not declared"
+  },
+  "root_causes": [
+    "Portfolio calculations resolved BOM demand but response/count/display paths still used only the flat declaration.",
+    "The context API exposed only the flat volume to Verify, which selected cost request quantities from that field."
+  ],
+  "changes": [
+    "Expose resolved_annual_volume and annual_volume_basis independently of pricing in portfolio and context read/write responses.",
+    "Count resolved demand and use it for program messages, withholding reasons, initial verification, cost retry and the displayed annual demand.",
+    "Preserve the editable flat fallback and label BOM precedence explicitly. Reuse existing backend rollup and six-point quantity selection."
+  ],
+  "controls": {
+    "source": "shape-controls/142-torus.step",
+    "sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+    "bom": "QA BOM linkage147 local declared four-edge fixture",
+    "parts_per_root": 8,
+    "root_counts_tested": [
+      125,
+      126
+    ],
+    "annual_demands": [
+      1000,
+      1008
+    ],
+    "flat_fallback_saved_and_cleared": 55,
+    "withheld_before_exact_point": true,
+    "new_decision": "01M3T6YM7HBRA7PC1NQWPJJ8S1",
+    "exact_ladder": [
+      1,
+      100,
+      1008,
+      2000,
+      5000,
+      10000
+    ],
+    "exact_unit_estimate_usd": 10.98,
+    "annualized_estimate_usd": 11067.84,
+    "displayed_annualized_estimate_usd": 11068,
+    "prior_records_unchanged": 3
+  },
+  "native_checks": [
+    "before/after program count",
+    "explicit fallback field and accurate clear feedback",
+    "demand remains visible while price withheld",
+    "same STEP replay requests1008",
+    "Verify shows1,008 from BOM",
+    "Programs uses matching exact quantity and computed yearly estimate",
+    "unassign/reassign preserves BOM and reports correct status",
+    "final unassign/unlink restores original context"
+  ],
+  "validation": {
+    "focused_before_context_followup": 55,
+    "context_api_and_related_after_followup": 14,
+    "full_backend_final": {
+      "passed": 2603,
+      "skipped": 3,
+      "seconds": 373.45,
+      "skip_policy_enforced": true,
+      "skip_reasons": [
+        "real corpus manifest not present",
+        "OCP XDE not available (2)"
+      ]
+    },
+    "frontend_tests_passed": 500,
+    "typescript": "pass",
+    "changed_file_eslint": "pass",
+    "production_build": "pass",
+    "backend_type_errors": 214,
+    "backend_type_warnings": 3,
+    "new_backend_diagnostics": 0,
+    "changed_source_bandit_medium_high": 0
+  },
+  "receipts": [
+    "148-program-withheld-readback.json",
+    "149-bom-demand-readback.json",
+    "149-demand-cleanup.json"
+  ],
+  "screenshots": [
+    "148-program-bom-before.png",
+    "148-program-bom-after.png",
+    "148-program-bom-withheld.png",
+    "149-verify-bom-before.png",
+    "149-verify-bom-after.png",
+    "149-program-exact-demand.png",
+    "149-demand-cleanup.png"
+  ],
+  "limits": [
+    "BOM identity/counts are a local user-declared fixture, not authorized vendor evidence or a real physical assembly.",
+    "The arithmetic matches the saved assumption-based estimate; actual supplier/shop price accuracy is unverified.",
+    "No new engine algorithm/version, dependency or migration.",
+    "Production and real email/IdP/vendor/remaining feature proof remain open."
+  ],
+  "harness_notes": [
+    "Initial portfolio test used a raw DB-shaped _Row where folded SourceRef was required; corrected harness before recording the missing-demand RED.",
+    "A notification observation happened after its transient toast had expired; the clear/assignment notifications were subsequently observed in the same action call.",
+    "Immediate post-reload navigation raced page initialization; the settled page navigated normally."
+  ],
+  "ci_scope": "CI36779785629 covers through147 only;148/149 need a new run after publication"
+}

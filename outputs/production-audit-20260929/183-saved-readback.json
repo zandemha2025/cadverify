@@ -1,0 +1,40 @@
+{
+  "historical_records_unchanged": {
+    "analyses": 144,
+    "cost_decisions": 154
+  },
+  "quantities": [
+    {
+      "quantity": 1,
+      "process": "fdm",
+      "material": "PLA",
+      "unit_cost_usd": 30.0,
+      "validated": false
+    },
+    {
+      "quantity": 100,
+      "process": "mjf",
+      "material": "PP (Polypropylene)",
+      "unit_cost_usd": 3.62,
+      "validated": false
+    },
+    {
+      "quantity": 12000,
+      "process": "mjf",
+      "material": "PP (Polypropylene)",
+      "unit_cost_usd": 3.48,
+      "validated": false
+    }
+  ],
+  "cost_id": 6319,
+  "cost_ulid": "01M3VN583B775TGGSSC1CV2XFY",
+  "engine_version": "0.3.42",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "result_sha256": "c6d441a4b55f5c7c52cee15a0c4854423a0714025729212de8b9c329cf6982da",
+  "unchanged_estimates": 48,
+  "interpolated_quantity": {
+    "quantity": 11888,
+    "computed_route_quantity": 12000,
+    "confidence_withheld": true
+  }
+}

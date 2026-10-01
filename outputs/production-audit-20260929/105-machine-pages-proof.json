@@ -1,0 +1,30 @@
+{
+  "scope": "Local QA real inventory; not production",
+  "before": {
+    "stored": 101,
+    "visible": 100,
+    "lastVisible": "Audit 105 temporary 096",
+    "missing": "Audit 105 temporary 097",
+    "import": "Import complete: 97 imported · 0 skipped · 97 total"
+  },
+  "after": {
+    "visible": 101,
+    "homeCount": 101,
+    "formerlyHiddenDetailOpened": "Audit 105 temporary 097"
+  },
+  "cleanup": {
+    "homeCount": 4,
+    "visible": 4,
+    "noTemporaryNames": true,
+    "exactDatabaseBaselineHashRestored": true
+  },
+  "checks": {
+    "frontendPassed": 496,
+    "typecheck": "PASS",
+    "changedSourceLint": "PASS",
+    "productionBuild": "PASS",
+    "backendUnchangedSince104Passed": 2458,
+    "documentedBackendSkips": 3
+  },
+  "limits": "Live production and real external workflows remain unverified."
+}

@@ -1,0 +1,41 @@
+{
+  "finding": "137",
+  "environment": "Native Chrome / local Next production build3017 and API8017. Not deployed.",
+  "before": {
+    "exponent_prompt": "plate width 80e1 mm, depth 50 mm, thickness 6 mm",
+    "exponent_actual_width_mm": 80,
+    "exponent_independent_value_mm": 800,
+    "fraction_prompt": "80 x 50 x 3/2 mm plate",
+    "fraction_actual_thickness_mm": 3,
+    "fraction_independent_value_mm": 1.5,
+    "message": "Safe dimensions extracted"
+  },
+  "cause": "The shared numeric regex matches a decimal prefix or suffix inside unsupported notation. Naming a dimension or changing its extraction path did not prevent silent reinterpretation.",
+  "fix": "One shared guard refuses scientific notation, fractions, grouped numbers and separated signs before extraction, with empty prefill/no plan and an explicit plain-decimal instruction. No expression evaluator or new syntax support.",
+  "native_after": [
+    "Exponent prompt receives plain-decimal validation notice.",
+    "Fraction prompt receives the same notice.",
+    "Explicit width800/depth50/thickness1.5mm fills exactly800/50/1.5 and is ready for review."
+  ],
+  "tests": {
+    "red": 9,
+    "focused_pass": 43,
+    "full_backend": {
+      "passed": 2556,
+      "skipped": 3,
+      "seconds": 216.07,
+      "skip_policy": "enforced",
+      "log": ".gstack/qa-runtime/design-notation-backend-full.log"
+    },
+    "types": "214errors/3warnings; zero added diagnostics versus135",
+    "bandit": "zero medium/high"
+  },
+  "screenshots": [
+    "137-design-exponent-before.png",
+    "137-design-fraction-before.png",
+    "137-design-exponent-fixed.png",
+    "137-design-fraction-fixed.png",
+    "137-design-decimal-recovery.png"
+  ],
+  "scope": "Prefill only: no part generated, saved, exported or priced from these prompts. Ordinary signed/leading-decimal and millimetre controls still pass. Does not certify arbitrary natural language."
+}

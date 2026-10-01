@@ -175,6 +175,7 @@ def test_generated_pdf_text_extracts(tmp_path):
     ).stdout
     for expected in (
         "DFM Verdict Report",
+        "Includes universal checks and all evaluated candidate processes.",
         "NON_MANIFOLD",
         "INTERNAL_CORNER_RADIUS",
         "6061-T6",
@@ -185,11 +186,25 @@ def test_generated_pdf_text_extracts(tmp_path):
 
 
 def test_cache_key_versions_template():
-    assert PDF_TEMPLATE_VERSION == "v2"
-    assert "v2" in PDF_TEMPLATE_VERSION
+    assert PDF_TEMPLATE_VERSION == "v4"
 
 
 def test_safe_filename_contract():
     assert _safe_filename("bracket & housing.step") == "bracket___housing-dfm-report.pdf"
     assert _safe_filename("") == "analysis-dfm-report.pdf"
     assert _safe_filename("part.step") == "part-dfm-report.pdf"
+
+
+def test_report_evidence_preserves_persisted_units_and_required_only_values():
+    issues = [
+        {"code": "TEST", "severity": "warning", "measured_value": 2, "required_value": 3, "measurement_unit": unit}
+        for unit in ("mm", "deg", "ratio", "percent")
+    ] + [{"code": "DRAFT", "severity": "warning", "required_value": 5, "measurement_unit": "deg"},
+         {"code": "UNKNOWN", "severity": "warning", "measured_value": 7}]
+    context = build_pdf_context(_analysis(result_json={"universal_issues": issues}))
+    html = pdf_service._jinja_env.get_template("analysis_report.html").render(**context)
+    for suffix in (" mm", "°", ":1", "%"):
+        assert f"measured 2{suffix}" in html
+        assert f"required 3{suffix}" in html
+    assert "required 5°" in html
+    assert "measured 7</td>" in html

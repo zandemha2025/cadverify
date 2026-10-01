@@ -1,0 +1,128 @@
+{
+  "scope": "Local wire-EDM straight-profile verification; not a full manufacturing or production certification",
+  "engine_version": "0.3.36",
+  "root_cause": "File-Z horizontal/vertical face percentages changed with rotation and could pass a stepped or bossed shape.",
+  "fix": "Reuse full flat-extrusion verification and actual-face candidate axes. Exact positive geometry passes; source rounding and unproved/simplified geometry receive explicit setup-review warnings. Preserve taper/multi-axis possibility.",
+  "checks": {
+    "before_regressions_failed": 2,
+    "focused_passed": 75,
+    "full_backend_passed": 2798,
+    "protected_skips": [
+      "real corpus manifest absent",
+      "OCP XDE unavailable (two checks)"
+    ],
+    "peer_geometry_precision_probes": 132,
+    "peer_face_order_checks": 9,
+    "peer_no_actionable_findings": true,
+    "new_type_diagnostics": 0,
+    "type_baseline_errors": 215,
+    "current_type_errors": 209,
+    "bandit_medium_high": 0,
+    "existing_bandit_low": 3,
+    "historical_analyses_unchanged": 116,
+    "historical_cost_results_unchanged": 125,
+    "other_process_scores_unchanged_per_existing_control": 20,
+    "unit_prices_unchanged_per_existing_control": 20,
+    "final_focused_after_real_step_warning_regression": 75,
+    "full_suite_preceded_test_only_real_step_case_addition": true
+  },
+  "native": {
+    "165-stock-bar-aligned.step": "Wire EDM Pass100; preview ready",
+    "171-profile-bar-rotated.step": "Wire EDM Pass100; preview ready; old percentage test would return0%",
+    "166-transverse-hole-bar.step": "Wire EDM Advisory90, PRISMATIC_PROFILE_UNVERIFIED; preview ready; curved STEP tessellation is not an exact extrusion and has no error bound",
+    "156-plate-with-boss.step": "Wire EDM Advisory90, PRISMATIC_PROFILE_UNVERIFIED; visible setup-review card; preview ready"
+  },
+  "source_reference": {
+    "url": "https://sales.sodick.com/products/wire-edm/alc600g",
+    "supports": "Manufacturer documents taper and multi-axis options; non-straight profiles are not universally impossible."
+  },
+  "ci": {
+    "run": "36829004289",
+    "head": "93385690216f37553765c2a23a0213fbb1952ae3",
+    "status": "in_progress",
+    "jobs_passed": 7,
+    "browser": "in_progress",
+    "container": "failure",
+    "backend_image_high": 5,
+    "backend_image_critical": 0,
+    "cves": [
+      "CVE-2026-88806",
+      "CVE-2026-88807",
+      "CVE-2026-93990"
+    ],
+    "includes_171": false,
+    "includes_170_training_fix": false
+  },
+  "release": "Not deployed. PR107 remains draft. Production baseline recorded as09555c1. No release approval for this PR.",
+  "limits": [
+    "Geometry verification applies to the triangle mesh and its supplied precision bounds; wire path, threading, taper, fixturing and setup still require review.",
+    "The real curved-hole STEP remains unverified, not falsely labeled a verified extrusion.",
+    "Other file-orientation-dependent checks remain open; rotated bar still exposes CNC3 undercut behavior.",
+    "Full user goal remains open: real services, customer/physical accuracy, security, production preflight/approval/rollout and ledger completion."
+  ],
+  "files": [
+    {
+      "path": "171-prismatic-before.json",
+      "sha256": "a627a91adecf6dace3e34d5e2f3bc01951ce72f405214ee1eb636a9109926009"
+    },
+    {
+      "path": "171-prismatic-before.txt",
+      "sha256": "027434a03d9a6bcdbaca00bd4e4465ce2692f9038f23c359edaf341aa6546e9d"
+    },
+    {
+      "path": "171-prismatic-before.png",
+      "sha256": "9af7e54570e38f0743f5784d0a846382d5b53938711837da663c91b75c51ac4c"
+    },
+    {
+      "path": "171-control-source.json",
+      "sha256": "c29882bc9dab333ff5484877e8f4e17c549bf3301cdbbfeaec6e4168ce11c90f"
+    },
+    {
+      "path": "171-saved-before.json",
+      "sha256": "3d382039e8881be758c35dc320e281834a10820c399ba09af6c7837880ce7f95"
+    },
+    {
+      "path": "171-saved-readback.json",
+      "sha256": "93aaf340a02e046ced5708816088d46cb23351031a57dfa5cb5160c23c446b33"
+    },
+    {
+      "path": "171-rotated-after.txt",
+      "sha256": "5276213cabdc3922e8ec2168fd9f1610b79bc7fcd7542e70a0d150d262909b3c"
+    },
+    {
+      "path": "171-rotated-after.png",
+      "sha256": "ffdcaf3e797caacb82a8b7394de2227050860966524a202ac71e7b6d1479f6dd"
+    },
+    {
+      "path": "171-aligned-after.txt",
+      "sha256": "08c99c107b61a9a4625cf75c5f6f89038cb4179bfc238f66f46036bec8d4dfc0"
+    },
+    {
+      "path": "171-hole-after.txt",
+      "sha256": "93f4968046b126c84c2ada2bc48eb4664baa6606a5028da3bda3ba55a3e227de"
+    },
+    {
+      "path": "171-boss-after.txt",
+      "sha256": "98e3e7532fd785855fdd5ca8e59a1f004be74e832bc6b77b718ec056b9e32c03"
+    },
+    {
+      "path": "171-boss-after.png",
+      "sha256": "d5b1ef893274111aad1f9a8484377acfddec51796fad0c32f0fcb266d1f1930c"
+    },
+    {
+      "path": "shape-controls/171-profile-bar-rotated.step",
+      "sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0"
+    }
+  ],
+  "curved_step_limitation": {
+    "review": "Independent read-only diagnosis",
+    "nominal_geometry": "radius2mm Y-axis cylindrical through-hole",
+    "mesh_faces": 60238,
+    "nontransverse_hole_wall_triangles": 2096,
+    "maximum_reported_deviation_deg": 3.17,
+    "correct_candidate_axis_tested": true,
+    "source_has_tessellation_error_bound": false,
+    "fitted_cylinder_is_not_exact_surface_provenance": true,
+    "treatment": "Retain explicit warning and real-STEP regression; do not relax tolerances without bounded source evidence."
+  }
+}

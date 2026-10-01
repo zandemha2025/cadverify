@@ -26,6 +26,12 @@ export interface IndexedIssue {
   issue: Issue;
   /** sampled face indices for 3D highlight (unioned across duplicates) */
   faces: number[];
+  /** All processes that emitted this finding, including deduplicated rows. */
+  processes?: readonly string[];
+}
+
+export function issueProcesses(row: IndexedIssue): readonly string[] {
+  return row.processes ?? (row.issue.process ? [row.issue.process] : []);
 }
 
 /* ------------------------------------------------------------------ */
@@ -95,19 +101,48 @@ export function highestPriorityIssue(
 /*  Flatten helpers                                                    */
 /* ------------------------------------------------------------------ */
 
-type Push = (issue: Issue, keyBase: string) => void;
+type Push = (issue: Issue, keyBase: string, process?: string) => void;
 
-/** Dedup by code|message, unioning the affected-face samples. */
-function collect(build: (push: Push) => void): IndexedIssue[] {
+export function issueIdentity(issue: Issue): string {
+  // Equal text alone must not collapse distinct severities, locations or
+  // measurement evidence into whichever process happened to arrive first.
+  return JSON.stringify([issue.code, issue.message, issue.severity, issue.region_center,
+    issue.measured_value, issue.required_value, issue.measurement_unit, issue.scope,
+    issue.fix_suggestion, issue.citation,
+    // A capped sample cannot establish the size of a union. Keep different
+    // incomplete face sets separate instead of inventing a total count.
+    issue.affected_faces_truncated || (issue.affected_face_count ?? 0) > (issue.affected_faces_sample?.length ?? 0)
+      ? [issue.affected_face_count, issue.affected_faces_sample] : null]);
+}
+
+export function issueWithFaces(issue: Issue, faces: number[]): Issue {
+  return { ...issue, affected_faces_sample: faces,
+    affected_face_count: issue.affected_face_count == null || issue.affected_faces_truncated
+      || issue.affected_face_count > (issue.affected_faces_sample?.length ?? 0)
+      ? issue.affected_face_count : faces.length };
+}
+
+/** Dedup matching evidence, retaining canonical keys, faces and process membership. */
+export function collectIssues(build: (push: Push) => void): IndexedIssue[] {
   const seen = new Map<string, IndexedIssue>();
-  const push: Push = (issue, keyBase) => {
-    const id = `${issue.code}|${issue.message}`;
+  const keys = new Set<string>();
+  const push: Push = (issue, keyBase, process) => {
+    const id = issueIdentity(issue);
+    const owner = process || issue.process;
+    const processes = owner ? [owner] : [];
     const faces = issue.affected_faces_sample ?? [];
     const existing = seen.get(id);
     if (existing) {
       existing.faces = Array.from(new Set([...existing.faces, ...faces]));
+      existing.issue = issueWithFaces(existing.issue, existing.faces);
+      existing.processes = Array.from(new Set([...issueProcesses(existing), ...processes]));
     } else {
-      seen.set(id, { key: keyBase, issue, faces: [...faces] });
+      // Several cost estimates can reuse a process/index while carrying
+      // different evidence. Keep the first key and disambiguate later rows.
+      let key = keyBase;
+      for (let suffix = 1; keys.has(key); suffix++) key = `${keyBase}:${suffix}`;
+      keys.add(key);
+      seen.set(id, { key, issue, faces: [...faces], processes });
     }
   };
   build(push);
@@ -116,10 +151,10 @@ function collect(build: (push: Push) => void): IndexedIssue[] {
 
 /** Merge universal + EVERY per-process issue (the full candidate matrix). */
 export function flattenIssues(result: ValidationResult): IndexedIssue[] {
-  return collect((push) => {
+  return collectIssues((push) => {
     result.universal_issues.forEach((iss, i) => push(iss, `u${i}`));
     result.process_scores.forEach((ps) =>
-      ps.issues.forEach((iss, i) => push(iss, `${ps.process}#${i}`))
+      ps.issues.forEach((iss, i) => push(iss, `${ps.process}#${i}`, ps.process))
     );
   });
 }
@@ -131,11 +166,11 @@ export function flattenScopedIssues(
   processes: readonly string[]
 ): IndexedIssue[] {
   const inScope = new Set(processes.filter(Boolean));
-  return collect((push) => {
+  return collectIssues((push) => {
     result.universal_issues.forEach((iss, i) => push(iss, `u${i}`));
     result.process_scores.forEach((ps) => {
       if (!inScope.has(ps.process)) return;
-      ps.issues.forEach((iss, i) => push(iss, `${ps.process}#${i}`));
+      ps.issues.forEach((iss, i) => push(iss, `${ps.process}#${i}`, ps.process));
     });
   });
 }
@@ -209,7 +244,7 @@ export type RouteScopedVerdict = "pass" | "issues" | "fail" | "unknown";
 
 /**
  * Partition the full candidate matrix into { route, extra } by issue identity
- * (code|message), keeping the CANONICAL keys from `flattenIssues` on every row.
+ * (matching evidence), keeping the CANONICAL keys from `flattenIssues` on every row.
  *
  * Why canonical keys: an issue shared by several processes (e.g. present on both
  * the recommended route and a casting process) is deduped to a single row whose
@@ -225,10 +260,10 @@ export function partitionDfmByRoute(
 ): DfmPartition {
   const summary = scopedDfmSummary(result, recommendedProcess, shortlist);
   const routeIds = new Set(
-    summary.scoped.map((i) => `${i.issue.code}|${i.issue.message}`)
+    summary.scoped.map((i) => issueIdentity(i.issue))
   );
   const onRoute = (i: IndexedIssue) =>
-    routeIds.has(`${i.issue.code}|${i.issue.message}`);
+    routeIds.has(issueIdentity(i.issue));
   const route = summary.all.filter(onRoute);
   const extra = summary.all.filter((i) => !onRoute(i));
   return {
@@ -251,12 +286,11 @@ export function routeScopedDfmVerdict(
 ): RouteScopedVerdict {
   if (!result) return "unknown";
   const process = recommendedProcess?.trim() ?? "";
-  if (!process) return result.overall_verdict;
   const partition = partitionDfmByRoute(result, process);
-  if (partition.counts.critical > 0) return "fail";
-  if (partition.counts.advisory > 0) return "issues";
   const routeScore = result.process_scores.find((score) => score.process === process);
-  return routeScore?.verdict ?? result.overall_verdict;
+  if (partition.counts.critical > 0 || routeScore?.verdict === "fail") return "fail";
+  if (partition.counts.advisory > 0) return "issues";
+  return routeScore?.verdict ?? "unknown";
 }
 
 /* ------------------------------------------------------------------ */

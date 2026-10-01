@@ -1,0 +1,44 @@
+{
+  "environment": "local running production Next build and real API",
+  "checks": [
+    {
+      "path": "/cost-decisions/compare?audit=1",
+      "session": "missing",
+      "status": 307,
+      "login_return_path_preserved": true
+    },
+    {
+      "path": "/cost-decisions/compare?audit=1",
+      "session": "invalid",
+      "status": 307,
+      "login_return_path_preserved": true
+    },
+    {
+      "path": "/verify?audit=1",
+      "session": "missing",
+      "status": 307,
+      "login_return_path_preserved": true
+    },
+    {
+      "path": "/verify?audit=1",
+      "session": "invalid",
+      "status": 307,
+      "login_return_path_preserved": true
+    },
+    {
+      "path": "/settings/security",
+      "session": "missing",
+      "status": 307,
+      "login_return_path_preserved": true
+    },
+    {
+      "path": "/settings/security",
+      "session": "invalid",
+      "status": 307,
+      "login_return_path_preserved": true
+    }
+  ],
+  "limits": [
+    "No production deployment; valid-session recovery is checked separately through the native browser"
+  ]
+}

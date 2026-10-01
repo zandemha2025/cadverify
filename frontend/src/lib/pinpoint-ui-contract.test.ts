@@ -18,7 +18,7 @@ test("production tabs stay clean until a physical defect is selected", () => {
 test("issue list receives canonical physical defects with process implications", () => {
   assert.match(workspace, /canonicalIssues=\{canonicalIssues\}/);
   assert.match(workspace, /processImplications=\{processImplications\}/);
-  assert.match(dashboard, /grouped by physical defect/);
+  assert.match(dashboard, /matching findings grouped/);
 });
 
 test("selection is deep-linkable and the viewer owns a docked leader association", () => {

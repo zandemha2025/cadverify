@@ -11,6 +11,7 @@ in CI. They assert the model's structural invariants:
 from __future__ import annotations
 
 import trimesh
+import pytest
 
 from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
 from src.analysis.context import GeometryContext
@@ -71,6 +72,24 @@ def test_line_items_sum_to_unit_cost():
         s = sum(e["line_items"].values())
         assert abs(e["unit_cost_usd"] - round(s, 2)) < 0.02, (
             f"{e['process']} qty {e['quantity']}: {e['unit_cost_usd']} != Σ {s}")
+
+
+def test_feasibility_keeps_uncosted_blockers_and_marks_actual_estimates():
+    result, mesh, feats = _analyze(_small_block())
+    for strict in (False, True):
+        report = estimate_decision(result, mesh, feats,
+                                   EstimateOptions(quantities=[50], strict_dfm=strict))
+        costed = {e["process"] for e in report.estimates}
+        assert {f["process"] for f in report.engine_feasibility if f["costed"]} == costed
+        for score, row in zip(result.process_scores, report.engine_feasibility):
+            assert row["blockers"] == [i.message for i in score.issues if i.severity == "error"]
+        turning = next(f for f in report.engine_feasibility if f["process"] == "cnc_turning")
+        assert not turning["costed"] and turning["blockers"]
+
+    result.geometry.is_watertight = False
+    refused = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[50]))
+    assert refused.status == "GEOMETRY_INVALID"
+    assert not any(f["costed"] for f in refused.engine_feasibility)
 
 
 def test_every_driver_has_source_and_provenance():
@@ -375,3 +394,40 @@ def test_cavity_complexity_tooling():
     assert abs(mach_u / mach_b - 0.25) < 0.01
     for e in (u_im,):
         assert abs(e["unit_cost_usd"] - round(sum(e["line_items"].values()), 2)) < 0.02
+
+
+@pytest.mark.parametrize("length,tier", [
+    (49.9, "S"), (50, "M"), (149.9, "M"), (150, "L"),
+    (300, "L"), (300.0001, "XL"), (300.1, "XL"), (400, "XL"),
+])
+def test_tooling_size_tiers_follow_the_part_not_file_axes(length, tier):
+    from math import pi
+    from src.analysis.models import ProcessType as PT
+    from src.costing.cost_model import cost_breakdown
+    from src.costing.drivers import extract_drivers
+    from src.costing.rates import build_rate_card
+    from src.costing.routing import select_material
+
+    rates = build_rate_card()
+    # The longest side of this solid cuboid is known independently of its pose.
+    base = {"S": 6000, "M": 15000, "L": 30000, "XL": 60000}[tier]
+    tools_seen = []
+    for angle, axis in [(0, (0, 0, 1)), (pi/4, (0, 0, 1)), (.73, (1, 2, 3))]:
+        mesh = trimesh.creation.box(extents=(length, 12, 12))
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+        drivers = extract_drivers(analyze_geometry(mesh), mesh)
+        for process, material_class, multiplier in [
+            (PT.INJECTION_MOLDING, "polymer", 1), (PT.DIE_CASTING, "aluminum", 1.5),
+            (PT.SAND_CASTING, "aluminum", .35), (PT.INVESTMENT_CASTING, "aluminum", .9),
+            (PT.FORGING, "steel", 2),
+        ]:
+            material = select_material(process, material_class, rates)
+            estimate = cost_breakdown(process, drivers, material, material_class, 100, rates, "US")
+            tool = next(d for d in estimate.drivers if d.name == "tooling_cost")
+            assert tool.value == pytest.approx(base * multiplier), (length, angle, process, tool)
+            tools_seen.append(tool)
+            estimate.assert_sums()
+    for tool in tools_seen:
+        assert f"size tier {tier}" in tool.source and "oriented candidate" in tool.source
+        assert f"{float(length)}mm" in tool.source
+        assert "assumption" in tool.source and "not shop-validated" in tool.source

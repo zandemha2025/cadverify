@@ -1,0 +1,46 @@
+{
+  "environment": "local Next 3017 \u2192 API 8017 \u2192 PostgreSQL",
+  "round_trips": [
+    {
+      "quantities": [
+        133,
+        1330
+      ],
+      "save_then_immediate_read": true,
+      "exact_saved_estimates": true,
+      "approve_then_immediate_read": true,
+      "reopen_then_immediate_read": true
+    },
+    {
+      "quantities": [
+        134,
+        1340
+      ],
+      "save_then_immediate_read": true,
+      "exact_saved_estimates": true,
+      "approve_then_immediate_read": true,
+      "reopen_then_immediate_read": true
+    },
+    {
+      "quantities": [
+        135,
+        1350
+      ],
+      "save_then_immediate_read": true,
+      "exact_saved_estimates": true,
+      "approve_then_immediate_read": true,
+      "reopen_then_immediate_read": true
+    },
+    {
+      "quantities": [
+        136,
+        1360
+      ],
+      "save_then_immediate_read": true,
+      "exact_saved_estimates": true,
+      "approve_then_immediate_read": true,
+      "reopen_then_immediate_read": true
+    }
+  ],
+  "isolated_fixture_cleaned_up": true
+}

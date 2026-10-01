@@ -2,11 +2,49 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import numpy as np
+import trimesh
+
 from src.analysis.base_analyzer import analyze_geometry
 from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all
 from src.analysis.models import ProcessType
 from src.analysis.processes import get_analyzer, registered_processes
+from src.analysis.processes.checks import check_prismatic, check_setup_access
+
+
+def test_build_envelope_accepts_a_proven_reorientation_without_erasing_other_checks():
+    from src.analysis.models import Severity
+    from src.analysis.processes.checks import check_build_volume
+
+    for angle, axis in [(0, [0, 0, 1]), (np.pi / 4, [0, 0, 1]), (.71, [1, 2, 3])]:
+        mesh = trimesh.creation.box(extents=[290, 290, 10])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+        mesh.apply_translation([100, -200, 300])
+        ctx = _build_ctx(mesh)
+        issues = check_build_volume(ctx, (300, 300, 350), ProcessType.FDM)
+        assert not any(i.severity == Severity.ERROR for i in issues)
+        if angle:
+            assert any(i.code == 'BUILD_REORIENTATION_REQUIRED' for i in issues)
+            ctx.metadata['decimation'] = {'succeeded': True}
+            assert any(i.code == 'BUILD_ENVELOPE_UNVERIFIED' and i.severity == Severity.ERROR for i in
+                       check_build_volume(ctx, (300, 300, 350), ProcessType.FDM))
+
+    thin = trimesh.creation.box(extents=[290, 290, .4])
+    thin.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 4, [0, 0, 1]))
+    all_issues = get_analyzer(ProcessType.FDM).analyze(_build_ctx(thin))
+    assert any(i.code == 'THIN_WALL' and i.severity == Severity.ERROR for i in all_issues)
+
+    # A fitting enclosure is evidence of a possible orientation, not permission
+    # to ignore a real size excess or to fit a lathe along arbitrary axes.
+    large = _build_ctx(trimesh.creation.box(extents=[400, 400, 400]))
+    assert any(i.code == 'EXCEEDS_BUILD_VOLUME' for i in
+               check_build_volume(large, (300, 300, 350), ProcessType.FDM))
+    bar = _build_ctx(trimesh.creation.cylinder(radius=20, height=300))
+    assert any(i.code == 'EXCEEDS_BUILD_VOLUME' for i in
+               check_build_volume(bar, (400, 400, 250), ProcessType.CNC_TURNING))
 
 
 def _build_ctx(mesh):
@@ -74,11 +112,133 @@ def test_cnc_turning_passes_symmetric_cylinder(cylinder_50h_10r):
     assert "NOT_ROTATIONALLY_SYMMETRIC" not in codes
 
 
-def test_wire_edm_detects_non_prismatic(cylinder_50h_10r):
-    """A cylinder has non-vertical faces (the caps) — wire EDM may flag it."""
+def test_wire_edm_accepts_cylinder_profile(cylinder_50h_10r):
+    """A cylinder is a straight extrusion of its circular cross section."""
     ctx = _build_ctx(cylinder_50h_10r)
     issues = get_analyzer(ProcessType.WIRE_EDM).analyze(ctx)
-    # Cylinder sidewalls are vertical, but caps are horizontal — should still pass
-    # (prismatic check allows horizontal + vertical faces)
-    # Just verify it runs without error
-    assert isinstance(issues, list)
+    assert not any("PRISMATIC" in issue.code for issue in issues)
+
+
+def test_straight_profile_check_is_orientation_independent_and_keeps_small_caps():
+    for source in [trimesh.creation.box(extents=[80, 12, 12]),
+                   trimesh.creation.cylinder(radius=1, height=1000, sections=128),
+                   trimesh.creation.annulus(r_min=2, r_max=3, height=20, sections=32)]:
+        for angle in [0., .5, 1.3]:
+            mesh = source.copy()
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, .3]))
+            mesh.apply_translation([200, -300, 100])
+            before = mesh.vertices.copy()
+            assert check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM) == []
+            np.testing.assert_array_equal(mesh.vertices, before)
+
+
+def test_unproved_step_profiles_request_wire_path_review():
+    from src.parsers.step_mesher import step_to_trimesh_from_bytes
+
+    controls = Path(__file__).resolve().parents[2] / "outputs/production-audit-20260929/shape-controls"
+    # The boss changes section despite all normals being axis aligned. The
+    # curved hole's adaptive triangles are not an exact extrusion, and the
+    # parser supplies no tessellation-error bound to certify its nominal CAD.
+    for filename in ["156-plate-with-boss.step", "166-transverse-hole-bar.step"]:
+        source = controls / filename
+        mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
+        issues = check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM)
+        assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
+        assert issues[0].severity.value == "warning"
+        assert "multi-axis" in issues[0].message
+
+
+def test_profile_check_discloses_rounding_decimation_and_nonextrusions():
+    from src.parsers.stl_parser import parse_stl_from_bytes
+
+    mesh = trimesh.creation.box(extents=[80, 12, 12])
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(.5, [1, 1, .3]))
+    mesh.apply_translation([200, -300, 100])
+    rounded = parse_stl_from_bytes(mesh.export(file_type="stl"))
+    issues = check_prismatic(_build_ctx(rounded), ProcessType.WIRE_EDM)
+    assert [i.code for i in issues] == ["PRISMATIC_PROFILE_PRECISION"]
+    assert issues[0].severity.value == "warning"
+
+    ctx = _build_ctx(mesh)
+    ctx.metadata["decimation"] = {"succeeded": True}
+    assert check_prismatic(ctx, ProcessType.WIRE_EDM)[0].code == "PRISMATIC_PROFILE_UNVERIFIED"
+
+    opened = mesh.copy(); opened.update_faces(np.arange(len(mesh.faces) - 1))
+    other = mesh.copy(); other.apply_translation([200, 0, 0])
+    for source in [opened, mesh + other, trimesh.creation.cone(radius=5, height=10),
+                   trimesh.creation.icosphere(subdivisions=1, radius=5)]:
+        issues = check_prismatic(_build_ctx(source), ProcessType.WIRE_EDM)
+        assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
+        assert issues[0].severity.value == "warning"
+
+
+def test_reorienting_convex_parts_does_not_invent_machining_undercuts():
+    for source in [trimesh.creation.box(extents=[80, 12, 12]),
+                   trimesh.creation.icosphere(subdivisions=1, radius=5)]:
+        for angle in [0., .5, 1.3]:
+            mesh = source.copy()
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, .3]))
+            mesh.apply_translation([200, -300, 100])
+            before = mesh.vertices.copy()
+            ctx = _build_ctx(mesh)
+            for process in [ProcessType.CNC_3AXIS, ProcessType.CNC_5AXIS, ProcessType.FORGING]:
+                assert check_setup_access(ctx, process) == []
+            np.testing.assert_array_equal(mesh.vertices, before)
+
+
+def test_access_check_does_not_ignore_a_cavity_in_the_bottom_five_percent():
+    outer = trimesh.creation.box(extents=[20, 20, 20])
+    cavity = trimesh.creation.box(extents=[1, 1, .2])
+    cavity.apply_translation([0, 0, -9.8]); cavity.invert()
+    mesh = outer + cavity
+    assert mesh.is_volume
+    issues = check_setup_access(_build_ctx(mesh), ProcessType.CNC_3AXIS)
+    assert [i.code for i in issues] == ["SETUP_ACCESS_UNVERIFIED"]
+    assert issues[0].severity.value == "warning"
+    assert issues[0].affected_faces
+    assert min(issues[0].affected_faces) >= len(outer.faces)
+
+
+def test_setup_search_accepts_rotated_boss_and_retains_uncertain_geometry():
+    from src.parsers.step_mesher import step_to_trimesh_from_bytes
+    from src.parsers.stl_parser import parse_stl_from_bytes
+
+    source = Path(__file__).resolve().parents[2] / "outputs/production-audit-20260929/shape-controls/156-plate-with-boss.step"
+    boss = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
+    for angle in [0., .5]:
+        mesh = boss.copy()
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, .3]))
+        assert check_setup_access(_build_ctx(mesh), ProcessType.CNC_3AXIS) == []
+
+    mesh = trimesh.creation.box(extents=[80, 12, 12])
+    rounded = parse_stl_from_bytes(mesh.export(file_type="stl"))
+    assert check_setup_access(_build_ctx(rounded), ProcessType.CNC_3AXIS)[0].code == "SETUP_ACCESS_UNVERIFIED"
+    ctx = _build_ctx(mesh); ctx.metadata["decimation"] = {"succeeded": True}
+    issue = check_setup_access(ctx, ProcessType.CNC_3AXIS)[0]
+    assert issue.code == "SETUP_ACCESS_UNVERIFIED" and not issue.affected_faces
+    torus = trimesh.creation.torus(major_radius=5, minor_radius=1, major_sections=24, minor_sections=12)
+    assert check_setup_access(_build_ctx(torus), ProcessType.CNC_3AXIS)[0].code == "SETUP_ACCESS_UNVERIFIED"
+
+
+def test_skinny_triangulation_cannot_hide_a_reentrant_chamber():
+    from src.analysis.context import wall_thickness_tolerance
+
+    outer = trimesh.creation.box(extents=[20, 20, 20])
+    chamber = trimesh.creation.box(extents=[10, 10, 10])
+    neck = trimesh.creation.box(extents=[4, 4, 12]); neck.apply_translation([0, 0, 6])
+    mesh = trimesh.boolean.difference([outer, chamber, neck])
+    # Inset each triangle without changing its surface. Thin coplanar edge
+    # strips shrink local adjacency projections at every concave edge.
+    inner = mesh.triangles * (1 - 1e-10) + mesh.triangles_center[:, None, :] * 1e-10
+    faces = []
+    for index, (a, b, c) in enumerate(mesh.faces):
+        x, y, z = len(mesh.vertices) + 3 * index + np.arange(3)
+        faces.extend([[a, b, y], [a, y, x], [b, c, z], [b, z, y],
+                      [c, a, x], [c, x, z], [x, y, z]])
+    refined = trimesh.Trimesh(np.vstack([mesh.vertices, inner.reshape(-1, 3)]), faces, process=False)
+    assert refined.is_volume and refined.body_count == 1
+    np.testing.assert_allclose(refined.volume, mesh.volume, rtol=1e-12)
+    ctx = _build_ctx(refined)
+    assert refined.face_adjacency_projections.max() <= wall_thickness_tolerance(refined, ctx.scale_eps)
+    for process in [ProcessType.CNC_3AXIS, ProcessType.CNC_5AXIS, ProcessType.FORGING]:
+        assert check_setup_access(ctx, process)[0].code == "SETUP_ACCESS_UNVERIFIED"

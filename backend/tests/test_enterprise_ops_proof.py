@@ -32,6 +32,28 @@ def healthcheck_command(service: dict) -> str:
     return "\n".join(service["healthcheck"]["test"])
 
 
+def test_image_security_gates_prs_and_preserves_evidence_on_scan_failure():
+    steps = {step.get("name"): step for step in load_yaml(".github/workflows/ci.yml")["jobs"]["docker-build"]["steps"]}
+    for target in ("frontend", "backend"):
+        scan = steps[f"Scan {target} image (high/critical vulnerabilities)"]
+        # Built PR/manual images must be scanned even if the other image scan fails.
+        condition = f"always() && steps.{target}-image.outcome == 'success'"
+        assert scan["if"] == condition
+        assert scan["with"]["exit-code"] == "1"
+        assert scan["with"]["severity"] == "HIGH,CRITICAL"
+        assert scan["with"]["ignore-unfixed"] is False
+        assert not scan.get("continue-on-error", False)
+        assert steps[f"Generate {target} CycloneDX SBOM"]["if"] == condition
+    for name in (
+        "Prepare image security evidence directory",
+        "Write source-bound container build manifest",
+        "Upload container build and security evidence",
+    ):
+        assert steps[name]["if"].startswith("always() && ")
+        assert "github.ref" not in steps[name]["if"]
+        assert "github.event_name" not in steps[name]["if"]
+
+
 def test_ci_build_proof_and_aws_promotion_use_one_exact_artifact_set():
     workflow = load_yaml(".github/workflows/ci.yml")
     promotion = load_yaml(".github/workflows/aws-commercial-promote.yml")
@@ -248,7 +270,50 @@ def test_frontend_dockerfile_matches_current_next_runtime_mode():
     assert "COPY --from=builder --chown=node:node /app/node_modules ./node_modules" in dockerfile
     assert "USER node" in dockerfile
     assert "COPY --from=builder --chown=node:node /app/.next ./.next" in dockerfile
-    assert 'CMD ["npm", "run", "start"]' in dockerfile
+    assert 'CMD ["node", "node_modules/next/dist/bin/next", "start"]' in dockerfile
+
+
+def test_frontend_image_probe_retries_an_initial_connection_reset(tmp_path):
+    import shlex
+    import socket
+    import struct
+    import subprocess
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class StartupHandler(BaseHTTPRequestHandler):
+        requests = 0
+
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            type(self).requests += 1
+            if self.requests == 1:
+                self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                self.close_connection = True
+                return
+            self.send_response(200)
+            self.send_header("Content-Length", "5")
+            self.end_headers()
+            self.wfile.write(b"ready")
+
+    steps = load_yaml(".github/workflows/ci.yml")["jobs"]["docker-build"]["steps"]
+    script = next(step["run"] for step in steps if step.get("name") == "Exercise frontend image default startup and share image")
+    command = script[script.index("curl --fail"):script.index("python3 - <<'PY'")]
+    (tmp_path / "outputs/security-proof").mkdir(parents=True)
+    with ThreadingHTTPServer(("127.0.0.1", 0), StartupHandler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            args = shlex.split(command.replace("\\\n", "").replace("${port}", str(server.server_port)))
+            result = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, timeout=10)
+        finally:
+            server.shutdown()
+            thread.join()
+    assert result.returncode == 0, result.stderr
+    assert StartupHandler.requests == 2
+    assert (tmp_path / "outputs/security-proof/frontend-share.png").read_bytes() == b"ready"
 
 
 def test_compose_configs_have_smokeable_frontend_and_backend():

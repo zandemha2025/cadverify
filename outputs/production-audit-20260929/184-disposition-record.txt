@@ -1,0 +1,462 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - button "Back to cost history":
+    - text: Back to cost history
+  - heading "cube.step" [level=1]
+  - paragraph: STEP · 10/1/2026, 7:56:20 AM
+  - button "Share":
+    - text: Share
+  - button "Download PDF":
+    - text: Download PDF
+  - button "JSON":
+    - text: JSON
+  - button "CSV":
+    - text: CSV
+  - button "RFQ ZIP":
+    - text: RFQ ZIP
+  - paragraph: Source SHA-256 · 76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a
+  - heading "Decision governance" [level=2]
+  - text: Unreviewed
+  - paragraph: Awaiting analyst signoff before this decision is used as an RFQ or sourcing record.
+  - button "Approve":
+    - text: Approve
+  - paragraph: Recorded outcome
+  - paragraph: Make outside
+  - paragraph: MJF (HP) · PP (Polypropylene) · qty 100
+  - paragraph: Updated 10/1/2026, 8:36:55 AM by user 2.
+  - text: Outcome quantity
+  - combobox "Outcome quantity":
+    - option "1"
+    - option "100" [selected]
+    - option "1,000"
+    - option "2,000"
+    - option "10,000"
+    - option "12,000"
+  - paragraph: Choice applies to MJF (HP) · PP (Polypropylene) · qty 100.
+  - paragraph: Owned-machine fit is not verified for this route. Declare a fitting machine and re-verify before recording Make in-house.
+  - button "Make in-house" [disabled]
+  - button "Make outside" [pressed]
+  - button "Acquire capability"
+  - button "Redesign"
+  - button "Withdraw outcome"
+  - paragraph: Choose the accountable sourcing action, then add the reason or constraint that reviewers need. Changing either the outcome or its note reopens any prior approval for a fresh signoff.
+  - text: Outcome note (optional)
+  - textbox "Outcome note (optional)":
+    - /placeholder: Why this action was chosen, constraints, owner, or next review point
+    - text: Audit 184 — MJF supplier at 100 parts; α/β <quoted> & reviewed. Note edited while viewing qty 1.
+  - paragraph: The note persists beside the immutable cost record and appears in JSON, CSV, and PDF exports.
+  - paragraph: 96/1000
+  - button "Save outcome note" [disabled]
+  - textbox "Optional approval note"
+  - generic: Recommended decision · make-vs-buy
+  - heading "Make by FDM / FFF" [level=2]
+  - text: Advisory
+  - paragraph: "The lowest-cost no-tooling route varies by quantity. Estimated Injection Molding crossover: ~4,592 units; requires redesign. Compare the costed options at your quantity."
+  - paragraph: "Estimated cost by FDM / FFF: $30.00/unit"
+  - paragraph: At quantity 1 · ESTIMATE · assumption-based, not yet validated
+  - generic: Confidence · 80%
+  - text: $18 – $42 / unit
+  - generic: (±40%)
+  - generic: $18
+  - generic: $30
+  - generic: $42
+  - paragraph:
+    - generic: ±40% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate — no ground truth yet
+  - generic: This is an explainable should-cost estimate — every driver is provenance-tagged and the confidence band is assumption-based, not yet validated on your parts. It is not a validated quote.
+  - heading "Recommendation by quantity" [level=3]
+  - table:
+    - rowgroup:
+      - row "Qty Process / material $ / unit Lead time":
+        - columnheader "Qty"
+        - columnheader "Process / material"
+        - columnheader "$ / unit"
+        - columnheader "Lead time"
+    - rowgroup:
+      - row "1 FDM / FFF / PLA $30.00 4.9–9.1 d":
+        - cell "1"
+        - cell "FDM / FFF / PLA":
+          - generic: FDM / FFF
+          - generic: / PLA
+        - cell "$30.00"
+        - cell "4.9–9.1 d"
+      - row "100 MJF (HP) / PP (Polypropylene) $3.62 5.6–10.4 d":
+        - cell "100"
+        - cell "MJF (HP) / PP (Polypropylene)":
+          - generic: MJF (HP)
+          - generic: / PP (Polypropylene)
+        - cell "$3.62"
+        - cell "5.6–10.4 d"
+      - row "1,000 MJF (HP) / PP (Polypropylene) $3.48 5.6–10.4 d":
+        - cell "1,000"
+        - cell "MJF (HP) / PP (Polypropylene)":
+          - generic: MJF (HP)
+          - generic: / PP (Polypropylene)
+        - cell "$3.48"
+        - cell "5.6–10.4 d"
+      - row "2,000 MJF (HP) / PP (Polypropylene) $3.48 5.6–10.4 d":
+        - cell "2,000"
+        - cell "MJF (HP) / PP (Polypropylene)":
+          - generic: MJF (HP)
+          - generic: / PP (Polypropylene)
+        - cell "$3.48"
+        - cell "5.6–10.4 d"
+      - 'row "10,000 MJF (HP) / PP (Polypropylene) cheaper if redesigned: Injection Molding $2.78/unit (add draft, tooling-dominated) $3.48 7–13 d"':
+        - cell "10,000"
+        - 'cell "MJF (HP) / PP (Polypropylene) cheaper if redesigned: Injection Molding $2.78/unit (add draft, tooling-dominated)"':
+          - generic: MJF (HP)
+          - generic: / PP (Polypropylene)
+          - generic: "cheaper if redesigned: Injection Molding $2.78/unit (add draft, tooling-dominated)"
+        - cell "$3.48"
+        - cell "7–13 d"
+      - 'row "12,000 MJF (HP) / PP (Polypropylene) cheaper if redesigned: Injection Molding $2.68/unit (add draft, tooling-dominated) $3.48 7–13 d"':
+        - cell "12,000"
+        - 'cell "MJF (HP) / PP (Polypropylene) cheaper if redesigned: Injection Molding $2.68/unit (add draft, tooling-dominated)"':
+          - generic: MJF (HP)
+          - generic: / PP (Polypropylene)
+          - generic: "cheaper if redesigned: Injection Molding $2.68/unit (add draft, tooling-dominated)"
+        - cell "$3.48"
+        - cell "7–13 d"
+  - heading "Process options · should-cost" [level=3]
+  - heading "CNC 3-Axis" [level=4]
+  - generic: ±50%
+  - paragraph: Delrin (POM)
+  - generic: qty 1
+  - generic: $134.22/unit
+  - generic: qty 100
+  - generic: $21.61/unit
+  - generic: qty 1,000
+  - generic: $14.94/unit
+  - generic: qty 2,000
+  - generic: $13.46/unit
+  - generic: qty 10,000
+  - generic: $10.62/unit
+  - generic: qty 12,000
+  - generic: $10.34/unit
+  - heading "CNC 5-Axis" [level=4]
+  - generic: ±50%
+  - paragraph: Delrin (POM)
+  - generic: qty 1
+  - generic: $188.85/unit
+  - generic: qty 100
+  - generic: $24.27/unit
+  - generic: qty 1,000
+  - generic: $16.65/unit
+  - generic: qty 2,000
+  - generic: $15.01/unit
+  - generic: qty 10,000
+  - generic: $11.86/unit
+  - generic: qty 12,000
+  - generic: $11.55/unit
+  - heading "DLP Resin" [level=4]
+  - generic: ±40%
+  - paragraph: Standard Resin
+  - generic: qty 1
+  - generic: $40.00/unit
+  - generic: qty 100
+  - generic: $6.37/unit
+  - generic: qty 1,000
+  - generic: $6.35/unit
+  - generic: qty 2,000
+  - generic: $6.35/unit
+  - generic: qty 10,000
+  - generic: $6.35/unit
+  - generic: qty 12,000
+  - generic: $6.35/unit
+  - heading "FDM / FFF" [level=4]
+  - generic: MAKE NOW
+  - generic: ±40%
+  - paragraph: PLA
+  - generic: qty 1
+  - generic: $30.00/unit
+  - generic: qty 100
+  - generic: $8.60/unit
+  - generic: qty 1,000
+  - generic: $8.55/unit
+  - generic: qty 2,000
+  - generic: $8.54/unit
+  - generic: qty 10,000
+  - generic: $8.54/unit
+  - generic: qty 12,000
+  - generic: $8.54/unit
+  - heading "Injection Molding" [level=4]
+  - generic: ±60%
+  - paragraph: PP (Molded)
+  - generic: qty 1
+  - generic: $6,002.18/unit
+  - generic: qty 100
+  - generic: $62.18/unit
+  - generic: qty 1,000
+  - generic: $8.18/unit
+  - generic: qty 2,000
+  - generic: $5.18/unit
+  - generic: qty 10,000
+  - generic: $2.78/unit
+  - generic: qty 12,000
+  - generic: $2.68/unit
+  - generic: Not DFM-ready as-modeled. 114838 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.
+  - heading "MJF (HP)" [level=4]
+  - generic: ±40%
+  - paragraph: PP (Polypropylene)
+  - generic: qty 1
+  - generic: $75.00/unit
+  - generic: qty 100
+  - generic: $3.62/unit
+  - generic: qty 1,000
+  - generic: $3.48/unit
+  - generic: qty 2,000
+  - generic: $3.48/unit
+  - generic: qty 10,000
+  - generic: $3.48/unit
+  - generic: qty 12,000
+  - generic: $3.48/unit
+  - heading "SLA Resin" [level=4]
+  - generic: ±40%
+  - paragraph: Standard Resin
+  - generic: qty 1
+  - generic: $40.00/unit
+  - generic: qty 100
+  - generic: $10.44/unit
+  - generic: qty 1,000
+  - generic: $10.44/unit
+  - generic: qty 2,000
+  - generic: $10.44/unit
+  - generic: qty 10,000
+  - generic: $10.44/unit
+  - generic: qty 12,000
+  - generic: $10.44/unit
+  - heading "SLS (Powder)" [level=4]
+  - generic: ±40%
+  - paragraph: PA12 (Nylon 12)
+  - generic: qty 1
+  - generic: $75.00/unit
+  - generic: qty 100
+  - generic: $3.82/unit
+  - generic: qty 1,000
+  - generic: $3.68/unit
+  - generic: qty 2,000
+  - generic: $3.68/unit
+  - generic: qty 10,000
+  - generic: $3.67/unit
+  - generic: qty 12,000
+  - generic: $3.67/unit
+  - heading "Cost drivers · FDM / FFF @ qty 1" [level=3]
+  - paragraph: Every figure is provenance-tagged. Line items sum to the unit cost — no naked numbers.
+  - generic: material_cost
+  - generic: $0.09
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. CAD volume 2.72 cm³ × PLA density 1.24 g/cm³ = 0.0034 kg × $25/kg (material-DB unit price (DEFAULT book value)) × (1+0.1 scrap) × region-material ×1":
+    - generic: DEFAULT
+    - generic: CAD volume 2.72 cm³ × PLA density 1.24 g/cm³ = 0.0034 kg × $25/kg (material-DB unit price (DEFAULT book value)) × (1+0.1 scrap) × region-material ×1
+  - generic: ±5%
+  - generic: parts_per_build
+  - generic: 43 parts
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of ''Audit local FDM 046''"':
+    - generic: DEFAULT
+    - generic: "serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of 'Audit local FDM 046'"
+  - generic: machine_cost
+  - generic: $1.16
+  - 'generic "USER — You overrode this value. 0.1791 hr × $10/hr (fitted machine ''Audit local FDM 046'', its OWN declared rate) × (1-0.35 capital sunk) OWNED-IN-HOUSE marginal [assumption, not shop-validated] × region-labor ×1 [serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of ''Audit local FDM 046'']"':
+    - generic: USER
+    - generic: "0.1791 hr × $10/hr (fitted machine 'Audit local FDM 046', its OWN declared rate) × (1-0.35 capital sunk) OWNED-IN-HOUSE marginal [assumption, not shop-validated] × region-labor ×1 [serial XY nest: deposition V/16 = 2.72/16 = 0.170hr/part (per-part nozzle) + Z-sweep (10.0/25)÷43 parts/plate = 0.009hr/part (plate Z-climb amortized; XY packing 0.5, plate 200×200mm) = 0.179hr/part; oriented candidate oriented XYZ (15.0, 20.0, 10.0)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan); USER-declared envelope of 'Audit local FDM 046']"
+  - generic: ±40%
+  - generic: owned_in_house
+  - generic: 0.65 ×
+  - 'generic "USER — You overrode this value. machine ''Audit local FDM 046'' OWNED in-house: machine costed at MARGINAL rate $6.5/hr = $10/hr × (1-0.35 capital) — capital purchase/amortization removed (sunk on gear the org already owns; make-it-ourselves, not rent-the-time). USER-declared ownership; the 0.35 capital fraction is DEFAULT [assumption, not shop-validated]"':
+    - generic: USER
+    - generic: "machine 'Audit local FDM 046' OWNED in-house: machine costed at MARGINAL rate $6.5/hr = $10/hr × (1-0.35 capital) — capital purchase/amortization removed (sunk on gear the org already owns; make-it-ourselves, not rent-the-time). USER-declared ownership; the 0.35 capital fraction is DEFAULT [assumption, not shop-validated]"
+  - generic: ±40%
+  - generic: labor_cost
+  - generic: $7.08
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. finish 0.2hr/part + bulk 0.1hr/build ÷ 43 ≈ 0.202326hr × $35/hr × region-labor ×1":
+    - generic: DEFAULT
+    - generic: finish 0.2hr/part + bulk 0.1hr/build ÷ 43 ≈ 0.202326hr × $35/hr × region-labor ×1
+  - generic: ±20%
+  - generic: setup_cost
+  - generic: $8.75
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. setup 0.25hr × $35/hr × ceil(1/43) = 1 setups ÷ 1 × region-labor ×1":
+    - generic: DEFAULT
+    - generic: setup 0.25hr × $35/hr × ceil(1/43) = 1 setups ÷ 1 × region-labor ×1
+  - generic: ±20%
+  - generic: min_charge_floor
+  - generic: $12.91
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. shop/order minimum $30/lot × 1 lots ÷ 1 = $30.00/unit floor (applied)":
+    - generic: DEFAULT
+    - generic: shop/order minimum $30/lot × 1 lots ÷ 1 = $30.00/unit floor (applied)
+  - generic: labor
+  - generic: $7.08
+  - generic: machine
+  - generic: $1.16
+  - generic: material
+  - generic: $0.09
+  - generic: amortized_fixed
+  - generic: $8.75
+  - generic: min_charge_floor
+  - generic: $12.91
+  - generic: Σ line items = unit cost
+  - generic: $30.00
+  - heading "Lead time · FDM / FFF @ qty 1" [level=3]
+  - paragraph: 4.9–9.1 days
+  - generic: ship 3 d
+  - generic: queue 2 d
+  - generic: production 1 d
+  - generic: post_process 1 d
+  - paragraph: "Capacity: 12 machines × 22 hr/day [DEFAULT]"
+  - heading "Assumptions" [level=3]
+  - generic: labor_rate
+  - generic: $35/hr
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. loaded shop-floor labor":
+    - generic: DEFAULT
+    - generic: loaded shop-floor labor
+  - generic: region_labor
+  - generic: 1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. region US: labor/machine/setup ×1"':
+    - generic: DEFAULT
+    - generic: "region US: labor/machine/setup ×1"
+  - generic: region_material
+  - generic: 1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. region US: commodity material ×1 (global feedstock, ~1.0)"':
+    - generic: DEFAULT
+    - generic: "region US: commodity material ×1 (global feedstock, ~1.0)"
+  - generic: region_tooling
+  - generic: 1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. region US: tooling ×1 (offshore toolmaking labor)"':
+    - generic: DEFAULT
+    - generic: "region US: tooling ×1 (offshore toolmaking labor)"
+  - generic: margin
+  - generic: "0"
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"':
+    - generic: DEFAULT
+    - generic: "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"
+  - generic: overhead
+  - generic: "0"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. indirect burden on conversion cost (machine+labor+setup)":
+    - generic: DEFAULT
+    - generic: indirect burden on conversion cost (machine+labor+setup)
+  - generic: utilization
+  - generic: "1"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. machine utilization (idle-recovery on machine cost)":
+    - generic: DEFAULT
+    - generic: machine utilization (idle-recovery on machine cost)
+  - generic: stock_allowance
+  - generic: 1.1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"':
+    - generic: DEFAULT
+    - generic: "CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"
+  - generic: machine_labor_frac
+  - generic: "0.35"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. operator-labor share of the machine rate that scales with region (capital/facility stays global) [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: operator-labor share of the machine rate that scales with region (capital/facility stays global) [assumption, not shop-validated]
+  - generic: perishable_frac
+  - generic: "0.05"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. perishable tooling/consumables as a fraction of CNC machine cost [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: perishable tooling/consumables as a fraction of CNC machine cost [assumption, not shop-validated]
+  - generic: daily_machine_hours
+  - generic: 8 hr/day
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. fallback daily capacity; process-specific machine hours take precedence":
+    - generic: DEFAULT
+    - generic: fallback daily capacity; process-specific machine hours take precedence
+  - generic: n_cavities
+  - generic: 1 cav
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. formative tooling cavities = 1 (DEFAULT single-cavity should-cost)":
+    - generic: DEFAULT
+    - generic: formative tooling cavities = 1 (DEFAULT single-cavity should-cost)
+  - generic: complexity
+  - generic: 0 moderate
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. tooling complexity = moderate (DEFAULT moderate; raise for slides/side-actions)":
+    - generic: DEFAULT
+    - generic: tooling complexity = moderate (DEFAULT moderate; raise for slides/side-actions)
+  - generic: material_class
+  - generic: 0 polymer
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. material class = polymer (DEFAULT: these are polymer automotive parts; override for metal)"':
+    - generic: DEFAULT
+    - generic: "material class = polymer (DEFAULT: these are polymer automotive parts; override for metal)"
+  - generic: machine_capital_frac
+  - generic: "0.35"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. capital/amortization share of the loaded machine rate removed for OWNED, in-house processes (fdm) — sunk on gear the org already owns [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: capital/amortization share of the loaded machine rate removed for OWNED, in-house processes (fdm) — sunk on gear the org already owns [assumption, not shop-validated]
+  - list:
+    - listitem: "• DFM note: processes injection_molding are costed but flagged NOT DFM-ready as-modeled (see their process-specific blockers). Their cost shows the tooling economics *if* the part is redesigned for that process. Set strict_dfm=True to exclude them entirely."
+    - listitem: "• Geometric routing: this part reads as a 'bulk_solid' → mjf. General solid (91% of bbox filled, ~3.8mm mean wall) with no dominant sheet/rotational/prismatic signature → additive (MJF/SLS) for a polymer prototype."
+    - listitem: "• Note: the cost-cheapest make-as-is pick at low qty is fdm, but the geometry-recommended process is mjf — both are costed above; pick on intent, not just the marginal $."
+    - listitem: • Prices and crossover quantities are assumption-based and can shift with cycle times, tooling, batch sizes and shop rates. Validate against actual quotes before making a sourcing commitment.
+  - paragraph: "Measured geometry: 2.7 cm³ · 20 × 15 × 10 mm · 185,328 faces. STEP files are costed from a tessellated mesh (DFM + cost), not B-rep / GD&T."
+- region "Notifications alt+T"
+- alert

@@ -1,0 +1,93 @@
+{
+  "red_regression": {
+    "failed": 2,
+    "reason": "Both diagonal bars incorrectly tripped DFM build-volume errors before the shared fit change."
+  },
+  "backend_focused": {
+    "passed": 141,
+    "failed": 0,
+    "seconds": 4.3,
+    "log": "185-focused-final.log"
+  },
+  "backend_full": {
+    "passed": 2828,
+    "failed": 0,
+    "skipped": 3,
+    "seconds": 250.06,
+    "skip_policy_enforced": true,
+    "skip_reasons": [
+      "real corpus manifest not present",
+      "OCP XDE not available (2 tests)"
+    ],
+    "log": "185-backend-full.log"
+  },
+  "trap_corpus": {
+    "fixtures": 30,
+    "ordinary_pass": 29,
+    "known_gaps": 1,
+    "known_gap": "unit_flag suspicious_scale detection; unchanged and reported",
+    "log": "185-trap.log"
+  },
+  "pyright": {
+    "version": "1.1.411",
+    "changed_source_files": 4,
+    "existing_errors": 36,
+    "new_errors": 0,
+    "warnings": 0,
+    "baseline": "Exact HEAD source copies, identical diagnostic message/severity/file multiplicities",
+    "logs": [
+      "185-pyright-baseline.json",
+      "185-pyright-final.json"
+    ]
+  },
+  "bandit": {
+    "version": "1.9.4",
+    "existing_low": 4,
+    "new_findings": 0,
+    "medium": 0,
+    "high": 0,
+    "baseline": "Exact HEAD source copies, identical finding multiplicities",
+    "logs": [
+      "185-bandit-baseline.json",
+      "185-bandit-final.json"
+    ]
+  },
+  "frontend": "Unchanged; audit184 baseline 528 tests, types, production build passed.",
+  "native_browser": {
+    "real_step_uploads": 4,
+    "ready_3d_previews": 4,
+    "owned_machine_verify_uploads": 1,
+    "fdm_400_aligned_before": "Required / 0%",
+    "fdm_400_aligned_after": "Advisory / 80%",
+    "fdm_400_rotated_after": "Advisory / 80%",
+    "owned_250_before": "makeable_not_on_owned; gap 250 > 200",
+    "owned_250_after": "makeable_in_house; 185.261977 square footprint; same declared 200mm cube",
+    "owned_250_estimate": {
+      "quantity": 1,
+      "parts_per_build": 1,
+      "cycle_time_hours": 2.73,
+      "declared_hourly_rate_usd": 10,
+      "default_capital_fraction": 0.35,
+      "machine_cost_usd": 17.745,
+      "unit_cost_usd": 38.22,
+      "calibration": "unvalidated; default model assumptions retained"
+    }
+  },
+  "integrity": {
+    "unchanged_historical_analyses": 148,
+    "unchanged_historical_cost_decisions": 159,
+    "unchanged_geometry_controls": 9,
+    "non_build_findings_unchanged": 4,
+    "unchanged_non_additive_estimates": 42
+  },
+  "scope": "Local corrected build only. General 3D non-fit, tooling/draft, customer cost validation and external services remain open. Production unchanged; PR107 deployment unapproved.",
+  "ci_snapshot": {
+    "head": "ce97b8f546ffd0a6497bad77f978983080c47e1f",
+    "run": 36864623761,
+    "status": "in_progress",
+    "passed_jobs": 7,
+    "browser": "in_progress",
+    "container": "failed, same 5 HIGH / 0 CRITICAL Expat/X11/Xrender findings",
+    "covers_this_change": false
+  }
+}

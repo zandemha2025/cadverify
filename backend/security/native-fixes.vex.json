@@ -1,0 +1,51 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/zandemha2025/cadverify/blob/main/backend/security/native-fixes.vex.json",
+  "author": "CadVerify",
+  "timestamp": "2026-10-01T16:00:00Z",
+  "version": 2,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-93990"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libexpat1@2.8.5-2%2Bcadverify1"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "Built from Debian expat 2.8.5-2 source on trixie, containing upstream UTF-16 validation fix 0cfd15bdf4b2c22d6b0df73610709dfb60921091 and regression tests 28fcfba540f6933aa8904a1514c4811713d2ab72. Runtime installed-library regression check is mandatory."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-88806"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libx11-6@1.8.12-1%2Bcadverify1?epoch=2"
+        },
+        {
+          "@id": "pkg:deb/debian/libx11-data@1.8.12-1%2Bcadverify1?epoch=2"
+        },
+        {
+          "@id": "pkg:deb/debian/libx11-xcb1@1.8.12-1%2Bcadverify1?epoch=2"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "Debian libx11 2:1.8.12-1 rebuilt with upstream patch 6d4432b13c0b3b6a644c13de9c793a14db48d545. Patch SHA256 dd9ecf20d2ca40c7ec3d8cdf3727c729f9fae3b6cc010e9436f152ae7cd6da31 is enforced before compilation; _XkbReadKeyActions rejects out-of-range action replies."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-88807"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libxrender1@0.9.12-1%2Bcadverify1?epoch=1"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "Debian libxrender 1:0.9.12-1 rebuilt with upstream patch 0564bce5446550c1b1681f3d8a933c20ea1455f7. Patch SHA256 565e816e88ca223cebc6f833cfcfa63d20aaa22c8293d878bdd059910c4a66fc is enforced before compilation; XRenderQueryFormats rejects numSubpixel greater than numScreens."
+    }
+  ]
+}

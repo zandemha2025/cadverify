@@ -25,12 +25,10 @@ import {
   deriveStanding,
   extractBlockers,
   lineageView,
-  historyForFile,
 } from "./part-standing.ts";
 import type {
   CatalogRowApi,
   CostDecisionDetail,
-  CostDecisionSummary,
   CostReport,
   Issue,
 } from "@/lib/api";
@@ -173,7 +171,9 @@ test("deriveStanding: validated defaults false (assumption band, n=0) → hatche
 
 test("deriveStanding carries the persisted makeability lattice independently of DFM", () => {
   const detail = detailWith({ dfm_ready: true, dfm_verdict: "issues" });
-  detail.result.verification = { verdict: "makeable_outsource_only" };
+  detail.result.verification = { verdict: "makeable_in_house", per_route: {
+    cnc_turning: { verdict: "makeable_outsource_only", best_machine: null, machines_evaluated: 0, failures: [] },
+  } };
   const s = deriveStanding(row(), detail);
   assert.equal(s.makeabilityVerdict, "makeable_outsource_only");
 });
@@ -217,14 +217,4 @@ test("lineageView: no declared context → NO home (never an invented program)",
   assert.equal(homed.hasHome, true);
   assert.equal(homed.program, "Hydraulic actuator");
   assert.equal(homed.annualVolume, 5000);
-});
-
-test("historyForFile: real same-file decisions, newest first", () => {
-  const decisions: CostDecisionSummary[] = [
-    { id: "a", filename: "part.stl", file_type: "stl", label: null, make_now_process: "cnc_turning", crossover_qty: 1900, quantities: [1], created_at: "2026-06-30T10:00:00Z", is_public: false, share_url: null },
-    { id: "b", filename: "other.stl", file_type: "stl", label: null, make_now_process: "mjf", crossover_qty: null, quantities: [1], created_at: "2026-07-01T10:00:00Z", is_public: false, share_url: null },
-    { id: "c", filename: "part.stl", file_type: "stl", label: null, make_now_process: "cnc_turning", crossover_qty: 1962, quantities: [1], created_at: "2026-07-02T10:00:00Z", is_public: false, share_url: null },
-  ];
-  const h = historyForFile(decisions, "part.stl");
-  assert.deepEqual(h.map((d) => d.id), ["c", "a"]);
 });

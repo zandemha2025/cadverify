@@ -1,0 +1,508 @@
+{
+  "engine_version": "0.3.44",
+  "historical_records_unchanged": {
+    "analyses": 152,
+    "cost_decisions": 164
+  },
+  "analyses": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 1905,
+      "after_id": 1936,
+      "after_ulid": "01M3VTVKWW9RJ53QFRMV5380CZ",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "40ffc2b7850193d630e2fc5564e76a729aa98da3966ec6877fb735ab1f29de5c",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 1906,
+      "after_id": 1929,
+      "after_ulid": "01M3VTRT7FAXGH4FAT97586DJ6",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "5caf70a8f0d49422cead4da27c9a2429ae7aafa149e6b3dad19473bfc65c0c13",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 1907,
+      "after_id": 1937,
+      "after_ulid": "01M3VTWK5Y1K7619J6JT4W1BRC",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "f2a226263413225da453160d8d54a83c4b7d92914b7c69d85c45d56d88b91045",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 1908,
+      "after_id": 1941,
+      "after_ulid": "01M3VTWZNM9NFFSKZCDQBFE77A",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "7eb61659c3c108de7c185d79a581cc84731e498cc5b538fc18b4aefd8b11051b",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    }
+  ],
+  "cost_decisions": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 6553,
+      "after_id": 6667,
+      "after_ulid": "01M3VTVKYFEXNG7P1QG4CKMWPF",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "8ec4153a2eb2145b52d18227e8eb46d1f9923a3218250e9c17b409d5cfeb1088",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "non_tooling_estimates_identical": 8,
+      "owned_machine_fit_unchanged": true,
+      "other_drivers_and_variable_cost_unchanged": true,
+      "tooling_before": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 60002.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 60000.0,
+            "source": "size tier XL (max bbox 400mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $60,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 602.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 60000.0,
+            "source": "size tier XL (max bbox 400mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $60,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "tooling_after": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 60002.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 60000.0,
+            "source": "size tier XL (enclosing box max 400.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $60,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 602.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 60000.0,
+            "source": "size tier XL (enclosing box max 400.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $60,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "crossover_before": 4107.0,
+      "crossover_after": 4107.0,
+      "tooling_still_conditional_on_redesign": true
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 6554,
+      "after_id": 6636,
+      "after_ulid": "01M3VTRT9W2JT7DR2BSVH4TTH3",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "27ba08f95f1fb449cfb4934aa5fb97cfd5fc07ec1d79a3448fe1d5d277ffc4d3",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "non_tooling_estimates_identical": 8,
+      "owned_machine_fit_unchanged": true,
+      "other_drivers_and_variable_cost_unchanged": true,
+      "tooling_before": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 291mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 291mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "tooling_after": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 60002.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 60000.0,
+            "source": "size tier XL (enclosing box max 400.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $60,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 602.79,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 60000.0,
+            "source": "size tier XL (enclosing box max 400.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $60,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "crossover_before": 2054.0,
+      "crossover_after": 4107.0,
+      "tooling_still_conditional_on_redesign": true
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6555,
+      "after_id": 6668,
+      "after_ulid": "01M3VTWK92WGH6WB1XN48KS1YA",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "e66fd3fd4f50f264661af92e7f5793b00ba1e6534a49c44a038b59c7e15b6504",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "non_tooling_estimates_identical": 12,
+      "owned_machine_fit_unchanged": true,
+      "other_drivers_and_variable_cost_unchanged": true,
+      "tooling_before": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "tooling_after": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "crossover_before": 4379.0,
+      "crossover_after": 4379.0,
+      "tooling_still_conditional_on_redesign": true
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 6556,
+      "after_id": 6686,
+      "after_ulid": "01M3VTWZREH50B1JF87KE5PH7W",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "32c6d1f649ac3436d4495ffe1cabd24cc3ee526ee97a0766838fe3e0943290bd",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "non_tooling_estimates_identical": 12,
+      "owned_machine_fit_unchanged": true,
+      "other_drivers_and_variable_cost_unchanged": true,
+      "tooling_before": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 185mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 185mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "tooling_after": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "crossover_before": 4379.0,
+      "crossover_after": 4379.0,
+      "tooling_still_conditional_on_redesign": true
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6557,
+      "after_id": 6703,
+      "after_ulid": "01M3VTXZE95R8R1EX92NS6DB1D",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "e06a3a6aa82a07016b038d115985bdfae009c0e25ce7d8eaf7cb8c1789ca9abc",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "non_tooling_estimates_identical": 36,
+      "owned_machine_fit_unchanged": true,
+      "other_drivers_and_variable_cost_unchanged": true,
+      "tooling_before": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 1000,
+          "unit_cost_usd": 32.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 2000,
+          "unit_cost_usd": 17.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 5000,
+          "unit_cost_usd": 8.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 10000,
+          "unit_cost_usd": 5.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (max bbox 250mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "tooling_after": [
+        {
+          "quantity": 1,
+          "unit_cost_usd": 30002.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 100,
+          "unit_cost_usd": 302.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 1000,
+          "unit_cost_usd": 32.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 2000,
+          "unit_cost_usd": 17.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 5000,
+          "unit_cost_usd": 8.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        },
+        {
+          "quantity": 10000,
+          "unit_cost_usd": 5.74,
+          "tooling": {
+            "name": "tooling_cost",
+            "unit": "$",
+            "value": 30000.0,
+            "source": "size tier L (enclosing box max 250.0mm; oriented candidate) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $30,000; \u00b160%, OVERRIDABLE [size proxy, tooling layout not verified; assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 60.0
+          }
+        }
+      ],
+      "crossover_before": 4379.0,
+      "crossover_after": 4379.0,
+      "tooling_still_conditional_on_redesign": true
+    }
+  ],
+  "native_json_export_matches_saved_artifact": true,
+  "scope": "Local controlled actual STEP uploads and saved artifacts; consistency of the size-tier model, not validated tooling quotes or physical tool-layout certification."
+}

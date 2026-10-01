@@ -20,7 +20,7 @@
  */
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
-import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
+import { apiProblemDetail, apiQuotaMessage, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
 import { readVerification, type VerificationBlock } from "./verification";
 import {
@@ -30,6 +30,7 @@ import {
 } from "./part-context";
 import { fetchPartContext, type PartContext } from "./part-context-read";
 import { readJsonOrNull, validationAllowsCost } from "./run-gates";
+import { resolvedAnnualVolume } from "./program-rollup";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -182,7 +183,7 @@ async function postCost(
     };
   }
   const detail =
-    apiProblemDetail(body) ||
+    apiQuotaMessage(body) || apiProblemDetail(body) ||
     apiRecoveryMessage({
       status: res.status,
       payload: body,
@@ -288,7 +289,7 @@ export async function runVerification(
   }
 
   const [floor, context] = await Promise.all([machinesPromise, contextPromise]);
-  const quantities = quantityLadderForAnnual(context.partContext?.annual_volume);
+  const quantities = quantityLadderForAnnual(resolvedAnnualVolume(context.partContext));
 
   if (!validationAllowsCost(validationOut.v)) {
     return {

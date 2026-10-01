@@ -25,6 +25,7 @@ import {
   acquisitionGap,
   readVerification,
   recordVerdictModel,
+  verificationForRoute,
   type VerificationBlock,
   type MakeabilityLattice,
 } from "./verification.ts";
@@ -38,6 +39,37 @@ const LATTICE: MakeabilityLattice[] = [
   "not_makeable",
   "unknown",
 ];
+
+test("a recommended route cannot borrow another process's passing machine", () => {
+  const v: VerificationBlock = {
+    verdict: "makeable_in_house", best_machine: "CNC mill",
+    per_route: {
+      cnc_3axis: { verdict: "makeable_in_house", best_machine: "CNC mill", machines_evaluated: 1, failures: [] },
+      wire_edm: { verdict: "makeable_outsource_only", best_machine: null, machines_evaluated: 0, failures: [] },
+    },
+  };
+  assert.equal(verificationForRoute(v, "wire_edm")?.verdict, "makeable_outsource_only");
+  assert.equal(verificationForRoute(v, "wire_edm")?.best_machine, null);
+  assert.equal(verificationForRoute(v, "cnc_3axis")?.best_machine, "CNC mill");
+  assert.equal(verificationForRoute(v, "missing")?.verdict, "unknown");
+  assert.equal(verificationForRoute(null, "wire_edm"), null);
+  const record = recordVerdictModel({ verification: v }, {
+    hasCostedRoute: true, process: "wire_edm", dfmReady: true, dfmVerdict: "pass",
+  });
+  assert.equal(record.text, "Makeable — outsource only.");
+});
+
+test("a failed or unknown closest machine is not presented as the route's best fit", () => {
+  for (const verdict of ["makeable_not_on_owned", "unknown"] as const) {
+    const verification: VerificationBlock = {
+      verdict, per_route: {
+        cnc_3axis: { verdict, best_machine: "Unqualified mill", machines_evaluated: 1, failures: [] },
+      },
+    };
+    assert.equal(verificationForRoute(verification, "cnc_3axis")?.best_machine, null);
+    assert.equal(verification.per_route?.cnc_3axis.best_machine, "Unqualified mill");
+  }
+});
 
 test("every verdict lattice value maps to a banner with a non-empty title", () => {
   for (const v of LATTICE) {
@@ -92,11 +124,16 @@ test("fitMark: ✓ for a pass, ✗ for a real fail, ? for an undeclared/unknown 
   assert.equal(fitMark("unknown").tone, "neutral");
 });
 
-test("gapText: concrete need-vs-have when quantified, else the engine's cited human", () => {
+test("gapText: preserve envelope evidence and units, quantify ordinary scalar gates", () => {
   assert.equal(
     gapText({ gate: "envelope", axis: "z", need: 40, have: 20, human: "z too small" }),
-    "need 40, have 20"
+    "z too small"
   );
+  assert.equal(gapText({ gate: "envelope", axis: "diameter_mm", need: 400, have: 346.41,
+    human: "Part diameter is at least 400mm > chamber diagonal 346.41mm." }),
+    "Part diameter is at least 400mm > chamber diagonal 346.41mm.");
+  assert.equal(gapText({ gate: "mass", axis: "mass_kg", need: 40, have: 20, human: "mass" }),
+    "need 40, have 20");
   // an unknown gate (have null) is NOT a fabricated number — falls to human/needs
   assert.equal(
     gapText({ gate: "mass", axis: "mass", need: null, have: null, human: "part mass unknown" }),
@@ -136,7 +173,7 @@ test("perRouteRows sorts in_house first and maps the fit glyph/best machine", ()
   const five = rows.find((r) => r.process === "cnc_5axis");
   assert.ok(five);
   assert.equal(five.glyph, "✗");
-  assert.equal(gapText(five.failures[0]), "need 40, have 20");
+  assert.equal(gapText(five.failures[0]), "z");
   assert.deepEqual(perRouteRows(null), []);
 });
 

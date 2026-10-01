@@ -1,0 +1,21 @@
+{
+  "engine_version": "0.3.42",
+  "source_files": {
+    "backend/src/analysis/processes/checks.py": "331598c2dda106319d2f72b05deada7d45e9b81ca516f7dbeefa6068a94f494c",
+    "backend/src/__init__.py": "f87ea11d8ff3294c2fe65530222818a64f2a950bfb3a74e84e7e95d65dd7994d",
+    "backend/tests/test_stl_precision.py": "66bde3cac452dd32a6fdcee030e40f228519a59d533d3f6a31c73bbe9a43fc21"
+  },
+  "artifacts": {
+    "182-boundary-after.png": "4ec3cc993dff34a872ec960ffeaa3a17e2eca2e252a4cc0befd0e60a952d3220",
+    "182-boundary-after.txt": "f4456c277477537dd8ac21bbfea80a183ffeab83d058c0e584228c7b63e90376",
+    "182-boundary-before.png": "72138c09584d26bb4f903cf8d45128eb11247ce0717b6d2bc4105ad299230313",
+    "182-boundary-before.txt": "2158d255e1a9e2cc5d77ff00b05fa7aba2eabc362be15d6556aa1d0eebfc2e20",
+    "182-checks.json": "4781977701656b09033589485d09585a47b0e72d09d87d11e437eb7da237b92c",
+    "182-native-checks.json": "2799e60dc6c1c6393bad0c67e9282b6c3b5f4ed8b3e802f8fab9ba61ba4949fc",
+    "182-oversized-after.txt": "aea560c7477e818e2b3cbc9fa8349d4dc67b9700ea8d06410c5b51f574074f6c",
+    "182-oversized-before.txt": "3cfecf9834a4d536eec4be45c9ec45860703bbf5aac47bd501779ad582cad845",
+    "182-saved-before.json": "44f8061b65eb0a04761b00c604f18ac463d8682122babf25e5f76eaa95f26f8d",
+    "182-saved-readback.json": "78ebe5c58753edebf9da6cb15e7f37598671db04fc297af54cb327b06a738b1c"
+  },
+  "scope": "Shared non-turning build-envelope source-precision classification; no global negative-fit or manufacturing certification claim."
+}

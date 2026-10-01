@@ -23,7 +23,7 @@ import math
 import os
 
 from src.analysis.models import ProcessType
-from src.costing.drivers import parts_per_build
+from src.costing.drivers import build_orientation, parts_per_build
 from src.costing.provenance import CostEstimate, Driver, Provenance
 from src.costing.rates import (
     ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, CASTING, FORGING_FAMILY, EDM,
@@ -81,7 +81,11 @@ def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
 # MACHINE sub-models. Additive returns (machine_hr, parts_per_build, src);
 # subtractive/formative return (cycle_hr, src) with parts_per_build = 1.
 # ──────────────────────────────────────────────────────────────────────────
-def _additive_machine(process, drivers, rates: RateCard):
+class BuildEnvelopeError(ValueError):
+    """No fitting setup established for the machine being priced."""
+
+
+def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
     """Build-plate nesting model (weaknesses #1, #2).
 
     build_job (powder-bed laser/fuse, DLP whole-layer): the machine sweeps every
@@ -96,39 +100,65 @@ def _additive_machine(process, drivers, rates: RateCard):
     that V1 wrongly charged per part; amortizing it over the XY nest is the
     physically-honest fix that collapses the medium-part over-cost.
     """
-    n = parts_per_build(process, drivers.bbox_mm, rates)
+    bbox = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
+    shrink = rates.p(process, "shrinkage_linear") if process in BINDER_JET_FAMILY else 0
+    bbox = tuple(d * (1 + shrink) for d in bbox)
+    cylinder = getattr(drivers, "enclosing_cylinder_mm", None)
+    if cylinder is not None:
+        cylinder = tuple(d * (1 + shrink) for d in cylinder)
+    envelope = (machine_override or {}).get("build_env_mm") or rates.build_env(process)
+    orientation = build_orientation(bbox, envelope)
+    basis = drivers.billet_basis
+    if orientation is None:
+        orientation = build_orientation(bbox, envelope, cylinder)
+        basis = "measured enclosing cylinder"
+    n = parts_per_build(process, bbox, rates, envelope, cylinder)
+    if orientation is None or n == 0:
+        raise BuildEnvelopeError(
+            f"{process.value}: price withheld — no fitting orientation established for "
+            f"the {tuple(round(d, 4) for d in bbox)}mm enclosing box in the priced build "
+            f"envelope {tuple(envelope)}mm. Confirm a build setup or select a larger "
+            "machine; this is not proof that every possible orientation fails.")
     mode = rates.nesting_mode(process)
     if mode == "build_job":
-        Z = rates.build_env(process)[2]
+        Z = envelope[2]
         vert = rates.p(process, "vert")
         build_job_hr = Z / vert                       # full-build duration (height-driven)
         machine_hr = build_job_hr / n                 # this part's amortized share
         src = (f"build-job {Z:g}mm ÷ {vert:g}mm/hr = {build_job_hr:.1f}hr full build "
                f"÷ {n} parts/build (packing {rates.packing_density(process):g}, "
-               f"env {rates.build_env(process)}) = {machine_hr:.3f}hr/part")
+               f"env {tuple(envelope)}) = {machine_hr:.3f}hr/part")
     else:  # serial (FDM single nozzle / SLA laser): XY-nested plate
         dep = rates.p(process, "deposition")
         vert = rates.p(process, "vert")
-        build_h = drivers.bbox_mm[0]                  # smallest extent = build height
+        build_h = orientation[2]
         deposition_hr = drivers.volume_cm3 / dep      # per-part — single nozzle/laser, irreducible
         sweep_hr = (build_h / vert) / n               # per-PLATE Z-climb, amortized over the XY nest
         machine_hr = deposition_hr + sweep_hr
-        src = (f"serial XY-nested: deposition V/{dep:g} = {drivers.volume_cm3:.2f}/{dep:g} "
+        src = (f"serial XY nest: deposition V/{dep:g} = {drivers.volume_cm3:.2f}/{dep:g} "
                f"= {deposition_hr:.3f}hr/part (per-part nozzle) + Z-sweep "
                f"({build_h:.1f}/{vert:g})÷{n} parts/plate = {sweep_hr:.3f}hr/part "
                f"(plate Z-climb amortized; XY packing {rates.xy_packing_density(process):g}, "
-               f"plate {rates.build_env(process)[0]:g}×{rates.build_env(process)[1]:g}mm) "
+               f"plate {envelope[0]:g}×{envelope[1]:g}mm) "
                f"= {machine_hr:.3f}hr/part")
+    src += (f"; {basis} oriented XYZ "
+            f"{tuple(round(d, 6) for d in orientation)}mm; spaced-grid capacity limit "
+            "(packing/setup assumption, not a verified nesting plan)")
+    if shrink:
+        src += f"; green dimensions ×{1 + shrink:g} for sinter shrinkage"
+    if (machine_override or {}).get("build_env_mm"):
+        src += f"; USER-declared envelope of '{(machine_override or {}).get('machine_name')}'"
     return machine_hr, n, src
 
 
 def _cnc_cycle(process, drivers, material_class, rates: RateCard):
     """Material-removal model: rough (remove billet→part) + finish (surface area)."""
     if process == PT.CNC_TURNING:
-        r = drivers.rot_cross_dia_mm / 2.0
-        stock_vol = math.pi * r * r * drivers.rot_axis_len_mm / 1000.0
+        allow = rates.g("stock_allowance")
+        stock_vol = drivers.turning_stock_volume_cm3(allow)
         stock_src = (f"bounding cylinder π·({drivers.rot_cross_dia_mm:.1f}/2)²·"
-                     f"{drivers.rot_axis_len_mm:.1f} mm = {stock_vol:.1f} cm³")
+                     f"{drivers.rot_axis_len_mm:.1f} mm × {allow:.2f} stock allowance "
+                     f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
     else:
         # E-now #1: mill from a rectangular BILLET (bounding box), not a hull —
         # a pocketed part is cut from a solid block, so more is roughed away.
@@ -136,7 +166,8 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
         allow = rates.g("stock_allowance")
         stock_vol = drivers.billet_volume_cm3(allow)
         if bbox_billet_enabled():
-            stock_src = (f"bbox billet {drivers.bbox_volume_cm3:.1f} cm³ × {allow:.2f} "
+            stock_src = (f"{drivers.billet_basis} "
+                         f"bbox billet {drivers.billet_volume_cm3(1):.1f} cm³ × {allow:.2f} "
                          f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
         else:
             stock_src = (f"hull {drivers.hull_volume_cm3:.1f} cm³ × {allow:.2f} "
@@ -256,7 +287,7 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
       swept area = cut-path length × stock thickness.
                    PROXY: cut-path length = drivers.outline_perimeter_mm (the
                    MEASURED 2D outline/cutout length); stock thickness = the
-                   smallest bbox extent (the plate the wire cuts through). This is
+                   smallest candidate-billet extent (the plate the wire cuts through). This is
                    an APPROXIMATION — there is no true 3D cut-perimeter driver — and
                    is flagged as such in the source string.
       cut time   = swept area ÷ edm_cut_rate(material) (mm²/hr — slow, material-set).
@@ -265,7 +296,9 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
     Returns (machine_hr, swept_area_mm2, cut_hr, src). Wire consumable is costed
     separately (∝ cut time). All constants DEFAULT, un-validated.
     """
-    dd = sorted(drivers.bbox_mm)                 # ascending: dd[0] = stock thickness
+    from src.costing.drivers import bbox_billet_enabled
+    blank = drivers.billet_bbox_mm if bbox_billet_enabled() else None
+    dd = sorted(blank or drivers.bbox_mm)        # same candidate stock as the material model
     thickness = max(dd[0], 0.1)
     cut_len = max(drivers.outline_perimeter_mm, 2.0 * (dd[1] + dd[2]))  # measured outline, floored at bbox rect
     swept_area = cut_len * thickness             # mm² of cross-section the wire erodes
@@ -278,7 +311,8 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
     src = (f"wire-EDM cut path {cut_len:.0f}mm × {thickness:.1f}mm stock "
            f"= {swept_area:.0f}mm² swept ÷ {cut_rate:g}mm²/hr ({material_class}, slow) "
            f"= {cut_hr * 60:.1f}min + thread {n_threads}×{thread_min:g}min "
-           f"= {cycle:.4f} hr  [cut-path = outline_perimeter × min-bbox-extent PROXY, "
+           f"= {cycle:.4f} hr  [cut-path = outline_perimeter × minimum stock extent PROXY "
+           f"({drivers.billet_basis if blank else 'file-axis'}), "
            f"not a true 3D cut perimeter; assumption, not shop-validated]")
     return cycle, swept_area, cut_hr, src
 
@@ -378,7 +412,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     # ---- MATERIAL --------------------------------------------------------
     if process == PT.CNC_TURNING:
-        # turning starts from round bar (hull ≈ swept solid) — billet unchanged
+        # Buy the same enclosing round bar used by the rough-machining model.
         input_mass = drivers.stock_mass_kg(material.density, rates.g("stock_allowance"))
         mass_src = drivers.stock_source(material.density, rates.g("stock_allowance"), material.name)
     elif process in SUBTRACTIVE:
@@ -387,9 +421,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mass_src = drivers.billet_source(material.density, rates.g("stock_allowance"), material.name)
     elif process in FABRICATION:
         # you buy the rectangular blank (footprint × gauge), not just the net part
-        input_mass = drivers.bbox_volume_cm3 * material.density / 1000.0
-        mass_src = (f"sheet blank {drivers.bbox_mm[1]:.0f}×{drivers.bbox_mm[2]:.0f}×"
-                    f"{drivers.sheet_gauge_mm:g}mm = {drivers.bbox_volume_cm3:.2f} cm³ × "
+        blank = drivers.sheet_blank_mm or drivers.bbox_mm
+        blank_volume = blank[0] * blank[1] * blank[2] / 1000.0
+        input_mass = blank_volume * material.density / 1000.0
+        mass_src = (f"sheet blank {blank[1]:.0f}×{blank[2]:.0f}×"
+                    f"{drivers.sheet_gauge_mm:g}mm = {blank_volume:.2f} cm³ × "
                     f"{material.name} density {material.density:.2f} g/cm³ (rectangular blank)")
     elif process in CASTING:
         # poured metal = net part mass × (1 + yield_loss) for gating + risers
@@ -489,19 +525,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # ---- MACHINE ---------------------------------------------------------
     finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
     if family == "additive":
-        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
-        if rates.nesting_mode(process) == "serial":
-            pp_src = (f"XY nest: plate {rates.build_env(process)[0]:g}×"
-                      f"{rates.build_env(process)[1]:g}mm × xy_packing "
-                      f"{rates.xy_packing_density(process):g} ÷ footprint "
-                      f"({drivers.bbox_mm[1]:.1f}×{drivers.bbox_mm[2]:.1f}+"
-                      f"{rates.part_spacing(process):g}mm) = {n} parts/plate")
-            pp_prov = rates.prov_tag(f"xy_packing_density.{process.name}")
-        else:
-            pp_src = (f"nesting: packing {rates.packing_density(process):g} × env "
-                      f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
-                      f"{rates.part_spacing(process):g}mm spacing = {n} parts/build")
-            pp_prov = rates.prov_tag(f"packing_density.{process.name}")
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
+        pp_src = cycle_src
+        pp_prov = rates.prov_tag(
+            f"{'xy_packing_density' if rates.nesting_mode(process) == 'serial' else 'packing_density'}.{process.name}")
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=pp_prov,
@@ -526,23 +553,19 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     elif family == "metal_powder_bed":
         # REUSE the build-job additive time model (full-build Z-sweep ÷ parts/build)
         # with metal params. Metal-only post (plate/support/stress-relief) added below.
-        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=rates.prov_tag(f"packing_density.{process.name}"),
-            source=(f"nesting: packing {rates.packing_density(process):g} × env "
-                    f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
-                    f"{rates.part_spacing(process):g}mm spacing = {n} parts/build"),
+            source=cycle_src,
         ))
     elif family == "binder_jet":
         # green-part PRINT reuses the fast build-job model; debind+sinter added below.
-        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=rates.prov_tag(f"packing_density.{process.name}"),
-            source=(f"green print nesting: packing {rates.packing_density(process):g} × env "
-                    f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
-                    f"{rates.part_spacing(process):g}mm spacing = {n} parts/build"),
+            source=cycle_src,
         ))
     elif family == "ded":
         machine_hr, ded_deposited_kg, cycle_src = _ded_cycle(process, drivers, material, rates)
@@ -574,7 +597,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # its OWN declared $/hr replaces the rate-card default and its OWN declared
     # capital_frac (or the card default when it declared none) drives the marginal
     # (make-it-ourselves) seam. The machine_cost driver is then tagged with the
-    # machine's provenance (SHOP — the org's real per-machine rate) and its source
+    # machine's provenance (USER for a declared per-machine rate) and its source
     # NAMES the machine. machine_override is None on every generic call (no
     # inventory), so base_machine_rate / cap_frac / owned_here are UNCHANGED and
     # the whole path stays byte-identical.
@@ -588,7 +611,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     else rates.g("machine_capital_frac"))
         owned_here = cap_frac > 0.0
         machine_name = machine_override.get("machine_name")
-        machine_prov = machine_override.get("provenance") or Provenance.SHOP
+        machine_prov = machine_override.get("provenance") or Provenance.USER
     else:
         base_machine_rate = rates.p(process, "machine_rate")
         cap_frac = rates.g("machine_capital_frac")
@@ -896,21 +919,27 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             error_band_pct=band,
         ))
 
+    # Reuse the part's enclosing stock candidate, not its uploaded-axis box.
+    # Suppress transform roundoff at tier boundaries (six decimal places in mm).
+    tooling_size = round(max(drivers.billet_bbox_mm), 6) if drivers.billet_bbox_mm else drivers.max_bbox_mm
+    tooling_basis = drivers.billet_basis if drivers.billet_bbox_mm else "file-axis fallback"
+    # ponytail: size-tier proxy; a verified tool layout needs pull direction and allowances.
+    tooling_note = "[size proxy, tooling layout not verified; assumption, not shop-validated]"
     # ---- TOOLING (formative only; cavity + complexity, weakness #5) -----
     if process in FORMATIVE:
-        tooling_cost = rates.tooling_cost(process, drivers.max_bbox_mm, n_cavities, complexity)
+        tooling_cost = rates.tooling_cost(process, tooling_size, n_cavities, complexity)
         flat = rates.data.get("_tooling_flat", {}).get(process) is not None
         if flat:
             tool_src = "flat USER override (whole tool); ±60%, OVERRIDABLE"
         else:
             from src.costing.rates import family_to_size_tier
-            tier = family_to_size_tier(drivers.max_bbox_mm)
+            tier = family_to_size_tier(tooling_size)
             cav = float(n_cavities) ** rates.data["cavity_exponent"]
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"size tier {tier} (max bbox {drivers.max_bbox_mm:.0f}mm) "
+            tool_src = (f"size tier {tier} (enclosing box max {tooling_size}mm; {tooling_basis}) "
                         f"× {n_cavities} cav^{rates.data['cavity_exponent']:g} (={cav:.2f}) "
                         f"× {complexity} (={comp:.2f}) = ${tooling_cost:,.0f}; "
-                        f"±60%, OVERRIDABLE")
+                        f"±60%, OVERRIDABLE {tooling_note}")
         drivers_out.append(Driver(
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
             provenance=rates.prov_tag(f"tooling.{process.name}"),
@@ -920,13 +949,13 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # ---- TOOLING (casting pattern / wax die+shell / forging die) --------
         # Size-tier base × family multiplier × complexity. Ordering: sand pattern
         # < investment (wax die + shell) < forging die. Amortized over qty below.
-        tooling_cost = rates.casting_forging_tooling(process, drivers.max_bbox_mm, complexity)
+        tooling_cost = rates.casting_forging_tooling(process, tooling_size, complexity)
         flat = rates.data.get("_tooling_flat", {}).get(process) is not None
         if flat:
             tool_src = "flat USER override (whole tool); ±55%, OVERRIDABLE"
         else:
             from src.costing.rates import family_to_size_tier
-            tier = family_to_size_tier(drivers.max_bbox_mm)
+            tier = family_to_size_tier(tooling_size)
             if process in CASTING:
                 mult = rates.data["tooling_casting_mult"][process]
                 what = "pattern/core-box" if process == PT.SAND_CASTING else "wax die + ceramic shell"
@@ -934,10 +963,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 mult = rates.data["tooling_forging_mult"]
                 what = "hardened closed-die set"
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"{what}: size tier {tier} (max bbox {drivers.max_bbox_mm:.0f}mm) "
+            tool_src = (f"{what}: size tier {tier} (enclosing box max {tooling_size}mm; {tooling_basis}) "
                         f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
                         f"= ${tooling_cost:,.0f}; ±55%, OVERRIDABLE "
-                        f"[assumption, not shop-validated]")
+                        f"{tooling_note}")
         drivers_out.append(Driver(
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
             provenance=rates.prov_tag(f"tooling.{process.name}"),

@@ -96,6 +96,19 @@ function machineRates(value) {
   );
 }
 
+export function hasProcessScopedConfidence(estimates, validatedProcesses) {
+  if (!Array.isArray(estimates) || !Array.isArray(validatedProcesses) || !validatedProcesses.length) return false;
+  return validatedProcesses.every((process) => nonEmptyString(process) && estimates.some((estimate) => estimate?.process === process)) &&
+    estimates.some((estimate) => !validatedProcesses.includes(estimate?.process)) &&
+    estimates.every((estimate) => {
+      if (!nonEmptyString(estimate?.process)) return false;
+      const confidence = estimate.confidence;
+      return validatedProcesses.includes(estimate.process)
+        ? confidence?.validated === true && confidence.method === "measured-residual" && Number.isInteger(confidence.n_samples) && confidence.n_samples >= 3
+        : confidence?.validated === false && confidence.method === "assumption-band" && confidence.n_samples === 0;
+    });
+}
+
 const definitions = [
   {
     id: "PUB-03",
@@ -188,7 +201,8 @@ const definitions = [
       ["releaseEvidence.criticalPaths.ENT-02.heldoutReal", (value) => typeof value === "number" && value >= 3, ">= 3 costable held-out residuals"],
       ["releaseEvidence.criticalPaths.ENT-02.sourceBoundSkipped", (value) => value === 0, "0 source-bound skips"],
       ["releaseEvidence.criticalPaths.ENT-02.servedEstimateCount", (value) => typeof value === "number" && value > 0, "positive estimate count"],
-      ["releaseEvidence.criticalPaths.ENT-02.servedValidatedAll", (value) => value === true, "true"],
+      ["releaseEvidence.criticalPaths.ENT-02.validatedProcesses", (value) => Array.isArray(value) && value.length === 1 && value[0] === "fdm", "only fdm"],
+      ["releaseEvidence.criticalPaths.ENT-02", (value) => hasProcessScopedConfidence(value?.servedConfidence, value?.validatedProcesses) && value.servedConfidence.length === value.servedEstimateCount, "all served estimates: measured FDM and unvalidated alternatives, without cross-process leakage"],
     ],
   },
   {
@@ -196,8 +210,8 @@ const definitions = [
     report: "enterprise",
     fields: [
       ["releaseEvidence.criticalPaths.ENT-04.quantity", (value) => value === 12000, "12,000 units"],
-      ["releaseEvidence.criticalPaths.ENT-04.unitCostUsd", (value) => sameNumber(value, 10.08, 0.001), "$10.08"],
-      ["releaseEvidence.criticalPaths.ENT-04.annualExposureUsd", (value) => sameNumber(value, 120960, 0.01), "$120,960"],
+      ["releaseEvidence.criticalPaths.ENT-04.unitCostUsd", (value) => sameNumber(value, 3.44, 0.001), "$3.44"],
+      ["releaseEvidence.criticalPaths.ENT-04.annualExposureUsd", (value) => sameNumber(value, 41280, 0.01), "$41,280"],
       ["releaseEvidence.criticalPaths.ENT-04.basis", (value) => value === "decision.recommendation", "decision.recommendation"],
       ["releaseEvidence.criticalPaths.ENT-04.withheldBeforeExactQuantity", (value) => value === true, "true"],
       ["releaseEvidence.criticalPaths.ENT-04", (value) => sameNumber(value?.unitCostUsd * value?.quantity, value?.annualExposureUsd, 0.01), "unit cost × quantity equals annual exposure"],

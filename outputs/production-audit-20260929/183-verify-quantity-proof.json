@@ -1,0 +1,33 @@
+{
+  "finding": "Verify headline, process marker, drivers and confidence were selected independently of the quantity control.",
+  "fix": "One shared computed-route selection; exact route/material prices and confidence; explicit approximation between quantities; actual ladder bounds and a native computed-quantity picker.",
+  "source_file": "backend/tests/assets/cube.step",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "native_quantities": [
+    1,
+    100,
+    12000,
+    11888
+  ],
+  "native_interpolated_quantity": 11888,
+  "saved_cost_id": 6319,
+  "saved_cost_ulid": "01M3VN583B775TGGSSC1CV2XFY",
+  "environment": "local production build, API 0.3.42, controlled audit organization",
+  "limitations": [
+    "Does not certify customer quotes or real manufacturing outcomes.",
+    "Native organization remains unvalidated; positive process-specific calibration is covered by the pure regression and the extended CI journey awaiting publication.",
+    "Recorded sourcing disposition remains report-level; selected quantity and route are not persisted by that endpoint. Its inventory/route semantics need a separate audit.",
+    "Production is unchanged; PR107 merge/deploy approval remains outstanding."
+  ],
+  "artifacts": {
+    "183-checks.json": "665ec4d7f98fd1a9232349dc51634e46b5a9e2d129581fdf1e502b49f9e168a6",
+    "183-saved-readback.json": "96a1ade71ea9b36df5145a5b7f10035179cb415d97477b32a572e31ffa3ba9b4",
+    "183-verify-quantity-1.txt": "ba0db02dcf219a739600224d4030590c6f2d2fcc13bf6a9d6bead22d34831627",
+    "183-verify-quantity-100.txt": "7ab2fc577d10ff71cd6d1eae153ae6c76652b2306a08afcb5e508922626237e6",
+    "183-verify-quantity-12000.txt": "34dd8b0807099e4d844c1ba4f2fc77e09b7e7b8b4e228b72a861d2f920031e7e",
+    "183-verify-quantity-after.png": "8fb665faf29096dda1e8b3eca5b4a0e271f17d321d9542239030a1440784711a",
+    "183-verify-quantity-before.png": "f5f240fb5eefc14c3771a5ecdca4090156e3684758ffd377731afb8d9ed666c7",
+    "183-verify-quantity-before.txt": "e0d10148f17a4b708c71b2097fc77b5d0e455e9b7b9ecad632684e86215ed6bb",
+    "183-verify-quantity-between.txt": "a29ae8afb7043097a3afc55f712873d2a7f755db9ae1af2e75493586d6254412"
+  }
+}

@@ -1,0 +1,206 @@
+"use client";
+
+import { useEffect, useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  listConnectorCredentials, probeConnectorCredential, revokeConnectorCredential, saveConnectorCredential,
+  runConnectorBom, type ConnectorBomRun,
+  type ConnectorAuthType, type ConnectorCredentialProfile, type ConnectorProbe,
+} from "@/lib/integrations-api";
+
+const INPUT = "h-10 w-full rounded-md border border-border bg-background px-3 text-sm";
+const AUTH_FIELDS: Record<ConnectorAuthType, { name: string; label: string; type?: string; optional?: boolean; defaultValue?: string }[]> = {
+  bearer: [{ name: "token", label: "Access token", type: "password" }],
+  basic: [{ name: "username", label: "Username" }, { name: "password", label: "Password", type: "password" }],
+  oauth2_client_credentials: [
+    { name: "token_url", label: "Token endpoint URL", type: "url" },
+    { name: "client_id", label: "Client ID" },
+    { name: "client_secret", label: "Client secret", type: "password" },
+    { name: "scope", label: "Scope (optional)", optional: true },
+  ],
+  api_key: [{ name: "header_name", label: "API key header", defaultValue: "X-API-Key" }, { name: "api_key", label: "API key", type: "password" }],
+};
+
+export function ConnectorCredentials({ connectorId, onRun }: { connectorId: string; onRun?: () => void }) {
+  const [profiles, setProfiles] = useState<ConnectorCredentialProfile[]>([]);
+  const [authType, setAuthType] = useState<ConnectorAuthType>("bearer");
+  const [busy, setBusy] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [probes, setProbes] = useState<Record<string, ConnectorProbe | undefined>>({});
+  const sap = connectorId.startsWith("sap_");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    listConnectorCredentials(connectorId).then((rows) => { if (active) setProfiles(rows); })
+      .catch((err) => { if (active) setLoadError(err instanceof Error ? err.message : "Could not load saved connections."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [connectorId, reload]);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const text = (name: string) => String(values.get(name) ?? "");
+    setBusy("save"); setError(""); setSaved(false);
+    try {
+      const profile = await saveConnectorCredential({
+        connector_id: connectorId, label: text("label"), base_url: text("base_url"), auth_type: authType,
+        secret: Object.fromEntries(AUTH_FIELDS[authType].map(({ name }) => [name, text(name)]).filter(([, value]) => value !== "")),
+      });
+      setProfiles((rows) => [profile, ...rows]);
+      form.reset();
+      setAuthType("bearer");
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save connection.");
+    } finally { setBusy(""); }
+  }
+
+  async function act(profile: ConnectorCredentialProfile, action: "test" | "revoke") {
+    if (busy) return;
+    setBusy(`${action}:${profile.id}`); setError(""); setSaved(false);
+    setProbes((prev) => ({ ...prev, [profile.id]: undefined }));
+    try {
+      if (action === "test") {
+        const probe = await probeConnectorCredential(profile.id);
+        setProbes((prev) => ({ ...prev, [profile.id]: probe }));
+      } else {
+        const revoked = await revokeConnectorCredential(profile.id);
+        setProfiles((rows) => rows.map((row) => row.id === revoked.id ? revoked : row));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection action failed. Try again.");
+    } finally { setBusy(""); }
+  }
+
+  return <section aria-label="Vendor connection settings" className="space-y-5 lg:col-span-4">
+    <div className="space-y-1 text-sm text-muted-foreground">
+      <h3 className="font-semibold text-foreground">Test a vendor connection</h3>
+      <p>Save a read-only credential, then test product-read access. The test requests at most one product and discards its contents. {sap ? "Use a saved connection to preview a SAP BOM explosion below. SAP assembly import is not available yet." : "Use a saved connection to preview and import a Windchill assembly below."}</p>
+      <p>Use your {sap ? "SAP host or API_PRODUCT_SRV service root" : "Windchill host or ProdMgmt service root"}. The service must be reachable over public HTTPS.</p>
+    </div>
+    {loadError && <div role="alert" className="text-sm text-destructive">{loadError} <Button variant="secondary" disabled={!!busy} onClick={() => setReload((n) => n + 1)}>Retry loading connections</Button></div>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {saved && <p role="status" className="text-sm text-foreground">Connection saved. Use Test connection to check access.</p>}
+    <form onSubmit={(event) => void save(event)} className="space-y-4">
+      <fieldset disabled={!!busy || loading || !!loadError} className="grid gap-3 sm:grid-cols-2">
+        <legend className="mb-3 text-sm font-medium">New connection</legend>
+        <label className="space-y-1 text-sm"><span>Connection name</span><input className={INPUT} name="label" required maxLength={120} autoComplete="off" /></label>
+        <label className="space-y-1 text-sm"><span>Service URL</span><input className={INPUT} name="base_url" type="url" required maxLength={500} placeholder={sap ? "https://your-sap-host" : "https://your-windchill-host/Windchill/servlet/odata/ProdMgmt"} autoComplete="off" /></label>
+        <label className="space-y-1 text-sm"><span>Authentication</span><select className={INPUT} value={authType} onChange={(event) => setAuthType(event.target.value as ConnectorAuthType)}>
+          <option value="bearer">Bearer token</option><option value="basic">Username and password</option>
+          <option value="oauth2_client_credentials">OAuth client credentials</option><option value="api_key">API key header</option>
+        </select></label>
+        {AUTH_FIELDS[authType].map((field) => <label key={`${authType}:${field.name}`} className="space-y-1 text-sm"><span>{field.label}</span><input className={INPUT} name={field.name} type={field.type ?? "text"} required={!field.optional} maxLength={8192} defaultValue={field.defaultValue} autoComplete={field.type === "password" ? "new-password" : "off"} /></label>)}
+        {authType === "oauth2_client_credentials" && <p className="text-xs text-muted-foreground sm:col-span-2">Uses client_secret_basic authentication at the token endpoint.</p>}
+        <p className="text-xs text-muted-foreground sm:col-span-2">Credentials are encrypted on the server and are never returned in the saved profile. Use an account limited to read access.</p>
+        <Button type="submit">{busy === "save" ? "Saving…" : "Save connection"}</Button>
+      </fieldset>
+    </form>
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold">Saved connections</h3>
+      {loading && <p className="text-sm text-muted-foreground">Loading connections…</p>}
+      {!loading && !loadError && profiles.length === 0 && <p className="text-sm text-muted-foreground">No saved connections.</p>}
+      {profiles.map((profile) => <article key={profile.id} aria-label={profile.label} className="space-y-2 rounded-md border border-border p-3 text-sm">
+        <h4 className="font-medium">{profile.label}</h4>
+        <p className="break-all text-muted-foreground">{profile.base_url}</p>
+        <p>{profile.revoked_at ? "Revoked" : "Credential saved"}</p>
+        {!profile.revoked_at && <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" disabled={!!busy} onClick={() => void act(profile, "test")}>{busy === `test:${profile.id}` ? "Testing…" : "Test connection"}</Button>
+          <Button variant="secondary" disabled={!!busy} onClick={() => void act(profile, "revoke")}>{busy === `revoke:${profile.id}` ? "Revoking…" : "Revoke connection"}</Button>
+        </div>}
+        {probes[profile.id] && <p role={probes[profile.id]!.connected ? "status" : "alert"} className={probes[profile.id]!.connected ? "text-emerald-700" : "text-destructive"}>
+          {probes[profile.id]!.connected ? `Product read succeeded (${probes[profile.id]!.records_read} record checked). This test does not check an assembly.` : `Connection failed: ${probes[profile.id]!.reason}`}
+        </p>}
+        {!profile.revoked_at && <ConnectorBomImport profile={profile} busy={busy} setBusy={setBusy} onRun={onRun} />}
+      </article>)}
+    </div>
+  </section>;
+}
+
+function ConnectorBomImport({ profile, busy, setBusy, onRun }: {
+  profile: ConnectorCredentialProfile; busy: string; setBusy: (value: string) => void; onRun?: () => void;
+}) {
+  const [run, setRun] = useState<ConnectorBomRun | null>(null);
+  const [error, setError] = useState("");
+  const sap = profile.connector_id.startsWith("sap_");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const form = new FormData(event.currentTarget);
+    const mode = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value === "import" ? "import" : "dry_run";
+    const text = (name: string) => String(form.get(name) ?? "").trim();
+    setBusy(`bom:${profile.id}`); setError("");
+    try {
+      const result = await runConnectorBom(profile.id, {
+        part_id: text("part_id"), assembly_key: text("assembly_key"), mode,
+        navigation_id: text("navigation_id") || undefined,
+        sap_selection: sap ? {
+          bill_of_material: text("bill_of_material"), variant: text("variant"), version: text("version"),
+          engineering_change_document: text("engineering_change_document"), plant: text("plant"),
+          application: text("application"), explosion_date: text("explosion_date"), explosion_level: Number(text("explosion_level")),
+        } : undefined,
+        expected_sha256: mode === "import" ? run?.file_sha256 : undefined,
+      });
+      setRun(result);
+      onRun?.();
+    } catch (err) {
+      setRun(null);
+      setError(err instanceof Error ? err.message : "Could not read this assembly. Try again.");
+    } finally { setBusy(""); }
+  }
+
+  return <details className="border-t border-border pt-3">
+    <summary className="cursor-pointer font-medium">{sap ? "Preview a SAP BOM explosion" : "Read or import an assembly"}</summary>
+    <form aria-label={`BOM import from ${profile.label}`} onSubmit={(event) => void submit(event)} onChange={() => { setRun(null); setError(""); }} className="mt-3 space-y-3">
+      <p className="text-muted-foreground">{sap ? "Read a material BOM at a chosen date and depth, for a required quantity of 1. A successful read does not verify a complete assembly or manufacturing quantities. SAP assembly import is unavailable. SAP is never modified." : "Preview a complete Windchill part structure, then import whole-part (ea) counts. Import replaces the assembly saved under the name below. Windchill is never modified."}</p>
+      <fieldset disabled={!!busy} className="grid gap-3 sm:grid-cols-2">
+        <label className="space-y-1"><span>{sap ? "Root material" : "Root part iteration ID"}</span><input className={INPUT} name="part_id" required maxLength={sap ? 40 : 120} placeholder={sap ? "EX_H" : "OR:wt.part.WTPart:12345"} /></label>
+        <label className="space-y-1"><span>{sap ? "Preview name" : "Saved assembly name"}</span><input className={INPUT} name="assembly_key" required maxLength={120} placeholder="Vehicle assembly" /></label>
+        {sap ? <>
+          <label className="space-y-1"><span>BOM number</span><input className={INPUT} name="bill_of_material" required maxLength={8} placeholder="00058298" /></label>
+          <label className="space-y-1"><span>Alternative</span><input className={INPUT} name="variant" required maxLength={2} placeholder="1" /></label>
+          <label className="space-y-1"><span>Plant</span><input className={INPUT} name="plant" required maxLength={4} placeholder="0001" /></label>
+          <label className="space-y-1"><span>Explosion application</span><input className={INPUT} name="application" required maxLength={4} placeholder="PP01" /></label>
+          <label className="space-y-1"><span>Effective date</span><input className={INPUT} name="explosion_date" type="date" required /></label>
+          <label className="space-y-1"><span>Preview depth</span><input className={INPUT} name="explosion_level" type="number" min={1} max={99} step={1} defaultValue={1} required /></label>
+          <label className="space-y-1"><span>BOM version (optional)</span><input className={INPUT} name="version" maxLength={4} /></label>
+          <label className="space-y-1"><span>Change document (optional)</span><input className={INPUT} name="engineering_change_document" maxLength={12} /></label>
+          <p className="text-xs text-muted-foreground sm:col-span-2">Reads the SAP BOM API version 2 on this connection. Paginated, malformed, empty, mismatched-root and responses over 1 MB are rejected. Preview is limited to 9998 records. Quantities retain their SAP units and are not converted to part counts.</p>
+        </> : <>
+          <label className="space-y-1 sm:col-span-2"><span>Saved navigation criteria ID (optional)</span><input className={INPUT} name="navigation_id" maxLength={120} placeholder="OR:wt.filter.NavigationCriteria:12345" /></label>
+          <p className="text-xs text-muted-foreground sm:col-span-2">Without a saved filter, Windchill applies its default navigation criteria. Missing permissions, unresolved parts, fractional counts, other units and responses over 1 MB are rejected.</p>
+        </>}
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <Button type="submit" value="dry_run" variant="secondary">{busy === `bom:${profile.id}` ? "Reading…" : "Preview BOM"}</Button>
+          {!sap && <Button type="submit" value="import" disabled={run?.status !== "passed" || run.mode !== "dry_run"}>Import previewed BOM</Button>}
+        </div>
+      </fieldset>
+      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {run && <div className="space-y-2">
+        <p role={run.status === "failed" ? "alert" : "status"}>
+          {run.status === "failed" ? run.errors.map((item) => item.reason).join(" ") : sap ? `SAP read succeeded: ${run.rows_valid} component records. Complete assembly and quantity validation remain unverified; no assembly changed.` : run.mode === "import" ? `Imported ${run.imported_count} relationships into ${run.metadata.assembly_key}.` : `Preview passed: ${run.rows_valid} relationships. No assembly changed.`}
+        </p>
+        {run.metadata.preview_edges.length > 0 && <div className="overflow-x-auto"><table className="w-full text-left text-xs">
+          <caption className="mb-2 text-left text-muted-foreground">{run.metadata.preview_truncated ? `First 20 of ${run.rows_valid} relationships` : "Assembly relationships"}</caption>
+          <thead><tr><th scope="col">Parent ID</th><th scope="col">Child ID / name</th><th scope="col">Count</th></tr></thead>
+          <tbody>{run.metadata.preview_edges.map((edge) => <tr key={`${edge.parent_ref}:${edge.child_ref}`}><td className="pr-3 py-1">{edge.parent_ref}</td><td className="pr-3 py-1">{edge.child_ref}<br />{edge.child_name}</td><td className="py-1">{edge.qty_per_parent}</td></tr>)}</tbody>
+        </table></div>}
+        {!!run.metadata.preview_components?.length && <div className="overflow-x-auto"><table className="w-full text-left text-xs">
+          <caption className="mb-2 text-left text-muted-foreground">{run.metadata.preview_truncated ? `First 20 of ${run.rows_valid} SAP records` : "SAP explosion values"}. Quantities are shown separately without conversion to part counts. Confirm exploded quantity units in SAP before using these values.</caption>
+          <thead><tr><th scope="col">Level / header material</th><th scope="col">Component / item</th><th scope="col">Item quantity</th><th scope="col">Header base</th><th scope="col">Exploded quantity</th></tr></thead>
+          <tbody>{run.metadata.preview_components.map((item, index) => <tr key={index}><td className="pr-3 py-1">{item.level} / {item.header_material}</td><td className="pr-3 py-1">{item.component} / {item.item_number}</td><td className="pr-3 py-1">{item.item_quantity} {item.item_unit}</td><td className="pr-3 py-1">{item.header_quantity} {item.header_unit}</td><td className="py-1">{item.exploded_quantity}</td></tr>)}</tbody>
+        </table></div>}
+      </div>}
+    </form>
+  </details>;
+}

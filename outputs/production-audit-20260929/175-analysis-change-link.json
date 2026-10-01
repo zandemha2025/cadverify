@@ -1,0 +1,15 @@
+{
+  "old_analysis": 1696,
+  "current_analysis": 1719,
+  "analysis_mesh_hash": "fd89b62af571c5d5e682297aa5123e04c9f4aa8d56690cda130efaa675569ed1",
+  "key": "INSUFFICIENT_DRAFT|faces:2",
+  "old_processes": [
+    "investment_casting"
+  ],
+  "current_processes_at_same_key": [
+    "sand_casting"
+  ],
+  "old_evidence": "b261b2f54fdef4b9a16e7c903c0794305cfb736b5642b7149ce6307b7e791f87",
+  "current_evidence": "4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+  "old_link": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=b261b2f54fdef4b9a16e7c903c0794305cfb736b5642b7149ce6307b7e791f87"
+}

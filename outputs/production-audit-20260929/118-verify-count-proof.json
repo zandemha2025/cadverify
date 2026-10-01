@@ -1,0 +1,28 @@
+{
+  "finding": 118,
+  "status": "fixed locally; not deployed",
+  "first_divergence": "The same unchanged inventory displays6 physical machines on Home but4 machines declared in a real Verify result.",
+  "root_cause": "Verify counted inventory entries, ignoring each entry's declared quantity.",
+  "fix": "Reuse the existing countMachines helper already used by Home; preserve all machine-fit logic and records.",
+  "native": {
+    "source": "backend/tests/assets/bored-block-mm.iges",
+    "before_verify_count": 4,
+    "home_count": 6,
+    "after_verify_count": 6,
+    "after_home_verify_navigation_count": 6,
+    "saved_decision_unchanged": "01M3SDY6WCDSA2200T4KQK31X1",
+    "geometry_watertight": true
+  },
+  "validation": {
+    "frontend_tests_pass": 498,
+    "typecheck": "PASS",
+    "changed_source_lint": "PASS",
+    "production_build": "PASS",
+    "existing_count_regression": "[2,null,1,2] =>6, subset=>3, empty=>0",
+    "backend": "unchanged from117 validation"
+  },
+  "screenshots": [
+    "118-verify-machine-count-before.png",
+    "118-verify-machine-count-fixed.png"
+  ]
+}

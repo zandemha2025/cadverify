@@ -1,0 +1,35 @@
+{
+  "scope": "Native local QA inventory, no production change",
+  "before": {
+    "falseNoRateCostWithholding": true,
+    "ratedStatusImpliedActiveMarginalCost": true,
+    "processRecordsImpliedMachineAssignment": true
+  },
+  "after": {
+    "noRateDisclosure": "Estimates may use default rates and ownership assumptions",
+    "ratedStatus": "OWNED · RATE DECLARED",
+    "recordScope": "Up to25 recent decisions for the process; fit remains record-specific",
+    "sameNameHistoricalLinksRetained": 2
+  },
+  "temporaryQuantityControl": {
+    "entries": 5,
+    "totalMachines": 9,
+    "machinesMissingRate": 3,
+    "databaseConfirmed": true
+  },
+  "cleanup": {
+    "entries": 4,
+    "machines": 6,
+    "temporaryNamesRemaining": 0,
+    "exactOriginalRowHashRestored": true
+  },
+  "checks": {
+    "frontendPassed": 497,
+    "types": "PASS",
+    "changedLint": "PASS",
+    "build": "PASS",
+    "existingEngineNoRateControl": "1 passed",
+    "backendUnchangedPriorFullPassed": 2458
+  },
+  "limits": "Copy follows actual pricing behavior; no customer quote accuracy or new machine-assignment feature is claimed."
+}

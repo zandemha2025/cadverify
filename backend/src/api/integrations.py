@@ -1,14 +1,8 @@
-"""Offline integration connector apparatus.
-
-These routes are deliberately file-fed. They let an enterprise dry-run SAP/PLM
-or quote/actual CSV exports through CadVerify's real parsers, record durable run
-evidence, and optionally execute the matching import without pretending live
-credentials exist.
-"""
+"""CSV imports and credentialed vendor reads with organization-scoped run evidence."""
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Literal, Optional
 
 from fastapi import (
     APIRouter,
@@ -93,6 +87,26 @@ class CredentialProfileCreate(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class SapBomSelection(BaseModel):
+    bill_of_material: str = Field(..., min_length=1, max_length=8)
+    variant: str = Field(..., min_length=1, max_length=2)
+    version: str = Field("", max_length=4)
+    engineering_change_document: str = Field("", max_length=12)
+    plant: str = Field(..., min_length=1, max_length=4)
+    application: str = Field(..., min_length=1, max_length=4)
+    explosion_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    explosion_level: int = Field(..., strict=True, ge=1, le=99)
+
+
+class BomRunCreate(BaseModel):
+    part_id: str = Field(..., min_length=1, max_length=120)
+    assembly_key: str = Field(..., min_length=1, max_length=120)
+    mode: Literal["dry_run", "import"] = "dry_run"
+    navigation_id: str | None = Field(None, max_length=120)
+    expected_sha256: str | None = Field(None, pattern=r"^[a-f0-9]{64}$")
+    sap_selection: SapBomSelection | None = None
+
+
 @router.get("/connectors")
 @limiter.limit("120/hour;1000/day")
 async def list_connectors(
@@ -167,7 +181,7 @@ async def probe_credential_profile(
     session: AsyncSession = Depends(get_db_session),
 ):
     row = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
-    return {"probe": creds.probe_profile(row)}
+    return {"probe": await creds.probe_profile(row)}
 
 
 @router.delete("/credential-profiles/{profile_id}", status_code=200)
@@ -182,6 +196,21 @@ async def revoke_credential_profile(
     row = await creds.revoke_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
     await session.commit()
     return {"profile": creds.serialize_profile(row)}
+
+
+@router.post("/credential-profiles/{profile_id}/bom-runs")
+@limiter.limit("30/hour;100/day")
+async def create_bom_run(
+    profile_id: str, request: Request, response: Response, body: BomRunCreate,
+    ctx: OrgAuthContext = Depends(require_integration_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if body.mode == "import":
+        require_kill_switch_open()
+    profile = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
+    run = await creds.run_bom_profile(session, profile, user_id=ctx.user_id, **body.model_dump())
+    await session.commit()
+    return {"run": svc.serialize_run(run)}
 
 
 @router.post("/runs")

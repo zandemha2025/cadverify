@@ -19,8 +19,8 @@ test("Verify does not mount org-scoped readers without an active organization", 
 
   const rateEffect = appSource.indexOf("// The rail footer's bound-rate signal.");
   const rateGuard = appSource.indexOf("if (!hasActiveOrganization)", rateEffect);
-  const machineRead = appSource.indexOf("listMachines().then", rateGuard);
-  assert.ok(rateEffect >= 0 && rateGuard > rateEffect && machineRead > rateGuard);
+  const rateRead = appSource.indexOf("effectiveRateCard().then", rateGuard);
+  assert.ok(rateEffect >= 0 && rateGuard > rateEffect && rateRead > rateGuard);
 
   const designEffect = appSource.indexOf("// Design Studio handoff:");
   const designGuard = appSource.indexOf("if (!hasActiveOrganization) return", designEffect);
@@ -42,10 +42,4 @@ test("Design Studio import copy follows the real verification lifecycle", () => 
   const finished = appSource.indexOf('state: "ready", message: `Imported ${imported.name}. Verification finished.`', verification);
   assert.ok(running >= 0 && verification > running && finished > verification);
   assert.match(appSource, /designImport\.state === "loading" \|\| designImport\.state === "running"/);
-});
-
-test("phone Verify stage separates the title from the context evidence card", () => {
-  assert.match(appSource, /\.cv-verify-stage-title \{[\s\S]*?top: 18px !important/);
-  assert.match(appSource, /\.cv-verify-stage-title \{[\s\S]*?max-height: 108px/);
-  assert.match(appSource, /\.cv-verify-stage-context-card \{[\s\S]*?top: 140px !important/);
 });

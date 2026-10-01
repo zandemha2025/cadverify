@@ -1,0 +1,17 @@
+{
+  "checksPassed": 9,
+  "source": "165-stock-bar-aligned.step",
+  "originalIssueUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+  "nextIssueUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A3&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+  "quantityControlKeptDecisionTab": true,
+  "quantityControlKeptFinding": true,
+  "textCursorKeptFinding": true,
+  "dialogEscapeKeptFinding": true,
+  "modifierChordKeptFinding": true,
+  "routingArrowNextWorked": true,
+  "routingArrowPreviousWorked": true,
+  "routingEscapeClearedFinding": true,
+  "sliderPositionBefore": 0,
+  "sliderPositionAfter": 1,
+  "tabNavigationKeptFinding": true
+}

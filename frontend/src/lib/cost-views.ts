@@ -12,8 +12,52 @@ import type {
   CostEstimate,
   CostAssumption,
   CostDriver,
+  ValidationResult,
 } from "@/lib/api";
 import type { CalibrationRate, CompareRow } from "@/components/glass-box";
+import { procLabel, verdictLabel, verdictTone } from "./status.ts";
+import { crossoverSummary } from "./cost-decision.ts";
+import { routeScopedDfmVerdict } from "./dfm-scope.ts";
+import { routeDfmOutcome } from "./verify/derive.ts";
+import { deriveBreakeven, posToQty, qtyToPos, recommendAt } from "./breakeven.ts";
+
+/** Header and copied-summary verdict for the workspace's make-now route.
+ * A declared cost report with no route cannot borrow an unrelated geometry pass. */
+export function workspaceDfmSummary(
+  report: CostReport | null,
+  validation: ValidationResult | null,
+  selection?: Pick<CostEstimate, "process" | "material" | "quantity"> | null,
+) {
+  const process = selection !== undefined ? selection?.process ?? null : report
+    ? report.decision?.make_now_process ?? report.routing?.recommended_process ?? null
+    : validation?.best_process ?? null;
+  const material = selection?.material ?? report?.decision?.make_now_material;
+  let estimates = report?.estimates.filter((e) => e.process === process && !e.environment_excluded
+    && (!material || e.material === material)) ?? [];
+  const exact = estimates.filter((e) => e.quantity === selection?.quantity);
+  if (exact.length) estimates = exact;
+  let verdict = routeScopedDfmVerdict(validation, process);
+  for (const estimate of estimates) verdict = routeDfmOutcome(verdict, estimate).verdict;
+  if (report && estimates.length === 0 && verdict === "pass") verdict = "unknown";
+  if (report?.status === "GEOMETRY_INVALID") verdict = "fail";
+  return { process, verdict } as const;
+}
+
+/** One selection for the quantity slider, headers, routing and evidence views. */
+export function workspaceSelection(report: CostReport | null, validation: ValidationResult | null, position?: number) {
+  const breakeven = report ? deriveBreakeven(report) : null;
+  const pos = position ?? (breakeven
+    ? qtyToPos(breakeven, breakeven.crossoverQty ?? Math.max(...(report?.quantities.length ? report.quantities : [1])))
+    : 1);
+  const quantity = breakeven ? posToQty(breakeven, pos) : null;
+  const recommendation = breakeven && quantity != null ? recommendAt(breakeven, quantity) : null;
+  const estimate = report && recommendation && quantity != null
+    ? pickEstimate(report, recommendation.curve.process, quantity, recommendation.curve.material) : null;
+  const dfm = workspaceDfmSummary(report, validation, breakeven
+    ? recommendation && quantity != null ? { ...recommendation.curve, quantity } : null
+    : undefined);
+  return { breakeven, position: pos, quantity, recommendation, estimate, dfm } as const;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Override mapping (F3) — translate a glass-box edit into the engine's */
@@ -43,6 +87,18 @@ export function assumptionOverrideKey(name: string): string | null {
 /** Can this assumption be edited into a real re-cost? (rate key, or cavities) */
 export function canOverrideAssumption(name: string): boolean {
   return assumptionOverrideKey(name) !== null || name === "n_cavities";
+}
+
+/** Bounds for both visible rate editors; the server validates the final card too. */
+export function costOverrideError(name: string, raw: string): string | null {
+  const value = Number(raw);
+  if (!raw.trim() || !Number.isFinite(value)) return "Enter a finite number.";
+  if (value < 0) return "Enter zero or a positive number.";
+  if (name === "utilization" && (value <= 0 || value > 1)) return "Utilization must be greater than 0 and at most 1.";
+  if (name === "stock_allowance" && value < 1) return "Stock allowance must be at least 1.";
+  if (name === "daily_machine_hours" && (value <= 0 || value > 24)) return "Machine hours must be greater than 0 and at most 24 per day.";
+  if (name === "n_cavities" && (!Number.isSafeInteger(value) || value < 1)) return "Cavities must be a positive whole number.";
+  return null;
 }
 
 /**
@@ -108,10 +164,11 @@ export function parseDriverRate(driver: CostDriver): number | null {
   return m ? parseFloat(m[1]) : null;
 }
 
-/** Distinct costed processes, in first-seen order. */
+/** Distinct eligible costed processes, in first-seen order. */
 export function costedProcesses(report: CostReport): string[] {
   const seen: string[] = [];
   for (const e of report.estimates) {
+    if (e.environment_excluded) continue;
     if (!seen.includes(e.process)) seen.push(e.process);
   }
   return seen;
@@ -119,7 +176,7 @@ export function costedProcesses(report: CostReport): string[] {
 
 /** The costed quantities (sorted ascending). */
 export function costedQuantities(report: CostReport): number[] {
-  return [...new Set(report.estimates.map((e) => e.quantity))].sort(
+  return [...new Set(report.estimates.filter((e) => !e.environment_excluded).map((e) => e.quantity))].sort(
     (a, b) => a - b
   );
 }
@@ -132,35 +189,16 @@ export function costedQuantities(report: CostReport): number[] {
 export function pickEstimate(
   report: CostReport,
   process: string,
-  qty?: number
+  qty?: number,
+  material?: string,
 ): CostEstimate | null {
-  const forProc = report.estimates.filter((e) => e.process === process);
+  const forProc = report.estimates.filter((e) => e.process === process && !e.environment_excluded
+    && (material == null || e.material === material));
   if (forProc.length === 0) return null;
   if (qty == null) return forProc[0];
   return forProc.reduce((best, e) =>
     Math.abs(e.quantity - qty) < Math.abs(best.quantity - qty) ? e : best
   );
-}
-
-/**
- * The make-now recommendation's estimate at its STABLE quantity — the LARGEST
- * costed quantity, where setup is fully amortized. This is the reading the
- * should-cost HEADLINE anchors on, so the resident Inspector (drivers · Σ ·
- * provenance) traces the SAME number the headline shows (F5).
- *
- * The bug it replaces: the Inspector picked `pickEstimate(report, make_now)` with
- * no qty, which returns the FIRST (smallest-qty) estimate — so the drivers panel
- * reconciled to a different quantity's unit cost than the headline (e.g. drivers
- * @qty 100 = $8.72 under a headline @qty 10,000 = $8.68). We never fabricate: we
- * select the engine's REAL estimate for the make-now route at the largest costed
- * quantity, and return null when there's no decision or no estimate for it.
- */
-export function makeNowStableEstimate(report: CostReport): CostEstimate | null {
-  const proc = report.decision?.make_now_process;
-  if (!proc) return null;
-  const forProc = report.estimates.filter((e) => e.process === proc);
-  if (forProc.length === 0) return null;
-  return forProc.reduce((best, e) => (e.quantity > best.quantity ? e : best));
 }
 
 /** Half-width % for an estimate (prefer the confidence band, else the error band). */
@@ -262,7 +300,7 @@ export function buildCompareRows(
   return rows.sort((x, y) => x.b.unitCost - y.b.unitCost);
 }
 
-/** process → human blocker string, from each estimate's dfm_blockers. */
+/** First blocker for every process, with estimate fallback for older reports. */
 export function blockersByProcess(report: CostReport): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of report.estimates) {
@@ -270,5 +308,46 @@ export function blockersByProcess(report: CostReport): Record<string, string> {
       out[e.process] = e.dfm_blockers[0];
     }
   }
+  for (const f of report.engine_feasibility) {
+    if (f.blockers?.length) out[f.process] = f.blockers[0];
+  }
   return out;
+}
+
+/** The copied decision uses the same selection in both workspace layouts. */
+export function buildAnswerSummary(
+  report: CostReport | null,
+  validation: ValidationResult | null,
+  selection: ReturnType<typeof workspaceSelection>,
+): string {
+  const lines: string[] = [];
+  if (report?.decision) {
+    const dec = report.decision;
+    lines.push(`ProofShape — ${report.filename}`);
+    const pick = selection.recommendation;
+    lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
+    if (pick && selection.estimate?.quantity !== selection.quantity) {
+      lines.push("Approximate recommendation at this quantity; re-cost it to include batch rounding and minimum charges.");
+    }
+    for (const q of report.quantities) {
+      const r = dec.recommendation[String(q)];
+      if (r) {
+        lines.push(
+          `  qty ${q.toLocaleString()}: ${procLabel(r.process)} — $${r.unit_cost_usd.toFixed(2)}/unit${
+            r.lead_low_days != null && r.lead_high_days != null
+              ? `, ${r.lead_low_days}-${r.lead_high_days} days`
+              : ""
+          }`
+        );
+      }
+    }
+    lines.push(crossoverSummary(dec));
+  }
+  if (validation || report) {
+    const dfm = selection.dfm;
+    lines.push(
+      `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
+    );
+  }
+  return lines.join("\n");
 }

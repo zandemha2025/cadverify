@@ -136,6 +136,7 @@ export interface GroundTruthRecord {
   /** True = synthetic stand-in — CAN shape a spread but NEVER flips validated. */
   stand_in: boolean;
   part_path: string | null;
+  source_units?: "mm" | "inch";
   notes: string;
   created_at: string | null;
 }
@@ -191,8 +192,7 @@ export interface GroundTruthImportSummary {
   errors: { line: number; reason: string }[];
 }
 
-/** Send reality back: import a historical-cost CSV. Imported rows are REAL
- *  (stand_in=false) and count toward the calibration floor. */
+/** Import historical costs. Demo/seed rows stay stand-ins and cannot validate. */
 export async function importGroundTruthCsv(
   file: File
 ): Promise<GroundTruthImportSummary> {

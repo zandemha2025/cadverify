@@ -351,6 +351,8 @@ test("truth oracle accepts measured geometry/cost/provenance and rejects fabrica
 
 test("human outcome follows selected-route DFM instead of recording a blocked route in-house", () => {
   const pass = truthfulResponses().cost;
+  assert.deepEqual(dispositionForCost(pass), { key: "outside", label: "Make outside" });
+  pass.verification = { per_route: { [pass.decision.make_now_process]: { verdict: "makeable_in_house" } } };
   assert.deepEqual(dispositionForCost(pass), { key: "inhouse", label: "Make in-house" });
 
   const blocked = structuredClone(pass);

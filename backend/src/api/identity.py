@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import zipfile
 from typing import List, Optional
 
 from fastapi import (
@@ -43,6 +44,7 @@ from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.services import batch_service
 from src.services import part_signature_service as sigsvc
 from src.services import parts_master_service as pmsvc
 
@@ -50,9 +52,7 @@ logger = logging.getLogger("cadverify.identity")
 
 router = APIRouter(tags=["identity"])
 
-# Onboarding batch size cap for the whole multipart upload (streamed reject). A part
-# library is CAD files, so this is generous but bounded — a single request can't
-# exhaust memory. Reuse the ZIP path for large libraries.
+# Bound CAD bytes retained in memory across direct files and expanded ZIP inputs.
 _ONBOARD_MAX_BYTES = int(os.getenv("PARTS_MASTER_MAX_MB", "512")) * 1024 * 1024
 
 
@@ -134,7 +134,9 @@ async def confirm_identity(
 # ---------------------------------------------------------------------------
 
 
-async def _read_onboard_zip_files(zip_upload: UploadFile) -> tuple[list, list]:
+async def _read_onboard_zip_files(
+    zip_upload: UploadFile, *, max_bytes: int | None = None, max_files: int | None = None
+) -> tuple[list, list]:
     """Reuse the batch ZIP path (stream-to-tempfile + guarded extraction) and read
     each extracted CAD file's bytes. Returns ``(files, skipped)`` where ``files`` is
     ``[(filename, bytes)]`` and ``skipped`` carries the extractor's own skips
@@ -143,7 +145,6 @@ async def _read_onboard_zip_files(zip_upload: UploadFile) -> tuple[list, list]:
     import asyncio
     import os as _os
 
-    from src.services import batch_service
     from ulid import ULID
 
     files: list[tuple[str, bytes]] = []
@@ -161,6 +162,11 @@ async def _read_onboard_zip_files(zip_upload: UploadFile) -> tuple[list, list]:
             tmp_path,
             object_namespace,
         )
+        readable = [item for item in items if item.get("status") != "skipped"]
+        if len(readable) > (pmsvc.ONBOARD_MAX_FILES if max_files is None else max_files):
+            raise HTTPException(status_code=413, detail="onboarding batch exceeds the file cap — split it into smaller batches")
+        if sum(item["size"] for item in readable) > (_ONBOARD_MAX_BYTES if max_bytes is None else max_bytes):
+            raise HTTPException(status_code=413, detail="onboarding upload exceeds the size cap — split it into smaller batches")
         for item in items:
             if item.get("status") == "skipped":
                 skipped.append({
@@ -240,21 +246,32 @@ async def onboard_library(
     total_bytes = 0
 
     if files:
+        if len(files) > pmsvc.ONBOARD_MAX_FILES:
+            raise HTTPException(status_code=413, detail="onboarding batch exceeds the file cap — split it into smaller batches")
         for up in files:
-            data = await up.read()
+            data = await up.read(_ONBOARD_MAX_BYTES - total_bytes + 1)
             total_bytes += len(data)
             if total_bytes > _ONBOARD_MAX_BYTES:
                 raise HTTPException(
                     status_code=413,
                     detail=(
                         f"onboarding upload exceeds {_ONBOARD_MAX_BYTES // (1024 * 1024)}MB "
-                        "— use the ZIP form for a large library"
+                        "— split it into smaller batches"
                     ),
                 )
             onboard_files.append((up.filename or "unnamed", data))
 
     if zip is not None:
-        zip_files, extractor_skipped = await _read_onboard_zip_files(zip)
+        try:
+            zip_files, extractor_skipped = await _read_onboard_zip_files(
+                zip,
+                max_bytes=_ONBOARD_MAX_BYTES - total_bytes,
+                max_files=pmsvc.ONBOARD_MAX_FILES - len(onboard_files),
+            )
+        except batch_service.ZipTooLargeError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        except (zipfile.BadZipFile, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         onboard_files.extend(zip_files)
 
     if not onboard_files:
@@ -275,7 +292,13 @@ async def onboard_library(
     identity_map: dict = {}
     mapping_errors: list = []
     if mapping is not None:
-        raw = await mapping.read()
+        try:
+            raw = await batch_service.read_manifest_upload_bounded(mapping)
+        except batch_service.ManifestTooLargeError as exc:
+            raise HTTPException(
+                status_code=413,
+                detail=f"identity mapping exceeds {batch_service.BATCH_MAX_MANIFEST_BYTES} bytes — split it into smaller batches",
+            ) from exc
         try:
             text = raw.decode("utf-8-sig")
         except UnicodeDecodeError:

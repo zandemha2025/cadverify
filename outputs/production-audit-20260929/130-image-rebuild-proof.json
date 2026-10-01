@@ -1,0 +1,108 @@
+{
+  "finding": "130",
+  "status": "nine fixable image findings resolved in actual CI images; residual five remain open; frontend startup proof pending corrected probe",
+  "ci_run": 36752779298,
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36752779298",
+  "head_sha": "dc9564e839ac87b8c6d9917d5281367bdb7ffd5b",
+  "manifest": {
+    "claim": "CI_BUILD_PROOF",
+    "source_sha": "0fbdb05419281a27d285c82ce3460cda58387348",
+    "backend_local_image_id": "sha256:daa93a19a3ab7102ea2566c0045675a878de7a259adba0bf5c975e4a070ebc35",
+    "frontend_local_image_id": "sha256:f7af3ececda651e3443742786f9f336d246217984d9197d1a12f538f4c7f783e"
+  },
+  "artifact_id": 11115324038,
+  "artifact_zip_sha256": "74c4be224cd2207fb97452c9fb2c1a5b5d7ad54254db9c68c6bce939f151fa3b",
+  "sbom_sha256": {
+    "backend-0fbdb05419281a27d285c82ce3460cda58387348.cdx.json": "da9e593ff7254adb146f4a92f7a3b34bae5cb454232864fc9ad2fb256959429d",
+    "frontend-0fbdb05419281a27d285c82ce3460cda58387348.cdx.json": "4f1f4039ed1b5640a0da67765cecbf6f7ac21222e0f00924ff50f6afe568ab2a"
+  },
+  "scans": {
+    "frontend": {
+      "high": 0,
+      "critical": 0,
+      "npm_component": "absent"
+    },
+    "backend": {
+      "high": 5,
+      "critical": 0,
+      "fixed_openssl_version": "3.5.7-1~deb13u3",
+      "residuals": {
+        "CVE-2026-93990": [
+          "libexpat1"
+        ],
+        "CVE-2026-88806": [
+          "libx11-6",
+          "libx11-data",
+          "libx11-xcb1"
+        ],
+        "CVE-2026-88807": [
+          "libxrender1"
+        ]
+      }
+    }
+  },
+  "steps": [
+    {
+      "name": "Scan frontend image (high/critical vulnerabilities)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Scan backend image (high/critical vulnerabilities)",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Generate frontend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Generate backend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Exercise frontend image default startup and share image",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Exercise backend image native STEP parser",
+      "conclusion": "success"
+    },
+    {
+      "name": "Write source-bound container build manifest",
+      "conclusion": "success"
+    },
+    {
+      "name": "Upload container build and security evidence",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Generate backend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Generate frontend CycloneDX SBOM",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Scan backend image (high/critical vulnerabilities)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Scan frontend image (high/critical vulnerabilities)",
+      "conclusion": "success"
+    }
+  ],
+  "backend_runtime": "Actual built image parsed known real STEP: 20x15x10 mm, watertight, analytic volume within 0.2 mm3. Network disabled.",
+  "frontend_runtime": "Probe exited56 after first immediate connection reset, before Next logged readiness. Does not prove an application startup failure or success. Finding134 corrects retry handling; actual image probe must rerun.",
+  "primary_source_recheck": {
+    "xorg_archive": "https://xorg.freedesktop.org/archive/individual/lib/",
+    "observed_releases": "libX11 through1.8.13; libXrender through0.9.12. No fixed release archive observed.",
+    "debian_trackers": [
+      "https://security-tracker.debian.org/tracker/CVE-2026-93990",
+      "https://security-tracker.debian.org/tracker/CVE-2026-88806",
+      "https://security-tracker.debian.org/tracker/CVE-2026-88807"
+    ],
+    "expat_upstream_fix": "https://github.com/libexpat/libexpat/commit/0cfd15bdf4b2c22d6b0df73610709dfb60921091",
+    "implementation": "No backport, package-version override or new vulnerability waiver applied."
+  },
+  "production": "unchanged09555c1"
+}

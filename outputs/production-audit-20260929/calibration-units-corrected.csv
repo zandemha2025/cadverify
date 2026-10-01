@@ -1,0 +1,2 @@
+part_id,process,quantity,actual_unit_cost_usd,source_type,source_units,notes
+audit-calibration-corrected.stl,fdm,10,4.20,demo,mm,Synthetic corrected UI regression only

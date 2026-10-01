@@ -205,6 +205,21 @@ test("deriveBreakeven's two-point fit reproduces the report's own unit costs exa
   ]);
 });
 
+test("curves preserve every costed quantity through minimum-charge and batch changes", () => {
+  // Real STEP MJF values: a two-endpoint fit incorrectly returned $4.90 at 50.
+  const points = [[1, 75], [50, 3.8], [123, 3.59], [5000, 3.48], [10000, 3.48]];
+  const b = deriveBreakeven(report({
+    quantities: points.map(([q]) => q), decision: decision(),
+    estimates: points.map(([quantity, unit_cost_usd]) => est({ process: "mjf", quantity, unit_cost_usd })),
+  }))!;
+  for (const [q, cost] of points) {
+    assert.equal(unitCostAt(b.curves[0], q), cost);
+    assert.ok(sampleQuantities(b).includes(q), "Chart retains actual costed points");
+  }
+  const between = 2 / (1 / 50 + 1 / 123);
+  assert.ok(Math.abs(unitCostAt(b.curves[0], between) - 3.695) < 1e-9);
+});
+
 /* ---- (d) single-point fallback: prefer the engine's split when it ---
       reproduces the reported number; else a flat line, never a guess  */
 

@@ -1,0 +1,156 @@
+{
+  "beforeError": "{\"controls\":[{\"left\":55,\"right\":142.890625,\"text\":\"Re-verify\"},{\"left\":150.890625,\"right\":240.53125,\"text\":\"Compare\"},{\"left\":285.9921875,\"right\":374.5,\"text\":\"open program \u2192\"},{\"left\":613.8125,\"right\":651.7421875,\"text\":\"open record \u2192\"},{\"left\":613.8125,\"right\":651.7421875,\"text\":\"open record \u2192\"},{\"left\":613.8125,\"right\":651.7421875,\"text\":\"open record \u2192\"}],\"scrollWidth\":677,\"viewport\":390,\"width\":390}",
+  "after390": {
+    "status": "PASS",
+    "controls": [
+      {
+        "left": 55,
+        "right": 142.890625,
+        "text": "Re-verify"
+      },
+      {
+        "left": 150.890625,
+        "right": 240.53125,
+        "text": "Compare"
+      },
+      {
+        "left": 247.9921875,
+        "right": 336.5,
+        "text": "open program \u2192"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      }
+    ],
+    "scrollWidth": 390,
+    "viewport": 390,
+    "width": 390
+  },
+  "expanded390": {
+    "status": "PASS",
+    "controls": [
+      {
+        "left": 55,
+        "right": 142.890625,
+        "text": "Re-verify"
+      },
+      {
+        "left": 150.890625,
+        "right": 240.53125,
+        "text": "Compare"
+      },
+      {
+        "left": 247.9921875,
+        "right": 336.5,
+        "text": "open program \u2192"
+      },
+      {
+        "left": 59,
+        "right": 128.5390625,
+        "text": "hide record"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      }
+    ],
+    "scrollWidth": 390,
+    "viewport": 390,
+    "width": 390
+  },
+  "expanded320": {
+    "status": "PASS",
+    "controls": [
+      {
+        "left": 55,
+        "right": 142.890625,
+        "text": "Re-verify"
+      },
+      {
+        "left": 150.890625,
+        "right": 240.53125,
+        "text": "Compare"
+      },
+      {
+        "left": 177.9921875,
+        "right": 266.5,
+        "text": "open program \u2192"
+      },
+      {
+        "left": 59,
+        "right": 128.5390625,
+        "text": "hide record"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      },
+      {
+        "left": 59,
+        "right": 141.1875,
+        "text": "open record \u2192"
+      }
+    ],
+    "scrollWidth": 320,
+    "viewport": 320,
+    "width": 320
+  },
+  "desktop": {
+    "status": "PASS",
+    "controls": [
+      {
+        "left": 351,
+        "right": 438.890625,
+        "text": "Re-verify"
+      },
+      {
+        "left": 446.890625,
+        "right": 536.53125,
+        "text": "Compare"
+      },
+      {
+        "left": 670.9921875,
+        "right": 759.5,
+        "text": "open program \u2192"
+      },
+      {
+        "left": 1138.8125,
+        "right": 1221,
+        "text": "open record \u2192"
+      },
+      {
+        "left": 1138.8125,
+        "right": 1221,
+        "text": "open record \u2192"
+      },
+      {
+        "left": 1138.8125,
+        "right": 1221,
+        "text": "open record \u2192"
+      }
+    ],
+    "scrollWidth": 984,
+    "viewport": 1280,
+    "width": 984
+  },
+  "keyboard_collapse": true
+}

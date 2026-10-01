@@ -1,0 +1,53 @@
+{
+  "headers": [
+    "process",
+    "material",
+    "quantity",
+    "unit_cost_usd",
+    "fixed_cost_usd",
+    "variable_cost_usd",
+    "est_error_band_pct",
+    "confidence_low_usd",
+    "confidence_high_usd",
+    "confidence_label",
+    "confidence_validated",
+    "dfm_ready",
+    "approval_status",
+    "approved_by_user_id",
+    "approved_at",
+    "approval_note",
+    "user_disposition",
+    "user_disposition_label",
+    "disposition_note",
+    "disposition_basis",
+    "disposition_updated_at",
+    "disposition_updated_by_user_id",
+    "line_items"
+  ],
+  "native_standalone_rows": 48,
+  "scope": {
+    "process": "mjf",
+    "material": "PP (Polypropylene)",
+    "quantity": 100
+  },
+  "runner_headers": {
+    "training-guide-e2e.mjs": {
+      "exact_match": true,
+      "columns": 23,
+      "basis_copies": 1,
+      "source_sha256": "fbfcc74d11b82e2aa68ce2d3d53c7475908a6dcc9617ce73f765f90b0498d466"
+    },
+    "compare-rfq-key-golden-matrix.mjs": {
+      "exact_match": true,
+      "columns": 23,
+      "basis_copies": 1,
+      "source_sha256": "0c085df846d769eaf8d76dc79c1dae5fe73c0560598cf24458ac0a54305252d4"
+    }
+  },
+  "native_rfq_rows": 48,
+  "native_files": {
+    "184-outcome-export.csv": "d1e8266186cdff3b3c4b1a9ba2307fecd1081238807bbd846e51cd31bc62a374",
+    "184-outcome-export.zip": "fcbbdb2b0ee289a129d02b2620d45019062a65e7682819b95e1479db3041d451"
+  },
+  "scope_limit": "Offline contract check against actual native downloads; new full browser CI is still required."
+}

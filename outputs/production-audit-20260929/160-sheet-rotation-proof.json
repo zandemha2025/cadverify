@@ -1,0 +1,94 @@
+{
+  "audit": 160,
+  "status": "fixed and verified locally; committed rollout still pending; not deployed",
+  "engine_version": "0.3.29",
+  "root_cause": "World-axis bounds were used as sheet gauge, planar stock dimensions and machine footprint. A rotated30x20x0.5mm STEP was reported14.9114mm thick and lost sheet routing.",
+  "fix": [
+    "One shared measurement validates closed single-body flat extrusions using parallel cap planes and perpendicular rim faces. Its physical gauge feeds DFM, hole limits, routing, cut length and material stock. World AABB remains unchanged for other processes.",
+    "Minimum-area planar blank selection resolves equal-area ties by minimum perimeter; machine fit independently considers every in-plane orientation through hull-edge intervals and normalized-span crossings.",
+    "Reuse numeric-distance tolerance at sheet classification, hole, thickness and envelope limits; genuine0.00001mm overages remain failures.",
+    "Remove rectangular perimeter floor; internal cutouts remain included. Verified flat blanks have0bends; remove the broad-normal bend-count heuristic. Unsupported/nonuniform geometry receives SHEET_GAUGE_UNVERIFIED; absent measurements are omitted from routing metadata."
+  ],
+  "checks": {
+    "initial_red": {
+      "failed": 40,
+      "passed": 40
+    },
+    "first_full_backend": {
+      "passed": 2727,
+      "skipped": 3,
+      "seconds": 339.77
+    },
+    "full_backend": {
+      "passed": 2736,
+      "skipped": 3,
+      "seconds": 347.08,
+      "note": "Full collection includes orientation and machine-fit corrections; collected before final flat-bend-count removal. Final195focused checks cover that follow-up."
+    },
+    "final_focused": {
+      "passed": 195,
+      "seconds": 5.13,
+      "files": [
+        "test_routing_sheet.py",
+        "test_makeability.py",
+        "test_process_cost_new.py",
+        "test_routing_design_templates.py",
+        "test_costing_enow_wave1.py"
+      ]
+    },
+    "changed_source_pyright": {
+      "existing": 48,
+      "new": 0
+    },
+    "bandit_medium_high": 0,
+    "trap_corpus": "pass; existing suspicious_scale/unit_flag gap remains",
+    "frontend": "unchanged; prior502tests/types/lint/build retained",
+    "envelope_oracle": "30seeded convex outlines compared to10001-angle search;160independent peer outline checks with local refinement;160peer rotation/translation checks;15peer fit controls"
+  },
+  "review": "Three read-only review cycles caught nonunique blank rectangles, exact-limit numeric errors and alternate fitting orientations. All corrected; final algorithm review reports no actionable findings. Final removal of false flat bends acknowledged as consistent.",
+  "performance": "160-sheet-performance.json:5000-sided round sheet blank measurement~0.030s and envelope matching~0.069s locally; quadratic hull scans are bounded in memory, not a production fleet SLA.",
+  "native_controls": "160-native-controls.json",
+  "saved_records": "160-saved-readback.json",
+  "open_issues": [
+    "Binary-STL float32 coordinate quantization prevents rotated constant-sheet verification;160-stl-precision-open.json and actualSTL retained.",
+    "Other processes still use orientation-dependent build/stock/DFM proxies, so the overall cheapest process can change under rotation even though sheet line items agree.",
+    "Bent-sheet unfolding, physical bend-radius inference, arbitrary customer-CAD accuracy and actual supplier quote validation remain open.",
+    "Real email/companyIdP-SCIM/vendor imports/reconstruction/externalstorage/webhooks and original ledger remain incomplete.",
+    "No PR107main merge/deployment approval; production baseline unchanged."
+  ],
+  "ci": {
+    "run": 36806323189,
+    "head": "7041796704a033545995fad5379b7c8cff43a600",
+    "status": "browser active;7independentjobs pass;containerfails5HIGH/0CRITICAL backendscan",
+    "scope": "Published audits through159; does not cover160; no push/cancel while active"
+  },
+  "native_results": [
+    "Six actual STEP uploads on0.3.29: base/rotated0.5mm Pass with identical sheet costs; rotated0.4mm fails default minimum; rotated triangle and cutout Pass with86.06/120mm cut paths; nonuniform raised-boss plate explicitly unverified with no sheet estimate.",
+    "Seventh actual upload reproduces remaining binary-STL quantization gap;160-stl-precision-open.png/txt."
+  ],
+  "saved_records_summary": {
+    "analyses": [
+      1510,
+      1519,
+      1520,
+      1524,
+      1525,
+      1526
+    ],
+    "cost_decisions": [
+      5245,
+      5268,
+      5269,
+      5275,
+      5276,
+      5277
+    ],
+    "source_hashes_match": true,
+    "analytic_volumes_match": true,
+    "four_historical_json_hashes_unchanged": true,
+    "rotation_sheet_line_items_equal": true
+  },
+  "native_harness_notes": [
+    "An initial overly specific assertion expected sheet metal to be the overall cost pick for the unrotated plate. Native state showed its valid sheet estimate but MJF was cheaper. Corrected the assertion to the sheet verdict; DB confirms sheet line items themselves are identical. Other-process orientation effects remain open."
+  ]
+}

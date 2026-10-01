@@ -1,0 +1,153 @@
+[
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/shops",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/preview-mesh",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/cost",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/cost",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/shops",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/preview-mesh",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/cost",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/cost",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/preview-mesh",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/preview-mesh",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/cost",
+    "status": 503,
+    "injected": true
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/preview-mesh",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate",
+    "status": 200
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/validate/cost",
+    "status": 200
+  }
+]

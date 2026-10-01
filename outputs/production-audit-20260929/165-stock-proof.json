@@ -1,0 +1,64 @@
+{
+  "status": "fixed locally; full goal incomplete",
+  "engine_version": "0.3.34",
+  "root_cause": "CNC/EDM rectangular stock followed the uploaded coordinate axes instead of an enclosing stock orientation.",
+  "native_results": {
+    "shape_mm": [
+      80,
+      12,
+      12
+    ],
+    "material_before_usd": [
+      0.1796,
+      0.7918
+    ],
+    "material_after_usd": 0.1796,
+    "machine_before_usd": [
+      5.208,
+      7.0076
+    ],
+    "machine_after_usd": 5.208,
+    "unit_cost_after_usd": {
+      "1": 137.95,
+      "100": 25.34
+    },
+    "new_source_bound_records": 4,
+    "unchanged_historical_records": 227,
+    "unchanged_other_process_estimates": 32
+  },
+  "checks": {
+    "backend_full": "2779 passed,3 protected skips;331.67s; collected before bounded-search/EDM follow-ups",
+    "final_focused": "151 passed in4.98s after final logic; later change docstring only",
+    "types": "2files:4 existing,0new diagnostics vs sheet-rotation-final baseline",
+    "bandit": "0 medium/high via existing lock-check runtime",
+    "peer_review": "No remaining actionable findings after24 enclosure cases,5 focused regressions, detailed-cylinder bounded-path, fallback and legacy switch checks",
+    "frontend": "Unchanged;164 baseline519 tests/types/lint/build",
+    "trap_corpus": "PASS; existing unit_flag/suspicious_scale capability gap remains open"
+  },
+  "limits": [
+    "Oriented stock is a candidate; no certified global minimum or fixture/setup optimization.",
+    "Detailed hulls use principal-axis enclosure; file-axis enclosure is an explicit fallback.",
+    "Wire EDM cut time remains an explicit proxy.",
+    "Non-stock routing/build/machine-fit/DFM orientation and physical/customer quote accuracy remain open.",
+    "Real email/IdP-SCIM/vendor/service proof,5 HIGH image findings and approved production release remain incomplete."
+  ],
+  "production_unchanged": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+  "publication": "Local only; protected CI36816843113 still checksdbf5873.",
+  "evidence_sha256": {
+    "165-stock-aligned-after.png": "d28cf9ab4818b5268f07c23823d6c15c9163d2131680db00d87c848a829ab464",
+    "165-stock-aligned-after.txt": "aebebc9714640fa4b72fa772501eb82961a97537536439a448f4f15ab9d2bc1e",
+    "165-stock-aligned-before.txt": "8f467936c62e3d9b7401b5f6e9682ce54caed4d8f0d8b1eae4feba5e2bac5c6e",
+    "165-stock-aligned-qty100.txt": "a96719d726b441125d0d92fe09b4babbd2b89fa5d8be89b4d1f94302ddb45f4c",
+    "165-stock-before.json": "202b0686f512588ff4722972c050688d78521725b9a057735e94aaf0088b32b1",
+    "165-stock-controls.py": "9d150242cf787f5b19c183c081e1ea3e2bf8f941315dd6ee39819bef33a04003",
+    "165-stock-readback.json": "c747ce6f4a94db332ad99b48efcfbe854bab1923420032957702138262a7ae4d",
+    "165-stock-rotated-after.png": "ba1347e29b08ac658ca764507969b9cb151bb42b628e8d8a95b2e938bbf4bd71",
+    "165-stock-rotated-after.txt": "54d9ed14f087975c861d478463389edd41033a415b51662a040316bba2e9a138",
+    "165-stock-rotated-before.png": "748c96eb26828b2021e43f4af23b07266a51a4df95987176119cc3f86dfb98f3",
+    "165-stock-rotated-before.txt": "2157dddb8f369a9b8e862e804a42e3f2b6a4522b8cbdc373f3d545b92d9b5361",
+    "165-stock-rotated-qty100.txt": "6b6f509d8369fe3b556514522fe9857194fad27a74df89d05feb0327d362f9d2",
+    "shape-controls/165-stock-bar-aligned.step": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "shape-controls/165-stock-bar-rotated.step": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+    "shape-controls/165-stock-controls.json": "8fa590c6a81240df3ac31f0422c52b18ab1c7da3b8b51863b3f29d532b4bdb02"
+  }
+}

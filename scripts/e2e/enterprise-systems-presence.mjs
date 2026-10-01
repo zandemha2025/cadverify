@@ -88,7 +88,7 @@ const enterprise = {
       kind: "product",
       Product: "VALVE-100",
       ProductDescription: "Severe-service valve body",
-      Material: "316L",
+      material: "316L",
       Plant: "HOU1",
       Program: "REFINERY-TURNAROUND-2026",
       AnnualDemandQty: 12000,
@@ -97,7 +97,7 @@ const enterprise = {
       kind: "product",
       Product: "STEM-200",
       ProductDescription: "Valve stem",
-      Material: "17-4PH",
+      material: "17-4PH",
       Plant: "HOU1",
       Program: "REFINERY-TURNAROUND-2026",
       AnnualDemandQty: 24000,
@@ -106,7 +106,8 @@ const enterprise = {
   sapBom: [
     {
       kind: "bom_item",
-      BillOfMaterial: "VALVE-100",
+      BillOfMaterial: "00000123",
+      Material: "VALVE-100",
       BillOfMaterialComponent: "STEM-200",
       BillOfMaterialItemQuantity: "2",
       BillOfMaterialItemUnit: "EA",
@@ -555,8 +556,9 @@ async function main() {
       assert(products.status === 200, `SAP product endpoint returned ${products.status}`);
       assert(bom.status === 200, `SAP BOM endpoint returned ${bom.status}`);
       assert(products.body.d.results.length === 2, "SAP product count mismatch");
-      assert(products.body.d.results.some((row) => row.Product === "VALVE-100" && row.Material === "316L"), "SAP VALVE-100 material missing");
+      assert(products.body.d.results.some((row) => row.Product === "VALVE-100" && row.material === "316L"), "SAP fixture VALVE-100 declared material missing");
       assert(bom.body.d.results[0].BillOfMaterialComponent === "STEM-200", "SAP BOM component mismatch");
+      assert(bom.body.d.results[0].Material === "VALVE-100" && bom.body.d.results[0].BillOfMaterial === "00000123", "SAP material and BOM identities must remain distinct");
       assert(products.body.boundary.includes("not live SAP certification"), "SAP boundary missing");
       return {
         products: products.body.d.results.length,
@@ -589,7 +591,7 @@ async function main() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           partNumber: "VALVE-100",
-          annualizedValueUsd: 120_960,
+          annualizedValueUsd: 29_520,
           supplier: "sandbox-supplier",
         }),
       });
@@ -598,7 +600,7 @@ async function main() {
       assert(draft.body.noLiveSupplierSend === true, "RFQ draft live-send boundary missing");
       assert(draft.body.approvalRequired === false, "RFQ incorrectly required capital-board approval below the $1M policy threshold");
       assert(draft.body.cxml.deploymentMode === "test", "cXML draft is not in test mode");
-      assert(draft.body.annualizedValueUsd === 120_960, "RFQ draft annualized value must use the exact-volume $120,960 oracle");
+      assert(draft.body.annualizedValueUsd === 29_520, "RFQ draft annualized value must use the exact-volume $29,520 oracle");
       assert(
         approvals.body.chain.some(
           (item) => item.step === "capital_board" && item.requiredAboveUsd === 1_000_000,

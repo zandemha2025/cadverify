@@ -32,6 +32,7 @@ import {
   fractionToQty,
   qtyToFraction,
 } from "@/lib/verify/derive";
+import { crossoverSummary } from "@/lib/cost-decision";
 import { Kicker, ProvChip, GhostButton, EmptyState, Spinner } from "./primitives";
 
 type Nav = (screen: string) => void;
@@ -82,7 +83,6 @@ export function AcquisitionModal({ onClose, result, nav }: Props) {
       ) : (
         <FullConsideration
           cost={cost}
-          makeProc={makeProc}
           toolProc={toolProc}
           crossover={crossover}
           scrubFrac={scrubFrac}
@@ -100,7 +100,7 @@ export function AcquisitionModal({ onClose, result, nav }: Props) {
 function Header({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <Kicker color={C.shop}>ACQUISITION CONSIDERATION — CAPABILITY YOU DON&apos;T OWN</Kicker>
+      <Kicker color={C.shop}>ACQUISITION CONSIDERATION — TOOLING ALTERNATIVE</Kicker>
       <button
         type="button"
         onClick={onClose}
@@ -126,17 +126,12 @@ function NoNotOwnedRoute({
   return (
     <div style={{ marginTop: 14 }}>
       <h2 style={{ margin: 0, fontSize: 22, fontWeight: 300, letterSpacing: "-0.015em" }}>
-        No acquisition needed
+        No tooling alternative identified
       </h2>
       <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: 1.6, color: C.ink55 }}>
-        The engine routed this part on capability you already own
-        {makeProc ? (
-          <>
-            {" "}—{" "}
-            <span style={{ fontWeight: 500, color: C.ink }}>{procLabel(makeProc)}</span>, owned → marginal
-          </>
-        ) : null}
-        . There is no not-owned route to weigh as a capital consideration.
+        {makeProc ? `The prototype route is ${procLabel(makeProc)}. ` : ""}
+        The cost decision does not identify a tooling alternative. Machine ownership and purchase requirements
+        depend on the declared inventory and per-route fit.
       </p>
       {note && (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.6, color: C.ink40 }}>
@@ -152,7 +147,6 @@ function NoNotOwnedRoute({
 
 function FullConsideration({
   cost,
-  makeProc,
   toolProc,
   crossover,
   scrubFrac,
@@ -163,7 +157,6 @@ function FullConsideration({
   onClose,
 }: {
   cost: NonNullable<VerifyResult["cost"]>;
-  makeProc: string | null;
   toolProc: string;
   crossover: number | null;
   scrubFrac: number;
@@ -181,22 +174,20 @@ function FullConsideration({
   const toolAt = toolingEstimate(cost, snappedQty);
 
   // Real per-quantity curves — only the points the engine actually costed.
-  const makePts = [...unitCostByQty(cost, makeProc)]
-    .map(([q, c]) => ({ q, c }))
+  const makePts = cost.quantities.flatMap((q) => {
+    const estimate = makeNowEstimate(cost, q);
+    return estimate ? [{ q, c: estimate.unit_cost_usd }] : [];
+  })
     .sort((a, b) => a.q - b.q);
   const toolPts = [...unitCostByQty(cost, toolProc)]
     .map(([q, c]) => ({ q, c }))
     .sort((a, b) => a.q - b.q);
 
-  // Which route wins at the scrubbed quantity — compared on the real numbers when
-  // both are present, else falls back to the crossover position. Withheld if
-  // neither the numbers nor a crossover exist.
+  // Compare only the two actual estimates; a crossover cannot fill a missing price.
   const below =
     makeAt && toolAt
       ? makeAt.unit_cost_usd <= toolAt.unit_cost_usd
-      : crossover != null
-        ? snappedQty <= crossover
-        : null;
+      : null;
 
   useEffect(() => {
     let live = true;
@@ -222,35 +213,10 @@ function FullConsideration({
   return (
     <>
       <h2 style={{ margin: "14px 0 0", fontSize: 24, fontWeight: 300, letterSpacing: "-0.015em" }}>
-        {procLabel(toolProc)} — capability you don&apos;t own
+        {procLabel(toolProc)} — tooling alternative
       </h2>
       <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: 1.6, color: C.ink55 }}>
-        {crossover != null ? (
-          <>
-            Capex against marginal: the {procLabel(toolProc)} tool amortizes past{" "}
-            <span style={{ fontWeight: 500, color: C.ink }}>{NUM(crossover)} units</span>
-            {makeProc ? (
-              <>
-                {" "}vs your owned <span style={{ fontWeight: 500, color: C.ink }}>{procLabel(makeProc)}</span> route
-              </>
-            ) : (
-              " vs your owned route"
-            )}
-            .
-          </>
-        ) : (
-          <>
-            The engine found no breakeven at the quantities considered ({NUM(Q_MIN)}–{NUM(Q_MAX)}) — the{" "}
-            {procLabel(toolProc)} tool does not pay back against your owned
-            {makeProc ? <> {procLabel(makeProc)}</> : ""} route in this range.
-          </>
-        )}
-        {!toolingDfmReady && (
-          <>
-            {" "}
-            <span style={{ color: C.cond }}>Conditional on a DFM redesign of the tooling route.</span>
-          </>
-        )}
+        {crossoverSummary(cost.decision)}
       </p>
 
       {/* ── the crossover chart — REAL points only ─────────────────────────── */}
@@ -264,11 +230,11 @@ function FullConsideration({
       <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: "6px 18px", fontFamily: MONO, fontSize: 10.5, color: C.ink50 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span aria-hidden style={{ width: 12, height: 2, background: C.pass }} />
-          owned {procLabel(makeProc)} — marginal
+          recommended no-tooling route at each computed quantity
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span aria-hidden style={{ width: 12, height: 2, background: C.shop, backgroundImage: `repeating-linear-gradient(90deg, ${C.shop} 0 5px, transparent 5px 8px)` }} />
-          acquire {procLabel(toolProc)} — incl. amortized tooling
+          {procLabel(toolProc)} — incl. amortized tooling
         </span>
         <span style={{ marginLeft: "auto" }}>
           {crossover != null ? <>crossover ≈ {NUM(crossover)}</> : "no crossover"}
@@ -296,16 +262,16 @@ function FullConsideration({
         />
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <RouteCell
-            label={`${procLabel(makeProc)} — OWNED → MARGINAL`}
+            label={`${procLabel(makeAt?.process)} — MAKE NOW`}
             color={C.pass}
             unit={makeAt?.unit_cost_usd}
-            sub="/unit marginal"
+            sub="/unit at this quantity"
             wins={below === true}
             border="rgba(31,138,91,0.35)"
             bg="rgba(31,138,91,0.02)"
           />
           <RouteCell
-            label={`${procLabel(toolProc)} — NOT OWNED → ACQUIRE`}
+            label={`${procLabel(toolProc)} — TOOLING ALTERNATIVE${toolingDfmReady ? "" : "; requires redesign"}`}
             color={C.shop}
             unit={toolAt?.unit_cost_usd}
             sub="/unit incl. tooling"
@@ -340,7 +306,7 @@ function FullConsideration({
               <div key={`${r.acquisition.process}-${r.acquisition.gate ?? "gate"}`} style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <span style={{ color: C.shop }}>{r.acquisition.process_label}</span>
                 <span style={{ color: C.ink45, flex: 1 }}>{r.acquisition.gate ?? r.acquisition.kind}</span>
-                <span style={{ color: C.ink }}>{NUM(r.parts_unlocked)} part{r.parts_unlocked === 1 ? "" : "s"} unlocked</span>
+                <span style={{ color: C.ink }}>{NUM(r.parts_unlocked)} part{r.parts_unlocked === 1 ? "" : "s"} to review</span>
               </div>
             ))}
           </div>

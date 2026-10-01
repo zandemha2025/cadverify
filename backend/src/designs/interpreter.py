@@ -7,6 +7,7 @@ result before the ordinary create/revision endpoint can persist or generate it.
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, cast
 
@@ -15,7 +16,7 @@ from pydantic import ValidationError
 from src.designs.schema import validate_design_plan
 
 MAX_PROMPT_CHARS = 500
-_NUMBER = r"(\d+(?:\.\d+)?)"
+_NUMBER = r"([+-]?(?:\d+(?:\.\d+)?|\.\d+))"
 
 
 def _number_after(text: str, names: tuple[str, ...]) -> float | None:
@@ -79,13 +80,21 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
         }
     if len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError(f"Description must be {MAX_PROMPT_CHARS} characters or fewer")
-    text = prompt.lower().replace("–", "-").replace("—", "-")
-    if re.search(r"\b(inches?|inch|in\.|centimet(?:er|re)s?|cm)\b", text):
+    text = prompt.lower().replace("–", "-").replace("—", "-").replace("−", "-")
+    if re.search(r"(?<![a-z])(?:inch(?:es)?|in\.|centimet(?:er|re)s?|cm)(?![a-z])", text):
         return {
             "status": "needs_input",
             "kind": _kind(text),
             "missing_fields": ["millimetre_dimensions"],
             "message": "This release accepts millimetres only. Convert the dimensions to mm and try again.",
+            "prefill": {},
+        }
+    if re.search(r"\d(?:e[+-]?\d|\s*/|,\d)|[+-]\s+(?:\d|\.\d)", text):
+        return {
+            "status": "needs_input",
+            "kind": _kind(text),
+            "missing_fields": ["decimal_dimensions"],
+            "message": "Use plain decimal millimetre dimensions, such as 80 x 50 x 1.5 mm. Scientific notation, fractions, grouped numbers and separated signs are not supported.",
             "prefill": {},
         }
 
@@ -130,7 +139,7 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
             "thickness_mm": thickness,
             "wall_thickness_mm": wall,
         }.items()
-        if value is not None
+        if value is not None and math.isfinite(value)
     }
     required = {
         "plate": ("width_mm", "depth_mm", "thickness_mm"),

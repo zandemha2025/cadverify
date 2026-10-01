@@ -73,9 +73,9 @@ test("VER-06 and enterprise economics retain exact quantity and cost oracles", (
   assert.match(source, /const baseQuantityLadder = \[1, 100, 1000, 2000, 5000, 10000\]/);
   assert.match(source, /const annualQuantityLadder = \[1, 100, 1000, 2000, 10000, 12000\]/);
   assert.match(source, /"annual recommendation reconciles to portfolio basis"/);
-  assert.match(source, /"single-part headline", 133\.58/);
-  assert.match(source, /"exact annual unit cost", 10\.08/);
-  assert.match(source, /"annual exposure", 120960/);
+  assert.match(source, /"single-part headline", 110\.00/);
+  assert.match(source, /"exact annual unit cost", 3\.44/);
+  assert.match(source, /"annual exposure", 41280/);
   assert.match(source, /"single-part headline is not annualized"/);
 });
 
@@ -93,7 +93,10 @@ test("integration, history, reconstruction, and interruption assert persisted ou
   assert.match(source, /mesh\.status === 200 && mesh\.bytes > 0/);
   assert.match(source, /failure displayed a fake preview/);
   assert.match(source, /source-bound actuals lost their exact CAD hash/);
-  assert.match(source, /every served estimate to carry a measured empirical confidence band/);
+  assert.match(source, /hasProcessScopedConfidence\(servedConfidence, validatedProcesses\)/);
+  assert.match(source, /sameArray\(validatedProcesses, \["fdm"\]\)/);
+  assert.match(source, /const selectedValidated = validatedProcesses.includes\(selectedProcess\)/);
+  assert.doesNotMatch(source, /servedValidatedAll|every served estimate to carry a measured empirical confidence band/);
 });
 
 test("developer-key validity is proved on the real bearer-only API surface", () => {
@@ -111,5 +114,5 @@ test("severe-service and program rollup are checked across visible and persisted
   assert.match(source, /NACE\|HDT\|ASME\|ASTM\|ISO/);
   assert.match(source, /Programs source decision did not equal the newest Records decision/);
   assert.match(source, /program\.row\.cost_decision\.id === program\.records_selected_decision_id/);
-  assert.match(source, /\$120,960\\\/yr/);
+  assert.match(source, /\$41,280\\\/yr/);
 });

@@ -1,0 +1,376 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - button "Back to cost history":
+    - text: Back to cost history
+  - heading "166-transverse-hole-bar.step" [level=1]
+  - paragraph: STEP · 10/1/2026, 1:56:51 AM
+  - button "Share":
+    - text: Share
+  - button "Download PDF":
+    - text: Download PDF
+  - button "JSON":
+    - text: JSON
+  - button "CSV":
+    - text: CSV
+  - button "RFQ ZIP":
+    - text: RFQ ZIP
+  - paragraph: Source SHA-256 · 3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817
+  - heading "Decision governance" [level=2]
+  - text: Unreviewed
+  - paragraph: Awaiting analyst signoff before this decision is used as an RFQ or sourcing record.
+  - button "Approve":
+    - text: Approve
+  - paragraph: Recorded outcome
+  - paragraph: Choose what the organization will do with this part.
+  - button "Make in-house"
+  - button "Make outside"
+  - button "Acquire capability"
+  - button "Redesign"
+  - paragraph: Choose the accountable sourcing action, then add the reason or constraint that reviewers need. Changing either the outcome or its note reopens any prior approval for a fresh signoff.
+  - text: Outcome note (optional)
+  - textbox "Outcome note (optional)":
+    - /placeholder: Why this action was chosen, constraints, owner, or next review point
+  - paragraph: The note persists beside the immutable cost record and appears in JSON, CSV, and PDF exports.
+  - paragraph: 0/1000
+  - button "Save outcome note" [disabled]
+  - textbox "Optional approval note"
+  - generic: Recommended decision · make-vs-buy
+  - heading "Make by CNC 5-Axis" [level=2]
+  - text: Advisory
+  - paragraph: The lowest-cost no-tooling route varies by quantity. No tooling crossover is identified.
+  - paragraph: "Estimated cost by CNC 5-Axis: $195.59/unit"
+  - paragraph: At quantity 1 · ESTIMATE · assumption-based, not yet validated
+  - generic: Confidence · 80%
+  - text: $97.79 – $293 / unit
+  - generic: (±50%)
+  - generic: $97.79
+  - generic: $196
+  - generic: $293
+  - paragraph:
+    - generic: ±50% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate — no ground truth yet
+  - generic: This is an explainable should-cost estimate — every driver is provenance-tagged and the confidence band is assumption-based, not yet validated on your parts. It is not a validated quote.
+  - heading "Recommendation by quantity" [level=3]
+  - table:
+    - rowgroup:
+      - row "Qty Process / material $ / unit Lead time":
+        - columnheader "Qty"
+        - columnheader "Process / material"
+        - columnheader "$ / unit"
+        - columnheader "Lead time"
+    - rowgroup:
+      - 'row "1 CNC 5-Axis / 6061-T6 Aluminum cheaper if redesigned: CNC 3-Axis $138.12/unit (remove undercuts) $195.59 8.4–15.6 d"':
+        - cell "1"
+        - 'cell "CNC 5-Axis / 6061-T6 Aluminum cheaper if redesigned: CNC 3-Axis $138.12/unit (remove undercuts)"':
+          - generic: CNC 5-Axis
+          - generic: / 6061-T6 Aluminum
+          - generic: "cheaper if redesigned: CNC 3-Axis $138.12/unit (remove undercuts)"
+        - cell "$195.59"
+        - cell "8.4–15.6 d"
+      - 'row "100 DED / AlSi10Mg cheaper if redesigned: CNC 3-Axis $25.51/unit (remove undercuts) $30.00 12.6–23.4 d"':
+        - cell "100"
+        - 'cell "DED / AlSi10Mg cheaper if redesigned: CNC 3-Axis $25.51/unit (remove undercuts)"':
+          - generic: DED
+          - generic: / AlSi10Mg
+          - generic: "cheaper if redesigned: CNC 3-Axis $25.51/unit (remove undercuts)"
+        - cell "$30.00"
+        - cell "12.6–23.4 d"
+  - heading "Process options · should-cost" [level=3]
+  - heading "CNC 3-Axis" [level=4]
+  - generic: ±50%
+  - paragraph: 6061-T6 Aluminum
+  - generic: qty 1
+  - generic: $138.12/unit
+  - generic: qty 100
+  - generic: $25.51/unit
+  - generic: Not DFM-ready as-modeled. 974 faces (1.6%) are undercuts for cnc_3axis.
+  - heading "CNC 5-Axis" [level=4]
+  - generic: MAKE NOW
+  - generic: ±50%
+  - paragraph: 6061-T6 Aluminum
+  - generic: qty 1
+  - generic: $195.59/unit
+  - generic: qty 100
+  - generic: $31.00/unit
+  - heading "DED" [level=4]
+  - generic: ±60%
+  - paragraph: AlSi10Mg
+  - generic: qty 1
+  - generic: $300.00/unit
+  - generic: qty 100
+  - generic: $30.00/unit
+  - heading "Die Casting" [level=4]
+  - generic: ±60%
+  - paragraph: A356 Aluminum
+  - generic: qty 1
+  - generic: $22,505.18/unit
+  - generic: qty 100
+  - generic: $230.18/unit
+  - generic: Not DFM-ready as-modeled. 31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for die_casting.
+  - heading "DMLS (Metal)" [level=4]
+  - generic: ±50%
+  - paragraph: AlSi10Mg
+  - generic: qty 1
+  - generic: $250.00/unit
+  - generic: qty 100
+  - generic: $206.19/unit
+  - heading "Forging" [level=4]
+  - generic: ±55%
+  - paragraph: 6061-T6 Aluminum
+  - generic: qty 1
+  - generic: $30,121.99/unit
+  - generic: qty 100
+  - generic: $318.04/unit
+  - generic: Not DFM-ready as-modeled. 31122 sidewall faces (99.6% of sidewall area) below 5.0° draft for forging.
+  - heading "Investment Casting" [level=4]
+  - generic: ±55%
+  - paragraph: A356 Aluminum
+  - generic: qty 1
+  - generic: $13,571.59/unit
+  - generic: qty 100
+  - generic: $154.61/unit
+  - generic: Not DFM-ready as-modeled. 31000 sidewall faces (99.2% of sidewall area) below 0.5° draft for investment_casting.
+  - heading "Sand Casting" [level=4]
+  - generic: ±55%
+  - paragraph: A356 Aluminum
+  - generic: qty 1
+  - generic: $5,309.43/unit
+  - generic: qty 100
+  - generic: $77.28/unit
+  - generic: Not DFM-ready as-modeled. 31006 sidewall faces (99.2% of sidewall area) below 3.0° draft for sand_casting.
+  - heading "SLM (Metal)" [level=4]
+  - generic: ±50%
+  - paragraph: AlSi10Mg
+  - generic: qty 1
+  - generic: $250.00/unit
+  - generic: qty 100
+  - generic: $206.19/unit
+  - heading "WAAM" [level=4]
+  - generic: ±60%
+  - paragraph: AlSi10Mg
+  - generic: qty 1
+  - generic: $300.00/unit
+  - generic: qty 100
+  - generic: $30.00/unit
+  - heading "Cost drivers · CNC 5-Axis @ qty 1" [level=3]
+  - paragraph: Every figure is provenance-tagged. Line items sum to the unit cost — no naked numbers.
+  - generic: material_cost
+  - generic: $0.18
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. bounding-box billet 11.52 cm³ (oriented candidate 12×12×80 mm; minimum not certified) × 1.10 stock allowance × 6061-T6 Aluminum density 2.70 g/cm³ [assumption, not shop-validated] = 0.0342 kg × $5/kg (material-DB unit price (DEFAULT book value)) × (1+0.05 scrap) × region-material ×1":
+    - generic: DEFAULT
+    - generic: bounding-box billet 11.52 cm³ (oriented candidate 12×12×80 mm; minimum not certified) × 1.10 stock allowance × 6061-T6 Aluminum density 2.70 g/cm³ [assumption, not shop-validated] = 0.0342 kg × $5/kg (material-DB unit price (DEFAULT book value)) × (1+0.05 scrap) × region-material ×1
+  - generic: ±5%
+  - generic: machine_cost
+  - generic: $9.44
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. 0.0858 hr × $110/hr × region-labor ×1 [rough 1.3 cm³ ÷ (30 cm³/min·60) = 0.001 hr + finish 42.5 cm² ÷ 500 cm²/hr = 0.085 hr [stock oriented candidate bbox billet 11.5 cm³ × 1.10 = 12.7 cm³ [assumption, not shop-validated]; MRR aluminum]]":
+    - generic: DEFAULT
+    - generic: 0.0858 hr × $110/hr × region-labor ×1 [rough 1.3 cm³ ÷ (30 cm³/min·60) = 0.001 hr + finish 42.5 cm² ÷ 500 cm²/hr = 0.085 hr [stock oriented candidate bbox billet 11.5 cm³ × 1.10 = 12.7 cm³ [assumption, not shop-validated]; MRR aluminum]]
+  - generic: ±50%
+  - generic: labor_cost
+  - generic: $17.50
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. post-process 0.5 hr × $35/hr × region-labor ×1":
+    - generic: DEFAULT
+    - generic: post-process 0.5 hr × $35/hr × region-labor ×1
+  - generic: ±20%
+  - generic: setup_cost
+  - generic: $35.00
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. setup 1hr × $35/hr × ceil(1/100) = 1 setups ÷ 1 × region-labor ×1":
+    - generic: DEFAULT
+    - generic: setup 1hr × $35/hr × ceil(1/100) = 1 setups ÷ 1 × region-labor ×1
+  - generic: ±20%
+  - generic: nre_cost
+  - generic: $105.00
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. CAM programming/NRE 3hr × $35/hr × region-labor ×1 ÷ 1 order (one-time) [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: CAM programming/NRE 3hr × $35/hr × region-labor ×1 ÷ 1 order (one-time) [assumption, not shop-validated]
+  - generic: ±40%
+  - generic: inspection_cost
+  - generic: $28.00
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. first-article 0.75hr × 1 lot(s) ÷ 1 + in-process 0.05hr/part = 0.8000hr × $35/hr × region-labor ×1 [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: first-article 0.75hr × 1 lot(s) ÷ 1 + in-process 0.05hr/part = 0.8000hr × $35/hr × region-labor ×1 [assumption, not shop-validated]
+  - generic: ±40%
+  - generic: consumables_cost
+  - generic: $0.47
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. perishable tooling/consumables 0.05 × machine $9.44 (cutting tools, inserts, coolant) [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: perishable tooling/consumables 0.05 × machine $9.44 (cutting tools, inserts, coolant) [assumption, not shop-validated]
+  - generic: ±40%
+  - generic: nre
+  - generic: $105.00
+  - generic: labor
+  - generic: $17.50
+  - generic: machine
+  - generic: $9.44
+  - generic: material
+  - generic: $0.18
+  - generic: inspection
+  - generic: $28.00
+  - generic: consumables
+  - generic: $0.47
+  - generic: amortized_fixed
+  - generic: $35.00
+  - generic: Σ line items = unit cost
+  - generic: $195.59
+  - heading "Lead time · CNC 5-Axis @ qty 1" [level=3]
+  - paragraph: 8.4–15.6 days
+  - generic: ship 3 d
+  - generic: queue 7 d
+  - generic: production 1 d
+  - generic: post_process 1 d
+  - paragraph: "Capacity: 4 machines × 16 hr/day [DEFAULT]"
+  - heading "Assumptions" [level=3]
+  - generic: labor_rate
+  - generic: $35/hr
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. loaded shop-floor labor":
+    - generic: DEFAULT
+    - generic: loaded shop-floor labor
+  - generic: region_labor
+  - generic: 1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. region US: labor/machine/setup ×1"':
+    - generic: DEFAULT
+    - generic: "region US: labor/machine/setup ×1"
+  - generic: region_material
+  - generic: 1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. region US: commodity material ×1 (global feedstock, ~1.0)"':
+    - generic: DEFAULT
+    - generic: "region US: commodity material ×1 (global feedstock, ~1.0)"
+  - generic: region_tooling
+  - generic: 1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. region US: tooling ×1 (offshore toolmaking labor)"':
+    - generic: DEFAULT
+    - generic: "region US: tooling ×1 (offshore toolmaking labor)"
+  - generic: margin
+  - generic: "0"
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"':
+    - generic: DEFAULT
+    - generic: "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"
+  - generic: overhead
+  - generic: "0"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. indirect burden on conversion cost (machine+labor+setup)":
+    - generic: DEFAULT
+    - generic: indirect burden on conversion cost (machine+labor+setup)
+  - generic: utilization
+  - generic: "1"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. machine utilization (idle-recovery on machine cost)":
+    - generic: DEFAULT
+    - generic: machine utilization (idle-recovery on machine cost)
+  - generic: stock_allowance
+  - generic: 1.1 ×
+  - 'generic "DEFAULT — Generic fallback — no calibrated value yet. We''re guessing here. CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"':
+    - generic: DEFAULT
+    - generic: "CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"
+  - generic: machine_labor_frac
+  - generic: "0.35"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. operator-labor share of the machine rate that scales with region (capital/facility stays global) [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: operator-labor share of the machine rate that scales with region (capital/facility stays global) [assumption, not shop-validated]
+  - generic: perishable_frac
+  - generic: "0.05"
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. perishable tooling/consumables as a fraction of CNC machine cost [assumption, not shop-validated]":
+    - generic: DEFAULT
+    - generic: perishable tooling/consumables as a fraction of CNC machine cost [assumption, not shop-validated]
+  - generic: daily_machine_hours
+  - generic: 8 hr/day
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. fallback daily capacity; process-specific machine hours take precedence":
+    - generic: DEFAULT
+    - generic: fallback daily capacity; process-specific machine hours take precedence
+  - generic: n_cavities
+  - generic: 1 cav
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. formative tooling cavities = 1 (DEFAULT single-cavity should-cost)":
+    - generic: DEFAULT
+    - generic: formative tooling cavities = 1 (DEFAULT single-cavity should-cost)
+  - generic: complexity
+  - generic: 0 moderate
+  - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here. tooling complexity = moderate (DEFAULT moderate; raise for slides/side-actions)":
+    - generic: DEFAULT
+    - generic: tooling complexity = moderate (DEFAULT moderate; raise for slides/side-actions)
+  - generic: material_class
+  - generic: 0 aluminum
+  - generic "USER — You overrode this value. material class = aluminum (buyer-supplied)":
+    - generic: USER
+    - generic: material class = aluminum (buyer-supplied)
+  - list:
+    - listitem: "• DFM note: processes cnc_3axis, die_casting, forging, investment_casting, sand_casting are costed but flagged NOT DFM-ready as-modeled (see their process-specific blockers). Their cost shows the tooling economics *if* the part is redesigned for that process. Set strict_dfm=True to exclude them entirely."
+    - listitem: "• Geometric routing: this part reads as a 'long_prismatic_bar' → cnc_5axis. Slender prismatic bar (80mm long × 12×12mm enclosing cross-section): bar stock and 3-axis milling are a starting route. Confirm setups and tool clearance; features may require multi-axis machining. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it."
+    - listitem: • Prices and crossover quantities are assumption-based and can shift with cycle times, tooling, batch sizes and shop rates. Validate against actual quotes before making a sourcing commitment.
+  - paragraph: "Measured geometry: 11.4 cm³ · 80 × 12 × 12 mm · 60,238 faces. STEP files are costed from a tessellated mesh (DFM + cost), not B-rep / GD&T."
+- region "Notifications alt+T"
+- alert
+- status: 1Password menu is available. Press down arrow to select.
+- generic: $0

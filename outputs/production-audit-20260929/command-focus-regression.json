@@ -1,0 +1,26 @@
+{
+  "finding": "070",
+  "environment": "local Chrome :3017",
+  "before": {
+    "action": "header search > Escape",
+    "activeElement": "BODY",
+    "expected": "invoking search button"
+  },
+  "after": {
+    "header_click_escape": "header search button focused",
+    "sidebar_enter_escape": "sidebar search button focused",
+    "Meta+k_escape": "previously focused theme button restored"
+  },
+  "additional_checks": {
+    "uppercase_COST_HISTORY_enter": "/cost-decisions, visible Cost history heading",
+    "unknown_query": "explicit No destination matches message"
+  },
+  "runnable_check": "scripts/e2e/command-focus-validation.mjs::assertPaletteReturnFocus via cua_repl; RED then GREEN",
+  "validation": {
+    "frontend_tests": 493,
+    "typecheck": "pass",
+    "changed_source_lint": "pass",
+    "production_build": "pass"
+  },
+  "production": "not deployed"
+}

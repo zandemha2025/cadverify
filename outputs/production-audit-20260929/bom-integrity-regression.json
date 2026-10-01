@@ -1,0 +1,74 @@
+{
+  "checked_at": "2026-09-30T11:26:20.285732+00:00",
+  "environment": "local production build; real PostgreSQL and existing uploaded STEP record; controlled BOM fixture, not customer quote evidence",
+  "findings": [
+    "096",
+    "097"
+  ],
+  "calculation_red": {
+    "cycle_multiplier": 1,
+    "cycle_native_annual_volume": 100,
+    "limited_shared_paths": {
+      "expected": 12,
+      "actual": 6
+    },
+    "depth_1500": "RecursionError"
+  },
+  "calculation_green": {
+    "cycle": "no rollup; explicit error in native screen",
+    "shared": {
+      "formula": "2*3 + 3*2",
+      "multiplier": 12,
+      "roots_per_year": 100,
+      "annual_volume": 1200
+    },
+    "depth_1500": "exact count 1; full canonical ancestry without recursion",
+    "limited_preview": "numeric count includes all paths; bounded preview disclosed",
+    "no_year": "DECLARED; Using 12,000/yr declared",
+    "count_overflow": "no count; explicit error",
+    "annual_overflow": "DECLARED; no rounded multiplication",
+    "outage": "actual local API stopped; explicit read failure; Retry BOM recovered exact count after restart"
+  },
+  "replacement_red": {
+    "file": "BOM CSV with missing required headers",
+    "status": 200,
+    "saved_edges": 0,
+    "test": "test_invalid_uploads_leave_saved_bom_intact failed against HEAD cc4ee44"
+  },
+  "replacement_green": {
+    "invalid_cases": [
+      "missing required headers",
+      "JSON edges is a number",
+      "empty edges",
+      "two-node cycle",
+      "quantity above INT32"
+    ],
+    "all_status": 422,
+    "preserved_ancestry": [
+      "handle",
+      "door",
+      "car"
+    ],
+    "preserved_multiplier": 8,
+    "database": "real PostgreSQL; request commits enclosed in test outer transaction, rolled back"
+  },
+  "validation": {
+    "backend_passed": 2433,
+    "backend_skipped": 3,
+    "skip_reasons": [
+      "real corpus manifest unavailable locally",
+      "OCP XDE unavailable (2 checks)"
+    ],
+    "backend_seconds": 176.28,
+    "frontend_passed": 495,
+    "frontend_types": "pass",
+    "frontend_lint": "0 errors; 2 existing unrelated warnings",
+    "frontend_build": "pass",
+    "backend_type_errors": 216,
+    "backend_type_baseline_limit": 228,
+    "new_diagnostics": 0,
+    "bandit_medium_high": 0
+  },
+  "cleanup": "Only temporary BOM fixture removed; previous context linkage restored; API and frontend running; existing cost records untouched",
+  "production": "not deployed"
+}

@@ -1,0 +1,24 @@
+{
+  "status": "Local retry recovery verified; full goal incomplete and production unchanged.",
+  "engine_version": "0.3.41",
+  "artifacts": {
+    "180-both-recovered.txt": "24849c36e62184044b68f95b15e7ea72af3e6f422cc53daa1300b113abda049d",
+    "180-both-timeout.txt": "bba94c024362bffcab56c1a89e41aa5aa339972a395aed16a7552a4802696661",
+    "180-checks.json": "9d9ed3d817f07491680cee5063e9de33418196161ba5467b3d6ae94e7da2eebd",
+    "180-corpus-proof.json": "d2c1dba2a15ec5d227203a97d4536b19b553ff1bdf50fe8ddf3d2e05364573a2",
+    "180-cost-retry-final.txt": "0150ca2aa288e125b5e7aea64317a55fc1b7777940354a3bbef6c0e8d6edf955",
+    "180-cost-timeout-after.png": "57ec1f5df0eaa30091c14b61a727acfd31c77652aa240f08fb360b204b5adf68",
+    "180-cost-timeout-after.txt": "dae849d87cc3471369bf16fe35e25d8378795b5adc20e8387093ecc5192b9fed",
+    "180-cost-timeout-before.png": "ab080f3bd4c1de89ea446305665e4331a2202119a987723c07c4d9a4acaa1478",
+    "180-cost-timeout-before.txt": "e254ecbbdc947e4dd230ce6eade5f71310a6228fed4917b5410f24188b2cb58f",
+    "180-dfm-retry-after.txt": "56b673b846cb738304376dab6f7fc3afb6e8b00fe5b0b0c8c27263c61ae0effb",
+    "180-dfm-timeout-after.txt": "d55460e5f571f73e0d29222442fa3c3cd61af32ca244abd992a5e9793f8cff92",
+    "180-dfm-timeout-before.png": "c274c07efdf6fbc356a2f2786106d84a02e9462ecafc894297e20fdb02cc4cca",
+    "180-dfm-timeout-before.txt": "d55460e5f571f73e0d29222442fa3c3cd61af32ca244abd992a5e9793f8cff92",
+    "180-recovered-after.png": "0d10ed183ea583000f9ba453e6b899d6621f1cc2255332d37eb8a24fa29422d8",
+    "180-recovered-after.txt": "21dc755e1d24e915a50946e6a04d6136bf537c8ba717266ebedc2e604a49fa1c",
+    "180-request-proof.json": "effbaf887f11dd23c611b6e4f4abbcc8fa9d4171447dffaf6500d0311d492bd7",
+    "180-saved-before.json": "160004fdc4417a83641eab9bdfc6fd43e1bd726c6491af31fe16609f4f4fb318",
+    "180-saved-readback.json": "694480a3e0881e0a8f6688670a47cba3fcd8fcde72874210d0a6650f9466e1af"
+  }
+}

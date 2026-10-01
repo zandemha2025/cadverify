@@ -1,0 +1,591 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 155-plate-transformed-0.8.step
+    - text: Pass
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "155-plate-transformed-0.8.step" [level=1]
+  - text: Manufacturable
+  - paragraph: One drop · costed and analyzed in-process
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision":
+      - text: Decision
+    - tab "Routing & DFM" [selected]:
+      - text: Routing & DFM
+    - tab "Glass Box":
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - generic: Volume
+  - generic: 48.0 cm³
+  - generic: Bounding box
+  - generic: 334 × 328 × 138 mm
+  - generic: Faces
+  - generic: 48,630
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - tabpanel "Routing & DFM":
+    - generic: Geometric routing
+    - heading "Injection Molding" [level=3]
+    - generic: "archetype: thin_wall_enclosure"
+    - generic: confidence 0.60
+    - paragraph: Thin-wall hollow shell (~0.8mm wall, 0% of bbox filled, 138mm depth) — a cover/enclosure with draft, not a flat sheet. At volume this is injection molding; at proto volume, MJF/SLS.
+    - paragraph:
+      - text: "alternatives: MJF (HP)"
+      - generic: · SLS (Powder)
+    - generic: Decided by
+    - generic: rotational
+    - generic: "no"
+    - generic: sheet_like
+    - generic: "no"
+    - generic: planar_aspect
+    - generic: "2.37"
+    - generic: nominal_wall_mm
+    - generic: "0.79"
+    - generic: sheet_gauge_mm
+    - generic: "138"
+    - generic: bend_count
+    - generic: "0.00"
+    - generic: DFM matrix · all processes
+    - table:
+      - rowgroup:
+        - row "Process Verdict Suitability First blocker":
+          - columnheader "Process"
+          - columnheader "Verdict"
+          - columnheader "Suitability"
+          - columnheader "First blocker"
+      - rowgroup:
+        - 'row "FDM / FFF Required 0% Part exceeds build envelope for fdm: X: 333.484mm > 300mm, Y: 327.81mm > 300mm. Bambu Lab X1C / Prusa MK4."':
+          - cell "FDM / FFF"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for fdm: X: 333.484mm > 300mm, Y: 327.81mm > 300mm. Bambu Lab X1C / Prusa MK4."':
+            - 'button "Part exceeds build envelope for fdm: X: 333.484mm > 300mm, Y: 327.81mm > 300mm. Bambu Lab X1C / Prusa MK4."':
+              - generic: "Part exceeds build envelope for fdm: X: 333.484mm > 300mm, Y: 327.81mm > 300mm. Bambu Lab X1C / Prusa MK4."
+        - 'row "SLA Resin Required 0% Part exceeds build envelope for sla: X: 333.484mm > 200mm, Y: 327.81mm > 125mm. Formlabs Form 4."':
+          - cell "SLA Resin"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for sla: X: 333.484mm > 200mm, Y: 327.81mm > 125mm. Formlabs Form 4."':
+            - 'button "Part exceeds build envelope for sla: X: 333.484mm > 200mm, Y: 327.81mm > 125mm. Formlabs Form 4."':
+              - generic: "Part exceeds build envelope for sla: X: 333.484mm > 200mm, Y: 327.81mm > 125mm. Formlabs Form 4."
+        - 'row "DLP Resin Required 0% Part exceeds build envelope for dlp: X: 333.484mm > 218mm, Y: 327.81mm > 123mm. Elegoo Saturn 4 Ultra."':
+          - cell "DLP Resin"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for dlp: X: 333.484mm > 218mm, Y: 327.81mm > 123mm. Elegoo Saturn 4 Ultra."':
+            - 'button "Part exceeds build envelope for dlp: X: 333.484mm > 218mm, Y: 327.81mm > 123mm. Elegoo Saturn 4 Ultra."':
+              - generic: "Part exceeds build envelope for dlp: X: 333.484mm > 218mm, Y: 327.81mm > 123mm. Elegoo Saturn 4 Ultra."
+        - row "SLS (Powder)cost pick · qty 50 Pass 100% —":
+          - cell "SLS (Powder)cost pick · qty 50":
+            - text: SLS (Powder)
+            - generic: cost pick · qty 50
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - 'row "MJF (HP) Required 0% Part exceeds build envelope for mjf: Y: 327.81mm > 284mm. HP Jet Fusion 5200."':
+          - cell "MJF (HP)"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for mjf: Y: 327.81mm > 284mm. HP Jet Fusion 5200."':
+            - 'button "Part exceeds build envelope for mjf: Y: 327.81mm > 284mm. HP Jet Fusion 5200."':
+              - generic: "Part exceeds build envelope for mjf: Y: 327.81mm > 284mm. HP Jet Fusion 5200."
+        - row "DMLS (Metal)feasibility-only Advisory 90% —":
+          - cell "DMLS (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - 'row "SLM (Metal)feasibility-only Required 0% Part exceeds build envelope for slm: Y: 327.81mm > 280mm. SLM 500."':
+          - cell "SLM (Metal)feasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part exceeds build envelope for slm: Y: 327.81mm > 280mm. SLM 500."':
+            - 'button "Part exceeds build envelope for slm: Y: 327.81mm > 280mm. SLM 500."':
+              - generic: "Part exceeds build envelope for slm: Y: 327.81mm > 280mm. SLM 500."
+        - row "EBM (Metal)feasibility-only Advisory 90% —":
+          - cell "EBM (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - 'row "Binder Jettingfeasibility-only Required 0% 47953 faces (98.6%) below 1.0mm min wall for binder_jetting. Thinnest: 0.8mm."':
+          - cell "Binder Jettingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "47953 faces (98.6%) below 1.0mm min wall for binder_jetting. Thinnest: 0.8mm."':
+            - 'button "47953 faces (98.6%) below 1.0mm min wall for binder_jetting. Thinnest: 0.8mm."':
+              - generic: "47953 faces (98.6%) below 1.0mm min wall for binder_jetting. Thinnest: 0.8mm."
+        - 'row "DEDfeasibility-only Required 0% 47953 faces (98.6%) below 1.5mm min wall for ded. Thinnest: 0.8mm."':
+          - cell "DEDfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "47953 faces (98.6%) below 1.5mm min wall for ded. Thinnest: 0.8mm."':
+            - 'button "47953 faces (98.6%) below 1.5mm min wall for ded. Thinnest: 0.8mm."':
+              - generic: "47953 faces (98.6%) below 1.5mm min wall for ded. Thinnest: 0.8mm."
+        - 'row "WAAMfeasibility-only Required 0% 47953 faces (98.6%) below 2.0mm min wall for waam. Thinnest: 0.8mm."':
+          - cell "WAAMfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "47953 faces (98.6%) below 2.0mm min wall for waam. Thinnest: 0.8mm."':
+            - 'button "47953 faces (98.6%) below 2.0mm min wall for waam. Thinnest: 0.8mm."':
+              - generic: "47953 faces (98.6%) below 2.0mm min wall for waam. Thinnest: 0.8mm."
+        - row "CNC 3-Axis Required 0% 24137 faces (49.6%) are undercuts for cnc_3axis.":
+          - cell "CNC 3-Axis"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "24137 faces (49.6%) are undercuts for cnc_3axis.":
+            - button "24137 faces (49.6%) are undercuts for cnc_3axis.":
+              - generic: 24137 faces (49.6%) are undercuts for cnc_3axis.
+        - row "CNC 5-Axis Advisory 90% —":
+          - cell "CNC 5-Axis"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - 'row "CNC Turningfeasibility-only Required 0% Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."':
+          - cell "CNC Turningfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."':
+            - 'button "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."':
+              - generic: "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."
+        - row "Wire EDMfeasibility-only Required 0% Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.":
+          - cell "Wire EDMfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.":
+            - button "Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.":
+              - generic: Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.
+        - row "Injection Molding Advisory 80% —":
+          - cell "Injection Molding"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Die Castingfeasibility-only Advisory 80% —":
+          - cell "Die Castingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Investment Castingfeasibility-only Required 0% Min wall 0.8mm < 1.0mm for investment_casting.":
+          - cell "Investment Castingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "Min wall 0.8mm < 1.0mm for investment_casting.":
+            - button "Min wall 0.8mm < 1.0mm for investment_casting.":
+              - generic: Min wall 0.8mm < 1.0mm for investment_casting.
+        - row "Sand Castingfeasibility-only Required 0% Min wall 0.8mm < 3.0mm for sand_casting.":
+          - cell "Sand Castingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "Min wall 0.8mm < 3.0mm for sand_casting.":
+            - button "Min wall 0.8mm < 3.0mm for sand_casting.":
+              - generic: Min wall 0.8mm < 3.0mm for sand_casting.
+        - row "Sheet Metalfeasibility-only Advisory 90% —":
+          - cell "Sheet Metalfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "Forgingfeasibility-only Required 0% 24137 faces (49.6%) are undercuts for forging.":
+          - cell "Forgingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "24137 faces (49.6%) are undercuts for forging.":
+            - button "24137 faces (49.6%) are undercuts for forging.":
+              - generic: 24137 faces (49.6%) are undercuts for forging.
+    - paragraph:
+      - text: "Cost pick at quantity 50: SLS (Powder). Geometric routing: Injection Molding. Review the routing reasons and DFM findings when choosing."
+    - generic: Per-process DFM audit
+    - text: Manufacturable
+    - paragraph: 155-plate-transformed-0.8.step (STEP) — analyzed in 1580.4ms
+    - paragraph: Best fit
+    - paragraph: SLS (Powder)
+    - paragraph: Dimensions
+    - paragraph: 333.5 × 327.8 × 138.1 mm
+    - paragraph: Volume
+    - paragraph: 48.0 cm³
+    - paragraph: Faces
+    - paragraph: 48,630
+    - paragraph: Watertight
+    - paragraph: "Yes"
+    - heading "Manufacturability issues" [level=3]
+    - generic: grouped by physical defect · process implications attached
+    - text: Required fixes
+    - generic: "6"
+    - 'button "Required UNDERCUT locate Affected processes 24137 faces (49.6%) are undercuts for forging. Remove undercuts or plan multi-setup machining. Forging: no undercuts — die cannot open."':
+      - text: Required
+      - generic: UNDERCUT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: cnc_5axis
+        - generic: cnc_3axis
+        - generic: forging
+      - paragraph: 24137 faces (49.6%) are undercuts for forging.
+      - paragraph: "Remove undercuts or plan multi-setup machining. Forging: no undercuts — die cannot open."
+    - 'button "Required EXCEEDS_BUILD_VOLUME Affected processes Part exceeds build envelope for cnc_turning: X: 333.484mm > 254mm, Y: 327.81mm > 254mm. Haas ST-20 (10in chuck). Scale down, split part, or use a larger machine."':
+      - text: Required
+      - generic: EXCEEDS_BUILD_VOLUME
+      - generic "Affected processes":
+        - generic: fdm
+        - generic: sla
+        - generic: dlp
+        - generic: mjf
+        - generic: slm
+        - generic: cnc_turning
+      - paragraph: "Part exceeds build envelope for cnc_turning: X: 333.484mm > 254mm, Y: 327.81mm > 254mm. Haas ST-20 (10in chuck)."
+      - paragraph: Scale down, split part, or use a larger machine.
+    - 'button "Required THIN_WALL 0.8 / 3 required locate Affected processes 47953 faces (98.6%) below 3.0mm min wall for forging. Thinnest: 0.8mm. Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness."':
+      - text: Required
+      - generic: THIN_WALL
+      - generic: 0.8 / 3 required
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: binder_jetting
+        - generic: ded
+        - generic: waam
+        - generic: cnc_turning
+        - generic: forging
+      - paragraph: "47953 faces (98.6%) below 3.0mm min wall for forging. Thinnest: 0.8mm."
+      - paragraph: "Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness."
+    - 'button "Required NOT_ROTATIONALLY_SYMMETRIC Affected processes Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning. CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC."':
+      - text: Required
+      - generic: NOT_ROTATIONALLY_SYMMETRIC
+      - generic "Affected processes":
+        - generic: cnc_turning
+      - paragraph: "Part lacks positive rotational geometry (eigenvalue ratios: 0.44, 0.69; insufficient outer rotational surface evidence). Required for cnc_turning."
+      - paragraph: CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.
+    - button "Required NOT_PRISMATIC 0 / 85 required Affected processes Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile. Redesign as a 2D profile extruded along Z. Wire EDM cuts a 2D profile extruded in Z.":
+      - text: Required
+      - generic: NOT_PRISMATIC
+      - generic: 0 / 85 required
+      - generic "Affected processes":
+        - generic: wire_edm
+      - paragraph: Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.
+      - paragraph: Redesign as a 2D profile extruded along Z. Wire EDM cuts a 2D profile extruded in Z.
+    - 'button "Required THIN_WALL_MOLDING 0.8 / 3 required Affected processes Min wall 0.8mm < 3.0mm for sand_casting. Increase to >= 3.0mm. AFS: 3mm min gray iron, 5mm steel."':
+      - text: Required
+      - generic: THIN_WALL_MOLDING
+      - generic: 0.8 / 3 required
+      - generic "Affected processes":
+        - generic: investment_casting
+        - generic: sand_casting
+      - paragraph: Min wall 0.8mm < 3.0mm for sand_casting.
+      - paragraph: "Increase to >= 3.0mm. AFS: 3mm min gray iron, 5mm steel."
+    - text: Advisory
+    - generic: "5"
+    - 'button "Advisory OVERHANG locate Affected processes 23904 faces (49.2%) exceed 45.0° overhang threshold for dmls. Supports required. Reorient part or redesign overhangs < 45.0° for dmls. EOS DMLS best practice: 45° support threshold. Alternative: Consider redesigning overhangs or switching to EBM (50° threshold)."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: dmls
+        - generic: ebm
+        - generic: fdm
+        - generic: sla
+        - generic: dlp
+        - generic: slm
+        - generic: ded
+        - generic: waam
+      - paragraph: 23904 faces (49.2%) exceed 45.0° overhang threshold for dmls. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 45.0° for dmls. EOS DMLS best practice: 45° support threshold. Alternative: Consider redesigning overhangs or switching to EBM (50° threshold)."
+    - button "Advisory TOO_THICK_SHEET Affected processes Thickness 138.143mm exceeds sheet range (0.5–6mm). Use plate CNC machining for thick stock.":
+      - text: Advisory
+      - generic: TOO_THICK_SHEET
+      - generic "Affected processes":
+        - generic: sheet_metal
+      - paragraph: Thickness 138.143mm exceeds sheet range (0.5–6mm).
+      - paragraph: Use plate CNC machining for thick stock.
+    - 'button "Advisory WALL_UNIFORMITY_SAMPLED Affected processes Largest sampled interior section: 0.8mm. Thickness uses interior clearances; unsampled sections may be thicker. Confirm critical wall sections in the source CAD."':
+      - text: Advisory
+      - generic: WALL_UNIFORMITY_SAMPLED
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: "Largest sampled interior section: 0.8mm. Thickness uses interior clearances; unsampled sections may be thicker."
+      - paragraph: Confirm critical wall sections in the source CAD.
+    - button "Advisory UNDERCUT_MOLDING locate Affected processes 23702 faces form undercuts requiring side actions in injection_molding tooling. Redesign to eliminate undercuts or add slides. Side actions add $5–15K tooling.":
+      - text: Advisory
+      - generic: UNDERCUT_MOLDING
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: injection_molding
+        - generic: die_casting
+      - paragraph: 23702 faces form undercuts requiring side actions in injection_molding tooling.
+      - paragraph: Redesign to eliminate undercuts or add slides. Side actions add $5–15K tooling.
+    - button "Advisory CUPPING_RISK Affected processes Large downward-facing area (60000mm², 50%) — resin cupping / suction risk during peel. Add drain holes, tilt part 10-15°, or orient concave side up.":
+      - text: Advisory
+      - generic: CUPPING_RISK
+      - generic "Affected processes":
+        - generic: sla
+      - paragraph: Large downward-facing area (60000mm², 50%) — resin cupping / suction risk during peel.
+      - paragraph: Add drain holes, tilt part 10-15°, or orient concave side up.
+    - heading "Detected features(6 total)" [level=3]:
+      - text: Detected features
+      - generic: (6 total)
+    - generic: flat
+    - generic: "6"
+    - generic: 166 faces
+    - generic: 98%
+    - paragraph: 160.0mm²
+    - generic: 166 faces
+    - generic: 98%
+    - paragraph: 160.0mm²
+    - generic: 248 faces
+    - generic: 98%
+    - paragraph: 240.0mm²
+    - generic: 248 faces
+    - generic: 98%
+    - paragraph: 240.0mm²
+    - generic: 23904 faces
+    - generic: 98%
+    - paragraph: 60000.0mm²
+    - generic: 23898 faces
+    - generic: 98%
+    - paragraph: 60000.0mm²
+    - heading "Process suitability" [level=3]
+    - heading "SLS (Powder)" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: EOS P 396"
+    - paragraph: "Est. cost factor: ×9.60"
+    - heading "DMLS (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: EOS M 400-4"
+    - paragraph: "Est. cost factor: ×96.00"
+    - paragraph: 1 issue
+    - heading "EBM (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: Arcam Q20plus"
+    - paragraph: "Est. cost factor: ×120.00"
+    - paragraph: 1 issue
+    - heading "CNC 5-Axis" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: DMG MORI DMU 50"
+    - paragraph: "Est. cost factor: ×12.00"
+    - paragraph: 1 issue
+    - heading "Sheet Metal" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Est. cost factor: ×1.44"
+    - paragraph: 1 issue
+    - heading "Injection Molding" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: ABS"
+    - paragraph: "Est. cost factor: ×0.96"
+    - paragraph: 3 issues
+    - heading "Die Casting" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×1.44"
+    - paragraph: 2 issues
+    - heading "FDM / FFF" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: PLA"
+    - paragraph: "Machine: Bambu Lab X1C"
+    - paragraph: "Est. cost factor: ×2.40"
+    - paragraph: 2 issues
+    - heading "SLA Resin" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Formlabs Form 4"
+    - paragraph: "Est. cost factor: ×7.20"
+    - paragraph: 3 issues
+    - heading "DLP Resin" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Carbon M2"
+    - paragraph: "Est. cost factor: ×5.76"
+    - paragraph: 2 issues
+    - heading "MJF (HP)" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: HP Jet Fusion 5200"
+    - paragraph: "Est. cost factor: ×8.64"
+    - paragraph: 1 issue
+    - heading "SLM (Metal)" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: SLM 500"
+    - paragraph: "Est. cost factor: ×96.00"
+    - paragraph: 2 issues
+    - heading "Binder Jetting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Machine: ExOne S-Max Pro"
+    - paragraph: "Est. cost factor: ×38.40"
+    - paragraph: 2 issues
+    - heading "DED" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Est. cost factor: ×72.00"
+    - paragraph: 3 issues
+    - heading "WAAM" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Est. cost factor: ×48.00"
+    - paragraph: 3 issues
+    - heading "CNC 3-Axis" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas VF-2"
+    - paragraph: "Est. cost factor: ×4.80"
+    - paragraph: 1 issue
+    - heading "CNC Turning" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas ST-20"
+    - paragraph: "Est. cost factor: ×3.84"
+    - paragraph: 3 issues
+    - heading "Wire EDM" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: API 13Cr"
+    - paragraph: "Machine: Sodick ALC600G"
+    - paragraph: "Est. cost factor: ×24.00"
+    - paragraph: 2 issues
+    - heading "Investment Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×14.40"
+    - paragraph: 2 issues
+    - heading "Sand Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×2.40"
+    - paragraph: 2 issues
+    - heading "Forging" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×1.92"
+    - paragraph: 2 issues
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert

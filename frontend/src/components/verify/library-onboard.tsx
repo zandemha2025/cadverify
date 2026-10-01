@@ -95,40 +95,40 @@ export function LibraryOnboard({ onChanged }: { onChanged?: () => void }) {
       </p>
 
       <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-        <label style={pickerStyle}>
-          <input
-            ref={cadRef}
-            type="file"
-            multiple
-            accept={CAD_EXTS}
-            style={{ display: "none" }}
-            onChange={(e) => setCadFiles(Array.from(e.target.files ?? []))}
-          />
+        <input
+          ref={cadRef}
+          type="file"
+          multiple
+          accept={CAD_EXTS}
+          style={{ display: "none" }}
+          onChange={(e) => setCadFiles(Array.from(e.target.files ?? []))}
+        />
+        <button type="button" style={pickerStyle} disabled={busy} onClick={() => cadRef.current?.click()}>
           {cadFiles.length ? `${cadFiles.length} CAD file${cadFiles.length === 1 ? "" : "s"}` : "Choose CAD files…"}
-        </label>
-        <label style={pickerStyle}>
-          <input
-            ref={mapRef}
-            type="file"
-            accept=".csv,.json,text/csv,application/json"
-            style={{ display: "none" }}
-            onChange={(e) => setMapping(e.target.files?.[0] ?? null)}
-          />
+        </button>
+        <input
+          ref={mapRef}
+          type="file"
+          accept=".csv,.json,text/csv,application/json"
+          style={{ display: "none" }}
+          onChange={(e) => setMapping(e.target.files?.[0] ?? null)}
+        />
+        <button type="button" style={pickerStyle} disabled={busy} onClick={() => mapRef.current?.click()}>
           {mapping ? mapping.name : "Identity mapping (optional)…"}
-        </label>
+        </button>
         <GhostButton primary disabled={busy || cadFiles.length === 0} onClick={() => void submit()}>
           {busy ? "Onboarding…" : "Onboard library"}
         </GhostButton>
       </div>
 
       {error && (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
+        <p role="alert" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
           onboard failed — {error}
         </p>
       )}
 
       {summary && (
-        <div style={{ marginTop: 12, borderTop: `1px solid #efeff2`, paddingTop: 12 }}>
+        <div role="status" style={{ marginTop: 12, borderTop: `1px solid #efeff2`, paddingTop: 12, overflowWrap: "anywhere" }}>
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 12, color: C.pass }}>{onboardReadout(summary)}</p>
           {summary.manifest_registered > 0 && (
             <p style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
@@ -145,10 +145,13 @@ export function LibraryOnboard({ onChanged }: { onChanged?: () => void }) {
             </ul>
           )}
           {summary.mapping_errors.length > 0 && (
-            <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.cond }}>
-              {summary.mapping_errors.length} mapping row{summary.mapping_errors.length === 1 ? "" : "s"} ignored
-              (see reasons) — nothing fabricated
-            </p>
+            <ul aria-label="Mapping issues" style={{ margin: "8px 0 0", paddingLeft: 16 }}>
+              {summary.mapping_errors.map((issue, index) => (
+                <li key={index} style={{ fontFamily: MONO, fontSize: 10.5, color: C.cond, lineHeight: 1.7 }}>
+                  Mapping{issue.line ? ` row ${issue.line}` : ""} — {issue.reason}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}

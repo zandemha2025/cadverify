@@ -1,14 +1,14 @@
 """CNC 5-Axis Milling."""
 
 from src.analysis.context import GeometryContext
-from src.analysis.models import Issue, ProcessType, Severity
+from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
 from src.analysis.processes.checks import (
     check_build_volume,
     check_fixture_surfaces,
     check_hole_depth_ratio,
     check_internal_radii,
-    check_undercuts_from_z,
+    check_setup_access,
     check_wall_thickness,
 )
 
@@ -24,10 +24,8 @@ class CNC5AxisAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
-        # 5-axis can reach more — undercuts are warnings, not errors.
-        i.extend(check_undercuts_from_z(ctx, self.process,
-                 severity=Severity.WARNING,
-                 cite="5-axis may reach — verify tool clearance."))
+        i.extend(check_setup_access(ctx, self.process,
+                 cite="Verify tool and holder clearance through the planned 5-axis motion."))
         i.extend(check_internal_radii(ctx, 0.5, self.process,
                  cite="Sandvik: 1mm end mill → 0.5mm radius min."))
         i.extend(check_wall_thickness(ctx, 0.8, self.process))

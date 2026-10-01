@@ -4,9 +4,9 @@
  * YOUR MACHINES — real CRUD against /api/v1/machine-inventory (list / create /
  * get / patch / delete + CSV import) PLUS the full machine DETAIL the design calls
  * `renderMachine`: the SPEC denominator, a governed RATE HISTORY read from the real
- * rate-library, and PARTS ROUTED HERE = real cost-decisions whose make-now route is
- * this machine's process. Every declared capability is ● USER (an assertion, never a
- * measurement); a rate only re-tags ● SHOP once a governed accounting card is bound.
+ * rate-library, and recent cost-decisions recommending this machine's process.
+ * These are process matches, not machine assignments. Every declared capability
+ * and machine rate is ● USER (an assertion, never a measurement).
  * Absent inventory → the honest "declare your floor" empty state.
  */
 import { Children, cloneElement, isValidElement, useCallback, useEffect, useRef, useState } from "react";
@@ -52,16 +52,14 @@ function MachineIcon({ color = C.ink60, size = 17 }: { color?: string; size?: nu
   );
 }
 
-/** Honest owned-machine status: everything in YOUR inventory is owned, so the only
- *  real distinction is whether a rate is declared (marginal costing active) or the
- *  marginal cost is withheld until one is. Never fabricates "NOT OWNED → ACQUIRE". */
+/** Inventory declarations do not establish fit or the rate used for any part. */
 function machineStatus(m: OwnedMachine): { label: string; color: string } {
   return m.hourly_rate_usd != null
-    ? { label: "OWNED → MARGINAL", color: C.pass }
+    ? { label: "OWNED · RATE DECLARED", color: C.user }
     : { label: "OWNED · NO RATE", color: C.cond };
 }
 
-export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
+export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
   const [machines, setMachines] = useState<OwnedMachine[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -71,6 +69,8 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
   const csvRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
+    setMachines(null);
+    setError(null);
     try {
       const page = await listMachines();
       setMachines(page.machines);
@@ -85,10 +85,17 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
     void refresh();
   }, [refresh]);
 
+  const onSaved = useCallback(async () => {
+    setForm(null);
+    onChanged();
+    await refresh();
+  }, [onChanged, refresh]);
+
   const onDelete = useCallback(
     async (m: OwnedMachine) => {
       try {
         await deleteMachine(m.id);
+        onChanged();
         toast.success(`Removed ${m.name || procLabel(m.process)}`);
         setDetailId(null);
         await refresh();
@@ -96,13 +103,14 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         toast.error(e instanceof Error ? e.message : "Delete failed");
       }
     },
-    [refresh]
+    [onChanged, refresh]
   );
 
   const onCsv = useCallback(
     async (file: File) => {
       try {
         const summary = await importMachinesCsv(file);
+        if (summary.imported > 0) onChanged();
         setCsvResult(summary);
         setCsvError(null);
         toast.success(`Imported ${summary.imported} · skipped ${summary.skipped}`);
@@ -119,7 +127,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         toast.error(message);
       }
     },
-    [refresh]
+    [onChanged, refresh]
   );
 
   const downloadCsvTemplate = useCallback(async () => {
@@ -163,7 +171,6 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
       <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
         <MachineDetail
           m={detail}
-          nav={nav}
           onBack={() => setDetailId(null)}
           onEdit={() => setForm({ mode: "edit", machine: detail })}
           onDelete={() => onDelete(detail)}
@@ -173,7 +180,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
             mode={form.mode}
             machine={form.mode === "edit" ? form.machine : undefined}
             onClose={() => setForm(null)}
-            onSaved={async () => { setForm(null); await refresh(); }}
+            onSaved={onSaved}
           />
         )}
       </main>
@@ -193,12 +200,15 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         </div>
       </div>
       <p style={{ margin: "8px 0 0", maxWidth: 620, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
-        Every verdict is computed against this inventory — envelope, materials, rate, throughput. Owned means marginal
-        cost; missing means an acquisition consideration, stated as one.
+        In-house costing requires a passing machine fit. Declared rates are user inputs;
+        missing rates use the estimate&apos;s stated assumptions.
       </p>
 
       {error && (
-        <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>couldn&apos;t load inventory — {error}</p>
+        <div role="alert" style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          <p>couldn&apos;t load inventory — {error}</p>
+          <GhostButton onClick={() => void refresh()}>Retry inventory</GhostButton>
+        </div>
       )}
       {csvError && (
         <div role="alert" data-testid="machine-import-error" style={{ marginTop: 14, border: `1px solid ${C.fail}55`, borderRadius: 10, padding: "10px 12px", fontFamily: MONO, fontSize: 11, color: C.fail }}>
@@ -216,7 +226,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         </div>
       )}
 
-      {machines === null ? (
+      {error ? null : machines === null ? (
         <div style={{ marginTop: 26 }}>
           <Spinner label="loading your floor…" />
         </div>
@@ -246,7 +256,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
           mode={form.mode}
           machine={form.mode === "edit" ? form.machine : undefined}
           onClose={() => setForm(null)}
-          onSaved={async () => { setForm(null); await refresh(); }}
+          onSaved={onSaved}
         />
       )}
     </main>
@@ -302,13 +312,11 @@ function Row({ k, v, vColor = C.ink, tag }: { k: string; v: string; vColor?: str
 // ── MACHINE DETAIL (renderMachine) ────────────────────────────────────────────
 function MachineDetail({
   m,
-  nav,
   onBack,
   onEdit,
   onDelete,
 }: {
   m: OwnedMachine;
-  nav: (s: string) => void;
   onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -337,7 +345,7 @@ function MachineDetail({
             <Row k="capital fraction" v={m.capital_frac != null ? String(m.capital_frac) : "undeclared"} vColor={m.capital_frac != null ? C.ink : C.ink40} />
           </div>
           {m.notes && <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.55, color: C.ink55 }}>{m.notes}</p>}
-          <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink40 }}>every envelope check and marginal cost on this floor divides through this card</p>
+          <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink40 }}>Declared specs are checked against each part. This card alone does not establish machine fit.</p>
           <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
             <GhostButton onClick={onEdit}>Edit specs</GhostButton>
             <GhostButton onClick={onDelete} style={{ marginLeft: "auto", borderColor: "rgba(194,69,58,0.4)", color: C.fail }}>Delete machine</GhostButton>
@@ -348,7 +356,7 @@ function MachineDetail({
         {/* RATE HISTORY + PARTS ROUTED HERE */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <RateHistory m={m} />
-          <RoutedParts m={m} nav={nav} />
+          <RoutedParts m={m} />
         </div>
       </div>
     </>
@@ -363,17 +371,28 @@ function RateHistory({ m }: { m: OwnedMachine }) {
   const [eff, setEff] = useState<EffectiveRateCard | null>(null);
   const [versions, setVersions] = useState<RateVersionsPage | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let live = true;
-    Promise.allSettled([effectiveRateCard(), listRateVersions()]).then(([e, v]) => {
-      if (!live) return;
-      if (e.status === "fulfilled") setEff(e.value);
-      if (v.status === "fulfilled") setVersions(v.value);
-      setLoaded(true);
-    });
+    setLoaded(false);
+    setError(null);
+    Promise.all([effectiveRateCard(), listRateVersions()]).then(
+      ([e, v]) => {
+        if (!live) return;
+        setEff(e);
+        setVersions(v);
+        setLoaded(true);
+      },
+      (e) => {
+        if (!live) return;
+        setError(e instanceof Error ? e.message : "Could not read the rate library");
+        setLoaded(true);
+      }
+    );
     return () => { live = false; };
-  }, []);
+  }, [retry]);
 
   const declaredDate = m.updated_at || m.created_at;
   const dateFmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
@@ -394,13 +413,18 @@ function RateHistory({ m }: { m: OwnedMachine }) {
             )}
           </>
         ) : (
-          <p style={{ margin: "2px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>no rate declared — marginal cost is withheld until you set one</p>
+          <p style={{ margin: "2px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>No machine rate declared — estimates may use default rates and ownership assumptions. Check the saved cost drivers.</p>
         )}
       </div>
 
       <div style={{ marginTop: 12, borderTop: `1px solid #f0f0f3`, paddingTop: 12 }}>
         {!loaded ? (
           <Spinner label="reading rate library…" />
+        ) : error ? (
+          <div role="alert" style={{ fontFamily: MONO, fontSize: 11, color: C.fail }}>
+            <p>Rate context unconfirmed — {error}</p>
+            <GhostButton onClick={() => setRetry(n => n + 1)}>Retry rates</GhostButton>
+          </div>
         ) : usingGoverned ? (
           <p style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 11, color: C.shop }}>
             <ProvDot p="SHOP" size={6} /> governed rate card in effect · {publishedCount || versions?.versions.length || 0} published
@@ -408,15 +432,16 @@ function RateHistory({ m }: { m: OwnedMachine }) {
         ) : (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, color: C.ink45 }}>
             {versions && versions.versions.length > 0
-              ? `${versions.versions.length} rate card version(s) authored — none in effect; this rate is your ● USER declaration`
-              : "no governed rate card in effect — this rate is your ● USER declaration"}
+              ? `${versions.versions.length} rate card version(s) authored — none in effect`
+              : "no governed rate card in effect"}
+            {m.hourly_rate_usd != null ? " — machine rate is your ● USER declaration" : " — no machine rate declared"}
           </p>
         )}
       </div>
 
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
         old verdicts keep the rate version they were computed with · current effective card:{" "}
-        {usingGoverned ? "governed published card" : "default table / user machine rate"}
+        {!loaded || error ? "unconfirmed" : usingGoverned ? "governed published card" : "default table"}
       </p>
     </section>
   );
@@ -435,12 +460,11 @@ function HistRow({ a, b, tag, note, muted }: { a: string; b: string; tag?: "USER
   );
 }
 
-/** PARTS ROUTED HERE — real cost-decisions whose make-now route is this machine's
- *  process (server-filtered by `process`, defensively re-filtered client-side).
- *  Empty → the design's honest "nothing routed yet" line. */
-function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) {
+/** Recent decisions for the process, not evidence of fit on this machine. */
+function RoutedParts({ m }: { m: OwnedMachine }) {
   const [rows, setRows] = useState<CostDecisionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -458,17 +482,21 @@ function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) 
       }
     );
     return () => { live = false; };
-  }, [m.process]);
+  }, [m.process, retry]);
 
   return (
     <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
-      <Kicker>PARTS ROUTED HERE</Kicker>
-      {error && <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>{error}</p>}
-      {rows === null ? (
+      <Kicker>RECENT RECORDS FOR THIS PROCESS</Kicker>
+      {error ? (
+        <div role="alert" style={{ marginTop: 12, fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          <p>Records unavailable — {error}</p>
+          <GhostButton onClick={() => setRetry(n => n + 1)}>Retry records</GhostButton>
+        </div>
+      ) : rows === null ? (
         <div style={{ marginTop: 12 }}><Spinner label="reading records…" /></div>
       ) : rows.length === 0 ? (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>
-          nothing routed yet — verdicts routed to {procLabel(m.process)} will land here as parts are verified
+          No saved decisions recommending {procLabel(m.process)} yet.
         </p>
       ) : (
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column" }}>
@@ -478,12 +506,12 @@ function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) 
               <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink50, flex: 1 }}>
                 {procLabel(r.make_now_process)} · crossover {r.crossover_qty != null ? NUM(r.crossover_qty) : "—"} · {new Date(r.created_at).toLocaleDateString()}
               </span>
-              <button type="button" onClick={() => nav("records")} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}>open →</button>
+              <a href={`/cost-decisions/${encodeURIComponent(r.id)}`} aria-label={`Open ${r.label || r.filename} record`} style={{ fontFamily: MONO, fontSize: 10.5, color: C.measured }}>open →</a>
             </div>
           ))}
         </div>
       )}
-      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>routed = cost-decisions whose make-now route is this machine&apos;s process</p>
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>Up to 25 recent decisions recommending this process. Open a record to inspect its machine-fit verdict; a process match does not establish fit on this machine.</p>
     </section>
   );
 }

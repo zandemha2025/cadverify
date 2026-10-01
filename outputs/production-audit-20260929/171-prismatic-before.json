@@ -1,0 +1,32 @@
+[
+  {
+    "source": "analytic_aligned_bar",
+    "volume_mm3": 11520.0,
+    "is_volume": true,
+    "faces": 12,
+    "prismatic_issues": [],
+    "flat_extrusion_verified": true
+  },
+  {
+    "source": "analytic_rotated_bar",
+    "volume_mm3": 11519.999999999998,
+    "is_volume": true,
+    "faces": 12,
+    "prismatic_issues": [
+      {
+        "code": "NOT_PRISMATIC",
+        "severity": "error",
+        "message": "Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile."
+      }
+    ],
+    "flat_extrusion_verified": true
+  },
+  {
+    "source": "156-plate-with-boss.step",
+    "volume_mm3": 49600.0,
+    "is_volume": true,
+    "faces": 90808,
+    "prismatic_issues": [],
+    "flat_extrusion_verified": false
+  }
+]

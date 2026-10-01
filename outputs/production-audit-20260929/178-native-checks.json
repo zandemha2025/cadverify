@@ -1,0 +1,34 @@
+{
+  "engine_version": "0.3.40",
+  "environment": "local API 8017 / frontend 3017; production unchanged",
+  "cube": {
+    "source": "shape-controls/178-priced-envelope-cube.step",
+    "before_dmls_unit_usd": 24357.44,
+    "before_dmls_parts_per_build": 1,
+    "cube_volume_mm3": 32768000,
+    "priced_chamber_volume_mm3": 20312500,
+    "after_dmls_and_slm": "price withheld with priced envelope and unverified orientation explanation",
+    "glass_box_unavailable_price_controls_removed": true,
+    "preview_ready": true
+  },
+  "bar_controls": {
+    "files": [
+      "165-stock-bar-aligned.step",
+      "171-profile-bar-rotated.step"
+    ],
+    "preview_ready": true,
+    "no_prices_withheld": true,
+    "rotated_dmls_qty_1_usd": 250,
+    "rotated_dmls_qty_100_usd": 206.25,
+    "parts_per_build": 58
+  },
+  "separate_open_issue": {
+    "file": "178-priced-envelope-sphere.step",
+    "preview_ready": true,
+    "backend_analysis_and_cost_http_status": 504,
+    "cost_timeout_sec": 60,
+    "ui_observed": "Analyzing remained visible after backend timeout; New part recovered the form",
+    "root_cause": "Not yet established; needs analysis/runtime and UI timeout tracing",
+    "fixed": false
+  }
+}

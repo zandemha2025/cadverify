@@ -1,0 +1,31 @@
+{
+  "backend_final": {
+    "passed": 2824,
+    "skipped": 3,
+    "seconds": 247.35,
+    "protected_skips": [
+      "missing real evaluation corpus",
+      "two optional OCP XDE checks"
+    ]
+  },
+  "focused_final": {
+    "passed": 83,
+    "seconds": 4.66
+  },
+  "initial_full_run": "2823 passed, 1 failed, 3 skipped; unnecessary tolerance access in turning test context fixed before final full pass",
+  "regression_red": "8 failed, 8 passed; rotated/aligned, mm/inch, boundary/in-range/oversize",
+  "trap_corpus": "29 ordinary passes, 1 existing known unit-flag gap",
+  "pyright": {
+    "existing_errors": 2,
+    "new_errors": 0,
+    "warnings": 0
+  },
+  "bandit": {
+    "existing_low": 2,
+    "new": 0,
+    "medium_high": 0
+  },
+  "frontend": "unchanged since audit180:526 tests, types/build pass; required lint4 preexisting warnings",
+  "native": "non-turning native evidence collected before final turning-only tolerance follow-up; final83focused/full suite cover both paths",
+  "production": "unchanged; PR107 draft and not approved for merge/deployment"
+}

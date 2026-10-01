@@ -27,6 +27,8 @@ import type { CostDecisionDetail } from "@/lib/api";
 import {
   COST_DISPOSITION_NOTE_MAX_LENGTH,
   COST_DISPOSITIONS,
+  costDispositionBasisLabel,
+  inhouseDispositionError,
   type CostDisposition,
 } from "@/lib/cost-disposition";
 import { SavedCostDecisionView } from "@/components/cost/SavedCostDecisionView";
@@ -41,7 +43,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/ui/auth-provider";
 import { canMutateWorkspace } from "@/lib/role-capabilities";
-import { makeNowEstimate, routeDfmOutcome } from "@/lib/verify/derive";
+import { makeNowEstimate } from "@/lib/verify/derive";
 
 function BackLink({ onClick }: { onClick: () => void }) {
   return (
@@ -74,13 +76,13 @@ function GovernancePanel({
     CostDisposition | "withdraw" | "note" | null
   >(null);
   const approved = decision.approval_status === "approved";
+  const quantities = decision.result.quantities;
+  const [outcomeQty, setOutcomeQty] = useState(decision.disposition_basis?.quantity ?? Math.min(...(quantities.length ? quantities : [1])));
+  const outcomeEstimate = makeNowEstimate(decision.result, outcomeQty);
+  const inhouseError = inhouseDispositionError(decision.result, outcomeEstimate);
   const persistedDispositionNote = decision.disposition_note ?? "";
   const dispositionNoteDirty =
     dispositionNote.trim() !== persistedDispositionNote;
-  const routeDfmBlocked = routeDfmOutcome(
-    undefined,
-    makeNowEstimate(decision.result),
-  ).blocked;
 
   useEffect(() => {
     setDispositionNote(decision.disposition_note ?? "");
@@ -100,7 +102,8 @@ function GovernancePanel({
       const patch = await setCostDecisionDisposition(
         decision.id,
         next,
-        next ? dispositionNote : undefined
+        next ? dispositionNote : undefined,
+        action === "choice" && next ? outcomeQty : undefined,
       );
       onUpdate(patch);
       setDispositionNote(patch.disposition_note ?? "");
@@ -127,7 +130,7 @@ function GovernancePanel({
   }
 
   async function approve() {
-    if (!canMutate) return;
+    if (!canMutate || dispositionNoteDirty) return;
     setSaving("approve");
     try {
       const patch = await approveCostDecision(decision.id, note);
@@ -200,7 +203,7 @@ function GovernancePanel({
               <Button
                 size="sm"
                 loading={saving === "approve"}
-                disabled={Boolean(savingDisposition)}
+                disabled={Boolean(savingDisposition) || dispositionNoteDirty}
                 onClick={approve}
               >
                 {saving !== "approve" && <ShieldCheck />} Approve
@@ -222,6 +225,9 @@ function GovernancePanel({
                   ? "Choose what the organization will do with this part."
                   : "No outcome has been recorded.")}
             </p>
+            {decision.user_disposition && <p className="mt-1 text-xs text-muted-foreground" data-testid="record-disposition-basis">
+              {costDispositionBasisLabel(decision.disposition_basis)}
+            </p>}
             {decision.disposition_updated_at && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Updated {formatDate(decision.disposition_updated_at)} by user {" "}
@@ -231,15 +237,22 @@ function GovernancePanel({
           </div>
           {canMutate && (
             <div className="space-y-2">
-              {routeDfmBlocked && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                Outcome quantity
+                <select value={outcomeQty} onChange={(e) => setOutcomeQty(Number(e.target.value))} disabled={Boolean(savingDisposition || saving)}>
+                  {quantities.map((q) => <option key={q} value={q}>{q.toLocaleString("en-US")}</option>)}
+                </select>
+              </label>
+              <p className="text-xs text-muted-foreground">Choice applies to {outcomeEstimate ? costDispositionBasisLabel(outcomeEstimate) : "no computed recommendation"}.</p>
+              {inhouseError && (
                 <p className="text-xs text-destructive" data-testid="record-disposition-route-block">
-                  Route DFM is blocked. Make in-house stays locked until revised CAD passes; record Redesign, Make outside, or Acquire capability instead.
+                  {inhouseError}
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
               {COST_DISPOSITIONS.map((option) => {
-                const selected = decision.user_disposition === option.key;
-                const blockedOption = routeDfmBlocked && option.key === "inhouse";
+                const selected = decision.user_disposition === option.key && decision.disposition_basis?.quantity === outcomeQty;
+                const blockedOption = !outcomeEstimate || (!!inhouseError && option.key === "inhouse");
                 return (
                   <Button
                     key={option.key}
@@ -249,7 +262,7 @@ function GovernancePanel({
                     aria-pressed={selected}
                     data-testid={`record-disposition-${option.key}`}
                     disabled={Boolean(savingDisposition || saving) || blockedOption}
-                    title={blockedOption ? "Revised CAD must pass route DFM first" : undefined}
+                    title={blockedOption ? inhouseError ?? "Select a computed quantity" : undefined}
                     loading={savingDisposition === option.key}
                     onClick={() => void saveDisposition(option.key)}
                   >
@@ -331,6 +344,16 @@ function GovernancePanel({
                 >
                   Save outcome note
                 </Button>
+                {dispositionNoteDirty && (
+                  <p
+                    role="status"
+                    data-testid="record-disposition-unsaved"
+                    className="text-xs text-warn"
+                  >
+                    Unsaved outcome note. Save this note before approving.
+                    {approved && " The current approval applies to the saved note."}
+                  </p>
+                )}
                 {!decision.user_disposition && dispositionNote.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Choose an outcome to save this note.
@@ -548,6 +571,7 @@ export default function CostDecisionDetailPage({
       </p>
 
       <GovernancePanel
+        key={decision.id}
         decision={decision}
         canMutate={canMutate}
         onUpdate={(patch) =>

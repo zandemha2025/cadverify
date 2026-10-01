@@ -1,0 +1,161 @@
+{
+  "engine_version": "0.3.37",
+  "historical_records_unchanged": {
+    "analyses": 124,
+    "cost_decisions": 133
+  },
+  "controls": [
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "cost_id": 5839,
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "result_sha256": "5600217528cff343e5744077c0821a3c39948c18092dd328cd4a70d70b0eb27a",
+      "decision": {
+        "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31160 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+        "crossover_qty": null,
+        "if_redesigned": {
+          "1": null,
+          "100": null
+        },
+        "recommendation": {
+          "1": {
+            "process": "cnc_3axis",
+            "material": "6061-T6 Aluminum",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 7.0,
+            "unit_cost_usd": 137.95,
+            "lead_high_days": 13.0
+          },
+          "100": {
+            "process": "cnc_3axis",
+            "material": "6061-T6 Aluminum",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 7.0,
+            "unit_cost_usd": 25.34,
+            "lead_high_days": 13.0
+          }
+        },
+        "tooling_process": "sand_casting",
+        "make_now_process": "cnc_3axis",
+        "make_now_material": "6061-T6 Aluminum",
+        "tooling_dfm_ready": false
+      }
+    },
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "cost_id": 5838,
+      "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+      "result_sha256": "a0a880e7b578ff9c1a3efccada2e968df1e1172934f418acc403be5e36c44329",
+      "decision": {
+        "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison.",
+        "crossover_qty": null,
+        "if_redesigned": {
+          "1": null,
+          "100": null
+        },
+        "recommendation": {
+          "1": {
+            "process": "cnc_3axis",
+            "material": "6061-T6 Aluminum",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 7.0,
+            "unit_cost_usd": 137.95,
+            "lead_high_days": 13.0
+          },
+          "100": {
+            "process": "cnc_3axis",
+            "material": "6061-T6 Aluminum",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 7.0,
+            "unit_cost_usd": 25.34,
+            "lead_high_days": 13.0
+          }
+        },
+        "tooling_process": "sand_casting",
+        "make_now_process": "cnc_3axis",
+        "make_now_material": "6061-T6 Aluminum",
+        "tooling_dfm_ready": true
+      }
+    },
+    {
+      "filename": "166-transverse-hole-bar.step",
+      "cost_id": 5840,
+      "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+      "result_sha256": "c9b827280533486651c4531d382f378579fedbbdd3dae97729867d1d6ab3e162",
+      "decision": {
+        "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $138.12/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31006 sidewall faces (99.2% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+        "crossover_qty": null,
+        "if_redesigned": {
+          "1": null,
+          "100": null
+        },
+        "recommendation": {
+          "1": {
+            "process": "cnc_3axis",
+            "material": "6061-T6 Aluminum",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 7.0,
+            "unit_cost_usd": 138.12,
+            "lead_high_days": 13.0
+          },
+          "100": {
+            "process": "cnc_3axis",
+            "material": "6061-T6 Aluminum",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 7.0,
+            "unit_cost_usd": 25.51,
+            "lead_high_days": 13.0
+          }
+        },
+        "tooling_process": "sand_casting",
+        "make_now_process": "cnc_3axis",
+        "make_now_material": "6061-T6 Aluminum",
+        "tooling_dfm_ready": false
+      }
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "cost_id": 5841,
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "result_sha256": "2531876ff46675a7ef6c77e231e943f717156334a2e5c1d9c7a3b412416d6e80",
+      "decision": {
+        "note": "Lowest-cost no-tooling estimate at qty 1: ded (AlSi10Mg) \u2014 $300.0/unit. Costed make-route picks: qty 1: ded; qty 100: waam. Estimated sand_casting crossover against the cheapest eligible no-tooling route: ~2251 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $130.55/unit at qty 100. Note: sand_casting requires redesign for DFM (2584 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+        "crossover_qty": 2251.0,
+        "if_redesigned": {
+          "1": null,
+          "100": null
+        },
+        "recommendation": {
+          "1": {
+            "process": "ded",
+            "material": "AlSi10Mg",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 12.6,
+            "unit_cost_usd": 300.0,
+            "lead_high_days": 23.4
+          },
+          "100": {
+            "process": "waam",
+            "material": "AlSi10Mg",
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "lead_low_days": 12.6,
+            "unit_cost_usd": 30.0,
+            "lead_high_days": 23.4
+          }
+        },
+        "tooling_process": "sand_casting",
+        "make_now_process": "ded",
+        "make_now_material": "AlSi10Mg",
+        "tooling_dfm_ready": false
+      }
+    }
+  ]
+}

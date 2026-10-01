@@ -1,0 +1,47 @@
+{
+  "status": "OPEN; not corrected by default-range fix",
+  "controls": [
+    {
+      "filename": "159-sheet-30x20x0.5.step",
+      "source_sha256": "45aee922a148dc18e2cc551fa42cb7d2ae8a3a0e6619a74dbeea324ef21c6075",
+      "known_thickness_mm": 0.5,
+      "analytic_volume_mm3": 300,
+      "mesh_volume_mm3": 300.0,
+      "axis_aligned_extents_mm": [
+        30.0,
+        20.0,
+        0.5
+      ],
+      "sheet_findings": [],
+      "cost_sheet_gauge_mm": 0.5,
+      "cost_sheet_like": true
+    },
+    {
+      "filename": "159-sheet-30x20x0.5-rotated.step",
+      "source_sha256": "5f154455ca7a1dac6230f3f0f57d91a24d0dac461fbdad942017692069d47d6d",
+      "known_thickness_mm": 0.5,
+      "analytic_volume_mm3": 300,
+      "mesh_volume_mm3": 299.9999999911379,
+      "axis_aligned_extents_mm": [
+        33.23095151169299,
+        33.29783539820002,
+        14.911438568110043
+      ],
+      "sheet_findings": [
+        {
+          "code": "TOO_THICK_SHEET",
+          "severity": "warning",
+          "message": "Thickness 14.9114mm exceeds the default 6mm maximum sheet gauge.",
+          "fix_suggestion": "Confirm stock and machine capacity for this thickness, or consider plate machining.",
+          "process": "sheet_metal",
+          "measured_value": 14.911438568110043,
+          "required_value": 6.0,
+          "measurement_unit": "mm",
+          "scope": "whole_part"
+        }
+      ],
+      "cost_sheet_gauge_mm": 14.911,
+      "cost_sheet_like": false
+    }
+  ]
+}

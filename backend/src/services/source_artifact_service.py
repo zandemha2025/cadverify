@@ -55,10 +55,15 @@ def artifact_key(org_id: str, mesh_hash: str, filename_or_suffix: str) -> str:
     return f"{org}/{digest}/source{suffix}"
 
 
-def costable_key(org_id: str, mesh_hash: str) -> str:
-    """Object key for the canonical triangulated derivative used by costing."""
+def costable_key(org_id: str, mesh_hash: str, source_units: str = "mm") -> str:
+    """Unit-specific mm geometry; legacy unqualified derivatives are not reused."""
+    from src.costing.units import mesh_source_units
+
+    mesh_source_units("source.stl", source_units)  # validate before forming a key
     # Reuse artifact_key's validation and then replace only the fixed basename.
-    return artifact_key(org_id, mesh_hash, ".stl").replace("/source.stl", "/costable.stl")
+    return artifact_key(org_id, mesh_hash, ".stl").replace(
+        "/source.stl", f"/costable-v2-{source_units}.stl"
+    )
 
 
 async def save_source_artifact(
@@ -86,11 +91,12 @@ async def save_costable_mesh_artifact(
     org_id: str,
     mesh_hash: str,
     stl_bytes: bytes,
+    *, source_units: str = "mm",
 ) -> str:
     """Persist the canonical STL derivative needed by the calibration engine."""
     if not isinstance(stl_bytes, (bytes, bytearray, memoryview)) or not stl_bytes:
         raise ValueError("costable mesh artifact must contain STL bytes")
-    key = costable_key(org_id, mesh_hash)
+    key = costable_key(org_id, mesh_hash, source_units)
     store = _store()
     if not await asyncio.to_thread(store.exists, key):
         await asyncio.to_thread(
@@ -102,20 +108,33 @@ async def save_costable_mesh_artifact(
     return store.url(key)
 
 
-async def costable_mesh_exists(org_id: str, mesh_hash: str) -> bool:
-    return await asyncio.to_thread(_store().exists, costable_key(org_id, mesh_hash))
+async def costable_mesh_exists(org_id: str, mesh_hash: str, *, source_units: str = "mm") -> bool:
+    return await asyncio.to_thread(_store().exists, costable_key(org_id, mesh_hash, source_units))
 
 
-async def read_costable_mesh_artifact(org_id: str, mesh_hash: str) -> bytes:
-    """Read a canonical STL derivative, falling back to an original STL only."""
+async def read_costable_mesh_artifact(
+    org_id: str, mesh_hash: str, *, source_units: str = "mm",
+) -> bytes:
+    """Return mm geometry for the requested interpretation of the exact source."""
+    from src.costing.units import mesh_source_units, scale_mesh_to_mm
+
+    payload, suffix = await read_source_artifact(org_id, mesh_hash)
+    units = mesh_source_units(f"source{suffix}", source_units)
     store = _store()
-    key = costable_key(org_id, mesh_hash)
+    key = costable_key(org_id, mesh_hash, units)
     if await asyncio.to_thread(store.exists, key):
         return await asyncio.to_thread(store.get, key)
-    payload, suffix = await read_source_artifact(org_id, mesh_hash)
-    if suffix != ".stl":
-        raise ObjectNotFoundError(key)
-    return payload
+    # Reuse the bounded, cached parser. Old derivatives might have been written
+    # under either unit interpretation; only the retained source can rebuild them.
+    from src.api.routes import _parse_mesh_async
+
+    mesh, _ = await _parse_mesh_async(payload, f"source{suffix}")
+    mesh = scale_mesh_to_mm(mesh, units)
+    stl = await asyncio.to_thread(mesh.export, file_type="stl")
+    if not isinstance(stl, bytes):
+        raise ValueError("CAD parser did not produce binary STL geometry")
+    await save_costable_mesh_artifact(org_id, mesh_hash, stl, source_units=units)
+    return stl
 
 
 async def read_source_artifact(

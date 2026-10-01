@@ -56,12 +56,27 @@ def test_serialize_profile_redacts_encrypted_secret_material():
     assert "secret-token" not in str(body)
 
 
-def test_probe_profile_uses_readonly_adapter_and_redacts_secret():
-    profile = _profile(secret_fingerprint="abc123")
+def test_unconfigured_encrypted_storage_has_actionable_error(monkeypatch):
+    monkeypatch.setenv("RELEASE", "test-production")
+    monkeypatch.delenv("CONNECTOR_SECRET_KEY", raising=False)
+    with pytest.raises(Exception) as exc:
+        svc.encrypt_secret({"token": "do-not-expose"})
+    assert getattr(exc.value, "status_code", None) == 503
+    assert "not configured" in exc.value.detail
+    assert "do-not-expose" not in exc.value.detail
 
-    probe = svc.probe_profile(profile)
+
+@pytest.mark.asyncio
+async def test_probe_profile_uses_readonly_adapter_and_redacts_secret(monkeypatch):
+    profile = _profile(secret_fingerprint="abc123")
+    read = AsyncMock(return_value=1)
+    monkeypatch.setattr(svc, "probe_product_api", read)
+
+    probe = await svc.probe_profile(profile)
 
     assert probe["configured"] is True
+    assert probe["connected"] is True
+    read.assert_awaited_once()
     assert probe["read_only"] is True
     assert probe["mode"] == "sandbox_api"
     assert probe["boundary_label"] == "sandbox"
@@ -70,7 +85,8 @@ def test_probe_profile_uses_readonly_adapter_and_redacts_secret():
     assert "secret-token" not in str(probe)
 
 
-def test_probe_revoked_profile_does_not_decrypt_secret(monkeypatch):
+@pytest.mark.asyncio
+async def test_probe_revoked_profile_does_not_decrypt_secret(monkeypatch):
     profile = _profile(revoked_at=datetime(2026, 7, 8, tzinfo=timezone.utc))
     monkeypatch.setattr(
         svc,
@@ -78,7 +94,7 @@ def test_probe_revoked_profile_does_not_decrypt_secret(monkeypatch):
         lambda encrypted: pytest.fail("revoked probes must not decrypt secret material"),
     )
 
-    probe = svc.probe_profile(profile)
+    probe = await svc.probe_profile(profile)
 
     assert probe["configured"] is False
     assert probe["reason"] == "credential profile is revoked"

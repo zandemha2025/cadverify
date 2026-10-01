@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import type { CostDriver, CostEstimate } from "@/lib/api";
 import { provMeta } from "@/lib/status";
 import { ProvenanceChip } from "./provenance";
+import { costOverrideError } from "@/lib/cost-views";
 
 /** The rate a driver row edits — label/unit/prefill supplied by the parent. */
 export interface DriverRateEditor {
@@ -49,16 +50,21 @@ function DriverLine({
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const errorId = React.useId();
   const m = provMeta(driver.provenance);
   const editable = !!onOverride && !!rateEditor;
 
   const startEdit = () => {
     setDraft(rateEditor?.prefill != null ? String(rateEditor.prefill) : "");
+    setError(null);
     setEditing(true);
   };
   const commit = () => {
-    const v = parseFloat(draft);
-    if (!Number.isNaN(v)) onOverride?.(driver, v);
+    const message = costOverrideError(driver.name, draft);
+    setError(message);
+    if (message) return;
+    onOverride?.(driver, Number(draft));
     setEditing(false);
   };
   return (
@@ -106,20 +112,22 @@ function DriverLine({
           </p>
           {editable &&
             (editing ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-micro text-muted-foreground">
                   {rateEditor!.label}
                 </span>
                 <input
                   autoFocus
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => { setDraft(e.target.value); setError(null); }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") commit();
                     if (e.key === "Escape") setEditing(false);
                   }}
                   inputMode="decimal"
                   aria-label={`Override ${rateEditor!.label}`}
+                  aria-invalid={!!error}
+                  aria-describedby={error ? errorId : undefined}
                   className="num h-7 w-24 rounded-sm border border-prov-user-border bg-card px-2 text-right text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <span className="num text-micro text-muted-foreground">
@@ -141,6 +149,7 @@ function DriverLine({
                 >
                   <X className="size-4" />
                 </button>
+                {error && <p id={errorId} role="alert" className="w-full text-xs text-fail">{error}</p>}
               </div>
             ) : (
               <button

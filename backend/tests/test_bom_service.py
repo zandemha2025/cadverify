@@ -79,6 +79,21 @@ def test_ancestry_is_the_real_chain():
     assert bom.ancestry(edges, "bolt") == [
         "bolt", "nut-bolt-assembly", "l-bracket-assembly", "as1",
     ]
+    assert bom.ancestry(edges, "as1") == ["as1"]
+
+
+def test_unsupported_counts_never_become_rounded_demand():
+    edges = [
+        {"parent_ref": "root", "child_ref": "assembly", "qty_per_parent": 2_147_483_647},
+        {"parent_ref": "assembly", "child_ref": "part", "qty_per_parent": 2_147_483_647},
+    ]
+    assert bom.rolled_up_multiplier(edges, "part") is None
+    assert bom.annual_volume(edges, "assembly", 2_147_483_647) is None
+    assert bom.resolve_annual_volume(12000, 2_147_483_647, 2_147_483_647) == {
+        "annual_volume": 12000, "annual_volume_basis": "declared",
+    }
+    for qty in [0, -1, True, 0.5, 2_147_483_648]:
+        assert bom.rolled_up_multiplier([dict(edges[0], qty_per_parent=qty)], "assembly") is None
 
 
 def test_rolled_up_multiplier_matches_true_instance_counts():
@@ -103,8 +118,36 @@ def test_unknown_part_has_no_rollup_never_fabricated():
     assert bom.annual_volume(edges, "widget", 100000) is None
 
 
+@pytest.mark.parametrize("quantities", [(2, 3), (3, 2), (2, 2)])
+def test_repeated_bom_edge_has_no_ambiguous_demand(quantities):
+    rows, errors = bom.parse_bom_csv(
+        "parent_ref,child_ref,qty_per_parent\n"
+        + "".join(f"car,handle,{qty}\n" for qty in quantities)
+    )
+    assert not errors
+    with pytest.raises(ValueError, match="Duplicate BOM relationship"):
+        bom._checked_graph(rows)
+    assert bom.rolled_up_multiplier(rows, "handle") is None
+    assert bom.annual_volume(rows, "handle", 100) is None
+    assert bom.ancestry_paths(rows, "handle") == []
+
+
 def test_empty_tree_yields_no_edges():
     assert bom.edges_from_assembly(_Model(_Node("solo"))) == []
+
+
+@pytest.mark.parametrize("children", [
+    (["handle"], ["handle"] * 3),
+    (["handle"], []),
+    ([], ["handle"]),
+    (["handle"], ["bolt"]),
+])
+def test_different_structures_cannot_share_a_design_name(children):
+    model = _Model(_Node("car", [
+        _Node("door", [_Node(name) for name in names]) for names in children
+    ]))
+    with pytest.raises(ValueError, match="different child structures"):
+        bom.edges_from_assembly(model)
 
 
 def test_cycle_is_guarded():
@@ -114,7 +157,31 @@ def test_cycle_is_guarded():
         {"parent_ref": "b", "child_ref": "a", "qty_per_parent": 1},
     ]
     mult = bom.rolled_up_multiplier(edges, "b")
-    assert isinstance(mult, int)  # terminates with a finite number
+    assert mult is None  # A cycle has no finite, grounded count per root.
+    assert bom.ancestry_paths(edges, "b") == []
+    assert bom.annual_volume(edges, "b", 100) is None
+
+
+def test_rollup_sums_all_paths_without_the_preview_enumeration_cap(monkeypatch):
+    monkeypatch.setattr(bom, "_MAX_PATHS", 2)
+    edges = [
+        {"parent_ref": "root", "child_ref": f"branch-{i}", "qty_per_parent": i + 1}
+        for i in range(3)
+    ] + [
+        {"parent_ref": f"branch-{i}", "child_ref": "part", "qty_per_parent": 2}
+        for i in range(3)
+    ]
+    assert bom.rolled_up_multiplier(edges, "part") == 12
+    assert bom.annual_volume(edges, "part", 100) == 1200
+
+
+def test_deep_bom_does_not_depend_on_python_recursion_limit():
+    edges = [
+        {"parent_ref": str(i), "child_ref": str(i + 1), "qty_per_parent": 1}
+        for i in range(1500)
+    ]
+    assert bom.rolled_up_multiplier(edges, "1500") == 1
+    assert bom.ancestry(edges, "1500") == [str(i) for i in range(1500, -1, -1)]
 
 
 # ---------------------------------------------------------------------------

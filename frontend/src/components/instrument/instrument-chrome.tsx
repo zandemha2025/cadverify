@@ -21,6 +21,8 @@ export type PartIdentity = {
   facts: PartFact[];
   /** engine verdict enum, rendered as a StatusBadge in the strip */
   verdict?: string | null;
+  /** Manufacturing process whose DFM verdict is shown. */
+  verdictProcess?: string | null;
   /** DFM pass still running */
   analyzing?: boolean;
   /** clear the instrument back to intake */

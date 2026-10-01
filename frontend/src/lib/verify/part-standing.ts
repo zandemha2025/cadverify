@@ -14,12 +14,12 @@
 import type {
   CatalogRowApi,
   CostDecisionDetail,
-  CostDecisionSummary,
   CostEstimate,
   CostReport,
   Issue,
 } from "@/lib/api";
 import type { MakeabilityLattice } from "./verification";
+import { readVerification, verificationForRoute } from "./verification.ts";
 
 /** The make-now route's estimate — the largest-quantity point for the decision's
  *  make-now process (setup fully amortized = the stable read). Inlined (not a
@@ -130,7 +130,9 @@ export function deriveStanding(
   const detailWithheld = Boolean(est?.environment_excluded);
   const kind = detailWithheld ? "blocked" : standingKind(row);
   const conf = est?.confidence;
-  const rawMakeability = detail?.result.verification?.verdict;
+  const rawMakeability = verificationForRoute(
+    readVerification(detail?.result), row.recommended_route?.process ?? detail?.make_now_process,
+  )?.verdict;
   const makeabilityVerdict =
     typeof rawMakeability === "string" && MAKEABILITY_VALUES.has(rawMakeability as MakeabilityLattice)
       ? (rawMakeability as MakeabilityLattice)
@@ -167,6 +169,7 @@ export interface Blocker {
   fix: string | null;
   /** measured vs required (e.g. sidewall 0.6° vs 1.0°) — present when the finding
    *  carries them; never fabricated. */
+  measurement_unit?: Issue["measurement_unit"];
   measured: number | null;
   required: number | null;
   /** honest total of affected faces (the analyzer's true count), or null. */
@@ -191,6 +194,7 @@ function issueToBlocker(issue: Issue): Blocker {
     code: issue.code,
     message: issue.message,
     fix: issue.fix_suggestion ?? null,
+    measurement_unit: issue.measurement_unit,
     measured: issue.measured_value ?? null,
     required: issue.required_value ?? null,
     affectedFaces: issue.affected_face_count ?? null,
@@ -272,20 +276,4 @@ export function lineageView(
     parentAssembly: context?.parent_assembly ?? null,
     annualVolume: context?.annual_volume ?? null,
   };
-}
-
-// ---------------------------------------------------------------------------
-// History — "every verification appends here". The cost-decisions endpoint's
-// list items carry filename but NOT mesh_hash, so a part's history is the set of
-// saved decisions sharing this file's name, newest first. Real DB rows only;
-// each links to its own immutable record.
-// ---------------------------------------------------------------------------
-
-export function historyForFile(
-  decisions: CostDecisionSummary[],
-  filename: string
-): CostDecisionSummary[] {
-  return decisions
-    .filter((d) => d.filename === filename)
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
 }

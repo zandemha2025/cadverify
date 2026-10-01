@@ -1,0 +1,99 @@
+{
+  "red": {
+    "failed": 1,
+    "case": "400mm bar rotated45 degrees; tooling30000 instead of60000",
+    "log": "186-tooling-red.log"
+  },
+  "focused": {
+    "passed": 76,
+    "failed": 0,
+    "seconds": 2.54,
+    "log": "186-tooling-focused-final.log"
+  },
+  "backend_full_final": {
+    "passed": 2836,
+    "failed": 0,
+    "skipped": 3,
+    "seconds": 252.3,
+    "skip_policy_enforced": true,
+    "skip_reasons": [
+      "real corpus manifest not present",
+      "OCP XDE unavailable (2 tests)"
+    ],
+    "log": "186-backend-full-final.log"
+  },
+  "regression_scope": {
+    "sizes_mm": [
+      49.9,
+      50,
+      149.9,
+      150,
+      300,
+      300.0001,
+      300.1,
+      400
+    ],
+    "poses": [
+      "aligned",
+      "45degZ",
+      "0.73rad about(1,2,3)"
+    ],
+    "tooling_families": [
+      "injection_molding",
+      "die_casting",
+      "sand_casting",
+      "investment_casting",
+      "forging"
+    ],
+    "base_model_constants_usd": {
+      "S": 6000,
+      "M": 15000,
+      "L": 30000,
+      "XL": 60000
+    },
+    "family_multipliers": [
+      1,
+      1.5,
+      0.35,
+      0.9,
+      2
+    ]
+  },
+  "pyright": {
+    "version": "1.1.411",
+    "existing_errors": 4,
+    "new_errors": 0,
+    "baseline": "exactHEADcost_model.py",
+    "warnings": 0
+  },
+  "bandit": {
+    "version": "1.9.4",
+    "findings": 0
+  },
+  "frontend": "Unchanged; prior528tests/types/build pass. Native tests used the existing production build.",
+  "geometry": "No geometry algorithm changed; all4recomputed analysis artifacts equal before except runtime. Prior185trap29ordinarypass/1knownunitgap retained.",
+  "native": {
+    "files": 4,
+    "verify_upload": 1,
+    "real_3d_previews": true,
+    "rotated400_tooling_before_usd": 30000,
+    "rotated400_tooling_after_usd": 60000,
+    "aligned400_tooling_usd": 60000,
+    "rotated400_unit_cost_at_100_usd": 602.79,
+    "rotated400_crossover_before": 2054,
+    "rotated400_crossover_after": 4107,
+    "redesign_condition_retained": true,
+    "250mm_control_tooling_usd": 30000,
+    "owned_fdm250_control_unit_cost_usd": 38.22,
+    "json_export_matches_saved_artifact": true,
+    "download_observation": "CUA download event timed out15s; actual newly downloaded file exists and exactly matches saved artifact."
+  },
+  "integrity": {
+    "historical_analyses_unchanged": 152,
+    "historical_cost_decisions_unchanged": 164,
+    "non_tooling_estimates_identical": 76,
+    "analysis_controls_unchanged": 4,
+    "geometry_controls_unchanged": 9
+  },
+  "scope": "Corrects orientation-dependent size-tier model behavior; tooling layout, pull direction, actual supplier prices, external services and production are not certified."
+}

@@ -1166,8 +1166,8 @@ class DesignStudioE2E {
       await this.gotoStudio();
       await this.page.getByRole("button", { name: /Golden mounting plate Ready/ }).click();
       const fallback = this.page.getByText("Interactive 3D is unavailable in this browser.");
-      const canvas = this.page.locator("canvas");
-      assert((await fallback.count()) > 0 || (await canvas.count()) > 0, "Neither interactive CAD nor explicit fallback is visible");
+      const readyPreview = this.page.locator('[data-preview-state="ready"]');
+      await fallback.or(readyPreview).first().waitFor({ state: "visible", timeout: 30_000 });
       await this.page.getByRole("link", { name: /Download R2 STEP/ }).waitFor();
       await this.page.getByRole("link", { name: /Verify revision 2/ }).waitFor();
       return { screenshot: await this.shot("mobile-design-studio", true) };

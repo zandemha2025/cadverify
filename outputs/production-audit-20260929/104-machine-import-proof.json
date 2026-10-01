@@ -1,0 +1,44 @@
+{
+  "scope": "Local QA inventory; not production",
+  "storedRows": [
+    {
+      "id": "01M3S6XJHXTT86FV838JRXGGB2",
+      "name": "Audit 104 valid first",
+      "count": 1,
+      "hourlyRateUsd": 75.0
+    },
+    {
+      "id": "01M3S6XJHZQ9GTPHA67Q2CWYFD",
+      "name": "Audit 104 valid last",
+      "count": 2,
+      "hourlyRateUsd": 95.0
+    }
+  ],
+  "invalidRowsPersisted": 0,
+  "nativeMixedImport": {
+    "imported": 2,
+    "skipped": 1,
+    "total": 3,
+    "badLine": 3
+  },
+  "nativeReload": "PASS",
+  "realPostgresRowFailureIsolation": "PASS",
+  "nativeRejectedOnly": {
+    "imported": 0,
+    "skipped": 3,
+    "total": 3,
+    "finiteRateFeedback": true,
+    "malformedEnumFeedback": true,
+    "nonfiniteEnvelopeFeedback": true
+  },
+  "checks": {
+    "backendPassed": 2458,
+    "documentedLocalSkips": 3,
+    "focusedFinalCopyPassed": 46,
+    "frontendUnchangedPriorPassed": 495,
+    "backendTypeErrors": 215,
+    "typeBaseline": 228,
+    "newTypeDiagnosticMessages": 0,
+    "banditMediumHigh": 0
+  }
+}

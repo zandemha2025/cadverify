@@ -1,0 +1,29 @@
+{
+  "source": "backend/tests/assets/cube.step",
+  "exact_volume_mm3": 2717.2566611769184,
+  "mesh_volume_mm3": 2717.326792787039,
+  "relative_volume_error": 2.5809711361603303e-05,
+  "bounds_mm": [
+    20.0,
+    15.0,
+    10.0
+  ],
+  "geometric_spans_mm": [
+    10.0,
+    15.0,
+    20.0,
+    15.0,
+    20.0,
+    10.0,
+    20.0,
+    20.0,
+    10.0,
+    15.0,
+    15.0,
+    9.999999999999998,
+    5.999532142770494,
+    5.999532142770494
+  ],
+  "small_feature_issues": [],
+  "casting_corner_issues": []
+}

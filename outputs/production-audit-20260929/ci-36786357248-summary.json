@@ -1,0 +1,143 @@
+{
+  "conclusion": "failure",
+  "headSha": "bc86ac08d4120def08ca8293339c9c2eabe3ddd3",
+  "jobs": [
+    {
+      "completedAt": "2026-09-30T22:48:27Z",
+      "conclusion": "success",
+      "databaseId": 110128578146,
+      "name": "Backend Tests",
+      "startedAt": "2026-09-30T22:34:35Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128578146",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:34:51Z",
+      "conclusion": "success",
+      "databaseId": 110128578357,
+      "name": "Commit hook integrity policy",
+      "startedAt": "2026-09-30T22:34:36Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128578357",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:35:37Z",
+      "conclusion": "success",
+      "databaseId": 110128578378,
+      "name": "Trap Corpus Gate",
+      "startedAt": "2026-09-30T22:34:35Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128578378",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:34:48Z",
+      "conclusion": "success",
+      "databaseId": 110128578387,
+      "name": "Every /api/v1 route calls require_api_key",
+      "startedAt": "2026-09-30T22:34:36Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128578387",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:36:20Z",
+      "conclusion": "success",
+      "databaseId": 110128578396,
+      "name": "Frontend Build & Lint",
+      "startedAt": "2026-09-30T22:34:35Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128578396",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:35:39Z",
+      "conclusion": "success",
+      "databaseId": 110128578452,
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "startedAt": "2026-09-30T22:34:36Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128578452",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:35:36Z",
+      "conclusion": "success",
+      "databaseId": 110128659708,
+      "name": "Auth material never appears in captured Sentry payload",
+      "startedAt": "2026-09-30T22:34:51Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110128659708",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T23:11:53Z",
+      "conclusion": "success",
+      "databaseId": 110132833402,
+      "name": "Browser E2E (human + enterprise)",
+      "startedAt": "2026-09-30T22:48:30Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110132833402",
+      "failed_steps": [],
+      "passed_runtime_steps": []
+    },
+    {
+      "completedAt": "2026-09-30T22:56:02Z",
+      "conclusion": "failure",
+      "databaseId": 110132833448,
+      "name": "Container Images & Deploy Config Proof",
+      "startedAt": "2026-09-30T22:48:30Z",
+      "status": "completed",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248/job/110132833448",
+      "failed_steps": [
+        "Scan backend image (high/critical vulnerabilities)"
+      ],
+      "passed_runtime_steps": [
+        "Exercise frontend image default startup and share image",
+        "Exercise backend image native STEP parser"
+      ]
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36786357248",
+  "container_findings": {
+    "HIGH": 5,
+    "CRITICAL": 0,
+    "findings": [
+      {
+        "packages": [
+          "libexpat1"
+        ],
+        "version": "2.8.3-1~deb13u1",
+        "id": "CVE-2026-93990"
+      },
+      {
+        "packages": [
+          "libx11-6",
+          "libx11-data",
+          "libx11-xcb1"
+        ],
+        "version": "2:1.8.12-1",
+        "id": "CVE-2026-88806"
+      },
+      {
+        "packages": [
+          "libxrender1"
+        ],
+        "version": "1:0.9.12-1",
+        "id": "CVE-2026-88807"
+      }
+    ],
+    "waiver_applied": false
+  },
+  "container_log_sha256": "b0757fce22c1c697eca57d75d1c9540433cdf7a00a5b06e283f135dfeaf984c1"
+}

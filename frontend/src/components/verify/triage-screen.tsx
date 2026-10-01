@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { setSelectedPart } from "@/lib/verify/part-selection";
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
 import { Kicker, EmptyState, Spinner, GhostButton } from "./primitives";
 import {
@@ -804,10 +805,13 @@ function PartRow({ row, nav }: { row: MakeabilityRow; nav: (s: string) => void }
       </span>
       <button
         type="button"
-        onClick={() => nav("catalog")}
+        onClick={() => {
+          setSelectedPart(row.part_key);
+          nav("part");
+        }}
         style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}
       >
-        view in parts →
+        Open part standing →
       </button>
     </div>
   );
@@ -835,24 +839,24 @@ function CapabilityPanel({ capability, nav }: { capability: CapabilityRanking | 
         <p style={{ margin: "9px 0 0", fontSize: 13.5, lineHeight: 1.6, color: C.ink60 }}>
           {summary.blocked_by_multiple_constraints > 0 ? (
             <>
-              No single acquisition closes the gap — {NUM(summary.blocked_by_multiple_constraints)} part
-              {summary.blocked_by_multiple_constraints === 1 ? " is" : "s are"} blocked by multiple constraints, so no
-              one machine unlocks them. Stated, not folded away.
+              {NUM(summary.blocked_by_multiple_constraints)} part
+              {summary.blocked_by_multiple_constraints === 1 ? " needs" : "s need"} more than one capability checked.
+              Review all constraints against the proposed machine.
             </>
           ) : (
-            <>No single-acquisition unlock opportunities right now — nothing is blocked on exactly one missing capability.</>
+            <>No parts are currently recorded with exactly one missing capability to review.</>
           )}
         </p>
       ) : (
         <>
           <p style={{ margin: "9px 0 0", fontSize: 14.5, lineHeight: 1.6 }}>
-            <span style={{ fontWeight: 500 }}>One acquisition unlocks the most:</span>{" "}
+            <span style={{ fontWeight: 500 }}>Capability to investigate first:</span>{" "}
             {ranking[0].acquisition.process_label}
-            {ranking[0].acquisition.spec?.summary ? ` — ${ranking[0].acquisition.spec.summary}` : ""} frees{" "}
+            {ranking[0].acquisition.spec?.summary ? ` — ${ranking[0].acquisition.spec.summary}` : ""} could address{" "}
             <span style={{ fontWeight: 500 }}>
               {NUM(ranking[0].parts_unlocked)} currently-blocked part{ranking[0].parts_unlocked === 1 ? "" : "s"}
             </span>
-            .
+            . Verify the proposed machine against each part before purchase.
           </p>
 
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -871,16 +875,15 @@ function CapabilityPanel({ capability, nav }: { capability: CapabilityRanking | 
           {summary.blocked_by_multiple_constraints > 0 && (
             <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
               + {NUM(summary.blocked_by_multiple_constraints)} part
-              {summary.blocked_by_multiple_constraints === 1 ? "" : "s"} blocked by multiple constraints — no single
-              acquisition unlocks them (never folded into a ranking entry)
+              {summary.blocked_by_multiple_constraints === 1 ? "" : "s"} need multiple constraints checked and
+              are listed separately from this ranking
             </p>
           )}
         </>
       )}
 
       <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
-        ranked by parts unlocked, from stored per-part gaps · no acquisition dollar cost is shown — none is engine-derived
-        (never fabricated)
+        ranked by parts to review, from stored per-part gaps · proposed machines and setups still need verification · no purchase-price estimate
       </p>
     </div>
   );
@@ -946,7 +949,7 @@ function RankRow({
           ) : null}
         </span>
         <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11.5, color: C.cond, fontWeight: 500 }}>
-          {NUM(entry.parts_unlocked)} unlocked
+          {NUM(entry.parts_unlocked)} parts to review
         </span>
         {entry.stale && (
           <span title="some of these verdicts predate a machine change" style={{ fontFamily: MONO, fontSize: 9.5, color: C.cond, border: `1px solid ${tint(C.cond, 0.35)}`, borderRadius: 4, padding: "1px 5px" }}>
@@ -961,7 +964,7 @@ function RankRow({
           {err && <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>{err}</p>}
           {rows === null && !err && (
             <div style={{ marginTop: 6 }}>
-              <Spinner label="loading unlocked parts…" />
+              <Spinner label="loading parts to review…" />
             </div>
           )}
           {rows && rows.length > 0 && (
@@ -975,7 +978,7 @@ function RankRow({
             <GhostButton onClick={() => nav("acquisition")}>Open acquisition consideration →</GhostButton>
             {cursor && (
               <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-                more unlocked parts beyond the {rows?.length} shown — more below
+                more parts to review beyond the {rows?.length} shown — more below
               </span>
             )}
           </div>

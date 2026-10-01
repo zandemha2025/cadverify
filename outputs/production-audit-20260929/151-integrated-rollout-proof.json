@@ -1,0 +1,60 @@
+{
+  "observed_at": "2026-09-30T23:14:12.637223+00:00",
+  "integration_head": "08c4e7c5df2b3c25e5b5c2fc95edbabff7a43ff9",
+  "reviewed_pr": "https://github.com/zandemha2025/cadverify/pull/110",
+  "reviewed_head": "7846eda8784737c2ca3cd9eb5b05716c9406a1d0",
+  "review_scope": [
+    "process-specific calibration factors and residuals; synthetic and legacy-bundle rejection",
+    "bounded SAP BOM preview with retained units, explicit selectors and no inferred assembly edges",
+    "existing API authentication, encrypted credentials, transport boundaries and import refusal",
+    "six parallel verification log SHA256 values matched retained logs"
+  ],
+  "combined_checks": {
+    "backend": {
+      "passed": 2617,
+      "skipped": 3,
+      "duration_seconds": 244.66,
+      "skips": [
+        "real corpus manifest absent",
+        "OCP XDE unavailable (2)"
+      ],
+      "protected_skip_policy": true
+    },
+    "frontend": {
+      "passed": 500,
+      "types": "PASS",
+      "changed_source_lint": "PASS",
+      "production_build": "PASS"
+    }
+  },
+  "followup_checks": {
+    "registry_adapter_and_csv_boundary_tests": 15,
+    "registry_before": "FAIL: SAP absent from live_readonly registry",
+    "native_before": "FAIL: selected SAP status denies BOM preview",
+    "native_after": "PASS: SAP preview / import limitation, Windchill import and CSV separation",
+    "selector_width_before_px": 63.71875,
+    "selector_width_after_px": 205.5,
+    "viewport_width_px": 1280,
+    "final_types_lint_build": "PASS",
+    "native_selector_layout": "PASS"
+  },
+  "log_sha256": {
+    "integrated-rollout-backend.log": "d9345c597da814e2bb3b9f85f6a215a8068edd9a7eac0957dfbbad3b66a190ff",
+    "integrated-rollout-frontend.log": "3cef0ba664f636d8faa701c988d4366c3aabeeb40786449e55e4d107d37a3ece",
+    "sap-copy-build-final.log": "7b51147db40cdf2494ba93eb66dab63fb475be93c89272cf2f5a9bbf6b54eb3d"
+  },
+  "supplemental_native_sap": {
+    "receipt": "151-parallel-sap-preview-ui.json",
+    "screenshot": "151-parallel-sap-preview-ui.png",
+    "receipt_sha256": "010ca3f4b40c53753cc1aca195075080d6e26119569f1efa55c1076f6bd2fff3",
+    "screenshot_sha256": "cc527139a5db69c77fe0cf7013b69e4238632a32dc311ea2ae0265ff88ea021c",
+    "source_screenshot_name": "sap-preview-ui.png",
+    "independently_reviewed_screenshot": true
+  },
+  "limitations": [
+    "No real SAP tenant contacted or successful response rendered natively",
+    "SAP assembly import remains unavailable",
+    "Customer quote validation remains unproven",
+    "Production unchanged; exact published-head CI required"
+  ]
+}

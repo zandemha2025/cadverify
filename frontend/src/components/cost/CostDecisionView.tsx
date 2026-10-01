@@ -11,7 +11,7 @@
  * confidence honesty + the data-locality signal — never a fabricated ±X%.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -22,13 +22,8 @@ import {
 } from "lucide-react";
 import type { CostOptions, CostReport } from "@/lib/api";
 import { procLabel } from "@/lib/status";
-import {
-  deriveBreakeven,
-  recommendAt,
-  posToQty,
-  qtyToPos,
-} from "@/lib/breakeven";
-import { pickEstimate } from "@/lib/cost-views";
+import { pickEstimate, type workspaceSelection } from "@/lib/cost-views";
+import { crossoverSummary } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -55,6 +50,8 @@ const USD = new Intl.NumberFormat("en-US", {
 
 export function CostDecisionView({
   report,
+  selection,
+  onPositionChange,
   opts,
   setOpt,
   onRecost,
@@ -64,6 +61,8 @@ export function CostDecisionView({
   onSeeRouting,
 }: {
   report: CostReport;
+  selection: ReturnType<typeof workspaceSelection>;
+  onPositionChange: (position: number) => void;
   opts: CostOptions;
   setOpt: SetOpt;
   onRecost: () => void;
@@ -72,17 +71,7 @@ export function CostDecisionView({
   onOpenGlassBox: () => void;
   onSeeRouting: () => void;
 }) {
-  const breakeven = useMemo(() => deriveBreakeven(report), [report]);
-
-  // slider position [0,1]; default to the crossover (the decision boundary)
-  // clamped into range, else the largest costed quantity.
-  const [pos, setPos] = useState(() => {
-    if (!breakeven) return 1;
-    const dflt =
-      breakeven.crossoverQty ??
-      Math.max(...(report.quantities.length ? report.quantities : [1]));
-    return qtyToPos(breakeven, dflt);
-  });
+  const { breakeven, position: pos, quantity: qty, recommendation: rec, estimate: recEstimate, dfm } = selection;
 
   const [showInputs, setShowInputs] = useState(false);
   // the Buyer lens opens the trust panel by default; others can expand it.
@@ -91,21 +80,14 @@ export function CostDecisionView({
 
   const qtyError = validateQty(opts.qty);
 
-  if (!breakeven || !report.decision) {
+  if (!breakeven || !report.decision || qty == null) {
     // GEOMETRY_INVALID or no decision -> the breakdown card renders the repair UI
     return <CostDecisionCard report={report} />;
   }
 
-  const qty = posToQty(breakeven, pos);
-  const rec = recommendAt(breakeven, qty);
   const dec = report.decision;
-
-  // the estimate behind the currently-recommended process at this quantity —
-  // the source of the confidence band shown under the hero cost.
-  const recEstimate = rec
-    ? pickEstimate(report, rec.curve.process, qty)
-    : null;
-  const recConfidence = recEstimate?.confidence ?? null;
+  const exactQuantity = recEstimate?.quantity === qty;
+  const recConfidence = exactQuantity ? recEstimate?.confidence ?? null : null;
 
   // the tooling route is conditional when it currently fails DFM
   const toolingConditional =
@@ -120,22 +102,22 @@ export function CostDecisionView({
       <Card className="overflow-hidden">
         <DecisionHeadline
           title={rec ? `Make by ${procLabel(rec.curve.process)}` : "—"}
-          dfmReady={rec?.dfmReady ?? false}
-          sentence={crossoverSentence(report)}
+          verdict={dfm.verdict}
+          sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="grid grid-cols-1 gap-5 sm:grid-cols-3">
           <NumberReadout
-            label="Cost / unit"
+            label={exactQuantity ? "Cost / unit" : "Approx. cost / unit"}
             value={rec ? USD.format(rec.unitCost) : "—"}
             accent
             confidence={recConfidence ?? undefined}
           />
           <NumberReadout
-            label="Lead time"
+            label={recEstimate ? `Lead time · qty ${recEstimate.quantity.toLocaleString()}` : "Lead time"}
             size="md"
             value={
-              rec && rec.curve.leadLow != null && rec.curve.leadHigh != null
-                ? `${rec.curve.leadLow}–${rec.curve.leadHigh}`
+              recEstimate?.lead_time
+                ? `${recEstimate.lead_time.low_days}–${recEstimate.lead_time.high_days}`
                 : "—"
             }
             unit="days"
@@ -172,7 +154,7 @@ export function CostDecisionView({
             min={0}
             max={1000}
             step={1}
-            onValueChange={([v]) => setPos(v / 1000)}
+            onValueChange={([v]) => onPositionChange(v / 1000)}
             aria-label="Order quantity"
           />
           <div className="num flex justify-between text-[11px] text-muted-foreground">
@@ -288,8 +270,8 @@ export function CostDecisionView({
             )}
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <Lock className="mt-px size-3.5 shrink-0 text-prov-shop" aria-hidden />
-              Your CAD is read and discarded on this machine — it never leaves,
-              nothing is uploaded.
+              CAD is processed by CadVerify. Signed-in workflows retain source files
+              and decision evidence for your organization.
             </p>
           </div>
         )}
@@ -341,20 +323,4 @@ function Disclosure({
       {open && <div className="border-t border-border px-4 pb-4">{children}</div>}
     </Card>
   );
-}
-
-function crossoverSentence(report: CostReport): string {
-  const dec = report.decision;
-  if (!dec) return "";
-  if (dec.crossover_qty != null) {
-    const n = Math.round(dec.crossover_qty).toLocaleString();
-    const make = procLabel(dec.make_now_process);
-    if (dec.tooling_process) {
-      return `Make below ~${n} units with ${make}; tool up with ${procLabel(
-        dec.tooling_process
-      )} above it.`;
-    }
-    return `${make} wins below ~${n} units; tooling amortizes above it.`;
-  }
-  return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
 }

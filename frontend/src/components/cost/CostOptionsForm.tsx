@@ -80,7 +80,7 @@ export function CostOptionsForm({
         label="Quantities (comma list, up to 6)"
         htmlFor="cost-qty"
         error={qtyError}
-        hint={qtyError ? undefined : "Costed at each quantity; the slider interpolates between them."}
+        hint={qtyError ? undefined : "Costed at each quantity; the slider approximates between them."}
       >
         <Input
           id="cost-qty"
@@ -133,7 +133,7 @@ export function CostOptionsForm({
 
       <Field
         label="CAD source units"
-        hint="STL files do not store units. Choose how their coordinates were authored; all results are normalized to mm."
+        hint="Applies only to unitless STL coordinates. STEP and IGES use their embedded units. All results are normalized to mm."
       >
         <Select
           value={opts.units}

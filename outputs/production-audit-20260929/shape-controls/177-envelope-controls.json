@@ -1,0 +1,24 @@
+[
+  {
+    "filename": "177-envelope-aligned.step",
+    "sha256": "793c8addd4afc56c242938c9cc7ba3836f59dd7f1c31897087bccf777eb54e90",
+    "dimensions_mm": [
+      290,
+      290,
+      10
+    ],
+    "volume_mm3": 841000,
+    "rotation_deg": 0
+  },
+  {
+    "filename": "177-envelope-rotated.step",
+    "sha256": "5a7b46e5c440deefe7a5a482ed3e5d66000c15c735d093190f803d999b6a0fcb",
+    "dimensions_mm": [
+      290,
+      290,
+      10
+    ],
+    "volume_mm3": 841000,
+    "rotation_deg": 45
+  }
+]

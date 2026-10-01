@@ -1,0 +1,318 @@
+[
+  {
+    "filename": "165-stock-bar-aligned.step",
+    "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "analyses": {
+      "id": 1696,
+      "version": "0.3.37",
+      "result_sha256": "6c5d4e324c99b96a8e1e9d9c94bcf05f99fcf7aeeddae97296b4344ac3dcae53",
+      "processes": [
+        {
+          "process": "investment_casting",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "INSUFFICIENT_DRAFT",
+              "scope": "localized",
+              "message": "31160 sidewall faces (100.0% of sidewall area) below 0.5\u00b0 draft for investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "0.5\u00b0 min \u2014 less than other casting methods.",
+                "standard": "ICI"
+              },
+              "severity": "error",
+              "fix_suggestion": "Add >= 0.5\u00b0 draft to all walls in pull direction. ICI: 0.5\u00b0 min \u2014 less than other casting methods.",
+              "required_value": 0.5,
+              "measurement_unit": "deg",
+              "affected_face_count": 31160,
+              "affected_faces_sample": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "affected_faces_truncated": true,
+              "proof_original_sample_count": 2000,
+              "proof_sample_sha256": "494b15107deb77d9741606b7bddfecb8b350a486bb5a751655b294d4ebc6f1a4",
+              "proof_note": "Face array shortened only in this evidence summary; stored result and source hash are unchanged."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5266 of 57916 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 12mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 12.0,
+              "measurement_unit": "mm"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5839,
+      "version": "0.3.37",
+      "result_sha256": "5600217528cff343e5744077c0821a3c39948c18092dd328cd4a70d70b0eb27a"
+    }
+  },
+  {
+    "filename": "171-profile-bar-rotated.step",
+    "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+    "analyses": {
+      "id": 1695,
+      "version": "0.3.37",
+      "result_sha256": "431e5537179377de030896a375dd4a8265ff36095af9d05901cf940f537e7af7",
+      "processes": [
+        {
+          "process": "investment_casting",
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5074 of 45666 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 12mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 11.999999999999957,
+              "measurement_unit": "mm"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5838,
+      "version": "0.3.37",
+      "result_sha256": "a0a880e7b578ff9c1a3efccada2e968df1e1172934f418acc403be5e36c44329"
+    }
+  },
+  {
+    "filename": "166-transverse-hole-bar.step",
+    "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+    "analyses": {
+      "id": 1697,
+      "version": "0.3.37",
+      "result_sha256": "5cac50a42448e86ff5e24326bf3d80a6917c7d0ff6d9c5d020e95b601fbdf435",
+      "processes": [
+        {
+          "process": "investment_casting",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "INSUFFICIENT_DRAFT",
+              "scope": "localized",
+              "message": "31000 sidewall faces (99.2% of sidewall area) below 0.5\u00b0 draft for investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "0.5\u00b0 min \u2014 less than other casting methods.",
+                "standard": "ICI"
+              },
+              "severity": "error",
+              "fix_suggestion": "Add >= 0.5\u00b0 draft to all walls in pull direction. ICI: 0.5\u00b0 min \u2014 less than other casting methods.",
+              "required_value": 0.5,
+              "measurement_unit": "deg",
+              "affected_face_count": 31000,
+              "affected_faces_sample": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "affected_faces_truncated": true,
+              "proof_original_sample_count": 2000,
+              "proof_sample_sha256": "494b15107deb77d9741606b7bddfecb8b350a486bb5a751655b294d4ebc6f1a4",
+              "proof_note": "Face array shortened only in this evidence summary; stored result and source hash are unchanged."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5020 of 60238 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 12mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 12.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "scope": "whole_part",
+              "message": "Sampled wall ratio 5.85096:1 (2.05095\u201312mm) may increase warping risk in investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "1mm min wall achievable.",
+                "standard": "ICI"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Aim for uniform 5.0mm. Use ribs, not solid. ICI: 1mm min wall achievable.",
+              "measured_value": 5.850960423507237,
+              "required_value": 2.0,
+              "measurement_unit": "ratio"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5840,
+      "version": "0.3.37",
+      "result_sha256": "c9b827280533486651c4531d382f378579fedbbdd3dae97729867d1d6ab3e162"
+    }
+  },
+  {
+    "filename": "156-plate-with-boss.step",
+    "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+    "analyses": {
+      "id": 1698,
+      "version": "0.3.37",
+      "result_sha256": "2495bb6a99a23b376ed1894c76ead84b2721e6341761f21eca12276d7a578cdc",
+      "processes": [
+        {
+          "process": "investment_casting",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "INSUFFICIENT_DRAFT",
+              "scope": "localized",
+              "message": "2584 sidewall faces (100.0% of sidewall area) below 0.5\u00b0 draft for investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "0.5\u00b0 min \u2014 less than other casting methods.",
+                "standard": "ICI"
+              },
+              "severity": "error",
+              "fix_suggestion": "Add >= 0.5\u00b0 draft to all walls in pull direction. ICI: 0.5\u00b0 min \u2014 less than other casting methods.",
+              "required_value": 0.5,
+              "measurement_unit": "deg",
+              "affected_face_count": 2584,
+              "affected_faces_sample": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "affected_faces_truncated": true,
+              "proof_original_sample_count": 2000,
+              "proof_sample_sha256": "6622de469d1b3e737e802600e93efef4d73dfa0f7f8b0adafdc9380c3f47697b",
+              "proof_note": "Face array shortened only in this evidence summary; stored result and source hash are unchanged."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "THIN_WALL_MOLDING",
+              "scope": "whole_part",
+              "message": "Min wall 0.81mm < 1.0mm for investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "1mm min wall achievable.",
+                "standard": "ICI"
+              },
+              "severity": "error",
+              "fix_suggestion": "Increase to >= 1.0mm. ICI: 1mm min wall achievable.",
+              "measured_value": 0.8099999999999999,
+              "required_value": 1.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 10.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "scope": "whole_part",
+              "message": "Sampled wall ratio 12.3457:1 (0.81\u201310mm) may increase warping risk in investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "1mm min wall achievable.",
+                "standard": "ICI"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Aim for uniform 5.0mm. Use ribs, not solid. ICI: 1mm min wall achievable.",
+              "measured_value": 12.34567901234568,
+              "required_value": 2.0,
+              "measurement_unit": "ratio"
+            },
+            {
+              "code": "MISSING_FILLETS",
+              "scope": "whole_part",
+              "message": "24 sharp concave mesh edges need >= 0.5mm fillets for investment_casting flow and stress distribution.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "0.5mm min fillet.",
+                "standard": "ICI"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Add 0.5mm+ fillets. ICI: 0.5mm min fillet.",
+              "required_value": 0.5,
+              "measurement_unit": "mm"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5841,
+      "version": "0.3.37",
+      "result_sha256": "2531876ff46675a7ef6c77e231e943f717156334a2e5c1d9c7a3b412416d6e80"
+    }
+  }
+]

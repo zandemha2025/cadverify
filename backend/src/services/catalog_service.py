@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import and_, func, select, tuple_
+from sqlalchemy import and_, func, select, true, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import ProcessType
@@ -398,13 +398,14 @@ def _fold_latest_by_mesh(rows: list) -> dict[str, Any]:
 
 
 async def _fold_org_parts(
-    session: AsyncSession, org_id: str
+    session: AsyncSession, org_id: str, *, part_key: Optional[str] = None
 ) -> tuple[list[tuple[str, Optional[SourceRef], Optional[SourceRef]]], bool]:
     """The org-scoped fetch + latest-per-part fold shared by the catalog grid and
     the portfolio roll-up. Returns ``([(mesh, analysis_ref, cost_ref), ...],
     truncated)`` — one entry per distinct part (mesh_hash) in the org, each
     hydrated into DB-free ``SourceRef``s. A single bounded, ulid-desc scan per
-    source table (cap+1 so truncation is honest without a second COUNT)."""
+    source table (cap+1 so truncation is honest without a second COUNT). An
+    exact part key instead selects only its newest artifact from each table."""
     # One bounded, ulid-desc query per source table (newest first). Fetch cap+1
     # so we can honestly report truncation without a second COUNT round-trip.
     an_rows = (
@@ -412,8 +413,9 @@ async def _fold_org_parts(
             await session.execute(
                 select(Analysis)
                 .where(Analysis.org_id == org_id)
+                .where(Analysis.mesh_hash == part_key if part_key is not None else true())
                 .order_by(Analysis.ulid.desc())
-                .limit(CATALOG_SCAN_CAP + 1)
+                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
             )
         )
         .scalars()
@@ -424,8 +426,9 @@ async def _fold_org_parts(
             await session.execute(
                 select(CostDecision)
                 .where(CostDecision.org_id == org_id)
+                .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
                 .order_by(CostDecision.ulid.desc())
-                .limit(CATALOG_SCAN_CAP + 1)
+                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
             )
         )
         .scalars()
@@ -468,17 +471,21 @@ async def _fold_org_parts(
     return parts, truncated
 
 
-async def build_catalog(session: AsyncSession, org_id: Optional[str]) -> dict:
+async def build_catalog(
+    session: AsyncSession, org_id: Optional[str], *, part_key: Optional[str] = None
+) -> dict:
     """Build the full org-scoped catalog: one derived row per part.
 
     Returns ``{"rows": [...], "truncated": bool}`` — the caller applies facet
     filters + pagination on top. ``org_id`` None (a caller with no membership —
     e.g. a mocked session) yields an empty catalog, never a cross-org read.
+    An exact part lookup reads only its latest analysis and cost, without the
+    full-catalog scan cap or substituting another part when it is absent.
     """
     if not org_id:
         return {"rows": [], "truncated": False}
 
-    parts, truncated = await _fold_org_parts(session, org_id)
+    parts, truncated = await _fold_org_parts(session, org_id, part_key=part_key)
     rows = [
         derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
         for (mesh, analysis_ref, cost_ref) in parts
@@ -736,7 +743,7 @@ def _group_by_program(rows: list[dict]) -> list[dict]:
 
     Groups the costed rows that carry a declared ``program`` and sums their
     annualized figures. A row's ``$/year`` contributes ONLY when it is a real
-    number (the owner declared an annual_volume); rows without one are counted
+    number (flat declared or BOM-derived demand); rows without one are counted
     (``parts``) but never fabricate a total. Returns [] when no row has a
     program. Sorted by program name for a stable, deterministic response.
     """
@@ -758,7 +765,7 @@ def _group_by_program(rows: list[dict]) -> list[dict]:
             },
         )
         g["parts"] += 1
-        if (r.get("context") or {}).get("annual_volume") is not None:
+        if r.get("resolved_annual_volume", ctx.get("annual_volume")) is not None:
             g["declared_volume_parts"] += 1
         if r.get("annualized_cost_usd") is not None:
             g["exposed_parts"] += 1
@@ -824,8 +831,8 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
 
     # Slice 3: the org's persisted BOM/assembly trees, loaded ONCE. This too is
     # PURELY ADDITIVE — an org with NO edges leaves ``has_any_bom`` False and the
-    # annual-volume input below is exactly the flat declared value (byte-identical
-    # to the pre-Slice-3 path). When a tree DOES exist, a part whose context names
+    # annual-volume input below is exactly the flat declared value. When a tree
+    # DOES exist, a part whose context names
     # it (bom_assembly_key + bom_child_ref + bom_roots_per_year) gets its annual
     # volume ROLLED UP from the real hierarchy, labelled ``annual_volume_basis``.
     from src.services import bom_service as bomsvc
@@ -884,10 +891,10 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
             row["context"] = _context_block(ctx_row)
             # Slice 3: WHICH volume feeds the annualization. When the org has a BOM
             # tree AND this part's context names it, prefer the rolled-up multiplier
-            # x vehicles/year (basis 'bom_rollup'); else the flat declared
+            # x root assemblies/year (basis 'bom_rollup'); else the flat declared
             # annual_volume ('declared'); else none ('default'). NEVER a fabricated
             # rollup. When the org has NO tree at all, this branch is skipped and the
-            # value is the flat declared volume — byte-identical to before Slice 3.
+            # value is the flat declared volume.
             if has_any_bom:
                 _ak = getattr(ctx_row, "bom_assembly_key", None) if ctx_row else None
                 _cr = getattr(ctx_row, "bom_child_ref", None) if ctx_row else None
@@ -908,6 +915,10 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
                 annual_volume = (
                     getattr(ctx_row, "annual_volume", None) if ctx_row else None
                 )
+                row["annual_volume_basis"] = "declared" if annual_volume is not None else "default"
+            # Demand exists independently of an exact-quantity price. Keep the
+            # original flat declaration in context as the editable fallback.
+            row["resolved_annual_volume"] = annual_volume
             # $/year uses the engine recommendation at the EXACT resolved annual
             # volume. Never reuse qty-one, interpolate, or silently substitute a
             # different quote point. A missing point is explicitly withheld; the
@@ -950,7 +961,7 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
 
     # Per-program roll-up — ADDITIVE, and only when at least one costed part
     # carries a declared ``program``. Sums are honest: a part's $/year only
-    # contributes when its owner declared an annual_volume (else it is omitted,
+    # contributes when declared or BOM-derived demand has an exact price (else omitted,
     # never fabricated). Absent any declared program, ``summary`` is byte-identical.
     if has_any_context:
         programs = _group_by_program(rows)
@@ -1434,15 +1445,17 @@ def makeability_bucket(verdict: Optional[str], status: Optional[str] = None) -> 
 _ACQ_BASIS = (
     "grouped from stored per-part makeability gaps (the §0 verdict + its binding "
     "FitFailure), derived at projection time from the Phase-C verification block; "
-    "parts_unlocked counts parts whose single binding constraint this one "
-    "acquisition closes. No acquisition dollar cost is shown (none is available "
+    "parts_unlocked is the legacy field for the count of parts to review, grouped "
+    "by one recorded binding constraint. Verify a proposed machine against each "
+    "part before treating that constraint as closed. No acquisition dollar cost is shown (none is available "
     "from engine data — never fabricated)."
 )
 
 
 def _acq_spec(gate: Optional[str], need_min, need_max, labels) -> dict:
     """The human acquisition spec for one (process, gate) group, aggregated from
-    the group's REAL stored needs. Numeric gates take the MAX need (the machine
+    the group's REAL stored needs. Envelope bounds require a full XYZ setup;
+    other numeric gates take the MAX need (the machine
     must clear the largest blocked part), tolerance takes the MIN IT grade
     (tighter), material unions the required material set. No fabricated figure."""
     labels = sorted({str(x) for x in (labels or []) if x})
@@ -1451,12 +1464,9 @@ def _acq_spec(gate: Optional[str], need_min, need_max, labels) -> dict:
     if gate == "envelope":
         return {
             "gate": "envelope",
-            "work_envelope_mm_min": need_max,
-            "summary": (
-                f"work envelope clearing ≥{need_max:g} mm "
-                "(largest blocked-part dimension)"
-                if _is_num(need_max) else "a larger work envelope"
-            ),
+            "work_envelope_mm_min": None,
+            "summary": "an XYZ work envelope, verified against each part and its planned setup",
+            "recorded_bounds": labels,
         }
     if gate == "mass":
         return {

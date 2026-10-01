@@ -69,14 +69,19 @@ def compute_params_hash(
     material_class: str,
     shop: Optional[str],
     overrides: Optional[dict],
+    source_units: str = "mm",
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
-    Two cost runs on the same file with the same parameters produce the same
-    decision, so this is the second half of the (user, mesh, params) dedup key.
+    Persistence also binds the computed evidence: inventory, governed rates and
+    calibration may change even when these form parameters stay the same.
     """
+    from src import __version__
+
     canonical = json.dumps(
         {
+            "engine_version": __version__,
+            "source_units": source_units,
             "quantities": sorted(quantities),
             "region": region or "US",
             "cavities": int(cavities),
@@ -138,12 +143,18 @@ async def persist_cost_decision(
 ) -> CostDecision:
     """Insert (or return the deduped) CostDecision row and flush to get its ulid.
 
-    Dedup key is (org_id, user_id, mesh_hash, params_hash): a repeat cost of the
-    same file with the same params returns the existing row inside one tenant,
-    while the same user may persist an independent decision in another tenant.
+    Dedup binds the form parameters AND the complete computed evidence. A new
+    inventory, rate or calibration result must not link to an older snapshot.
+    Identical evidence reuses its row inside one tenant; historical rows remain
+    immutable. Legacy parameter-only rows are retained, never rewritten.
     Delayed workers pass their parent row's immutable ``org_id`` explicitly.
     Race-safe via IntegrityError re-query (mirrors analysis_service).
     """
+    # Normalize quantity keys exactly as JSONB does before canonical sorting.
+    snapshot = json.loads(json.dumps(result_json))
+    params_hash = hashlib.sha256(json.dumps(
+        [params_hash, engine_version, snapshot], sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
     existing = await _lookup_dedup(
         session,
         user.user_id,
@@ -333,6 +344,7 @@ async def record_persist_failure(
 def _list_item(d: CostDecision) -> dict:
     return {
         "id": d.ulid,
+        "mesh_hash": d.mesh_hash,
         "filename": d.filename,
         "file_type": d.file_type,
         "label": d.label,
@@ -384,6 +396,7 @@ def governance_fields(d: CostDecision) -> dict:
             else None
         ),
         "disposition_note": getattr(d, "disposition_note", None),
+        "disposition_basis": getattr(d, "disposition_basis", None),
         "disposition_updated_at": _iso(
             getattr(d, "disposition_updated_at", None)
         ),
@@ -455,34 +468,38 @@ async def reopen_owned(
     return d
 
 
-def _selected_route_dfm_blocked(result_json: object) -> bool:
-    """Fail closed when the persisted make-now route carries a real DFM block.
-
-    The immutable cost report can retain a conditional comparison cost for a
-    blocked route. That is useful evidence, but it is not a route a user may
-    record as an unqualified ``Make in-house`` outcome. A revised CAD artifact
-    must pass route DFM first.
-    """
+def _disposition_estimate(result_json: object, quantity: int | None) -> dict | None:
+    """Resolve an exact engine recommendation; never accept a client-priced route."""
     if not isinstance(result_json, dict):
-        return False
-    decision = result_json.get("decision")
-    process = decision.get("make_now_process") if isinstance(decision, dict) else None
-    estimates = result_json.get("estimates")
-    if not isinstance(estimates, list):
-        return False
-    selected = [
-        item
-        for item in estimates
-        if isinstance(item, dict)
-        and (not process or item.get("process") == process)
-    ]
-    return any(
-        item.get("dfm_ready") is False
-        or item.get("dfm_verdict") == "fail"
-        or item.get("environment_excluded") is True
-        or bool(item.get("dfm_blockers"))
-        for item in selected
-    )
+        return None
+    estimates = [e for e in result_json.get("estimates", []) if isinstance(e, dict)]
+    quantities = [e["quantity"] for e in estimates if type(e.get("quantity")) is int and e["quantity"] > 0]
+    if quantity is None:
+        quantity = min(quantities, default=None)
+    decision = result_json.get("decision") or {}
+    recommendations = decision.get("recommendation") or {}
+    pick = recommendations.get(str(quantity), recommendations.get(quantity)) if recommendations else {
+        "process": decision.get("make_now_process"), "material": decision.get("make_now_material")
+    }
+    if not pick or not pick.get("process"):
+        return None
+    matches = [e for e in estimates if e.get("quantity") == quantity
+               and e.get("process") == pick["process"]
+               and (not pick.get("material") or e.get("material") == pick["material"])]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _inhouse_disposition_error(result_json: dict, estimate: dict | None) -> str | None:
+    if not estimate:
+        return "Select a computed quantity before recording Make in-house."
+    if (result_json.get("status") == "GEOMETRY_INVALID" or estimate.get("dfm_ready") is not True
+            or estimate.get("dfm_verdict") == "fail" or estimate.get("environment_excluded")
+            or estimate.get("dfm_blockers")):
+        return "Make in-house is unavailable while the selected route is blocked by DFM. Record Redesign, Make outside, or Acquire capability, or verify revised CAD that passes route DFM."
+    fit = ((result_json.get("verification") or {}).get("per_route") or {}).get(estimate["process"]) or {}
+    if fit.get("verdict") not in ("makeable_in_house", "makeable_with_secondary_op"):
+        return "Owned-machine fit is not verified for this route. Declare a fitting machine and re-verify before recording Make in-house."
+    return None
 
 
 async def set_disposition_owned(
@@ -492,6 +509,7 @@ async def set_disposition_owned(
     *,
     disposition: Optional[str],
     note: Optional[str] = None,
+    quantity: int | None = None,
 ) -> CostDecision:
     """Persist or withdraw the human outcome on an owned cost decision.
 
@@ -503,6 +521,8 @@ async def set_disposition_owned(
     """
     if disposition is not None and disposition not in DISPOSITION_LABELS:
         raise HTTPException(status_code=400, detail="Invalid decision disposition")
+    if quantity is not None and (type(quantity) is not int or quantity <= 0):
+        raise HTTPException(status_code=400, detail="Quantity must be a positive whole number")
     if note is not None and len(note) > 1000:
         raise HTTPException(
             status_code=400,
@@ -511,19 +531,25 @@ async def set_disposition_owned(
 
     d = await get_owned(session, ulid, user_id)
     clean_note = _clean_note(note) if disposition is not None else None
-    if disposition == "inhouse" and _selected_route_dfm_blocked(d.result_json):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Make in-house is unavailable while the selected route is blocked "
-                "by DFM. Record Redesign, Make outside, or Acquire capability, or "
-                "verify revised CAD that passes route DFM."
-            ),
-        )
     previous = getattr(d, "user_disposition", None)
     previous_note = getattr(d, "disposition_note", None)
+    previous_basis = getattr(d, "disposition_basis", None)
+    basis = previous_basis if disposition is not None else None
+    estimate = None
+    if disposition is not None:
+        if quantity is not None or previous is None or previous_basis:
+            selected_quantity = quantity if quantity is not None else (previous_basis or {}).get("quantity")
+            estimate = _disposition_estimate(d.result_json, selected_quantity)
+            if not estimate:
+                raise HTTPException(status_code=409, detail="No exact computed recommendation exists at this quantity. Re-verify before recording an outcome.")
+            basis = {key: estimate[key] for key in ("process", "material", "quantity")}
+        # Note-only edits preserve historical outcomes, including unscoped legacy records.
+        if disposition == "inhouse" and (quantity is not None or previous != disposition):
+            error = _inhouse_disposition_error(d.result_json, estimate)
+            if error:
+                raise HTTPException(status_code=409, detail=error)
 
-    if previous == disposition and previous_note == clean_note:
+    if previous == disposition and previous_note == clean_note and previous_basis == basis:
         return d
 
     approval_reopened = (
@@ -531,6 +557,7 @@ async def set_disposition_owned(
     )
     d.user_disposition = disposition
     d.disposition_note = clean_note
+    d.disposition_basis = basis
     d.disposition_updated_at = datetime.now(timezone.utc)
     d.disposition_updated_by_user_id = user_id
 
@@ -556,6 +583,8 @@ async def set_disposition_owned(
             "org_id": d.org_id,
             "previous_disposition": previous,
             "disposition": disposition,
+            "previous_basis": previous_basis,
+            "disposition_basis": basis,
             "approval_reopened": approval_reopened,
         },
         org_id=d.org_id,
@@ -652,6 +681,7 @@ def build_estimates_csv(
             "user_disposition",
             "user_disposition_label",
             "disposition_note",
+            "disposition_basis",
             "disposition_updated_at",
             "disposition_updated_by_user_id",
             "line_items",
@@ -686,6 +716,7 @@ def build_estimates_csv(
                     governance.get("user_disposition", ""),
                     governance.get("user_disposition_label", ""),
                     governance.get("disposition_note", ""),
+                    json.dumps(governance["disposition_basis"], sort_keys=True) if governance.get("disposition_basis") else "",
                     governance.get("disposition_updated_at", ""),
                     governance.get("disposition_updated_by_user_id", ""),
                     li_str,

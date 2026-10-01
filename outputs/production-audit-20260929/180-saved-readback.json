@@ -1,0 +1,41 @@
+{
+  "engine_version": "0.3.41",
+  "historical_records_unchanged": {
+    "analyses": 140,
+    "cost_decisions": 149
+  },
+  "controls": [
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analyses": {
+        "id": 1795,
+        "result_sha256": "0aff8eec93aefd1bb7e9dc972a332ed833e4c5a91a8473e0a2902fe341dd05a8",
+        "unchanged_fields": [
+          "geometry",
+          "universal_issues",
+          "process_scores"
+        ],
+        "reused_preexisting_record": true
+      },
+      "cost_decisions": {
+        "id": 6161,
+        "result_sha256": "f36237178c48e8375aeefe84e77ab5ab94554f0c8d35291b32c6ae7a6d6c95d2",
+        "unchanged_fields": [
+          "geometry",
+          "estimates",
+          "engine_feasibility",
+          "decision",
+          "routing",
+          "notes",
+          "assumptions",
+          "quantities",
+          "material_class"
+        ],
+        "reused_preexisting_record": true,
+        "unchanged_estimates": 20,
+        "native_cnc_3axis_qty100": 25.34
+      }
+    }
+  ]
+}

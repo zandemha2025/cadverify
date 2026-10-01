@@ -1,0 +1,7 @@
+{
+  "purpose": "cold same-byte STEP concurrent save through the real native batch and ARQ worker",
+  "source_sha256": "e69ed97c444221f77394117058f7d9f222f68e532bf05e3cb24c68fcf07a00d7",
+  "change": "FILE_NAME header title only; DATA section byte-identical to the original known20x15x10mm bored block",
+  "zip_sha256": "9a680e42f9a8780cbf621bc5fa5f3a1cf5ee0b8c5358e0c47e82eb3745a48282",
+  "members": 2
+}

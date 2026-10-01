@@ -6,7 +6,25 @@ import {
   apiResourceFromUrl,
   apiRecoveryMessage,
   networkRecoveryMessage,
+  isQuotaErrorMessage,
+  isLifetimeQuotaErrorMessage,
 } from "./api-recovery.ts";
+
+for (const [status, code, detail] of [
+  [429, "org_validation_cap_exceeded", "this organization has reached its cap of 100 validations in total"],
+  [403, "user_validation_cap_exceeded", "this account has used its 100 trial checks"],
+  [429, "org_quota_exceeded", "daily analyses cap reached; it resets on a rolling ~24h window"],
+] as const) {
+  test(`${code} retains allowance details without promising an immediate retry`, () => {
+    for (const payload of [{ code, message: detail }, { detail: { code, message: detail } }]) {
+      const message = apiRecoveryMessage({ status, payload, resource: "verification", retryAfter: "60" });
+      assert.match(message, /verification allowance used up/i);
+      assert.ok(message.includes(detail));
+      assert.match(message, /contact.*team/i);
+      assert.doesNotMatch(message, /try again in|temporarily busy|permission|too many/i);
+    }
+  });
+}
 
 for (const [status, action] of [
   [401, /sign in again/i],
@@ -85,3 +103,20 @@ for (const [url, resource] of [
     assert.equal(apiResourceFromUrl(url), resource);
   });
 }
+
+test("rolling allowances retain later retry while lifetime caps do not", () => {
+  for (const payload of [
+    { code: "org_quota_exceeded", message: "Daily cap; rolling ~24h window" },
+    { code: "org_validation_cap_exceeded", message: "100 validations in the trailing 7 days" },
+    { detail: { code: "user_validation_cap_exceeded", window_days: 30, message: "Trial checks used" } },
+  ]) {
+    const message = apiRecoveryMessage({ status: 403, payload, resource: "verification" });
+    assert.equal(isQuotaErrorMessage(message), true);
+    assert.equal(isLifetimeQuotaErrorMessage(message), false);
+    assert.match(message, /retry after the rolling allowance becomes available/i);
+  }
+  const lifetime = apiRecoveryMessage({ status: 429, resource: "verification",
+    payload: { code: "org_validation_cap_exceeded", window_days: 0, message: "100 checks in total" } });
+  assert.equal(isLifetimeQuotaErrorMessage(lifetime), true);
+  assert.doesNotMatch(lifetime, /retry|for now/i);
+});

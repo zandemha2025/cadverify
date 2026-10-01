@@ -1,0 +1,150 @@
+{
+  "baseline": "FAIL: context overlaps filename and measured dimensions; CAD clipped at desktop1280",
+  "checks": {
+    "desktop": {
+      "status": "PASS",
+      "canvas": {
+        "height": 501.09375,
+        "width": 412.2734375,
+        "x": 296,
+        "y": 329.703125
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 300,
+        "x": 320,
+        "y": 222.796875
+      },
+      "controls": {
+        "height": 69.203125,
+        "width": 412.2734375,
+        "x": 296,
+        "y": 830.796875
+      },
+      "mode": "real-shell",
+      "stage": {
+        "height": 800,
+        "width": 413.2734375,
+        "x": 296,
+        "y": 100
+      },
+      "title": {
+        "height": 88.796875,
+        "width": 364.2734375,
+        "x": 320,
+        "y": 122
+      }
+    },
+    "phone390": {
+      "status": "PASS",
+      "canvas": {
+        "height": 320,
+        "width": 390,
+        "x": 0,
+        "y": 330.703125
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 300,
+        "x": 16,
+        "y": 223.796875
+      },
+      "controls": {
+        "height": 69.203125,
+        "width": 390,
+        "x": 0,
+        "y": 650.703125
+      },
+      "mode": "real-shell",
+      "stage": {
+        "height": 615.90625,
+        "width": 390,
+        "x": 0,
+        "y": 105
+      },
+      "title": {
+        "height": 88.796875,
+        "width": 358,
+        "x": 16,
+        "y": 123
+      }
+    },
+    "phone320": {
+      "status": "PASS",
+      "canvas": {
+        "height": 320,
+        "width": 320,
+        "x": 0,
+        "y": 349.3984375
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 288,
+        "x": 16,
+        "y": 242.4921875
+      },
+      "controls": {
+        "height": 96.40625,
+        "width": 320,
+        "x": 0,
+        "y": 669.3984375
+      },
+      "mode": "real-shell",
+      "stage": {
+        "height": 661.8046875,
+        "width": 320,
+        "x": 0,
+        "y": 105
+      },
+      "title": {
+        "height": 107.4921875,
+        "width": 288,
+        "x": 16,
+        "y": 123
+      }
+    },
+    "phone320AfterOrbit": {
+      "status": "PASS",
+      "canvas": {
+        "height": 320,
+        "width": 320,
+        "x": 0,
+        "y": 349.3984375
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 288,
+        "x": 16,
+        "y": 242.4921875
+      },
+      "controls": {
+        "height": 96.40625,
+        "width": 320,
+        "x": 0,
+        "y": 669.3984375
+      },
+      "mode": "real-shell",
+      "stage": {
+        "height": 661.8046875,
+        "width": 320,
+        "x": 0,
+        "y": 105
+      },
+      "title": {
+        "height": 107.4921875,
+        "width": 288,
+        "x": 16,
+        "y": 123
+      }
+    }
+  },
+  "visualChecks": [
+    "Entire NIST FTC07 shell visible at1280,390,320",
+    "X-ray toggles visible wireframe and restores solid",
+    "Native pointer drag changes CAD orientation at320 without losing labels"
+  ],
+  "recordId": "01M3S2XNGHH6342NM253012Y2D",
+  "sourceSha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+  "viewportReset": true,
+  "scope": "Local native real-STEP verification; no production deployment or quote-accuracy claim."
+}

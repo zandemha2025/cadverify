@@ -12,7 +12,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { interpUnitCost } from "./scrub.ts";
+import { interpUnitCost, scrubSelection } from "./scrub.ts";
+import { qtyToFraction } from "./derive.ts";
 import type { CostReport, CostEstimate } from "@/lib/api";
 
 function est(process: string, quantity: number, unit_cost_usd: number): CostEstimate {
@@ -98,4 +99,41 @@ test("a process the engine did not cost yields unit:null — withheld, never fak
   const p = interpUnitCost(LADDER, "injection_molding", 1000);
   assert.equal(p.unit, null);
   assert.equal(interpUnitCost(LADDER, null, 1000).unit, null);
+});
+
+
+test("environment-excluded estimates cannot appear in the quantity interpolation", () => {
+  const excluded = { ...est("mjf", 100, 0.01), environment_excluded: true };
+  assert.equal(interpUnitCost(report([excluded]), "mjf", 100).unit, null);
+});
+
+test("one quantity selection keeps route, material, price and confidence together", () => {
+  const fdm = { ...est("fdm", 1, 30), confidence: { validated: true } as CostEstimate["confidence"] };
+  const mjf = est("mjf", 100, 3.52);
+  const annual = est("mjf", 12000, 3.1);
+  const cost = report([fdm, mjf, annual, { ...annual, material: "Other", unit_cost_usd: 0.01 }]);
+  cost.quantities = [1, 100, 12000];
+  cost.decision = { make_now_process: "fdm", make_now_material: "PP", tooling_process: null,
+    tooling_dfm_ready: false, crossover_qty: null, if_redesigned: {}, note: "",
+    recommendation: Object.fromEntries([fdm, mjf, annual].map((e) => [e.quantity, e])) };
+  const first = scrubSelection(cost, 0);
+  assert.equal(first.estimate, fdm);
+  assert.equal(first.confidence?.validated, true);
+  const hundred = scrubSelection(cost, qtyToFraction(100, 1, 12000));
+  assert.equal(hundred.estimate, mjf);
+  assert.equal(hundred.price.unit, 3.52);
+  assert.equal(hundred.confidence, null);
+  const end = scrubSelection(cost, 1);
+  assert.equal(end.quantity, 12000);
+  assert.equal(end.estimate, annual);
+  assert.equal(end.price.unit, 3.1);
+  const between = scrubSelection(cost, qtyToFraction(10, 1, 12000));
+  assert.equal(between.estimate, fdm);
+  assert.equal(between.exact, false);
+  assert.equal(between.confidence, null);
+  fdm.environment_excluded = true;
+  const excluded = scrubSelection(cost, 0);
+  assert.equal(excluded.estimate, null);
+  assert.equal(excluded.price.unit, null);
+  assert.equal(excluded.confidence, null);
 });

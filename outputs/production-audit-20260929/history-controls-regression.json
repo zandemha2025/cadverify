@@ -1,0 +1,33 @@
+{
+  "finding": "078",
+  "environment": "Local production frontend3017/API8017; not deployed",
+  "before": {
+    "filter": "Required showed No analyses yet despite 28 saved records",
+    "keyboard": "four Advisory rows had tabIndex=-1 and no interactive descendants; Tab after When skipped every row",
+    "native_regression": "assertHistoryLinks failed: every history record needs a native detail link"
+  },
+  "after": {
+    "analysis_href": "/analyses/01M3RK0AFZBF6FPY9S3DS8CQWD",
+    "cost_href": "/cost-decisions/01M3RK0AGB5F4G386CMJM2AT29",
+    "batch_href": "/batch/01M3QR52DQKS71XQR7DECRWXD6",
+    "tab_and_enter_open_exact_record": true,
+    "advisory_rows": 4,
+    "empty_filter_copy_correct": true,
+    "clear_filter_restores_records": true,
+    "initial_page": 20,
+    "loaded_records": 28,
+    "all_record_links_unique": true,
+    "numeric_faces_sort_descending": true
+  },
+  "validation": {
+    "frontend_tests": 494,
+    "types_lint_build": "passed",
+    "shared_check": "scripts/e2e/history-link-validation.mjs; native red/green and CI P7 cost-governance integration",
+    "limits": "Fresh CI and production verification pending; delayed-response filter races not exercised."
+  },
+  "screenshots": [
+    "078-history-empty-before.png",
+    "078-history-empty-fixed.png",
+    "078-history-keyboard-link.png"
+  ]
+}

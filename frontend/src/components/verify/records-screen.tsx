@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
+import { costDispositionBasisLabel } from "@/lib/cost-disposition";
 import { recordVerdictModel, type Tone } from "@/lib/verify/verification";
 import {
   Kicker,
@@ -51,6 +52,8 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const refresh = useCallback(async () => {
+    setRows(null);
+    setError(null);
     try {
       const page = await fetchCostDecisions({ limit: PAGE });
       setRows(page.cost_decisions);
@@ -93,9 +96,14 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
         world, its verdict, its receipts, and whoever decided.
       </p>
 
-      {error && <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>couldn&apos;t load records — {error}</p>}
+      {error && (
+        <div role="alert" style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          <p>couldn&apos;t load records — {error}</p>
+          <GhostButton onClick={() => void (rows?.length ? loadMore() : refresh())} disabled={loadingMore}>Retry records</GhostButton>
+        </div>
+      )}
 
-      {rows === null ? (
+      {error && rows?.length === 0 ? null : rows === null ? (
         <div style={{ marginTop: 24 }}><Spinner label="loading records…" /></div>
       ) : rows.length === 0 ? (
         <div style={{ marginTop: 24, maxWidth: 640 }}>
@@ -198,6 +206,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const verdictModel = detail
     ? recordVerdictModel(detail.result, {
         hasCostedRoute: Boolean(detail.make_now_process && est),
+        process: est?.process,
         dfmReady: est?.dfm_ready,
         dfmVerdict: est?.dfm_verdict,
       })
@@ -205,7 +214,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const v = verdictModel
     ? { ...verdictModel, color: VERDICT_COLOR[verdictModel.tone] }
     : { text: "", kicker: "", tone: "neutral" as Tone, color: C.ink };
-  const material = detail?.result?.decision?.make_now_material ?? null;
+  const material = est?.material ?? detail?.result?.decision?.make_now_material ?? null;
 
   const pf =
     conf && conf.high_usd > conf.low_usd
@@ -289,6 +298,11 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
               pinned to the rate version it was computed under — a calibration switch never rewrites it
             </p>
+            {est && (
+              <p data-testid="record-estimate-context" style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink70 }}>
+                Receipts and confidence below: {procLabel(est.process)} · {est.material} · quantity {NUM(est.quantity)}
+              </p>
+            )}
 
             <div
               data-testid="record-disposition-summary"
@@ -300,6 +314,9 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <strong style={{ fontSize: 12.5, color: detail.user_disposition ? C.pass : C.cond }}>
                 {detail.user_disposition_label ?? "Not decided"}
               </strong>
+              {detail.user_disposition && <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink50 }}>
+                {costDispositionBasisLabel(detail.disposition_basis)}
+              </span>}
               <a
                 href={`/cost-decisions/${id}`}
                 style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10.5, color: C.ink, textDecoration: "underline", textUnderlineOffset: 3 }}

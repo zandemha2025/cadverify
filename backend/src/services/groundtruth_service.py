@@ -22,6 +22,7 @@ import asyncio
 import csv
 import io
 import logging
+import math
 import os
 import re
 from dataclasses import replace
@@ -32,6 +33,7 @@ from typing import Optional
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
 
 from src.analysis.models import ProcessType
 from src.costing import calibration_store as cstore
@@ -70,7 +72,7 @@ CSV_OPTIONAL_COLUMNS = (
     "material_class", "shop", "region", "currency", "source", "source_type",
     "vendor_quote_id", "invoice_date", "actual_machine_hours",
     "actual_setup_hours", "actual_labor_hours", "actual_inspection_hours",
-    "actual_cycle_seconds", "evidence_sha256", "evidence_uri", "part_path",
+    "actual_cycle_seconds", "evidence_sha256", "source_units", "evidence_uri", "part_path",
     "notes",
 )
 CSV_HEADER = ",".join(CSV_REQUIRED_COLUMNS + CSV_OPTIONAL_COLUMNS)
@@ -158,8 +160,8 @@ def _parse_optional_float(raw: str, name: str, row_errs: list) -> Optional[float
     except ValueError:
         row_errs.append(f"{name} not a number ('{raw}')")
         return None
-    if val < 0:
-        row_errs.append(f"{name} must be >= 0 (got {val})")
+    if not math.isfinite(val) or val < 0:
+        row_errs.append(f"{name} must be a finite number >= 0 (got {val})")
         return None
     return val
 
@@ -295,6 +297,8 @@ def parse_ground_truth_csv(text: str):
                 quantity = int(quantity_raw)
                 if quantity < 1:
                     row_errs.append(f"quantity must be >= 1 (got {quantity})")
+                elif quantity > 2_147_483_647:
+                    row_errs.append("quantity must be at most 2147483647")
             except ValueError:
                 row_errs.append(f"quantity not an integer ('{quantity_raw}')")
 
@@ -304,9 +308,9 @@ def parse_ground_truth_csv(text: str):
         else:
             try:
                 cost = float(cost_raw)
-                if not (cost > 0):
+                if not math.isfinite(cost) or not (cost > 0):
                     row_errs.append(
-                        f"actual_unit_cost_usd must be > 0 (got {cost})"
+                        f"actual_unit_cost_usd must be > 0 and finite (got {cost})"
                     )
             except ValueError:
                 row_errs.append(
@@ -356,6 +360,9 @@ def parse_ground_truth_csv(text: str):
         evidence_sha256 = cell(record, "evidence_sha256") or None
         if evidence_sha256 and not _SHA256_RE.fullmatch(evidence_sha256):
             row_errs.append("evidence_sha256 must be a 64-character hex digest")
+        source_units = cell(record, "source_units") or "mm"
+        if source_units not in {"mm", "inch"}:
+            row_errs.append("source_units must be mm or inch")
 
         if row_errs:
             errors.append({"line": line, "reason": "; ".join(row_errs)})
@@ -380,6 +387,7 @@ def parse_ground_truth_csv(text: str):
             "actual_inspection_hours": actual_inspection_hours,
             "actual_cycle_seconds": actual_cycle_seconds,
             "evidence_sha256": evidence_sha256.lower() if evidence_sha256 else None,
+            "source_units": source_units,
             "evidence_uri": cell(record, "evidence_uri") or None,
             "part_path": safe_part_path,
             "notes": cell(record, "notes"),
@@ -404,10 +412,15 @@ async def import_records(
     errors: list = []
     for idx, payload in enumerate(rows):
         try:
-            await ingest_record(session, org_id, user_id, payload)
+            async with session.begin_nested():
+                await ingest_record(session, org_id, user_id, payload)
             imported += 1
         except (ValueError, KeyError) as exc:
             errors.append({"line": None, "index": idx, "reason": str(exc)})
+        except DBAPIError as exc:
+            if exc.connection_invalidated or str(getattr(exc.orig, "sqlstate", ""))[:2] not in {"22", "23"}:
+                raise
+            errors.append({"line": None, "index": idx, "reason": "The row could not be saved. Check its values and identifiers."})
     return imported, errors
 
 
@@ -434,6 +447,7 @@ def row_to_public(r: GroundTruthRecordRow) -> dict:
         "actual_inspection_hours": r.actual_inspection_hours,
         "actual_cycle_seconds": r.actual_cycle_seconds,
         "evidence_sha256": r.evidence_sha256,
+        "source_units": r.source_units,
         "evidence_uri": r.evidence_uri,
         "stand_in": r.stand_in,
         "part_path": r.part_path,
@@ -468,6 +482,7 @@ def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
         actual_inspection_hours=r.actual_inspection_hours,
         actual_cycle_seconds=r.actual_cycle_seconds,
         evidence_sha256=r.evidence_sha256,
+        source_units=r.source_units,
         evidence_uri=r.evidence_uri,
         stand_in=bool(r.stand_in),
         part_path=r.part_path,
@@ -508,7 +523,7 @@ def _extract_geometry_features(gt: GroundTruthRecord,
         from src.costing.cli import _run_engine
         from src.costing.drivers import extract_drivers
 
-        result, mesh, feats = _run_engine(path)
+        result, mesh, feats = _run_engine(path, source_units=gt.source_units)
         dr = extract_drivers(result.geometry, mesh, feats)
         vol = float(dr.volume_cm3)
         area = float(dr.surface_area_cm2)
@@ -553,6 +568,9 @@ async def ingest_record(
     still succeeds. Geometry is never fabricated. The CSV bulk path
     (``import_records``) funnels through here, so it inherits this unchanged.
     """
+    quantity = payload["quantity"]
+    if not isinstance(quantity, int) or isinstance(quantity, bool) or not 1 <= quantity <= 2_147_483_647:
+        raise ValueError("quantity must be an integer between 1 and 2147483647")
     source_type = _normal_payload_source_type(payload)
     stand_in = bool(payload.get("stand_in", False)) or _is_synthetic_source_type(source_type)
     invoice_date = _normal_invoice_date(payload.get("invoice_date"))
@@ -577,6 +595,7 @@ async def ingest_record(
         actual_inspection_hours=payload.get("actual_inspection_hours"),
         actual_cycle_seconds=payload.get("actual_cycle_seconds"),
         evidence_sha256=evidence_sha256,
+        source_units=payload.get("source_units") or "mm",
         evidence_uri=payload.get("evidence_uri"),
         stand_in=stand_in,
         # network-supplied path is confined to a safe relative corpus path
@@ -636,6 +655,7 @@ async def ingest_record(
         actual_inspection_hours=gt.actual_inspection_hours,
         actual_cycle_seconds=gt.actual_cycle_seconds,
         evidence_sha256=evidence_sha256,
+        source_units=gt.source_units,
         evidence_uri=gt.evidence_uri,
         stand_in=gt.stand_in,
         part_path=gt.part_path,
@@ -721,14 +741,14 @@ def recalibrate_from_records(
     )
     he = loop.heldout_eval
     # A real row is not enough by itself: the served empirical interval needs
-    # MIN_RESIDUALS costable REAL rows on the held-out side.  Bind this same
+    # MIN_RESIDUALS costable REAL rows for the SAME held-out process. Bind this
     # threshold to both the API's validated flag and the durable bundle so the
     # UI can never report success while /validate/cost silently falls back to
     # an assumption band.
     validated = (
         he.metrics_real is not None
         and he.n_real >= MIN_RESIDUALS
-        and loop.residual_model.from_real
+        and bool(loop.residual_model.validated_processes)
     )
     bundle = cstore.CalibrationBundle(
         org_id=org_id,
@@ -760,6 +780,7 @@ def recalibrate_from_records(
         ],
         "from_real": bool(validated),
         "validated": bool(validated),
+        "validated_processes": loop.residual_model.validated_processes,
         "claim": he.claim,
         "calibration": loop.calibration.to_dict(),
         "heldout_metrics_real": he.metrics_real,
@@ -799,23 +820,25 @@ async def recalibrate_org(
     from src.storage import ObjectNotFoundError
 
     with TemporaryDirectory(prefix="proofshape-calibration-") as temp_root:
-        materialized: dict[str, tuple[str, str] | None] = {}
+        materialized: dict[tuple[str, str], str | None] = {}
         resolved_records: list[GroundTruthRecord] = []
         for record in records:
             digest = (record.evidence_sha256 or "").lower()
             if digest:
-                if digest not in materialized:
+                key = (digest, record.source_units)
+                if key not in materialized:
                     try:
-                        payload = await read_costable_mesh_artifact(org_id, digest)
+                        payload = await read_costable_mesh_artifact(org_id, digest, source_units=record.source_units)
                     except ObjectNotFoundError:
-                        materialized[digest] = None
+                        materialized[key] = None
                     else:
-                        name = f"source-{digest}.stl"
+                        name = f"source-{digest}-{record.source_units}.stl"
                         Path(temp_root, name).write_bytes(payload)
-                        materialized[digest] = (name, ".stl")
-                source = materialized[digest]
+                        materialized[key] = name
+                source = materialized[key]
                 if source is not None:
-                    resolved_records.append(replace(record, part_path=source[0]))
+                    # The artifact is already normalized; do not scale it again.
+                    resolved_records.append(replace(record, part_path=source, source_units="mm"))
                     continue
 
             # Preserve an explicitly configured operator corpus for records not
@@ -859,13 +882,20 @@ def load_served_calibration(org_id: str, store_dir: Optional[str] = None):
     model = bundle.residual_model()
     # ``bundle.from_real`` is the durable release gate, not merely a redundant
     # copy of ResidualModel.from_real.  It is false for under-powered real
-    # recalibrations (< 3 held-out residuals), which must not tune the served
+    # recalibrations (< 3 held-out residuals per process), which must not tune the served
     # point or masquerade as an empirical band after a restart.
-    if not bundle.from_real and model.from_real:
+    if model.from_real and (not bundle.from_real or not model.validated_processes):
         return None, None
     # Only a REAL (measured) residual model earns a corrected point; a stand-in
     # spread stays centred on the uncorrected baseline exactly as before.
-    calibration = bundle.calibration if model.from_real else None
+    calibration = None
+    if model.from_real:
+        validated = set(model.validated_processes)
+        calibration = replace(bundle.calibration,
+            process_factors={p: f for p, f in bundle.calibration.process_factors.items()
+                             if p in validated},
+            n_by_process={p: n for p, n in bundle.calibration.n_by_process.items()
+                          if p in validated})
     return model, calibration
 
 

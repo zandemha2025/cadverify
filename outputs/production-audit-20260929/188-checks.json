@@ -1,0 +1,55 @@
+{
+  "red": {
+    "failed": 1,
+    "case": "400x12x12mm bar has a valid 3D placement in a250mm cube but helper returnedNone"
+  },
+  "focused": {
+    "passed": 142,
+    "seconds": 4.35
+  },
+  "backend_full": {
+    "passed": 2837,
+    "skipped": 3,
+    "seconds": 249.51,
+    "skip_policy_enforced": true,
+    "skips": [
+      "real corpus manifest absent",
+      "OCP XDE unavailable (two tests)"
+    ]
+  },
+  "trap": {
+    "ordinary_passed": 29,
+    "known_unit_gap": 1
+  },
+  "pyright": {
+    "existing_errors": 4,
+    "new_errors": 0
+  },
+  "bandit": {
+    "existing_low": 2,
+    "new_findings": 0
+  },
+  "scope": "Six constructive body-diagonal placements added to the shared helper; existing setups preserved. No global negative-fit proof, support certification, or deployment.",
+  "engine_version": "0.3.45",
+  "native": {
+    "actual_STEP_uploads": 6,
+    "analyze_files": 4,
+    "verify_files": 2,
+    "all_previews_ready": true,
+    "fdm_400mm_usd": 127.05,
+    "sla_250mm_usd": 186.98,
+    "owned_250mm_usd": 38.22,
+    "owned_400mm_rejected": true,
+    "inventory_and_governance_unchanged": true
+  },
+  "integrity": {
+    "historical_records_unchanged": {
+      "analyses": 156,
+      "cost_decisions": 169
+    },
+    "existing_estimates_unchanged": 90,
+    "analysis_controls_unchanged": 4,
+    "geometry_controls_unchanged": 9
+  },
+  "frontend": "Unchanged; retained previously checked production build. No frontend test rerun required."
+}

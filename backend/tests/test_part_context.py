@@ -14,8 +14,22 @@ from __future__ import annotations
 
 import pytest
 
+from pydantic import ValidationError
+
 from src.db.models import PartContext
 from src.services import part_context_service as svc
+
+
+def test_declared_counts_reject_coercion_and_database_overflow():
+    from src.api.part_context import DeclareContextBody
+
+    for field in ("annual_volume", "units_per_parent", "bom_roots_per_year"):
+        for value in (True, 1.0, "1"):
+            with pytest.raises(ValidationError):
+                DeclareContextBody.model_validate({field: value})
+        with pytest.raises(ValueError, match="2147483647"):
+            svc.validate_context({field: 2_147_483_648})
+        svc.validate_context({field: 2_147_483_647})
 
 
 # ---------------------------------------------------------------------------

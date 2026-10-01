@@ -1,0 +1,155 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD" [active]
+  - main:
+    - heading "audit-cube.STP" [level=1]
+    - paragraph:
+      - text: Ø/bbox 20.0 × 15.0 × 10.0 mm · 2.72 cm³
+      - text: watertight true · ● MEASURED
+    - paragraph: ▢ bbox envelope · shell unavailable
+    - alert: Verification allowance used up. this account has used its 100 trial checks in total. Contact your workspace administrator or the ProofShape team to review your allowance.
+    - paragraph: CONTEXT
+    - generic: not declared
+    - paragraph: no assembly reference declared
+    - button "X-ray": X-ray
+    - button "Check assembly fit"
+    - generic: drag to orbit
+  - paragraph: Can this be made — on your machines, in materials that survive its service conditions — and what will it really take?
+  - status:
+    - paragraph: ROUTING + DFM READY · COST CALCULATING
+    - paragraph: "Best preliminary route: FDM / FFF"
+    - paragraph: No blocking DFM issue was returned. The resource-cost record is still being assembled.
+    - generic: 20.0 × 15.0 × 10.0 mm
+    - generic: 2.72 cm³
+    - generic: watertight true
+    - generic: ● MEASURED
+    - paragraph: DFM PASS · analysis 8,199.7 ms · cost continues without rerunning DFM
+  - region "Optional service and material assumptions":
+    - paragraph: MAKE THIS VERDICT YOURS · OPTIONAL
+    - paragraph: The answer above uses a default material and ambient service until you declare otherwise.
+    - paragraph: SERVICE CONDITIONS
+    - generic: ambient
+    - group "Service conditions":
+      - button "120 °C service"
+      - button "sour service (H₂S)"
+      - button "35 MPa pressure"
+    - paragraph: no service conditions declared — the part is verified at ambient.
+    - paragraph:
+      - text: MATERIAL CLASS ·
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - radiogroup "Material class":
+      - radio "Polymer" [checked]
+      - radio "Aluminum"
+      - radio "Steel"
+      - radio "Stainless"
+      - radio "Titanium"
+  - textbox "computing the walk…" [disabled]
+  - button "Ask" [disabled]:
+  - button "Compare routes @ 1,000" [disabled]
+  - button "Compare saved decisions →" [disabled]
+  - button "Why this verdict?" [disabled]
+  - button "An uncomputable ask"
+  - paragraph:
+    - generic: answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+- region "Notifications alt+T"
+- alert

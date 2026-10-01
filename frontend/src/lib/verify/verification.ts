@@ -104,7 +104,7 @@ const BANNER: Record<MakeabilityLattice, VerdictBannerModel> = {
   not_makeable: {
     kicker: "VERDICT · NOT MAKEABLE",
     title: "Not makeable as modeled.",
-    sub: "No route clears the gates for this geometry — the engine will not fabricate a pass to fill the page.",
+    sub: "The displayed route does not clear the manufacturing gates for this geometry. Review its failures and the other evaluated routes below.",
     tone: "fail",
   },
   unknown: {
@@ -143,6 +143,23 @@ export function readVerification(report: unknown): VerificationBlock | null {
   return candidate as VerificationBlock;
 }
 
+/** The machine fit for the route being displayed. An aggregate pass can belong
+ * to a different process; a missing per-route fit is unknown, never inherited. */
+export function verificationForRoute(
+  verification: VerificationBlock | null,
+  process: string | null | undefined,
+): VerificationBlock | null {
+  if (!verification) return null;
+  const fit = process ? verification.per_route?.[process] : null;
+  const passing = fit?.verdict === "makeable_in_house" || fit?.verdict === "makeable_with_secondary_op";
+  return {
+    ...verification,
+    verdict: fit?.verdict ?? "unknown",
+    best_machine: passing ? fit?.best_machine ?? null : null,
+    gap: fit?.failures ?? [],
+  };
+}
+
 export interface RecordVerdictModel {
   text: string;
   kicker: string;
@@ -156,6 +173,7 @@ export function recordVerdictModel(
   report: unknown,
   state: {
     hasCostedRoute: boolean;
+    process?: string | null;
     dfmReady?: boolean | null;
     dfmVerdict?: string | null;
   },
@@ -164,7 +182,8 @@ export function recordVerdictModel(
     return { text: "Verdict withheld.", kicker: "VERDICT · WITHHELD", tone: "neutral" };
   }
 
-  const verification = readVerification(report);
+  const stored = readVerification(report);
+  const verification = state.process ? verificationForRoute(stored, state.process) : stored;
   if (verification) {
     const model = verdictBannerModel(verification.verdict);
     return { text: model.title, kicker: model.kicker, tone: model.tone };
@@ -212,6 +231,8 @@ function fmtBound(v: unknown): string {
 /** A gate failure as "need N, have M" when both are quantified, else the engine's
  *  own `human` string. Never invents a number the engine didn't send. */
 export function gapText(f: FitFailure): string {
+  // Envelope bounds can compare a diameter to a chamber diagonal, not an axis.
+  if (f.gate === "envelope" && f.human) return f.human;
   if (isNum(f.need) && isNum(f.have)) {
     return `need ${fmtBound(f.need)}, have ${fmtBound(f.have)}`;
   }
@@ -281,8 +302,7 @@ export function envStrikes(v: VerificationBlock | null | undefined): EnvStrike[]
   }));
 }
 
-/** The machine-specific marginal rate for a route, when a PASSING owned machine
- *  re-costs it at its OWN declared rate (SHOP provenance, names the machine). */
+/** The passing machine's USER-declared rate before the engine's capital adjustment. */
 export interface MarginalRate {
   machine: string | null;
   rateUsd: number | null;

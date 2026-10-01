@@ -1,0 +1,31 @@
+{
+  "finding": "081",
+  "environment": "Local frontend3017 \u2192 read-only HTTP proxy8018 \u2192 real API8017; no fabricated response bodies; not deployed",
+  "first_divergence": "Valid gzip response of1214 encoded bytes is decompressed by server fetch, but frontend relays its stale Content-Length. Native History JSON parsing fails at byte1214 and has zero rows.",
+  "before": {
+    "upstream_status": 200,
+    "upstream_encoding": "gzip",
+    "compressed_bytes": 1214,
+    "browser_error": "Expected ':' after property name in JSON at position 1214",
+    "runnable_native_check": "scripts/e2e/history-link-validation.mjs assertHistoryLinks fails"
+  },
+  "fix": "Do not relay Content-Length for Content-Encoding responses after automatic fetch decoding. Preserve unencoded lengths, status, disposition, cache, quota and evidence headers. Public-share proxy already omits length.",
+  "after": {
+    "native_history_rows": 20,
+    "native_history_check": "passed",
+    "native_real_step_export": "/Users/nazeem/Downloads/audit-cube-cost (15).json",
+    "exact_original_json_match": true,
+    "estimates": 16,
+    "real_source_record": "01M3RK0AGB5F4G386CMJM2AT29"
+  },
+  "validation": {
+    "frontend_tests": 494,
+    "types_lint_build": "passed",
+    "reproduction_fixture": "history-delay-proxy.py; bind127.0.0.1:8018 forwarding read-only requests to8017 and point local frontend API_BASE at8018; do not use in production"
+  },
+  "screenshots": [
+    "081-compressed-history-before.png",
+    "081-compressed-history-fixed.png"
+  ],
+  "limits": "Production/CDN replay, wider encodings and downloaded binaries still pending; no production outage attribution is claimed."
+}

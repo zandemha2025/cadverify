@@ -1,23 +1,9 @@
-"""F4 regression: a slender prismatic bar / long rod must never headline
-CNC 5-Axis. It should saw-to-length + turn (round bar) or 3-axis mill
-(rectangular bar).
-
-Root cause (see routing.py):
-  1. `_classify_archetype` had no "long bar" branch, so a 200x20x10mm bar fell
-     through prismatic_block (block_aspect ceiling 4.0 fails at 20:1) into
-     bulk_solid, headlining CNC_3AXIS -> promoted-to-5-axis territory.
-  2. `_routing_sane` returned True for CNC_5AXIS unconditionally, so once the
-     bar's ordinary features tripped the 3-axis undercut DFM error and turning
-     was gated out (not rotational), CNC_5AXIS was the cheapest surviving
-     costed route.
-
-Fix: `is_long_prismatic_bar` classifies the shape and (a) drives a new
-"long_prismatic_bar" archetype headlining 3-axis/turning, never 5-axis, and
-(b) gates CNC_5AXIS out of the costed shortlist for a bar in `_routing_sane`.
-"""
+"""Bar proportions guide routing; orientation must not hide costable routes."""
 from __future__ import annotations
 
 import trimesh
+import numpy as np
+import pytest
 
 from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
 from src.analysis.context import GeometryContext
@@ -68,17 +54,16 @@ def test_long_bar_routes_to_prismatic_bar_not_5axis():
     assert report.routing is not None
     assert report.routing["archetype"] == "long_prismatic_bar"
     assert report.routing["recommended_process"] != "cnc_5axis"
-    assert PT_5AXIS not in report.routing["alternatives"]
+    assert PT_5AXIS in report.routing["alternatives"]
     assert report.routing["reasoning"].strip()
 
 
-def test_long_bar_5axis_not_in_costed_shortlist():
+def test_long_bar_keeps_5axis_costed_as_an_alternative():
     result, mesh, _ctx, feats = _analyze(_long_bar())
     report = estimate_decision(result, mesh, feats,
                                EstimateOptions(quantities=[100],
                                                material_class="aluminum"))
-    assert not _est(report, "cnc_5axis"), (
-        "CNC 5-axis must be gated out of the costed shortlist for a slender bar")
+    assert _est(report, "cnc_5axis"), "Shape alone cannot rule out multi-axis machining"
     # the make-now headline must not be 5-axis either
     assert report.decision.make_now_process != "cnc_5axis"
 
@@ -89,7 +74,7 @@ def test_long_bar_routing_holds_for_steel_too():
                                EstimateOptions(quantities=[100],
                                                material_class="steel"))
     assert report.routing["archetype"] == "long_prismatic_bar"
-    assert not _est(report, "cnc_5axis")
+    assert _est(report, "cnc_5axis")
 
 
 # ── guard: a compact block does NOT get reclassified as a long bar ──────────
@@ -99,3 +84,77 @@ def test_compact_block_not_long_bar():
                                EstimateOptions(quantities=[100],
                                                material_class="aluminum"))
     assert report.routing["archetype"] != "long_prismatic_bar"
+
+
+@pytest.mark.parametrize("angle,axis", [(np.pi / 4, [0, 0, 1]), (.71, [1, 2, 3])])
+@pytest.mark.parametrize("extents,archetype", [([80, 12, 12], "long_prismatic_bar"),
+                                            ([80, 20, 12], "long_prismatic_bar"),
+                                            ([240, 60, 12], "long_prismatic_bar"),
+                                            ([40, 30, 25], "prismatic_block"),
+                                            ([80, 30, 20], "prismatic_block")])
+def test_shape_routing_survives_rotation(extents, archetype, angle, axis):
+    from src.costing.drivers import extract_drivers
+    from src.costing.routing import _classify_archetype, _routing_sane
+    from src.analysis.models import ProcessType
+
+    mesh = trimesh.creation.box(extents=extents)
+    before = extract_drivers(analyze_geometry(mesh), mesh)
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+    mesh.apply_translation([100, -200, 300])
+    after = extract_drivers(analyze_geometry(mesh), mesh)
+    assert after.bbox_mm != before.bbox_mm  # source dimensions still describe the file
+    for material in ["aluminum", "steel"]:
+        old = _classify_archetype(before, material)
+        new = _classify_archetype(after, material)
+        assert old.archetype == new.archetype == archetype
+        assert old.reasoning == new.reasoning
+        assert _routing_sane(ProcessType.CNC_5AXIS, material, before) == _routing_sane(
+            ProcessType.CNC_5AXIS, material, after)
+
+
+def test_rotated_bar_report_keeps_the_same_costed_routes():
+    reports = []
+    for angle in [0, np.pi / 4]:
+        mesh = trimesh.creation.box(extents=[80, 12, 12])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [0, 0, 1]))
+        result, mesh, _, features = _analyze(mesh)
+        reports.append(estimate_decision(result, mesh, features,
+            EstimateOptions(quantities=[1, 100], material_class="aluminum")))
+    assert reports[0].routing == reports[1].routing
+    assert [(e['process'], e['quantity']) for e in reports[0].estimates] == [
+        (e['process'], e['quantity']) for e in reports[1].estimates]
+
+
+def test_transverse_hole_bar_keeps_both_milling_options():
+    solid = trimesh.creation.box(extents=[80, 12, 12])
+    hole = trimesh.creation.cylinder(radius=2, height=14, sections=48)
+    hole.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
+    mesh = trimesh.boolean.difference([solid, hole], engine="manifold")
+    result, mesh, _, features = _analyze(mesh)
+    report = estimate_decision(result, mesh, features,
+        EstimateOptions(quantities=[1, 100], material_class="aluminum"))
+    # The ideal mesh is a straight extrusion along the hole: re-fixturing
+    # permits 3-axis access. Its feature still warrants retaining 5-axis quotes.
+    for process in ["cnc_3axis", "cnc_5axis"]:
+        estimate = _est(report, process)[0]
+        assert estimate["dfm_verdict"] == "pass"
+        assert not estimate.get("environment_excluded")
+    assert report.routing["archetype"] == "long_prismatic_bar"
+    assert report.routing["recommended_process"] == "cnc_3axis"
+    assert "not warranted" not in report.routing["reasoning"]
+
+
+@pytest.mark.parametrize("extents,archetype", [
+    ([79.99999, 20, 12], "bulk_solid"),
+    ([240.00008, 60.00002, 12], "bulk_solid"),
+    ([80.00001, 30, 20], "bulk_solid"),
+])
+def test_real_shape_threshold_overages_remain(extents, archetype):
+    from src.costing.drivers import extract_drivers
+    from src.costing.routing import _classify_archetype
+
+    for angle in [0, np.pi / 4]:
+        mesh = trimesh.creation.box(extents=extents)
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [0, 0, 1]))
+        drivers = extract_drivers(analyze_geometry(mesh), mesh)
+        assert _classify_archetype(drivers, "aluminum").archetype == archetype

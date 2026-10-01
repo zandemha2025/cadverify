@@ -58,6 +58,7 @@ import {
   type RateEntry,
   type ChangeRequest,
   type GroundTruthRecord,
+  type GroundTruthImportSummary,
   type RecalibrateResult,
   type InsufficientGroundTruth,
   type Member,
@@ -83,7 +84,8 @@ export function CalibrationScreen() {
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
         flex: 1,
         overflowY: "auto",
-        padding: "30px 34px",
+        padding: "30px clamp(16px, 3vw, 34px)",
+        overflowWrap: "anywhere",
         background: C.bg,
       }}
     >
@@ -96,7 +98,7 @@ export function CalibrationScreen() {
         actuals.
       </p>
 
-      <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" style={{ marginTop: 24, maxWidth: 1100, alignItems: "start" }}>
         <RatesPanel />
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <HallmarkPanel />
@@ -105,7 +107,7 @@ export function CalibrationScreen() {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" style={{ marginTop: 16, maxWidth: 1100, alignItems: "start" }}>
         <MembersPanel />
         <WebhooksPanel />
       </div>
@@ -252,6 +254,8 @@ function HallmarkPanel() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RecalibrateResult | null>(null);
   const [shortfall, setShortfall] = useState<InsufficientGroundTruth | null>(null);
+  const [csvResult, setCsvResult] = useState<GroundTruthImportSummary | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
   const csvRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -307,8 +311,11 @@ function HallmarkPanel() {
   const onCsv = useCallback(
     async (file: File) => {
       setBusy(true);
+      setCsvResult(null);
+      setCsvError(null);
       try {
         const s = await importGroundTruthCsv(file);
+        setCsvResult(s);
         toast.success(`Sent reality back: ${s.imported} imported · skipped ${s.skipped}`);
         if (s.errors.length) {
           toast.message(`${s.errors.length} row error(s)`, {
@@ -317,6 +324,7 @@ function HallmarkPanel() {
         }
         await refresh();
       } catch (err) {
+        setCsvError(msg(err, "import failed"));
         toast.error(msg(err, "import failed"));
       } finally {
         setBusy(false);
@@ -337,6 +345,10 @@ function HallmarkPanel() {
         <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>Send reality back</p>
         <p style={{ margin: "6px 0 0", fontSize: 11.5, color: C.ink45 }}>
           drop actual hours &amp; invoiced costs (CSV) — the engine validates on parts it never saw
+        </p>
+        <p style={{ margin: "6px 0 0", fontSize: 11.5, color: C.ink45 }}>
+          STL coordinates default to mm. For inch-authored STL, include a source_units column set to inch.
+          STEP and IGES use their embedded units.
         </p>
         <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
           <GhostButton
@@ -368,6 +380,25 @@ function HallmarkPanel() {
           />
         </div>
       </div>
+
+      {csvError && (
+        <p role="alert" style={{ margin: "10px 0 0", fontSize: 11.5, color: C.fail }}>
+          Import failed — {csvError}. Correct the CSV and choose Send actuals again.
+        </p>
+      )}
+      {csvResult && (
+        <div role="status" aria-label="Ground-truth CSV import" style={{ marginTop: 14, border: `1px solid ${csvResult.errors.length ? C.cond : C.pass}`, borderRadius: 8, padding: "9px 10px", fontSize: 11.5 }}>
+          <strong>{csvResult.imported} imported · {csvResult.skipped} skipped · {csvResult.total} total</strong>
+          {csvResult.errors.length > 0 && (
+            <>
+              <ul style={{ margin: "7px 0 0", paddingLeft: 18 }}>
+                {csvResult.errors.map((item, i) => <li key={`${item.line}-${i}`}>line {item.line}: {item.reason}</li>)}
+              </ul>
+              <p style={{ margin: "7px 0 0" }}>Correct the rejected rows and send those rows again.</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* current ground-truth state — REAL counts, never a fixture */}
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 7, fontFamily: MONO, fontSize: 11.5 }}>
@@ -848,14 +879,14 @@ function WebhooksPanel() {
 
   return (
     <Card style={{ padding: "20px 22px" }}>
-      <Kicker>WEBHOOKS — THE RECORD, PUSHED</Kicker>
+      <Kicker>BATCH WEBHOOKS — DELIVERY LOG</Kicker>
       <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
-        Push the full verification record — with provenance, the same JSON the API returns — to your
-        PLM/ERP on <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>verification.completed</span>,{" "}
-        <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>validation.flipped</span>, and more.
+        Configure a webhook URL and shared signing secret when starting a batch. Receive signed JSON
+        summaries for the batch and its processed items. Full verification records are available
+        separately in the app and API.
       </p>
       <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 7, fontFamily: MONO, fontSize: 10.5 }}>
-        {["verification.completed", "validation.flipped", "triage.finished", "decision.recorded"].map((e) => (
+        {["batch.completed", "batch_item.completed"].map((e) => (
           <span key={e} style={{ border: `1px solid #dcdce0`, color: C.ink50, borderRadius: 999, padding: "5px 12px" }}>
             {e}
           </span>
@@ -914,7 +945,7 @@ function AuditLogPanel() {
 
   return (
     <section style={{ marginTop: 16, maxWidth: 1100, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         <Kicker>AUDIT LOG — IMMUTABLE, EXPORTABLE</Kicker>
         {!gated && entries && entries.length > 0 && (
           <a
@@ -940,9 +971,9 @@ function AuditLogPanel() {
       ) : (
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", fontFamily: MONO, fontSize: 11.5 }}>
           {entries.slice(0, 40).map((e) => (
-            <div key={e.id} style={{ display: "flex", gap: 16, padding: "10px 2px", borderBottom: `1px solid #f0f0f3` }}>
-              <span style={{ color: C.ink40, minWidth: 132, flexShrink: 0 }}>{fmtStamp(e.timestamp)}</span>
-              <span style={{ color: C.ink, minWidth: 150, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div key={e.id} className="grid grid-cols-1 gap-2 md:grid-cols-[132px_150px_minmax(0,1fr)] md:gap-4" style={{ padding: "10px 2px", borderBottom: `1px solid #f0f0f3` }}>
+              <span style={{ color: C.ink40 }}>{fmtStamp(e.timestamp)}</span>
+              <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {e.user_email || (e.user_id != null ? `user #${e.user_id}` : "system")}
               </span>
               <span style={{ color: C.ink60 }}>

@@ -1,0 +1,30 @@
+{
+  "scope": "Real stopped/restarted local API; no production change",
+  "before": {
+    "falseDefaultRateClaim": true,
+    "falseEmptyRecordsClaim": true,
+    "regression": "Failed reads cannot claim the default rate context"
+  },
+  "afterOutage": {
+    "status": "PASS",
+    "rateText": "RATE HISTORY — GOVERNED, VERSION-PINNED9/30/2026 · current$95.00/hrdeclared by youRate context unconfirmed — Request failed (500)Retry ratesold verdicts keep the rate version they were computed with · current effective card: unconfirmed",
+    "recordsText": "PARTS ROUTED HERERecords unavailable — The decision service could not finish this request. Try again; existing saved data is unchanged.Retry recordsrouted = cost-decisions whose make-now route is this machine's process",
+    "retryRates": true,
+    "retryRecords": true
+  },
+  "repeatedFailure": "PASS",
+  "recovery": {
+    "rateText": "RATE HISTORY — GOVERNED, VERSION-PINNED9/30/2026 · current$95.00/hrdeclared by youno governed rate card in effect — this rate is your ● USER declarationold verdicts keep the rate version they were computed with · current effective card: default table / user machine rate",
+    "recordButtons": 3,
+    "recordText": "PARTS ROUTED HEREbox-inch.igsCNC 3-Axis · crossover 50 · 9/30/2026open →box-inch.igsCNC 3-Axis · crossover 77 · 9/30/2026open →audit-cube.STPCNC 3-Axis · crossover — · 9/29/2026open →routed = cost-decisions whose make-now route is this machine's process",
+    "retries": 0
+  },
+  "checks": {
+    "frontendPassed": 496,
+    "types": "PASS",
+    "changedLint": "PASS",
+    "build": "PASS",
+    "nativeRegression": "RED before / GREEN after",
+    "backendUnchangedPassed": 2458
+  }
+}

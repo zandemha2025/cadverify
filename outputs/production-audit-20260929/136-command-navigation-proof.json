@@ -1,0 +1,42 @@
+{
+  "finding": "136",
+  "environment": "Native Chrome, local production build at http://127.0.0.1:3017; API8017. Not deployed.",
+  "before": [
+    "Meta+K in Verify opened both the workspace and global command palettes.",
+    "Closing a palette opened from Your machines navigated to Verify instead of preserving the workspace.",
+    "A letter shortcut on a focused command button navigated the underlying workspace while the modal was open.",
+    "Shift+Tab to Keyboard shortcuts followed by Enter opened Design Studio because the container intercepted button Enter and ran its highlighted command."
+  ],
+  "fix": [
+    "One global chord handler delegates to the existing Verify trigger. Explicit global search remains available.",
+    "Keep palette open state separate from the workspace screen. Reuse the installed shared Radix Dialog for modal focus, Escape and return focus.",
+    "Ignore prevented/modal key events in workspace letter shortcuts.",
+    "Keep custom Arrow/Enter selection on the search input; native buttons activate their own command."
+  ],
+  "native_pass": [
+    "Meta+K and Control+K open exactly one named Verify dialog with search focus.",
+    "Control+K closes the local dialog and returns focus to Open Verify command palette without leaving Your machines.",
+    "Escape from a focused command returns focus and retains Your machines; h inside the modal does not navigate the underlying workspace.",
+    "Shift+Tab stays within the palette; Enter on Keyboard shortcuts opens that sheet over Your machines.",
+    "An unmatched query plus ArrowDown and Enter causes no navigation. Mixed-case TrIaGe plus Enter opens Triage at scale.",
+    "Outside Verify, Control+K opens the global Command palette; Escape returns focus to Search and jump to a workspace and retains Design Studio."
+  ],
+  "check_note": "An immediate focus assertion observed BODY during Radix unmount. A fresh settled UI observation confirmed correct trigger focus; no speculative focus workaround was added. One exact-label selector omitted DOM-adjacent text spacing, was corrected from observed DOM, and passed.",
+  "checks": {
+    "frontend_tests": 499,
+    "typescript": "pass",
+    "changed_file_lint": "pass",
+    "production_build": "pass",
+    "log": ".gstack/qa-runtime/command-palette-activation-checks.log",
+    "runnable_native_assertions": "scripts/e2e/command-focus-validation.mjs"
+  },
+  "screenshots": [
+    "136-command-double-before.png",
+    "136-command-context-before.png",
+    "136-command-tab-selection-before.png",
+    "136-command-tab-selection-fixed.png",
+    "136-command-single-final.png",
+    "136-command-context-final.png"
+  ],
+  "limits": "Local menu behavior only. This does not certify every command destination, broader responsive/shortcuts-sheet behavior, production, external integrations, or general result accuracy."
+}

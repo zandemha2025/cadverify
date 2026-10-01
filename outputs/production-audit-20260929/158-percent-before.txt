@@ -1,0 +1,12 @@
+Required - NOT_PRISMATIC
+
+0 mm measured - needs 85 mm
+
+Redesign as a 2D profile extruded along Z. Wire EDM cuts a 2D profile extruded in Z.
+
+Applies to: Wire EDM
+
+×
+‹
+10/11
+›

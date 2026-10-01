@@ -1,0 +1,105 @@
+{
+  "conclusion": "failure",
+  "headSha": "7846eda8784737c2ca3cd9eb5b05716c9406a1d0",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "databaseId": 110132705150,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132705150"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "databaseId": 110132705251,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132705251"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "databaseId": 110132705327,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132705327"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "databaseId": 110132705387,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132705387"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "databaseId": 110132705454,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132705454"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "databaseId": 110132705465,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132705465"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "databaseId": 110132782871,
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110132782871"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "databaseId": 110136929495,
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110136929495"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "databaseId": 110136929511,
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451/job/110136929511"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36787616451",
+  "first_divergence": {
+    "path": "ENT-02",
+    "step": "calibration owner recovers from refusal to a served measured band",
+    "assertion": "one or more post-calibration estimates still served an assumption band",
+    "cause": "Acceptance contract demanded global validation after FDM-only source-bound actuals; new process-specific confidence correctly withholds validation outside FDM."
+  },
+  "earlier_browser_stages": [
+    "site design PASS",
+    "human journey PASS",
+    "Design Studio PASS"
+  ],
+  "later_browser_stages": "Not run after && failure",
+  "repair": {
+    "application_code_changed": false,
+    "expected_validated_processes": [
+      "fdm"
+    ],
+    "require_measured_samples": 3,
+    "require_unsupported_alternative": true,
+    "require_unsupported_confidence": {
+      "validated": false,
+      "method": "assumption-band",
+      "n_samples": 0
+    },
+    "visible_verdict": "must match selected make-now process",
+    "focused_node_tests": 22,
+    "negative_scope_mutations": 9,
+    "fresh_browser_ci": "pending",
+    "all_served_estimates_required": true
+  },
+  "browser_log_sha256": "f7d654201d866d7a85338dc2b639c8c370f72eba98198ca908344f0136b335ea",
+  "browser_artifact_sha256": "c32ec5af4ea9e4008a0a3570200906bf55644d7214d8cac6b8f79b998e5c60a4",
+  "review": "Parallel calibration owner reviewed scope and selected-process alignment; count-completeness finding fixed and regression-tested.",
+  "focused_log_sha256": "932751ff45114563a072ee22f48a334f74586721d420750dd86bc7f95f261c28"
+}

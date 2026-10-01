@@ -1,0 +1,52 @@
+{
+  "status": "PASS",
+  "environment": "local",
+  "filters": [
+    {
+      "label": "Costed · 3",
+      "count": 3,
+      "cards": [
+        "PREVIEW WITHHELDCOSTEDnist_ftc_07_asme1_rd.stp$909.7WAAM · AlSi10Mg · qty 503 findings on route",
+        "PREVIEW WITHHELDCOSTEDcube-10mm.stl$30.00FDM / FFF · PLA · qty 10 findings on route",
+        "PREVIEW WITHHELDCOSTEDaudit-cube.STP$30.00FDM / FFF · PLA · qty 10 findings on route"
+      ]
+    },
+    {
+      "label": "Drafted · 1",
+      "count": 1,
+      "cards": [
+        "PREVIEW WITHHELDDRAFTED · DFMrepaired-block.stl—CNC 3-Axis · Inconel 7180 findings on route"
+      ]
+    },
+    {
+      "label": "With findings · 1",
+      "count": 1,
+      "cards": [
+        "PREVIEW WITHHELDCOSTEDnist_ftc_07_asme1_rd.stp$909.7WAAM · AlSi10Mg · qty 503 findings on route"
+      ]
+    },
+    {
+      "label": "No findings · 3",
+      "count": 3,
+      "cards": [
+        "PREVIEW WITHHELDCOSTEDcube-10mm.stl$30.00FDM / FFF · PLA · qty 10 findings on route",
+        "PREVIEW WITHHELDCOSTEDaudit-cube.STP$30.00FDM / FFF · PLA · qty 10 findings on route",
+        "PREVIEW WITHHELDDRAFTED · DFMrepaired-block.stl—CNC 3-Axis · Inconel 7180 findings on route"
+      ]
+    },
+    {
+      "label": "All · 4",
+      "count": 4,
+      "cards": [
+        "PREVIEW WITHHELDCOSTEDnist_ftc_07_asme1_rd.stp$909.7WAAM · AlSi10Mg · qty 503 findings on route",
+        "PREVIEW WITHHELDCOSTEDcube-10mm.stl$30.00FDM / FFF · PLA · qty 10 findings on route",
+        "PREVIEW WITHHELDCOSTEDaudit-cube.STP$30.00FDM / FFF · PLA · qty 10 findings on route",
+        "PREVIEW WITHHELDDRAFTED · DFMrepaired-block.stl—CNC 3-Axis · Inconel 7180 findings on route"
+      ]
+    }
+  ],
+  "caseInsensitiveSearch": "NIST returns FTC-07 only",
+  "emptySearch": "No parts match, zero cards; corrected search recovers",
+  "standing": " Compare A/B\n  - link \"RFQ packages\":\n    - /url: /rfq-packages\n    - generic: RFQ packages\n  - link \"Recent analyses\":\n    - /url: /history\n    - generic: Recent analyses\n  - link \"Integrations\":\n    - /url: /integrations\n    - generic: Integrations\n  - link \"API & docs\":\n    - /url: /settings/developer\n    - generic: API & docs\n  - link \"Security\":\n    - /url: /settings/security\n    - generic: Security\n  - link \"Organization\":\n    - /url: /settings/organization\n    - generic: Organization\n  - paragraph: One governed object model · a Decision contains Estimates.\n- banner:\n  - button \"Collapse sidebar\":\n  - navigation \"Breadcrumb\":\n    - generic: workspace\n    - generic: verify\n  - button \"Search and jump to a workspace\":\n    - generic: Jump…\n    - generic: ⌘K\n  - link \"Notifications\":\n    - /url: /notifications\n  - button \"Account\":\n- main:\n  - navigation \"Verify workspace sections\":\n    - button \"Home\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\":\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PARTS\"\n    - button \"nist_ftc_07_asme1_rd.stp\": nist_ftc_07_asme1_rd.stp\n    - button \"cube-10mm.stl\": cube-10mm.stl\n    - button \"audit-cube.STP\": audit-cube.STP\n    - button \"repaired-block.stl\": repaired-block.stl\n    - generic: .stp\n    - generic: COSTED · RECORD\n    - paragraph: nist_ftc_07_asme1_rd.stp\n    - paragraph: costed · WAAM · updated 9/29/2026\n    - paragraph: bbox 311.60 × 135.90 × 222.70 mm · 1726.00 cm³ · watertight ✓ · ● MEASURED\n    - button \"Re-verify\"\n    - button \"Compare\"\n    - paragraph: Audit volume 051 → — → nist_ftc_07_asme1_rd.stp · ● USER · 50/yr declared\n    - button \"open program →\"\n    - paragraph: \"VERDICT · OUTSOURCE ONLY · RECORD #R6J1J8\"\n    - paragraph: Makeable — outsource only.\n    - paragraph: should-cost route · WAAM · $909.7/unit @ qty 50\n    - paragraph: assumption-based, not yet validated · n=0 · crossover 102\n    - paragraph: HISTORY — EVERY VERIFICATION APPENDS HERE\n    - generic: 9/29/2026\n    - generic: Cost decision — WAAM · crossover 102 · current\n    - button \"hide record\" [active]\n    - paragraph: 9/29/2026, 11:28:33 PM · engine 0.3.9 · $909.7/unit @ qty 5,000\n    - generic: Material\n    - generic: \"699.556\"\n    - generic \"DEFAULT — Generic fallback — no calibrated value yet.\": ○ DEFAULT\n    - generic: Machine time\n    - generic: \"158.99\"\n    - generic \"DEFAULT — Generic fallback — no calibrated value yet.\": ○ DEFAULT\n    - generic: Cycle Time\n    - generic: \"1.767\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - generic: Labor\n    - generic: \"0\"\n    - generic \"DEFAULT — Generic fallback — no calibrated value yet.\": ○ DEFAULT\n    - generic: Setup\n    - generic: \"3.5\"\n    - generic \"DEFAULT — Generic fallback — no calibrated value yet.\": ○ DEFAULT\n    - generic: Finish Machining\n    - generic: \"47.697\"\n    - generic \"DEFAULT — Generic fallback — no calibrated value yet.\": ○ DEFAULT\n    - generic: 9/29/2026\n    - generic: Cost decision — WAAM · crossover 102\n    - button \"open record →\"\n    - generic: 9/29/2026\n    - generic: Cost decision — CNC 5-Axis · crossover 57\n    - button \"open record →\"\n    - paragraph: this page is the part's standing — the org's memory of what was asked, answered, and decided\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "limits": "This covers these filters, search, modal, standing and latest inline receipt; other part controls and production remain unverified."
+}

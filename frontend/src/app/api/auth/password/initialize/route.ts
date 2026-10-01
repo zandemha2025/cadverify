@@ -1,7 +1,8 @@
-/** Set an initial password only after a first-party verified session exists. */
+/** Set or change a password, rotating the first-party session on success. */
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { getSessionToken, setSession } from "@/lib/session";
+import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
   const session = await getSessionToken();
   if (!session) {
     return NextResponse.json(
-      { detail: { message: "Sign in with your email link first." } },
+      { detail: { message: "Sign in before changing your password." } },
       { status: 401, headers: { "cache-control": "no-store" } },
     );
   }
@@ -20,9 +21,11 @@ export async function POST(req: Request) {
       headers: {
         "content-type": "application/json",
         Cookie: `dash_session=${session}`,
+        ...signedAuthProxyHeaders(req, "/auth/password/initialize"),
       },
       body: JSON.stringify(body),
       cache: "no-store",
+      signal: AbortSignal.timeout(55_000),
     });
     const data = (await res.json().catch(() => ({}))) as {
       session?: unknown;

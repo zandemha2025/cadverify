@@ -2,11 +2,13 @@ import { LockKeyhole } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SecuritySettingsClient } from "./security-settings-client";
+import { verifySession } from "@/lib/dal";
 
-export default function SecuritySettingsPage() {
+export default async function SecuritySettingsPage() {
   const authMode = (process.env.AUTH_MODE || "password").trim().toLowerCase();
   if (authMode === "password" || authMode === "hybrid") {
-    return <SecuritySettingsClient />;
+    const user = await verifySession();
+    return <SecuritySettingsClient hasPassword={user.has_password ?? user.auth_provider === "password"} />;
   }
 
   return (

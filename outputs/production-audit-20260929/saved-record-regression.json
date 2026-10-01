@@ -1,0 +1,17 @@
+{
+  "links": {
+    "status": "PASS",
+    "hrefs": [
+      "/cost-decisions/01M3R3SCMPTWKBDBKX0FXNXD1E",
+      "/cost-decisions/01M3R3SCMPTWKBDBKX0FXNXD1E"
+    ]
+  },
+  "detailUrl": "http://127.0.0.1:3017/cost-decisions/01M3R3SCMPTWKBDBKX0FXNXD1E",
+  "context": {
+    "status": "PASS",
+    "context": "Receipts and confidence below: FDM / FFF · PLA · quantity 10,000",
+    "process": "fdm",
+    "quantity": 10000
+  },
+  "scope": "Local native Chrome; both record actions carry the saved ID; first link clicked and exact detail page loaded. Receipt prices unchanged."
+}

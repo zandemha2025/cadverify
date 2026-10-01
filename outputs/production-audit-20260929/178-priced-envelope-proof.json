@@ -1,0 +1,60 @@
+{
+  "engine_version": "0.3.40",
+  "scope": "Withhold additive estimates unless an enclosing-box setup fits the priced chamber; bind fitted machine XYZ, green-part shrinkage and serial build height; bound estimated batches by a spaced grid.",
+  "regression": "backend/tests/test_priced_build_envelope.py: first valid RED showed DMLS/SLM prices still offered for a 320mm cube; GREEN covers report/cost/machine/rate override/height/shrinkage/invalid capacity seams.",
+  "checks": {
+    "backend_full": {
+      "passed": 2806,
+      "skipped": 3,
+      "seconds": 344.16,
+      "skips": [
+        "real corpus manifest absent",
+        "two optional OCP XDE checks"
+      ],
+      "scope_note": "Full suite collected before final binder-jet inventory envelope scaling and optional-member type narrowing; final focused DB suite covers those changes."
+    },
+    "backend_final_focused_db": {
+      "passed": 141,
+      "skipped": 0,
+      "seconds": 4.61
+    },
+    "frontend_tests": {
+      "passed": 525,
+      "skipped": 0
+    },
+    "frontend_types": "pass; final production build also type-checks",
+    "frontend_lint": "required command passes; 4 pre-existing unrelated warnings; changed files pass with zero warnings",
+    "frontend_final_build": "pass",
+    "pyright": {
+      "errors": 44,
+      "new_errors": 0
+    },
+    "bandit_findings": 0
+  },
+  "limits": [
+    "No continuous orientation search or support/fixture/toolpath certification. Failure to find a box setup withholds price without claiming all orientations impossible.",
+    "Cost/packing/rates remain assumptions; this does not validate real supplier quotes.",
+    "Declared larger-machine and binder shrinkage paths covered by executable integration checks; native inventory replay remains open.",
+    "Sphere timeout remains open; real email, IdP, vendor and other external evidence still pending.",
+    "Local changes only; PR107 merge/deploy unapproved; production unchanged."
+  ],
+  "files": {
+    "178-bar-aligned-after.txt": "4b371838ac816401a6d5b893f024d0a68b36b0e43981bcd5ef2554a59a82b9a8",
+    "178-bar-cost-after.txt": "c0f1c936568ac5cab1cfd67deb810ee1639e3c601c063d91e847505aba94e96e",
+    "178-bar-rotated-after.txt": "9a11f6d2834aa769b91c6f0a758717b30301bb45ee419324c5664f99b94ab234",
+    "178-cost-after.txt": "ade27133cf403c8295af5f01bbb86f048d9a15a88c1b300603adf3176907c7e9",
+    "178-cost-before.txt": "7c04d24669becd561c6688d76fac9b52874cd4a15b1b78e7a424b4004800a447",
+    "178-native-checks.json": "1cb3db71588d6fc147773959cb1b44e57d7258463a5a3dc08ddeb8e4858de90d",
+    "178-priced-envelope-after.png": "750412b846944aa60bb6cad0a71baf1c012062980b9610b45e99fabb1b1d516c",
+    "178-priced-envelope-before.png": "ab0d7e664bf2c1e66a59b26e7b2e38e8c88cb83935ca7f106e9b160e01943d1c",
+    "178-priced-envelope-controls.py": "73c6b13f4bdee30706a152c4ace4b8cea192c966de727553473bc8484d8dce5b",
+    "178-routing-after.txt": "764fe3a693f3173ae60b2b40f560231047aeb402eb56eed802cb4ded079cac61",
+    "178-routing-before.txt": "c40fc4f14d54b73cdc22299152e23000d1d9f98d849a1f04f684fb2263cb78cc",
+    "178-saved-before.json": "c4cccf5876d9e5310a385c3f01ecc3af186d36c7e24aa954116499a3250f9330",
+    "178-saved-readback.json": "9f584249e11b193fd8c83b6a80876812e5f86de3783e63c451bbaf2ef5a840fd",
+    "178-sphere-timeout.txt": "4f018566e6f846d8c81890255c52d3ef7fc0682c555689c37ad6701396095abc",
+    "shape-controls/178-priced-envelope-control.json": "4016fa7d4af27000e5d639226b1f7b9d1e3caa97765cc4cf5727cf1c5ff93baf",
+    "shape-controls/178-priced-envelope-cube.step": "f8c568558ba7c2dc097dd694698d4666f39e21478e64e12a1125854f0641c022",
+    "shape-controls/178-priced-envelope-sphere.step": "03d3c2992895a007f60d066d778bcee5a41beac294364fc114451e1670a16ac2"
+  }
+}

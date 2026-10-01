@@ -1,0 +1,42 @@
+{
+  "observed_at": "2026-09-30T22:34:17.734554+00:00",
+  "scope": "Unauthenticated, read-only production baseline; not post-release acceptance",
+  "requests": [
+    {
+      "url": "https://cadverify-api.onrender.com/health",
+      "status": 200,
+      "content_type": "application/json",
+      "final_url": "https://cadverify-api.onrender.com/health",
+      "body": {
+        "status": "ok",
+        "version": "dev",
+        "build_id": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+        "postgres": true,
+        "redis": true,
+        "async": {
+          "redis": true,
+          "worker": "ok",
+          "expected": true,
+          "worker_strict": false
+        },
+        "reconstruction": {
+          "available": false,
+          "backend": "none",
+          "egress": false
+        }
+      }
+    },
+    {
+      "url": "https://cadverify-web.onrender.com/login",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "final_url": "https://cadverify-web.onrender.com/login",
+      "html_received": true
+    },
+    {
+      "url": "https://cadverify-api.onrender.com/auth/oidc/status",
+      "status": 404,
+      "error": "http_error"
+    }
+  ]
+}

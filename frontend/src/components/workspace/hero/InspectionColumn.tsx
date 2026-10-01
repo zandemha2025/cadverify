@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueValue } from "@/lib/inspection-bind";
+
 /**
  * InspectionColumn — the co-primary FINDINGS column of the part hero (D5 FE-2).
  *
@@ -22,7 +24,7 @@
  */
 
 import * as React from "react";
-import { Crosshair, Factory, ChevronRight, ShieldCheck } from "lucide-react";
+import { Crosshair, Factory, ChevronRight, Info } from "lucide-react";
 import type { IndexedIssue } from "@/lib/dfm-scope";
 import type { DerivedFinding } from "@/lib/findings";
 import {
@@ -154,14 +156,14 @@ export function InspectionColumn({
         <Rise delay={revealBase}>
           <Card className="space-y-2 p-4">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-pass" aria-hidden />
+              <Info className="size-4 text-muted-foreground" aria-hidden />
               <span className="text-sm font-semibold text-foreground">
-                Clean on the recommended route
+                No findings for this selection
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              No DFM blockers on the recommended process and no open cost caveats. The
-              full per-process matrix is one click deeper.
+              Review the available routing and cost evidence in the full audit.
+              Re-cost an uncosted quantity to obtain its drivers and confidence band.
             </p>
           </Card>
         </Rise>
@@ -260,7 +262,7 @@ function DfmCard({
           <span className="num text-xs text-muted-foreground">{issue.code}</span>
           {issue.measured_value !== undefined && issue.required_value !== undefined && (
             <span className="num text-xs text-muted-foreground">
-              {issue.measured_value.toFixed(2)} / {issue.required_value} required
+              {formatIssueValue(issue)} / {formatIssueValue(issue, "required_value")} required
             </span>
           )}
         </div>

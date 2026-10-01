@@ -20,8 +20,17 @@ broken or dishonest). Two INDEPENDENT defenses live here:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 SOURCE_UNITS = ("mm", "inch")
 MM_PER_INCH = 25.4
+
+
+def mesh_source_units(filename: str, declared: str | None) -> str:
+    """Unitless STL/OBJ need declarations; CAD readers normalize embedded units."""
+    if declared not in (None, *SOURCE_UNITS):
+        raise ValueError("source_units must be 'mm', 'inch', or None")
+    return (declared or "mm") if Path(filename).suffix.lower() in {".stl", ".obj"} else "mm"
 
 # Plausibility envelope for ONE manufacturable part, in the engine's mm
 # interpretation. Deliberately GENEROUS (egregious-only): the explicit unit
@@ -53,6 +62,8 @@ def scale_mesh_to_mm(mesh, units: str):
     if units == "inch":
         mesh = mesh.copy()
         mesh.apply_scale(MM_PER_INCH)
+        if "coordinate_error" in mesh.metadata:
+            mesh.metadata["coordinate_error"] *= MM_PER_INCH
     return mesh
 
 

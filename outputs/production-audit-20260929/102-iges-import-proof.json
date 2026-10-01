@@ -1,0 +1,46 @@
+{
+  "scope": "Local engine 0.3.14; not deployed",
+  "boredSource": "Now renders, but the imported shell remains non-watertight; collision remains withheld. No closed-solid success is claimed for this export.",
+  "gap": {
+    "status": "PASS",
+    "measuredGapMm": 10,
+    "noOverlap": true
+  },
+  "preview": {
+    "status": "PASS",
+    "pairCanvasVisible": true
+  },
+  "overlap": {
+    "status": "PASS",
+    "measuredOverlapMm3": 3000,
+    "zeroClearance": true
+  },
+  "inchVerify": {
+    "status": "PASS",
+    "filename": "box-inch.igs",
+    "bboxMm": [
+      508,
+      381,
+      254
+    ],
+    "displayVolumeCm3": 49161.19,
+    "expectedVolumeCm3": 49161.191999999995,
+    "watertight": true,
+    "savedRecord": "01M3S5J3S2D8MQADS7FG798BRC"
+  },
+  "checks": {
+    "coldProcessCases": 8,
+    "backendPassed": 2450,
+    "backendDocumentedSkips": 3,
+    "frontendPassed": 494,
+    "typeErrors": 215,
+    "typeBaselineLimit": 228,
+    "newTypeDiagnosticMessages": 0,
+    "banditMediumHigh": 0
+  },
+  "limitations": [
+    "Curved bored-block export remains non-watertight; source export versus reader limitation unresolved.",
+    "Controlled geometry and arithmetic are not customer quote calibration.",
+    "Exact new-head CI and production deployment/retest pending."
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "scope": "Local production frontend build, actual uploaded unitless STL; no production deployment.",
+  "fixture_sha256": "6b2a70aa9bf4c16b7c2c1adca2d34eef942513f3265c53f1a5c544034bbacc8a",
+  "fixture_name": "cube-10mm.stl",
+  "before": {
+    "draft_unit": "inch",
+    "cost_dimensions_mm": [
+      10,
+      10,
+      10
+    ],
+    "dfm_dimensions_mm": [
+      10,
+      10,
+      10
+    ],
+    "preview_face_space": "preview",
+    "finding_highlight_unavailable": true,
+    "scenario_recall_cost_dimensions_mm": [
+      10,
+      10,
+      10
+    ],
+    "scenario_recall_dfm_dimensions_mm": [
+      254,
+      254,
+      254
+    ]
+  },
+  "after": {
+    "unsubmitted_inch_draft": {
+      "cost_and_dfm_dimensions_mm": [
+        10,
+        10,
+        10
+      ],
+      "preview_face_space": "analysis"
+    },
+    "submitted_inch_units": {
+      "cost_and_dfm_dimensions_mm": [
+        254,
+        254,
+        254
+      ],
+      "volume_cm3": 16387.064,
+      "preview_face_space": "analysis"
+    },
+    "recalled_mm_scenario": {
+      "cost_and_dfm_dimensions_mm": [
+        10,
+        10,
+        10
+      ],
+      "volume_cm3": 1,
+      "unit_cost_at_50_usd": 3.44,
+      "preview_face_space": "analysis",
+      "selected_finding": "INSUFFICIENT_DRAFT",
+      "highlight_visually_confirmed": true
+    }
+  },
+  "validation": {
+    "frontend_tests": 487,
+    "typecheck": "PASS",
+    "changed_file_lint": "PASS",
+    "production_build": "PASS",
+    "native_regression": "red -> green; selection assertion strengthened and repeated",
+    "backend": "unchanged"
+  },
+  "limits": [
+    "Native proof used the tabbed workspace. Both layouts now receive the same submitted units; staged layout was typechecked and built, not separately replayed in this turn.",
+    "The shared submission now advances the existing attempt guard for all re-costs, but no separate out-of-order network race was reproduced."
+  ]
+}
