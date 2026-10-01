@@ -135,7 +135,7 @@ export default function AnalysisDashboard({
           )}
           {canonicalIssues && (
             <span className="text-xs text-muted-foreground">
-              grouped by physical defect · process implications attached
+              matching findings grouped · affected processes attached
             </span>
           )}
         </div>

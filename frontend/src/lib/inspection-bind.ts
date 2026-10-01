@@ -1,8 +1,7 @@
 /**
  * inspection-bind — PURE mapping from the richer Findings-API `Issue`
  * serialization to the shapes the Inspection experience renders. No React, no
- * DOM, no runtime imports (type-only, erased under `node --test` type
- * stripping), so it shares one implementation with the render layer and is
+ * DOM, or framework imports, so it shares one implementation with the render layer and is
  * unit-tested directly.
  *
  * Every function binds ONLY to fields the backend actually serializes today
@@ -21,7 +20,7 @@
  *      stage — the backend relink surfaced client-side.
  */
 import type { Issue, IssueCitation, CostEstimate } from "@/lib/api";
-import type { IndexedIssue } from "@/lib/dfm-scope";
+import { collectIssues, type IndexedIssue } from "./dfm-scope.ts";
 
 /** Compact evidence that preserves the comparison with its displayed limit. */
 export function formatIssueMeasure(value: number, reference?: number | null): string {
@@ -171,27 +170,17 @@ export function isWholePart(issue: Issue): boolean {
  * locatable `IndexedIssue` shape the DFM panel drives on the 3D stage — so a
  * cost-side blocker can be highlighted on the part, not merely restated as text.
  *
- * Dedup + face-union mirror `dfm-scope` (identity = `code|message`), and the
+ * Dedup, process membership and face-union use the shared `dfm-scope` collector, and the
  * keys are namespaced by the estimate's process so a cost-view selection never
  * collides with an analysis-panel key. Returns [] when the report predates the
  * relink (no `dfm_blocker_details`).
  */
 export function costBlockerLocators(estimate: CostEstimate): IndexedIssue[] {
-  const details = estimate.dfm_blocker_details;
-  if (!details || details.length === 0) return [];
-  const proc = estimate.process || "cost";
-  const seen = new Map<string, IndexedIssue>();
-  details.forEach((issue, i) => {
-    const id = `${issue.code}|${issue.message}`;
-    const faces = issue.affected_faces_sample ?? [];
-    const existing = seen.get(id);
-    if (existing) {
-      existing.faces = Array.from(new Set([...existing.faces, ...faces]));
-    } else {
-      seen.set(id, { key: `cost:${proc}#${i}`, issue, faces: [...faces] });
-    }
+  return collectIssues((push) => {
+    (estimate.dfm_blocker_details ?? []).forEach((issue, i) =>
+      push(issue, `cost:${estimate.process || "cost"}#${i}`, estimate.process)
+    );
   });
-  return Array.from(seen.values());
 }
 
 /** Any cost-side blocker across a report's estimates carries a locatable ref. */
@@ -206,7 +195,7 @@ export function hasLocatableCostBlocker(estimates: readonly CostEstimate[]): boo
 /**
  * The report-wide set of cost-side DFM blockers as locatable `IndexedIssue`
  * rows: `costBlockerLocators` per estimate, then merged ACROSS estimates by
- * identity (`code|message`) with the face samples unioned — so a blocker that
+ * matching evidence with face samples and process membership unioned — so a blocker that
  * appears on several costed processes (e.g. the make-now route and the tooling
  * route) surfaces once, carrying every face it touches. Each row keeps its
  * first estimate's `cost:`-namespaced key, distinct from the analysis panel's
@@ -218,17 +207,11 @@ export function hasLocatableCostBlocker(estimates: readonly CostEstimate[]): boo
 export function reportCostBlockerLocators(
   estimates: readonly CostEstimate[]
 ): IndexedIssue[] {
-  const seen = new Map<string, IndexedIssue>();
-  for (const estimate of estimates) {
-    for (const row of costBlockerLocators(estimate)) {
-      const id = `${row.issue.code}|${row.issue.message}`;
-      const existing = seen.get(id);
-      if (existing) {
-        existing.faces = Array.from(new Set([...existing.faces, ...row.faces]));
-      } else {
-        seen.set(id, row);
-      }
+  return collectIssues((push) => {
+    for (const estimate of estimates) {
+      (estimate.dfm_blocker_details ?? []).forEach((issue, i) =>
+        push(issue, `cost:${estimate.process || "cost"}#${i}`, estimate.process)
+      );
     }
-  }
-  return Array.from(seen.values());
+  });
 }

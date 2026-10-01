@@ -1,0 +1,154 @@
+{
+  "filename": "163-wall-6.001-mm.stl",
+  "membershipChecks": [
+    {
+      "code": "WALL_THICKNESS_PRECISION",
+      "processes": [
+        "dlp",
+        "sls",
+        "mjf",
+        "binder_jetting",
+        "fdm",
+        "sla",
+        "dmls",
+        "slm",
+        "ebm",
+        "ded",
+        "waam",
+        "cnc_5axis",
+        "die_casting",
+        "investment_casting",
+        "sand_casting",
+        "injection_molding",
+        "cnc_3axis",
+        "cnc_turning",
+        "forging"
+      ]
+    },
+    {
+      "code": "WALL_UNIFORMITY_SAMPLED",
+      "processes": [
+        "die_casting",
+        "investment_casting",
+        "sand_casting",
+        "injection_molding"
+      ]
+    }
+  ],
+  "evidenceChecks": [
+    {
+      "process": "dlp",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 30.0° overhang threshold for dlp. Supports required.",
+      "membership": [
+        "dlp"
+      ]
+    },
+    {
+      "process": "fdm",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 45.0° overhang threshold for fdm. Supports required.",
+      "membership": [
+        "fdm"
+      ]
+    },
+    {
+      "process": "sla",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 19.0° overhang threshold for sla. Supports required.",
+      "membership": [
+        "sla"
+      ]
+    },
+    {
+      "process": "dmls",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 45.0° overhang threshold for dmls. Supports required.",
+      "membership": [
+        "dmls"
+      ]
+    },
+    {
+      "process": "slm",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 45.0° overhang threshold for slm. Supports required.",
+      "membership": [
+        "slm"
+      ]
+    },
+    {
+      "process": "ebm",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 50.0° overhang threshold for ebm. Supports required.",
+      "membership": [
+        "ebm"
+      ]
+    },
+    {
+      "process": "ded",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 60.0° overhang threshold for ded. Supports required.",
+      "membership": [
+        "ded"
+      ]
+    },
+    {
+      "process": "waam",
+      "code": "OVERHANG",
+      "severity": "warning",
+      "message": "2 faces (16.7%) exceed 60.0° overhang threshold for waam. Supports required.",
+      "membership": [
+        "waam"
+      ]
+    },
+    {
+      "process": "cnc_5axis",
+      "code": "UNDERCUT",
+      "severity": "warning",
+      "message": "6 faces (50.0%) are undercuts for cnc_5axis.",
+      "membership": [
+        "cnc_5axis"
+      ]
+    },
+    {
+      "process": "cnc_3axis",
+      "code": "UNDERCUT",
+      "severity": "error",
+      "message": "6 faces (50.0%) are undercuts for cnc_3axis.",
+      "membership": [
+        "cnc_3axis"
+      ]
+    },
+    {
+      "process": "forging",
+      "code": "UNDERCUT",
+      "severity": "error",
+      "message": "6 faces (50.0%) are undercuts for forging.",
+      "membership": [
+        "forging"
+      ]
+    }
+  ],
+  "selectionChecks": [
+    {
+      "process": "cnc_3axis",
+      "code": "UNDERCUT",
+      "severity": "error",
+      "url": "http://127.0.0.1:3017/analyze?issue=UNDERCUT%7Cfaces%3A1"
+    },
+    {
+      "process": "cnc_5axis",
+      "code": "UNDERCUT",
+      "severity": "warning",
+      "url": "http://127.0.0.1:3017/analyze?issue=UNDERCUT%7Cfaces"
+    }
+  ],
+  "previewReady": true
+}

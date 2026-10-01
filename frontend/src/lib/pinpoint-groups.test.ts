@@ -17,13 +17,30 @@ const row = (key: string, process: string, faces: number[], severity: "error" | 
   },
 });
 
-test("same physical defect across processes becomes one group", () => {
-  const groups = groupPinpointIssues([row("fdm#0", "fdm", [1, 2]), row("sla#0", "sla", [2, 3], "error")]);
+test("matching evidence across processes becomes one group", () => {
+  const groups = groupPinpointIssues([row("fdm#0", "fdm", [1, 2]), row("sla#0", "sla", [2, 3])]);
   assert.equal(groups.length, 1);
   assert.deepEqual(groups[0].faces, [1, 2, 3]);
   assert.deepEqual(groups[0].processes, ["fdm", "sla"]);
-  assert.equal(groups[0].severity, "error");
+  assert.equal(groups[0].severity, "warning");
   assert.equal(groupForIssueKey(groups, "sla#0")?.key, groups[0].key);
+});
+
+test("different process evidence cannot inherit another process's advice or severity", () => {
+  const base = row("fdm#0", "fdm", [1]);
+  for (const change of [
+    { severity: "error" as const }, { required_value: 1.2 },
+    { measured_value: 0.4 }, { fix_suggestion: "Use a different process." },
+    { message: "Another measured defect" },
+  ]) {
+    const other = row("sla#0", "sla", [1]);
+    Object.assign(other.issue, change);
+    const groups = groupPinpointIssues([base, other]);
+    assert.equal(groups.length, 2);
+    assert.notEqual(groups[0].key, groups[1].key);
+    assert.deepEqual(groups.map((g) => g.processes), [["fdm"], ["sla"]]);
+    assert.equal(groupForIssueKey(groups, other.key)?.issue, other.issue);
+  }
 });
 
 test("different payload locations remain separate geometry issues", () => {

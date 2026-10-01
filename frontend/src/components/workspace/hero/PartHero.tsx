@@ -41,7 +41,7 @@ import type {
   ShopProfileInfo,
   ValidationResult,
 } from "@/lib/api";
-import { flattenIssues, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
+import { flattenIssues, highestPriorityIssue, issueProcesses, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
 import { reportCostBlockerLocators } from "@/lib/inspection-bind";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 import { deriveBreakeven } from "@/lib/breakeven";
@@ -250,9 +250,7 @@ export function PartHero({
 
   const onHighlightProcess = React.useCallback(
     (process: string) => {
-      const hit =
-        allIssues.find((i) => i.issue.process === process && i.faces.length) ??
-        allIssues.find((i) => i.issue.process === process);
+      const hit = highestPriorityIssue(allIssues.filter((i) => issueProcesses(i).includes(process)));
       if (hit) setSelectedKey(hit.key);
       else toast(`No geometry-linked faces reported for ${procLabel(process)}.`);
     },

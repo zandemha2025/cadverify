@@ -1,0 +1,289 @@
+[
+  {
+    "process": "dlp",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 30.0\u00b0 overhang threshold for dlp. Supports required.",
+        "process": "dlp",
+        "citation": {
+          "text": "DLP typically 30\u00b0 from vertical."
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 30.0\u00b0 for dlp. DLP typically 30\u00b0 from vertical.",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "fdm",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 45.0\u00b0 overhang threshold for fdm. Supports required.",
+        "process": "fdm",
+        "citation": {
+          "clause": "\u00a75.3",
+          "standard": "ISO/ASTM 52910:2018"
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 45.0\u00b0 for fdm. ISO/ASTM 52910:2018 \u00a75.3.\n\nAlternative: SLS/MJF are self-supporting (no overhang limits). Or redesign with <45\u00b0 angles.",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "sla",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 19.0\u00b0 overhang threshold for sla. Supports required.",
+        "process": "sla",
+        "citation": {
+          "text": "19\u00b0 from horizontal without support.",
+          "standard": "Formlabs"
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 19.0\u00b0 for sla. Formlabs: 19\u00b0 from horizontal without support.",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "dmls",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 45.0\u00b0 overhang threshold for dmls. Supports required.",
+        "process": "dmls",
+        "citation": {
+          "text": "45\u00b0 support threshold.",
+          "standard": "EOS DMLS best practice"
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 45.0\u00b0 for dmls. EOS DMLS best practice: 45\u00b0 support threshold.\n\nAlternative: Consider redesigning overhangs or switching to EBM (50\u00b0 threshold).",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "slm",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 45.0\u00b0 overhang threshold for slm. Supports required.",
+        "process": "slm",
+        "citation": {
+          "text": "SLM 45\u00b0 support threshold."
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 45.0\u00b0 for slm. SLM 45\u00b0 support threshold.",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "ebm",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 50.0\u00b0 overhang threshold for ebm. Supports required.",
+        "process": "ebm",
+        "citation": {
+          "text": "50\u00b0 threshold (pre-heat reduces curl).",
+          "standard": "Arcam"
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 50.0\u00b0 for ebm. Arcam: 50\u00b0 threshold (pre-heat reduces curl).",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "ded",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 60.0\u00b0 overhang threshold for ded. Supports required.",
+        "process": "ded",
+        "citation": {
+          "text": "Multi-axis DED: 60\u00b0 threshold"
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 60.0\u00b0 for ded. Multi-axis DED: 60\u00b0 threshold.",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "waam",
+    "issues": [
+      {
+        "code": "OVERHANG",
+        "scope": "localized",
+        "message": "2 faces (16.7%) exceed 60.0\u00b0 overhang threshold for waam. Supports required.",
+        "process": "waam",
+        "citation": {
+          "text": "Multi-axis WAAM: 60\u00b0 practical limit"
+        },
+        "severity": "warning",
+        "region_center": [
+          98.8,
+          -199.79,
+          297.26
+        ],
+        "fix_suggestion": "Reorient part or redesign overhangs < 60.0\u00b0 for waam. Multi-axis WAAM: 60\u00b0 practical limit.",
+        "affected_face_count": 2,
+        "affected_faces_sample": [
+          3,
+          8
+        ]
+      }
+    ]
+  },
+  {
+    "process": "cnc_5axis",
+    "issues": [
+      {
+        "code": "UNDERCUT",
+        "scope": "localized",
+        "message": "6 faces (50.0%) are undercuts for cnc_5axis.",
+        "process": "cnc_5axis",
+        "citation": {
+          "text": "5-axis may reach \u2014 verify tool clearance."
+        },
+        "severity": "warning",
+        "fix_suggestion": "Remove undercuts or plan multi-setup machining. 5-axis may reach \u2014 verify tool clearance.",
+        "affected_face_count": 6,
+        "affected_faces_sample": [
+          1,
+          3,
+          5,
+          8,
+          10,
+          11
+        ]
+      }
+    ]
+  },
+  {
+    "process": "cnc_3axis",
+    "issues": [
+      {
+        "code": "UNDERCUT",
+        "scope": "localized",
+        "message": "6 faces (50.0%) are undercuts for cnc_3axis.",
+        "process": "cnc_3axis",
+        "citation": {
+          "text": "3-axis: tool access from +Z only"
+        },
+        "severity": "error",
+        "fix_suggestion": "Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only.\n\nAlternative: Switch to 5-axis CNC, or redesign to eliminate undercuts.",
+        "affected_face_count": 6,
+        "affected_faces_sample": [
+          1,
+          3,
+          5,
+          8,
+          10,
+          11
+        ]
+      }
+    ]
+  },
+  {
+    "process": "forging",
+    "issues": [
+      {
+        "code": "UNDERCUT",
+        "scope": "localized",
+        "message": "6 faces (50.0%) are undercuts for forging.",
+        "process": "forging",
+        "citation": {
+          "text": "Forging: no undercuts \u2014 die cannot open"
+        },
+        "severity": "error",
+        "fix_suggestion": "Remove undercuts or plan multi-setup machining. Forging: no undercuts \u2014 die cannot open.",
+        "affected_face_count": 6,
+        "affected_faces_sample": [
+          1,
+          3,
+          5,
+          8,
+          10,
+          11
+        ]
+      }
+    ]
+  }
+]

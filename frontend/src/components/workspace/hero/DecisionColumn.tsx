@@ -19,7 +19,7 @@
 import * as React from "react";
 import { Boxes, ChevronRight, Crosshair } from "lucide-react";
 import type { CostReport } from "@/lib/api";
-import type { IndexedIssue } from "@/lib/dfm-scope";
+import { issueProcesses, type IndexedIssue } from "@/lib/dfm-scope";
 import type { Breakeven } from "@/lib/breakeven";
 import { recommendAt, posToQty, qtyToPos } from "@/lib/breakeven";
 import { pickEstimate } from "@/lib/cost-views";
@@ -150,7 +150,7 @@ export function DecisionColumn({
           <CardContent compact className="space-y-2">
             <div className="flex items-baseline justify-between">
               <span className="cv-eyebrow">Cost blockers</span>
-              <span className="text-micro text-muted-foreground">DFM · on this route</span>
+              <span className="text-micro text-muted-foreground">DFM · across costed processes</span>
             </div>
             <ul className="space-y-1.5">
               {costBlockers.map((b) => {
@@ -160,6 +160,11 @@ export function DecisionColumn({
                   <li key={b.key} className="flex items-start gap-2 text-xs">
                     <span className="flex-1 leading-snug text-muted-foreground">
                       <span className="num text-foreground">{b.issue.code}</span> — {b.issue.message}
+                      {issueProcesses(b).length > 0 && (
+                        <span className="mt-1 block" aria-label="Affected processes">
+                          {issueProcesses(b).map(procLabel).join(", ")}
+                        </span>
+                      )}
                     </span>
                     {locatable && onLocateBlocker ? (
                       <button

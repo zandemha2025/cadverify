@@ -1,0 +1,649 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 163-wall-6.001-mm.stl
+    - text: Advisory
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "163-wall-6.001-mm.stl" [level=1]
+  - text: Issues found
+  - paragraph: One drop · costed and analyzed in-process
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision":
+      - text: Decision
+    - tab "Routing & DFM" [selected]:
+      - text: Routing & DFM
+    - tab "Glass Box":
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - paragraph: Advisory - UNDERCUT
+  - paragraph: Remove undercuts or plan multi-setup machining. 5-axis may reach — verify tool clearance.
+  - paragraph: "Applies to: CNC 5-Axis"
+  - button "Clear selected issue": ×
+  - button "Previous issue": ‹
+  - generic: 11/19
+  - button "Next issue": ›
+  - generic: Volume
+  - generic: 3.6 cm³
+  - generic: Bounding box
+  - generic: 35 × 34 × 20 mm
+  - generic: Faces
+  - generic: "12"
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - paragraph: Highlighting UNDERCUT. Click another blocker, or a face, to change.
+  - tabpanel "Routing & DFM":
+    - generic: Geometric routing
+    - heading "MJF (HP)" [level=3]
+    - generic: "archetype: bulk_solid"
+    - generic: confidence 0.40
+    - paragraph: General solid (15% of bbox filled, ~4.0mm mean wall) with no dominant sheet/rotational/prismatic signature → additive (MJF/SLS) for a polymer prototype.
+    - paragraph:
+      - text: "alternatives: SLS (Powder)"
+      - generic: · CNC 3-Axis
+    - generic: Decided by
+    - generic: rotational
+    - generic: "no"
+    - generic: sheet_like
+    - generic: "no"
+    - generic: planar_aspect
+    - generic: "3.33"
+    - generic: nominal_wall_mm
+    - generic: "4.00"
+    - generic: sheet_gauge_mm
+    - generic: "6.00"
+    - generic: bend_count
+    - generic: "0.00"
+    - generic: DFM matrix · all processes
+    - table:
+      - rowgroup:
+        - row "Process Verdict Suitability First blocker":
+          - columnheader "Process"
+          - columnheader "Verdict"
+          - columnheader "Suitability"
+          - columnheader "First blocker"
+      - rowgroup:
+        - row "FDM / FFF Advisory 80% —":
+          - cell "FDM / FFF"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "SLA Resin Advisory 80% —":
+          - cell "SLA Resin"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "DLP Resin Advisory 90% —":
+          - cell "DLP Resin"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "SLS (Powder) Advisory 90% —":
+          - cell "SLS (Powder)"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "MJF (HP)cost pick · qty 50 Advisory 90% —":
+          - cell "MJF (HP)cost pick · qty 50":
+            - text: MJF (HP)
+            - generic: cost pick · qty 50
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "DMLS (Metal)feasibility-only Advisory 80% —":
+          - cell "DMLS (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "SLM (Metal)feasibility-only Advisory 80% —":
+          - cell "SLM (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "EBM (Metal)feasibility-only Advisory 80% —":
+          - cell "EBM (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Binder Jettingfeasibility-only Advisory 90% —":
+          - cell "Binder Jettingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "DEDfeasibility-only Advisory 80% —":
+          - cell "DEDfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "WAAMfeasibility-only Advisory 80% —":
+          - cell "WAAMfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "CNC 3-Axis Required 5% 6 faces (50.0%) are undercuts for cnc_3axis.":
+          - cell "CNC 3-Axis"
+          - cell "Required":
+            - text: Required
+          - cell "5%"
+          - cell "6 faces (50.0%) are undercuts for cnc_3axis.":
+            - button "6 faces (50.0%) are undercuts for cnc_3axis.":
+              - generic: 6 faces (50.0%) are undercuts for cnc_3axis.
+        - row "CNC 5-Axis Advisory 80% —":
+          - cell "CNC 5-Axis"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - 'row "CNC Turningfeasibility-only Required 0% Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."':
+          - cell "CNC Turningfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."':
+            - 'button "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."':
+              - generic: "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."
+        - row "Wire EDMfeasibility-only Required 0% Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.":
+          - cell "Wire EDMfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.":
+            - button "Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.":
+              - generic: Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.
+        - row "Injection Molding Advisory 75% —":
+          - cell "Injection Molding"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "75%"
+          - cell "—"
+        - row "Die Castingfeasibility-only Advisory 80% —":
+          - cell "Die Castingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Investment Castingfeasibility-only Advisory 80% —":
+          - cell "Investment Castingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Sand Castingfeasibility-only Advisory 80% —":
+          - cell "Sand Castingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Sheet Metalfeasibility-only Advisory 80% —":
+          - cell "Sheet Metalfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Forgingfeasibility-only Required 0% 6 faces (50.0%) are undercuts for forging.":
+          - cell "Forgingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "6 faces (50.0%) are undercuts for forging.":
+            - button "6 faces (50.0%) are undercuts for forging.":
+              - generic: 6 faces (50.0%) are undercuts for forging.
+    - generic: Per-process DFM audit
+    - text: Issues found
+    - paragraph: 163-wall-6.001-mm.stl (STL) — analyzed in 15.6ms
+    - paragraph: Best fit
+    - paragraph: DLP Resin
+    - paragraph: Dimensions
+    - paragraph: 35.4 × 33.7 × 19.9 mm
+    - paragraph: Volume
+    - paragraph: 3.6 cm³
+    - paragraph: Faces
+    - paragraph: "12"
+    - paragraph: Watertight
+    - paragraph: "Yes"
+    - heading "Manufacturability issues" [level=3]
+    - generic: matching findings grouped · affected processes attached
+    - text: Required fixes
+    - generic: "4"
+    - 'button "Required UNDERCUT locate Affected processes 6 faces (50.0%) are undercuts for cnc_3axis. Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only. Alternative: Switch to 5-axis CNC, or redesign to eliminate undercuts."':
+      - text: Required
+      - generic: UNDERCUT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: cnc_3axis
+      - paragraph: 6 faces (50.0%) are undercuts for cnc_3axis.
+      - paragraph: "Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only. Alternative: Switch to 5-axis CNC, or redesign to eliminate undercuts."
+    - 'button "Required NOT_ROTATIONALLY_SYMMETRIC Affected processes Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning. CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC."':
+      - text: Required
+      - generic: NOT_ROTATIONALLY_SYMMETRIC
+      - generic "Affected processes":
+        - generic: cnc_turning
+      - paragraph: "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."
+      - paragraph: CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.
+    - button "Required NOT_PRISMATIC 0% / 85% required Affected processes Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile. Redesign as a 2D profile extruded along Z. Wire EDM cuts a 2D profile extruded in Z.":
+      - text: Required
+      - generic: NOT_PRISMATIC
+      - generic: 0% / 85% required
+      - generic "Affected processes":
+        - generic: wire_edm
+      - paragraph: Only 0% of faces are prismatic (horizontal or vertical). wire_edm requires a 2.5D extruded profile.
+      - paragraph: Redesign as a 2D profile extruded along Z. Wire EDM cuts a 2D profile extruded in Z.
+    - 'button "Required UNDERCUT locate Affected processes 6 faces (50.0%) are undercuts for forging. Remove undercuts or plan multi-setup machining. Forging: no undercuts — die cannot open."':
+      - text: Required
+      - generic: UNDERCUT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: forging
+      - paragraph: 6 faces (50.0%) are undercuts for forging.
+      - paragraph: "Remove undercuts or plan multi-setup machining. Forging: no undercuts — die cannot open."
+    - text: Advisory
+    - generic: "15"
+    - button "Advisory WALL_THICKNESS_PRECISION Affected processes Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain. Confirm critical wall thicknesses in the source CAD before manufacturing.":
+      - text: Advisory
+      - generic: WALL_THICKNESS_PRECISION
+      - generic "Affected processes":
+        - generic: dlp
+        - generic: sls
+        - generic: mjf
+        - generic: binder_jetting
+        - generic: fdm
+        - generic: sla
+        - generic: dmls
+        - generic: slm
+        - generic: ebm
+        - generic: ded
+        - generic: waam
+        - generic: cnc_5axis
+        - generic: die_casting
+        - generic: investment_casting
+        - generic: sand_casting
+        - generic: injection_molding
+        - generic: cnc_3axis
+        - generic: cnc_turning
+        - generic: forging
+      - paragraph: Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.
+      - paragraph: Confirm critical wall thicknesses in the source CAD before manufacturing.
+    - button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 30.0° overhang threshold for dlp. Supports required. Reorient part or redesign overhangs < 30.0° for dlp. DLP typically 30° from vertical.":
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: dlp
+      - paragraph: 2 faces (16.7%) exceed 30.0° overhang threshold for dlp. Supports required.
+      - paragraph: Reorient part or redesign overhangs < 30.0° for dlp. DLP typically 30° from vertical.
+    - 'button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 45.0° overhang threshold for fdm. Supports required. Reorient part or redesign overhangs < 45.0° for fdm. ISO/ASTM 52910:2018 §5.3. Alternative: SLS/MJF are self-supporting (no overhang limits). Or redesign with <45° angles."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: fdm
+      - paragraph: 2 faces (16.7%) exceed 45.0° overhang threshold for fdm. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 45.0° for fdm. ISO/ASTM 52910:2018 §5.3. Alternative: SLS/MJF are self-supporting (no overhang limits). Or redesign with <45° angles."
+    - 'button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 19.0° overhang threshold for sla. Supports required. Reorient part or redesign overhangs < 19.0° for sla. Formlabs: 19° from horizontal without support."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: sla
+      - paragraph: 2 faces (16.7%) exceed 19.0° overhang threshold for sla. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 19.0° for sla. Formlabs: 19° from horizontal without support."
+    - button "Advisory CUPPING_RISK Affected processes Large downward-facing area (600mm², 33%) — resin cupping / suction risk during peel. Add drain holes, tilt part 10-15°, or orient concave side up.":
+      - text: Advisory
+      - generic: CUPPING_RISK
+      - generic "Affected processes":
+        - generic: sla
+      - paragraph: Large downward-facing area (600mm², 33%) — resin cupping / suction risk during peel.
+      - paragraph: Add drain holes, tilt part 10-15°, or orient concave side up.
+    - 'button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 45.0° overhang threshold for dmls. Supports required. Reorient part or redesign overhangs < 45.0° for dmls. EOS DMLS best practice: 45° support threshold. Alternative: Consider redesigning overhangs or switching to EBM (50° threshold)."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: dmls
+      - paragraph: 2 faces (16.7%) exceed 45.0° overhang threshold for dmls. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 45.0° for dmls. EOS DMLS best practice: 45° support threshold. Alternative: Consider redesigning overhangs or switching to EBM (50° threshold)."
+    - button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 45.0° overhang threshold for slm. Supports required. Reorient part or redesign overhangs < 45.0° for slm. SLM 45° support threshold.":
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: slm
+      - paragraph: 2 faces (16.7%) exceed 45.0° overhang threshold for slm. Supports required.
+      - paragraph: Reorient part or redesign overhangs < 45.0° for slm. SLM 45° support threshold.
+    - 'button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 50.0° overhang threshold for ebm. Supports required. Reorient part or redesign overhangs < 50.0° for ebm. Arcam: 50° threshold (pre-heat reduces curl)."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: ebm
+      - paragraph: 2 faces (16.7%) exceed 50.0° overhang threshold for ebm. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 50.0° for ebm. Arcam: 50° threshold (pre-heat reduces curl)."
+    - 'button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 60.0° overhang threshold for ded. Supports required. Reorient part or redesign overhangs < 60.0° for ded. Multi-axis DED: 60° threshold."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: ded
+      - paragraph: 2 faces (16.7%) exceed 60.0° overhang threshold for ded. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 60.0° for ded. Multi-axis DED: 60° threshold."
+    - 'button "Advisory OVERHANG locate Affected processes 2 faces (16.7%) exceed 60.0° overhang threshold for waam. Supports required. Reorient part or redesign overhangs < 60.0° for waam. Multi-axis WAAM: 60° practical limit."':
+      - text: Advisory
+      - generic: OVERHANG
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: waam
+      - paragraph: 2 faces (16.7%) exceed 60.0° overhang threshold for waam. Supports required.
+      - paragraph: "Reorient part or redesign overhangs < 60.0° for waam. Multi-axis WAAM: 60° practical limit."
+    - button "Advisory UNDERCUT shown in 3D Affected processes 6 faces (50.0%) are undercuts for cnc_5axis. Remove undercuts or plan multi-setup machining. 5-axis may reach — verify tool clearance." [active]:
+      - text: Advisory
+      - generic: UNDERCUT
+      - generic "Highlighted on the 3D model":
+        - text: shown in 3D
+      - generic "Affected processes":
+        - generic: cnc_5axis
+      - paragraph: 6 faces (50.0%) are undercuts for cnc_5axis.
+      - paragraph: Remove undercuts or plan multi-setup machining. 5-axis may reach — verify tool clearance.
+    - 'button "Advisory WALL_UNIFORMITY_SAMPLED Affected processes Largest sampled interior section: 6.001mm. Thickness uses interior clearances; unsampled sections may be thicker. Confirm critical wall sections in the source CAD."':
+      - text: Advisory
+      - generic: WALL_UNIFORMITY_SAMPLED
+      - generic "Affected processes":
+        - generic: die_casting
+        - generic: investment_casting
+        - generic: sand_casting
+        - generic: injection_molding
+      - paragraph: "Largest sampled interior section: 6.001mm. Thickness uses interior clearances; unsampled sections may be thicker."
+      - paragraph: Confirm critical wall sections in the source CAD.
+    - button "Advisory SHEET_GAUGE_PRECISION Affected processes Estimated sheet gauge 6.00103mm has up to ±0.000343mm uncertainty from binary STL coordinate rounding. Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.":
+      - text: Advisory
+      - generic: SHEET_GAUGE_PRECISION
+      - generic "Affected processes":
+        - generic: sheet_metal
+      - paragraph: Estimated sheet gauge 6.00103mm has up to ±0.000343mm uncertainty from binary STL coordinate rounding.
+      - paragraph: Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.
+    - button "Advisory TOO_THICK_SHEET 6.00103 mm / 6 mm required Affected processes Thickness 6.00103mm exceeds the default 6mm maximum sheet gauge. Confirm stock and machine capacity for this thickness, or consider plate machining.":
+      - text: Advisory
+      - generic: TOO_THICK_SHEET
+      - generic: 6.00103 mm / 6 mm required
+      - generic "Affected processes":
+        - generic: sheet_metal
+      - paragraph: Thickness 6.00103mm exceeds the default 6mm maximum sheet gauge.
+      - paragraph: Confirm stock and machine capacity for this thickness, or consider plate machining.
+    - 'button "Advisory THICK_WALL 6.001 mm / 6 mm required Affected processes Sampled thick section 6.001mm > 6.0mm — sink marks / long cycle risk. Core out thick sections. Target 2.5mm. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."':
+      - text: Advisory
+      - generic: THICK_WALL
+      - generic: 6.001 mm / 6 mm required
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: Sampled thick section 6.001mm > 6.0mm — sink marks / long cycle risk.
+      - paragraph: "Core out thick sections. Target 2.5mm. GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."
+    - heading "Detected features(6 total)" [level=3]:
+      - text: Detected features
+      - generic: (6 total)
+    - generic: flat
+    - generic: "6"
+    - generic: 2 faces
+    - generic: 98%
+    - paragraph: 120.0mm²
+    - generic: 2 faces
+    - generic: 98%
+    - paragraph: 180.0mm²
+    - generic: 2 faces
+    - generic: 98%
+    - paragraph: 600.0mm²
+    - generic: 2 faces
+    - generic: 98%
+    - paragraph: 600.0mm²
+    - generic: 2 faces
+    - generic: 98%
+    - paragraph: 180.0mm²
+    - generic: 2 faces
+    - generic: 98%
+    - paragraph: 120.0mm²
+    - heading "Process suitability" [level=3]
+    - heading "DLP Resin" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Carbon M2"
+    - paragraph: "Est. cost factor: ×0.43"
+    - paragraph: 2 issues
+    - heading "SLS (Powder)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: EOS P 396"
+    - paragraph: "Est. cost factor: ×0.72"
+    - paragraph: 1 issue
+    - heading "MJF (HP)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: HP Jet Fusion 5200"
+    - paragraph: "Est. cost factor: ×0.65"
+    - paragraph: 1 issue
+    - heading "Binder Jetting" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Machine: ExOne S-Max Pro"
+    - paragraph: "Est. cost factor: ×2.88"
+    - paragraph: 2 issues
+    - heading "FDM / FFF" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: PLA"
+    - paragraph: "Machine: Bambu Lab X1C"
+    - paragraph: "Est. cost factor: ×0.18"
+    - paragraph: 2 issues
+    - heading "SLA Resin" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Formlabs Form 4"
+    - paragraph: "Est. cost factor: ×0.54"
+    - paragraph: 3 issues
+    - heading "DMLS (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: EOS M 400-4"
+    - paragraph: "Est. cost factor: ×7.20"
+    - paragraph: 2 issues
+    - heading "SLM (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: SLM 500"
+    - paragraph: "Est. cost factor: ×7.20"
+    - paragraph: 2 issues
+    - heading "EBM (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: Arcam Q20plus"
+    - paragraph: "Est. cost factor: ×9.00"
+    - paragraph: 2 issues
+    - heading "DED" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Est. cost factor: ×5.40"
+    - paragraph: 3 issues
+    - heading "WAAM" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Est. cost factor: ×3.60"
+    - paragraph: 3 issues
+    - heading "CNC 5-Axis" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: DMG MORI DMU 50"
+    - paragraph: "Est. cost factor: ×0.90"
+    - paragraph: 2 issues
+    - heading "Die Casting" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×0.11"
+    - paragraph: 2 issues
+    - heading "Investment Casting" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×1.08"
+    - paragraph: 2 issues
+    - heading "Sand Casting" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×0.18"
+    - paragraph: 2 issues
+    - heading "Sheet Metal" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 80%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Est. cost factor: ×0.11"
+    - paragraph: 2 issues
+    - heading "Injection Molding" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 75%"
+    - paragraph: "Material: ABS"
+    - paragraph: "Est. cost factor: ×0.07"
+    - paragraph: 3 issues
+    - heading "CNC 3-Axis" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 5%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas VF-2"
+    - paragraph: "Est. cost factor: ×0.36"
+    - paragraph: 2 issues
+    - heading "CNC Turning" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas ST-20"
+    - paragraph: "Est. cost factor: ×0.29"
+    - paragraph: 2 issues
+    - heading "Wire EDM" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: API 13Cr"
+    - paragraph: "Machine: Sodick ALC600G"
+    - paragraph: "Est. cost factor: ×1.80"
+    - paragraph: 2 issues
+    - heading "Forging" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×0.14"
+    - paragraph: 2 issues
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert

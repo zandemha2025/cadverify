@@ -26,6 +26,7 @@ import {
   hasLocatableCostBlocker,
   reportCostBlockerLocators,
 } from "./inspection-bind.ts";
+import { groupPinpointIssues } from "./pinpoint-groups.ts";
 
 test("issue evidence never rounds a distinct measurement onto its threshold", () => {
   for (const [measured, required] of [
@@ -204,6 +205,7 @@ test("reportCostBlockerLocators: merges blockers across estimates, unioning face
   assert.deepEqual([...rows[0].faces].sort((a, b) => a - b), [1, 2, 3]);
   // key stays cost:-namespaced (never collides with a dfm-scope finding key).
   assert.match(rows[0].key, /^cost:/);
+  assert.deepEqual(groupPinpointIssues(rows)[0].processes, ["cnc_milling", "injection_molding"]);
 });
 
 test("reportCostBlockerLocators: keeps a non-localizable blocker (faces=[]) but as an un-locatable row", () => {
@@ -226,6 +228,15 @@ test("reportCostBlockerLocators: keeps a non-localizable blocker (faces=[]) but 
 
 test("reportCostBlockerLocators: [] for a report whose estimates predate the relink", () => {
   assert.deepEqual(reportCostBlockerLocators([est({}) as never, est({}) as never]), []);
+});
+
+test("different evidence on repeated cost processes keeps distinct selection keys", () => {
+  const rows = reportCostBlockerLocators([.4, .5].map((measured_value) => est({
+    dfm_blocker_details: [{ code: "THIN_WALL", severity: "error", message: "Thin wall",
+      measured_value, required_value: .8, fix_suggestion: null }],
+  }) as never));
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map((r) => r.key)).size, 2);
 });
 
 

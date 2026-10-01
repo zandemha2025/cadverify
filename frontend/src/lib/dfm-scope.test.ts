@@ -21,9 +21,12 @@ import {
   routeScopedDfmVerdict,
   severityCounts,
   flattenIssues,
+  flattenScopedIssues,
   highestPriorityIssue,
+  collectIssues,
   dfmScopedFlagsEnabled,
 } from "./dfm-scope.ts";
+import { groupPinpointIssues } from "./pinpoint-groups.ts";
 import type { Issue, ProcessScore, ValidationResult } from "@/lib/api";
 
 /* ---- fixture helpers -------------------------------------------- */
@@ -211,4 +214,57 @@ test("dfmScopedFlagsEnabled defaults ON and honors explicit opt-out", () => {
     if (prev === undefined) delete process.env.NEXT_PUBLIC_DFM_SCOPED_FLAGS;
     else process.env.NEXT_PUBLIC_DFM_SCOPED_FLAGS = prev;
   }
+});
+
+test("identical warnings retain every process through flatten, scope and grouping", () => {
+  const result = bracketResult();
+  result.universal_issues = [];
+  const processes = ["dlp", "mjf", "injection_molding"];
+  result.process_scores = processes.map((p) => ps(p, [
+    issue("WALL_THICKNESS_PRECISION", "warning", "Check source precision", p, [1, 2]),
+  ]));
+  const original = structuredClone(result);
+  const all = flattenIssues(result);
+  assert.equal(all.length, 1);
+  assert.equal(all[0].key, "dlp#0");
+  assert.deepEqual(groupPinpointIssues(all)[0].processes, processes);
+  const scoped = flattenScopedIssues(result, ["mjf"]);
+  assert.deepEqual(groupPinpointIssues(scoped)[0].processes, ["mjf"]);
+  const partition = partitionDfmByRoute(result, "mjf");
+  assert.equal(partition.route[0].key, all[0].key);
+  assert.equal(partition.counts.advisory, 1);
+  assert.equal(partition.extra.length, 0);
+  assert.deepEqual(result, original, "UI projection must not mutate the stored report");
+});
+
+test("process score supplies membership when legacy issues omit process", () => {
+  const result = bracketResult();
+  result.universal_issues = [];
+  result.process_scores = ["fdm", "mjf"].map((p) => ps(p, [issue("A", "warning")]));
+  assert.deepEqual(groupPinpointIssues(flattenIssues(result))[0].processes, ["fdm", "mjf"]);
+});
+
+test("duplicate text cannot hide another route's severity or a distinct location", () => {
+  const result = bracketResult();
+  result.universal_issues = [];
+  result.process_scores = [ps("mjf", [issue("A", "warning", "same", "mjf")]),
+    ps("fdm", [issue("A", "error", "same", "fdm")])];
+  assert.equal(routeScopedDfmVerdict(result, "fdm"), "fail");
+  assert.equal(routeScopedDfmVerdict(result, "mjf"), "issues");
+  result.process_scores[1].issues[0].severity = "warning";
+  result.process_scores[0].issues[0].region_center = [1, 2, 3];
+  result.process_scores[1].issues[0].region_center = [4, 5, 6];
+  assert.equal(groupPinpointIssues(flattenIssues(result)).length, 2);
+});
+
+test("merged face counts describe the union; incomplete samples keep their own totals", () => {
+  const a = { ...issue("A", "warning", "same", "mjf", [1, 2]), affected_face_count: 2 };
+  const b = { ...issue("A", "warning", "same", "fdm", [2, 3]), affected_face_count: 2 };
+  const rows = () => collectIssues((push) => { push(a, "a"); push(b, "b"); });
+  const merged = rows();
+  assert.equal(merged[0].issue.affected_face_count, 3);
+  assert.deepEqual(merged[0].issue.affected_faces_sample, [1, 2, 3]);
+  assert.equal(a.affected_face_count, 2);
+  a.affected_face_count = b.affected_face_count = 100;
+  assert.equal(rows().length, 2, "unknown overlap cannot produce a truthful merged total");
 });

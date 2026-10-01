@@ -74,6 +74,7 @@ import { useInstrumentChrome, type PartFact } from "@/components/instrument/inst
 import { STAGE_UI } from "@/lib/stage-flag";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 import { groupForIssueKey, groupPinpointIssues } from "@/lib/pinpoint-groups";
+import { highestPriorityIssue, issueProcesses } from "@/lib/dfm-scope";
 
 /* PartHero (~1900 lines, stage-only) is code-split into its own lazy chunk so a
    flag-off build never ships it in the main bundle: it is rendered solely from
@@ -558,14 +559,15 @@ export default function PartWorkspace({
 
   const onHighlightProcess = useCallback(
     (process: string) => {
-      const hit = pinpointGroups.find((group) => group.processes.includes(process));
-      if (hit) {
-        selectPinpoint(hit.key);
+      const hit = highestPriorityIssue(dfmIssues.filter((row) => issueProcesses(row).includes(process)));
+      const group = groupForIssueKey(pinpointGroups, hit?.key ?? null);
+      if (group) {
+        selectPinpoint(group.key);
       } else {
         toast(`No geometry-linked faces reported for ${procLabel(process)}.`);
       }
     },
-    [pinpointGroups, selectPinpoint]
+    [dfmIssues, pinpointGroups, selectPinpoint]
   );
 
   /* ---- publish the loaded part's identity to the context-bar breadcrumb --- */

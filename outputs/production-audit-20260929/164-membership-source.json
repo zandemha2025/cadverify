@@ -1,0 +1,180 @@
+{
+  "unchanged_prior_control_records": 10,
+  "sources": [
+    {
+      "filename": "160-rotated-float32.stl",
+      "analysis_id": 1574,
+      "source_sha256": "035c027b337ffa52e25670607f5bf112beb51af92ad63e5ccfd0daee41a7e0c1",
+      "result_sha256": "a28b5f90a0fae45aad4db6850c7c6259c4f2353e93d3594f7f9c5c8f2cad4acb",
+      "process_membership": {
+        "WALL_THICKNESS_PRECISION": [
+          "dlp",
+          "mjf",
+          "sla",
+          "dmls",
+          "slm",
+          "injection_molding",
+          "cnc_3axis",
+          "fdm",
+          "sls",
+          "ebm",
+          "binder_jetting",
+          "ded",
+          "waam",
+          "cnc_5axis",
+          "cnc_turning",
+          "die_casting",
+          "investment_casting",
+          "sand_casting",
+          "forging"
+        ],
+        "WALL_UNIFORMITY_SAMPLED": [
+          "injection_molding",
+          "die_casting",
+          "investment_casting",
+          "sand_casting"
+        ]
+      }
+    },
+    {
+      "filename": "161-sheet-0.499-mm.stl",
+      "analysis_id": 1578,
+      "source_sha256": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78",
+      "result_sha256": "6fe7e01b592fe597ef1a4613d51c2b4e6904d11c946453d1a123c1db4a2ec8b2",
+      "process_membership": {
+        "WALL_THICKNESS_PRECISION": [
+          "dlp",
+          "sla",
+          "dmls",
+          "slm",
+          "cnc_3axis",
+          "injection_molding",
+          "fdm",
+          "sls",
+          "mjf",
+          "ebm",
+          "binder_jetting",
+          "ded",
+          "waam",
+          "cnc_5axis",
+          "cnc_turning",
+          "die_casting",
+          "investment_casting",
+          "sand_casting",
+          "forging"
+        ],
+        "WALL_UNIFORMITY_SAMPLED": [
+          "injection_molding",
+          "die_casting",
+          "investment_casting",
+          "sand_casting"
+        ]
+      }
+    },
+    {
+      "filename": "161-sheet-0.5-inch.stl",
+      "analysis_id": 1579,
+      "source_sha256": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556",
+      "result_sha256": "9874fe8de5b8c2dc8f83bac090bfea7480913fbe28ebd5fc3ce6cb56878d9556",
+      "process_membership": {
+        "WALL_THICKNESS_PRECISION": [
+          "dlp",
+          "mjf",
+          "sla",
+          "dmls",
+          "slm",
+          "injection_molding",
+          "cnc_3axis",
+          "fdm",
+          "sls",
+          "ebm",
+          "binder_jetting",
+          "ded",
+          "waam",
+          "cnc_5axis",
+          "cnc_turning",
+          "die_casting",
+          "investment_casting",
+          "sand_casting",
+          "forging"
+        ],
+        "WALL_UNIFORMITY_SAMPLED": [
+          "injection_molding",
+          "die_casting",
+          "investment_casting",
+          "sand_casting"
+        ]
+      }
+    },
+    {
+      "filename": "163-wall-6.0-mm.stl",
+      "analysis_id": 1580,
+      "source_sha256": "f94b68cd10075c4f4643345eac37820669e9ff43ec6c8b05113c45e86860a6de",
+      "result_sha256": "a566dcbe1faafad2ba64da8fd69e88b54e4284a46d9b5e7b7901f6e2f6cc09e4",
+      "process_membership": {
+        "WALL_THICKNESS_PRECISION": [
+          "dlp",
+          "sls",
+          "mjf",
+          "binder_jetting",
+          "injection_molding",
+          "fdm",
+          "sla",
+          "dmls",
+          "slm",
+          "ebm",
+          "ded",
+          "waam",
+          "cnc_5axis",
+          "die_casting",
+          "investment_casting",
+          "sand_casting",
+          "cnc_3axis",
+          "cnc_turning",
+          "forging"
+        ],
+        "WALL_UNIFORMITY_SAMPLED": [
+          "injection_molding",
+          "die_casting",
+          "investment_casting",
+          "sand_casting"
+        ]
+      }
+    },
+    {
+      "filename": "163-wall-6.001-mm.stl",
+      "analysis_id": 1581,
+      "source_sha256": "9ed3993874e1e1a19c1d4793d19f4455db7c8420b434e3af28941e4b803b70e8",
+      "result_sha256": "776d903c0423d9c8d7665a14a238e8d5e47ffff9e6ffc1e6cf1f5ea790b107af",
+      "process_membership": {
+        "WALL_THICKNESS_PRECISION": [
+          "dlp",
+          "sls",
+          "mjf",
+          "binder_jetting",
+          "fdm",
+          "sla",
+          "dmls",
+          "slm",
+          "ebm",
+          "ded",
+          "waam",
+          "cnc_5axis",
+          "die_casting",
+          "investment_casting",
+          "sand_casting",
+          "injection_molding",
+          "cnc_3axis",
+          "cnc_turning",
+          "forging"
+        ],
+        "WALL_UNIFORMITY_SAMPLED": [
+          "die_casting",
+          "investment_casting",
+          "sand_casting",
+          "injection_molding"
+        ]
+      }
+    }
+  ]
+}
