@@ -736,9 +736,12 @@ async function main() {
       const filePage = await fileContext.newPage();
       monitorPage(filePage, consoleErrors, requestFailures, responseErrors);
       const guideFile = pathToFileURL(path.join(repoRoot, "docs", "training", "proofshape-platform-guide.html")).href;
-      await filePage.goto(`${guideFile}#slide=access`, { waitUntil: "load" });
+      // Lazy images can outlive `load`; don't cancel them with our next reload.
+      await filePage.goto(`${guideFile}#slide=access`, { waitUntil: "networkidle" });
+      await waitForActiveImages(filePage);
       await filePage.evaluate(() => localStorage.removeItem("proofshapePlatformBase"));
-      await filePage.reload({ waitUntil: "load" });
+      await filePage.reload({ waitUntil: "networkidle" });
+      await waitForActiveImages(filePage);
       assert(await filePage.evaluate(() => window.__proofshapeGuide.appBase) === null, "Direct-file guide invented a platform origin");
       await filePage.locator(".slide.active [data-needs-base]").first().click();
       assert(await filePage.evaluate(() => document.activeElement?.id) === "platformBase", "Disabled direct-file action did not focus platform setup");
@@ -750,6 +753,8 @@ async function main() {
         filePage.waitForEvent("load"),
         filePage.locator("#platformConfig").getByRole("button", { name: /Use this platform URL/i }).click(),
       ]);
+      await filePage.waitForLoadState("networkidle");
+      await waitForActiveImages(filePage);
       assert(await filePage.evaluate(() => window.__proofshapeGuide.appBase) === "https://staging.proofshape.test", "Direct-file platform configuration did not persist");
       await fileContext.close();
       return { separateHost: true, unsafeProtocolRejected: true, directFileConfigured: true };
