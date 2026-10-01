@@ -1,0 +1,18 @@
+{
+  "engine_version": "0.3.41",
+  "source_step": "shape-controls/178-priced-envelope-sphere.step",
+  "source_sha256": "03d3c2992895a007f60d066d778bcee5a41beac294364fc114451e1670a16ac2",
+  "artifacts": {
+    "179-checks.json": "0b7a02fb16a826d08f4665281a1f7c89eb59bc41e429a4c9a39e70f7bf033222",
+    "179-native-checks.json": "2e1b79ec6d603e6495c80b8b699860bd2e5073f704142a365606a45c5fa9ea04",
+    "179-saved-before.json": "e53f1ca06a39791eabe064c96eeb241f39860cfb1948b1022345c4caa54d65d3",
+    "179-saved-readback.json": "6d27f400038bc21912abae8677bbe1df5f62ee80beb662e07c9748679dd45584",
+    "179-sphere-glass-after.png": "f74f785520e947a88980208cc0dd6c74982f97d9c985c26137c1ef70f4e28341",
+    "179-sphere-glass-after.txt": "17c4b4a63cfa8a85a903cbddabf8a9bf995a1720303f49e96276d440047d65b1",
+    "179-sphere-profile-proof.json": "a7138ce35cfab055ed586c41daaf096192fac6bb9c1a3b7b4acdfaddd3c2f2e3",
+    "179-sphere-quantity-after.txt": "34a4429f318d4a11a8a2f0205a1dc02908f6116737af37b43e82520367625fc6",
+    "179-sphere-routing-after.png": "6df925c252c7c9767f991f427ebb81c0a58358d2cc575272dca82415155e8cf8",
+    "179-sphere-routing-after.txt": "3b163852759eb823f02d9b2f343c7bd1cce32ea9817b54af8173d5dd9c302c97"
+  },
+  "status": "Local sphere timeout fixed and verified. Goal remains incomplete; production unchanged."
+}

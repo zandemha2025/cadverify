@@ -302,9 +302,20 @@ class GeometryContext:
             if extra:
                 points = np.vstack([points, extra])
             points = np.unique(np.vstack([points, self.mesh.center_mass]), axis=0)
+            # Distance to any actual triangle bounds nearest-surface distance
+            # from above. Try the most promising samples first, then skip only
+            # those that cannot improve the measured maximum.
+            _, nearest = KDTree(self.centroids).query(points)
+            surface = trimesh.triangles.closest_point(self.mesh.triangles[nearest], points)
+            upper = np.linalg.norm(points - surface, axis=1)
+            order = np.argsort(-upper)
+            points, upper = points[order], upper[order]
             best = 0.0
             for start in range(0, len(points), batch):
                 candidates = points[start:start + batch]
+                candidates = candidates[upper[start:start + batch] + tol > best / 2]
+                if not len(candidates):
+                    break
                 # Concavities, cavities and separate bodies must not turn an
                 # exterior clearance into material thickness.
                 candidates = candidates[self.mesh.contains(candidates)]

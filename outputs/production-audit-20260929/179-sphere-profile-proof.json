@@ -1,0 +1,48 @@
+{
+  "source": "shape-controls/178-priced-envelope-sphere.step",
+  "source_sha256": "03d3c2992895a007f60d066d778bcee5a41beac294364fc114451e1670a16ac2",
+  "before": [
+    {
+      "stage": "parse",
+      "seconds": 1.3375463751144707,
+      "faces": 99974,
+      "vertices": 49989,
+      "volume": 17155393.718155313
+    },
+    {
+      "stage": "analysis",
+      "seconds": 56.570075625088066,
+      "features": 0
+    },
+    {
+      "stage": "cost",
+      "seconds": 0.06859545898623765,
+      "estimates": 18
+    }
+  ],
+  "after": [
+    {
+      "stage": "parse",
+      "seconds": 1.3209239998832345,
+      "faces": 99974,
+      "vertices": 49989,
+      "volume": 17155393.718155313
+    },
+    {
+      "stage": "analysis",
+      "seconds": 6.740142334019765,
+      "features": 0
+    },
+    {
+      "stage": "cost",
+      "seconds": 0.0681633329950273,
+      "estimates": 18
+    }
+  ],
+  "complete_analysis_identical": true,
+  "complete_cost_report_identical": true,
+  "canonical_result_sha256": "343a40c44bc8e100fd31fc9e3c24ce075cd558a49136a64f21df5702c75b022b",
+  "limits": "One local timing sample per implementation with cProfile enabled. Identical sampled geometry, findings and model estimates do not establish physical manufacturing or supplier quote accuracy.",
+  "analysis_speedup": 8.393009052577401,
+  "isolated_subprocesses_with_identical_inputs": true
+}

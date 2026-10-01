@@ -110,6 +110,27 @@ def test_open_mesh_does_not_claim_molding_uniformity():
                check_wall_uniformity(ctx, 0.5, 6, 2.5, ProcessType.INJECTION_MOLDING))
 
 
+def test_sphere_thick_section_preserves_clearance_without_repeating_full_search(monkeypatch):
+    mesh = trimesh.creation.icosphere(subdivisions=3, radius=10)
+    monkeypatch.setenv("WALL_THICKNESS_RAY_BATCH", "16")
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    expected = 2 * np.min(np.abs(np.einsum(
+        "ij,ij->i", mesh.face_normals, mesh.triangles_center - mesh.center_mass)))
+    original = trimesh.proximity.ProximityQuery.on_surface
+    queries = 0
+
+    def measured(self, points):
+        nonlocal queries
+        queries += len(points)
+        return original(self, points)
+
+    monkeypatch.setattr(trimesh.proximity.ProximityQuery, "on_surface", measured)
+    assert ctx.maximum_inscribed_diameter == pytest.approx(expected, abs=1e-8)
+    # Work bound, independent of CPU speed: thousands of almost-identical
+    # sphere-center samples must not each search the entire surface.
+    assert queries < 256
+
+
 def test_missing_minimum_preserves_independently_measured_thick_section():
     mesh = trimesh.creation.box(extents=[20, 20, 20])
     ctx = GeometryContext.build(mesh, analyze_geometry(mesh))

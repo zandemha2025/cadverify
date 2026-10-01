@@ -1,0 +1,116 @@
+{
+  "engine_version": "0.3.41",
+  "filename": "178-priced-envelope-sphere.step",
+  "source_sha256": "03d3c2992895a007f60d066d778bcee5a41beac294364fc114451e1670a16ac2",
+  "historical_records_unchanged": {
+    "analyses": 138,
+    "cost_decisions": 147
+  },
+  "analyses": {
+    "id": 1791,
+    "result_sha256": "726b57779f972c9bb84d6f7413eb82cb6e8f9a36d14897a77e09c8a4f23249e6",
+    "process_scores_and_all_findings_equal_after_api_serialization_and_suggestion_enrichment": true,
+    "geometry_equal_after_api_serialization": true,
+    "analysis_time_ms": 9367.5,
+    "process_count": 21
+  },
+  "cost_decisions": {
+    "id": 6155,
+    "result_sha256": "56066b4a2282c3ddf4c3fea8482c7905b0941e671210ab84681078fa7f9289cf",
+    "estimates_and_findings_equal_to_pre_fix_profile": true,
+    "estimate_count": 18,
+    "only_report_difference": "Material class provenance is USER because aluminum was selected in the browser; the direct profile used a default option.",
+    "unit_prices": [
+      {
+        "process": "cnc_3axis",
+        "quantity": 1,
+        "unit_cost_usd": 1891.66
+      },
+      {
+        "process": "cnc_3axis",
+        "quantity": 100,
+        "unit_cost_usd": 1779.05
+      },
+      {
+        "process": "cnc_5axis",
+        "quantity": 1,
+        "unit_cost_usd": 2651.33
+      },
+      {
+        "process": "cnc_5axis",
+        "quantity": 100,
+        "unit_cost_usd": 2486.75
+      },
+      {
+        "process": "cnc_turning",
+        "quantity": 1,
+        "unit_cost_usd": 1176.51
+      },
+      {
+        "process": "cnc_turning",
+        "quantity": 100,
+        "unit_cost_usd": 1110.67
+      },
+      {
+        "process": "ded",
+        "quantity": 1,
+        "unit_cost_usd": 15205.58
+      },
+      {
+        "process": "ded",
+        "quantity": 100,
+        "unit_cost_usd": 15174.08
+      },
+      {
+        "process": "die_casting",
+        "quantity": 1,
+        "unit_cost_usd": 90761.88
+      },
+      {
+        "process": "die_casting",
+        "quantity": 100,
+        "unit_cost_usd": 1661.88
+      },
+      {
+        "process": "forging",
+        "quantity": 1,
+        "unit_cost_usd": 120715.07
+      },
+      {
+        "process": "forging",
+        "quantity": 100,
+        "unit_cost_usd": 1811.12
+      },
+      {
+        "process": "investment_casting",
+        "quantity": 1,
+        "unit_cost_usd": 54430.2
+      },
+      {
+        "process": "investment_casting",
+        "quantity": 100,
+        "unit_cost_usd": 918.22
+      },
+      {
+        "process": "sand_casting",
+        "quantity": 1,
+        "unit_cost_usd": 21406.78
+      },
+      {
+        "process": "sand_casting",
+        "quantity": 100,
+        "unit_cost_usd": 582.13
+      },
+      {
+        "process": "waam",
+        "quantity": 1,
+        "unit_cost_usd": 9042.53
+      },
+      {
+        "process": "waam",
+        "quantity": 100,
+        "unit_cost_usd": 9011.03
+      }
+    ]
+  }
+}
