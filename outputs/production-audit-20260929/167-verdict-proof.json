@@ -1,0 +1,22 @@
+{
+  "scope": "Local route-specific verdict display; production unchanged",
+  "frontend_tests": 522,
+  "types_lint_build": "passed",
+  "native_checks": {
+    "real_STEP": true,
+    "header_and_breadcrumb": "CNC 5-Axis \u00b7 Advisory",
+    "analysis_banner": "Wire EDM \u00b7 Pass; geometry only",
+    "validation_503_cost_verdict_retained": true,
+    "clipboard_readback": "unverified; virtual clipboard empty",
+    "stage_layout": "not native verified"
+  },
+  "open_followup": "168 partial analysis failure masks successful cost decision",
+  "files": {
+    "167-header-before.png": "7d38ad3979853e0cbc1fef42676b73bcc5aff75f1b64a367771582e03ae2573f",
+    "167-header-before.txt": "003ba47d0dc3a40a424fcd62b6d0fb56b57c83b9f47c660416b0f44c5e56fecb",
+    "167-header-after.png": "4a1128f370eec6129e85f1b7be6ed085f51daabbcbedd0751716e7584fda163a",
+    "167-header-after.txt": "6e012f589704c4210ffcf1b5634b2c835fbf11e47c6548c398e52f1cb8b76d90",
+    "167-validation-outage.txt": "59767e30ab88dcf30cc213585754e632cb6bea6a5fca86cf069c25deba436ceb",
+    "167-saved-readback.json": "c72e3afa8e94c0e754e99cec3aefbf8939014e04615574d755d2d29400baba97"
+  }
+}

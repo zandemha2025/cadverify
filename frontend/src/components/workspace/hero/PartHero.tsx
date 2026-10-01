@@ -47,7 +47,7 @@ import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { deriveFindings } from "@/lib/findings";
 import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import type { CalibrationView } from "@/lib/cost-views";
+import { workspaceDfmSummary, type CalibrationView } from "@/lib/cost-views";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -162,8 +162,8 @@ export function PartHero({
   const [depth, setDepth] = React.useState<Depth>(null);
   const [showRecost, setShowRecost] = React.useState(false);
 
-  const recProcess =
-    report?.decision?.make_now_process ?? report?.routing?.recommended_process ?? null;
+  const workspaceDfm = React.useMemo(() => workspaceDfmSummary(report, validation), [report, validation]);
+  const recProcess = workspaceDfm.process;
 
   const breakeven = React.useMemo(
     () => (report ? deriveBreakeven(report) : null),
@@ -264,13 +264,13 @@ export function PartHero({
     ? `${analysisFailure.explanation} ${analysisFailure.action}`
     : null;
 
-  const headerBadge = validation ? (
-    <StatusBadge
-      verdict={validation.overall_verdict}
-      label={verdictLabel(validation.overall_verdict, true)}
-    />
-  ) : geomError || analysisFailure?.kind === "geometry" ? (
+  const headerBadge = geomError || analysisFailure?.kind === "geometry" ? (
     <StatusBadge tone="fail" label="Geometry refused" />
+  ) : validation || report ? (
+    <StatusBadge
+      verdict={workspaceDfm.verdict}
+      label={`${workspaceDfm.process ? `${procLabel(workspaceDfm.process)} · ` : ""}${verdictLabel(workspaceDfm.verdict)}`}
+    />
   ) : analysisFailure ? (
     <StatusBadge tone="fail" label="Analysis refused" />
   ) : dfmLoading ? (
@@ -729,9 +729,10 @@ function buildAnswerSummary(
       );
     }
   }
-  if (validation) {
+  if (validation || report) {
+    const dfm = workspaceDfmSummary(report, validation);
     lines.push(
-      `DFM: ${verdictLabel(validation.overall_verdict, true)} (${verdictTone(validation.overall_verdict)})`
+      `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
     );
   }
   return lines.join("\n");

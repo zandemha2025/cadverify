@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ValidationResult } from "@/lib/api";
 import { verdictTone, verdictLabel, procLabel } from "@/lib/status";
-import { partitionDfmByRoute, dfmScopedFlagsEnabled } from "@/lib/dfm-scope";
+import { partitionDfmByRoute, dfmScopedFlagsEnabled, routeScopedDfmVerdict } from "@/lib/dfm-scope";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -30,7 +30,8 @@ export default function AnalysisDashboard({
   processImplications,
 }: AnalysisDashboardProps) {
   const [showAllCandidates, setShowAllCandidates] = useState(false);
-  const tone = verdictTone(result.overall_verdict);
+  const verdict = routeScopedDfmVerdict(result, result.best_process);
+  const tone = verdictTone(verdict);
   const dims = result.geometry.bounding_box_mm;
 
   // FRAGILE-1: scope the "Manufacturability issues" list to the route the part
@@ -71,7 +72,7 @@ export default function AnalysisDashboard({
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge
                 tone={tone}
-                label={verdictLabel(result.overall_verdict, true)}
+                label={`${result.best_process ? `${procLabel(result.best_process)} · ` : ""}${verdictLabel(verdict)}`}
               />
               {result.rule_pack && (
                 <Badge variant="outline" size="sm">
@@ -83,11 +84,14 @@ export default function AnalysisDashboard({
               {result.filename} ({result.file_type.toUpperCase()}) — analyzed in{" "}
               {result.analysis_time_ms}ms
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Geometry checks only. Confirm material compatibility and review the chosen manufacturing route.
+            </p>
           </div>
           {result.best_process && (
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Best fit
+                Geometry ranking
               </p>
               <p className="font-semibold text-foreground">
                 {procLabel(result.best_process)}
@@ -130,7 +134,7 @@ export default function AnalysisDashboard({
           </h3>
           {scoped && !canonicalIssues && (
             <span className="text-xs text-muted-foreground">
-              on recommended route · {routeLabel}
+              on geometry-ranked route · {routeLabel}
             </span>
           )}
           {canonicalIssues && (
@@ -147,14 +151,14 @@ export default function AnalysisDashboard({
             processImplications={processImplications}
           />
         ) : (
-          <Card tone="pass">
-            <CardContent compact className="bg-pass-bg">
+          <Card tone={tone}>
+            <CardContent compact>
               <div className="flex items-center gap-2">
-                <StatusBadge tone="pass" label="Pass" size="sm" />
+                <StatusBadge tone={tone} label={verdictLabel(verdict)} size="sm" />
                 <span className="text-sm text-foreground">
-                  {scoped && extraIssues.length > 0
-                    ? `No DFM issues on the recommended route (${routeLabel}).`
-                    : "No DFM issues found across the evaluated processes."}
+                  {verdict !== "pass"
+                    ? "No detailed findings are available for this route. Review its process verdict."
+                    : `No DFM issues on the geometry-ranked route (${routeLabel}).`}
                 </span>
               </div>
             </CardContent>

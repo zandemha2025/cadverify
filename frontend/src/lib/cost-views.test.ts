@@ -44,8 +44,9 @@ import {
   buildCompareRows,
   blockersByProcess,
   costOverrideError,
+  workspaceDfmSummary,
 } from "./cost-views.ts";
-import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision } from "@/lib/api";
+import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision, ValidationResult } from "@/lib/api";
 
 test("cost overrides reject malformed and impossible values, retaining valid zero rates", () => {
   for (const [name, value] of [
@@ -114,6 +115,65 @@ function report(over: Partial<CostReport>): CostReport {
     ...over,
   };
 }
+
+test("workspace verdict follows the cost route, keeping advisories and unknowns honest", () => {
+  const validation: ValidationResult = {
+    filename: "hole.step", file_type: "step", overall_verdict: "pass", best_process: "wire_edm",
+    analysis_time_ms: 1, geometry: {} as ValidationResult["geometry"], segments: [],
+    universal_issues: [], priority_fixes: [], process_scores: [
+      { process: "wire_edm", score: 1, verdict: "pass", issues: [], recommended_material: null,
+        recommended_machine: null, estimated_cost_factor: null },
+      { process: "cnc_5axis", score: .8, verdict: "issues", recommended_material: null,
+        recommended_machine: null, estimated_cost_factor: null,
+        issues: [{ code: "UNDERCUT", severity: "warning", message: "Verify tool clearance", fix_suggestion: null }] },
+    ],
+  };
+  const route = est({ process: "cnc_5axis", quantity: 1, unit_cost_usd: 195.59, dfm_verdict: "issues" });
+  const cost = report({ decision: decision({ make_now_process: "cnc_5axis" }), estimates: [route] });
+  assert.deepEqual(workspaceDfmSummary(cost, validation), { process: "cnc_5axis", verdict: "issues" });
+  assert.deepEqual(workspaceDfmSummary(null, validation), { process: "wire_edm", verdict: "pass" });
+  assert.deepEqual(workspaceDfmSummary(report({}), validation), { process: null, verdict: "unknown" });
+  cost.decision!.make_now_process = "not_evaluated";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "unknown");
+  cost.decision!.make_now_process = "cnc_5axis";
+  assert.equal(workspaceDfmSummary(cost, null).verdict, "issues", "cost advisories survive absent validation");
+  route.dfm_verdict = "pass";
+  assert.equal(workspaceDfmSummary(cost, null).verdict, "unknown");
+  route.dfm_blockers = ["Tool cannot reach"];
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  route.dfm_blockers = [];
+  validation.universal_issues = [{ code: "OPEN", severity: "error", message: "Open mesh", fix_suggestion: null }];
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  validation.universal_issues = [];
+  validation.process_scores[1].verdict = "fail";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail", "a route failure outranks its warning rows");
+  assert.equal(workspaceDfmSummary(report({ status: "GEOMETRY_INVALID" }), null).verdict, "fail");
+});
+
+test("workspace verdict matches selected material and routing-only cost evidence", () => {
+  const validation = {
+    overall_verdict: "pass", best_process: "cnc_3axis", universal_issues: [],
+    process_scores: [{ process: "cnc_3axis", verdict: "pass", issues: [] }],
+  } as unknown as ValidationResult;
+  const aluminum = est({ process: "cnc_3axis", quantity: 1, unit_cost_usd: 1 });
+  const steel = est({ process: "cnc_3axis", quantity: 1, unit_cost_usd: 2,
+    material: "steel", dfm_verdict: "fail", dfm_ready: false });
+  const cost = report({ decision: decision({ make_now_process: "cnc_3axis", make_now_material: "steel" }),
+    estimates: [aluminum, steel] });
+  for (const estimates of [[aluminum, steel], [steel, aluminum]]) {
+    cost.estimates = estimates;
+    assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  }
+  cost.decision!.make_now_material = "aluminum-6061";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "pass");
+  cost.decision!.make_now_material = "missing";
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "unknown");
+  cost.decision = null;
+  cost.routing = { recommended_process: "cnc_3axis" } as CostReport["routing"];
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "fail");
+  steel.environment_excluded = true;
+  assert.equal(workspaceDfmSummary(cost, validation).verdict, "pass");
+});
 
 /* ---- (a) override-key mapping ------------------------------------ */
 

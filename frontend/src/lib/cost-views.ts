@@ -12,8 +12,27 @@ import type {
   CostEstimate,
   CostAssumption,
   CostDriver,
+  ValidationResult,
 } from "@/lib/api";
 import type { CalibrationRate, CompareRow } from "@/components/glass-box";
+import { routeScopedDfmVerdict } from "./dfm-scope.ts";
+import { routeDfmOutcome } from "./verify/derive.ts";
+
+/** Header and copied-summary verdict for the workspace's make-now route.
+ * A declared cost report with no route cannot borrow an unrelated geometry pass. */
+export function workspaceDfmSummary(report: CostReport | null, validation: ValidationResult | null) {
+  const process = report
+    ? report.decision?.make_now_process ?? report.routing?.recommended_process ?? null
+    : validation?.best_process ?? null;
+  const material = report?.decision?.make_now_material;
+  const estimates = report?.estimates.filter((e) => e.process === process && !e.environment_excluded
+    && (!material || e.material === material)) ?? [];
+  let verdict = routeScopedDfmVerdict(validation, process);
+  for (const estimate of estimates) verdict = routeDfmOutcome(verdict, estimate).verdict;
+  if (report && estimates.length === 0 && verdict === "pass") verdict = "unknown";
+  if (report?.status === "GEOMETRY_INVALID") verdict = "fail";
+  return { process, verdict } as const;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Override mapping (F3) — translate a glass-box edit into the engine's */

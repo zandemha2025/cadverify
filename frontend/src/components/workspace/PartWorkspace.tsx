@@ -40,7 +40,7 @@ import {
   type ValidationResult,
 } from "@/lib/api";
 import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import { parseCalibration, makeNowStableEstimate } from "@/lib/cost-views";
+import { parseCalibration, makeNowStableEstimate, workspaceDfmSummary } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
@@ -197,6 +197,8 @@ export default function PartWorkspace({
 
   const activeRole = roleById(role);
   const { setPart } = useInstrumentChrome();
+  const workspaceDfm = useMemo(() => workspaceDfmSummary(report, validation), [report, validation]);
+  const workspaceVerdict = geomError ? "fail" : workspaceDfm.verdict;
 
   useEffect(() => {
     let cancelled = false;
@@ -595,11 +597,12 @@ export default function PartWorkspace({
     setPart({
       name: file.name,
       facts,
-      verdict: validation?.overall_verdict ?? null,
+      verdict: validation || report || geomError ? workspaceVerdict : null,
+      verdictProcess: workspaceDfm.process,
       analyzing: dfmLoading,
       onReset: reset,
     });
-  }, [file, facts, validation, dfmLoading, reset, setPart]);
+  }, [file, facts, validation, report, geomError, workspaceVerdict, workspaceDfm.process, dfmLoading, reset, setPart]);
   useEffect(() => () => setPart(null), [setPart]);
 
   /* ---- cold start ------------------------------------------------- */
@@ -695,10 +698,10 @@ export default function PartWorkspace({
   const geo = validation?.geometry;
   const costGeo = report?.geometry ?? geomError?.geometry ?? null;
 
-  const headerBadge = validation ? (
-    <StatusBadge verdict={validation.overall_verdict} label={verdictLabel(validation.overall_verdict, true)} />
-  ) : geomError ? (
+  const headerBadge = geomError ? (
     <StatusBadge tone="fail" label="Geometry invalid" />
+  ) : validation || report ? (
+    <StatusBadge verdict={workspaceVerdict} label={`${workspaceDfm.process ? `${procLabel(workspaceDfm.process)} · ` : ""}${verdictLabel(workspaceVerdict)}`} />
   ) : dfmLoading ? (
     <StatusBadge tone="neutral" label="Analyzing…" icon={false} />
   ) : undefined;
@@ -1113,9 +1116,10 @@ function buildAnswerSummary(
       );
     }
   }
-  if (validation) {
+  if (validation || report) {
+    const dfm = workspaceDfmSummary(report, validation);
     lines.push(
-      `DFM: ${verdictLabel(validation.overall_verdict, true)} (${verdictTone(validation.overall_verdict)})`
+      `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
     );
   }
   return lines.join("\n");

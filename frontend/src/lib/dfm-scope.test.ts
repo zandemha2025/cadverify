@@ -119,6 +119,16 @@ test("route verdict ignores failures that belong only to other candidate process
   assert.notEqual(routeScopedDfmVerdict(result, "mjf"), result.overall_verdict);
 });
 
+test("a missing route cannot inherit another process's passing verdict", () => {
+  const result = bracketResult();
+  result.universal_issues = [];
+  result.overall_verdict = "pass";
+  assert.equal(routeScopedDfmVerdict(result, "cnc_5axis"), "unknown");
+  assert.equal(routeScopedDfmVerdict(result, null), "unknown");
+  result.universal_issues = [issue("INVALID", "error")];
+  assert.equal(routeScopedDfmVerdict(result, "cnc_5axis"), "fail");
+});
+
 /* ---- (c) full matrix count still available ---------------------- */
 
 test("full candidate matrix count is still available", () => {

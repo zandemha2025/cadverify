@@ -286,12 +286,11 @@ export function routeScopedDfmVerdict(
 ): RouteScopedVerdict {
   if (!result) return "unknown";
   const process = recommendedProcess?.trim() ?? "";
-  if (!process) return result.overall_verdict;
   const partition = partitionDfmByRoute(result, process);
-  if (partition.counts.critical > 0) return "fail";
-  if (partition.counts.advisory > 0) return "issues";
   const routeScore = result.process_scores.find((score) => score.process === process);
-  return routeScore?.verdict ?? result.overall_verdict;
+  if (partition.counts.critical > 0 || routeScore?.verdict === "fail") return "fail";
+  if (partition.counts.advisory > 0) return "issues";
+  return routeScore?.verdict ?? "unknown";
 }
 
 /* ------------------------------------------------------------------ */

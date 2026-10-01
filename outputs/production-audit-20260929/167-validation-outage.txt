@@ -1,0 +1,281 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 166-transverse-hole-bar.step
+    - text: CNC 5-Axis · Advisory
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "166-transverse-hole-bar.step" [level=1]
+  - text: CNC 5-Axis · Advisory
+  - paragraph: One drop · costed and analyzed in-process
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision":
+      - text: Decision
+    - tab "Routing & DFM" [active] [selected]:
+      - text: Routing & DFM
+    - tab "Glass Box":
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - generic: Volume
+  - generic: 11.4 cm³
+  - generic: Bounding box
+  - generic: 80 × 12 × 12 mm
+  - generic: Faces
+  - generic: 60,238
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - tabpanel "Routing & DFM":
+    - generic: Geometric routing
+    - heading "CNC 5-Axis" [level=3]
+    - generic: "archetype: long_prismatic_bar"
+    - generic: confidence 0.70
+    - paragraph: "Slender prismatic bar (80mm long × 12×12mm enclosing cross-section): bar stock and 3-axis milling are a starting route. Confirm setups and tool clearance; features may require multi-axis machining. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it."
+    - paragraph: "alternatives: CNC 3-Axis"
+    - generic: Decided by
+    - generic: rotational
+    - generic: "no"
+    - generic: sheet_like
+    - generic: "no"
+    - generic: nominal_wall_mm
+    - generic: "5.35"
+    - generic: DFM matrix · all processes
+    - table:
+      - rowgroup:
+        - row "Process Verdict Suitability First blocker":
+          - columnheader "Process"
+          - columnheader "Verdict"
+          - columnheader "Suitability"
+          - columnheader "First blocker"
+      - rowgroup:
+        - row "FDM / FFFfeasibility-only Advisory 80% —":
+          - cell "FDM / FFFfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "SLA Resinfeasibility-only Advisory 80% —":
+          - cell "SLA Resinfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "DLP Resinfeasibility-only Advisory 90% —":
+          - cell "DLP Resinfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "SLS (Powder)feasibility-only Advisory 90% —":
+          - cell "SLS (Powder)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "MJF (HP)feasibility-only Advisory 90% —":
+          - cell "MJF (HP)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "DMLS (Metal) Advisory 70% —":
+          - cell "DMLS (Metal)"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "70%"
+          - cell "—"
+        - row "SLM (Metal) Advisory 70% —":
+          - cell "SLM (Metal)"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "70%"
+          - cell "—"
+        - row "EBM (Metal)feasibility-only Advisory 80% —":
+          - cell "EBM (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "Binder Jettingfeasibility-only Advisory 90% —":
+          - cell "Binder Jettingfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "DED Advisory 80% —":
+          - cell "DED"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "WAAM Advisory 80% —":
+          - cell "WAAM"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - row "CNC 3-Axis Required 0% 974 faces (1.6%) are undercuts for cnc_3axis.":
+          - cell "CNC 3-Axis"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "974 faces (1.6%) are undercuts for cnc_3axis.":
+            - button "974 faces (1.6%) are undercuts for cnc_3axis.":
+              - generic: 974 faces (1.6%) are undercuts for cnc_3axis.
+        - row "CNC 5-Axiscost pick · qty 1 Advisory 80% —":
+          - cell "CNC 5-Axiscost pick · qty 1":
+            - text: CNC 5-Axis
+            - generic: cost pick · qty 1
+          - cell "Advisory":
+            - text: Advisory
+          - cell "80%"
+          - cell "—"
+        - 'row "CNC Turningfeasibility-only Required 0% Part lacks positive rotational geometry (eigenvalue ratios: 0.04, 1.00; insufficient outer rotational surface evidence). Required for cnc_turning."':
+          - cell "CNC Turningfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part lacks positive rotational geometry (eigenvalue ratios: 0.04, 1.00; insufficient outer rotational surface evidence). Required for cnc_turning."':
+            - 'button "Part lacks positive rotational geometry (eigenvalue ratios: 0.04, 1.00; insufficient outer rotational surface evidence). Required for cnc_turning."':
+              - generic: "Part lacks positive rotational geometry (eigenvalue ratios: 0.04, 1.00; insufficient outer rotational surface evidence). Required for cnc_turning."
+        - row "Wire EDMfeasibility-only Pass 100% —":
+          - cell "Wire EDMfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "Injection Moldingfeasibility-only Required 0% 31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for injection_molding.":
+          - cell "Injection Moldingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for injection_molding.":
+            - button "31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for injection_molding.":
+              - generic: 31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for injection_molding.
+        - row "Die Casting Required 0% 31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for die_casting.":
+          - cell "Die Casting"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for die_casting.":
+            - button "31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for die_casting.":
+              - generic: 31000 sidewall faces (99.2% of sidewall area) below 1.0° draft for die_casting.
+        - row "Investment Casting Required 0% 31000 sidewall faces (99.2% of sidewall area) below 0.5° draft for investment_casting.":
+          - cell "Investment Casting"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "31000 sidewall faces (99.2% of sidewall area) below 0.5° draft for investment_casting.":
+            - button "31000 sidewall faces (99.2% of sidewall area) below 0.5° draft for investment_casting.":
+              - generic: 31000 sidewall faces (99.2% of sidewall area) below 0.5° draft for investment_casting.
+        - row "Sand Casting Required 0% 31006 sidewall faces (99.2% of sidewall area) below 3.0° draft for sand_casting.":
+          - cell "Sand Casting"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "31006 sidewall faces (99.2% of sidewall area) below 3.0° draft for sand_casting.":
+            - button "31006 sidewall faces (99.2% of sidewall area) below 3.0° draft for sand_casting.":
+              - generic: 31006 sidewall faces (99.2% of sidewall area) below 3.0° draft for sand_casting.
+        - row "Sheet Metalfeasibility-only Advisory 90% —":
+          - cell "Sheet Metalfeasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "Forging Required 0% 31122 sidewall faces (99.6% of sidewall area) below 5.0° draft for forging.":
+          - cell "Forging"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "31122 sidewall faces (99.6% of sidewall area) below 5.0° draft for forging.":
+            - button "31122 sidewall faces (99.6% of sidewall area) below 5.0° draft for forging.":
+              - generic: 31122 sidewall faces (99.6% of sidewall area) below 5.0° draft for forging.
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert
+- status: 1Password menu is available. Press down arrow to select.

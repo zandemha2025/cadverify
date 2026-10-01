@@ -48,6 +48,7 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { CommandPaletteProvider, useCommandPalette } from "@/components/ui/command-palette";
 import { InstrumentChromeProvider, useInstrumentChrome } from "@/components/instrument/instrument-chrome";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { procLabel, verdictLabel } from "@/lib/status";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 /* Routes that render full-fluid (the workspace needs its width); everything
@@ -329,7 +330,8 @@ function ContextBar({
             <ChevronRight className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
             <span className="num truncate font-medium text-foreground">{part.name}</span>
             {part.verdict ? (
-              <StatusBadge verdict={part.verdict} size="sm" />
+              <StatusBadge verdict={part.verdict} size="sm"
+                label={`${part.verdictProcess ? `${procLabel(part.verdictProcess)} · ` : ""}${verdictLabel(part.verdict)}`} />
             ) : part.analyzing ? (
               <span className="num text-[11px] text-subtle-foreground">analyzing…</span>
             ) : null}
