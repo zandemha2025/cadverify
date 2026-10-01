@@ -435,7 +435,7 @@ def test_decimation_issue_serializes_as_whole_part():
     assert serialize_issue(issue)["scope"] == "whole_part"
 
 
-def test_real_geometry_findings_serialize_ratio_percent_and_angle_units():
+def test_real_geometry_findings_serialize_ratio_and_angle_units():
     from src.analysis.processes.checks import check_aspect_ratio, check_prismatic, check_bends
 
     mesh = trimesh.creation.extrude_triangulation(
@@ -446,10 +446,13 @@ def test_real_geometry_findings_serialize_ratio_percent_and_angle_units():
     angle = check_bends(ctx, ProcessType.SHEET_METAL)[0]
     mesh.apply_transform(trimesh.transformations.rotation_matrix(.5, [1, 1, 0]))
     _, ctx = _ctx(mesh)
-    percent = check_prismatic(ctx, ProcessType.WIRE_EDM)[0]
-    for issue, expected in [(ratio, "ratio"), (angle, "deg"), (percent, "percent")]:
+    assert check_prismatic(ctx, ProcessType.WIRE_EDM) == []
+    for issue, expected in [(ratio, "ratio"), (angle, "deg")]:
         assert serialize_issue(issue)["measurement_unit"] == expected
     assert 150 < angle.measured_value < 180
     assert ratio.measured_value == 30
-    assert 0 <= percent.measured_value <= 85
+    # Old saved percentage findings remain readable; rotation is no longer one.
+    historical = Issue("NOT_PRISMATIC", Severity.ERROR, "old finding", None,
+                       measured_value=80., measurement_unit="percent")
+    assert serialize_issue(historical)["measurement_unit"] == "percent"
     assert "measurement_unit" not in serialize_issue(Issue("UNKNOWN", Severity.INFO, "unknown", None, measured_value=2))

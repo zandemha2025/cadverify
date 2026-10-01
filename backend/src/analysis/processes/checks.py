@@ -896,7 +896,7 @@ def check_length_diameter_ratio(
 
 
 # ──────────────────────────────────────────────────────────────
-# Prismatic / 2.5D check (wire EDM / sheet metal)
+# Straight-profile check (wire EDM)
 # ──────────────────────────────────────────────────────────────
 def check_prismatic(
     ctx: GeometryContext,
@@ -904,28 +904,22 @@ def check_prismatic(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    """Test if part is approximately a 2D profile extruded along Z."""
-    normals = ctx.normals
-    # Prismatic = all faces are either horizontal (|n_z| > 0.95) or
-    # vertical (|n_z| < 0.05). Anything else is non-prismatic.
-    horiz = np.abs(normals[:, 2]) > 0.95
-    vert = np.abs(normals[:, 2]) < 0.05
-    prismatic_faces = horiz | vert
-    pct = np.mean(prismatic_faces) * 100
-    if pct > 85:
+    """Confirm a straight extrusion; other wire paths require setup review."""
+    measured = ctx.straight_profile_geometry
+    if measured is not None and measured[2] == 0:
         return []
     return [Issue(
-        code="NOT_PRISMATIC",
-        measurement_unit="percent",
-        severity=Severity.ERROR,
+        code="PRISMATIC_PROFILE_PRECISION" if measured is not None else "PRISMATIC_PROFILE_UNVERIFIED",
+        severity=Severity.WARNING,
         message=(
-            f"Only {format_measurement(pct, 85.0)}% of faces are prismatic (horizontal or vertical). "
-            f"{process.value} requires a 2.5D extruded profile."
+            "A straight extrusion is consistent with the mesh within source-coordinate rounding; "
+            "confirm the exact wire profile in the source CAD."
+            if measured is not None else
+            "A constant straight extrusion could not be verified. "
+            "Tapered or multi-axis wire EDM may be possible and requires setup review."
         ),
         process=process,
-        measured_value=pct,
-        required_value=85.0,
-        fix_suggestion=f"Redesign as a 2D profile extruded along Z. {cite}",
+        fix_suggestion=f"Review the CAM wire path, threading access, taper, fixturing and required setups. {cite}".strip(),
         citation=parse_citation(cite),
     )]
 

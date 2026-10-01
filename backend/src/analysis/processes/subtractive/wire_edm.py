@@ -21,7 +21,7 @@ class WireEDMAnalyzer:
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
         i.extend(check_prismatic(ctx, self.process,
-                 cite="Wire EDM cuts a 2D profile extruded in Z."))
+                 cite="Sodick ALC600G specifications (taper and multi-axis options)."))
         i.extend(check_small_features(ctx, 0.125, self.process,
                  cite="0.25mm wire → 0.125mm min internal radius."))
         i.extend(check_build_volume(ctx, (600, 400, 350), self.process,

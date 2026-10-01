@@ -150,6 +150,27 @@ class GeometryContext:
     def flat_sheet_geometry(self):
         return flat_sheet_geometry(self.mesh)
 
+    @cached_property
+    def straight_profile_geometry(self):
+        """Verify extrusion geometry without treating the file's Z as the wire axis."""
+        if self.metadata.get("decimation", {}).get("succeeded") or not self.mesh.is_volume:
+            return None
+        if self.flat_sheet_geometry is not None:
+            return self.flat_sheet_geometry
+        normals = self.mesh.face_normals
+        first = int(np.argmax(self.mesh.area_faces))
+        second = int(np.argmin(np.abs(normals @ normals[first])))
+        # An extrusion's normals are axial or transverse. If neither of two
+        # independent normals is axial, their cross product is. Choose an
+        # actual face so the existing source-normal precision bound still holds.
+        axis = np.cross(normals[first], normals[second])
+        third = int(np.argmax(np.abs(normals @ axis)))
+        for face in dict.fromkeys((first, second, third)):
+            measured = flat_sheet_geometry(self.mesh, normal_face=face)
+            if measured is not None:
+                return measured
+        return None
+
     @property
     def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
         measured = self.flat_sheet_geometry
@@ -523,7 +544,7 @@ def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] |
     return measured[0] if measured is not None else None
 
 
-def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, float], np.ndarray, float] | None:
+def flat_sheet_geometry(mesh: trimesh.Trimesh, *, normal_face: int | None = None) -> tuple[tuple[float, float, float], np.ndarray, float] | None:
     """Gauge and in-plane blank extents of a verified straight, flat extrusion.
 
     Opposing caps must bound all vertices; every other surface must run through
@@ -533,10 +554,12 @@ def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, floa
     try:
         if not mesh.is_volume or mesh.body_count != 1:
             return None
-        largest_face = int(np.argmax(mesh.area_faces))
-        if len(mesh.facets_area) and mesh.facets_area.max() > mesh.area_faces[largest_face]:
-            facet = mesh.facets[int(np.argmax(mesh.facets_area))]
-            largest_face = int(facet[np.argmax(mesh.area_faces[facet])])
+        largest_face = normal_face
+        if largest_face is None:
+            largest_face = int(np.argmax(mesh.area_faces))
+            if len(mesh.facets_area) and mesh.facets_area.max() > mesh.area_faces[largest_face]:
+                facet = mesh.facets[int(np.argmax(mesh.facets_area))]
+                largest_face = int(facet[np.argmax(mesh.area_faces[facet])])
         normal = mesh.face_normals[largest_face]
         vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
         heights = vertices @ normal
