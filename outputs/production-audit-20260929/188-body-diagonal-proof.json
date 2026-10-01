@@ -1,0 +1,33 @@
+{
+  "source_controls": "Existing185 STEP bytes reused without regeneration.",
+  "constructive_400mm_fit_xyz_mm": [
+    244.32436853565525,
+    244.32436853565525,
+    240.73806664698304
+  ],
+  "fdm_cost_oracle": "57.6*1.24/1000*25*1.1 + (57.6/16 + (400/sqrt(3)+24/sqrt(6))/25)*8 + .3*35 + .25*35",
+  "scope": "Local model correctness and real-browser verification. Six constructive 3D placements; no certified global non-fit search, support plan, shop-validated quote or production rollout. Existing negative-fit gap dimensions still require correction.",
+  "artifacts": {
+    "outputs/production-audit-20260929/188-body-diagonal-100.txt": "3e14ab3a52cb8077dbf9989cca60e1ae848899d425095fcb0c19adbd5fccb9f1",
+    "outputs/production-audit-20260929/188-body-diagonal-after.png": "76e2a39b59f481c29dd9239eb2216f156b5d44ea9cdd8d53aafd7e573d4ae4c6",
+    "outputs/production-audit-20260929/188-body-diagonal-after.txt": "6f241b10be1c1c6df80b659109bbf1938a98fd4bc6f8210a83527284db2bf4c8",
+    "outputs/production-audit-20260929/188-body-diagonal-before.txt": "d845f3a14b127c544a1333c851d66fb631abac9159d8c4046c21bff457aa465a",
+    "outputs/production-audit-20260929/188-body-diagonal-rotated.txt": "e85fc1ad5486cb4c3496b2745892cd4df26c1f387ac97240bbf4ceaca987a946",
+    "outputs/production-audit-20260929/188-body-diagonal-source.txt": "97dd2fac0f8a06d3e47a538ec83b720dd768b528174671ce31c4421b66178fc7",
+    "outputs/production-audit-20260929/188-checks.json": "99a4bf818f854aac0ae1f672c695fb838bff8d40559a4f915c87f10ab5838853",
+    "outputs/production-audit-20260929/188-fit-benchmark.json": "2fdd715f6eb44a940817dc9e3541d64d0d0eb98c8526b1ff833b44e22b026ced",
+    "outputs/production-audit-20260929/188-owned-negative.txt": "aa186de03dc86b9ba454007f27345620fa7063521aaf71836f1b98a53037c279",
+    "outputs/production-audit-20260929/188-owned-positive.txt": "343c73b4313466ed933593b5509b393101c0eaa38b7ac52889652130b059d852",
+    "outputs/production-audit-20260929/188-saved-before.json": "a0dc90210aade56db708abb44613d0c7ddfc69b8aba9c0a178f0af8e772332ab",
+    "outputs/production-audit-20260929/188-saved-readback.json": "9060e1a7dc1a2cb2c5044e4a5df582d44b27eab08f9bdb66e11565cf25f9606c",
+    "outputs/production-audit-20260929/188-sla-aligned.txt": "fbc1e5290ed019979978580369572bec12edd1879fc8b7ed46593d8bbb43925c",
+    "outputs/production-audit-20260929/188-sla-rotated.txt": "d3917e3c34edee1437cf1d47e69501a5ff6a8430982f69c94f8e04c8d8baf6cf",
+    "outputs/production-audit-20260929/188-sla-source.txt": "4a4c70bc5ebbe739c10f1951dd6e16a1da8d5df98dcbca344311ce4c3b7a9c20"
+  },
+  "source": {
+    "backend/src/analysis/context.py": "4950abaf94823810540d5cf83defecc0615ba019577ecb1d35e4f5e78e0a1bd2",
+    "backend/src/__init__.py": "50484c340b79606f74e32fbd24c6d36ee51a79073fba1ae0f2551ae484a83114",
+    "backend/tests/test_priced_build_envelope.py": "a4a19687f3ba6a1b7ddaf617a3dc41ee0b164adcd128c7d1d6290c1676ab5dbe"
+  },
+  "fdm_cost_oracle_value_usd": 127.05034132703457
+}

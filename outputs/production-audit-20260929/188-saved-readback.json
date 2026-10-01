@@ -1,0 +1,1536 @@
+{
+  "engine_version": "0.3.45",
+  "historical_records_unchanged": {
+    "analyses": 156,
+    "cost_decisions": 169
+  },
+  "analyses": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 1936,
+      "after_id": 1973,
+      "after_ulid": "01M3VW9TMSGPN9M5PDNX5GD6BQ",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "639716b9cc91ca235667b5178ca7a43f037375280662ee08a98b1b28da1b3988",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 1929,
+      "after_id": 1974,
+      "after_ulid": "01M3VWBM6W6G34CW848A1E7P4W",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "98ec224626aa87c29c1e6e0e0341b3f2f93fc78873209704294345c29d1973fd",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 1937,
+      "after_id": 1975,
+      "after_ulid": "01M3VWCRKWD0QVA6Q3AVNF06Q0",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "63b38f5f3a920297fd0eef5b2797490c306df962963fdd2fb8c2ed726ae70e3b",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 1941,
+      "after_id": 1976,
+      "after_ulid": "01M3VWEGG725AP288JB1AVQ9CZ",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "c5221ff4fce2ceab880061c8d459ce299fd337a326e5df65686c0e3a8c9e72d3",
+      "geometry_unchanged": true,
+      "all_findings_features_scores_unchanged": true
+    }
+  ],
+  "cost_decisions": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 6667,
+      "after_id": 6791,
+      "after_ulid": "01M3VW9TMZG312KKK8J0AF3MJR",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "cac01bc7848f03deb49109528e1e7326ea9bd9952ebd3c22b4ca227c544c70d4",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 10,
+      "added_estimates": [
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 1.9642,
+              "source": "CAD volume 57.60 cm\u00b3 \u00d7 PLA density 1.24 g/cm\u00b3 = 0.0714 kg \u00d7 $25/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 105.8362,
+              "source": "13.2295 hr \u00d7 $8/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.2295,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 8.75,
+              "source": "setup 0.25hr \u00d7 $35/hr \u00d7 ceil(100/1) = 100 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 100,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 12 machines \u00d7 22 hr/day parallel pool; production = ceil(100\u00b713.229hr \u00f7 (12\u00d722)) = 6 d",
+              "n_machines": 12,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 8.4,
+            "mid_days": 12.0,
+            "high_days": 15.6,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 6.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 76.23,
+            "high_usd": 177.87,
+            "n_samples": 0,
+            "point_usd": 127.05,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 10.5,
+            "machine": 105.8362,
+            "material": 1.9642,
+            "amortized_fixed": 8.75
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 127.05,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 127.05,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 1.9642,
+              "source": "CAD volume 57.60 cm\u00b3 \u00d7 PLA density 1.24 g/cm\u00b3 = 0.0714 kg \u00d7 $25/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 105.8362,
+              "source": "13.2295 hr \u00d7 $8/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.2295,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 8.75,
+              "source": "setup 0.25hr \u00d7 $35/hr \u00d7 ceil(1/1) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 1,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 12 machines \u00d7 22 hr/day parallel pool; production = ceil(1\u00b713.229hr \u00f7 (12\u00d722)) = 1 d",
+              "n_machines": 12,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 4.9,
+            "mid_days": 7.0,
+            "high_days": 9.1,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 1.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 76.23,
+            "high_usd": 177.87,
+            "n_samples": 0,
+            "point_usd": 127.05,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 10.5,
+            "machine": 105.8362,
+            "material": 1.9642,
+            "amortized_fixed": 8.75
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 127.05,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 127.05,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        }
+      ]
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 6636,
+      "after_id": 6792,
+      "after_ulid": "01M3VWBM9JEF9DJ7Y6AA4H1EF4",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "437274b38171b9f538113567edaf77c2bb5a4b3c0f4750fd2c13514f65d4f719",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 10,
+      "added_estimates": [
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 1.9642,
+              "source": "CAD volume 57.60 cm\u00b3 \u00d7 PLA density 1.24 g/cm\u00b3 = 0.0714 kg \u00d7 $25/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 105.8362,
+              "source": "13.2295 hr \u00d7 $8/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.2295,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 8.75,
+              "source": "setup 0.25hr \u00d7 $35/hr \u00d7 ceil(100/1) = 100 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 100,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 12 machines \u00d7 22 hr/day parallel pool; production = ceil(100\u00b713.229hr \u00f7 (12\u00d722)) = 6 d",
+              "n_machines": 12,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 8.4,
+            "mid_days": 12.0,
+            "high_days": 15.6,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 6.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 76.23,
+            "high_usd": 177.87,
+            "n_samples": 0,
+            "point_usd": 127.05,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 10.5,
+            "machine": 105.8362,
+            "material": 1.9642,
+            "amortized_fixed": 8.75
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 127.05,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 127.05,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 1.9642,
+              "source": "CAD volume 57.60 cm\u00b3 \u00d7 PLA density 1.24 g/cm\u00b3 = 0.0714 kg \u00d7 $25/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 105.8362,
+              "source": "13.2295 hr \u00d7 $8/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.2295,
+              "source": "serial XY nest: deposition V/16 = 57.60/16 = 3.600hr/part (per-part nozzle) + Z-sweep (240.7/25)\u00f71 parts/plate = 9.630hr/part (plate Z-climb amortized; XY packing 0.5, plate 250\u00d7250mm) = 13.230hr/part; oriented candidate oriented XYZ (244.324369, 244.324369, 240.738067)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 8.75,
+              "source": "setup 0.25hr \u00d7 $35/hr \u00d7 ceil(1/1) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 1,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 12 machines \u00d7 22 hr/day parallel pool; production = ceil(1\u00b713.229hr \u00f7 (12\u00d722)) = 1 d",
+              "n_machines": 12,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 4.9,
+            "mid_days": 7.0,
+            "high_days": 9.1,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 1.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 76.23,
+            "high_usd": 177.87,
+            "n_samples": 0,
+            "point_usd": 127.05,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 10.5,
+            "machine": 105.8362,
+            "material": 1.9642,
+            "amortized_fixed": 8.75
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 127.05,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 127.05,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        }
+      ]
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6668,
+      "after_id": 6793,
+      "after_ulid": "01M3VWCRQD6SHNCJ02GNMM596J",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "e0de7ac5c641908efb5d7efd6f752034c94db2b9b120fda019fec4c5f34de926",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 14,
+      "added_estimates": [
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(1/1) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 1,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(1\u00b713.491hr \u00f7 (8\u00d722)) = 1 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 4.9,
+            "mid_days": 7.0,
+            "high_days": 9.1,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 1.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(100/1) = 100 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 100,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(100\u00b713.491hr \u00f7 (8\u00d722)) = 8 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 9.8,
+            "mid_days": 14.0,
+            "high_days": 18.2,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 8.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        }
+      ]
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 6686,
+      "after_id": 6795,
+      "after_ulid": "01M3VWEGM3FZ0B3EBV5XN5CX2A",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "309128d7d640b07c3f4012f51903020af00b4fac474425b7dced77331146818e",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 14,
+      "added_estimates": [
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(1/1) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 1,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(1\u00b713.491hr \u00f7 (8\u00d722)) = 1 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 4.9,
+            "mid_days": 7.0,
+            "high_days": 9.1,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 1.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(100/1) = 100 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 100,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(100\u00b713.491hr \u00f7 (8\u00d722)) = 8 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 9.8,
+            "mid_days": 14.0,
+            "high_days": 18.2,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 8.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        }
+      ]
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6703,
+      "after_id": 6796,
+      "after_ulid": "01M3VWF4FC8N0NJ10ZZ2BXX178",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "9de63b989853938df45b929400b44fafffa7eb1e932875231e9917dbe8f00167",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 42,
+      "added_estimates": [
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(10000/1) = 10000 setups \u00f7 10000 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 10000,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(10000\u00b713.491hr \u00f7 (8\u00d722)) = 767 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 541.1,
+            "mid_days": 773.0,
+            "high_days": 1004.9,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 767.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(1000/1) = 1000 setups \u00f7 1000 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 1000,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(1000\u00b713.491hr \u00f7 (8\u00d722)) = 77 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 58.1,
+            "mid_days": 83.0,
+            "high_days": 107.9,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 77.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(5000/1) = 5000 setups \u00f7 5000 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 5000,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(5000\u00b713.491hr \u00f7 (8\u00d722)) = 384 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 273.0,
+            "mid_days": 390.0,
+            "high_days": 507.0,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 384.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(1/1) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 1,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(1\u00b713.491hr \u00f7 (8\u00d722)) = 1 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 4.9,
+            "mid_days": 7.0,
+            "high_days": 9.1,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 1.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(2000/1) = 2000 setups \u00f7 2000 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 2000,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(2000\u00b713.491hr \u00f7 (8\u00d722)) = 154 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 112.0,
+            "mid_days": 160.0,
+            "high_days": 208.0,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 154.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        },
+        {
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 2.3364,
+              "source": "CAD volume 36.00 cm\u00b3 \u00d7 Standard Resin density 1.18 g/cm\u00b3 = 0.0425 kg \u00d7 $50/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 1.0,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 161.8949,
+              "source": "13.4912 hr \u00d7 $12/hr \u00d7 region-labor \u00d71  [serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 13.4912,
+              "source": "serial XY nest: deposition V/8 = 36.00/8 = 4.500hr/part (per-part nozzle) + Z-sweep (179.8/20)\u00f71 parts/plate = 8.991hr/part (plate Z-climb amortized; XY packing 0.5, plate 145\u00d7145mm) = 13.491hr/part; oriented candidate oriented XYZ (141.468386, 144.586499, 179.824912)mm; spaced-grid capacity limit (packing/setup assumption, not a verified nesting plan)",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "setup 0.3hr \u00d7 $35/hr \u00d7 ceil(100/1) = 100 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            }
+          ],
+          "process": "sla",
+          "material": "Standard Resin",
+          "quantity": 100,
+          "dfm_ready": true,
+          "dfm_score": 0.8,
+          "lead_time": {
+            "capacity": {
+              "basis": "capacity-bound: 8 machines \u00d7 22 hr/day parallel pool; production = ceil(100\u00b713.491hr \u00f7 (8\u00d722)) = 8 d",
+              "n_machines": 8,
+              "provenance": "DEFAULT",
+              "machine_hours_per_day": 22.0
+            },
+            "low_days": 9.8,
+            "mid_days": 14.0,
+            "high_days": 18.2,
+            "components": {
+              "ship": 3.0,
+              "queue": 2.0,
+              "production": 8.0,
+              "post_process": 1.0,
+              "tooling_lead": 0.0
+            }
+          },
+          "confidence": {
+            "basis": "\u00b140% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+            "label": "assumption-based, not yet validated",
+            "level": 0.8,
+            "method": "assumption-band",
+            "low_usd": 112.19,
+            "high_usd": 261.77,
+            "n_samples": 0,
+            "point_usd": 186.98,
+            "validated": false,
+            "half_width_pct": 40.0
+          },
+          "line_items": {
+            "labor": 12.25,
+            "machine": 161.8949,
+            "material": 2.3364,
+            "amortized_fixed": 10.5
+          },
+          "dfm_verdict": "issues",
+          "dfm_blockers": [],
+          "unit_cost_usd": 186.98,
+          "fixed_cost_usd": 0.0,
+          "variable_cost_usd": 186.98,
+          "est_error_band_pct": 40.0,
+          "dfm_blocker_details": []
+        }
+      ]
+    }
+  ],
+  "scope": "Local controlled actual STEP uploads and saved artifacts; constructive 3D envelope placement, not a global orientation search, validated shop price, support plan or physical setup certification."
+}

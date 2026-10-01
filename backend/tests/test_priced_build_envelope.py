@@ -15,6 +15,46 @@ from src.costing.routing import select_material
 from tests.test_costing_model import _analyze
 
 
+def test_body_diagonal_bar_fit_uses_the_same_height_in_dfm_inventory_and_price():
+    import numpy as np
+    from math import sqrt
+    from src.analysis.context import fitting_box_dimensions
+    from src.analysis.models import Severity
+    from src.analysis.processes.checks import check_build_volume
+    from tests.test_analyzers import _build_ctx
+
+    # Independent eight-corner construction: the 400mm axis points along (1,1,1).
+    rotation = np.array(((1/sqrt(2), 1/sqrt(6), 1/sqrt(3)),
+                         (-1/sqrt(2), 1/sqrt(6), 1/sqrt(3)),
+                         (0, -2/sqrt(6), 1/sqrt(3))))
+    corners = trimesh.creation.box(extents=(12, 12, 400)).vertices @ rotation.T
+    oracle = np.ptp(corners, axis=0)
+    assert np.all(oracle < 250) and 400 > 250 * sqrt(2)
+    envelope = (250, 250, 250)
+    assert fitting_box_dimensions((12, 12, 400), envelope) == pytest.approx(oracle)
+    assert fitting_box_dimensions((12, 12, 400), (200, 200, 200)) is None
+    rates = build_rate_card()
+    material = select_material(PT.FDM, "polymer", rates)
+    machine = MachineCap(process="fdm", name="Body diagonal fixture", max_workpiece_kg=5,
+                         materials=("polymer",), hourly_rate_usd=10,
+                         capabilities=dict(zip(("x", "y", "z"), envelope)))
+    for angle, axis in ((0, (0, 0, 1)), (pi/4, (0, 0, 1)), (.71, (1, 2, 3))):
+        mesh = trimesh.creation.box(extents=(400, 12, 12))
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+        ctx = _build_ctx(mesh)
+        assert not any(i.severity == Severity.ERROR for i in check_build_volume(ctx, envelope, PT.FDM))
+        drivers = extract_drivers(ctx.info, mesh, ctx.features)
+        fit = fit_machine(part_req_from_drivers(PT.FDM, drivers, material, "standard"), machine)
+        assert fit.passes, fit.failures
+        hours, count, source = _additive_machine(PT.FDM, drivers, rates)
+        assert count == 1
+        assert hours == pytest.approx(57.6/rates.p(PT.FDM, "deposition")
+                                     + oracle[2]/rates.p(PT.FDM, "vert"))
+        assert "240.738" in source
+        assert _additive_machine(PT.FDM, drivers, rates,
+                                {**fit.resource_hint, "machine_name": fit.machine})[:2] == (hours, count)
+
+
 @pytest.mark.parametrize("length,envelope", [(250, (200, 200, 200)), (400, (300, 300, 350))])
 def test_diagonal_bar_fit_agrees_in_dfm_owned_machine_and_price(length, envelope):
     from math import sqrt

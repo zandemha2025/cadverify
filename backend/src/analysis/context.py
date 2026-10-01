@@ -135,8 +135,8 @@ def fitting_box_dimensions(box, envelope) -> tuple[float, ...] | None:
     """A proved enclosing-box placement, expressed in the machine's XYZ axes.
 
     Preserve existing axis-permutation setups; otherwise reuse the continuous
-    2D bed-fit check on each box face. None means no setup was established.
-    ponytail: one box axis stays aligned; a full 3D orientation search is not certified.
+    2D bed-fit check on each box face, then try body-diagonal placements.
+    None means no setup was established, not a proof of non-fit.
     """
     if len(box) != 3 or len(envelope) != 3 or any(
         not np.isfinite(v) or v <= 0 for v in (*box, *envelope)
@@ -160,6 +160,27 @@ def fitting_box_dimensions(box, envelope) -> tuple[float, ...] | None:
             candidate[i], candidate[j] = plane if envelope[i] <= envelope[j] else plane[::-1]
             if fits(candidate):
                 candidates.append(tuple(candidate))
+    if candidates:
+        return min(candidates, key=height_order)
+    # ponytail: six constructive 3D placements, not a global orientation search.
+    # Align the longest box edge with the chamber diagonal. Each orthonormal
+    # frame proves an enclosing XYZ box; the two cross-section edges may swap.
+    along = np.array(envelope, dtype=float)
+    along /= np.max(along)
+    along /= np.linalg.norm(along)
+    small, middle, long = sorted(box)
+    for axis in np.eye(3):
+        across = np.cross(along, axis)
+        norm = np.linalg.norm(across)
+        if norm == 0:
+            continue
+        across /= norm
+        up = np.cross(along, across)
+        frame = np.column_stack((across, up, along))
+        for cross_section in ((small, middle), (middle, small)):
+            candidate = tuple(float(d) for d in np.abs(frame) @ (*cross_section, long))
+            if fits(candidate):
+                candidates.append(candidate)
     return min(candidates, key=height_order, default=None)
 
 

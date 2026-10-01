@@ -734,3 +734,8 @@ Fixed locally: rotating the400mm STEP no longer halves tooling or crossover. Rea
 ### Audit187 — CSV/RFQ sourcing-basis journey checks
 
 Corrected two stale browser-runner export schemas to include persisteddisposition_basis and compare its parsedJSON against the saved package scope. ActualnativeCSV/RFQ48rows each pass exact23-column andMJF/PP/100 checks;13runnerunitchecks andsyntaxPASS. Old184CI staysfailed(7jobsPASS,browseroldschemafailure,container5HIGH);new exactrevisionCI required afterpublishing185–187. Productcodeunchanged187;no assertionwaiver or deployment. See187-csv-contract-proof.json/187-checks.json/ci-36864623761-summary.json.
+
+
+### Audit 188 — three-axis fit and price consistency
+
+Real STEP controls now expose FDM for the 400 mm bar inside a 250 mm chamber ($127.05, same price across upload orientations), and SLA for the 250 mm bar ($186.98). Existing owned FDM pricing remains $38.22; the 200 mm owned printer still rejects the longer part. Native source text uses the proved build dimensions and height. All 325 historical records, 90 existing estimates and nine geometry artifacts remain unchanged. Backend 2,837 PASS / three protected skips; bounded six-placement search, not a global non-fit certificate. The negative-fit acquisition-gap wording remains open, as do external validation and production release. See 188-body-diagonal-proof.json, 188-checks.json and 188-body-diagonal-after.png.
