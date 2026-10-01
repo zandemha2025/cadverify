@@ -104,6 +104,7 @@ export function deriveBreakeven(report: CostReport): Breakeven | null {
 
   const byProc = new Map<string, CostEstimate[]>();
   for (const e of report.estimates) {
+    if (e.environment_excluded) continue;
     const arr = byProc.get(e.process) ?? [];
     arr.push(e);
     byProc.set(e.process, arr);

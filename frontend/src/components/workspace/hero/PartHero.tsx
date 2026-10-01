@@ -44,10 +44,9 @@ import type {
 import { flattenIssues, highestPriorityIssue, issueProcesses, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
 import { reportCostBlockerLocators } from "@/lib/inspection-bind";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
-import { deriveBreakeven } from "@/lib/breakeven";
 import { deriveFindings } from "@/lib/findings";
 import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import { workspaceDfmSummary, type CalibrationView } from "@/lib/cost-views";
+import type { workspaceSelection, CalibrationView } from "@/lib/cost-views";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -101,6 +100,8 @@ export interface PartHeroProps {
   file: File;
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
+  onPositionChange: (position: number) => void;
   opts: CostOptions;
   sourceUnits: CostOptions["units"];
   setOpt: SetOpt;
@@ -131,6 +132,8 @@ export function PartHero({
   file,
   report,
   validation,
+  selection,
+  onPositionChange,
   opts,
   sourceUnits,
   setOpt,
@@ -162,13 +165,9 @@ export function PartHero({
   const [depth, setDepth] = React.useState<Depth>(null);
   const [showRecost, setShowRecost] = React.useState(false);
 
-  const workspaceDfm = React.useMemo(() => workspaceDfmSummary(report, validation), [report, validation]);
+  const workspaceDfm = selection.dfm;
   const recProcess = workspaceDfm.process;
-
-  const breakeven = React.useMemo(
-    () => (report ? deriveBreakeven(report) : null),
-    [report]
-  );
+  const breakeven = selection.breakeven;
 
   // ALL issues (canonical keys) for face lookups; the ROUTE subset is displayed.
   const allIssues = React.useMemo(
@@ -182,8 +181,11 @@ export function PartHero({
   const heroIssues = React.useMemo(() => partition?.route ?? [], [partition]);
 
   const findings = React.useMemo(
-    () => (report ? deriveFindings(report, breakeven) : []),
-    [report, breakeven]
+    () => (report ? deriveFindings(report, breakeven, {
+      estimate: selection.estimate?.quantity === selection.quantity ? selection.estimate : null,
+      quantity: selection.quantity,
+    }) : []),
+    [report, breakeven, selection.estimate, selection.quantity]
   );
 
   // Cost-side DFM blockers relinked to locatable rows (the backend relink),
@@ -463,7 +465,8 @@ export function PartHero({
               ) : report ? (
                 <DecisionColumn
                   report={report}
-                  breakeven={breakeven}
+                  selection={selection}
+                  onPositionChange={onPositionChange}
                   filename={file.name}
                   costBlockers={costLocators}
                   selectedKey={selectedKey}
@@ -487,6 +490,7 @@ export function PartHero({
         <RoutingDfmView
           report={report}
           validation={validation}
+          selection={selection}
           selectedIssueKey={selectedKey}
           onSelectIssue={onSelectIssue}
           onHighlightProcess={onHighlightProcess}
@@ -565,6 +569,7 @@ export function PartHero({
         <HeroHistory
           report={report}
           validation={validation}
+          selection={selection}
           scenarios={scenarios}
           onRecallScenario={onRecallScenario}
         />
@@ -624,15 +629,17 @@ function LoadingPane({ label }: { label: string }) {
 function HeroHistory({
   report,
   validation,
+  selection,
   scenarios,
   onRecallScenario,
 }: {
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
   scenarios: (ScenarioSummary & { opts: CostOptions })[];
   onRecallScenario: (id: string) => void;
 }) {
-  const summary = buildAnswerSummary(report, validation);
+  const summary = buildAnswerSummary(report, validation, selection);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(summary);
@@ -704,13 +711,15 @@ function HeroHistory({
 
 function buildAnswerSummary(
   report: CostReport | null,
-  validation: ValidationResult | null
+  validation: ValidationResult | null,
+  selection: ReturnType<typeof workspaceSelection>,
 ): string {
   const lines: string[] = [];
   if (report?.decision) {
     const dec = report.decision;
     lines.push(`ProofShape — ${report.filename}`);
-    lines.push(`Make by ${procLabel(dec.make_now_process)} / ${dec.make_now_material}`);
+    const pick = selection.recommendation;
+    lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
     for (const q of report.quantities) {
       const r = dec.recommendation[String(q)];
       if (r) {
@@ -732,7 +741,7 @@ function buildAnswerSummary(
     }
   }
   if (validation || report) {
-    const dfm = workspaceDfmSummary(report, validation);
+    const dfm = selection.dfm;
     lines.push(
       `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
     );

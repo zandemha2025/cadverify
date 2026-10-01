@@ -37,7 +37,6 @@ import {
   costedProcesses,
   costedQuantities,
   pickEstimate,
-  makeNowStableEstimate,
   estimateHalfWidth,
   fmtAssumptionValue,
   parseCalibration,
@@ -45,7 +44,9 @@ import {
   blockersByProcess,
   costOverrideError,
   workspaceDfmSummary,
+  workspaceSelection,
 } from "./cost-views.ts";
+import { qtyToPos } from "./breakeven.ts";
 import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision, ValidationResult } from "@/lib/api";
 
 test("cost overrides reject malformed and impossible values, retaining valid zero rates", () => {
@@ -175,6 +176,38 @@ test("workspace verdict matches selected material and routing-only cost evidence
   assert.equal(workspaceDfmSummary(cost, validation).verdict, "pass");
 });
 
+test("workspace verdict follows the displayed quantity's route instead of the prototype", () => {
+  const cnc = est({ process: "cnc_5axis", material: "6061", quantity: 1, unit_cost_usd: 195.59, dfm_verdict: "issues" });
+  const ded = est({ process: "ded", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 30, dfm_verdict: "issues" });
+  const cost = report({ decision: decision({ make_now_process: "cnc_5axis", make_now_material: "6061" }), estimates: [cnc, ded] });
+  assert.deepEqual(workspaceDfmSummary(cost, null, ded), { process: "ded", verdict: "issues" });
+  assert.deepEqual(workspaceDfmSummary(cost, null, null), { process: null, verdict: "unknown" });
+});
+
+test("one workspace selection keeps quantity, price, material, evidence and advisory status together", () => {
+  const cost = report({ quantities: [1, 100], decision: decision({ make_now_process: "cnc_5axis", make_now_material: "6061" }), estimates: [
+    est({ process: "cnc_5axis", material: "6061", quantity: 1, unit_cost_usd: 195.59, dfm_verdict: "issues" }),
+    est({ process: "cnc_5axis", material: "6061", quantity: 100, unit_cost_usd: 31, dfm_verdict: "issues" }),
+    est({ process: "ded", material: "AlSi10Mg", quantity: 1, unit_cost_usd: 300, dfm_verdict: "issues" }),
+    est({ process: "ded", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 30, dfm_verdict: "issues" }),
+    est({ process: "excluded", quantity: 100, unit_cost_usd: .01, environment_excluded: true }),
+  ] });
+  const at100 = workspaceSelection(cost, null);
+  assert.equal(at100.quantity, 100);
+  assert.equal(at100.recommendation?.unitCost, 30);
+  assert.equal(at100.estimate?.material, "AlSi10Mg");
+  assert.deepEqual(at100.dfm, { process: "ded", verdict: "issues" });
+  const at1 = workspaceSelection(cost, null, 0);
+  assert.equal(at1.quantity, 1);
+  assert.equal(at1.recommendation?.unitCost, 195.59);
+  assert.equal(at1.estimate?.quantity, 1);
+  assert.deepEqual(at1.dfm, { process: "cnc_5axis", verdict: "issues" });
+  const between = workspaceSelection(cost, null, qtyToPos(at100.breakeven!, 10));
+  assert.equal(between.quantity, 10);
+  assert.notEqual(between.estimate?.quantity, 10, "interpolation cannot invent exact driver evidence");
+  assert.equal(workspaceSelection(report({}), null).recommendation, null);
+});
+
 /* ---- (a) override-key mapping ------------------------------------ */
 
 test("assumptionOverrideKey maps rate-card keys 1:1 and rejects the rest", () => {
@@ -293,54 +326,6 @@ function decision(over: Partial<CostDecision> = {}): CostDecision {
   };
 }
 
-test("makeNowStableEstimate anchors the drivers to the amortized headline qty, not the first (F5)", () => {
-  // The reported mismatch: the Inspector drivers reconciled to qty 100 ($8.72)
-  // while the should-cost headline reads the amortized qty 10,000 ($8.68).
-  const r = report({
-    decision: decision({ make_now_process: "cnc_milling" }),
-    estimates: [
-      est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 }),
-      est({ process: "cnc_milling", quantity: 10000, unit_cost_usd: 8.68 }),
-    ],
-  });
-  // pickEstimate(no qty) returned the FIRST (smallest) — the bug we replaced.
-  assert.equal(pickEstimate(r, "cnc_milling")?.quantity, 100, "guards the old bug");
-  // makeNowStableEstimate anchors to the LARGEST costed qty (setup amortized).
-  const e = makeNowStableEstimate(r);
-  assert.equal(e?.quantity, 10000, "drivers now read the headline's amortized qty");
-  assert.equal(e?.unit_cost_usd, 8.68, "reconciles to the headline's unit cost");
-});
-
-test("makeNowStableEstimate ignores other processes and is order-independent", () => {
-  const r = report({
-    decision: decision({ make_now_process: "cnc_milling" }),
-    estimates: [
-      est({ process: "cnc_milling", quantity: 10000, unit_cost_usd: 8.68 }),
-      est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 }),
-      est({ process: "die_casting", quantity: 100000, unit_cost_usd: 2.1 }),
-    ],
-  });
-  assert.equal(makeNowStableEstimate(r)?.quantity, 10000, "largest cnc qty even when listed first");
-});
-
-test("makeNowStableEstimate returns null (never fabricates) with no decision or no make-now estimate", () => {
-  assert.equal(
-    makeNowStableEstimate(report({ estimates: [est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 })] })),
-    null,
-    "no decision => null"
-  );
-  assert.equal(
-    makeNowStableEstimate(
-      report({
-        decision: decision({ make_now_process: "cnc_milling" }),
-        estimates: [est({ process: "die_casting", quantity: 100, unit_cost_usd: 2.1 })],
-      })
-    ),
-    null,
-    "no estimate for the make-now route => null"
-  );
-});
-
 test("pickEstimate returns null (never a fabricated estimate) for an uncosted process", () => {
   const r = report({ estimates: [est({ process: "cnc_milling", quantity: 50, unit_cost_usd: 22 })] });
   assert.equal(pickEstimate(r, "die_casting", 50), null);
@@ -450,6 +435,16 @@ test("costedProcesses/costedQuantities dedup in first-seen / ascending order res
   });
   assert.deepEqual(costedProcesses(r), ["cnc_milling", "injection_molding"]);
   assert.deepEqual(costedQuantities(r), [50, 5000]);
+});
+
+test("glass-box controls only offer estimates that pickEstimate can return", () => {
+  const r = report({ estimates: [
+    est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 12 }),
+    est({ process: "ded", quantity: 10, unit_cost_usd: 1, environment_excluded: true }),
+  ] });
+  assert.deepEqual(costedProcesses(r), ["cnc_milling"]);
+  assert.deepEqual(costedQuantities(r), [100]);
+  for (const process of costedProcesses(r)) assert.ok(pickEstimate(r, process));
 });
 
 test("blockersByProcess keeps uncosted findings and supports older estimate-only reports", () => {

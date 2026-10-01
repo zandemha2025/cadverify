@@ -11,7 +11,7 @@
 import * as React from "react";
 import { Factory } from "lucide-react";
 import type { CostReport, ValidationResult } from "@/lib/api";
-import { blockersByProcess } from "@/lib/cost-views";
+import { blockersByProcess, type workspaceSelection } from "@/lib/cost-views";
 import { procLabel } from "@/lib/status";
 import { marginalRate } from "@/lib/verify/verification";
 import { Card } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import type { IndexedIssue } from "@/components/IssueList";
 export function RoutingDfmView({
   report,
   validation,
+  selection,
   selectedIssueKey,
   onSelectIssue,
   onHighlightProcess,
@@ -31,6 +32,7 @@ export function RoutingDfmView({
 }: {
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
   selectedIssueKey: string | null;
   onSelectIssue: (it: IndexedIssue) => void;
   /** highlight the offending faces for a process's DFM blocker in the 3D rail */
@@ -42,7 +44,7 @@ export function RoutingDfmView({
     () => (report ? blockersByProcess(report) : {}),
     [report]
   );
-  const makeNowProcess = report?.decision?.make_now_process ?? null;
+  const makeNowProcess = selection.dfm.process;
   const machineGrounding = React.useMemo(
     () => marginalRate(report?.verification, makeNowProcess),
     [report?.verification, makeNowProcess]
@@ -108,9 +110,9 @@ export function RoutingDfmView({
         <DfmMatrix
           feasibility={report.engine_feasibility}
           blockers={blockers}
-          costPick={report.decision?.make_now_process}
+          costPick={selection.recommendation?.curve.process}
           geometryPick={report.routing?.recommended_process}
-          costQuantity={report.quantities.length ? Math.min(...report.quantities) : undefined}
+          costQuantity={selection.quantity ?? undefined}
           onHighlight={validation ? onHighlightProcess : undefined}
         />
       )}

@@ -11,7 +11,7 @@
  * confidence honesty + the data-locality signal — never a fabricated ±X%.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -22,13 +22,7 @@ import {
 } from "lucide-react";
 import type { CostOptions, CostReport } from "@/lib/api";
 import { procLabel } from "@/lib/status";
-import {
-  deriveBreakeven,
-  recommendAt,
-  posToQty,
-  qtyToPos,
-} from "@/lib/breakeven";
-import { pickEstimate } from "@/lib/cost-views";
+import { pickEstimate, type workspaceSelection } from "@/lib/cost-views";
 import { crossoverSummary } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +50,8 @@ const USD = new Intl.NumberFormat("en-US", {
 
 export function CostDecisionView({
   report,
+  selection,
+  onPositionChange,
   opts,
   setOpt,
   onRecost,
@@ -65,6 +61,8 @@ export function CostDecisionView({
   onSeeRouting,
 }: {
   report: CostReport;
+  selection: ReturnType<typeof workspaceSelection>;
+  onPositionChange: (position: number) => void;
   opts: CostOptions;
   setOpt: SetOpt;
   onRecost: () => void;
@@ -73,17 +71,7 @@ export function CostDecisionView({
   onOpenGlassBox: () => void;
   onSeeRouting: () => void;
 }) {
-  const breakeven = useMemo(() => deriveBreakeven(report), [report]);
-
-  // slider position [0,1]; default to the crossover (the decision boundary)
-  // clamped into range, else the largest costed quantity.
-  const [pos, setPos] = useState(() => {
-    if (!breakeven) return 1;
-    const dflt =
-      breakeven.crossoverQty ??
-      Math.max(...(report.quantities.length ? report.quantities : [1]));
-    return qtyToPos(breakeven, dflt);
-  });
+  const { breakeven, position: pos, quantity: qty, recommendation: rec, estimate: recEstimate, dfm } = selection;
 
   const [showInputs, setShowInputs] = useState(false);
   // the Buyer lens opens the trust panel by default; others can expand it.
@@ -92,20 +80,12 @@ export function CostDecisionView({
 
   const qtyError = validateQty(opts.qty);
 
-  if (!breakeven || !report.decision) {
+  if (!breakeven || !report.decision || qty == null) {
     // GEOMETRY_INVALID or no decision -> the breakdown card renders the repair UI
     return <CostDecisionCard report={report} />;
   }
 
-  const qty = posToQty(breakeven, pos);
-  const rec = recommendAt(breakeven, qty);
   const dec = report.decision;
-
-  // the estimate behind the currently-recommended process at this quantity —
-  // the source of the confidence band shown under the hero cost.
-  const recEstimate = rec
-    ? pickEstimate(report, rec.curve.process, qty)
-    : null;
   const exactQuantity = recEstimate?.quantity === qty;
   const recConfidence = exactQuantity ? recEstimate?.confidence ?? null : null;
 
@@ -122,7 +102,7 @@ export function CostDecisionView({
       <Card className="overflow-hidden">
         <DecisionHeadline
           title={rec ? `Make by ${procLabel(rec.curve.process)}` : "—"}
-          dfmReady={rec?.dfmReady ?? false}
+          verdict={dfm.verdict}
           sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="grid grid-cols-1 gap-5 sm:grid-cols-3">
@@ -174,7 +154,7 @@ export function CostDecisionView({
             min={0}
             max={1000}
             step={1}
-            onValueChange={([v]) => setPos(v / 1000)}
+            onValueChange={([v]) => onPositionChange(v / 1000)}
             aria-label="Order quantity"
           />
           <div className="num flex justify-between text-[11px] text-muted-foreground">

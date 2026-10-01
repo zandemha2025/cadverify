@@ -12,15 +12,16 @@ import * as React from "react";
 import { TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
+import type { DfmVerdict } from "@/lib/verify/derive";
 
 export function DecisionHeadline({
   title,
-  dfmReady,
+  verdict,
   sentence,
   className,
 }: {
   title: string;
-  dfmReady: boolean;
+  verdict: DfmVerdict;
   sentence: string;
   className?: string;
 }) {
@@ -34,10 +35,7 @@ export function DecisionHeadline({
       <span className="cv-eyebrow">Recommended decision · make-vs-buy</span>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <h2 className="text-display font-semibold leading-8 text-foreground">{title}</h2>
-        <StatusBadge
-          tone={dfmReady ? "pass" : "warn"}
-          label={dfmReady ? "DFM-ready" : "needs redesign"}
-        />
+        <StatusBadge verdict={verdict} />
       </div>
       <p className="mt-1 text-sm text-muted-foreground">{sentence}</p>
     </div>

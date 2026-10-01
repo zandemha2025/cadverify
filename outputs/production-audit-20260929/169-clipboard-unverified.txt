@@ -1,0 +1,112 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Should-cost · make-vs-buy
+  - heading "Drop a CAD file — get the decision, then the receipts." [level=1]
+  - paragraph: The manufacturing decision first (make by X, $Y/unit, Z days, switch to a mold above N), with the glass-box drivers, geometric routing and DFM evidence one click away — and the resident Inspector tracing any number to its governed source.
+  - status:
+    - paragraph: "Issue link ready: UNDERCUT|faces:1"
+    - paragraph: Upload the original CAD file to restore this issue. The file is not stored in the URL.
+  - button "Drag and drop or click to upload STL, STEP, STP, IGES or IGS · source CAD is retained as workspace evidence":
+    - paragraph: Drag and drop or click to upload
+    - paragraph: STL, STEP, STP, IGES or IGS · source CAD is retained as workspace evidence
+  - button "▾ Costing options (optional — sensible defaults applied)" [expanded]
+  - text: Quantities (comma list, up to 6)
+  - textbox "Quantities (comma list, up to 6)" [active]:
+    - /placeholder: 50,5000
+    - text: "ProofShape — 166-transverse-hole-bar.step Make by CNC 5-Axis / 6061-T6 Aluminum qty 1: CNC 5-Axis — $195.59/unit, 8.4-15.6 days qty 100: DED — $30.00/unit, 12.6-23.4 days DFM: Manufacturable (pass)"
+  - paragraph: "\"ProofShape — 166-transverse-hole-bar.step Make by CNC 5-Axis / 6061-T6 Aluminum qty 1: CNC 5-Axis — $195.59/unit\" is not a whole number."
+  - text: Material class
+  - combobox:
+    - generic: aluminum
+  - text: Region
+  - combobox:
+    - generic: Auto (shop region, else US)
+  - text: CAD source units
+  - combobox "CAD source units":
+    - generic: Millimetres (mm)
+  - paragraph: Applies only to unitless STL coordinates. STEP and IGES use their embedded units. All results are normalized to mm.
+  - text: Complexity
+  - combobox:
+    - generic: moderate
+  - text: Cavities (tooling)
+  - spinbutton: "1"
+- region "Notifications alt+T"
+- alert
+- generic: $0
+- status: 1Password menu is available. Press down arrow to select.

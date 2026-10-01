@@ -16,13 +16,10 @@
  * depth panel (the glass box), via onOpenGlassBox.
  */
 
-import * as React from "react";
 import { Boxes, ChevronRight, Crosshair } from "lucide-react";
 import type { CostReport } from "@/lib/api";
 import { issueProcesses, type IndexedIssue } from "@/lib/dfm-scope";
-import type { Breakeven } from "@/lib/breakeven";
-import { recommendAt, posToQty, qtyToPos } from "@/lib/breakeven";
-import { pickEstimate } from "@/lib/cost-views";
+import { pickEstimate, type workspaceSelection } from "@/lib/cost-views";
 import { procLabel } from "@/lib/status";
 import { costPersistUiEnabled, crossoverSummary } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,7 +38,8 @@ const USD = new Intl.NumberFormat("en-US", {
 
 export function DecisionColumn({
   report,
-  breakeven,
+  selection,
+  onPositionChange,
   filename,
   costBlockers,
   selectedKey,
@@ -50,7 +48,8 @@ export function DecisionColumn({
   onSeeRouting,
 }: {
   report: CostReport;
-  breakeven: Breakeven | null;
+  selection: ReturnType<typeof workspaceSelection>;
+  onPositionChange: (position: number) => void;
   filename: string;
   /** cost-side DFM blockers relinked to locatable rows (dedup across estimates);
    *  each carries the shared `cost:`-namespaced key + its face sample. */
@@ -66,24 +65,13 @@ export function DecisionColumn({
 }) {
   const dec = report.decision;
 
-  // slider position [0,1]; default to the crossover (the decision boundary),
-  // else the largest costed quantity. Mirrors the Decision lens.
-  const [pos, setPos] = React.useState(() => {
-    if (!breakeven) return 1;
-    const dflt =
-      breakeven.crossoverQty ??
-      Math.max(...(report.quantities.length ? report.quantities : [1]));
-    return qtyToPos(breakeven, dflt);
-  });
+  const { breakeven, position: pos, quantity: qty, recommendation: rec, estimate: recEstimate, dfm } = selection;
 
-  if (!breakeven || !dec) {
+  if (!breakeven || !dec || qty == null) {
     // GEOMETRY_INVALID / no decision → the breakdown card renders the honest state
     return <CostDecisionCard report={report} />;
   }
 
-  const qty = posToQty(breakeven, pos);
-  const rec = recommendAt(breakeven, qty);
-  const recEstimate = rec ? pickEstimate(report, rec.curve.process, qty) : null;
   const exactQuantity = recEstimate?.quantity === qty;
   const recConfidence = exactQuantity ? recEstimate?.confidence ?? null : null;
 
@@ -98,7 +86,7 @@ export function DecisionColumn({
       <Card className="overflow-hidden">
         <DecisionHeadline
           title={rec ? `Make by ${procLabel(rec.curve.process)}` : "—"}
-          dfmReady={rec?.dfmReady ?? false}
+          verdict={dfm.verdict}
           sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="space-y-4">
@@ -207,7 +195,7 @@ export function DecisionColumn({
             min={0}
             max={1000}
             step={1}
-            onValueChange={([v]) => setPos(v / 1000)}
+            onValueChange={([v]) => onPositionChange(v / 1000)}
             aria-label="Order quantity"
           />
           <div className="num flex justify-between text-[11px] text-muted-foreground">

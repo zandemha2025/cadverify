@@ -15,6 +15,7 @@ import type { CostReport } from "@/lib/api";
 import { procLabel } from "@/lib/status";
 import { pickEstimate } from "@/lib/cost-views";
 import { crossoverSummary } from "@/lib/cost-decision";
+import { routeDfmOutcome } from "@/lib/verify/derive";
 import { Card, CardContent } from "@/components/ui/card";
 import CostDecisionCard from "@/components/CostDecisionCard";
 import { CostHonestyNote } from "@/components/cost/CostHonestyNote";
@@ -37,11 +38,12 @@ export function SavedCostDecisionView({ report }: { report: CostReport }) {
   }
 
   // Representative estimate behind the make-now process → the confidence band.
-  const headEstimate = pickEstimate(report, dec.make_now_process);
+  const headEstimate = pickEstimate(report, dec.make_now_process, undefined, dec.make_now_material);
+  const verdict = routeDfmOutcome(headEstimate?.dfm_verdict, headEstimate).verdict;
   const conf = headEstimate?.confidence ?? null;
-  const costStamp = headEstimate?.dfm_ready
+  const costStamp = headEstimate && (verdict === "pass" || verdict === "issues")
     ? {
-        text: `Manufacturable by ${procLabel(dec.make_now_process)} at $${headEstimate.unit_cost_usd.toFixed(2)}/unit`,
+        text: `Estimated cost by ${procLabel(dec.make_now_process)}: $${headEstimate.unit_cost_usd.toFixed(2)}/unit`,
         quantity: headEstimate.quantity,
         validated: headEstimate.confidence?.validated ?? false,
         label: headEstimate.confidence?.label ?? "Assumption-based should-cost, not yet validated",
@@ -53,19 +55,19 @@ export function SavedCostDecisionView({ report }: { report: CostReport }) {
       <Card className="overflow-hidden">
         <DecisionHeadline
           title={`Make by ${procLabel(dec.make_now_process)}`}
-          dfmReady={headEstimate?.dfm_ready ?? false}
+          verdict={verdict}
           sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="space-y-3">
           {costStamp ? (
-            <div className="rounded-md border border-pass/30 bg-pass-bg p-3" data-testid="cost-stamp">
+            <div className={`rounded-md border p-3 ${verdict === "pass" ? "border-pass/30 bg-pass-bg" : "border-warn/30 bg-warn-bg"}`} data-testid="cost-stamp">
               <p className="font-semibold text-foreground">{costStamp.text}</p>
               <p className="text-xs text-muted-foreground">
                 At quantity {costStamp.quantity.toLocaleString()} · {costStamp.validated ? "VALIDATED" : "ESTIMATE"} · {costStamp.label}
               </p>
             </div>
           ) : (
-            <p className="text-sm font-medium text-fail">Manufacturability/cost stamp withheld: the selected route has DFM blockers.</p>
+            <p className="text-sm font-medium text-fail">Cost stamp withheld: the selected route is blocked or lacks DFM evidence.</p>
           )}
           {conf ? (
             <ConfidenceInterval confidence={conf} />

@@ -40,7 +40,7 @@ import {
   type ValidationResult,
 } from "@/lib/api";
 import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import { parseCalibration, makeNowStableEstimate, workspaceDfmSummary } from "@/lib/cost-views";
+import { parseCalibration, workspaceSelection } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
@@ -165,6 +165,7 @@ export default function PartWorkspace({
 
   // cost state
   const [report, setReport] = useState<CostReport | null>(null);
+  const [quantityPosition, setQuantityPosition] = useState<{ report: CostReport; position: number } | null>(null);
   const reportOptionsRef = useRef<CostOptions | null>(null);
   const [assumptions, setAssumptions] = useState<CostAssumption[]>([]);
   const [costLoading, setCostLoading] = useState(false);
@@ -194,8 +195,14 @@ export default function PartWorkspace({
 
   const activeRole = roleById(role);
   const { setPart } = useInstrumentChrome();
-  const workspaceDfm = useMemo(() => workspaceDfmSummary(report, validation), [report, validation]);
+  const selection = useMemo(() => workspaceSelection(report, validation,
+    quantityPosition?.report === report ? quantityPosition?.position : undefined),
+  [report, validation, quantityPosition]);
+  const workspaceDfm = selection.dfm;
   const workspaceVerdict = geomError ? "fail" : workspaceDfm.verdict;
+  const onPositionChange = useCallback((position: number) => {
+    if (report) setQuantityPosition({ report, position });
+  }, [report]);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,17 +322,8 @@ export default function PartWorkspace({
     [report, assumptions]
   );
 
-  // the resident Inspector anchors to the Decision's make-now recommendation —
-  // the number the whole frame is about — and traces it to its governed sources.
-  const inspectorEstimate = useMemo(() => {
-    if (!report?.decision) return null;
-    // Anchor to the make-now route's STABLE (largest, setup-amortized) quantity —
-    // the reading the should-cost headline shows — so the Inspector's drivers
-    // reconcile to the SAME qty's unit cost. (F5: this used pickEstimate() with no
-    // qty, which returns the FIRST/smallest-qty estimate and disagreed with the
-    // headline — drivers @qty 100 under a headline @qty 10,000.)
-    return makeNowStableEstimate(report);
-  }, [report]);
+  // Interpolated prices have no exact driver breakdown; never substitute another quantity.
+  const inspectorEstimate = selection.estimate?.quantity === selection.quantity ? selection.estimate : null;
   const overrideKeys = useMemo(() => Object.keys(opts.overrides ?? {}), [opts.overrides]);
 
   const setOpt = useCallback(
@@ -653,6 +651,8 @@ export default function PartWorkspace({
         file={file}
         report={report}
         validation={validation}
+        selection={selection}
+        onPositionChange={onPositionChange}
         opts={opts}
         sourceUnits={submittedOptions.units}
         setOpt={setOpt}
@@ -877,6 +877,8 @@ export default function PartWorkspace({
                     <div className="space-y-5">
                       <CostDecisionView
                         report={report}
+                        selection={selection}
+                        onPositionChange={onPositionChange}
                         opts={opts}
                         setOpt={setOpt}
                         onRecost={handleRecost}
@@ -905,6 +907,7 @@ export default function PartWorkspace({
                     <RoutingDfmView
                       report={report}
                       validation={validation}
+                      selection={selection}
                       selectedIssueKey={selectedIssueKey}
                       onSelectIssue={(it) => selectPinpoint(it.key)}
                       onHighlightProcess={onHighlightProcess}
@@ -957,6 +960,7 @@ export default function PartWorkspace({
                   <HistoryPanel
                     report={report}
                     validation={validation}
+                    selection={selection}
                     scenarios={scenarios}
                     onRecallScenario={onRecallScenario}
                   />
@@ -972,8 +976,8 @@ export default function PartWorkspace({
         open={inspectorOpen}
         onToggle={() => setInspectorOpen((o) => !o)}
         estimate={inspectorEstimate}
-        process={report?.decision?.make_now_process ?? ""}
-        qty={inspectorEstimate?.quantity ?? report?.quantities[0] ?? 0}
+        process={selection.dfm.process ?? ""}
+        qty={selection.quantity ?? 0}
         materialClass={report?.material_class ?? opts.material_class}
         overrideKeys={overrideKeys}
         onOverride={onApplyOverride}
@@ -1009,16 +1013,18 @@ function LoadingPane({ label }: { label: string }) {
 function HistoryPanel({
   report,
   validation,
+  selection,
   scenarios,
   onRecallScenario,
 }: {
   report: CostReport | null;
   validation: ValidationResult | null;
+  selection: ReturnType<typeof workspaceSelection>;
   scenarios: (ScenarioSummary & { opts: CostOptions })[];
   onRecallScenario: (id: string) => void;
 }) {
   const router = useRouter();
-  const summary = buildAnswerSummary(report, validation);
+  const summary = buildAnswerSummary(report, validation, selection);
 
   const copy = async () => {
     try {
@@ -1091,13 +1097,15 @@ function HistoryPanel({
 
 function buildAnswerSummary(
   report: CostReport | null,
-  validation: ValidationResult | null
+  validation: ValidationResult | null,
+  selection: ReturnType<typeof workspaceSelection>,
 ): string {
   const lines: string[] = [];
   if (report?.decision) {
     const dec = report.decision;
     lines.push(`ProofShape — ${report.filename}`);
-    lines.push(`Make by ${procLabel(dec.make_now_process)} / ${dec.make_now_material}`);
+    const pick = selection.recommendation;
+    lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
     for (const q of report.quantities) {
       const r = dec.recommendation[String(q)];
       if (r) {
@@ -1119,7 +1127,7 @@ function buildAnswerSummary(
     }
   }
   if (validation || report) {
-    const dfm = workspaceDfmSummary(report, validation);
+    const dfm = selection.dfm;
     lines.push(
       `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
     );
