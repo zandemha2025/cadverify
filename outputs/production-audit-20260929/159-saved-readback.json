@@ -1,0 +1,268 @@
+{
+  "engine_version": "0.3.26",
+  "controls": [
+    {
+      "filename": "159-sheet-30x20x0.4.step",
+      "thickness_mm": 0.4,
+      "volume_mm3": 240.0,
+      "source_sha256": "7a5bcd3db5067e6188d33a66b4385935174b211769d8b1bd8bd9600806205d0f",
+      "analyses": {
+        "id": 1458,
+        "ulid": "01M3TMC2W5HZ8JZ2BCEAJPH5AH",
+        "version": "0.3.26",
+        "result_sha256": "5f3f5dadbd70f44b992b071b9bc5933f43bf94ec4049a62841e288c6642b15e0",
+        "sheet_verdict": "fail",
+        "gauge_issues": [
+          {
+            "code": "TOO_THIN_SHEET",
+            "scope": "whole_part",
+            "message": "Thickness 0.4mm below the default 0.5mm minimum sheet gauge.",
+            "process": "sheet_metal",
+            "severity": "error",
+            "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+            "measured_value": 0.4,
+            "required_value": 0.5,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 240.0
+      },
+      "cost_decisions": {
+        "id": 5081,
+        "ulid": "01M3TMC2X3CQGAQ1H7A5ZHDHX3",
+        "version": "0.3.26",
+        "result_sha256": "f283ba65fadc1ab10e34a0746bc236d6f32478bef9ffbc14d6427d389378d578",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.4mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.4,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.4mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.4,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "filename": "159-sheet-30x20x0.5.step",
+      "thickness_mm": 0.5,
+      "volume_mm3": 300.0,
+      "source_sha256": "45aee922a148dc18e2cc551fa42cb7d2ae8a3a0e6619a74dbeea324ef21c6075",
+      "analyses": {
+        "id": 1467,
+        "ulid": "01M3TMDKWDRHFYGSW894BVR4GT",
+        "version": "0.3.26",
+        "result_sha256": "2a0ce4ed47c1ab8bc4a45b8bc353e2150eecc6fe30f3e77acc04cffaef78663e",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5104,
+        "ulid": "01M3TMDKYG52DN0YFF4R4G9TZQ",
+        "version": "0.3.26",
+        "result_sha256": "48ad2abac079b3d2d2d762d96df7aae4353b52700e631b87f7cfea7bce44ef25",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "dfm_blocker_details": []
+          }
+        ]
+      }
+    },
+    {
+      "filename": "159-sheet-30x20x6.step",
+      "thickness_mm": 6.0,
+      "volume_mm3": 3600.0,
+      "source_sha256": "1b86564697a45d2fc7ff2b9ad31ddd31380db9c542209d54104e72f7c94d1367",
+      "analyses": {
+        "id": 1468,
+        "ulid": "01M3TMESJ6SVA22FSE740XHB6V",
+        "version": "0.3.26",
+        "result_sha256": "1d3cbb2003581737b0d514f43419a634b70c524aa58cb6cbbe2b347e210300a3",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 3600.0
+      },
+      "cost_decisions": {
+        "id": 5105,
+        "ulid": "01M3TMESJBX2C8Y0Z5561K8CJ8",
+        "version": "0.3.26",
+        "result_sha256": "5f8a27bd18017ff157271f7c1dff00266557da7a6eec70ff2ba6b7dded6f77a7",
+        "sheet_estimates": []
+      }
+    },
+    {
+      "filename": "159-sheet-30x20x7.step",
+      "thickness_mm": 7.0,
+      "volume_mm3": 4200.0,
+      "source_sha256": "512d6689a81dd3cd8c8ba5facac671a6852373aa3c34f87b2b9829e269828d84",
+      "analyses": {
+        "id": 1472,
+        "ulid": "01M3TMGA4ZEGTB1HWT9YQ8PW06",
+        "version": "0.3.26",
+        "result_sha256": "9c9ebb11d205fa16dc0ac8386bee3b17f8e5620f3b039207301637bd7734f10a",
+        "sheet_verdict": "issues",
+        "gauge_issues": [
+          {
+            "code": "TOO_THICK_SHEET",
+            "scope": "whole_part",
+            "message": "Thickness 7mm exceeds the default 6mm maximum sheet gauge.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm stock and machine capacity for this thickness, or consider plate machining.",
+            "measured_value": 7.0,
+            "required_value": 6.0,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 4200.0
+      },
+      "cost_decisions": {
+        "id": 5111,
+        "ulid": "01M3TMGA48GP9XVAXCTXZ9HTJ5",
+        "version": "0.3.26",
+        "result_sha256": "edb81b144e57bb354a51264d11d495bd7de4bdc6715777df3d2b9c064e501992",
+        "sheet_estimates": []
+      }
+    },
+    {
+      "filename": "159-sheet-translated-0.5.step",
+      "thickness_mm": 0.5,
+      "z_translation_mm": 511.8,
+      "volume_mm3": 300.0,
+      "source_sha256": "03cb682ae7686b84d54d95c9bb8fe01c67556ac9d051e01aacefa27702daa18f",
+      "analyses": {
+        "id": 1473,
+        "ulid": "01M3TMH7GG9MPEF58BFJKQ4CM0",
+        "version": "0.3.26",
+        "result_sha256": "ea0fbfec0239c89af1af14e0f628dd0dfb8a729c3f72cafd2e0f8f6401c68f44",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5112,
+        "ulid": "01M3TMH7J0ZB49P2DQZHE33GVC",
+        "version": "0.3.26",
+        "result_sha256": "6408456b0d9f4033d2febdb8e1263199a2615c89e856da1432a27034db4f117e",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "pass",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "dfm_blocker_details": []
+          }
+        ]
+      }
+    },
+    {
+      "filename": "159-sheet-translated-6.step",
+      "thickness_mm": 6.0,
+      "z_translation_mm": 253.1,
+      "volume_mm3": 3600.0,
+      "source_sha256": "b2d58ef57770b5e8c2bd03d0c45e25ba3e6a017211ac00da27ccaa4a3af57117",
+      "analyses": {
+        "id": 1474,
+        "ulid": "01M3TMKPFAZRQTHHF083MYBVY2",
+        "version": "0.3.26",
+        "result_sha256": "f9101c04fd7c5f08bdbd9cf93907460c2d9570e172febdfbf491bf36fd3809c5",
+        "sheet_verdict": "pass",
+        "gauge_issues": [],
+        "volume_mm3": 3600.0
+      },
+      "cost_decisions": {
+        "id": 5113,
+        "ulid": "01M3TMKPEKX2Q0TZADKJYGSP2Y",
+        "version": "0.3.26",
+        "result_sha256": "e4f41a545fe0a318ff134c37dde5921af1cc2d4d417479ae5e4f5725400ae074",
+        "sheet_estimates": []
+      }
+    }
+  ],
+  "historical_records": [
+    {
+      "table": "analyses",
+      "id": 1398,
+      "version": "0.3.21",
+      "result_sha256": "38591b24f3a453c74bb23122a41e70890695b78cbed1e4e4ab9618ca00c9aed9",
+      "unchanged": true
+    },
+    {
+      "table": "analyses",
+      "id": 1337,
+      "version": "0.3.20",
+      "result_sha256": "e09301bdb22365c5174504b4b36f71e63b28a4ec20b5322ba54e2ce1ad17aed2",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4869,
+      "version": "0.3.21",
+      "result_sha256": "e871b15b8cfc2195df6f6ef53511ea0b402b6e5dea6fddca01a3da951427fc1e",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4643,
+      "version": "0.3.20",
+      "result_sha256": "611d750a75ed5a3c2e4460663ecd9887c51e4212c88017ed7b122e22c0e3d60a",
+      "unchanged": true
+    }
+  ],
+  "old_thin_report": {
+    "analysis_id": 1447,
+    "version": "0.3.24",
+    "sheet_verdict": "pass",
+    "result_sha256": "296eb6145b3c6a03ffc01e1a64d0ba66f90affd4cb7ba8e41899aeeefc0f92c0"
+  }
+}

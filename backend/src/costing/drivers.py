@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from src.analysis.constants import SHEET_GAUGE_MAX_MM
 from src.costing.routing import is_rotational
 
 
@@ -122,11 +123,6 @@ def parts_per_build(proc, bbox_mm, rates) -> int:
         return 1
     n = int(rates.packing_density(proc) * env_vol_cm3 / part_vol_cm3)
     return max(1, n)
-
-
-# Sheet-metal gauge ceiling (mm). Above this the thinnest extent is treated as a
-# wall/web, not a sheet gauge — heavy plate routes to machining, not fab.
-SHEET_GAUGE_MAX_MM = 6.0
 
 
 def _bend_count(mesh) -> int:

@@ -1,0 +1,80 @@
+{
+  "audit": 159,
+  "status": "default-range mismatch fixed locally; not deployed",
+  "engine_version": "0.3.26",
+  "first_divergence": "Native0.4mm STEP showed SheetMetal Pass100%, although the disclosed minimum was0.5mm. Source checked<0.3 and>8 while messages claimed0.5\u20136.",
+  "basis": [
+    "Existing STANDARD_GAUGES catalog spans0.5\u20136mm.",
+    "All built-in sheet material profiles use0.5mm minimum, including structured mild-steel-sheet profile.",
+    "These are application defaults, not a claim of universal material/supplier/machine capability."
+  ],
+  "fix": [
+    "Derive shared minimum and maximum from the existing stock catalog.",
+    "Use identical values in comparisons, required_value and user-facing messages; label them as defaults. Preserve minimum ERROR and maximum WARNING behavior.",
+    "Nearest-stock advice now identifies the default catalog rather than claiming a universal standard or guaranteed savings.",
+    "Costing imports the existing6mm maximum from the shared constant; its routing predicates are otherwise unchanged.",
+    "Reuse existing wall_thickness_tolerance for numeric noise at inclusive exact limits and nearest-stock comparison. No physical manufacturing allowance added."
+  ],
+  "checks": {
+    "initial_red": {
+      "failed": 8,
+      "passed": 8
+    },
+    "translation_red": {
+      "failed": 2,
+      "passed": 38,
+      "examples": [
+        "0.5mm translatedZ511.8 measured0.49999999999994316",
+        "6mm translatedZ253.1 measured6.000000000000028"
+      ]
+    },
+    "final_focused": {
+      "passed": 80,
+      "seconds": 0.46,
+      "sheet_boundary_cases": 36,
+      "files": [
+        "test_routing_sheet.py",
+        "test_findings_serialization.py",
+        "test_process_cost_new.py"
+      ]
+    },
+    "full_backend": {
+      "passed": 2660,
+      "skipped": 3,
+      "seconds": 340.14,
+      "note": "Collected before the added24translated cases and numerical-tolerance follow-up; final80focused checks cover the final implementation.",
+      "skips": [
+        "real corpus manifest absent",
+        "two optional OCP XDE checks"
+      ]
+    },
+    "changed_source_pyright": {
+      "existing": 2,
+      "new": 0
+    },
+    "bandit_medium_high": 0,
+    "trap_corpus": "pass; existing suspicious_scale/unit_flag gap remains",
+    "frontend": "unchanged from158:502tests/types/lint/build passed; no unnecessary rerun"
+  },
+  "native_controls": "159-native-controls.json; six real STEP uploads on final0.3.26",
+  "native_results": [
+    "0.4mm Required; measured0.4mm vsdefault0.5mm",
+    "0.5mm and6mm Pass for this sheet gauge check",
+    "7mm Advisory; measured7mm vsdefault6mm",
+    "Translated0.5mm and6mm Pass"
+  ],
+  "saved_records": "159-saved-readback.json;12finalrecords with matching source hashes and analytic volumes. Both0.4mm sheet-cost estimates carry the same fail and structured blocker;6/7mm compact controls are feasibility-only with no sheet estimate.",
+  "historical_evidence": "Four old analysis/cost JSON hashes unchanged. Original0.3.24 thin-sheet report remains a separate Pass record; new0.3.26 report fails the default gate.",
+  "review": "Authorized read-only review found the two translated exact-boundary errors. Both reproduced RED then fixed using shared numerical tolerance; final80checks pass. Follow-up review requested, no final scope confirmation received at checkpoint.",
+  "harness_note": "One cold-upload locator observation expired before rendering completed. A fresh snapshot showed successful completion; no service/job was restarted because of that observation timeout.",
+  "open_accuracy_issue": {
+    "evidence": "159-rotation-open.json",
+    "known_thickness_mm": 0.5,
+    "rotated_reported_mm": 14.911438568110043,
+    "cause": "Gauge checks, hole-placement checks and cost sheet drivers use axis-aligned spans, not physical sheet thickness.",
+    "status": "OPEN; next shared geometry correction. Rotation also changes sheet classification and blank cost inputs.",
+    "native_evidence": "159-rotation-open.png and159-rotation-open.txt reproduce14.9114mm in the final0.3.26 UI."
+  },
+  "release": "Production unchanged; PR107draft. CI36801062294 completed on0b0c9f2through156:all8non-imagejobsincludingbrowser+bothactual-imageprobes pass;backendscanonly fails5HIGH/0CRITICAL. New157\u2013159fixes to be published for their own CI; see ci-36801062294-summary.json.",
+  "goal": "Full goal remains open: wider geometry/cost accuracy, actual email/company identity/vendor integrations, image security and approved production rollout/retest."
+}

@@ -10,6 +10,7 @@ Locks in the Cost-Truth routing/physics fixes:
 """
 from __future__ import annotations
 
+import pytest
 import numpy as np
 import trimesh
 
@@ -103,3 +104,31 @@ def test_check_bends_passes_flat_plate():
     issues = check_bends(ctx, ProcessType.SHEET_METAL)
     assert not any(i.severity == Severity.ERROR for i in issues), (
         "flat plate must not be flagged as a sharp bend")
+
+
+@pytest.mark.parametrize("z_offset", [0., 511.8, 253.1])
+@pytest.mark.parametrize("thickness,code,limit", [
+    (0.2, "TOO_THIN_SHEET", 0.5), (0.3, "TOO_THIN_SHEET", 0.5),
+    (0.4, "TOO_THIN_SHEET", 0.5), (0.49999, "TOO_THIN_SHEET", 0.5),
+    (0.5, None, None), (0.8, None, None), (5.99999, None, None), (6., None, None),
+    (6.00001, "TOO_THICK_SHEET", 6.), (7., "TOO_THICK_SHEET", 6.),
+    (8., "TOO_THICK_SHEET", 6.), (8.00001, "TOO_THICK_SHEET", 6.),
+])
+def test_sheet_stock_range_matches_its_disclosed_limits(thickness, code, limit, z_offset):
+    mesh = trimesh.creation.box(extents=[30., 20., thickness])
+    mesh.apply_translation([0., 0., z_offset])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    issues = get_analyzer(ProcessType.SHEET_METAL).analyze(ctx)
+    gauge_issues = [i for i in issues if i.code in {"TOO_THIN_SHEET", "TOO_THICK_SHEET"}]
+    if code is None:
+        assert not gauge_issues
+        return
+    assert len(gauge_issues) == 1
+    issue = gauge_issues[0]
+    assert issue.code == code
+    assert issue.measured_value == pytest.approx(thickness)
+    assert issue.required_value == limit
+    assert issue.measurement_unit == "mm"
+    assert "default" in issue.message.lower()
+    assert f"{limit:g}mm" in issue.message
+    assert issue.severity == (Severity.ERROR if code == "TOO_THIN_SHEET" else Severity.WARNING)

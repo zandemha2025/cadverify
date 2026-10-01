@@ -20,7 +20,7 @@ import numpy as np
 
 from src.analysis.citations import parse_citation
 from src.analysis.serialization import format_measurement
-from src.analysis.constants import STANDARD_GAUGES
+from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
 from src.analysis.context import GeometryContext, wall_thickness_tolerance
 from src.analysis.features.base import (
     Feature,
@@ -889,30 +889,34 @@ def check_sheet_gauge(
     issues: list[Issue] = []
     dims = sorted(ctx.info.bounding_box.dimensions)
     t = dims[0]
-    if t < 0.3:
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    if t < SHEET_GAUGE_MIN_MM - tolerance:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,
             measurement_unit="mm",
-            message=f"Thickness {format_measurement(t, 0.5)}mm below 0.5mm min gauge.",
-            process=process, measured_value=t, required_value=0.5,
-            fix_suggestion="Increase to >= 0.5mm.",
+            message=f"Thickness {format_measurement(t, SHEET_GAUGE_MIN_MM)}mm below the default {SHEET_GAUGE_MIN_MM:g}mm minimum sheet gauge.",
+            process=process, measured_value=t, required_value=SHEET_GAUGE_MIN_MM,
+            fix_suggestion=f"Use >= {SHEET_GAUGE_MIN_MM:g}mm for default sheet profiles; confirm material-specific stock and machine limits.",
         ))
-    elif t > 8.0:
+    elif t > SHEET_GAUGE_MAX_MM + tolerance:
         issues.append(Issue(
             code="TOO_THICK_SHEET", severity=Severity.WARNING,
             measurement_unit="mm",
-            message=f"Thickness {format_measurement(t, 8.0)}mm exceeds sheet range (0.5–6mm).",
-            process=process, measured_value=t,
-            fix_suggestion="Use plate CNC machining for thick stock.",
+            message=f"Thickness {format_measurement(t, SHEET_GAUGE_MAX_MM)}mm exceeds the default {SHEET_GAUGE_MAX_MM:g}mm maximum sheet gauge.",
+            process=process, measured_value=t, required_value=SHEET_GAUGE_MAX_MM,
+            fix_suggestion="Confirm stock and machine capacity for this thickness, or consider plate machining.",
         ))
     closest = min(STANDARD_GAUGES, key=lambda g: abs(g - t))
-    if abs(closest - t) > 0.1 and 0.5 <= t <= 6.0:
+    if (
+        abs(closest - t) > 0.1 + tolerance
+        and SHEET_GAUGE_MIN_MM - tolerance <= t <= SHEET_GAUGE_MAX_MM + tolerance
+    ):
         issues.append(Issue(
             code="NON_STANDARD_GAUGE", severity=Severity.INFO,
             measurement_unit="mm",
-            message=f"Thickness {format_measurement(t, closest)}mm — nearest standard: {closest}mm.",
+            message=f"Thickness {format_measurement(t, closest)}mm is not in the default stock list; nearest listed gauge: {closest:g}mm.",
             process=process, measured_value=t,
-            fix_suggestion=f"Use {closest}mm standard gauge for cost savings.",
+            fix_suggestion=f"Confirm supplier stock; {closest:g}mm is the nearest gauge in the default catalog.",
         ))
     return issues
 

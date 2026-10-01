@@ -1,0 +1,500 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 159-sheet-translated-6.step
+    - text: Pass
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "159-sheet-translated-6.step" [level=1]
+  - text: Manufacturable
+  - paragraph: One drop · costed and analyzed in-process
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision":
+      - text: Decision
+    - tab "Routing & DFM" [selected]:
+      - text: Routing & DFM
+    - tab "Glass Box":
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - generic: Volume
+  - generic: 3.6 cm³
+  - generic: Bounding box
+  - generic: 30 × 20 × 6 mm
+  - generic: Faces
+  - generic: 126,270
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - tabpanel "Routing & DFM":
+    - generic: Geometric routing
+    - heading "MJF (HP)" [level=3]
+    - generic: "archetype: bulk_solid"
+    - generic: confidence 0.40
+    - paragraph: General solid (100% of bbox filled, ~4.0mm mean wall) with no dominant sheet/rotational/prismatic signature → additive (MJF/SLS) for a polymer prototype.
+    - paragraph:
+      - text: "alternatives: SLS (Powder)"
+      - generic: · CNC 3-Axis
+    - generic: Decided by
+    - generic: rotational
+    - generic: "no"
+    - generic: sheet_like
+    - generic: "no"
+    - generic: planar_aspect
+    - generic: "3.33"
+    - generic: nominal_wall_mm
+    - generic: "4.00"
+    - generic: sheet_gauge_mm
+    - generic: "6.00"
+    - generic: bend_count
+    - generic: "1.00"
+    - generic: DFM matrix · all processes
+    - table:
+      - rowgroup:
+        - row "Process Verdict Suitability First blocker":
+          - columnheader "Process"
+          - columnheader "Verdict"
+          - columnheader "Suitability"
+          - columnheader "First blocker"
+      - rowgroup:
+        - row "FDM / FFF Pass 100% —":
+          - cell "FDM / FFF"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "SLA Resin Advisory 100% —":
+          - cell "SLA Resin"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "100%"
+          - cell "—"
+        - row "DLP Resin Pass 100% —":
+          - cell "DLP Resin"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "SLS (Powder) Pass 100% —":
+          - cell "SLS (Powder)"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "MJF (HP)cost pick · qty 50 Pass 100% —":
+          - cell "MJF (HP)cost pick · qty 50":
+            - text: MJF (HP)
+            - generic: cost pick · qty 50
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "DMLS (Metal)feasibility-only Advisory 90% —":
+          - cell "DMLS (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "SLM (Metal)feasibility-only Advisory 90% —":
+          - cell "SLM (Metal)feasibility-only"
+          - cell "Advisory":
+            - text: Advisory
+          - cell "90%"
+          - cell "—"
+        - row "EBM (Metal)feasibility-only Pass 100% —":
+          - cell "EBM (Metal)feasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "Binder Jettingfeasibility-only Pass 100% —":
+          - cell "Binder Jettingfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "DEDfeasibility-only Pass 100% —":
+          - cell "DEDfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "WAAMfeasibility-only Pass 100% —":
+          - cell "WAAMfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "CNC 3-Axis Pass 100% —":
+          - cell "CNC 3-Axis"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "CNC 5-Axis Pass 100% —":
+          - cell "CNC 5-Axis"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - 'row "CNC Turningfeasibility-only Required 0% Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."':
+          - cell "CNC Turningfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - 'cell "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."':
+            - 'button "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."':
+              - generic: "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."
+        - row "Wire EDMfeasibility-only Pass 100% —":
+          - cell "Wire EDMfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "Injection Molding Required 0% 42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.":
+          - cell "Injection Molding"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.":
+            - button "42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.":
+              - generic: 42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.
+        - row "Die Castingfeasibility-only Required 0% 42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.":
+          - cell "Die Castingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.":
+            - button "42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.":
+              - generic: 42282 sidewall faces (100.0% of sidewall area) below 1.0° draft for die_casting.
+        - row "Investment Castingfeasibility-only Required 0% 42282 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.":
+          - cell "Investment Castingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "42282 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.":
+            - button "42282 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.":
+              - generic: 42282 sidewall faces (100.0% of sidewall area) below 0.5° draft for investment_casting.
+        - row "Sand Castingfeasibility-only Required 0% 42282 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.":
+          - cell "Sand Castingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "42282 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.":
+            - button "42282 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.":
+              - generic: 42282 sidewall faces (100.0% of sidewall area) below 3.0° draft for sand_casting.
+        - row "Sheet Metalfeasibility-only Pass 100% —":
+          - cell "Sheet Metalfeasibility-only"
+          - cell "Pass":
+            - text: Pass
+          - cell "100%"
+          - cell "—"
+        - row "Forgingfeasibility-only Required 0% 42282 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.":
+          - cell "Forgingfeasibility-only"
+          - cell "Required":
+            - text: Required
+          - cell "0%"
+          - cell "42282 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.":
+            - button "42282 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.":
+              - generic: 42282 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.
+    - generic: Per-process DFM audit
+    - text: Manufacturable
+    - paragraph: 159-sheet-translated-6.step (STEP) — analyzed in 6865.7ms
+    - paragraph: Best fit
+    - paragraph: FDM / FFF
+    - paragraph: Dimensions
+    - paragraph: 30 × 20 × 6 mm
+    - paragraph: Volume
+    - paragraph: 3.6 cm³
+    - paragraph: Faces
+    - paragraph: 126,270
+    - paragraph: Watertight
+    - paragraph: "Yes"
+    - heading "Manufacturability issues" [level=3]
+    - generic: grouped by physical defect · process implications attached
+    - text: Required fixes
+    - generic: "2"
+    - 'button "Required NOT_ROTATIONALLY_SYMMETRIC Affected processes Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning. CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC."':
+      - text: Required
+      - generic: NOT_ROTATIONALLY_SYMMETRIC
+      - generic "Affected processes":
+        - generic: cnc_turning
+      - paragraph: "Part lacks positive rotational geometry (eigenvalue ratios: 0.47, 0.72; insufficient outer rotational surface evidence). Required for cnc_turning."
+      - paragraph: CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.
+    - 'button "Required INSUFFICIENT_DRAFT locate Affected processes 42282 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging. Add >= 5.0° draft to all walls in pull direction. FIA: 5° external, 7-10° internal."':
+      - text: Required
+      - generic: INSUFFICIENT_DRAFT
+      - generic "Highlighted on the 3D model":
+        - text: locate
+      - generic "Affected processes":
+        - generic: injection_molding
+        - generic: die_casting
+        - generic: investment_casting
+        - generic: sand_casting
+        - generic: forging
+      - paragraph: 42282 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.
+      - paragraph: "Add >= 5.0° draft to all walls in pull direction. FIA: 5° external, 7-10° internal."
+    - text: Advisory
+    - generic: "3"
+    - button "Advisory CUPPING_RISK Affected processes Large downward-facing area (600mm², 33%) — resin cupping / suction risk during peel. Add drain holes, tilt part 10-15°, or orient concave side up.":
+      - text: Advisory
+      - generic: CUPPING_RISK
+      - generic "Affected processes":
+        - generic: sla
+      - paragraph: Large downward-facing area (600mm², 33%) — resin cupping / suction risk during peel.
+      - paragraph: Add drain holes, tilt part 10-15°, or orient concave side up.
+    - 'button "Advisory RESIDUAL_STRESS_RISK Affected processes Large horizontal surface (600mm², 33% of total) — curl risk in dmls. Add breakup features or reorient. HIP recommended. AMS 7003: HIP/stress-relief mandatory for Ti."':
+      - text: Advisory
+      - generic: RESIDUAL_STRESS_RISK
+      - generic "Affected processes":
+        - generic: dmls
+        - generic: slm
+      - paragraph: Large horizontal surface (600mm², 33% of total) — curl risk in dmls.
+      - paragraph: "Add breakup features or reorient. HIP recommended. AMS 7003: HIP/stress-relief mandatory for Ti."
+    - 'button "Advisory WALL_UNIFORMITY_SAMPLED Affected processes Largest sampled interior section: 6mm. Thickness uses interior clearances; unsampled sections may be thicker. Confirm critical wall sections in the source CAD."':
+      - text: Advisory
+      - generic: WALL_UNIFORMITY_SAMPLED
+      - generic "Affected processes":
+        - generic: injection_molding
+      - paragraph: "Largest sampled interior section: 6mm. Thickness uses interior clearances; unsampled sections may be thicker."
+      - paragraph: Confirm critical wall sections in the source CAD.
+    - heading "Detected features(6 total)" [level=3]:
+      - text: Detected features
+      - generic: (6 total)
+    - generic: flat
+    - generic: "6"
+    - generic: 8490 faces
+    - generic: 98%
+    - paragraph: 120.0mm²
+    - generic: 8488 faces
+    - generic: 98%
+    - paragraph: 120.0mm²
+    - generic: 12574 faces
+    - generic: 98%
+    - paragraph: 180.0mm²
+    - generic: 12730 faces
+    - generic: 98%
+    - paragraph: 180.0mm²
+    - generic: 41996 faces
+    - generic: 98%
+    - paragraph: 600.0mm²
+    - generic: 41992 faces
+    - generic: 98%
+    - paragraph: 600.0mm²
+    - heading "Process suitability" [level=3]
+    - heading "FDM / FFF" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: PLA"
+    - paragraph: "Machine: Bambu Lab X1C"
+    - paragraph: "Est. cost factor: ×0.18"
+    - heading "DLP Resin" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Carbon M2"
+    - paragraph: "Est. cost factor: ×0.43"
+    - heading "SLS (Powder)" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: EOS P 396"
+    - paragraph: "Est. cost factor: ×0.72"
+    - heading "MJF (HP)" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: PA12 (Nylon 12)"
+    - paragraph: "Machine: HP Jet Fusion 5200"
+    - paragraph: "Est. cost factor: ×0.65"
+    - heading "EBM (Metal)" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: Arcam Q20plus"
+    - paragraph: "Est. cost factor: ×9.00"
+    - heading "Binder Jetting" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Machine: ExOne S-Max Pro"
+    - paragraph: "Est. cost factor: ×2.88"
+    - paragraph: 1 issue
+    - heading "DED" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Est. cost factor: ×5.40"
+    - paragraph: 1 issue
+    - heading "WAAM" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Est. cost factor: ×3.60"
+    - paragraph: 1 issue
+    - heading "CNC 3-Axis" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas VF-2"
+    - paragraph: "Est. cost factor: ×0.36"
+    - heading "CNC 5-Axis" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: DMG MORI DMU 50"
+    - paragraph: "Est. cost factor: ×0.90"
+    - heading "Wire EDM" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: API 13Cr"
+    - paragraph: "Machine: Sodick ALC600G"
+    - paragraph: "Est. cost factor: ×1.80"
+    - paragraph: 1 issue
+    - heading "Sheet Metal" [level=4]
+    - text: Pass
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: SS316L"
+    - paragraph: "Est. cost factor: ×0.11"
+    - heading "SLA Resin" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 100%"
+    - paragraph: "Material: Standard Resin"
+    - paragraph: "Machine: Formlabs Form 4"
+    - paragraph: "Est. cost factor: ×0.54"
+    - paragraph: 1 issue
+    - heading "DMLS (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: EOS M 400-4"
+    - paragraph: "Est. cost factor: ×7.20"
+    - paragraph: 1 issue
+    - heading "SLM (Metal)" [level=4]
+    - text: Advisory
+    - paragraph: "Suitability: 90%"
+    - paragraph: "Material: Ti6Al4V"
+    - paragraph: "Machine: SLM 500"
+    - paragraph: "Est. cost factor: ×7.20"
+    - paragraph: 1 issue
+    - heading "CNC Turning" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Machine: Haas ST-20"
+    - paragraph: "Est. cost factor: ×0.29"
+    - paragraph: 1 issue
+    - heading "Injection Molding" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: ABS"
+    - paragraph: "Est. cost factor: ×0.07"
+    - paragraph: 3 issues
+    - heading "Die Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×0.11"
+    - paragraph: 2 issues
+    - heading "Investment Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×1.08"
+    - paragraph: 2 issues
+    - heading "Sand Casting" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: A356 Aluminum"
+    - paragraph: "Est. cost factor: ×0.18"
+    - paragraph: 2 issues
+    - heading "Forging" [level=4]
+    - text: Required
+    - paragraph: "Suitability: 0%"
+    - paragraph: "Material: Inconel 718"
+    - paragraph: "Est. cost factor: ×0.14"
+    - paragraph: 1 issue
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert

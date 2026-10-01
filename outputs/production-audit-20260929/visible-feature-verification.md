@@ -441,3 +441,19 @@ CI36794527044 on9180abc through155 is terminal: all eight non-image jobs and bot
 - CI36801062294 still runs on the published156 head:7jobs pass, browser remains active, container job fails only the same5HIGH/0CRITICAL backend findings. Both actual-image runtime probes pass. No push cancelled that run.157/158 remain local and production is unchanged.
 
 The units and marker-layer follow-ups from157 are addressed. The sheet-gauge predicate/message mismatch remains open, along with broader accuracy, real external-service verification, image security and approved production rollout/retest. These controls do not establish that every visible feature works.
+
+
+## 159 — Sheet-gauge limits disagreed with their messages
+
+- Native0.4mm STEP received SheetMetal Pass100% while the UI claimed a0.5mm minimum. The code checked below0.3/above8 but described0.5–6. Existing built-in sheet material profiles use0.5mm minimum; the default stock catalog spans0.5–6mm.
+- Derive both limits from that catalog and reuse them in predicates, required values and messages. Text explicitly identifies application defaults and asks users to confirm material, stock and machine capacity. Minimum remains an ERROR for default profiles; above-maximum remains an advisory. Nearest-stock text no longer claims universal standard availability or guaranteed savings. Cost drivers reuse the same existing6mm constant with no routing-predicate change.
+- Read-only review exposed floating-point boundary failures after translation: exact0.5 became0.49999999999994316; exact6 became6.000000000000028. Both reproduced before the correction. Reuse the existing numeric-distance tolerance, including nearest-stock comparison. Genuine0.49999/6.00001 remain outside the limits. Engine/cache0.3.26 preserves prior saved evidence.
+- Six final native STEP uploads:0.4 Required with0.5mm limit;0.5/6 Pass;7 Advisory with6mm limit; translated0.5/6 Pass. Twelve saved analysis/cost records match source hashes and analytic volumes. Both0.4mm sheet estimates now carry the fail and structured blocker. Compact6/7mm controls are feasibility-only with no sheet estimate. Four old JSON hashes remain unchanged; the original0.3.24 thin-sheet report remains a separate historical Pass record.
+- Initial regression8failed/8passed; translated exact-limit controls then2failed/38passed. Final80focused tests pass, including36thickness/translation cases. Full backend2,660passed/3protected skips in340.14s, collected before the translation follow-up; final focused checks cover that correction. Changed-source types2existing/0new; Bandit0medium/high; trap corpus passes with its existing unit-inference gap. Frontend unchanged from158.
+- Evidence:159-sheet-gauge-proof.json,159-native-controls.json,159-saved-readback.json, real STEP controls and before/after native screenshots/DOM. Production unchanged. CI36801062294 still checks published156 with browser journeys active and the same five HIGH backend image findings; no push cancelled it.
+
+### Open — Rotation changes the inferred sheet thickness and routing
+
+The same30×20×0.5mm plate, rotated and translated, retains300mm³ volume but is reported14.9114mm thick and loses sheet classification.159-rotation-open.json records both parsed STEP controls. The gauge check, sheet-hole placement and cost sheet drivers use axis-aligned dimensions. This is the next shared measurement correction;159 fixes the default-range contract but does not establish general sheet geometry or manufacturing accuracy. Bent-sheet interpretation/unfolding, actual supplier capabilities and broader original-goal verification also remain open.
+
+CI36801062294 is now terminal: all eight non-image jobs, including the complete browser journeys, and both actual-image runtime probes pass on0b0c9f2through156. Only the backend scan fails the same5HIGH/0CRITICAL findings. See ci-36801062294-summary.json.157–159 need CI on their published revision.

@@ -142,5 +142,7 @@ BEND_RADIUS_MULTIPLIER: dict[str, float] = {
     "titanium": 3.0,
 }
 
-# Standard sheet thicknesses (mm)
+# Default sheet-stock catalog (mm), not universal supplier/machine capability.
 STANDARD_GAUGES: list[float] = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
+SHEET_GAUGE_MIN_MM = min(STANDARD_GAUGES)
+SHEET_GAUGE_MAX_MM = max(STANDARD_GAUGES)
