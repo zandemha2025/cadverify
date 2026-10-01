@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 
 import numpy as np
+import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
 from src.analysis.context import flat_sheet_geometry, wall_thickness_tolerance
@@ -49,6 +50,8 @@ class GeoDrivers:
     sheet_tolerance_mm: float = 0.0   # numeric transform noise, not manufacturing allowance
     sheet_precision_mm: float = 0.0   # source coordinate rounding, not a fit allowance
     sheet_outline_xy: tuple = ()      # convex outline in the measured sheet plane
+    billet_bbox_mm: tuple | None = None  # enclosing oriented stock candidate, not a certified minimum
+    billet_basis: str = "file-axis fallback"
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -74,13 +77,14 @@ class GeoDrivers:
                 f"× {stock_allowance:.2f} stock allowance = {self.turning_stock_volume_cm3(stock_allowance):.2f} cm³ "
                 f"× {material_name} density {density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
-    # ---- CNC-milling billet (E-now #1): rectangular block from the bbox ------
+    # ---- Milling / wire-EDM billet: enclosing rectangular stock ------
     def billet_volume_cm3(self, stock_allowance: float) -> float:
         """CNC-milling raw-stock (billet) volume you actually buy: the bounding
-        box × oversize. A pocketed/non-convex part is sawn from a solid
+        oriented candidate box × oversize. A pocketed/non-convex part is sawn from a solid
         rectangular block, NOT a hull-shaped blank — hull volume understates the
-        block by up to ~2.6× on non-convex geometry. Off-switch recovers hull."""
-        v = self.bbox_volume_cm3 if bbox_billet_enabled() else self.hull_volume_cm3
+        required rectangular stock. Off-switch recovers hull."""
+        box = math.prod(self.billet_bbox_mm) / 1000 if self.billet_bbox_mm else self.bbox_volume_cm3
+        v = box if bbox_billet_enabled() else self.hull_volume_cm3
         return v * stock_allowance
 
     def billet_mass_kg(self, density_g_cm3: float, stock_allowance: float) -> float:
@@ -91,7 +95,11 @@ class GeoDrivers:
         if not bbox_billet_enabled():
             return (f"hull volume {self.hull_volume_cm3:.2f} cm³ × {stock_allowance:.2f} "
                     f"stock allowance × {material_name} density {density_g_cm3:.2f} g/cm³")
-        return (f"bounding-box billet {self.bbox_volume_cm3:.2f} cm³ × "
+        basis = self.billet_basis
+        if self.billet_bbox_mm:
+            basis += " " + "×".join(f"{d:.4g}" for d in self.billet_bbox_mm) + " mm"
+        basis += "; minimum not certified"
+        return (f"bounding-box billet {self.billet_volume_cm3(1):.2f} cm³ ({basis}) × "
                 f"{stock_allowance:.2f} stock allowance × {material_name} density "
                 f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
@@ -195,6 +203,34 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
     # A rotational solid is a turned/spun part, not a flat blank.
     sheet_like = sheet_like and not rotational
 
+    # Keep uploaded-axis dimensions for direction-dependent build/DFM models.
+    # Milling instead buys an enclosing block oriented around the part.
+    # ponytail: approximate stock candidates, not certified minimum/setup.
+    # Trimesh's quadratic projection arrays are bounded by 2048 hull vertices;
+    # use a linear principal-axis candidate for larger hulls. A bounded global
+    # optimizer is needed if tighter complex-part stock bounds are required.
+    blank = np.asarray(dims)
+    billet_basis = "file-axis fallback"
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    if not math.isfinite(error) or error < 0:
+        raise ValueError("Invalid source coordinate uncertainty")
+    try:
+        if len(mesh.convex_hull.vertices) <= 2048:
+            _, candidate = trimesh.bounds.oriented_bounds(mesh)
+            basis = "oriented candidate"
+        else:
+            axes = mesh.principal_inertia_transform[:3, :3]
+            candidate = np.ptp((mesh.vertices - mesh.bounds.mean(axis=0)) @ axes.T, axis=0)
+            basis = "principal-axis candidate"
+        if np.all(np.isfinite(candidate)) and np.all(candidate > 0):
+            blank = np.sort(candidate)
+            billet_basis = basis
+    except Exception:
+        pass  # The existing enclosing file-axis box remains a labeled fallback.
+    # With either candidate orientation fixed, every source vertex can move
+    # <= error; padding both sides preserves enclosure, including the fallback.
+    billet_bbox_mm = tuple(float(d) + 2 * error for d in blank)
+
     return GeoDrivers(
         volume_cm3=volume_cm3,
         surface_area_cm2=area_cm2,
@@ -217,4 +253,6 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         sheet_tolerance_mm=sheet_tolerance_mm,
         sheet_precision_mm=sheet_precision_mm,
         sheet_outline_xy=(tuple(map(tuple, sheet_geometry[1])) if sheet_geometry is not None else ()),
+        billet_bbox_mm=billet_bbox_mm,
+        billet_basis=billet_basis,
     )

@@ -54,10 +54,10 @@ def _analyze(mesh) -> AnalysisResult:
 
 
 def _nonconvex():
-    """A thin 80×12×12 bar rotated 45° about Z: its axis-aligned bounding box is
-    ~4× the convex hull, so a bbox billet is dramatically larger than a hull one —
-    exactly the non-convex understatement E-now #1 targets."""
-    m = trimesh.creation.box(extents=[80.0, 12.0, 12.0])
+    """An L-shaped extrusion needs rectangular stock larger than its convex hull."""
+    from shapely.geometry import Polygon
+    m = trimesh.creation.extrude_polygon(Polygon([(0, 0), (80, 0), (80, 4),
+                                                (4, 4), (4, 40), (0, 40)]), 12)
     m.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 4.0, [0, 0, 1]))
     return m
 
@@ -96,8 +96,7 @@ def _clear(*names):
 # ── #1  Hull → bbox billet stock (CNC milling) ──────────────────────────────
 def test_bbox_billet_direction_and_offswitch():
     drivers, rates, mat, ps = _cnc_setup(_nonconvex())
-    # sanity: the part genuinely does not fill its bbox (non-convex/rotated)
-    assert drivers.bbox_volume_cm3 > 2.0 * drivers.hull_volume_cm3
+    assert drivers.billet_volume_cm3(1) > 1.5 * drivers.hull_volume_cm3
 
     _clear("CADVERIFY_BBOX_BILLET")
     on = _cb(drivers, mat, ps, 100, rates=rates)                 # default ON (bbox)
@@ -137,6 +136,57 @@ def test_bbox_billet_untouched_for_turning():
                          process_score=ps_turn)
     _clear("CADVERIFY_BBOX_BILLET")
     assert _li(on, "material") == _li(off, "material")          # turning unaffected by the flag
+
+
+def test_rotating_a_rectangular_bar_cannot_inflate_milling_stock(monkeypatch):
+    monkeypatch.delenv("CADVERIFY_BBOX_BILLET", raising=False)
+    rates = build_rate_card()
+    mat = select_material(PT.CNC_3AXIS, "aluminum", rates)
+    expected_stock = 80 * 12 * 12 / 1000 * rates.g("stock_allowance")
+    edm_machine = None
+    for angle, axis in [(0, [0, 0, 1]), (.7853981633974483, [0, 0, 1]),
+                        (.71, [1, 2, 3]), (1.9, [3, -2, 1])]:
+        mesh = trimesh.creation.box(extents=[80, 12, 12])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+        mesh.apply_translation([100, -200, 300])
+        drivers = extract_drivers(analyze_geometry(mesh), mesh)
+        assert drivers.billet_volume_cm3(rates.g("stock_allowance")) == pytest.approx(expected_stock)
+        for proc in [PT.CNC_3AXIS, PT.CNC_5AXIS]:
+            cycle, finish, _ = _cnc_cycle(proc, drivers, "aluminum", rates)
+            assert cycle - finish == pytest.approx((expected_stock - 11.52) / (rates.mrr("aluminum") * 60))
+        assert drivers.billet_mass_kg(mat.density, rates.g("stock_allowance")) == pytest.approx(expected_stock * mat.density / 1000)
+        edm = cost_breakdown(PT.WIRE_EDM, drivers, mat, "aluminum", 1, rates, "US")
+        assert edm.line_items['material'] == pytest.approx(expected_stock * 2.7 / 1000 * 5 * 1.04, abs=.0001)
+        if edm_machine is None:
+            edm_machine = edm.line_items['machine']
+        assert edm.line_items['machine'] == pytest.approx(edm_machine)
+
+
+def test_milling_stock_bounds_source_rounding_and_labels_fallback(monkeypatch):
+    mesh = trimesh.creation.box(extents=[80, 12, 12])
+    mesh.metadata['coordinate_error'] = .001
+    drivers = extract_drivers(analyze_geometry(mesh), mesh)
+    assert drivers.billet_bbox_mm == pytest.approx([12.002, 12.002, 80.002])
+    assert 'minimum not certified' in drivers.billet_source(2.7, 1.1, 'Aluminum')
+    def unavailable(*args, **kwargs):
+        raise ValueError('No oriented bound')
+    monkeypatch.setattr(trimesh.bounds, 'oriented_bounds', unavailable)
+    fallback = extract_drivers(analyze_geometry(mesh), mesh)
+    assert fallback.billet_volume_cm3(1.1) == pytest.approx(12.002**2 * 80.002 / 1000 * 1.1)
+    assert 'file-axis fallback' in fallback.billet_source(2.7, 1.1, 'Aluminum')
+
+
+def test_detailed_stock_uses_bounded_principal_axis_candidate(monkeypatch):
+    mesh = trimesh.creation.icosphere(subdivisions=5)
+    mesh.apply_scale([10, 17, 31])
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(.71, [1, 2, 3]))
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Detailed hull must not enter the quadratic search')
+    monkeypatch.setattr(trimesh.bounds, 'oriented_bounds', forbidden)
+    drivers = extract_drivers(analyze_geometry(mesh), mesh)
+    assert drivers.billet_basis == 'principal-axis candidate'
+    assert drivers.billet_bbox_mm == pytest.approx([20, 34, 62], rel=.001)
+    assert drivers.billet_volume_cm3(1) >= abs(mesh.volume) / 1000
 
 
 @pytest.mark.parametrize("shape", ["ellipsoid", "torus", "cylinder"])

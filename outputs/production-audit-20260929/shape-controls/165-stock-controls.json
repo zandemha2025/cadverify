@@ -1,0 +1,24 @@
+[
+  {
+    "filename": "165-stock-bar-aligned.step",
+    "sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "dimensions_mm": [
+      12,
+      12,
+      80
+    ],
+    "volume_mm3": 11520,
+    "rotation_deg": 0
+  },
+  {
+    "filename": "165-stock-bar-rotated.step",
+    "sha256": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+    "dimensions_mm": [
+      12,
+      12,
+      80
+    ],
+    "volume_mm3": 11520,
+    "rotation_deg": 45
+  }
+]

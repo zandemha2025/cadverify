@@ -137,7 +137,8 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
         allow = rates.g("stock_allowance")
         stock_vol = drivers.billet_volume_cm3(allow)
         if bbox_billet_enabled():
-            stock_src = (f"bbox billet {drivers.bbox_volume_cm3:.1f} cm³ × {allow:.2f} "
+            stock_src = (f"{drivers.billet_basis} "
+                         f"bbox billet {drivers.billet_volume_cm3(1):.1f} cm³ × {allow:.2f} "
                          f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
         else:
             stock_src = (f"hull {drivers.hull_volume_cm3:.1f} cm³ × {allow:.2f} "
@@ -257,7 +258,7 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
       swept area = cut-path length × stock thickness.
                    PROXY: cut-path length = drivers.outline_perimeter_mm (the
                    MEASURED 2D outline/cutout length); stock thickness = the
-                   smallest bbox extent (the plate the wire cuts through). This is
+                   smallest candidate-billet extent (the plate the wire cuts through). This is
                    an APPROXIMATION — there is no true 3D cut-perimeter driver — and
                    is flagged as such in the source string.
       cut time   = swept area ÷ edm_cut_rate(material) (mm²/hr — slow, material-set).
@@ -266,7 +267,9 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
     Returns (machine_hr, swept_area_mm2, cut_hr, src). Wire consumable is costed
     separately (∝ cut time). All constants DEFAULT, un-validated.
     """
-    dd = sorted(drivers.bbox_mm)                 # ascending: dd[0] = stock thickness
+    from src.costing.drivers import bbox_billet_enabled
+    blank = drivers.billet_bbox_mm if bbox_billet_enabled() else None
+    dd = sorted(blank or drivers.bbox_mm)        # same candidate stock as the material model
     thickness = max(dd[0], 0.1)
     cut_len = max(drivers.outline_perimeter_mm, 2.0 * (dd[1] + dd[2]))  # measured outline, floored at bbox rect
     swept_area = cut_len * thickness             # mm² of cross-section the wire erodes
@@ -279,7 +282,8 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
     src = (f"wire-EDM cut path {cut_len:.0f}mm × {thickness:.1f}mm stock "
            f"= {swept_area:.0f}mm² swept ÷ {cut_rate:g}mm²/hr ({material_class}, slow) "
            f"= {cut_hr * 60:.1f}min + thread {n_threads}×{thread_min:g}min "
-           f"= {cycle:.4f} hr  [cut-path = outline_perimeter × min-bbox-extent PROXY, "
+           f"= {cycle:.4f} hr  [cut-path = outline_perimeter × minimum stock extent PROXY "
+           f"({drivers.billet_basis if blank else 'file-axis'}), "
            f"not a true 3D cut perimeter; assumption, not shop-validated]")
     return cycle, swept_area, cut_hr, src
 

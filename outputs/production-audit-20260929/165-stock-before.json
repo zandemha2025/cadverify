@@ -1,0 +1,2896 @@
+[
+  {
+    "filename": "165-stock-bar-aligned.step",
+    "sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "dimensions_mm": [
+      12,
+      12,
+      80
+    ],
+    "volume_mm3": 11520,
+    "rotation_deg": 0,
+    "analyses": {
+      "id": 1582,
+      "version": "0.3.33",
+      "result_sha256": "e87cd99a33348ae8cf7be6b4b2ff55d254902e109a4953306715efd76d66a607"
+    },
+    "cost_decisions": {
+      "id": 5445,
+      "version": "0.3.33",
+      "result_sha256": "c4be14348a9f837f4bf8ddaf98832ffd4a692487a914dfdcc16f8055199aea45",
+      "estimates": [
+        {
+          "result_sha256": "28882834e98e5246fbc3fd6e5db7ff19897334986a84c3699a4abd203b5e3faa",
+          "process": "cnc_3axis",
+          "quantity": 1,
+          "unit_cost_usd": 137.95,
+          "line_items": {
+            "nre": 70.0,
+            "labor": 17.5,
+            "machine": 5.208,
+            "material": 0.1796,
+            "inspection": 18.55,
+            "consumables": 0.2604,
+            "amortized_fixed": 26.25
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1796,
+              "source": "bounding-box billet 11.52 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.0342 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 5.208,
+              "source": "0.0694 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0694,
+              "source": "rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 26.25,
+              "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "nre_cost",
+              "unit": "$",
+              "value": 70.0,
+              "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "inspection_cost",
+              "unit": "$",
+              "value": 18.55,
+              "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.03hr/part = 0.5300hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "consumables_cost",
+              "unit": "$",
+              "value": 0.2604,
+              "source": "perishable tooling/consumables 0.05 \u00d7 machine $5.21 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "fe426ad48aca05f6d7e8d9c27f95dea739aa3b2f3c270ee743d8f8378d222031",
+          "process": "cnc_3axis",
+          "quantity": 100,
+          "unit_cost_usd": 25.34,
+          "line_items": {
+            "nre": 0.7,
+            "labor": 17.5,
+            "machine": 5.208,
+            "material": 0.1796,
+            "inspection": 1.225,
+            "consumables": 0.2604,
+            "amortized_fixed": 0.2625
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1796,
+              "source": "bounding-box billet 11.52 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.0342 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 5.208,
+              "source": "0.0694 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0694,
+              "source": "rough 1.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.001 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 11.5 cm\u00b3 \u00d7 1.10 = 12.7 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.2625,
+              "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "nre_cost",
+              "unit": "$",
+              "value": 0.7,
+              "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "inspection_cost",
+              "unit": "$",
+              "value": 1.225,
+              "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.03hr/part = 0.0350hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "consumables_cost",
+              "unit": "$",
+              "value": 0.2604,
+              "source": "perishable tooling/consumables 0.05 \u00d7 machine $5.21 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "5ec60a5864f93ca3d5a11c260ea20c421e17327e918439e686efe80d6fe29ac8",
+          "process": "ded",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 254.8128
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 4.2447,
+              "source": "0.0354 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0354,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/10) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 1.2734,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $4.24 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 254.8128,
+              "source": "shop/order minimum $300/lot \u00d7 1 lots \u00f7 1 = $300.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "adb08d0f04f9bdb9c3a003f63edd6cc88e43be4b23af89e2fac912dd4be6eed5",
+          "process": "ded",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 16.3128
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 4.2447,
+              "source": "0.0354 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0354,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/10) = 10 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 1.2734,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $4.24 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 16.3128,
+              "source": "shop/order minimum $300/lot \u00d7 10 lots \u00f7 100 = $30.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "22997f8d8ed7f8e3362fc71104875c3955c27ff9b8aa1990620d27466c6ad2cd",
+          "process": "die_casting",
+          "quantity": 1,
+          "unit_cost_usd": 22505.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 22500.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1272,
+              "source": "CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3 = 0.0309 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.03 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.6826,
+              "source": "0.0187 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0187,
+              "source": "cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "post-process 0.1 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "setup 0hr \u00d7 $35/hr \u00d7 ceil(1/100000) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 22500.0,
+              "source": "size tier M (max bbox 80mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $22,500; \u00b160%, OVERRIDABLE",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "a6b6a143e44b71a4ffe004a1550e9e5acb138e0f71837f7e9f4f50a866ce3d80",
+          "process": "die_casting",
+          "quantity": 100,
+          "unit_cost_usd": 230.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 225.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1272,
+              "source": "CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3 = 0.0309 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.03 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.6826,
+              "source": "0.0187 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0187,
+              "source": "cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "post-process 0.1 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "setup 0hr \u00d7 $35/hr \u00d7 ceil(100/100000) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 22500.0,
+              "source": "size tier M (max bbox 80mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $22,500; \u00b160%, OVERRIDABLE",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "0f5df3231c553245b742620cff63fa6e132cf8a0d1264ddc6430724261a48023",
+          "process": "dmls",
+          "quantity": 1,
+          "unit_cost_usd": 250.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0,
+            "min_charge_floor": 26.5961
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 58.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 12.0, 80.0)+6mm spacing = 58 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 168.1034,
+              "source": "0.9339 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.9339,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/58) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 1.2069,
+              "source": "stress-relief furnace 2hr/build \u00f7 58 parts/build = 0.034hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 26.5961,
+              "source": "shop/order minimum $250/lot \u00d7 1 lots \u00f7 1 = $250.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "321563940bccc655d77a51284823f2cece2e6aebfd21a388d37a07d5e595f33c",
+          "process": "dmls",
+          "quantity": 100,
+          "unit_cost_usd": 206.25,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 0.35,
+            "support_removal": 21.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 58.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 12.0, 80.0)+6mm spacing = 58 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 168.1034,
+              "source": "0.9339 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.9339,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.35,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(100/58) = 2 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 1.2069,
+              "source": "stress-relief furnace 2hr/build \u00f7 58 parts/build = 0.034hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "53f9572a8a0a23f31b369a11d08289cd0b92ec43be1acc38292873ac224a0a12",
+          "process": "forging",
+          "quantity": 1,
+          "unit_cost_usd": 30122.0,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 30105.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.2041,
+              "source": "billet from bar = net 0.0311 kg (CAD volume 11.52 cm\u00b3 \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3) \u00d7 (1+0.25 flash/scale loss) [forge assumption, not shop-validated] = 0.0389 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 9.7944,
+              "source": "0.0816 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0816,
+              "source": "heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 7.0,
+              "source": "post-process 0.2 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 105.0,
+              "source": "setup 3hr \u00d7 $35/hr \u00d7 ceil(1/250) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 30000.0,
+              "source": "hardened closed-die set: size tier M (max bbox 80mm) \u00d7 2 family-mult \u00d7 moderate (=1.00) = $30,000; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "dfc01dbd79c9192c2a83b961a940b533d687bfa2340ab078e7affd8847ec3629",
+          "process": "forging",
+          "quantity": 100,
+          "unit_cost_usd": 318.05,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 301.05
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.2041,
+              "source": "billet from bar = net 0.0311 kg (CAD volume 11.52 cm\u00b3 \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3) \u00d7 (1+0.25 flash/scale loss) [forge assumption, not shop-validated] = 0.0389 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 9.7944,
+              "source": "0.0816 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0816,
+              "source": "heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 7.0,
+              "source": "post-process 0.2 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 1.05,
+              "source": "setup 3hr \u00d7 $35/hr \u00d7 ceil(100/250) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 30000.0,
+              "source": "hardened closed-die set: size tier M (max bbox 80mm) \u00d7 2 family-mult \u00d7 moderate (=1.00) = $30,000; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "f7ae30dce717c66c5a618ca937568a5794d6fb91dca37ec60efe3b19d3ecd4f2",
+          "process": "investment_casting",
+          "quantity": 1,
+          "unit_cost_usd": 13571.59,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 13552.5
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1815,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.4 gating/riser yield) [foundry assumption, not shop-validated] = 0.0432 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 6.6594,
+              "source": "0.1211 hr \u00d7 $55/hr \u00d7 region-labor \u00d71  [pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.1211,
+              "source": "pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 52.5,
+              "source": "setup 1.5hr \u00d7 $35/hr \u00d7 ceil(1/200) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 13500.0,
+              "source": "wax die + ceramic shell: size tier M (max bbox 80mm) \u00d7 0.9 family-mult \u00d7 moderate (=1.00) = $13,500; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "ae821c9ec7ae14337f69e835bdede54bd2b464ae30acc86b791d6566fb90b56e",
+          "process": "investment_casting",
+          "quantity": 100,
+          "unit_cost_usd": 154.62,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 135.525
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1815,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.4 gating/riser yield) [foundry assumption, not shop-validated] = 0.0432 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 6.6594,
+              "source": "0.1211 hr \u00d7 $55/hr \u00d7 region-labor \u00d71  [pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.1211,
+              "source": "pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.525,
+              "source": "setup 1.5hr \u00d7 $35/hr \u00d7 ceil(100/200) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 13500.0,
+              "source": "wax die + ceramic shell: size tier M (max bbox 80mm) \u00d7 0.9 family-mult \u00d7 moderate (=1.00) = $13,500; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "c6a3f2a220ca392b3efe00a43e8e62bb9f25564086229a805f660125b1fe459d",
+          "process": "sand_casting",
+          "quantity": 1,
+          "unit_cost_usd": 5309.43,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 5285.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1964,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.5 gating/riser yield) [foundry assumption, not shop-validated] = 0.0463 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.06 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 3.237,
+              "source": "0.0809 hr \u00d7 $40/hr \u00d7 region-labor \u00d71  [pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0809,
+              "source": "pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "post-process 0.6 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/200) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 5250.0,
+              "source": "pattern/core-box: size tier M (max bbox 80mm) \u00d7 0.35 family-mult \u00d7 moderate (=1.00) = $5,250; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "84cc4e7132d2327d1c8f19c0805724baf8fb0b1587e6844484268f7287b37fd9",
+          "process": "sand_casting",
+          "quantity": 100,
+          "unit_cost_usd": 77.28,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 52.85
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1964,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.5 gating/riser yield) [foundry assumption, not shop-validated] = 0.0463 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.06 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 3.237,
+              "source": "0.0809 hr \u00d7 $40/hr \u00d7 region-labor \u00d71  [pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0809,
+              "source": "pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "post-process 0.6 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.35,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/200) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 5250.0,
+              "source": "pattern/core-box: size tier M (max bbox 80mm) \u00d7 0.35 family-mult \u00d7 moderate (=1.00) = $5,250; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "75c336dd8022f00614f6a1eea32b3dffb1e674fa4b927b6349e08955484a48e0",
+          "process": "slm",
+          "quantity": 1,
+          "unit_cost_usd": 250.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0,
+            "min_charge_floor": 26.5961
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 58.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 12.0, 80.0)+6mm spacing = 58 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 168.1034,
+              "source": "0.9339 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.9339,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/58) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 1.2069,
+              "source": "stress-relief furnace 2hr/build \u00f7 58 parts/build = 0.034hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 26.5961,
+              "source": "shop/order minimum $250/lot \u00d7 1 lots \u00f7 1 = $250.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "911443774cdd60e1ecfaba033d3b5cda43800f28763c8229de0b300b9a3e67f3",
+          "process": "slm",
+          "quantity": 100,
+          "unit_cost_usd": 206.25,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 0.35,
+            "support_removal": 21.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 58.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 12.0, 80.0)+6mm spacing = 58 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 168.1034,
+              "source": "0.9339 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.9339,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.35,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(100/58) = 2 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 1.2069,
+              "source": "stress-relief furnace 2hr/build \u00f7 58 parts/build = 0.034hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "fbd673fd9d3a252954ab8f4b85eafa8e585698a6e800e3a8f2806142da7ec62b",
+          "process": "waam",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 258.9514
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.0612,
+              "source": "0.0118 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0118,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/10) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 0.3183,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $1.06 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 258.9514,
+              "source": "shop/order minimum $300/lot \u00d7 1 lots \u00f7 1 = $300.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "a47fb7d111040cc3bf8fae9729fec6a06ae1d367c2c9d60d2bef6399723de70a",
+          "process": "waam",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 20.4514
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.0612,
+              "source": "0.0118 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0118,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/10) = 10 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 0.3183,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $1.06 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 20.4514,
+              "source": "shop/order minimum $300/lot \u00d7 10 lots \u00f7 100 = $30.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "filename": "165-stock-bar-rotated.step",
+    "sha256": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+    "dimensions_mm": [
+      12,
+      12,
+      80
+    ],
+    "volume_mm3": 11520,
+    "rotation_deg": 45,
+    "analyses": {
+      "id": 1583,
+      "version": "0.3.33",
+      "result_sha256": "6b4922a79aa96c945d1b4deedb994727c1d6e3b407c1bf8823128dbd05e9a2eb"
+    },
+    "cost_decisions": {
+      "id": 5446,
+      "version": "0.3.33",
+      "result_sha256": "4f11e7dd387cc7990e01de24a2e397c13955da54612a044af3a7a94760feb46e",
+      "estimates": [
+        {
+          "result_sha256": "afcbc5550bf12a5e311154c223d878b9544ba405528a7b1403d2f8b58e465c01",
+          "process": "cnc_3axis",
+          "quantity": 1,
+          "unit_cost_usd": 140.45,
+          "line_items": {
+            "nre": 70.0,
+            "labor": 17.5,
+            "machine": 7.0076,
+            "material": 0.7918,
+            "inspection": 18.55,
+            "consumables": 0.3504,
+            "amortized_fixed": 26.25
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.7918,
+              "source": "bounding-box billet 50.78 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.1508 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 7.0076,
+              "source": "0.0934 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0934,
+              "source": "rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 26.25,
+              "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "nre_cost",
+              "unit": "$",
+              "value": 70.0,
+              "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "inspection_cost",
+              "unit": "$",
+              "value": 18.55,
+              "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.03hr/part = 0.5300hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "consumables_cost",
+              "unit": "$",
+              "value": 0.3504,
+              "source": "perishable tooling/consumables 0.05 \u00d7 machine $7.01 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "6f69fd9f76e7654ada5a3608806a815350f17da2284ba15c818ca80dc91b235d",
+          "process": "cnc_3axis",
+          "quantity": 100,
+          "unit_cost_usd": 27.84,
+          "line_items": {
+            "nre": 0.7,
+            "labor": 17.5,
+            "machine": 7.0076,
+            "material": 0.7918,
+            "inspection": 1.225,
+            "consumables": 0.3504,
+            "amortized_fixed": 0.2625
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.7918,
+              "source": "bounding-box billet 50.78 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.1508 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 7.0076,
+              "source": "0.0934 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0934,
+              "source": "rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.069 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.2625,
+              "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "nre_cost",
+              "unit": "$",
+              "value": 0.7,
+              "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "inspection_cost",
+              "unit": "$",
+              "value": 1.225,
+              "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.03hr/part = 0.0350hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "consumables_cost",
+              "unit": "$",
+              "value": 0.3504,
+              "source": "perishable tooling/consumables 0.05 \u00d7 machine $7.01 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "d5529ac3e82e59eb4b85c48b0f9fe5d8fa5cb90500c89e8fb4651228b365fb18",
+          "process": "cnc_5axis",
+          "quantity": 1,
+          "unit_cost_usd": 198.67,
+          "line_items": {
+            "nre": 105.0,
+            "labor": 17.5,
+            "machine": 11.7914,
+            "material": 0.7918,
+            "inspection": 28.0,
+            "consumables": 0.5896,
+            "amortized_fixed": 35.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.7918,
+              "source": "bounding-box billet 50.78 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.1508 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 11.7914,
+              "source": "0.1072 hr \u00d7 $110/hr \u00d7 region-labor \u00d71  [rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.083 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.1072,
+              "source": "rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.083 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "nre_cost",
+              "unit": "$",
+              "value": 105.0,
+              "source": "CAM programming/NRE 3hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "inspection_cost",
+              "unit": "$",
+              "value": 28.0,
+              "source": "first-article 0.75hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.05hr/part = 0.8000hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "consumables_cost",
+              "unit": "$",
+              "value": 0.5896,
+              "source": "perishable tooling/consumables 0.05 \u00d7 machine $11.79 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "4149bd6c184c179441df6b4f2e81d55b434d77bbe6e26179f4ba70e68a92cc55",
+          "process": "cnc_5axis",
+          "quantity": 100,
+          "unit_cost_usd": 34.09,
+          "line_items": {
+            "nre": 1.05,
+            "labor": 17.5,
+            "machine": 11.7914,
+            "material": 0.7918,
+            "inspection": 2.0125,
+            "consumables": 0.5896,
+            "amortized_fixed": 0.35
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.7918,
+              "source": "bounding-box billet 50.78 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 [assumption, not shop-validated] = 0.1508 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 11.7914,
+              "source": "0.1072 hr \u00d7 $110/hr \u00d7 region-labor \u00d71  [rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.083 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.1072,
+              "source": "rough 44.3 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.025 hr + finish 41.3 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.083 hr  [stock bbox billet 50.8 cm\u00b3 \u00d7 1.10 = 55.9 cm\u00b3 [assumption, not shop-validated]; MRR aluminum]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.35,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "nre_cost",
+              "unit": "$",
+              "value": 1.05,
+              "source": "CAM programming/NRE 3hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "inspection_cost",
+              "unit": "$",
+              "value": 2.0125,
+              "source": "first-article 0.75hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.05hr/part = 0.0575hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            },
+            {
+              "name": "consumables_cost",
+              "unit": "$",
+              "value": 0.5896,
+              "source": "perishable tooling/consumables 0.05 \u00d7 machine $11.79 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 40.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "5ec60a5864f93ca3d5a11c260ea20c421e17327e918439e686efe80d6fe29ac8",
+          "process": "ded",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 254.8128
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 4.2447,
+              "source": "0.0354 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0354,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/10) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 1.2734,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $4.24 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 254.8128,
+              "source": "shop/order minimum $300/lot \u00d7 1 lots \u00f7 1 = $300.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "adb08d0f04f9bdb9c3a003f63edd6cc88e43be4b23af89e2fac912dd4be6eed5",
+          "process": "ded",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 16.3128
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 4.2447,
+              "source": "0.0354 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0354,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.0354hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/10) = 10 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 1.2734,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $4.24 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 16.3128,
+              "source": "shop/order minimum $300/lot \u00d7 10 lots \u00f7 100 = $30.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "9bb1710c17d63d25543b4bf62c77425701c8f5b934a0940621b5289e4e646332",
+          "process": "die_casting",
+          "quantity": 1,
+          "unit_cost_usd": 22505.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 22500.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1272,
+              "source": "CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3 = 0.0309 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.03 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.6826,
+              "source": "0.0187 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0187,
+              "source": "cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "post-process 0.1 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "setup 0hr \u00d7 $35/hr \u00d7 ceil(1/100000) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 22500.0,
+              "source": "size tier M (max bbox 65mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $22,500; \u00b160%, OVERRIDABLE",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "1aebed09f06ca5a369335e0b8169dbd66ea1bace479022baa3944739d2a9da5a",
+          "process": "die_casting",
+          "quantity": 100,
+          "unit_cost_usd": 230.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 225.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1272,
+              "source": "CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3 = 0.0309 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.03 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.6826,
+              "source": "0.0187 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0187,
+              "source": "cooling 2\u00b7wall\u00b2 = 2\u00b75.58\u00b2 = 62.3s + shot 5s = 67.3s = 0.0187 hr  [wall = 2V/A proxy, \u00b150%]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "post-process 0.1 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "setup 0hr \u00d7 $35/hr \u00d7 ceil(100/100000) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 22500.0,
+              "source": "size tier M (max bbox 65mm) \u00d7 1 cav^0.7 (=1.00) \u00d7 moderate (=1.00) = $22,500; \u00b160%, OVERRIDABLE",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "70fb4a161b113ff8ebaa833fcb9780f4ccbe6753a6c18efa455a554deb561d54",
+          "process": "dmls",
+          "quantity": 1,
+          "unit_cost_usd": 631.74,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 17.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 65.05, 65.05)+6mm spacing = 17 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 573.5294,
+              "source": "3.1863 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 3.1863,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/17) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 4.1176,
+              "source": "stress-relief furnace 2hr/build \u00f7 17 parts/build = 0.118hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "43a318ad8827a1ce2b63e69a03bac3dba0588e22575aae453445743e88e3acf1",
+          "process": "dmls",
+          "quantity": 100,
+          "unit_cost_usd": 615.29,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 1.05,
+            "support_removal": 21.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 17.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 65.05, 65.05)+6mm spacing = 17 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 573.5294,
+              "source": "3.1863 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 3.1863,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 1.05,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(100/17) = 6 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 4.1176,
+              "source": "stress-relief furnace 2hr/build \u00f7 17 parts/build = 0.118hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "a85d75953f60f38bf8b15105817ae6e2f52358bd8fe5eb50e915dcb7c30d7029",
+          "process": "forging",
+          "quantity": 1,
+          "unit_cost_usd": 30122.0,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 30105.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.2041,
+              "source": "billet from bar = net 0.0311 kg (CAD volume 11.52 cm\u00b3 \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3) \u00d7 (1+0.25 flash/scale loss) [forge assumption, not shop-validated] = 0.0389 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 9.7944,
+              "source": "0.0816 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0816,
+              "source": "heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 7.0,
+              "source": "post-process 0.2 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 105.0,
+              "source": "setup 3hr \u00d7 $35/hr \u00d7 ceil(1/250) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 30000.0,
+              "source": "hardened closed-die set: size tier M (max bbox 65mm) \u00d7 2 family-mult \u00d7 moderate (=1.00) = $30,000; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "c5dbbc59de1d858b7204109a478e288b53ff40c93c5b5148c4eb72c0fadb0d23",
+          "process": "forging",
+          "quantity": 100,
+          "unit_cost_usd": 318.05,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 301.05
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.2041,
+              "source": "billet from bar = net 0.0311 kg (CAD volume 11.52 cm\u00b3 \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3) \u00d7 (1+0.25 flash/scale loss) [forge assumption, not shop-validated] = 0.0389 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 9.7944,
+              "source": "0.0816 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0816,
+              "source": "heat 0.039kg billet (net 0.031kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 0.1min + press 0.05hr + trim 0.03hr = 0.0816 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 7.0,
+              "source": "post-process 0.2 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 1.05,
+              "source": "setup 3hr \u00d7 $35/hr \u00d7 ceil(100/250) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 30000.0,
+              "source": "hardened closed-die set: size tier M (max bbox 65mm) \u00d7 2 family-mult \u00d7 moderate (=1.00) = $30,000; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "72904d909e0e5d7c53cf565b432a6a5551418aa289b6ead5d1c08049c041206e",
+          "process": "investment_casting",
+          "quantity": 1,
+          "unit_cost_usd": 13571.59,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 13552.5
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1815,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.4 gating/riser yield) [foundry assumption, not shop-validated] = 0.0432 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 6.6594,
+              "source": "0.1211 hr \u00d7 $55/hr \u00d7 region-labor \u00d71  [pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.1211,
+              "source": "pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 52.5,
+              "source": "setup 1.5hr \u00d7 $35/hr \u00d7 ceil(1/200) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 13500.0,
+              "source": "wax die + ceramic shell: size tier M (max bbox 65mm) \u00d7 0.9 family-mult \u00d7 moderate (=1.00) = $13,500; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "c523528bb6f6a1cd5ff7596b83564ccdeec8ff03d0eb9a8257e6f5fe887eda84",
+          "process": "investment_casting",
+          "quantity": 100,
+          "unit_cost_usd": 154.62,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 135.525
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1815,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.4 gating/riser yield) [foundry assumption, not shop-validated] = 0.0432 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 6.6594,
+              "source": "0.1211 hr \u00d7 $55/hr \u00d7 region-labor \u00d71  [pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.1211,
+              "source": "pour 0.12hr + solidify/cool 0.043kg poured (net 0.031kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.1min = 0.1211 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 12.25,
+              "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.525,
+              "source": "setup 1.5hr \u00d7 $35/hr \u00d7 ceil(100/200) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 13500.0,
+              "source": "wax die + ceramic shell: size tier M (max bbox 65mm) \u00d7 0.9 family-mult \u00d7 moderate (=1.00) = $13,500; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "c2c61790c079a89d7889a314edd28c4d959c0f478bcbaa0fb92b4717b4ab5247",
+          "process": "sand_casting",
+          "quantity": 1,
+          "unit_cost_usd": 5309.43,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 5285.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1964,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.5 gating/riser yield) [foundry assumption, not shop-validated] = 0.0463 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.06 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 3.237,
+              "source": "0.0809 hr \u00d7 $40/hr \u00d7 region-labor \u00d71  [pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0809,
+              "source": "pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "post-process 0.6 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/200) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 5250.0,
+              "source": "pattern/core-box: size tier M (max bbox 65mm) \u00d7 0.35 family-mult \u00d7 moderate (=1.00) = $5,250; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "4497fa03ae3fb1fe0de6661fc7421019fc8146ca3a91e949677f802ec924e561",
+          "process": "sand_casting",
+          "quantity": 100,
+          "unit_cost_usd": 77.28,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 52.85
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 0.1964,
+              "source": "poured metal = net 0.0309 kg (CAD volume 11.52 cm\u00b3 \u00d7 A356 Aluminum density 2.68 g/cm\u00b3) \u00d7 (1+0.5 gating/riser yield) [foundry assumption, not shop-validated] = 0.0463 kg \u00d7 $4/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.06 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 3.237,
+              "source": "0.0809 hr \u00d7 $40/hr \u00d7 region-labor \u00d71  [pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0809,
+              "source": "pour 0.08hr + solidify/cool 0.046kg poured (net 0.031kg \u00d7 1+0.5 yield) \u00d7 1.2min/kg = 0.1min = 0.0809 hr  [foundry assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "post-process 0.6 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 0.35,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/200) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "tooling_cost",
+              "unit": "$",
+              "value": 5250.0,
+              "source": "pattern/core-box: size tier M (max bbox 65mm) \u00d7 0.35 family-mult \u00d7 moderate (=1.00) = $5,250; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 55.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "97f925076f14c09372a47a37b47f65a6d07e646bebcf29f514de6ae5ef1cdb47",
+          "process": "slm",
+          "quantity": 1,
+          "unit_cost_usd": 631.74,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 17.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 65.05, 65.05)+6mm spacing = 17 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 573.5294,
+              "source": "3.1863 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 3.1863,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 17.5,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/17) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 4.1176,
+              "source": "stress-relief furnace 2hr/build \u00f7 17 parts/build = 0.118hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "8b36b6d9e0349a26410f7911224f7778942d86c7246ec3f525ea02cd533c224a",
+          "process": "slm",
+          "quantity": 100,
+          "unit_cost_usd": 615.29,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 1.05,
+            "support_removal": 21.0
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 5.0936,
+              "source": "powder-bed metal = net 0.0308 kg (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.0369 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "support_material",
+              "unit": "$",
+              "value": 0.8489,
+              "source": "support structure 0.2\u00d7net = 0.0062 kg powder \u00d7 $120/kg \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71 printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "parts_per_build",
+              "unit": "parts",
+              "value": 17.0,
+              "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (12.0, 65.05, 65.05)+6mm spacing = 17 parts/build",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 573.5294,
+              "source": "3.1863 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 3.1863,
+              "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 17 parts/build (packing 0.08, env (250, 250, 325)) = 3.186hr/part",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 1.05,
+              "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(100/17) = 6 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "plate_removal_cost",
+              "unit": "$",
+              "value": 10.5,
+              "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "support_removal_cost",
+              "unit": "$",
+              "value": 21.0,
+              "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            },
+            {
+              "name": "stress_relief_cost",
+              "unit": "$",
+              "value": 4.1176,
+              "source": "stress-relief furnace 2hr/build \u00f7 17 parts/build = 0.118hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 50.0
+            }
+          ]
+        },
+        {
+          "result_sha256": "fbd673fd9d3a252954ab8f4b85eafa8e585698a6e800e3a8f2806142da7ec62b",
+          "process": "waam",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 258.9514
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.0612,
+              "source": "0.0118 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0118,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 35.0,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/10) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 0.3183,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $1.06 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 258.9514,
+              "source": "shop/order minimum $300/lot \u00d7 1 lots \u00f7 1 = $300.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        },
+        {
+          "result_sha256": "a47fb7d111040cc3bf8fae9729fec6a06ae1d367c2c9d60d2bef6399723de70a",
+          "process": "waam",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 20.4514
+          },
+          "drivers": [
+            {
+              "name": "material_cost",
+              "unit": "$",
+              "value": 4.6691,
+              "source": "feedstock (wire/powder) = net 0.0308 kg \u00d7 1.15 near-net overbuild (CAD volume 11.52 cm\u00b3 \u00d7 AlSi10Mg density 2.67 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.0354 kg \u00d7 $120/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 5.0
+            },
+            {
+              "name": "machine_cost",
+              "unit": "$",
+              "value": 1.0612,
+              "source": "0.0118 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "cycle_time",
+              "unit": "hr",
+              "value": 0.0118,
+              "source": "deposit 0.0354kg (net 0.0308kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.0118hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "labor_cost",
+              "unit": "$",
+              "value": 0.0,
+              "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "setup_cost",
+              "unit": "$",
+              "value": 3.5,
+              "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(100/10) = 10 setups \u00f7 100 \u00d7 region-labor \u00d71",
+              "provenance": "DEFAULT",
+              "error_band_pct": 20.0
+            },
+            {
+              "name": "finish_machining",
+              "unit": "$",
+              "value": 0.3183,
+              "source": "finish-machining allowance 0.3 \u00d7 deposition machine $1.06 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+              "provenance": "DEFAULT",
+              "error_band_pct": 60.0
+            },
+            {
+              "name": "min_charge_floor",
+              "unit": "$",
+              "value": 20.4514,
+              "source": "shop/order minimum $300/lot \u00d7 10 lots \u00f7 100 = $30.00/unit floor (applied)",
+              "provenance": "DEFAULT",
+              "error_band_pct": null
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
