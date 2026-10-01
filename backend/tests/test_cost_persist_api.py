@@ -465,7 +465,9 @@ def test_four_way_disposition_persists_withdraws_and_preserves_engine_artifact(
     client, real_result_json
 ):
     cl, app = client
-    dec = _make_decision("01DISPOSITION0000000000000A", real_result_json, user_id=42)
+    owned = copy.deepcopy(real_result_json)
+    owned["verification"] = {"per_route": {owned["decision"]["make_now_process"]: {"verdict": "makeable_in_house"}}}
+    dec = _make_decision("01DISPOSITION0000000000000A", owned, user_id=42)
     original_artifact = copy.deepcopy(dec.result_json)
     session = _session_returning(scalar_one=dec)
     _override(app, session, user_id=42)
@@ -499,6 +501,52 @@ def test_four_way_disposition_persists_withdraws_and_preserves_engine_artifact(
     assert withdrawn.json()["user_disposition_label"] is None
     assert withdrawn.json()["disposition_note"] is None
     assert dec.result_json == original_artifact
+
+
+def test_disposition_binds_exact_quantity_and_checks_its_owned_route(client, real_result_json):
+    cl, app = client
+    report = copy.deepcopy(real_result_json)
+    first = next(e for e in report["estimates"] if e["quantity"] == 50 and e["dfm_ready"])
+    second = next(e for e in report["estimates"] if e["quantity"] == 5000 and e["dfm_ready"] and e["process"] != first["process"])
+    report["decision"].update(make_now_process=first["process"], make_now_material=first["material"], recommendation={"50": first, "5000": second})
+    report["verification"] = {"verdict": "makeable_in_house", "per_route": {
+        first["process"]: {"verdict": "makeable_in_house"},
+        second["process"]: {"verdict": "makeable_outsource_only"},
+    }}
+    dec = _make_decision("01DISPBASIS000000000000000A", report)
+    session = _session_returning(scalar_one=dec)
+    _override(app, session)
+    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
+    original = copy.deepcopy(report)
+
+    rejected = cl.put(url, json={"disposition": "inhouse", "quantity": 5000})
+    assert rejected.status_code == 409, rejected.text
+    assert dec.user_disposition is None
+    for quantity in [0, True, 50.5, 100]:
+        assert cl.put(url, json={"disposition": "outside", "quantity": quantity}).status_code in (409, 422)
+    saved = cl.put(url, json={"disposition": "outside", "quantity": 5000, "note": "Supplier"})
+    assert saved.status_code == 200, saved.text
+    basis = {k: second[k] for k in ("process", "material", "quantity")}
+    assert saved.json()["disposition_basis"] == basis
+    assert dec.disposition_basis == basis
+    detail = cl.get(f"/api/v1/cost-decisions/{dec.ulid}").json()
+    assert detail["disposition_basis"] == basis
+    edited = cl.put(url, json={"disposition": "outside", "note": "Updated supplier"})
+    assert edited.json()["disposition_basis"] == basis
+    dec.approval_status = "approved"
+    switched = cl.put(url, json={"disposition": "outside", "quantity": 50, "note": "Updated supplier"})
+    assert switched.json()["approval_status"] == "unreviewed"
+    assert switched.json()["disposition_basis"] == {k: first[k] for k in basis}
+    committed = session.commit.await_count
+    repeated = cl.put(url, json={"disposition": "outside", "quantity": 50, "note": "Updated supplier"})
+    assert repeated.status_code == 200 and session.commit.await_count == committed
+    assert cl.put(url, json={"disposition": "inhouse", "quantity": 50}).status_code == 200
+    report["verification"]["per_route"].pop(first["process"])
+    assert cl.put(url, json={"disposition": "inhouse", "quantity": 50}).status_code == 409
+    report["verification"] = original["verification"]
+    withdrawn = cl.put(url, json={"disposition": None})
+    assert withdrawn.json()["disposition_basis"] is None
+    assert dec.result_json == original
 
 
 def test_blocked_route_cannot_be_recorded_as_unqualified_make_inhouse(
@@ -555,12 +603,13 @@ def test_disposition_change_reopens_prior_approval(client, real_result_json):
     assert body["approval_note"] is None
 
 
+@pytest.mark.parametrize("disposition", ["outside", "inhouse"])
 def test_disposition_note_edit_reopens_signoff_and_empty_edit_clears_note(
-    client, real_result_json
+    client, real_result_json, disposition
 ):
     cl, app = client
     dec = _make_decision("01DISPNOTEEDIT000000000000A", real_result_json, user_id=42)
-    dec.user_disposition = "outside"
+    dec.user_disposition = disposition
     dec.disposition_note = "Original supplier rationale"
     dec.disposition_updated_at = datetime(2026, 7, 13, 11, 0, tzinfo=timezone.utc)
     dec.disposition_updated_by_user_id = 42
@@ -574,12 +623,13 @@ def test_disposition_note_edit_reopens_signoff_and_empty_edit_clears_note(
 
     edited = cl.put(
         path,
-        json={"disposition": "outside", "note": special},
+        json={"disposition": disposition, "note": special},
     )
 
     assert edited.status_code == 200, edited.text
     body = edited.json()
-    assert body["user_disposition"] == "outside"
+    assert body["user_disposition"] == disposition
+    assert body["disposition_basis"] is None  # A legacy note edit must not invent a route.
     assert body["disposition_note"] == special
     assert body["approval_status"] == "unreviewed"
     assert body["approved_by_user_id"] is None
@@ -588,10 +638,11 @@ def test_disposition_note_edit_reopens_signoff_and_empty_edit_clears_note(
 
     cleared = cl.put(
         path,
-        json={"disposition": "outside", "note": "  \n  "},
+        json={"disposition": disposition, "note": "  \n  "},
     )
     assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["user_disposition"] == "outside"
+    assert cleared.json()["user_disposition"] == disposition
+    assert cleared.json()["disposition_basis"] is None
     assert cleared.json()["disposition_note"] is None
 
 
@@ -624,7 +675,7 @@ def test_disposition_validation_and_note_limit_are_enforced(client, real_result_
     )
     exact = cl.put(
         path,
-        json={"disposition": "inhouse", "note": "X" * 1000},
+        json={"disposition": "outside", "note": "X" * 1000},
     )
 
     assert invalid.status_code == 422
@@ -715,6 +766,7 @@ def test_export_json(client, real_result_json):
         "user_disposition": None,
         "user_disposition_label": None,
         "disposition_note": None,
+        "disposition_basis": None,
         "disposition_updated_at": None,
         "disposition_updated_by_user_id": None,
     }
@@ -748,6 +800,7 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     dec.approval_note = note
     dec.user_disposition = "outside"
     dec.disposition_note = "Supplier route selected"
+    dec.disposition_basis = {"process": "mjf", "material": "PA12", "quantity": 5000}
     dec.disposition_updated_at = approved_at
     dec.disposition_updated_by_user_id = 42
     _override(app, _session_returning(scalar_one=dec))
@@ -764,6 +817,7 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert governance["user_disposition"] == "outside"
     assert governance["user_disposition_label"] == "Make outside"
     assert governance["disposition_note"] == "Supplier route selected"
+    assert governance["disposition_basis"] == dec.disposition_basis
 
     csv_response = cl.get(
         "/api/v1/cost-decisions/01GOVEXPORT00000000000000A/export.csv"
@@ -778,11 +832,14 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert all(row["user_disposition"] == "outside" for row in rows)
     assert all(row["user_disposition_label"] == "Make outside" for row in rows)
     assert all(row["disposition_note"] == "Supplier route selected" for row in rows)
+    import json
+    assert all(json.loads(row["disposition_basis"]) == dec.disposition_basis for row in rows)
 
     from src.services.cost_pdf_service import render_cost_html
 
     html = render_cost_html(dec)
     assert "Decision Governance" in html
+    assert "Outcome basis:" in html and "quantity 5000" in html and "PA12" in html
     assert "Status:</strong> approved" in html
     assert "Signed by user:</strong> 42" in html
     assert approved_at.isoformat() in html

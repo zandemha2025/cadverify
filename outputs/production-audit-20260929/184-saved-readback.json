@@ -1,0 +1,124 @@
+{
+  "historical_records_unchanged": {
+    "analyses": 144,
+    "cost_decisions": 154
+  },
+  "migration": "0048_disposition_basis",
+  "cost_id": 6319,
+  "cost_ulid": "01M3VN583B775TGGSSC1CV2XFY",
+  "engine_version": "0.3.42",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "result_sha256": "c6d441a4b55f5c7c52cee15a0c4854423a0714025729212de8b9c329cf6982da",
+  "unchanged_estimates": 48,
+  "final_outcome": null,
+  "final_basis": null,
+  "final_note": null,
+  "final_approval": "unreviewed",
+  "audit_events": [
+    {
+      "action": "decision.disposition_recorded",
+      "detail_json": {
+        "org_id": "01M3Q3PATTHVHM9GM6H33Z958M",
+        "disposition": "outside",
+        "previous_basis": null,
+        "approval_reopened": false,
+        "disposition_basis": {
+          "process": "mjf",
+          "material": "PP (Polypropylene)",
+          "quantity": 100
+        },
+        "previous_disposition": null
+      }
+    },
+    {
+      "action": "decision.disposition_recorded",
+      "detail_json": {
+        "org_id": "01M3Q3PATTHVHM9GM6H33Z958M",
+        "disposition": "outside",
+        "previous_basis": {
+          "process": "mjf",
+          "material": "PP (Polypropylene)",
+          "quantity": 100
+        },
+        "approval_reopened": false,
+        "disposition_basis": {
+          "process": "mjf",
+          "material": "PP (Polypropylene)",
+          "quantity": 100
+        },
+        "previous_disposition": "outside"
+      }
+    },
+    {
+      "action": "decision.disposition_recorded",
+      "detail_json": {
+        "org_id": "01M3Q3PATTHVHM9GM6H33Z958M",
+        "disposition": "outside",
+        "previous_basis": {
+          "process": "mjf",
+          "material": "PP (Polypropylene)",
+          "quantity": 100
+        },
+        "approval_reopened": true,
+        "disposition_basis": {
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 1
+        },
+        "previous_disposition": "outside"
+      }
+    },
+    {
+      "action": "decision.disposition_recorded",
+      "detail_json": {
+        "org_id": "01M3Q3PATTHVHM9GM6H33Z958M",
+        "disposition": "inhouse",
+        "previous_basis": {
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 1
+        },
+        "approval_reopened": false,
+        "disposition_basis": {
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 1
+        },
+        "previous_disposition": "outside"
+      }
+    },
+    {
+      "action": "decision.disposition_withdrawn",
+      "detail_json": {
+        "org_id": "01M3Q3PATTHVHM9GM6H33Z958M",
+        "disposition": null,
+        "previous_basis": {
+          "process": "fdm",
+          "material": "PLA",
+          "quantity": 1
+        },
+        "approval_reopened": false,
+        "disposition_basis": null,
+        "previous_disposition": "inhouse"
+      }
+    }
+  ],
+  "exports": {
+    "basis": {
+      "process": "mjf",
+      "material": "PP (Polypropylene)",
+      "quantity": 100
+    },
+    "note_preserved": true,
+    "json_immutable_artifact_equal": true,
+    "csv_rows": 48,
+    "pdf_basis_and_note": true,
+    "rfq_snapshot_basis_and_note": true,
+    "rfq_artifact_equal": true,
+    "rfq_csv_rows": 48,
+    "rfq_pdf_basis_and_note": true,
+    "live_supplier_send": false,
+    "raw_cad_requested": false
+  },
+  "scope": "Local controlled audit; does not certify manufacturing, customer prices, external delivery, or production deployment."
+}

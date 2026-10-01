@@ -59,6 +59,7 @@ class ApprovalBody(BaseModel):
 class DispositionBody(BaseModel):
     disposition: Literal["inhouse", "outside", "acquire", "redesign"] | None
     note: str | None = Field(default=None, max_length=1000)
+    quantity: int | None = Field(default=None, gt=0, strict=True)
 
 
 def _parse_dt(value: str, field: str) -> datetime:
@@ -194,6 +195,7 @@ async def set_cost_decision_disposition(
         user.user_id,
         disposition=body.disposition,
         note=body.note,
+        quantity=body.quantity,
     )
     return {"id": d.ulid, **svc.governance_fields(d)}
 

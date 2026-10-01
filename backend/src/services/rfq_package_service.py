@@ -75,7 +75,7 @@ def _snapshot_decision(item: dict[str, Any]) -> CostDecision:
     fields = {key: meta.get(key) for key in (
         "filename", "file_type", "label", "mesh_hash", "approval_status",
         "approved_by_user_id", "approval_note", "user_disposition",
-        "disposition_note", "disposition_updated_by_user_id", "stale_reason",
+        "disposition_note", "disposition_basis", "disposition_updated_by_user_id", "stale_reason",
     )}
     for key in ("created_at", "approved_at", "disposition_updated_at", "stale_at"):
         fields[key] = datetime.fromisoformat(meta[key]) if meta.get(key) else None
@@ -390,6 +390,7 @@ async def _decision_item(
             "user_disposition": status["user_disposition"],
             "user_disposition_label": status["user_disposition_label"],
             "disposition_note": status["disposition_note"],
+            "disposition_basis": status["disposition_basis"],
             "disposition_updated_at": status["disposition_updated_at"],
             "disposition_updated_by_user_id": status[
                 "disposition_updated_by_user_id"

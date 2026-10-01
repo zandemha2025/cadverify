@@ -1,0 +1,44 @@
+{
+  "source": "backend/tests/assets/cube.step",
+  "saved_cost_id": 6319,
+  "saved_cost_ulid": "01M3VN583B775TGGSSC1CV2XFY",
+  "quantity_100": {
+    "process": "mjf",
+    "unit_cost_usd": 3.62,
+    "owned_route_fit": "makeable_outsource_only",
+    "inhouse_enabled": false,
+    "outside_saved": true
+  },
+  "quantity_1": {
+    "process": "fdm",
+    "unit_cost_usd": 30.0,
+    "inhouse_enabled": true,
+    "previous_outside_selection_not_pressed": true,
+    "note_edit_preserved_mjf_100": true
+  },
+  "record_page": {
+    "saved_basis_visible": true,
+    "quantity_selector_initialized_to_saved_100": true,
+    "same_outcome_changed_to_quantity_1_reopens_approval": true,
+    "eligible_inhouse_saved_and_reloaded": true,
+    "records_panel_basis_visible": true
+  },
+  "interpolated_quantity_11888": {
+    "all_new_outcomes_disabled": true,
+    "existing_choice_retained": true,
+    "withdrawal_allowed": true
+  },
+  "withdrawal": {
+    "outcome": null,
+    "basis": null,
+    "note": null,
+    "reload_verified": true
+  },
+  "downloads": {
+    "json_csv_pdf_rfq": "Actual native clicks completed and files were inspected. JSON download-event hook timed out; downloaded file, creation time, contents and HTTP200 proved completion.",
+    "pdf_first_page": "Rendered with Poppler and visually inspected; basis and Unicode note legible.",
+    "supplier_send": false,
+    "raw_cad_requested": false
+  },
+  "scope": "Local audit organization; generic modeled costs remain unvalidated. Production unchanged."
+}

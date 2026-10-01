@@ -192,6 +192,7 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
             "user_disposition": "make_in_house",
             "user_disposition_label": "Make in-house",
             "disposition_note": "Release to cell 4",
+            "disposition_basis": {"process": "cnc", "material": "steel", "quantity": 100},
             "disposition_updated_at": disposition_at.isoformat(),
             "disposition_updated_by_user_id": 12,
             "is_stale": False,
@@ -260,6 +261,7 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
         assert driver_rows[0]["approval_note"] == "Reviewed against governed rates"
         assert driver_rows[0]["user_disposition"] == "make_in_house"
         assert driver_rows[0]["user_disposition_label"] == "Make in-house"
+        assert json.loads(driver_rows[0]["disposition_basis"]) == item["decision"]["disposition_basis"]
         assert driver_rows[0]["disposition_note"] == "Release to cell 4"
         assert driver_rows[0]["disposition_updated_at"] == disposition_at.isoformat()
         assert driver_rows[0]["disposition_updated_by_user_id"] == "12"
@@ -269,6 +271,7 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
     assert pdf_decision.approval_status == "approved"
     assert pdf_decision.approval_note == item["decision"]["approval_note"]
     assert pdf_decision.disposition_note == "Release to cell 4"
+    assert pdf_decision.disposition_basis == item["decision"]["disposition_basis"]
     assert pdf_decision.disposition_updated_at == disposition_at
     assert pdf_decision.result_json == item["cost_decision"]
     assert decision.approval_status == "unreviewed", "rendering must not mutate the live row"

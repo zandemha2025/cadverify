@@ -1,0 +1,65 @@
+{
+  "backend_full": {
+    "passed": 2826,
+    "failed": 0,
+    "skipped": 3,
+    "seconds": 251.29,
+    "skip_reasons": [
+      [
+        "tests/test_eval_harness.py",
+        "real corpus manifest not present"
+      ],
+      [
+        "tests/test_step_ap242_parser.py",
+        "OCP XDE not available"
+      ],
+      [
+        "tests/test_step_ap242_parser.py",
+        "OCP XDE not available"
+      ]
+    ],
+    "skip_policy": "Full-run reported skips matched the protected allowlist after execution. Final focused run enforces CADVERIFY_ENFORCE_SKIP_POLICY=1.",
+    "log": "184-backend-full-final.log"
+  },
+  "backend_focused_final": {
+    "passed": 53,
+    "failed": 0,
+    "skip_policy_enforced": true,
+    "log": "184-backend-focused-ci.log"
+  },
+  "frontend": {
+    "passed": 528,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typescript": "pass",
+  "production_build": "pass (184-build-final.log)",
+  "required_lint": {
+    "errors": 0,
+    "existing_unrelated_warnings": 4
+  },
+  "changed_frontend_lint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "pyright": {
+    "version": "1.1.411",
+    "existing_errors": 2,
+    "new_errors": 0,
+    "warnings": 0
+  },
+  "bandit": {
+    "findings": 0
+  },
+  "browser_runner_checks": {
+    "passed": 9,
+    "failed": 0,
+    "notification_matrix_syntax": "pass"
+  },
+  "red_proofs": [
+    "Original API accepted inhouse for a selected outsource-only route (HTTP 200 instead of 409).",
+    "Legacy inhouse note edit rejected with HTTP 409 before note-only compatibility fix."
+  ],
+  "native_scope": "Real cube.step, production frontend build; saved choice, note edits, exports, approval, Records and withdrawal. The final backend-only legacy note guard is covered by final focused/full tests; previously captured browser cases are unchanged.",
+  "ci_scope": "Completed audit181 CI: 8 passed, 1 failed (5 HIGH image findings). New audits182-184 CI pending publication."
+}

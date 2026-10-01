@@ -26,8 +26,11 @@ import {
   COST_DISPOSITION_NOTE_MAX_LENGTH,
   COST_DISPOSITIONS,
   costDispositionLabel,
+  costDispositionBasisLabel,
+  inhouseDispositionError,
   isCostDisposition,
   type CostDisposition,
+  type CostDispositionBasis,
 } from "@/lib/cost-disposition";
 import {
   parseAsk,
@@ -1875,10 +1878,10 @@ function DecideHallmark({
   const toast = useToast();
   const saved = result.cost?.saved;
   const est = selection.estimate;
-  const inhouseBlocked = !est || routeDfmOutcome(
-    routeScopedDfmVerdict(result.validation, est?.process),
-    est,
-  ).blocked;
+  const inhouseError = inhouseDispositionError(result.cost, est);
+  const [recordedBasis, setRecordedBasis] = useState<CostDispositionBasis | null>(null);
+  const selectedIsRecorded = selection.exact && recordedBasis?.quantity === est?.quantity
+    && recordedBasis?.process === est?.process && recordedBasis?.material === est?.material;
   const validated = selection.confidence?.validated ?? false;
   const decidedLabel = costDispositionLabel(decision);
   const [loadingSaved, setLoadingSaved] = useState(Boolean(saved?.id));
@@ -1905,6 +1908,7 @@ function DecideHallmark({
       setPersistedAt(null);
       setDispositionNote("");
       setPersistedDispositionNote("");
+      setRecordedBasis(null);
       return;
     }
 
@@ -1922,6 +1926,7 @@ function DecideHallmark({
         setPersistedAt(record.disposition_updated_at ?? null);
         setDispositionNote(record.disposition_note ?? "");
         setPersistedDispositionNote(record.disposition_note ?? "");
+        setRecordedBasis(record.disposition_basis ?? null);
       })
       .catch((error) => {
         if (!alive) return;
@@ -1943,8 +1948,8 @@ function DecideHallmark({
     action: "select" | "note" | "withdraw" = "select"
   ) => {
     if (loadingSaved || saving) return;
-    if (key === "inhouse" && inhouseBlocked && action === "select") {
-      toast("Make in-house is unavailable until revised CAD passes route DFM");
+    if (action === "select" && (!selection.exact || (key === "inhouse" && inhouseError))) {
+      toast(!selection.exact ? "Select a computed quantity before recording an outcome" : inhouseError!);
       return;
     }
     const noteOnly = action === "note";
@@ -1954,6 +1959,8 @@ function DecideHallmark({
     // Honest fallback for an explicitly non-persisted engine run.
     if (!saved?.id) {
       setDecision(next);
+      if (withdrawing) setRecordedBasis(null);
+      else if (!noteOnly && est) setRecordedBasis({ process: est.process, material: est.material, quantity: est.quantity });
       if (withdrawing) {
         setDispositionNote("");
         setPersistedDispositionNote("");
@@ -1973,12 +1980,14 @@ function DecideHallmark({
       const updated = await setCostDecisionDisposition(
         saved.id,
         next,
-        next ? dispositionNote : undefined
+        next ? dispositionNote : undefined,
+        !noteOnly && !withdrawing ? selection.quantity : undefined,
       );
       setDecision(updated.user_disposition);
       setPersistedAt(updated.disposition_updated_at ?? new Date().toISOString());
       setDispositionNote(updated.disposition_note ?? "");
       setPersistedDispositionNote(updated.disposition_note ?? "");
+      setRecordedBasis(updated.disposition_basis ?? null);
       if (withdrawing) {
         toast(`Decision withdrawn — saved to cost-decision ${shortId}`);
       } else if (noteOnly) {
@@ -2002,8 +2011,8 @@ function DecideHallmark({
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
         {COST_DISPOSITIONS.map((o) => {
-          const on = decision === o.key;
-          const blockedOption = o.key === "inhouse" && inhouseBlocked;
+          const on = decision === o.key && selectedIsRecorded;
+          const blockedOption = !selection.exact || (o.key === "inhouse" && !!inhouseError);
           return (
             <button
               key={o.key}
@@ -2014,7 +2023,7 @@ function DecideHallmark({
               disabled={loadingSaved || Boolean(saving) || Boolean(saveError) || blockedOption}
               title={
                 blockedOption
-                  ? "Revise the CAD and pass route DFM before recording Make in-house"
+                  ? !selection.exact ? "Select a computed quantity first" : inhouseError ?? undefined
                   : undefined
               }
               onClick={() => void choose(o.key, o.label)}
@@ -2058,9 +2067,10 @@ function DecideHallmark({
         )}
       </div>
 
-      {inhouseBlocked && (
+      {!selection.exact && <p style={{ color: C.cond, fontSize: 12 }}>Select a computed quantity to record an outcome. An interpolated price cannot be saved as an exact decision basis.</p>}
+      {inhouseError && (
         <p data-testid="verify-disposition-route-block" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail, lineHeight: 1.6 }}>
-          Route DFM is blocked · Make in-house is locked until revised CAD passes. Choose Redesign, Make outside, or Acquire capability for this record.
+          {inhouseError}
         </p>
       )}
 
@@ -2088,6 +2098,7 @@ function DecideHallmark({
       ) : decidedLabel ? (
         <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
           ✓ {decidedLabel} — recorded {recordedDate}
+          {" · "}{costDispositionBasisLabel(recordedBasis)}
           {saved ? (
             <>
               {" "}· saved and auditable on cost-decision <span style={{ color: C.ink }}>{shortId}</span>
@@ -2102,6 +2113,10 @@ function DecideHallmark({
           {saved ? " will be saved to this cost-decision record" : " is session-only because record persistence is off"}.
         </p>
       )}
+
+      {est && <p data-testid="verify-disposition-basis" style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
+        Choice applies to {costDispositionBasisLabel(est)}{selection.exact ? "." : " — nearest computed point; select it before recording."}
+      </p>}
 
       <div
         data-testid="verify-disposition-note-editor"

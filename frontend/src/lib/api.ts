@@ -9,7 +9,7 @@ import {
 } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
-import type { CostDisposition } from "./cost-disposition";
+import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
 import { createReconstructionSubmissionId } from "./reconstruction-id";
 
 export interface GeometryInfo {
@@ -1098,6 +1098,7 @@ export interface CostDecisionGovernance {
   user_disposition?: CostDisposition | null;
   user_disposition_label?: string | null;
   disposition_note?: string | null;
+  disposition_basis?: CostDispositionBasis | null;
   disposition_updated_at?: string | null;
   disposition_updated_by_user_id?: number | null;
 }
@@ -1352,7 +1353,8 @@ export async function reopenCostDecisionApproval(
 export async function setCostDecisionDisposition(
   id: string,
   disposition: CostDisposition | null,
-  note?: string
+  note?: string,
+  quantity?: number,
 ): Promise<CostDispositionResult> {
   return apiClient.fetchJson<CostDispositionResult>(
     `${API_BASE}/cost-decisions/${id}/disposition`,
@@ -1362,6 +1364,7 @@ export async function setCostDecisionDisposition(
       body: JSON.stringify({
         disposition,
         note: disposition ? note?.trim() || null : null,
+        ...(disposition && quantity != null ? { quantity } : {}),
       }),
     }
   );

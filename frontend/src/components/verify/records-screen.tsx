@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
+import { costDispositionBasisLabel } from "@/lib/cost-disposition";
 import { recordVerdictModel, type Tone } from "@/lib/verify/verification";
 import {
   Kicker,
@@ -313,6 +314,9 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <strong style={{ fontSize: 12.5, color: detail.user_disposition ? C.pass : C.cond }}>
                 {detail.user_disposition_label ?? "Not decided"}
               </strong>
+              {detail.user_disposition && <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink50 }}>
+                {costDispositionBasisLabel(detail.disposition_basis)}
+              </span>}
               <a
                 href={`/cost-decisions/${id}`}
                 style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10.5, color: C.ink, textDecoration: "underline", textUnderlineOffset: 3 }}

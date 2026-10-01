@@ -64,6 +64,12 @@
     {% else %}
       &middot; <strong>Recorded outcome:</strong> Not decided
     {% endif %}
+    {% if governance.get('disposition_basis') %}
+      {% set basis = governance.get('disposition_basis') %}
+      &middot; <strong>Outcome basis:</strong> {{ basis.get('process') }} / {{ basis.get('material') | pdf_text }} / quantity {{ basis.get('quantity') }}
+    {% elif governance.get('user_disposition') %}
+      &middot; <strong>Outcome basis:</strong> Process and quantity were not recorded
+    {% endif %}
     {% if governance.get('disposition_updated_at') %}
       &middot; <strong>Outcome updated:</strong> {{ governance.get('disposition_updated_at') }}
     {% endif %}

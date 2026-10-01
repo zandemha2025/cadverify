@@ -356,7 +356,16 @@ class Matrix {
   }
 
   async notificationLifecycle(identity) {
+    // The positive in-house disposition needs a real declared, fitting resource.
+    const machine = await this.request(identity.page, "/api/proxy/machine-inventory", {
+      method: "POST", data: { name: `Disposition FDM ${runId}`, process: "fdm", count: 1,
+        materials: ["polymer"], max_workpiece_kg: 5, hourly_rate_usd: 10,
+        capabilities: { x: 300, y: 300, z: 350, min_layer_um: 100, min_wall_mm: 0.8 } },
+    });
+    this.check("VER-07", "declare owned FDM HTTP status", 200, machine.status);
     const first = await this.uploadDecision(identity, `notification-primary-${runId}.step`);
+    this.check("VER-07", "prototype has a verified owned route", "makeable_in_house",
+      first.cost.verification?.per_route?.[first.cost.decision?.make_now_process]?.verdict);
     const firstRow = first.notification;
     this.check("VER-04", "notification source id", first.detail.id, firstRow.source_id);
     this.check("VER-04", "notification source type", "cost_decision", firstRow.source_type);
@@ -794,6 +803,8 @@ class Matrix {
     this.check("VER-07", `${branch} persisted label`, expectedLabel, detail.user_disposition_label);
     this.check("VER-07", `${branch} response disposition note`, expectedNote, payload.disposition_note);
     this.check("VER-07", `${branch} persisted disposition note`, expectedNote, detail.disposition_note);
+    this.check("VER-07", `${branch} exact sourcing basis round-trip`, payload.disposition_basis, detail.disposition_basis);
+    this.truth("VER-07", `${branch} computed sourcing quantity recorded`, Number.isInteger(detail.disposition_basis?.quantity));
     this.check("VER-07", `${branch} response/persisted timestamp`, payload.disposition_updated_at, detail.disposition_updated_at);
     this.check("VER-07", `${branch} response/persisted actor`, payload.disposition_updated_by_user_id, detail.disposition_updated_by_user_id);
     this.truth(
@@ -864,6 +875,7 @@ class Matrix {
     this.check("VER-07", `${branch} response clears label`, null, payload.user_disposition_label);
     this.check("VER-07", `${branch} persisted label`, null, detail.user_disposition_label);
     this.check("VER-07", `${branch} response clears note`, null, payload.disposition_note);
+    this.check("VER-07", `${branch} response clears sourcing basis`, null, payload.disposition_basis);
     this.check("VER-07", `${branch} persisted note`, null, detail.disposition_note);
     this.check("VER-07", `${branch} response/persisted timestamp`, payload.disposition_updated_at, detail.disposition_updated_at);
     this.truth(

@@ -268,7 +268,9 @@ export function dispositionForCost(cost) {
   );
   return blocked
     ? { key: "redesign", label: "Redesign" }
-    : { key: "inhouse", label: "Make in-house" };
+    : ["makeable_in_house", "makeable_with_secondary_op"].includes(cost?.verification?.per_route?.[process]?.verdict)
+      ? { key: "inhouse", label: "Make in-house" }
+      : { key: "outside", label: "Make outside" };
 }
 
 /** Pure supported-case oracle used by the live runner and targeted unit tests. */

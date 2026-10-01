@@ -640,6 +640,7 @@ class CostDecision(Base):
     # accountable user records what the organization will actually do.
     user_disposition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     disposition_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    disposition_basis: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     disposition_updated_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
