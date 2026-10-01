@@ -227,7 +227,7 @@
   <table>
     <thead><tr>
       <th>Process</th><th>Material</th><th class="num">Qty</th>
-      {% for k in li_keys %}<th class="num">{{ k }}</th>{% endfor %}
+      {% for k in li_keys %}<th class="num">{{ k | replace('_', ' ') }}</th>{% endfor %}
       <th class="num">&Sigma; unit</th>
     </tr></thead>
     {% for e in estimates %}
