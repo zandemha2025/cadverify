@@ -729,3 +729,8 @@ Fixed locally and proven with four real native STEP uploads: diagonal placements
 ### Audit186 — tooling model orientation and decision consistency
 
 Fixed locally: rotating the400mm STEP no longer halves tooling or crossover. Real Glass Box/Decision/native JSON show$60,000tooling,$602.79at100,crossover4107 for both poses,with redesign/model limitations retained.250mmcontrols remainunchanged. All316historicrecords,4analyses and76non-tooling estimates unchanged.2,836backend+76focused pass,3protectedskips,0newstaticfindings;see186-checks.json/186-saved-readback.json/186-tooling-proof.json. This proves model consistency,not supplier quote/tool-layout accuracy. Previous184CI terminalfails containersecurity and staleCSVheader gate; correctiveCI-followupstillneeded. Productionunchanged andPR107notapprovedfordeployment;fullgoal incomplete.
+
+
+### Audit187 — CSV/RFQ sourcing-basis journey checks
+
+Corrected two stale browser-runner export schemas to include persisteddisposition_basis and compare its parsedJSON against the saved package scope. ActualnativeCSV/RFQ48rows each pass exact23-column andMJF/PP/100 checks;13runnerunitchecks andsyntaxPASS. Old184CI staysfailed(7jobsPASS,browseroldschemafailure,container5HIGH);new exactrevisionCI required afterpublishing185–187. Productcodeunchanged187;no assertionwaiver or deployment. See187-csv-contract-proof.json/187-checks.json/ci-36864623761-summary.json.

@@ -1,0 +1,20 @@
+{
+  "runner_unit_tests": {
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      "training-guide-e2e.test.mjs",
+      "compare-rfq-key-golden-matrix.test.mjs",
+      "enterprise-domain-runner.test.mjs"
+    ]
+  },
+  "runner_syntax": "both changed runners pass node --check",
+  "native_contract_rows": {
+    "standalone_csv": 48,
+    "rfq_packaged_csv": 48
+  },
+  "schema": "23 exact columns including disposition_basis; parsed basis compared to the saved/snapshotted decision, with null preserved.",
+  "ci": "Old exact184run36864623761 remains failed; corrected full browser journey awaits fresh CI.",
+  "production": "unchanged"
+}

@@ -148,6 +148,7 @@ const costDriverHeaders = [
   "user_disposition",
   "user_disposition_label",
   "disposition_note",
+  "disposition_basis",
   "disposition_updated_at",
   "disposition_updated_by_user_id",
   "line_items",
@@ -925,6 +926,11 @@ async function main() {
         assert(row.confidence_label === estimate.confidence.label, `RFQ driver confidence label drifted for ${estimate.process} qty ${estimate.quantity}`);
         assert(row.confidence_validated.toLowerCase() === String(Boolean(estimate.confidence.validated)), `RFQ driver validation flag drifted for ${estimate.process} qty ${estimate.quantity}`);
         assert(row.dfm_ready.toLowerCase() === String(Boolean(estimate.dfm_ready)), `RFQ driver DFM flag drifted for ${estimate.process} qty ${estimate.quantity}`);
+        assertJsonEqual(
+          row.disposition_basis ? JSON.parse(row.disposition_basis) : null,
+          durableCostDetail.disposition_basis ?? null,
+          `RFQ driver sourcing basis for ${estimate.process} qty ${estimate.quantity}`,
+        );
         for (const field of governanceColumns) {
           assert(
             row[field] === String(durableCostDetail[field] ?? ""),
