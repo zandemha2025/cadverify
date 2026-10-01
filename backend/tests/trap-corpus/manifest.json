@@ -1,5 +1,5 @@
 {
-  "corpus": "cadverify trap corpus v1.2 (2026-09-13)",
+  "corpus": "cadverify trap corpus v1.3 (2026-10-01)",
   "law": "every verifier change must keep this corpus green; expected values derive from CODE thresholds (fdm.py: wall 0.8 / overhang 45deg / small 0.4 / volume (300,300,350) / aspect 8 / drain 3.0; sla.py: wall 0.4 / overhang 19deg)",
   "semantics_note": "OVERHANG IS MEASURED FROM VERTICAL in checks.py: a face trips when angle_from_up(normal) > 90 + threshold. For an underside, angle_from_up = 90 + tilt-from-vertical, so FDM trips undersides tilted more than 45 deg FROM VERTICAL (i.e. shallower than 45 deg from horizontal). The 46/44 pair was built against this: 46-from-vertical trips FDM, 44 passes. small_features trips only when >=5% of measured geometric boundary spans are below threshold (triangle subdivision edges are excluded). wall_thickness = inward ray from face centroids; severity ERROR if >10% of faces thin, else WARNING, but an Issue is emitted either way.",
   "fixtures": [
@@ -290,11 +290,14 @@
     },
     {
       "file": "trap-build-300.1mm.stl",
-      "class": "borderline-build-volume",
+      "class": "build-reorientation-control",
       "expect": {
         "fdm": {
-          "gates_trip": [
+          "gates_absent": [
             "build_volume"
+          ],
+          "gates_trip": [
+            "build_reorientation"
           ]
         },
         "sla": {
@@ -303,7 +306,27 @@
           ]
         }
       },
-      "note": "300.1x290x300: exceeds the FDM X envelope by 0.1mm. Only build_volume may trip."
+      "note": "Legacy trap filename retained: 300.1x290x300mm fits a 300x300x350mm FDM envelope after reorientation. The longer side occupies the 350mm axis; SLA still fails."
+    },
+    {
+      "file": "trap-build-cube-300.1mm.stl",
+      "class": "borderline-build-volume",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "build_volume"
+          ],
+          "gates_absent": [
+            "build_reorientation"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "build_volume"
+          ]
+        }
+      },
+      "note": "300.1mm solid cube: minimum caliper width is 300.1mm in every orientation, so it cannot fit the two 300mm FDM axes. Keeps a true 0.1mm oversize trap alongside the fitting reorientation control."
     },
     {
       "file": "trap-multi-lbracket-thin-steep-small.stl",
