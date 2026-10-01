@@ -93,6 +93,7 @@ class PartReq:
     geometry_precision_mm: float = 0.0  # source uncertainty; near-limit fit is unknown
     sheet_outline_xy: tuple = ()
     minimum_width_bound_mm: float = 0.0
+    enclosing_cylinder_mm: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -317,6 +318,7 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
         sheet_outline_xy=(getattr(drivers, "sheet_outline_xy", ())
                           if pt == ProcessType.SHEET_METAL else ()),
         minimum_width_bound_mm=float(getattr(drivers, "minimum_width_bound_mm", 0.0)),
+        enclosing_cylinder_mm=getattr(drivers, "enclosing_cylinder_mm", None),
     )
 
 
@@ -394,7 +396,8 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
         need = list(part.bbox_mm)
         labels = ("shortest", "mid", "longest")
         limits = tuple(d + part.geometry_tolerance_mm for d in env)
-        if fitting_box_dimensions(tuple(d + part.geometry_precision_mm for d in need), limits) is not None:
+        if fitting_box_dimensions(tuple(d + part.geometry_precision_mm for d in need), limits,
+                                  part.enclosing_cylinder_mm) is not None:
             return []
         if part.geometry_precision_mm and fitting_box_dimensions(
             tuple(d - part.geometry_precision_mm for d in need), limits
@@ -410,8 +413,8 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
             return [FitFailure("envelope", axis, measured, capacity, human)]
         return [FitFailure(
             "envelope", "orientation", tuple(need), None,
-            f"No fitting placement established for the {tuple(need)}mm enclosing box in the "
-            f"{tuple(env)}mm envelope. This limited search does not prove the part is too large; "
+            f"No fitting placement established in the {tuple(env)}mm envelope. "
+            "This limited search does not prove the part is too large; "
             "verify the planned XYZ setup.")]
     if part.geometry_precision_mm and kind == "sheet" and part.sheet_outline_xy:
         smaller = [d - part.geometry_precision_mm for d in env]

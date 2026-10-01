@@ -1,0 +1,337 @@
+{
+  "engine_version": "0.3.47",
+  "historical_records_unchanged": {
+    "analyses": 167,
+    "cost_decisions": 184
+  },
+  "analyses": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 2019,
+      "after_id": 2070,
+      "after_ulid": "01M3VZVJ0NCBCJA31ABWAG7MFD",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "d1e33204ca51594c16317f4a68224f2bd0beeba8b6d004fbd969c2787ac81ce6",
+      "geometry_unchanged": true,
+      "findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 2020,
+      "after_id": 2066,
+      "after_ulid": "01M3VZQNFYHAYCW20KKN4K4Q72",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "f0a78cbbe53f19f6cd7049f071538cd2aa78d19939f2a332246b5ef567fc1c37",
+      "geometry_unchanged": true,
+      "findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 2021,
+      "after_id": 2067,
+      "after_ulid": "01M3VZS6ZFFX6FV5MC4MK6PVZT",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "9f86b232c6a9dbc1a3b4c356d8bf5a59a3c8d15dfa54dc4aebb37b55c87bd765",
+      "geometry_unchanged": true,
+      "findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 2022,
+      "after_id": 2069,
+      "after_ulid": "01M3VZTCXMFSSN061KQC6WNYNH",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "cb84dbd87c08e1577be8bb8305351ecbb6d184bf77270c583dbaed98ed828a00",
+      "geometry_unchanged": true,
+      "findings_features_scores_unchanged": true
+    },
+    {
+      "file": "189-disk-220x8.step",
+      "before_id": 2018,
+      "after_id": 2047,
+      "after_ulid": "01M3VZH1E9VZ9QKXCZMHGF7BRD",
+      "source_sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af",
+      "result_sha256": "de360803f5e6945e1fc5cd30f0e2b27c86664f7c767f36ff7e614cab41b11391",
+      "geometry_unchanged": true,
+      "findings_features_scores_unchanged": true
+    },
+    {
+      "file": "190-disk-rotated.step",
+      "before_id": 2023,
+      "after_id": 2065,
+      "after_ulid": "01M3VZQMHX5924BF1TT3KPXM14",
+      "source_sha256": "1887d51517e943ed05df08250751520fa0695a65cb15e907c49ddff453eec23b",
+      "result_sha256": "8b38d0bdf2f58395952e81ea3c6c6e911d46222a3ec469a23bec09cedd06706d",
+      "geometry_unchanged": true,
+      "findings_features_scores_unchanged": true
+    }
+  ],
+  "cost_decisions": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 6968,
+      "after_id": 7057,
+      "after_ulid": "01M3VZH15WRYNB2R7F1X7XFH68",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "ec61db8bbc289efda64ef6799bf4eac54f855e54dabccf8b73f6e7c6ee092b65",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 12,
+      "changed_estimates": []
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 6969,
+      "after_id": 7129,
+      "after_ulid": "01M3VZQNFSXHJMJRY81B3AAQZA",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "a9b89619ebc9d7db81ce9ada16afb81018922d710b13fc0b9c6fcc090bc05394",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 12,
+      "changed_estimates": []
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6970,
+      "after_id": 7131,
+      "after_ulid": "01M3VZS73KHBTNQ8V89AXCH5SV",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "bc3c6cd7c7cb794a9b953352b6b9ba17e2cd0d874520386a50ac2030eece1e46",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 16,
+      "changed_estimates": []
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 6971,
+      "after_id": 7133,
+      "after_ulid": "01M3VZTCXJHM6WZAXFG40CCBGB",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "9169ba00fd70519c2aa1fa611d69217d9d80e7ee99707af36c956b74f5bc2ea7",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 16,
+      "changed_estimates": []
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6973,
+      "after_id": 7132,
+      "after_ulid": "01M3VZS81N4WMMDVTKYXZPH8WM",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "3ad5b32dcae7602954c03428d0b7c60b867533f63993513bb62cbabd5bcbb7a1",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 48,
+      "changed_estimates": [],
+      "fdm_route": {
+        "verdict": "makeable_in_house",
+        "failures": [],
+        "best_machine": "Audit local FDM 046",
+        "capital_frac": null,
+        "secondary_ops": [],
+        "machine_rate_usd": 10.0,
+        "machines_evaluated": 1
+      }
+    },
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 6972,
+      "after_id": 7134,
+      "after_ulid": "01M3VZVJPDVFJZ2RANF5WPKZD1",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "e91d6113ac3c20419807d56614c564da724503b4456eba4ecfafdf7b23c22d7a",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 36,
+      "changed_estimates": [],
+      "fdm_route": {
+        "verdict": "makeable_not_on_owned",
+        "failures": [
+          {
+            "axis": "diameter_mm",
+            "gate": "envelope",
+            "have": 346.4101615831198,
+            "need": 400.0,
+            "human": "Part diameter is at least 400mm > chamber diagonal 346.410162mm. This necessary bound is not a machine specification; verify the full XYZ setup."
+          }
+        ],
+        "best_machine": "Audit local FDM 046",
+        "machines_evaluated": 1
+      }
+    },
+    {
+      "file": "189-disk-220x8.step",
+      "before_id": 6967,
+      "after_id": 7058,
+      "after_ulid": "01M3VZH4PYCGD2A2SZFADVTJG5",
+      "source_sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af",
+      "result_sha256": "fdd6a4d3d8320a74c495420962b1f7f8086e7c6405bcb30ba194ec5ac9dd0b3e",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 30,
+      "changed_estimates": [
+        [
+          "fdm",
+          "PLA",
+          1
+        ],
+        [
+          "fdm",
+          "PLA",
+          100
+        ],
+        [
+          "fdm",
+          "PLA",
+          1000
+        ],
+        [
+          "fdm",
+          "PLA",
+          2000
+        ],
+        [
+          "fdm",
+          "PLA",
+          5000
+        ],
+        [
+          "fdm",
+          "PLA",
+          10000
+        ]
+      ],
+      "fdm_price_oracle": {
+        "unit_cost_usd": 191.22,
+        "cycle_hours": 24.8611,
+        "oriented_xyz_mm": [
+          200.0,
+          200.0,
+          146.372444
+        ],
+        "parts_per_build": 1,
+        "independent_height_mm": 146.37232213453834,
+        "independent_cost_with_rounded_volume_usd": 191.21723875498,
+        "calibrated": false
+      },
+      "fdm_route": {
+        "verdict": "makeable_in_house",
+        "failures": [],
+        "best_machine": "Audit local FDM 046",
+        "capital_frac": null,
+        "secondary_ops": [],
+        "machine_rate_usd": 10.0,
+        "machines_evaluated": 1
+      }
+    },
+    {
+      "file": "190-disk-rotated.step",
+      "before_id": 6980,
+      "after_id": 7130,
+      "after_ulid": "01M3VZQQT0SBS265JF6Q11BGBD",
+      "source_sha256": "1887d51517e943ed05df08250751520fa0695a65cb15e907c49ddff453eec23b",
+      "result_sha256": "e71d8abd476ba04b4a4afe81bf339a8a66081d57216afcd9a82e6842da81631d",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 30,
+      "changed_estimates": [
+        [
+          "fdm",
+          "PLA",
+          1
+        ],
+        [
+          "fdm",
+          "PLA",
+          100
+        ],
+        [
+          "fdm",
+          "PLA",
+          1000
+        ],
+        [
+          "fdm",
+          "PLA",
+          2000
+        ],
+        [
+          "fdm",
+          "PLA",
+          5000
+        ],
+        [
+          "fdm",
+          "PLA",
+          10000
+        ]
+      ],
+      "fdm_price_oracle": {
+        "unit_cost_usd": 191.22,
+        "cycle_hours": 24.8611,
+        "oriented_xyz_mm": [
+          200.0,
+          200.0,
+          146.372582
+        ],
+        "parts_per_build": 1,
+        "independent_height_mm": 146.37232213453834,
+        "independent_cost_with_rounded_volume_usd": 191.21723875498,
+        "calibrated": false
+      },
+      "fdm_route": {
+        "verdict": "makeable_in_house",
+        "failures": [],
+        "best_machine": "Audit local FDM 046",
+        "capital_frac": null,
+        "secondary_ops": [],
+        "machine_rate_usd": 10.0,
+        "machines_evaluated": 1
+      }
+    }
+  ],
+  "scope": "Local real STEP uploads. Cylinder placements and model arithmetic are verified; prices remain assumptions, not shop-validated quotes. General orientation, external validation and production rollout remain open."
+}

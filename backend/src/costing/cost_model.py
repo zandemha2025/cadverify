@@ -103,9 +103,16 @@ def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
     bbox = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
     shrink = rates.p(process, "shrinkage_linear") if process in BINDER_JET_FAMILY else 0
     bbox = tuple(d * (1 + shrink) for d in bbox)
+    cylinder = getattr(drivers, "enclosing_cylinder_mm", None)
+    if cylinder is not None:
+        cylinder = tuple(d * (1 + shrink) for d in cylinder)
     envelope = (machine_override or {}).get("build_env_mm") or rates.build_env(process)
     orientation = build_orientation(bbox, envelope)
-    n = parts_per_build(process, bbox, rates, envelope)
+    basis = drivers.billet_basis
+    if orientation is None:
+        orientation = build_orientation(bbox, envelope, cylinder)
+        basis = "measured enclosing cylinder"
+    n = parts_per_build(process, bbox, rates, envelope, cylinder)
     if orientation is None or n == 0:
         raise BuildEnvelopeError(
             f"{process.value}: price withheld — no fitting orientation established for "
@@ -134,7 +141,7 @@ def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
                f"(plate Z-climb amortized; XY packing {rates.xy_packing_density(process):g}, "
                f"plate {envelope[0]:g}×{envelope[1]:g}mm) "
                f"= {machine_hr:.3f}hr/part")
-    src += (f"; {drivers.billet_basis} oriented XYZ "
+    src += (f"; {basis} oriented XYZ "
             f"{tuple(round(d, 6) for d in orientation)}mm; spaced-grid capacity limit "
             "(packing/setup assumption, not a verified nesting plan)")
     if shrink:

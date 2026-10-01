@@ -21,7 +21,7 @@ import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
-from itertools import permutations
+from itertools import permutations, product
 from typing import TYPE_CHECKING, Any
 
 import logging
@@ -131,11 +131,27 @@ def enclosing_box_dimensions(mesh: trimesh.Trimesh) -> tuple[tuple[float, ...], 
     return tuple(float(d) + 2 * error for d in blank), basis
 
 
-def fitting_box_dimensions(box, envelope) -> tuple[float, ...] | None:
+def enclosing_cylinder_dimensions(mesh, features=None):
+    """Measured axial length and enclosing diameter, padded for source error."""
+    from src.analysis.features.base import turning_dimensions
+
+    # ponytail: reuse the detected revolution axis; not a minimum-cylinder search.
+    measured = turning_dimensions(mesh, features)
+    if measured is None:
+        return None
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    if not np.isfinite(error) or error < 0:
+        raise ValueError("Invalid source coordinate uncertainty")
+    # Both radial and axial endpoint displacement is bounded by sqrt(3)*error.
+    return tuple(d + 2 * np.sqrt(3) * error for d in measured[:2])
+
+
+def fitting_box_dimensions(box, envelope, cylinder=None) -> tuple[float, ...] | None:
     """A proved enclosing-box placement, expressed in the machine's XYZ axes.
 
     Preserve existing axis-permutation setups; otherwise reuse the continuous
     2D bed-fit check on each box face, then try body-diagonal placements.
+    A measured cylindrical enclosure can establish a fit missed by the box.
     None means no setup was established, not a proof of non-fit.
     """
     if len(box) != 3 or len(envelope) != 3 or any(
@@ -181,6 +197,42 @@ def fitting_box_dimensions(box, envelope) -> tuple[float, ...] | None:
             candidate = tuple(float(d) for d in np.abs(frame) @ (*cross_section, long))
             if fits(candidate):
                 candidates.append(candidate)
+    if candidates:
+        return min(candidates, key=height_order)
+    if cylinder is not None and len(cylinder) == 2 and all(np.isfinite(v) and v > 0 for v in cylinder):
+        length, diameter = cylinder
+        # For unit cylinder axis u, each extent is L*|u_i| + D*sqrt(1-u_i²).
+        # Its concavity leaves at most two allowed intervals per component.
+        # Work in squared components: the only coupling is sx + sy + sz = 1.
+        radius = np.hypot(length, diameter)
+        axial, radial = length / radius, diameter / radius
+        intervals = []
+        for cap in envelope:
+            allowed = []
+            if cap >= radius:
+                allowed = [(0.0, 1.0)]
+            else:
+                ratio = cap / radius
+                root = np.sqrt(max(0.0, 1 - ratio**2))
+                if cap >= diameter:
+                    allowed.append((0.0, max(0.0, axial * ratio - radial * root)**2))
+                if cap >= length:
+                    allowed.append((min(1.0, axial * ratio + radial * root)**2, 1.0))
+            intervals.append(allowed)
+        for (lx, hx), (ly, hy), (lz, hz) in product(*intervals):
+            zlow, zhigh = max(lz, 1 - hx - hy), min(hz, 1 - lx - ly)
+            if zlow > zhigh + 1e-14:
+                continue
+            # The extent is concave in each squared component too: minimum
+            # build height, then X/Y, occurs at these feasible endpoints.
+            for z in (zlow, zhigh):
+                for x in (max(lx, 1 - z - hy), min(hx, 1 - z - ly)):
+                    squared = np.clip((x, 1 - z - x, z), 0, 1)
+                    squared /= squared.sum()
+                    candidate = tuple(float(d) for d in
+                                      length * np.sqrt(squared) + diameter * np.sqrt(1 - squared))
+                    if fits(candidate):
+                        candidates.append(candidate)
     return min(candidates, key=height_order, default=None)
 
 
@@ -270,6 +322,10 @@ class GeometryContext:
     @cached_property
     def minimum_width_bound(self):
         return minimum_width_lower_bound(self.mesh)
+
+    @cached_property
+    def enclosing_cylinder(self):
+        return enclosing_cylinder_dimensions(self.mesh, self.features)
 
     @cached_property
     def flat_sheet_geometry(self):

@@ -15,6 +15,73 @@ from src.costing.routing import select_material
 from tests.test_costing_model import _analyze
 
 
+def test_disk_cylinder_placement_agrees_in_dfm_owned_fit_and_price():
+    from math import sqrt
+    from src.analysis.models import Severity
+    from src.analysis.processes.checks import check_build_volume
+    from tests.test_analyzers import _build_ctx
+
+    # Independent support function of a cylinder tilted along (1,1,1).
+    extent = 220 * sqrt(2/3) + 8 / sqrt(3)
+    assert extent < 200
+    # Independent numerical root for the smallest allowed X/Y axis component.
+    # Maximizing the remaining Z component gives the lowest fitting build.
+    low, high = .1, 1.0
+    for _ in range(60):
+        mid = (low + high) / 2
+        if 8 * mid + 220 * sqrt(1 - mid**2) > 200:
+            low = mid
+        else:
+            high = mid
+    z_axis = sqrt(1 - 2 * high**2)
+    minimum_height = 8 * z_axis + 220 * sqrt(1 - z_axis**2)
+    rates = build_rate_card()
+    material = select_material(PT.FDM, "polymer", rates)
+    machine = MachineCap(process="fdm", name="Disk fit", max_workpiece_kg=5,
+                         materials=("polymer",), hourly_rate_usd=10,
+                         capabilities={"x": 200, "y": 200, "z": 200})
+    for angle, axis, envelope in ((0, (0, 0, 1), (200, 200, 200)),
+                                  (pi/4, (0, 1, 0), (200, 200, 180)),
+                                  (.71, (1, 2, 3), (200, 200, 200))):
+        machine = replace(machine, capabilities=dict(zip(("x", "y", "z"), envelope)))
+        mesh = trimesh.creation.cylinder(radius=110, height=8, sections=64)
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+        mesh.apply_translation((100, -200, 300))
+        ctx = _build_ctx(mesh)
+        issues = check_build_volume(ctx, envelope, PT.FDM)
+        assert not any(i.severity == Severity.ERROR for i in issues), issues
+        assert any(i.code == "BUILD_REORIENTATION_REQUIRED" for i in issues)
+        drivers = extract_drivers(ctx.info, mesh, ctx.features)
+        fit = fit_machine(part_req_from_drivers(PT.FDM, drivers, material, "standard"), machine)
+        assert fit.passes, fit.failures
+        hours, count, source = _additive_machine(PT.FDM, drivers, rates,
+                                                {**fit.resource_hint, "machine_name": fit.machine})
+        assert count == 1
+        assert hours == pytest.approx(drivers.volume_cm3 / rates.p(PT.FDM, "deposition")
+                                     + minimum_height / rates.p(PT.FDM, "vert"))
+        assert "cylinder" in source
+
+        # Source error must expand the constructive enclosure, never buy a fit.
+        mesh.metadata["coordinate_error"] = .1
+        uncertain = _build_ctx(mesh)
+        assert any(i.code != "BUILD_REORIENTATION_REQUIRED" for i in
+                   check_build_volume(uncertain, (extent + .01,) * 3, PT.FDM))
+        drivers = extract_drivers(uncertain.info, mesh, uncertain.features)
+        tight = replace(machine, capabilities={k: extent + .01 for k in ("x", "y", "z")})
+        assert not fit_machine(part_req_from_drivers(PT.FDM, drivers, material, "standard"), tight).passes
+
+    result, mesh, feats = _analyze(trimesh.creation.cylinder(radius=110, height=8, sections=64))
+    binder = replace(machine, process="binder_jetting", materials=("stainless",))
+    report = estimate_decision(result, mesh, feats, EstimateOptions(
+        quantities=[1], material_class="stainless", inventory=(binder,),
+        shop_caps=ShopCaps(ops={"sinter": True})))
+    assert report.verification["per_route"]["binder_jetting"]["verdict"] not in {
+        "makeable_in_house", "makeable_with_secondary_op"}
+    with pytest.raises(ValueError, match="priced build envelope"):
+        _additive_machine(PT.BINDER_JET, extract_drivers(result.geometry, mesh, feats), rates,
+                          {"build_env_mm": (200, 200, 200)})
+
+
 def test_envelope_failure_requires_geometric_evidence_and_named_bounds():
     from math import sqrt
     from src.analysis.processes.checks import check_build_volume
@@ -33,14 +100,13 @@ def test_envelope_failure_requires_geometric_evidence_and_named_bounds():
     assert failure.have == pytest.approx(sqrt(3)*200, abs=.01)
     assert "diagonal" in failure.human and "not a machine specification" in failure.human
 
-    # The round disk has a proved tilted placement even though its enclosing
-    # rectangular box search fails: XYZ = diameter*sqrt(2/3) + height/sqrt(3).
-    assert 220*sqrt(2/3) + 8/sqrt(3) < 200
-    disk = _build_ctx(trimesh.creation.cylinder(radius=110, height=8, sections=64))
-    issues = check_build_volume(disk, (200, 200, 200), PT.FDM)
+    # No fitting placement was established for this plate, but neither
+    # necessary bound proves it too large. Do not turn failed search into proof.
+    plate = _build_ctx(trimesh.creation.box(extents=(220, 220, 8)))
+    issues = check_build_volume(plate, (200, 200, 200), PT.FDM)
     assert not any(i.code == "EXCEEDS_BUILD_VOLUME" for i in issues)
     assert any(i.code == "BUILD_ENVELOPE_UNVERIFIED" for i in issues)
-    fit = fit_machine(part_req_from_drivers(PT.FDM, extract_drivers(disk.info, disk.mesh, disk.features),
+    fit = fit_machine(part_req_from_drivers(PT.FDM, extract_drivers(plate.info, plate.mesh, plate.features),
                                             material, "standard"), machine)
     assert not fit.passes
     assert all(f.have is None for f in fit.failures if f.gate == "envelope")

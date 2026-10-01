@@ -1,0 +1,79 @@
+{
+  "engine_version": "0.3.47",
+  "red": {
+    "failed": 1,
+    "case": "Known fitting cylinder remained unverified by enclosing-box search"
+  },
+  "backend_full": {
+    "passed": 2839,
+    "skipped": 3,
+    "seconds": 251.7,
+    "skip_policy_enforced": true,
+    "skips": [
+      "real corpus manifest absent",
+      "OCP XDE unavailable (two tests)"
+    ]
+  },
+  "focused_before_final_refinement": {
+    "passed": 106,
+    "seconds": 4.37,
+    "note": "Final full suite includes subsequent unit-axis normalization and rectangular-chamber test."
+  },
+  "frontend": {
+    "changed_this_turn": false,
+    "previous_final_passed": 528,
+    "previous_types_lint_build": "PASS"
+  },
+  "trap": {
+    "ordinary_passed": 29,
+    "known_unit_gap": 1
+  },
+  "pyright": {
+    "baseline_errors": 46,
+    "final_errors": 46,
+    "new_errors": 0,
+    "scope": "Six touched modules; existing local import diagnostics retained."
+  },
+  "bandit": {
+    "baseline_low": 4,
+    "final_low": 4,
+    "new_findings": 0
+  },
+  "analytic_oracle": {
+    "seed": 190,
+    "constructive_positive_cases": 325,
+    "proven_negative_cases": 325,
+    "seconds": 0.12167737493291497,
+    "scope": "Analytic cylinder placements across orientations and scales; no general-shape minimum-cylinder claim."
+  },
+  "native": {
+    "unique_STEP_files": 6,
+    "disk_poses": 2,
+    "disk_owned_machine_fit": "makeable_in_house",
+    "disk_FDM_unit_cost_usd": 191.22,
+    "disk_cycle_hours": 24.8611,
+    "disk_fitting_XYZ_mm": [
+      200,
+      200,
+      146.3725
+    ],
+    "disk_parts_per_build": 1,
+    "disk_recommended_MJF_usd_unchanged": 79.55,
+    "bar_FDM_400mm_usd_unchanged": 127.05,
+    "bar_SLA_250mm_usd_unchanged": 186.98,
+    "bar_owned_FDM_250mm_usd_unchanged": 38.22,
+    "bar_400mm_owned_failure": "diameter lower bound 400mm exceeds 346.410162mm chamber diagonal",
+    "throttle_recovery": "Visible Retry upload recovered five-second throttle"
+  },
+  "integrity": {
+    "historical_records_unchanged": {
+      "analyses": 167,
+      "cost_decisions": 184
+    },
+    "unchanged_estimates": 200,
+    "changed_disk_FDM_estimates": 12,
+    "analysis_controls_unchanged_except_runtime": 6,
+    "geometry_controls_unchanged": 14
+  },
+  "scope": "Constructive cylinder placement and model arithmetic; general shapes, shop-cost validation, external services and production rollout remain incomplete."
+}

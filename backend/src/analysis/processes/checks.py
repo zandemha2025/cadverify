@@ -226,6 +226,10 @@ def check_build_volume(
     if process != ProcessType.CNC_TURNING and not ctx.metadata.get("decimation", {}).get("succeeded"):
         enclosing, basis = ctx.enclosing_box
         fitting = fitting_box_dimensions(enclosing, tuple(cap + tolerance for cap in max_dims_mm))
+        if fitting is None:
+            fitting = fitting_box_dimensions(enclosing, tuple(cap + tolerance for cap in max_dims_mm),
+                                             ctx.enclosing_cylinder)
+            basis = "measured enclosing cylinder"
         if fitting is not None:
             if not exceeds:
                 return []

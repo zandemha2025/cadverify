@@ -1,0 +1,27 @@
+{
+  "source_version": "0.3.46",
+  "historical_frozen": {
+    "analyses": 167,
+    "cost_decisions": 184
+  },
+  "control_ids": {
+    "analyses": [
+      2019,
+      2020,
+      2021,
+      2022,
+      2018,
+      2023
+    ],
+    "cost_decisions": [
+      6968,
+      6969,
+      6970,
+      6971,
+      6973,
+      6972,
+      6967,
+      6980
+    ]
+  }
+}

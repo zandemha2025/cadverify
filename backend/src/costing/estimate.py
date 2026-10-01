@@ -677,7 +677,10 @@ def _build_verification(elig, drivers, options, rates):
             scale = 1 + rates.p(process, "shrinkage_linear")
             preq = replace(preq, bbox_mm=tuple(d * scale for d in preq.bbox_mm),
                            geometry_precision_mm=preq.geometry_precision_mm * scale,
-                           geometry_tolerance_mm=preq.geometry_tolerance_mm * scale)
+                           geometry_tolerance_mm=preq.geometry_tolerance_mm * scale,
+                           minimum_width_bound_mm=preq.minimum_width_bound_mm * scale,
+                           enclosing_cylinder_mm=(tuple(d * scale for d in preq.enclosing_cylinder_mm)
+                                                  if preq.enclosing_cylinder_mm else None))
         part_req_by_route[process.value] = preq
         if preq.material_name:
             material_props[preq.material_name] = props

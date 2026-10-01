@@ -14,7 +14,7 @@ import numpy as np
 import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
-from src.analysis.context import enclosing_box_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
+from src.analysis.context import enclosing_box_dimensions, enclosing_cylinder_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
 from src.analysis.context import fitting_box_dimensions as build_orientation
 from src.costing.routing import is_rotational
 
@@ -55,6 +55,7 @@ class GeoDrivers:
     billet_basis: str = "file-axis fallback"
     bbox_precision_mm: float = 0.0  # enclosing-dimension uncertainty, both sides
     minimum_width_bound_mm: float = 0.0  # hull-sphere diameter, before source-error allowance
+    enclosing_cylinder_mm: tuple | None = None  # axial length, diameter; source-error padded
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -107,7 +108,7 @@ class GeoDrivers:
                 f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
 
-def parts_per_build(proc, bbox_mm, rates, envelope=None) -> int:
+def parts_per_build(proc, bbox_mm, rates, envelope=None, cylinder=None) -> int:
     """Build-plate nesting count (weaknesses #1, #2; R2 serial XY nesting).
 
     build_job (powder-bed/DLP): VOLUMETRIC fit — how many part bounding boxes
@@ -121,7 +122,7 @@ def parts_per_build(proc, bbox_mm, rates, envelope=None) -> int:
     spaced grid in that orientation. No fitting box yields zero, not one.
     """
     envelope = rates.build_env(proc) if envelope is None else envelope
-    dims = build_orientation(bbox_mm, envelope)
+    dims = build_orientation(bbox_mm, envelope, cylinder)
     if dims is None:
         return 0
     s = rates.part_spacing(proc)
@@ -234,4 +235,5 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         billet_basis=billet_basis,
         bbox_precision_mm=2 * float(mesh.metadata.get("coordinate_error", 0.0)),
         minimum_width_bound_mm=minimum_width_lower_bound(mesh),
+        enclosing_cylinder_mm=enclosing_cylinder_dimensions(mesh, features),
     )
