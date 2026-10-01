@@ -15,6 +15,8 @@ import type {
   ValidationResult,
 } from "@/lib/api";
 import type { CalibrationRate, CompareRow } from "@/components/glass-box";
+import { procLabel, verdictLabel, verdictTone } from "./status.ts";
+import { crossoverSummary } from "./cost-decision.ts";
 import { routeScopedDfmVerdict } from "./dfm-scope.ts";
 import { routeDfmOutcome } from "./verify/derive.ts";
 import { deriveBreakeven, posToQty, qtyToPos, recommendAt } from "./breakeven.ts";
@@ -310,4 +312,42 @@ export function blockersByProcess(report: CostReport): Record<string, string> {
     if (f.blockers?.length) out[f.process] = f.blockers[0];
   }
   return out;
+}
+
+/** The copied decision uses the same selection in both workspace layouts. */
+export function buildAnswerSummary(
+  report: CostReport | null,
+  validation: ValidationResult | null,
+  selection: ReturnType<typeof workspaceSelection>,
+): string {
+  const lines: string[] = [];
+  if (report?.decision) {
+    const dec = report.decision;
+    lines.push(`ProofShape — ${report.filename}`);
+    const pick = selection.recommendation;
+    lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
+    if (pick && selection.estimate?.quantity !== selection.quantity) {
+      lines.push("Approximate recommendation at this quantity; re-cost it to include batch rounding and minimum charges.");
+    }
+    for (const q of report.quantities) {
+      const r = dec.recommendation[String(q)];
+      if (r) {
+        lines.push(
+          `  qty ${q.toLocaleString()}: ${procLabel(r.process)} — $${r.unit_cost_usd.toFixed(2)}/unit${
+            r.lead_low_days != null && r.lead_high_days != null
+              ? `, ${r.lead_low_days}-${r.lead_high_days} days`
+              : ""
+          }`
+        );
+      }
+    }
+    lines.push(crossoverSummary(dec));
+  }
+  if (validation || report) {
+    const dfm = selection.dfm;
+    lines.push(
+      `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
+    );
+  }
+  return lines.join("\n");
 }

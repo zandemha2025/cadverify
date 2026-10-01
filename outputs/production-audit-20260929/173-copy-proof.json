@@ -1,0 +1,94 @@
+{
+  "scope": "Copied decision content in both workspace layouts; system clipboard delivery remains unverified",
+  "root_cause": "Two copied-summary builders instructed switching to the tooling process above an estimated crossover even when that process requires redesign. They also omitted that the selected quantity was uncosted.",
+  "fix": "Reuse a single existing copied-summary implementation in cost-views, called by both layouts. Reuse crossoverSummary already used by live/saved/comparison views. Mark recommendations at uncosted quantities approximate and preserve named-process DFM advisories.",
+  "checks": {
+    "native_defect_reproduced": true,
+    "before_regression_failed": 1,
+    "before_other_tests_passed": 25,
+    "focused_passed": 37,
+    "full_frontend_passed": 524,
+    "typecheck": "pass",
+    "changed_source_lint": "pass, zero warnings",
+    "production_build": "pass",
+    "backend_unchanged": true,
+    "engine_version": "0.3.37",
+    "historical_analyses_unchanged": 124,
+    "historical_cost_results_unchanged": 133
+  },
+  "native": {
+    "source": "156-plate-with-boss.step",
+    "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+    "cost_record": 5841,
+    "approximate_quantity": 2251,
+    "approximate_recommendation": "WAAM / AlSi10Mg; explicit approximation, Sand Casting requires redesign, WAAM advisory retained",
+    "exact_quantity": 1,
+    "exact_recommendation": "DED / AlSi10Mg; no approximate-recommendation label; Sand Casting requires redesign, DED advisory retained",
+    "preview_ready": true
+  },
+  "clipboard": {
+    "browser_session_text_matches_current_selection": true,
+    "native_button_success_toast_observed": true,
+    "native_system_delivery_verified": false,
+    "observed": "Native OS paste retained the pre-fix text, including immediate address-bar paste and a foreground-window repeat. No search navigation or invalid form submission. Browser session clipboard returned the corrected summary. The cause of this discrepancy is not established.",
+    "handling": "Preserve the unresolved delivery gap; do not treat the success toast or the browser-session readback as system clipboard proof."
+  },
+  "ci": {
+    "run_id": 36836510511,
+    "head": "6edd51360587e451ce3d2c4877fa7e3d7b83efab",
+    "status": "in_progress",
+    "jobs_passed": 6,
+    "backend": "in_progress",
+    "covers_173": false,
+    "protect_running_job": true
+  },
+  "security_recheck": {
+    "changed": false,
+    "sources": [
+      "https://security-tracker.debian.org/tracker/CVE-2026-93990",
+      "https://security-tracker.debian.org/tracker/CVE-2026-88806",
+      "https://security-tracker.debian.org/tracker/CVE-2026-88807"
+    ],
+    "result": "Current Trixie packages remain vulnerable; no waiver added. No local Docker/Podman/Trivy executable discovered. Existing native STEP dependency on X libraries prevents simply removing them."
+  },
+  "limits": [
+    "Alternate stage layout shares the tested builder and passes type/build checks; native stage-layout verification remains pending.",
+    "System clipboard delivery is not proven.",
+    "This frontend content fix does not certify manufacturing accuracy, real external services or production."
+  ],
+  "release": "Local fix pending publication after active CI completes. PR107 remains draft and undeployed; recorded production baseline09555c1.",
+  "files": [
+    {
+      "path": "173-copy-before.json",
+      "sha256": "e243de669db1b2861af54477fad65d0901418b355dddfd99dfcd3c88a9e17b71"
+    },
+    {
+      "path": "173-paste-before.txt",
+      "sha256": "839cf0a4971ae07e0913f4bdd5b8f4df53d32db01bb2115d394c348b69653d84"
+    },
+    {
+      "path": "173-copy-after.json",
+      "sha256": "dc354436d793aca66e2bd90ae92f9b8456e21ba596230fd2f5eca9708638f189"
+    },
+    {
+      "path": "173-copy-after.txt",
+      "sha256": "8823a560952206efe6d131614874774fdbf692a3d47eec98ba23c36a8c8d17a1"
+    },
+    {
+      "path": "173-copy-after.png",
+      "sha256": "aafb93f1556fa34fc3a32351f31915b8528494f0b5563917ec4654b8f38503ed"
+    },
+    {
+      "path": "173-copy-exact.json",
+      "sha256": "2eea89467bfdffa19653a9ed0109d8066043d95439a0fb9a2cae64120d29968d"
+    },
+    {
+      "path": "173-clipboard-delivery.json",
+      "sha256": "82cefa0ea1adcfa01da3375f690dfa94ba35e022a48d20917f052c87d04e6e37"
+    },
+    {
+      "path": "173-saved-readback.json",
+      "sha256": "8ce661cb964fa63ecbe5f8376d0879cbc6fffc1e4f16144480a843984465878f"
+    }
+  ]
+}

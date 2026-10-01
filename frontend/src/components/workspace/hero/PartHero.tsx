@@ -45,8 +45,8 @@ import { flattenIssues, highestPriorityIssue, issueProcesses, partitionDfmByRout
 import { reportCostBlockerLocators } from "@/lib/inspection-bind";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 import { deriveFindings } from "@/lib/findings";
-import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import type { workspaceSelection, CalibrationView } from "@/lib/cost-views";
+import { severityLabel, severityTone, verdictLabel, procLabel } from "@/lib/status";
+import { buildAnswerSummary, type workspaceSelection, type CalibrationView } from "@/lib/cost-views";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -707,44 +707,4 @@ function HeroHistory({
       </Card>
     </div>
   );
-}
-
-function buildAnswerSummary(
-  report: CostReport | null,
-  validation: ValidationResult | null,
-  selection: ReturnType<typeof workspaceSelection>,
-): string {
-  const lines: string[] = [];
-  if (report?.decision) {
-    const dec = report.decision;
-    lines.push(`ProofShape — ${report.filename}`);
-    const pick = selection.recommendation;
-    lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
-    for (const q of report.quantities) {
-      const r = dec.recommendation[String(q)];
-      if (r) {
-        lines.push(
-          `  qty ${q.toLocaleString()}: ${procLabel(r.process)} — $${r.unit_cost_usd.toFixed(2)}/unit${
-            r.lead_low_days != null && r.lead_high_days != null
-              ? `, ${r.lead_low_days}-${r.lead_high_days} days`
-              : ""
-          }`
-        );
-      }
-    }
-    if (dec.crossover_qty != null) {
-      lines.push(
-        `Crossover ≈ ${Math.round(dec.crossover_qty).toLocaleString()} units${
-          dec.tooling_process ? ` → switch to ${procLabel(dec.tooling_process)} above it` : ""
-        }`
-      );
-    }
-  }
-  if (validation || report) {
-    const dfm = selection.dfm;
-    lines.push(
-      `DFM${dfm.process ? ` · ${procLabel(dfm.process)}` : ""}: ${verdictLabel(dfm.verdict)} (${verdictTone(dfm.verdict)})`
-    );
-  }
-  return lines.join("\n");
 }

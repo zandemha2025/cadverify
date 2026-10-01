@@ -45,6 +45,7 @@ import {
   costOverrideError,
   workspaceDfmSummary,
   workspaceSelection,
+  buildAnswerSummary,
 } from "./cost-views.ts";
 import { qtyToPos } from "./breakeven.ts";
 import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision, ValidationResult } from "@/lib/api";
@@ -471,4 +472,32 @@ test("blockersByProcess keeps uncosted findings and supports older estimate-only
     injection_molding: "needs draft angle",
     cnc_turning: "not rotationally symmetric",
   });
+});
+
+
+test("copied decisions preserve conditional tooling and approximate quantities", () => {
+  const cost = report({ filename: "boss.step", quantities: [1, 100],
+    decision: decision({ tooling_process: "sand_casting", tooling_dfm_ready: false, crossover_qty: 2251,
+      recommendation: { "1": { process: "ded", material: "AlSi10Mg", unit_cost_usd: 300, dfm_ready: true, dfm_verdict: "issues" },
+        "100": { process: "waam", material: "AlSi10Mg", unit_cost_usd: 30, dfm_ready: true, dfm_verdict: "issues" } } }),
+    estimates: [est({ process: "ded", material: "AlSi10Mg", quantity: 1, unit_cost_usd: 300, dfm_verdict: "issues" }),
+      est({ process: "ded", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 60, dfm_verdict: "issues" }),
+      est({ process: "waam", material: "AlSi10Mg", quantity: 1, unit_cost_usd: 500, dfm_verdict: "issues" }),
+      est({ process: "waam", material: "AlSi10Mg", quantity: 100, unit_cost_usd: 30, dfm_verdict: "issues" })],
+  });
+  const approximate = buildAnswerSummary(cost, null, workspaceSelection(cost, null));
+  assert.match(approximate, /requires redesign/);
+  assert.match(approximate, /[Aa]pproximate/);
+  assert.match(approximate, /DFM · WAAM: Advisory/);
+  assert.doesNotMatch(approximate, /switch to|Manufacturable/);
+  const exact = buildAnswerSummary(cost, null, workspaceSelection(cost, null, 0));
+  assert.match(exact, /Make by DED.*quantity 1/);
+  assert.doesNotMatch(exact, /[Aa]pproximate recommendation/);
+  cost.decision!.tooling_dfm_ready = true;
+  const ready = buildAnswerSummary(cost, null, workspaceSelection(cost, null));
+  assert.match(ready, /Estimated Sand Casting crossover/);
+  assert.doesNotMatch(ready, /requires redesign|switch to/);
+  cost.decision!.crossover_qty = null;
+  assert.match(buildAnswerSummary(cost, null, workspaceSelection(cost, null)), /No tooling crossover/);
+  assert.equal(buildAnswerSummary(null, null, workspaceSelection(null, null)), "");
 });
