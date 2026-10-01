@@ -20,6 +20,7 @@ import os
 import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 import logging
@@ -139,6 +140,66 @@ class GeometryContext:
 
     # Room for extensions (symmetry axis, SAM-3D labels, ...)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @cached_property
+    def maximum_inscribed_diameter(self) -> float | None:
+        """Largest *observed* interior sphere, shared by molding/casting checks.
+
+        A normal chord across a plate edge measures its length, not its wall.
+        Nearest-surface distance at an interior point instead bounds a sphere
+        that actually fits in material. This is a sampled lower bound on the
+        largest thick section, not certification of unsampled geometry.
+        """
+        try:
+            if not self.mesh.is_volume:
+                return None
+            n = len(self.centroids)
+            # Reuse only the faces actually ray-cast, never interpolated values.
+            stride = max(1, n // 5000) if n > _raycast_sample_threshold() else 1
+            ids = np.arange(0, n, stride)
+            ids = ids[::max(1, (len(ids) + 4999) // 5000)]
+            ids = ids[np.isfinite(self.wall_thickness[ids])]
+            points = self.centroids[ids] - self.normals[ids] * self.wall_thickness[ids, None] / 2
+            batch = min(_wall_thickness_ray_batch(), max(8, _wall_thickness_ray_budget() // n))
+            tol = wall_thickness_tolerance(self.mesh, self.scale_eps)
+            # Facet centers recover broad planar sections even on coarse CAD
+            # triangulations. A concave facet's centroid can lie in a hole;
+            # accept it only when it lies on the actual surface.
+            # ponytail: capped surface samples can miss small sections; use an
+            # adaptive medial-axis solver if certified global maxima are needed.
+            facets = self.facet_groups[::max(1, (len(self.facet_groups) + 4999) // 5000)]
+            facet_points = np.asarray([
+                np.average(self.centroids[f], axis=0, weights=self.face_areas[f])
+                for f in facets if self.face_areas[f].sum() > 0
+            ])
+            extra = []
+            for start in range(0, len(facet_points), batch):
+                p, distance, face = self.mesh.nearest.on_surface(facet_points[start:start + batch])
+                valid = distance <= tol
+                p, face = p[valid], face[valid]
+                directions = -self.normals[face]
+                chord = _cast_inward_rays_batched(
+                    self.mesh, p - directions * self.scale_eps, directions,
+                    self.scale_eps, face, source_points=p,
+                )
+                finite = np.isfinite(chord)
+                extra.extend(p[finite] + directions[finite] * chord[finite, None] / 2)
+            if extra:
+                points = np.vstack([points, extra])
+            points = np.unique(np.vstack([points, self.mesh.center_mass]), axis=0)
+            best = 0.0
+            for start in range(0, len(points), batch):
+                candidates = points[start:start + batch]
+                # Concavities, cavities and separate bodies must not turn an
+                # exterior clearance into material thickness.
+                candidates = candidates[self.mesh.contains(candidates)]
+                if len(candidates):
+                    _, distance, _ = self.mesh.nearest.on_surface(candidates)
+                    best = max(best, float(distance.max()) * 2)
+            return best if np.isfinite(best) and best > tol else None
+        except Exception:
+            logger.warning("Maximum wall thickness measurement failed", exc_info=True)
+            return None
 
     # ──────────────────────────────────────────────────────────
     # Builder
@@ -437,6 +498,8 @@ def _cast_inward_rays_batched(
     directions: np.ndarray,
     eps: float,
     source_face_idx: np.ndarray,
+    *,
+    source_points: np.ndarray | None = None,
 ) -> np.ndarray:
     """Cast inward rays in memory-bounded batches; return per-ray min thickness.
 
@@ -486,7 +549,8 @@ def _cast_inward_rays_batched(
 
         # Measure from the actual surface; the offset must not bias thickness.
         # Signed projection also excludes any hit outside the source surface.
-        offsets = locs - mesh.triangles_center[b_source[idx_ray]]
+        reference = mesh.triangles_center[b_source] if source_points is None else source_points[start:stop]
+        offsets = locs - reference[idx_ray]
         dists = np.einsum("ij,ij->i", offsets, b_directions[idx_ray])
         valid = (idx_tri != b_source[idx_ray]) & (dists > surface_tol)
         if np.any(valid):

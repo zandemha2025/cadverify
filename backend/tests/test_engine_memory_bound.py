@@ -60,12 +60,13 @@ def _worker(backend_root, env, kind, target_faces, mode, q):
     eps = max(1e-4, min(float(np.linalg.norm(mesh.extents)) * 1e-4, 0.1))
 
     baseline = _peak_rss_mb()  # after imports + mesh construction
-    if mode == "build":
+    if mode in {"build", "molding"}:
         from src.analysis.base_analyzer import analyze_geometry
         from src.analysis.context import GeometryContext
         info = analyze_geometry(mesh)
         ctx = GeometryContext.build(mesh, info)
         result = ctx.wall_thickness
+        assert ctx.maximum_inscribed_diameter is not None
     else:  # "wall_thickness"
         from src.analysis.context import _compute_wall_thickness
         result = _compute_wall_thickness(mesh, normals, centroids, eps)
@@ -138,6 +139,15 @@ def test_pathological_sphere_wall_thickness_is_bounded():
     assert peak < _PATHOLOGICAL_BOUND_MB, (
         f"pathological-sphere peak RSS delta {peak:.0f} MB exceeds "
         f"{_PATHOLOGICAL_BOUND_MB} MB ({n_faces} faces) — worst case not bounded"
+    )
+
+
+@pytest.mark.slow
+def test_sampled_molding_maximum_is_memory_bounded():
+    n_faces, peak, finite, n = _measure("sphere", 37_000, "molding")
+    assert finite > 0
+    assert peak < _PATHOLOGICAL_BOUND_MB, (
+        f"molding peak RSS delta {peak:.0f} MB exceeds {_PATHOLOGICAL_BOUND_MB} MB"
     )
 
 

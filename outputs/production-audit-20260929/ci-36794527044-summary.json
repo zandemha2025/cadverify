@@ -1,0 +1,210 @@
+{
+  "status": "completed",
+  "conclusion": "failure",
+  "headSha": "9180abc6924c0b196e9d298f2d601d523437d891",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36794527044",
+  "jobs": [
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up Docker Buildx",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Validate Compose deploy configs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Lint and render Helm chart",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build frontend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build backend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Datestamp for Trivy DB pin",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Restore pinned Trivy DB (daily)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Prepare image security evidence directory",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Scan frontend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Scan backend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Generate frontend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate backend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise frontend image default startup and share image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise backend image native STEP parser",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write source-bound container build manifest",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload container build and security evidence",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Save Trivy DB pin even on scan failure",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Generate backend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Generate frontend CycloneDX SBOM",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Scan backend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Scan frontend image (high/critical vulnerabilities)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Build backend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Build frontend production image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Set up Docker Buildx",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "scope": "Through155; excludes audit156.",
+  "backend_image_findings": {
+    "high": 5,
+    "critical": 0,
+    "cves": [
+      "CVE-2026-93990",
+      "CVE-2026-88806",
+      "CVE-2026-88807"
+    ]
+  }
+}

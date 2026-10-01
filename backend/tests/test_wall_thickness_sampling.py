@@ -46,8 +46,8 @@ def test_plate_wall_is_surface_distance_not_ray_offset(width, thickness, thin, s
 
 @pytest.mark.parametrize("extents,max_wall,expected", [
     ([6, 6, 6], 6, set()),
-    ([1, 2, 1], 2, set()),
-    ([1, 2.00001, 1], 2, {"THICK_WALL", "NON_UNIFORM_WALLS"}),
+    ([2, 2, 2], 2, set()),
+    ([2.00001, 2.00001, 2.00001], 2, {"THICK_WALL"}),
 ])
 def test_molding_wall_thresholds_ignore_only_numerical_noise(extents, max_wall, expected):
     mesh = trimesh.creation.box(extents=extents)
@@ -55,7 +55,81 @@ def test_molding_wall_thresholds_ignore_only_numerical_noise(extents, max_wall, 
     mesh.apply_translation([10000, -20000, 30000])
     ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
     issues = check_wall_uniformity(ctx, 0.8, max_wall, 1, ProcessType.INJECTION_MOLDING)
-    assert {issue.code for issue in issues} == expected
+    assert {issue.code for issue in issues if issue.code != "WALL_UNIFORMITY_SAMPLED"} == expected
+
+
+@pytest.mark.parametrize("kind,expected", [
+    ("plate", 0.81), ("block", 10.0), ("sphere", 20.0),
+    ("tube", 1.0), ("torus", 2.0), ("mixed", 10.0),
+])
+def test_molding_maximum_measures_material_not_part_span(kind, expected):
+    if kind == "plate":
+        mesh = trimesh.creation.box(extents=[300, 200, 0.81])
+    elif kind == "block":
+        mesh = trimesh.creation.box(extents=[10, 10, 20])
+    elif kind == "sphere":
+        mesh = trimesh.creation.icosphere(subdivisions=3, radius=10)
+    elif kind == "tube":
+        mesh = trimesh.creation.annulus(r_min=9, r_max=10, height=30, sections=64)
+    elif kind == "torus":
+        mesh = trimesh.creation.torus(major_radius=10, minor_radius=1)
+    else:
+        plate = trimesh.creation.box(extents=[300, 200, 0.81])
+        boss = trimesh.creation.box(extents=[10, 10, 10])
+        boss.apply_translation([0, 0, 20])
+        mesh = trimesh.util.concatenate([plate, boss])
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(0.67, [1, 2, 3]))
+    mesh.apply_translation([10000, -20000, 30000])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    assert ctx.maximum_inscribed_diameter == pytest.approx(expected, rel=0.011)
+    issues = check_wall_uniformity(ctx, 0.5, 6, 2.5, ProcessType.INJECTION_MOLDING)
+    assert any(i.code == "THICK_WALL" for i in issues) is (expected > 6)
+    assert any(i.code == "NON_UNIFORM_WALLS" for i in issues) is (kind == "mixed")
+    assert any(i.code == "WALL_UNIFORMITY_SAMPLED" for i in issues)
+
+
+def test_molding_maximum_failure_is_visible_and_preserves_thin_wall(monkeypatch):
+    mesh = trimesh.creation.box(extents=[30, 20, 0.4])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    def failed(*args, **kwargs):
+        raise RuntimeError("proximity calculation unavailable")
+    monkeypatch.setattr(trimesh.proximity.ProximityQuery, "on_surface", failed)
+    issues = check_wall_uniformity(ctx, 0.5, 6, 2.5, ProcessType.INJECTION_MOLDING)
+    assert {i.code for i in issues} == {"THIN_WALL_MOLDING", "WALL_UNIFORMITY_UNAVAILABLE"}
+
+
+def test_open_mesh_does_not_claim_molding_uniformity():
+    mesh = trimesh.creation.box()
+    mesh.update_faces(np.arange(len(mesh.faces) - 1))
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    assert ctx.maximum_inscribed_diameter is None
+    assert any(i.code == "WALL_UNIFORMITY_UNAVAILABLE" for i in
+               check_wall_uniformity(ctx, 0.5, 6, 2.5, ProcessType.INJECTION_MOLDING))
+
+
+def test_missing_minimum_preserves_independently_measured_thick_section():
+    mesh = trimesh.creation.box(extents=[20, 20, 20])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    ctx.wall_thickness[:] = np.inf
+    issues = check_wall_uniformity(ctx, 0.5, 6, 2.5, ProcessType.INJECTION_MOLDING)
+    thick = next(i for i in issues if i.code == "THICK_WALL")
+    assert thick.measured_value == pytest.approx(20)
+    assert not any(i.code == "NON_UNIFORM_WALLS" for i in issues)
+    unavailable = next(i for i in issues if i.code == "WALL_UNIFORMITY_UNAVAILABLE")
+    assert unavailable.message.startswith("Minimum wall thickness")
+
+
+@pytest.mark.parametrize("thickness,nonuniform", [(2.0, False), (2.00001, True)])
+def test_sampled_molding_ratio_boundary(thickness, nonuniform):
+    thin = trimesh.creation.box(extents=[1, 1, 1])
+    thick = trimesh.creation.box(extents=[thickness] * 3)
+    thick.apply_translation([10, 0, 0])
+    mesh = trimesh.util.concatenate([thin, thick])
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(0.67, [1, 2, 3]))
+    mesh.apply_translation([10000, -20000, 30000])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    issues = check_wall_uniformity(ctx, 0.5, 6, 2.5, ProcessType.INJECTION_MOLDING)
+    assert any(i.code == "NON_UNIFORM_WALLS" for i in issues) is nonuniform
 
 
 def _make_sphere(n_faces: int) -> trimesh.Trimesh:

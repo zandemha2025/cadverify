@@ -453,10 +453,9 @@ def check_wall_uniformity(
     issues: list[Issue] = []
     wt = ctx.wall_thickness
     finite_mask = np.isfinite(wt)
-    if not np.any(finite_mask):
-        return issues
     t = wt[finite_mask]
-    t_min, t_max = float(t.min()), float(t.max())
+    t_min = float(t.min()) if len(t) else float("inf")
+    t_max = ctx.maximum_inscribed_diameter
     tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
 
     if t_min < min_wall - tolerance:
@@ -470,24 +469,48 @@ def check_wall_uniformity(
             fix_suggestion=f"Increase to >= {min_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
+    if t_max is None or not np.isfinite(t_min):
+        missing = "Maximum" if t_max is None else "Minimum"
+        if t_max is None and not np.isfinite(t_min):
+            missing = "Minimum and maximum"
+        issues.append(Issue(
+            code="WALL_UNIFORMITY_UNAVAILABLE",
+            severity=Severity.WARNING,
+            message=f"{missing} wall thickness and uniformity could not be verified.",
+            process=process,
+            fix_suggestion="Check wall sections in the source CAD before manufacturing.",
+        ))
+        if t_max is None:
+            return issues
+    issues.append(Issue(
+        code="WALL_UNIFORMITY_SAMPLED",
+        severity=Severity.WARNING,
+        message=(
+            f"Largest sampled interior section: {t_max:.6g}mm. "
+            "Thickness uses interior clearances; unsampled sections may be thicker."
+        ),
+        process=process,
+        measured_value=t_max,
+        fix_suggestion="Confirm critical wall sections in the source CAD.",
+    ))
     if t_max > max_wall + tolerance:
         issues.append(Issue(
             code="THICK_WALL",
             severity=Severity.WARNING,
-            message=f"Max wall {t_max:.1f}mm > {max_wall}mm — sink marks / long cycle.",
+            message=f"Sampled thick section {t_max:.6g}mm > {max_wall}mm — sink marks / long cycle risk.",
             process=process,
             measured_value=t_max,
             required_value=max_wall,
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    if t_max > 0 and t_min > 0 and t_max > 2.0 * t_min + 3.0 * tolerance:
+    if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max > 2.0 * t_min + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
             severity=Severity.WARNING,
             message=(
-                f"Wall ratio {t_max / t_min:.1f}:1 ({t_min:.1f}–{t_max:.1f}mm) "
-                f"causes warping in {process.value}."
+                f"Sampled wall ratio {t_max / t_min:.6g}:1 ({t_min:.6g}–{t_max:.6g}mm) "
+                f"may increase warping risk in {process.value}."
             ),
             process=process,
             measured_value=t_max / t_min,

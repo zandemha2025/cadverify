@@ -1,0 +1,93 @@
+{
+  "finding": 156,
+  "status": "fixed and verified locally; not deployed",
+  "engine_version": "0.3.21",
+  "method": "Largest sampled contained-sphere diameter from ray midpoints and validated planar-facet centers; minimum walls retain normal-ray measurement. Explicit visible warning: unsampled sections may be thicker.",
+  "regression": {
+    "baseline": "Real300x200x0.81mm STEP reported maximum300mm/nonuniform370.4:1.",
+    "red_tests": 8,
+    "review_followup_red_tests": 1,
+    "final_focused_tests": 37,
+    "full_backend": {
+      "passed": 2642,
+      "skipped": 3,
+      "seconds": 352.98,
+      "note": "Final implementation; two additional ratio-boundary tests were added after full-suite collection and passed in final37focused checks."
+    },
+    "initial_full_backend": {
+      "passed": 2641,
+      "skipped": 3,
+      "seconds": 396.93
+    },
+    "protected_skip_policy": true,
+    "skip_reasons": [
+      "real evaluation corpus absent",
+      "optional OCP XDE absent (two cases)"
+    ],
+    "memory_checks": "Fresh-process box and pathological-sphere checks include cached maximum computation; pass1024MB/1800MB ceilings.",
+    "types": {
+      "existing_errors": 2,
+      "new_errors": 0
+    },
+    "bandit_medium_high": 0,
+    "trap_corpus": "pass; preexisting suspicious_scale/unit_flag known gap remains"
+  },
+  "native": {
+    "browser": "Chrome via CUA",
+    "surface": "local3017/analyze backed byAPI8017",
+    "controls": [
+      {
+        "file": "155-plate-300x200x0.81.step",
+        "actual_mm": 0.81,
+        "observed_mm": 0.81,
+        "thick": false,
+        "nonuniform": false
+      },
+      {
+        "file": "156-plate-with-boss.step",
+        "actual_max_mm": 10,
+        "observed_max_mm": 10,
+        "thick": true,
+        "nonuniform": true
+      },
+      {
+        "file": "156-tube.step",
+        "actual_wall_mm": 1,
+        "observed_max_mm": 1.00047,
+        "thick": false,
+        "nonuniform": false
+      }
+    ],
+    "all_four_molding_casting_consumers_verified": true,
+    "original_source_hashes_preserved": true,
+    "historical_records_unchanged": 4,
+    "sampling_advisory_visibly_verified": true
+  },
+  "review": "Authorized independent read-only review passed after preserving proven maximum when minimum is missing;12focused checks passed independently.",
+  "limits": [
+    "Sampled lower bound, not a certified global maximum; small unsampled sections can be missed.",
+    "Tessellated meshes approximate source CAD; curved thickness at exact process boundaries is not certified.",
+    "Near-threshold issue/serialization rounding from155 remains open.",
+    "No production change; actual external email/identity/vendor/customer-quote proof remains pending."
+  ],
+  "evidence_sha256": {
+    "156-plate-before.txt": "0febec03a1e2496f1ba96999fad221473f4aa043bceaa32e4aeb887487a71a2f",
+    "156-plate-before.png": "e3c6da81d9bc383127b483991c265adf59bc60c14a828ea4569ab6b92b1f132e",
+    "156-plate-after.txt": "61f27d5ae16a22f4b6754689d28ab1da81bd4dbe3be8bbba396ba72e073df732",
+    "156-plate-after.png": "f2301553af12b7c494136b2e7d73799d7b898bf5eb24649ac2c8907a95d81a49",
+    "156-boss-after.txt": "8dadddf8b520bfc840148cdb5618c6cd44eb5613ca88a756b6a3f1cc0c9bacfa",
+    "156-boss-after.png": "4b9d4e5963561e9b4eb67f1a5f2e8951c34f2c4f25039627f84ff072e1902318",
+    "156-tube-after.txt": "45edccb671db9e300a1aa9394410de4f09c3639af921cefb4ddc575d6cb695ef",
+    "156-tube-after.png": "9fe967a28e38e4a838c23d6f4f0b41a22c9c42ee0de51e9537d552e707915ecb",
+    "156-saved-readback.json": "c5953eaa139209a092b8b7eda5cfd2d67ac8ecbfd128b700f7c3dafca8ecbaaa",
+    "shape-controls/156-controls.json": "3f80b5818afdb55b4425179012e441d85d251e5f41874a9ec4cfcbde1ba2e41f",
+    "shape-controls/156-plate-with-boss.step": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+    "shape-controls/156-tube.step": "c6c45b989fed0c347f45a7ff03338cf6626325f163e812e5f1f70d8fbf5270fa"
+  },
+  "local_check_log_sha256": {
+    "molding-maximum-backend.log": "e9936a508502fcfb9e8411bd78cdf38646361808296aacb07b3b6265b6bcecd0",
+    "molding-maximum-backend-final.log": "a8e8b79a8561f5d613daa9b6ef9028a716b9c862500f3ac9ebef332c97106275",
+    "molding-maximum-pyright.json": "3e3d98dd10e18889c69ba5524e88b20006742b4b4971cf3540cd5bea03e63bf8",
+    "molding-maximum-trap.log": "432b4323528aea9a61bc47ae5e294249087cd662b83d060b30b63a9207bd612f"
+  }
+}
