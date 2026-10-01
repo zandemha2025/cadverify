@@ -542,6 +542,12 @@ export default function PartWorkspace({
     runAnalyses(file, opts);
   }, [file, opts, runAnalyses]);
 
+  const handleRetryCost = useCallback(() => {
+    if (!file) return;
+    void runCost(file, submittedOptions);
+    if (dfmError) void runDfm(file, submittedOptions.units);
+  }, [file, submittedOptions, dfmError, runCost, runDfm]);
+
   const reset = useCallback(() => {
     setFile(null);
     setReport(null);
@@ -700,6 +706,7 @@ export default function PartWorkspace({
         onSaveScenario={onSaveScenario}
         onRecallScenario={onRecallScenario}
         handleRecost={handleRecost}
+        handleRetryCost={handleRetryCost}
         runDfm={(candidate) => void runDfm(candidate, submittedOptions.units)}
         reset={reset}
       />
@@ -896,7 +903,7 @@ export default function PartWorkspace({
                       message={dfmError
                         ? `${analysisFailureCopy(dfmError).explanation} ${analysisFailureCopy(dfmError).action}`
                         : costError}
-                      onRetry={handleRecost}
+                      onRetry={handleRetryCost}
                     />
                   ) : report ? (
                     <div className="space-y-5">

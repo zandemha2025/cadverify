@@ -124,6 +124,7 @@ export interface PartHeroProps {
   onSaveScenario: () => void;
   onRecallScenario: (id: string) => void;
   handleRecost: () => void;
+  handleRetryCost: () => void;
   runDfm: (f: File) => void;
   reset: () => void;
 }
@@ -156,6 +157,7 @@ export function PartHero({
   onSaveScenario,
   onRecallScenario,
   handleRecost,
+  handleRetryCost,
   runDfm,
   reset,
 }: PartHeroProps) {
@@ -460,7 +462,7 @@ export function PartHero({
                 <ErrorState
                   title={analysisFailure?.title ?? "Cost estimate failed"}
                   message={analysisFailureMessage ?? costError}
-                  onRetry={handleRecost}
+                  onRetry={handleRetryCost}
                 />
               ) : report ? (
                 <DecisionColumn

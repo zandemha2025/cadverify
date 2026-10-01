@@ -323,6 +323,9 @@ const apiClient = {
     // Next proxy forwards it to the backend. No Authorization header needed.
     const headers = new Headers(options.headers);
     const resource = apiResourceFromUrl(url);
+    // A failed response does not prove that compute or a write never ran.
+    // Only replay reads or submissions protected by a server idempotency key.
+    if (!/^(GET|HEAD)$/i.test(options.method ?? "GET") && !headers.get("Idempotency-Key")) retries = 0;
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -341,9 +344,9 @@ const apiClient = {
           throw err;
         }
         // Network error / timeout
-        lastError = err instanceof Error ? err : new Error(String(err));
+        lastError = new Error(networkRecoveryMessage(resource), { cause: err });
         if (attempt === retries) {
-          toast.error("Connection timed out. Check your network.");
+          toast.error(lastError.message);
           throw lastError;
         }
         continue;
@@ -374,7 +377,7 @@ const apiClient = {
           }),
         );
         if (attempt === retries) {
-          toast.error("Server error. We've been notified.");
+          toast.error(lastError.message);
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
           throw lastError;
         }
@@ -1046,8 +1049,8 @@ async function _costEstimate(
   }
 
   if (res.status >= 500) {
-    const e = new Error(`Server error ${res.status}`);
-    toast.error("Server error. We've been notified.");
+    const e = new Error(apiRecoveryMessage({ status: res.status, payload: body, resource: "verification" }));
+    toast.error(e.message);
     Sentry.captureException(e, { extra: { url, status: res.status } });
     throw e;
   }
