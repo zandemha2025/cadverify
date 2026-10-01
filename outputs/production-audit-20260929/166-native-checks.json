@@ -1,0 +1,33 @@
+{
+  "engine": "0.3.35",
+  "same_declared_options": {
+    "material": "aluminum",
+    "quantities": [
+      1,
+      100
+    ],
+    "units": "mm",
+    "complexity": "moderate",
+    "cavities": 1
+  },
+  "aligned_and_rotated_bar": {
+    "routing": "long_prismatic_bar",
+    "primary": "cnc_3axis",
+    "alternative": "cnc_5axis",
+    "displayed_enclosing_dimensions_mm": [
+      80,
+      12,
+      12
+    ],
+    "preview_ready": true
+  },
+  "transverse_hole_bar": {
+    "before_route": "ded",
+    "after_route": "cnc_5axis",
+    "three_axis_blocker_preserved": true,
+    "five_axis_cost_qty1": 195.59,
+    "five_axis_cost_qty100": 31,
+    "preview_ready": true
+  },
+  "open_issue": "The header says Manufacturable/Pass based on the separate unscoped analysis while cost-selected five-axis has advisories; investigate routing/header scope and wire-EDM prismatic evidence."
+}

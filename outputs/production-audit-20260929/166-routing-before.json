@@ -1,0 +1,903 @@
+[
+  {
+    "filename": "165-stock-bar-aligned.step",
+    "sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "analyses": {
+      "id": 1605,
+      "result_sha256": "c82dc1827c85d140aefba2cfabe9112bb67ba2f7b86361ef83cde62527f77058",
+      "cnc_scores": [
+        {
+          "process": "cnc_3axis",
+          "verdict": "issues",
+          "score": 0.9
+        },
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.9
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5524,
+      "result_sha256": "e262e83242b21331c9a802eff6d719af87ae0e490f426ed9818838ec27a0673d",
+      "routing": {
+        "drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": false,
+          "planar_aspect": 1.0,
+          "sheet_gauge_mm": 12.0,
+          "nominal_wall_mm": 5.58,
+          "outline_perimeter_mm": 184.0
+        },
+        "archetype": "long_prismatic_bar",
+        "reasoning": "Slender prismatic bar (80mm long \u00d7 12\u00d712mm cross-section): saw to length, then 3-axis mill \u2014 5-axis is not warranted for bar stock.",
+        "confidence": 0.7,
+        "eval_family": "subtractive",
+        "alternatives": [],
+        "material_hint": "aluminum",
+        "recommended_process": "cnc_3axis"
+      },
+      "estimates": [
+        {
+          "process": "cnc_3axis",
+          "quantity": 1,
+          "unit_cost_usd": 137.95,
+          "line_items": {
+            "nre": 70.0,
+            "labor": 17.5,
+            "machine": 5.208,
+            "material": 0.1796,
+            "inspection": 18.55,
+            "consumables": 0.2604,
+            "amortized_fixed": 26.25
+          },
+          "result_sha256": "5e32fa2f74a0e3d6589654be512e9a7e13e535bf15c8aa8c98445acab45feee7"
+        },
+        {
+          "process": "cnc_3axis",
+          "quantity": 100,
+          "unit_cost_usd": 25.34,
+          "line_items": {
+            "nre": 0.7,
+            "labor": 17.5,
+            "machine": 5.208,
+            "material": 0.1796,
+            "inspection": 1.225,
+            "consumables": 0.2604,
+            "amortized_fixed": 0.2625
+          },
+          "result_sha256": "53f590ba2e043ee6b623a850ffa3791e2e386349fb728c2cfcf8a7c9a47fbcb3"
+        },
+        {
+          "process": "ded",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 254.8128
+          },
+          "result_sha256": "5ec60a5864f93ca3d5a11c260ea20c421e17327e918439e686efe80d6fe29ac8"
+        },
+        {
+          "process": "ded",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 16.3128
+          },
+          "result_sha256": "adb08d0f04f9bdb9c3a003f63edd6cc88e43be4b23af89e2fac912dd4be6eed5"
+        },
+        {
+          "process": "die_casting",
+          "quantity": 1,
+          "unit_cost_usd": 22505.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 22500.0
+          },
+          "result_sha256": "22997f8d8ed7f8e3362fc71104875c3955c27ff9b8aa1990620d27466c6ad2cd"
+        },
+        {
+          "process": "die_casting",
+          "quantity": 100,
+          "unit_cost_usd": 230.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 225.0
+          },
+          "result_sha256": "a6b6a143e44b71a4ffe004a1550e9e5acb138e0f71837f7e9f4f50a866ce3d80"
+        },
+        {
+          "process": "dmls",
+          "quantity": 1,
+          "unit_cost_usd": 250.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0,
+            "min_charge_floor": 26.5961
+          },
+          "result_sha256": "0f5df3231c553245b742620cff63fa6e132cf8a0d1264ddc6430724261a48023"
+        },
+        {
+          "process": "dmls",
+          "quantity": 100,
+          "unit_cost_usd": 206.25,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 0.35,
+            "support_removal": 21.0
+          },
+          "result_sha256": "321563940bccc655d77a51284823f2cece2e6aebfd21a388d37a07d5e595f33c"
+        },
+        {
+          "process": "forging",
+          "quantity": 1,
+          "unit_cost_usd": 30122.0,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 30105.0
+          },
+          "result_sha256": "53f9572a8a0a23f31b369a11d08289cd0b92ec43be1acc38292873ac224a0a12"
+        },
+        {
+          "process": "forging",
+          "quantity": 100,
+          "unit_cost_usd": 318.05,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 301.05
+          },
+          "result_sha256": "dfc01dbd79c9192c2a83b961a940b533d687bfa2340ab078e7affd8847ec3629"
+        },
+        {
+          "process": "investment_casting",
+          "quantity": 1,
+          "unit_cost_usd": 13571.59,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 13552.5
+          },
+          "result_sha256": "f7ae30dce717c66c5a618ca937568a5794d6fb91dca37ec60efe3b19d3ecd4f2"
+        },
+        {
+          "process": "investment_casting",
+          "quantity": 100,
+          "unit_cost_usd": 154.62,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 135.525
+          },
+          "result_sha256": "ae821c9ec7ae14337f69e835bdede54bd2b464ae30acc86b791d6566fb90b56e"
+        },
+        {
+          "process": "sand_casting",
+          "quantity": 1,
+          "unit_cost_usd": 5309.43,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 5285.0
+          },
+          "result_sha256": "c6a3f2a220ca392b3efe00a43e8e62bb9f25564086229a805f660125b1fe459d"
+        },
+        {
+          "process": "sand_casting",
+          "quantity": 100,
+          "unit_cost_usd": 77.28,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 52.85
+          },
+          "result_sha256": "84cc4e7132d2327d1c8f19c0805724baf8fb0b1587e6844484268f7287b37fd9"
+        },
+        {
+          "process": "slm",
+          "quantity": 1,
+          "unit_cost_usd": 250.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0,
+            "min_charge_floor": 26.5961
+          },
+          "result_sha256": "75c336dd8022f00614f6a1eea32b3dffb1e674fa4b927b6349e08955484a48e0"
+        },
+        {
+          "process": "slm",
+          "quantity": 100,
+          "unit_cost_usd": 206.25,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 0.35,
+            "support_removal": 21.0
+          },
+          "result_sha256": "911443774cdd60e1ecfaba033d3b5cda43800f28763c8229de0b300b9a3e67f3"
+        },
+        {
+          "process": "waam",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 258.9514
+          },
+          "result_sha256": "fbd673fd9d3a252954ab8f4b85eafa8e585698a6e800e3a8f2806142da7ec62b"
+        },
+        {
+          "process": "waam",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 20.4514
+          },
+          "result_sha256": "a47fb7d111040cc3bf8fae9729fec6a06ae1d367c2c9d60d2bef6399723de70a"
+        }
+      ]
+    }
+  },
+  {
+    "filename": "165-stock-bar-rotated.step",
+    "sha256": "52d41dc04af3fb4de191fed03d8413d2bc3cb90e0f2996e6849d7a2e76aaf8e5",
+    "analyses": {
+      "id": 1604,
+      "result_sha256": "03c3cba46307342a73b5c459d8bc29435b6b4fefab01cd183804c7b05d5b8d35",
+      "cnc_scores": [
+        {
+          "process": "cnc_3axis",
+          "verdict": "issues",
+          "score": 0.9
+        },
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.9
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5523,
+      "result_sha256": "b4fc89971ab6b7d33520f2cfd7a7a27d61eb6db49f1a4b8482db8a27b9bdfc6f",
+      "routing": {
+        "drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": false,
+          "planar_aspect": 1.0,
+          "sheet_gauge_mm": 12.0,
+          "nominal_wall_mm": 5.58,
+          "outline_perimeter_mm": 184.0
+        },
+        "archetype": "bulk_solid",
+        "reasoning": "General solid (23% of bbox filled, ~5.6mm mean wall) with no dominant sheet/rotational/prismatic signature \u2192 CNC machining for a metal part.",
+        "confidence": 0.4,
+        "eval_family": "subtractive",
+        "alternatives": [
+          "cnc_5axis",
+          "dmls"
+        ],
+        "material_hint": "aluminum",
+        "recommended_process": "cnc_3axis"
+      },
+      "estimates": [
+        {
+          "process": "cnc_3axis",
+          "quantity": 1,
+          "unit_cost_usd": 137.95,
+          "line_items": {
+            "nre": 70.0,
+            "labor": 17.5,
+            "machine": 5.208,
+            "material": 0.1796,
+            "inspection": 18.55,
+            "consumables": 0.2604,
+            "amortized_fixed": 26.25
+          },
+          "result_sha256": "5e32fa2f74a0e3d6589654be512e9a7e13e535bf15c8aa8c98445acab45feee7"
+        },
+        {
+          "process": "cnc_3axis",
+          "quantity": 100,
+          "unit_cost_usd": 25.34,
+          "line_items": {
+            "nre": 0.7,
+            "labor": 17.5,
+            "machine": 5.208,
+            "material": 0.1796,
+            "inspection": 1.225,
+            "consumables": 0.2604,
+            "amortized_fixed": 0.2625
+          },
+          "result_sha256": "53f590ba2e043ee6b623a850ffa3791e2e386349fb728c2cfcf8a7c9a47fbcb3"
+        },
+        {
+          "process": "cnc_5axis",
+          "quantity": 1,
+          "unit_cost_usd": 195.29,
+          "line_items": {
+            "nre": 105.0,
+            "labor": 17.5,
+            "machine": 9.152,
+            "material": 0.1796,
+            "inspection": 28.0,
+            "consumables": 0.4576,
+            "amortized_fixed": 35.0
+          },
+          "result_sha256": "60b6e4119c36c0b4958632107510e59e954f89c98dde1f2b5f361d94ec4ea6fc"
+        },
+        {
+          "process": "cnc_5axis",
+          "quantity": 100,
+          "unit_cost_usd": 30.7,
+          "line_items": {
+            "nre": 1.05,
+            "labor": 17.5,
+            "machine": 9.152,
+            "material": 0.1796,
+            "inspection": 2.0125,
+            "consumables": 0.4576,
+            "amortized_fixed": 0.35
+          },
+          "result_sha256": "c2dcebd2bbd83a70f8278808f90b7e9adfe3b23d329c75a3baf4c25928bf62f1"
+        },
+        {
+          "process": "ded",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 254.8128
+          },
+          "result_sha256": "5ec60a5864f93ca3d5a11c260ea20c421e17327e918439e686efe80d6fe29ac8"
+        },
+        {
+          "process": "ded",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.2447,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 1.2734,
+            "min_charge_floor": 16.3128
+          },
+          "result_sha256": "adb08d0f04f9bdb9c3a003f63edd6cc88e43be4b23af89e2fac912dd4be6eed5"
+        },
+        {
+          "process": "die_casting",
+          "quantity": 1,
+          "unit_cost_usd": 22505.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 22500.0
+          },
+          "result_sha256": "9bb1710c17d63d25543b4bf62c77425701c8f5b934a0940621b5289e4e646332"
+        },
+        {
+          "process": "die_casting",
+          "quantity": 100,
+          "unit_cost_usd": 230.31,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.6826,
+            "material": 0.1272,
+            "amortized_fixed": 225.0
+          },
+          "result_sha256": "1aebed09f06ca5a369335e0b8169dbd66ea1bace479022baa3944739d2a9da5a"
+        },
+        {
+          "process": "dmls",
+          "quantity": 1,
+          "unit_cost_usd": 631.74,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0
+          },
+          "result_sha256": "70fb4a161b113ff8ebaa833fcb9780f4ccbe6753a6c18efa455a554deb561d54"
+        },
+        {
+          "process": "dmls",
+          "quantity": 100,
+          "unit_cost_usd": 615.29,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 1.05,
+            "support_removal": 21.0
+          },
+          "result_sha256": "43a318ad8827a1ce2b63e69a03bac3dba0588e22575aae453445743e88e3acf1"
+        },
+        {
+          "process": "forging",
+          "quantity": 1,
+          "unit_cost_usd": 30122.0,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 30105.0
+          },
+          "result_sha256": "a85d75953f60f38bf8b15105817ae6e2f52358bd8fe5eb50e915dcb7c30d7029"
+        },
+        {
+          "process": "forging",
+          "quantity": 100,
+          "unit_cost_usd": 318.05,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7944,
+            "material": 0.2041,
+            "amortized_fixed": 301.05
+          },
+          "result_sha256": "c5dbbc59de1d858b7204109a478e288b53ff40c93c5b5148c4eb72c0fadb0d23"
+        },
+        {
+          "process": "investment_casting",
+          "quantity": 1,
+          "unit_cost_usd": 13571.59,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 13552.5
+          },
+          "result_sha256": "72904d909e0e5d7c53cf565b432a6a5551418aa289b6ead5d1c08049c041206e"
+        },
+        {
+          "process": "investment_casting",
+          "quantity": 100,
+          "unit_cost_usd": 154.62,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6594,
+            "material": 0.1815,
+            "amortized_fixed": 135.525
+          },
+          "result_sha256": "c523528bb6f6a1cd5ff7596b83564ccdeec8ff03d0eb9a8257e6f5fe887eda84"
+        },
+        {
+          "process": "sand_casting",
+          "quantity": 1,
+          "unit_cost_usd": 5309.43,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 5285.0
+          },
+          "result_sha256": "c2c61790c079a89d7889a314edd28c4d959c0f478bcbaa0fb92b4717b4ab5247"
+        },
+        {
+          "process": "sand_casting",
+          "quantity": 100,
+          "unit_cost_usd": 77.28,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.237,
+            "material": 0.1964,
+            "amortized_fixed": 52.85
+          },
+          "result_sha256": "4497fa03ae3fb1fe0de6661fc7421019fc8146ca3a91e949677f802ec924e561"
+        },
+        {
+          "process": "slm",
+          "quantity": 1,
+          "unit_cost_usd": 631.74,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0
+          },
+          "result_sha256": "97f925076f14c09372a47a37b47f65a6d07e646bebcf29f514de6ae5ef1cdb47"
+        },
+        {
+          "process": "slm",
+          "quantity": 100,
+          "unit_cost_usd": 615.29,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 573.5294,
+            "material": 5.0936,
+            "plate_removal": 10.5,
+            "stress_relief": 4.1176,
+            "amortized_fixed": 1.05,
+            "support_removal": 21.0
+          },
+          "result_sha256": "8b36b6d9e0349a26410f7911224f7778942d86c7246ec3f525ea02cd533c224a"
+        },
+        {
+          "process": "waam",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 35.0,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 258.9514
+          },
+          "result_sha256": "fbd673fd9d3a252954ab8f4b85eafa8e585698a6e800e3a8f2806142da7ec62b"
+        },
+        {
+          "process": "waam",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0612,
+            "material": 4.6691,
+            "amortized_fixed": 3.5,
+            "finish_machining": 0.3183,
+            "min_charge_floor": 20.4514
+          },
+          "result_sha256": "a47fb7d111040cc3bf8fae9729fec6a06ae1d367c2c9d60d2bef6399723de70a"
+        }
+      ]
+    }
+  },
+  {
+    "filename": "166-transverse-hole-bar.step",
+    "sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+    "dimensions_mm": [
+      80,
+      12,
+      12
+    ],
+    "bore_diameter_mm": 4,
+    "bore_axis": "Y",
+    "volume_mm3": 11369.20355262769,
+    "analyses": {
+      "id": 1626,
+      "result_sha256": "a70b3ee366e9f6a3e9430a79943d1b2ab189c3240d3147db879df9d2d454f4d4",
+      "cnc_scores": [
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.8
+        },
+        {
+          "process": "cnc_3axis",
+          "verdict": "fail",
+          "score": 0.0
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5601,
+      "result_sha256": "ba91a7cb6c879cde9ef55b58900b07596bbe59b2cce61d7b811b080fadf3171e",
+      "routing": {
+        "drivers": {
+          "rotational": false,
+          "sheet_like": false,
+          "nominal_wall_mm": 5.35
+        },
+        "archetype": "long_prismatic_bar",
+        "reasoning": "Slender prismatic bar (80mm long \u00d7 12\u00d712mm cross-section): saw to length, then 3-axis mill \u2014 5-axis is not warranted for bar stock. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is ded; review the process findings and costed options before selecting it.",
+        "confidence": 0.7,
+        "eval_family": "additive",
+        "alternatives": [
+          "cnc_3axis"
+        ],
+        "material_hint": "aluminum",
+        "recommended_process": "ded"
+      },
+      "estimates": [
+        {
+          "process": "cnc_3axis",
+          "quantity": 1,
+          "unit_cost_usd": 138.12,
+          "line_items": {
+            "nre": 70.0,
+            "labor": 17.5,
+            "machine": 5.3713,
+            "material": 0.1796,
+            "inspection": 18.55,
+            "consumables": 0.2686,
+            "amortized_fixed": 26.25
+          },
+          "result_sha256": "400371c03216ec34eeeef5df4c90865f54f0bd4c9e7bcb3691bd84a9e90c3278"
+        },
+        {
+          "process": "cnc_3axis",
+          "quantity": 100,
+          "unit_cost_usd": 25.51,
+          "line_items": {
+            "nre": 0.7,
+            "labor": 17.5,
+            "machine": 5.3713,
+            "material": 0.1796,
+            "inspection": 1.225,
+            "consumables": 0.2686,
+            "amortized_fixed": 0.2625
+          },
+          "result_sha256": "a596799313cd5f16670ca15d0d5954aa2af3011555e48370be6ace799a3fdbab"
+        },
+        {
+          "process": "ded",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.1894,
+            "material": 4.6083,
+            "amortized_fixed": 35.0,
+            "finish_machining": 1.2568,
+            "min_charge_floor": 254.9455
+          },
+          "result_sha256": "8aba2daea2fc9ef6fc5b2e6182df22e1c16bbeee3c60dc9062e54a78c996f809"
+        },
+        {
+          "process": "ded",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 4.1894,
+            "material": 4.6083,
+            "amortized_fixed": 3.5,
+            "finish_machining": 1.2568,
+            "min_charge_floor": 16.4455
+          },
+          "result_sha256": "b03e885af62c0be045645118386f57ce7499738beb44bd41bd89e973e37c8a1f"
+        },
+        {
+          "process": "die_casting",
+          "quantity": 1,
+          "unit_cost_usd": 22505.18,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.554,
+            "material": 0.1255,
+            "amortized_fixed": 22500.0
+          },
+          "result_sha256": "06613e8185dca9256bde9ba30f94e68f1244ed332a06dfd6a00f2f0fcc7ebcac"
+        },
+        {
+          "process": "die_casting",
+          "quantity": 100,
+          "unit_cost_usd": 230.18,
+          "line_items": {
+            "labor": 3.5,
+            "machine": 1.554,
+            "material": 0.1255,
+            "amortized_fixed": 225.0
+          },
+          "result_sha256": "66686dab15700b1d2b132d6c28a940fe4b40d75af2c4c7608a66b957cacace1e"
+        },
+        {
+          "process": "dmls",
+          "quantity": 1,
+          "unit_cost_usd": 250.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0273,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0,
+            "min_charge_floor": 26.6624
+          },
+          "result_sha256": "4ec598477771cde760a80e293becf57557bbdaf6acc819c39a7a783662d8ceeb"
+        },
+        {
+          "process": "dmls",
+          "quantity": 100,
+          "unit_cost_usd": 206.19,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0273,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 0.35,
+            "support_removal": 21.0
+          },
+          "result_sha256": "73682f27dff80d13f73a3b736c2468ea9c8189ce1549e244a990cec50c239b4c"
+        },
+        {
+          "process": "forging",
+          "quantity": 1,
+          "unit_cost_usd": 30121.99,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7919,
+            "material": 0.2015,
+            "amortized_fixed": 30105.0
+          },
+          "result_sha256": "574b73866f911e7c7d6f2d48d3e128514c540038f324c8e797f4f29fee52be2e"
+        },
+        {
+          "process": "forging",
+          "quantity": 100,
+          "unit_cost_usd": 318.04,
+          "line_items": {
+            "labor": 7.0,
+            "machine": 9.7919,
+            "material": 0.2015,
+            "amortized_fixed": 301.05
+          },
+          "result_sha256": "5a81562e38ca91828e9d896ccc6d37268a6bef9ecda02010092328610b5912e9"
+        },
+        {
+          "process": "investment_casting",
+          "quantity": 1,
+          "unit_cost_usd": 13571.59,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6587,
+            "material": 0.1792,
+            "amortized_fixed": 13552.5
+          },
+          "result_sha256": "167d789029f731096683816e649941c3baf94e05207b5cee594337257db6580d"
+        },
+        {
+          "process": "investment_casting",
+          "quantity": 100,
+          "unit_cost_usd": 154.61,
+          "line_items": {
+            "labor": 12.25,
+            "machine": 6.6587,
+            "material": 0.1792,
+            "amortized_fixed": 135.525
+          },
+          "result_sha256": "68fc1cd4c9480c1db7021ca226ffb49412aca670061e4126a9490e9869680d7c"
+        },
+        {
+          "process": "sand_casting",
+          "quantity": 1,
+          "unit_cost_usd": 5309.43,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.2366,
+            "material": 0.1938,
+            "amortized_fixed": 5285.0
+          },
+          "result_sha256": "0ce65ade8c7c38208afaaf6fbe56f32b5e9d1f7eaf295429485ab91ee5233051"
+        },
+        {
+          "process": "sand_casting",
+          "quantity": 100,
+          "unit_cost_usd": 77.28,
+          "line_items": {
+            "labor": 21.0,
+            "machine": 3.2366,
+            "material": 0.1938,
+            "amortized_fixed": 52.85
+          },
+          "result_sha256": "0ba35057f92dce69363a83ce6225e1f844dd5ba54d54a067a2257d249651b9d0"
+        },
+        {
+          "process": "slm",
+          "quantity": 1,
+          "unit_cost_usd": 250.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0273,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 17.5,
+            "support_removal": 21.0,
+            "min_charge_floor": 26.6624
+          },
+          "result_sha256": "e2380fc61d00271debb94af2d8e90283b22cec55f99253e5fa2798701bfc8ddb"
+        },
+        {
+          "process": "slm",
+          "quantity": 100,
+          "unit_cost_usd": 206.19,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 168.1034,
+            "material": 5.0273,
+            "plate_removal": 10.5,
+            "stress_relief": 1.2069,
+            "amortized_fixed": 0.35,
+            "support_removal": 21.0
+          },
+          "result_sha256": "6aa8631a48a6a866de22a386fb4e90a5a967672601724599b551550c99ca7373"
+        },
+        {
+          "process": "waam",
+          "quantity": 1,
+          "unit_cost_usd": 300.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0473,
+            "material": 4.6083,
+            "amortized_fixed": 35.0,
+            "finish_machining": 0.3142,
+            "min_charge_floor": 259.0302
+          },
+          "result_sha256": "ffe1fec6d93ecd45ce2e1372d70efa302fe264545b7cd4035c220a82996dcd58"
+        },
+        {
+          "process": "waam",
+          "quantity": 100,
+          "unit_cost_usd": 30.0,
+          "line_items": {
+            "labor": 0.0,
+            "machine": 1.0473,
+            "material": 4.6083,
+            "amortized_fixed": 3.5,
+            "finish_machining": 0.3142,
+            "min_charge_floor": 20.5302
+          },
+          "result_sha256": "fde8df79662309470c159bc4d5417dd131bff1f66d6d71f534da8c53109714ed"
+        }
+      ]
+    }
+  }
+]
