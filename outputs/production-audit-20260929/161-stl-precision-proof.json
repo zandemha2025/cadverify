@@ -1,0 +1,57 @@
+{
+  "status": "sheet precision fixed locally; full goal incomplete",
+  "engine_version": "0.3.31",
+  "root_cause": "Binary STL float32 coordinate rounding was discarded by the parser; exact-plane and downstream boundary predicates treated the rounded mesh as exact.",
+  "changes": [
+    "Shared file/bytes parser carries a per-vertex rounding bound through cache copies, inch conversion and calibration STL loading.",
+    "Flat-sheet geometry bounds triangle normal and projected dimension uncertainty separately from numerical ray tolerances.",
+    "Gauge, sheet classification and hole checks retain real violations; precision is disclosed as an advisory.",
+    "Machine bed and thickness comparisons return unknown when source uncertainty overlaps the limit; alternative orientations are checked on contracted/expanded beds."
+  ],
+  "checks": {
+    "initial_red": "12 failed / 1 passed before source fix",
+    "backend_full": "2753 passed / 3 protected environment skips in 348.91s; collected before final sheet-classification and hole-precision follow-up",
+    "final_focused": "226 passed in 4.56s including final hole reproduction at angle0.1",
+    "types": "9 files, 37 existing diagnostics, 0 new against recorded baseline",
+    "bandit": "0 medium/high",
+    "trap_corpus": "PASS; existing unit_flag/suspicious_scale gap remains open",
+    "peer_review": "No remaining actionable findings in sheet precision scope; 24 classification/hole controls, 120 rounding bounds, 3 nonuniform shapes, 12 machine-fit cases.",
+    "native": "5 STL uploads, 10 source-bound stored records, 4 historical hashes unchanged; real 0.4/0.499 failures, 0.5 mm/inch and5mm advisory controls",
+    "frontend": "Unchanged; prior502 tests/types/lint/build baseline"
+  },
+  "runtime_fixture_limits": {
+    "VALIDATION_CAP_PER_ORG": 10000,
+    "VALIDATION_CAP_PER_USER": 10000,
+    "reason": "Local trial organization hit100 lifetime analyses during audit. No account plan or production limits changed."
+  },
+  "remaining": [
+    "Other-process source-precision propagation",
+    "Lifetime trial-cap recovery message incorrectly says temporary busy",
+    "Orientation-dependent non-sheet build/stock/DFM",
+    "Bent-sheet unfolding and physical bend-radius validation",
+    "Actual customer CAD/quotes and external email/company identity/SCIM/vendor/storage/webhook/reconstruction proof",
+    "Five HIGH backend-image findings and approved production rollout"
+  ],
+  "evidence_sha256": {
+    "161-native-controls.json": "212e296ce5208c6d290c9164faa8aceb416dfc5726b671eb8d03fe112750df05",
+    "161-saved-readback.json": "a64ce5933fd2367dd409f3e5ecebd2ba87a71c95e378ed7bcf404959c50996df",
+    "161-trial-cap-open.json": "a088f29318d06c8efa3ee6e5bf96cfef42af0bb17f2e68adbb5462b0d67fb079",
+    "161-other-process-precision-open.json": "3a0db79f29381694c1502cb63ea91be893b5f43fbec1fbf160ebfa7dc423682f",
+    "ci-36806323189-summary.json": "8dd99a701225cf2a1a2c62fdb149c2c7421fbb3e51c66279e0a553c5ad2f0779",
+    "161-stl-final-after.png": "6d0d644b7b7a64890e92aa75d365a11b26c28b5c919f95ee5ea540ebce27b269",
+    "161-stl-final-after.txt": "0b5aa79567fd37e3058175a63ab8e2ce6f763615c662c1ca0488c1c8b48652f1",
+    "161-stl-thin-after.png": "a566e5e435d2da2e7ffd00e04e75abcbc66717af3a309a3bd866aa120e7afd54",
+    "161-stl-thin-after.txt": "665eee92af2670b028fced668efcd49fa1f3a9f246bea93c4f197884908dc3d8",
+    "161-stl-boundary-after.png": "af8ae1953f88f26268614b57ca9863f6645d1b74bb54d5b54d252a8f353efc6d",
+    "161-stl-boundary-after.txt": "34f1458b88e43307adecc14f3d32961ddf6eef9c7f18c46162e7f3f6c97804be",
+    "161-stl-inch-after.png": "53b58d7ae84ceb13bc4580a38c99b184fa6b719eaf3a2c9546a4d7310ad7afb2",
+    "161-stl-inch-after.txt": "97e344bf97d67e671878bbbd8996885b8605de50a481e1d965f5ee7c9bc4d0c6",
+    "161-stl-classification-after.png": "f09c4650d38eb8fde925e6602ea593f6404f41dfc3e1a0c5a0c1f798cabc7cef",
+    "161-stl-classification-after.txt": "e0736ee7863b60cfc5564abcc6dd0c5704d4de7669079ff258b40189bd578230",
+    "shape-controls/161-stl-controls.json": "74196f9eb1e44914b34c9567498121aa9feccd41acd6130c1f0e0c52ebf3611e",
+    "shape-controls/161-sheet-0.4-mm.stl": "89a95a5ff9b0421f47999956ea61336d28966644a1f9fad2cd6d51741a4fa504",
+    "shape-controls/161-sheet-0.499-mm.stl": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78",
+    "shape-controls/161-sheet-0.5-inch.stl": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556",
+    "shape-controls/161-sheet-5.0-mm.stl": "34e3039a784d695ef6bdb9fda008e5f5a991c43b539b2712f91717ee562ebb9c"
+  }
+}

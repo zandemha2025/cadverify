@@ -47,6 +47,7 @@ class GeoDrivers:
     sheet_like: bool = False          # geometry reads as a constant-gauge flat sheet
     sheet_blank_mm: tuple | None = None  # gauge, short side, long side in the sheet plane
     sheet_tolerance_mm: float = 0.0   # numeric transform noise, not manufacturing allowance
+    sheet_precision_mm: float = 0.0   # source coordinate rounding, not a fit allowance
     sheet_outline_xy: tuple = ()      # convex outline in the measured sheet plane
 
     # ---- derived (MEASURED) ---------------------------------------------
@@ -187,8 +188,10 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
     sheet_blank_mm = sheet_geometry[0] if sheet_geometry is not None else None
     sheet_tolerance_mm = wall_thickness_tolerance(
         mesh, max(1e-4, min(float(np.linalg.norm(dims)) * 1e-4, .1)))
+    sheet_precision_mm = sheet_geometry[2] if sheet_geometry is not None else 0.0
     sheet_gauge_mm, planar_aspect, outline_perimeter_mm, sheet_like = _sheet_geometry(
-        geometry.volume or 0.0, geometry.surface_area or 0.0, sheet_blank_mm, sheet_tolerance_mm)
+        geometry.volume or 0.0, geometry.surface_area or 0.0, sheet_blank_mm,
+        sheet_tolerance_mm + sheet_precision_mm)
     # A rotational solid is a turned/spun part, not a flat blank.
     sheet_like = sheet_like and not rotational
 
@@ -212,5 +215,6 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         sheet_like=sheet_like,
         sheet_blank_mm=sheet_blank_mm,
         sheet_tolerance_mm=sheet_tolerance_mm,
+        sheet_precision_mm=sheet_precision_mm,
         sheet_outline_xy=(tuple(map(tuple, sheet_geometry[1])) if sheet_geometry is not None else ()),
     )

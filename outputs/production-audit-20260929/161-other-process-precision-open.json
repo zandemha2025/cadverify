@@ -1,0 +1,57 @@
+{
+  "status": "OPEN",
+  "analysis_id": 1546,
+  "engine_version": "0.3.31",
+  "filename": "160-rotated-float32.stl",
+  "analytic_gauge_mm": 0.5,
+  "finding": "Other-process wall and small-feature checks still treat binary STL rounding as a definite sub-0.5mm defect. Source metadata is now retained but ray/feature uncertainty requires its own propagation; numeric self-hit tolerance must remain separate.",
+  "processes": [
+    {
+      "process": "injection_molding",
+      "issues": [
+        {
+          "code": "THIN_WALL_MOLDING",
+          "severity": "error",
+          "message": "Min wall 0.49999953361695015mm < 0.5mm for injection_molding.",
+          "measured_value": 0.49999953361695015,
+          "required_value": 0.5,
+          "measurement_unit": "mm"
+        }
+      ]
+    },
+    {
+      "process": "mjf",
+      "issues": [
+        {
+          "code": "THIN_WALL",
+          "severity": "error",
+          "message": "4 faces (33.3%) below 0.5mm min wall for mjf. Thinnest: 0.49999953361695015mm.",
+          "measured_value": 0.49999953361695015,
+          "required_value": 0.5,
+          "measurement_unit": "mm"
+        }
+      ]
+    },
+    {
+      "process": "binder_jetting",
+      "issues": [
+        {
+          "code": "THIN_WALL",
+          "severity": "error",
+          "message": "4 faces (33.3%) below 1.0mm min wall for binder_jetting. Thinnest: 0.5mm.",
+          "measured_value": 0.49999953361695015,
+          "required_value": 1.0,
+          "measurement_unit": "mm"
+        },
+        {
+          "code": "SMALL_FEATURES",
+          "severity": "warning",
+          "message": "4 geometric boundary spans (33.3%) below 0.5mm resolution for binder_jetting. Smallest: 0.49999953364000327mm.",
+          "measured_value": 0.49999953364000327,
+          "required_value": 0.5,
+          "measurement_unit": "mm"
+        }
+      ]
+    }
+  ]
+}

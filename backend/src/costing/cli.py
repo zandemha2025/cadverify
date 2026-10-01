@@ -38,7 +38,8 @@ def _run_engine(path: str, *, source_units: str = "mm"):
     from src.analysis.processes import base as pbase
     from src.analysis.models import AnalysisResult
 
-    mesh = trimesh.load(path, force="mesh")
+    from src.parsers.stl_parser import parse_stl
+    mesh = parse_stl(path) if os.path.splitext(path)[1].lower() == ".stl" else trimesh.load(path, force="mesh")
     from src.costing.units import mesh_source_units, scale_mesh_to_mm
 
     mesh = scale_mesh_to_mm(mesh, mesh_source_units(path, source_units))

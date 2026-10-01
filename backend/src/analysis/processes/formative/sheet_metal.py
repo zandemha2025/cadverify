@@ -35,7 +35,7 @@ class SheetMetalAnalyzer:
         if dims is None:
             return []  # check_sheet_gauge already reports the missing measurement.
         t = dims[0]
-        tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+        tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + ctx.sheet_precision
         issues: list[Issue] = []
         for h in holes:
             if h.radius and h.radius * 2 < t - tolerance:

@@ -3,15 +3,13 @@ from __future__ import annotations
 
 import logging
 import os
-import struct
 
 from fastapi import HTTPException
+from src.parsers.stl_parser import binary_stl_triangle_count
 
 logger = logging.getLogger("cadverify.upload_validation")
 
 _STEP_MAGIC: bytes = b"ISO-10303-21"
-_BINARY_STL_HEADER_BYTES = 84
-_BINARY_STL_TRIANGLE_BYTES = 50
 # IGES section letters that can legally appear in column 73 (index 72) of a
 # fixed 80-column record: S(tart) G(lobal) D(irectory) P(arameter) T(erminate).
 _IGES_SECTION_LETTERS = "SGDPT"
@@ -33,21 +31,6 @@ def _max_triangles() -> int:
 def demo_max_triangles() -> int:
     """Read DEMO_MAX_TRIANGLES lazily so tests can override via monkeypatch."""
     return _positive_env_int("DEMO_MAX_TRIANGLES", 500_000)
-
-
-def binary_stl_triangle_count(data: bytes) -> int | None:
-    """Return the declared triangle count for exact-length binary STL data.
-
-    ASCII STL files can also be longer than 84 bytes, so only trust the binary
-    count when the file length exactly matches the STL binary layout.
-    """
-    if len(data) < _BINARY_STL_HEADER_BYTES:
-        return None
-    (count,) = struct.unpack_from("<I", data, 80)
-    expected_size = _BINARY_STL_HEADER_BYTES + count * _BINARY_STL_TRIANGLE_BYTES
-    if expected_size == len(data):
-        return count
-    return None
 
 
 def validate_magic(data: bytes, suffix: str) -> None:

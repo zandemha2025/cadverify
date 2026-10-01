@@ -1,0 +1,26 @@
+[
+  {
+    "filename": "161-sheet-0.4-mm.stl",
+    "thickness_mm": 0.4,
+    "source_units": "mm",
+    "sha256": "89a95a5ff9b0421f47999956ea61336d28966644a1f9fad2cd6d51741a4fa504"
+  },
+  {
+    "filename": "161-sheet-0.499-mm.stl",
+    "thickness_mm": 0.499,
+    "source_units": "mm",
+    "sha256": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78"
+  },
+  {
+    "filename": "161-sheet-0.5-inch.stl",
+    "thickness_mm": 0.5,
+    "source_units": "inch",
+    "sha256": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556"
+  },
+  {
+    "filename": "161-sheet-5.0-mm.stl",
+    "thickness_mm": 5.0,
+    "source_units": "mm",
+    "sha256": "34e3039a784d695ef6bdb9fda008e5f5a991c43b539b2712f91717ee562ebb9c"
+  }
+]

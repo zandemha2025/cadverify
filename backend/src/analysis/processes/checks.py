@@ -896,7 +896,15 @@ def check_sheet_gauge(
             fix_suggestion="Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.",
         )]
     t = dims[0]
-    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    precision = ctx.sheet_precision
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + precision
+    if precision:
+        issues.append(Issue(
+            code="SHEET_GAUGE_PRECISION", severity=Severity.WARNING,
+            measurement_unit="mm", measured_value=t, process=process,
+            message=f"Estimated sheet gauge {t:.6g}mm has up to ±{precision:.3g}mm uncertainty from binary STL coordinate rounding.",
+            fix_suggestion="Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+        ))
     if t < SHEET_GAUGE_MIN_MM - tolerance:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,

@@ -62,6 +62,8 @@ def scale_mesh_to_mm(mesh, units: str):
     if units == "inch":
         mesh = mesh.copy()
         mesh.apply_scale(MM_PER_INCH)
+        if "coordinate_error" in mesh.metadata:
+            mesh.metadata["coordinate_error"] *= MM_PER_INCH
     return mesh
 
 

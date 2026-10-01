@@ -142,8 +142,18 @@ class GeometryContext:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @cached_property
+    def flat_sheet_geometry(self):
+        return flat_sheet_geometry(self.mesh)
+
+    @property
     def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
-        return flat_sheet_dimensions(self.mesh)
+        measured = self.flat_sheet_geometry
+        return measured[0] if measured is not None else None
+
+    @property
+    def sheet_precision(self) -> float:
+        measured = self.flat_sheet_geometry
+        return measured[2] if measured is not None else 0.0
 
     @cached_property
     def maximum_inscribed_diameter(self) -> float | None:
@@ -467,7 +477,7 @@ def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] |
     return measured[0] if measured is not None else None
 
 
-def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, float], np.ndarray] | None:
+def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, float], np.ndarray, float] | None:
     """Gauge and in-plane blank extents of a verified straight, flat extrusion.
 
     Opposing caps must bound all vertices; every other surface must run through
@@ -478,21 +488,39 @@ def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, floa
         if not mesh.is_volume or mesh.body_count != 1:
             return None
         largest_face = int(np.argmax(mesh.area_faces))
-        normal = mesh.face_normals[largest_face]
         if len(mesh.facets_area) and mesh.facets_area.max() > mesh.area_faces[largest_face]:
-            normal = mesh.facets_normal[int(np.argmax(mesh.facets_area))]
+            facet = mesh.facets[int(np.argmax(mesh.facets_area))]
+            largest_face = int(facet[np.argmax(mesh.area_faces[facet])])
+        normal = mesh.face_normals[largest_face]
         vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
         heights = vertices @ normal
         low, high = float(heights.min()), float(heights.max())
         gauge = high - low
         eps = max(1e-4, min(float(np.linalg.norm(mesh.extents)) * 1e-4, .1))
         tol = wall_thickness_tolerance(mesh, eps)
+        error = float(mesh.metadata.get("coordinate_error", 0.0))
+        if not np.isfinite(error) or error < 0:
+            return None
+        # If each vertex moves at most e, either triangle edge moves at most
+        # 2e. Bound its cross-product change, then the unit-normal change.
+        normal_error = np.zeros(len(mesh.faces))
+        if error:
+            edges = mesh.triangles[:, 1:] - mesh.triangles[:, :1]
+            cross_error = 2 * error * np.linalg.norm(edges, axis=2).sum(axis=1) + 4 * error**2
+            cross_length = 2 * mesh.area_faces
+            if np.any(cross_length <= cross_error):
+                return None  # Source precision cannot resolve these triangles.
+            normal_error = 2 * cross_error / (cross_length - cross_error)
+        precision = 2 * error + float(np.linalg.norm(mesh.extents)) * normal_error[largest_face]
+        angular_tol = 1e-7 + normal_error + normal_error[largest_face]
+        if np.any(angular_tol >= np.sqrt(.5)):
+            return None  # Cap and rim directions cannot be distinguished.
         alignment = np.abs(mesh.face_normals @ normal)
-        caps = np.isclose(alignment, 1., rtol=0, atol=1e-7)
-        if gauge <= tol or not np.all(caps | (alignment <= 1e-7)):
+        caps = np.linalg.norm(np.cross(mesh.face_normals, normal), axis=1) <= angular_tol
+        if gauge <= tol + precision or not np.all(caps | (alignment <= angular_tol)):
             return None
         cap_heights = heights[mesh.faces[caps]]
-        if not np.all((np.abs(cap_heights - low) <= tol) | (np.abs(cap_heights - high) <= tol)):
+        if not np.all((np.abs(cap_heights - low) <= tol + precision) | (np.abs(cap_heights - high) <= tol + precision)):
             return None
         rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
         footprint = (vertices @ rotation.T)[:, :2]
@@ -518,7 +546,7 @@ def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, floa
         widths = candidates[int(np.argmin(candidates.sum(axis=1)))]
         if not np.all(np.isfinite(widths)) or widths[0] <= tol:
             return None
-        return (gauge, float(widths[0]), float(widths[1])), hull
+        return (gauge, float(widths[0]), float(widths[1])), hull, float(precision)
     except Exception:
         logger.warning("Flat sheet measurement failed", exc_info=True)
         return None
@@ -755,6 +783,8 @@ def _maybe_decimate(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, dict | None
         "via base_analyzer.decimation_issue.",
         n, len(reduced.faces), strategy, cap,
     )
+    if "coordinate_error" in mesh.metadata:
+        reduced.metadata["coordinate_error"] = mesh.metadata["coordinate_error"]
     return reduced, {
         "attempted": True,
         "succeeded": True,

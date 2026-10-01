@@ -1,0 +1,489 @@
+{
+  "engine_version": "0.3.31",
+  "controls": [
+    {
+      "filename": "160-rotated-float32.stl",
+      "thickness_mm": 0.5,
+      "source_units": "mm",
+      "source_sha256": "035c027b337ffa52e25670607f5bf112beb51af92ad63e5ccfd0daee41a7e0c1",
+      "dimensions_mm": [
+        0.49999953361695226,
+        19.99999723902755,
+        30.000009748844562
+      ],
+      "coordinate_error_mm": 1.7481138973067626e-05,
+      "dimension_uncertainty_mm": 0.00035735340627523663,
+      "analyses": {
+        "id": 1546,
+        "ulid": "01M3TQZXA99AD1C9EZF84VGA8F",
+        "version": "0.3.31",
+        "result_sha256": "58088a83a5ca498aef1205b30dc2746eeb4a97d80564d47e064fb45dcc096822",
+        "sheet_verdict": "issues",
+        "gauge_issues": [
+          {
+            "code": "SHEET_GAUGE_PRECISION",
+            "scope": "whole_part",
+            "message": "Estimated sheet gauge 0.5mm has up to \u00b10.000357mm uncertainty from binary STL coordinate rounding.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+            "measured_value": 0.49999953361695226,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5351,
+        "ulid": "01M3TQZXB0J0TKMY6M42F1MMMY",
+        "version": "0.3.31",
+        "result_sha256": "7a1b36ac9b1ff1ced7243d3a93926730478e9926d63054b9bb3646d2a50c277e",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9187,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.0,
+          "sheet_gauge_mm": 0.49999953361695226,
+          "nominal_wall_mm": 0.48,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    },
+    {
+      "filename": "161-sheet-0.4-mm.stl",
+      "thickness_mm": 0.4,
+      "source_units": "mm",
+      "sha256": "89a95a5ff9b0421f47999956ea61336d28966644a1f9fad2cd6d51741a4fa504",
+      "source_sha256": "89a95a5ff9b0421f47999956ea61336d28966644a1f9fad2cd6d51741a4fa504",
+      "dimensions_mm": [
+        0.3999984055818775,
+        20.000008875218427,
+        29.9999979597778
+      ],
+      "coordinate_error_mm": 1.7481138973067626e-05,
+      "dimension_uncertainty_mm": 0.000356966207035061,
+      "analyses": {
+        "id": 1547,
+        "ulid": "01M3TR1E0137JKYJ1EJFR2BMVD",
+        "version": "0.3.31",
+        "result_sha256": "f5a1c840eb5fcfaf313ac7e805ca322cae9bd17de4b186017503c9538d35c5b0",
+        "sheet_verdict": "fail",
+        "gauge_issues": [
+          {
+            "code": "SHEET_GAUGE_PRECISION",
+            "scope": "whole_part",
+            "message": "Estimated sheet gauge 0.399998mm has up to \u00b10.000357mm uncertainty from binary STL coordinate rounding.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+            "measured_value": 0.3999984055818775,
+            "measurement_unit": "mm"
+          },
+          {
+            "code": "TOO_THIN_SHEET",
+            "scope": "whole_part",
+            "message": "Thickness 0.399998mm below the default 0.5mm minimum sheet gauge.",
+            "process": "sheet_metal",
+            "severity": "error",
+            "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+            "measured_value": 0.3999984055818775,
+            "required_value": 0.5,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 240.0
+      },
+      "cost_decisions": {
+        "id": 5352,
+        "ulid": "01M3TR1E0PNCRHGPHY39R21YNV",
+        "version": "0.3.31",
+        "result_sha256": "1c47def653886f80a06cd87ed639ba63b058e78a9be8d40a3ec3401663c9ba3b",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9187,
+              "material": 0.0027,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.399998mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.3999984055818775,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0027,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.399998mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.3999984055818775,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 50.0,
+          "sheet_gauge_mm": 0.3999984055818775,
+          "nominal_wall_mm": 0.39,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    },
+    {
+      "filename": "161-sheet-0.499-mm.stl",
+      "thickness_mm": 0.499,
+      "source_units": "mm",
+      "sha256": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78",
+      "source_sha256": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78",
+      "dimensions_mm": [
+        0.4989968797010107,
+        20.00000849917889,
+        30.00000080759225
+      ],
+      "coordinate_error_mm": 1.7481138973067626e-05,
+      "dimension_uncertainty_mm": 0.0003573493188787864,
+      "analyses": {
+        "id": 1551,
+        "ulid": "01M3TR2DAR4BKM6N60BSPNH854",
+        "version": "0.3.31",
+        "result_sha256": "e08aee6eafda8ac933347a14831668be42ee2383646be361152b92ddd9c4a042",
+        "sheet_verdict": "fail",
+        "gauge_issues": [
+          {
+            "code": "SHEET_GAUGE_PRECISION",
+            "scope": "whole_part",
+            "message": "Estimated sheet gauge 0.498997mm has up to \u00b10.000357mm uncertainty from binary STL coordinate rounding.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+            "measured_value": 0.4989968797010107,
+            "measurement_unit": "mm"
+          },
+          {
+            "code": "TOO_THIN_SHEET",
+            "scope": "whole_part",
+            "message": "Thickness 0.498997mm below the default 0.5mm minimum sheet gauge.",
+            "process": "sheet_metal",
+            "severity": "error",
+            "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+            "measured_value": 0.4989968797010107,
+            "required_value": 0.5,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 299.4
+      },
+      "cost_decisions": {
+        "id": 5358,
+        "ulid": "01M3TR2DB2TCP1A9GHZ8K33FQE",
+        "version": "0.3.31",
+        "result_sha256": "de904390268c58eaf0ee02dc2788ac391cc08ea23dfed6d8c4b789d978327a1e",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9187,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.498997mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.4989968797010107,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "fail",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": [
+              {
+                "code": "TOO_THIN_SHEET",
+                "scope": "whole_part",
+                "message": "Thickness 0.498997mm below the default 0.5mm minimum sheet gauge.",
+                "process": "sheet_metal",
+                "severity": "error",
+                "fix_suggestion": "Use >= 0.5mm for default sheet profiles; confirm material-specific stock and machine limits.",
+                "measured_value": 0.4989968797010107,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ]
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.08,
+          "sheet_gauge_mm": 0.4989968797010107,
+          "nominal_wall_mm": 0.48,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    },
+    {
+      "filename": "161-sheet-0.5-inch.stl",
+      "thickness_mm": 0.5,
+      "source_units": "inch",
+      "sha256": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556",
+      "source_sha256": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556",
+      "dimensions_mm": [
+        0.5000030540601079,
+        20.000004700464547,
+        30.00000669958881
+      ],
+      "coordinate_error_mm": 1.816749572753906e-05,
+      "dimension_uncertainty_mm": 0.0003351895596466251,
+      "analyses": {
+        "id": 1552,
+        "ulid": "01M3TRB4TPTY9K91VNTQ76ACKW",
+        "version": "0.3.31",
+        "result_sha256": "bca5eca6d5f519a039adcfaa8ed60a5b81fe507fefca02a7a3e77754597116fe",
+        "sheet_verdict": "issues",
+        "gauge_issues": [
+          {
+            "code": "SHEET_GAUGE_PRECISION",
+            "scope": "whole_part",
+            "message": "Estimated sheet gauge 0.500003mm has up to \u00b10.000335mm uncertainty from binary STL coordinate rounding.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+            "measured_value": 0.5000030540601079,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5359,
+        "ulid": "01M3TRB4V75FVAB9G1D7VKAVKZ",
+        "version": "0.3.31",
+        "result_sha256": "30799bf737eb01cef2231ac483f5922a5ab5fa9b7147f31b9741bf5db3fb2639",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "eligible": null,
+            "unit_cost_usd": 4.7,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9188,
+              "material": 0.0034,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "eligible": null,
+            "unit_cost_usd": 2.78,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5633,
+              "material": 0.0034,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 40.0,
+          "sheet_gauge_mm": 0.5000030540601079,
+          "nominal_wall_mm": 0.48,
+          "outline_perimeter_mm": 100.01
+        }
+      }
+    },
+    {
+      "filename": "161-sheet-5.0-mm.stl",
+      "thickness_mm": 5.0,
+      "source_units": "mm",
+      "sha256": "34e3039a784d695ef6bdb9fda008e5f5a991c43b539b2712f91717ee562ebb9c",
+      "source_sha256": "34e3039a784d695ef6bdb9fda008e5f5a991c43b539b2712f91717ee562ebb9c",
+      "dimensions_mm": [
+        5.0000049004244325,
+        20.00000849917891,
+        30.000013890709944
+      ],
+      "coordinate_error_mm": 1.7481138973067626e-05,
+      "dimension_uncertainty_mm": 0.00033881601764283563,
+      "analyses": {
+        "id": 1553,
+        "ulid": "01M3TRC4QQBCQAVPCF53EGJF5W",
+        "version": "0.3.31",
+        "result_sha256": "2b778f1bcffc4b1ee4a5828435432710b9fcbbcb03592d4203a0da2da4124acc",
+        "sheet_verdict": "issues",
+        "gauge_issues": [
+          {
+            "code": "SHEET_GAUGE_PRECISION",
+            "scope": "whole_part",
+            "message": "Estimated sheet gauge 5mm has up to \u00b10.000339mm uncertainty from binary STL coordinate rounding.",
+            "process": "sheet_metal",
+            "severity": "warning",
+            "fix_suggestion": "Confirm thickness in the source CAD, especially near a stock or machine limit. Export STEP for more precise sheet measurements.",
+            "measured_value": 5.0000049004244325,
+            "measurement_unit": "mm"
+          }
+        ],
+        "volume_mm3": 3000.0
+      },
+      "cost_decisions": {
+        "id": 5360,
+        "ulid": "01M3TRC4RCW58Y1225VF9Z90VA",
+        "version": "0.3.31",
+        "result_sha256": "c18767d0559fdd9bc1ca036f5de0cb7b969fa4979dd5029de931f2aa9961a7b1",
+        "sheet_estimates": [
+          {
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "eligible": null,
+            "unit_cost_usd": 4.76,
+            "line_items": {
+              "labor": 3.5,
+              "machine": 0.9469,
+              "material": 0.0338,
+              "amortized_fixed": 0.28
+            },
+            "dfm_blocker_details": []
+          },
+          {
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "eligible": null,
+            "unit_cost_usd": 2.83,
+            "line_items": {
+              "labor": 2.1457,
+              "machine": 0.5805,
+              "material": 0.0338,
+              "amortized_fixed": 0.07
+            },
+            "dfm_blocker_details": []
+          }
+        ],
+        "routing_drivers": {
+          "bend_count": 0,
+          "rotational": false,
+          "sheet_like": true,
+          "planar_aspect": 4.0,
+          "sheet_gauge_mm": 5.0000049004244325,
+          "nominal_wall_mm": 3.53,
+          "outline_perimeter_mm": 100.0
+        }
+      }
+    }
+  ],
+  "historical_records": [
+    {
+      "table": "analyses",
+      "id": 1398,
+      "version": "0.3.21",
+      "result_sha256": "38591b24f3a453c74bb23122a41e70890695b78cbed1e4e4ab9618ca00c9aed9",
+      "unchanged": true
+    },
+    {
+      "table": "analyses",
+      "id": 1337,
+      "version": "0.3.20",
+      "result_sha256": "e09301bdb22365c5174504b4b36f71e63b28a4ec20b5322ba54e2ce1ad17aed2",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4869,
+      "version": "0.3.21",
+      "result_sha256": "e871b15b8cfc2195df6f6ef53511ea0b402b6e5dea6fddca01a3da951427fc1e",
+      "unchanged": true
+    },
+    {
+      "table": "cost_decisions",
+      "id": 4643,
+      "version": "0.3.20",
+      "result_sha256": "611d750a75ed5a3c2e4460663ecd9887c51e4212c88017ed7b122e22c0e3d60a",
+      "unchanged": true
+    }
+  ]
+}
