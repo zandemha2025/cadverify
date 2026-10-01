@@ -1351,3 +1351,17 @@ The molding check still mistakes long normal chords for maximum wall thickness: 
 The false maximum-wall finding from155 is addressed by156. Near-threshold rounding still hides0.79999mm versus0.8mm, and mesh approximation near exact source-CAD thresholds remains a separate accuracy limitation. General DFM, external integrations, email, identity and production readiness are not certified by these controls.
 
 CI36794527044 on9180abc through155 is terminal: all eight non-image jobs and both actual-image startup/share-image/native STEP checks pass. The backend image scan alone fails the same5HIGH/0CRITICAL findings. See ci-36794527044-summary.json; this run excludes156.
+
+
+## 157 — Rounding hid the reason a wall failed its limit
+
+- First divergence: native real155-plate-transformed-0.79999.step failed the0.8mm FDM gate but showed “Thinnest:0.80mm”; stored/API measured_value was0.8. The same information was rounded again in issue panels,3D callouts and guided evidence.
+- Preserve finite original measured/required values and heatmap values in canonical serialization. Nonfinite scalar evidence is omitted; heatmap unknowns remain null. Reuse compact comparison-preserving formatting in shared scalar check messages and all identified frontend evidence consumers. Default six significant digits; retain the full value if paired rounding would change less-than/greater-than/equality. Predicates and routing are unchanged. Cache/analysis version0.3.22 prevents older rounded reports from being reused as new evidence.
+- New regression failed on0.8<0.8 before the fix and now passes analysis, cost-blocker and heatmap readback. Independent review caught two additional accessible3D marker labels; native reproduction showed correct visible0.79999 but incorrect aria-label0.8. Both marker paths now share the same formatter, and the final native marker label agrees.
+- Native final STEP shows0.79999mm in FDM/die-casting messages, grouped issue card,3D callout and screen-reader label. PostgreSQL stores0.7999899966221643 against required0.8; exact transformed0.8 has no FDM thin-wall issue. Both retain legitimate orientation/build-envelope findings. Original source hashes and four older saved analysis/cost JSON hashes are unchanged.
+- Full backend2,646passed/3protected environment skips348.03s;58focused checks pass. Frontend501tests, types, source lint and final production build pass after the marker follow-up. Changed-source Pyright2existing/0new errors; Bandit0medium/high findings; trap corpus passes with its existing unit-inference known gap. Read-only peer review additionally checks1,600signed adjacent/near/equal float pairs over1e-300..1e300 and strict JSON finite handling.
+- Evidence:157-measurement-precision-proof.json,157-saved-readback.json, native before/after screenshots/DOM, accessible-label before/after JSON and exact-limit control. No production deployment. This repairs evidence fidelity; it does not certify physical tolerances or general manufacturing accuracy.
+
+### Further visible accuracy checks identified during157
+
+3D callouts/markers append geometry units to every measured issue, including ratios/angles/percentages; that needs explicit issue-unit handling. The final screenshot also warrants checking marker layering over the callout. Separately, check_sheet_gauge compares below0.3/above8 while its messages say0.5–6. These are open follow-ups, not covered by the precision fix.

@@ -19,6 +19,7 @@ from typing import Optional
 import numpy as np
 
 from src.analysis.citations import parse_citation
+from src.analysis.serialization import format_measurement
 from src.analysis.constants import STANDARD_GAUGES
 from src.analysis.context import GeometryContext, wall_thickness_tolerance
 from src.analysis.features.base import (
@@ -57,7 +58,7 @@ def check_wall_thickness(
         severity=sev,
         message=(
             f"{len(thin_faces)} faces ({pct:.1f}%) below {min_wall_mm}mm "
-            f"min wall for {process.value}. Thinnest: {min_measured:.2f}mm."
+            f"min wall for {process.value}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
         ),
         process=process,
         affected_faces=thin_faces.tolist(),
@@ -139,7 +140,7 @@ def check_small_features(
         severity=Severity.WARNING,
         message=(
             f"{len(small)} geometric boundary spans ({pct:.1f}%) below {min_size_mm}mm "
-            f"resolution for {process.value}. Smallest: {smallest:.3f}mm."
+            f"resolution for {process.value}. Smallest: {format_measurement(smallest, min_size_mm)}mm."
         ),
         process=process,
         measured_value=smallest,
@@ -168,7 +169,7 @@ def check_build_volume(
     exceeds = []
     for dim, limit, axis in zip(dims, max_dims_mm, ("X", "Y", "Z")):
         if dim > limit:
-            exceeds.append(f"{axis}: {dim:.0f}mm > {limit}mm")
+            exceeds.append(f"{axis}: {format_measurement(dim, limit)}mm > {limit}mm")
     if not exceeds:
         return []
     return [Issue(
@@ -202,7 +203,7 @@ def check_aspect_ratio(
         code="EXTREME_ASPECT_RATIO",
         severity=Severity.WARNING,
         message=(
-            f"Aspect ratio {ratio:.1f}:1 exceeds {max_ratio}:1 for "
+            f"Aspect ratio {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for "
             f"{process.value}. Tall/thin parts risk failure."
         ),
         process=process,
@@ -237,7 +238,7 @@ def check_trapped_volumes(
                 code="TRAPPED_VOLUME",
                 severity=Severity.ERROR,
                 message=(
-                    f"Drain opening {diameter:.2f}mm is below the {min_drain_mm}mm "
+                    f"Drain opening {format_measurement(diameter, min_drain_mm)}mm is below the {min_drain_mm}mm "
                     f"minimum for {process.value}; material can remain trapped."
                 ),
                 process=process,
@@ -462,7 +463,7 @@ def check_wall_uniformity(
         issues.append(Issue(
             code="THIN_WALL_MOLDING",
             severity=Severity.ERROR,
-            message=f"Min wall {t_min:.2f}mm < {min_wall}mm for {process.value}.",
+            message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process.value}.",
             process=process,
             measured_value=t_min,
             required_value=min_wall,
@@ -497,7 +498,7 @@ def check_wall_uniformity(
         issues.append(Issue(
             code="THICK_WALL",
             severity=Severity.WARNING,
-            message=f"Sampled thick section {t_max:.6g}mm > {max_wall}mm — sink marks / long cycle risk.",
+            message=f"Sampled thick section {format_measurement(t_max, max_wall)}mm > {max_wall}mm — sink marks / long cycle risk.",
             process=process,
             measured_value=t_max,
             required_value=max_wall,
@@ -509,7 +510,7 @@ def check_wall_uniformity(
             code="NON_UNIFORM_WALLS",
             severity=Severity.WARNING,
             message=(
-                f"Sampled wall ratio {t_max / t_min:.6g}:1 ({t_min:.6g}–{t_max:.6g}mm) "
+                f"Sampled wall ratio {format_measurement(t_max / t_min, 2.0)}:1 ({format_measurement(t_min)}–{format_measurement(t_max)}mm) "
                 f"may increase warping risk in {process.value}."
             ),
             process=process,
@@ -694,7 +695,7 @@ def check_shrinkage_risk(
         code="SHRINKAGE_RISK",
         severity=Severity.WARNING,
         message=(
-            f"V/SA ratio {compactness:.1f}mm — bulky sections cause shrinkage "
+            f"V/SA ratio {format_measurement(compactness, max_compactness)}mm — bulky sections cause shrinkage "
             f"porosity in {process.value}."
         ),
         process=process,
@@ -820,7 +821,7 @@ def check_length_diameter_ratio(
         code="HIGH_LD_RATIO",
         severity=Severity.WARNING,
         message=(
-            f"L/D ratio {ld:.1f}:1 exceeds {max_ld}:1 — deflection risk "
+            f"L/D ratio {format_measurement(ld, max_ld)}:1 exceeds {max_ld}:1 — deflection risk "
             f"on {process.value}. Steady rest recommended."
         ),
         process=process,
@@ -853,7 +854,7 @@ def check_prismatic(
         code="NOT_PRISMATIC",
         severity=Severity.ERROR,
         message=(
-            f"Only {pct:.0f}% of faces are prismatic (horizontal or vertical). "
+            f"Only {format_measurement(pct, 85.0)}% of faces are prismatic (horizontal or vertical). "
             f"{process.value} requires a 2.5D extruded profile."
         ),
         process=process,
@@ -877,14 +878,14 @@ def check_sheet_gauge(
     if t < 0.3:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,
-            message=f"Thickness {t:.2f}mm below 0.5mm min gauge.",
+            message=f"Thickness {format_measurement(t, 0.5)}mm below 0.5mm min gauge.",
             process=process, measured_value=t, required_value=0.5,
             fix_suggestion="Increase to >= 0.5mm.",
         ))
     elif t > 8.0:
         issues.append(Issue(
             code="TOO_THICK_SHEET", severity=Severity.WARNING,
-            message=f"Thickness {t:.1f}mm exceeds sheet range (0.5–6mm).",
+            message=f"Thickness {format_measurement(t, 8.0)}mm exceeds sheet range (0.5–6mm).",
             process=process, measured_value=t,
             fix_suggestion="Use plate CNC machining for thick stock.",
         ))
@@ -892,7 +893,7 @@ def check_sheet_gauge(
     if abs(closest - t) > 0.1 and 0.5 <= t <= 6.0:
         issues.append(Issue(
             code="NON_STANDARD_GAUGE", severity=Severity.INFO,
-            message=f"Thickness {t:.2f}mm — nearest standard: {closest}mm.",
+            message=f"Thickness {format_measurement(t, closest)}mm — nearest standard: {closest}mm.",
             process=process, measured_value=t,
             fix_suggestion=f"Use {closest}mm standard gauge for cost savings.",
         ))
@@ -933,7 +934,7 @@ def check_bends(
     return [Issue(
         code="SHARP_BEND", severity=Severity.ERROR,
         message=(
-            f"{count} knife-edge folds (normal divergence up to {tightest_deg:.0f}° "
+            f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, 150.0)}° "
             f"≈ included bend angle < 30°) — bend radius must be >= material "
             f"thickness. DIN 6935."
         ),
@@ -1016,7 +1017,7 @@ def check_hole_depth_ratio(
                 code="DEEP_HOLE",
                 severity=Severity.WARNING,
                 message=(
-                    f"Hole depth/diameter {ratio:.1f}:1 exceeds {max_ratio}:1 "
+                    f"Hole depth/diameter {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 "
                     f"for {process.value} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
                 ),
                 process=process,

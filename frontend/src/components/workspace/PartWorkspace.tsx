@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueMeasure } from "@/lib/inspection-bind";
+
 /**
  * PartWorkspace — the L2 DECISION object frame (the re-founded home of the
  * single-part loop). A CAD drop runs the full should-cost decision + the DFM
@@ -243,8 +245,8 @@ export default function PartWorkspace({
       severity: selectedGroup.severity,
       faces: selectedGroup.faces,
       regionCenter: selectedGroup.regionCenter,
-      valueLabel: measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`,
-      requiredLabel: issue.required_value == null ? null : `${Number(issue.required_value.toFixed(3))}${units}`,
+      valueLabel: measured == null ? issue.code : `${formatIssueMeasure(measured, issue.required_value)}${units}`,
+      requiredLabel: issue.required_value == null ? null : `${formatIssueMeasure(issue.required_value, measured)}${units}`,
       markerLabel: "",
       suggestion: issue.fix_suggestion ?? issue.message,
       color: selectedGroup.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
@@ -785,9 +787,9 @@ export default function PartWorkspace({
                           </p>
                           {selectedIssue.issue.measured_value != null && (
                             <p className="num mt-1 text-xs text-muted-foreground">
-                              {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                              {formatIssueMeasure(selectedIssue.issue.measured_value, selectedIssue.issue.required_value)} {validation?.geometry.units ?? ""}
                               {selectedIssue.issue.required_value != null && (
-                                <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                                <> measured - needs {formatIssueMeasure(selectedIssue.issue.required_value, selectedIssue.issue.measured_value)} {validation?.geometry.units ?? ""}</>
                               )}
                             </p>
                           )}

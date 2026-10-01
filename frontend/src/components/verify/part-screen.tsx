@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueMeasure } from "@/lib/inspection-bind";
+
 /**
  * PART STANDING PAGE — the org's memory of what was asked, answered, and decided
  * about ONE part (design: `renderPart`). There is NO single part-detail endpoint;
@@ -737,7 +739,7 @@ function StandingCard({
 
 function BlockerRow({ b }: { b: Blocker }) {
   const bits: string[] = [];
-  if (b.measured != null && b.required != null) bits.push(`measured ${b.measured} vs required ${b.required}`);
+  if (b.measured != null && b.required != null) bits.push(`measured ${formatIssueMeasure(b.measured, b.required)} vs required ${formatIssueMeasure(b.required, b.measured)}`);
   if (b.affectedFaces != null) bits.push(`${NUM(b.affectedFaces)} face${b.affectedFaces === 1 ? "" : "s"}`);
   if (b.citation) bits.push(b.citation);
   return (

@@ -1,0 +1,4 @@
+{
+  "callout": "Required - THIN_WALL\n\n0.79999 mm measured - needs 3 mm\n\nIncrease wall thickness to >= 3.0mm. FIA: 3mm min web thickness.\n\nApplies to: FDM / FFF, Binder Jetting, DED, WAAM, CNC 3-Axis, CNC 5-Axis, CNC Turning, Forging\n\n×\n‹\n5/11\n›",
+  "marker": "THIN_WALL: 0.79999 mm. Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness."
+}

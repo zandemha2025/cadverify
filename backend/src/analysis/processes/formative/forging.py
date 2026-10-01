@@ -1,6 +1,7 @@
 """Forging — impression die, hot / cold."""
 
 from src.analysis.context import GeometryContext
+from src.analysis.serialization import format_measurement
 from src.analysis.models import Issue, ProcessType, Severity
 from src.analysis.processes.base import register
 from src.analysis.processes.checks import (
@@ -46,7 +47,7 @@ class ForgingAnalyzer:
             code="HIGH_RIB_RATIO",
             severity=Severity.WARNING,
             message=(
-                f"Aspect ratio {ratio:.1f}:1 exceeds 6:1 max rib "
+                f"Aspect ratio {format_measurement(ratio, 6.0)}:1 exceeds 6:1 max rib "
                 f"height:width for {self.process.value}."
             ),
             process=self.process,

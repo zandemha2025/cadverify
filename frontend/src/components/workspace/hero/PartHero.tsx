@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueMeasure } from "@/lib/inspection-bind";
+
 /**
  * PartHero — the D5 "retable" of the single-part loop (FE-2). When the stage flag
  * is on, this replaces the five-tab workspace with the staged hero:
@@ -212,10 +214,10 @@ export function PartHero({
       if (row.faces.length === 0 && !issue.region_center) return [];
       const measured = issue.measured_value;
       const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
-      const valueLabel = measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`;
+      const valueLabel = measured == null ? issue.code : `${formatIssueMeasure(measured, issue.required_value)}${units}`;
       const requiredLabel = issue.required_value == null
         ? null
-        : `${Number(issue.required_value.toFixed(3))}${units}`;
+        : `${formatIssueMeasure(issue.required_value, measured)}${units}`;
       return [{
         key: row.key,
         code: issue.code,
@@ -371,9 +373,9 @@ export function PartHero({
                         </p>
                         {selectedIssue.issue.measured_value != null && (
                           <p className="num mt-1 text-xs text-muted-foreground">
-                            {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                            {formatIssueMeasure(selectedIssue.issue.measured_value, selectedIssue.issue.required_value)} {validation?.geometry.units ?? ""}
                             {selectedIssue.issue.required_value != null && (
-                              <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                              <> measured - needs {formatIssueMeasure(selectedIssue.issue.required_value, selectedIssue.issue.measured_value)} {validation?.geometry.units ?? ""}</>
                             )}
                           </p>
                         )}

@@ -1,0 +1,63 @@
+{
+  "finding": 157,
+  "status": "fixed and verified locally; not deployed",
+  "engine_version": "0.3.22",
+  "root_cause": "Issue serialization rounded to3decimal places; heatmap to4; scalar messages and UI consumers applied further fixed rounding.0.79999mm became0.8mm at the0.8limit.",
+  "implementation": "Retain finite original numeric evidence; omit nonfinite scalar evidence and keep nulls in heatmap. Shared backend/frontend6significant-digit display falls back to the full value if paired rounding would change <,>,= against the displayed limit. Reused in scalar check messages, both issue panels, both 3D callouts/accessible markers, guided-result evidence and saved-part blocker summary. Verdict predicates unchanged.",
+  "checks": {
+    "backend_full": {
+      "passed": 2646,
+      "skipped": 3,
+      "seconds": 348.03,
+      "protected_skip_policy": true
+    },
+    "backend_focused": 58,
+    "frontend_tests": 501,
+    "frontend_binding_tests": 17,
+    "frontend_types": "pass",
+    "frontend_lint": "zero errors; test-file ignored-pattern warning only",
+    "frontend_final_build": "pass after accessible marker follow-up",
+    "types_existing_errors": 2,
+    "types_new_errors": 0,
+    "bandit_medium_high": 0,
+    "trap_corpus": "pass; preexisting unit_flag/suspicious_scale known gap remains",
+    "independent_review": "pass after fixing two missed overlay label consumers;1600 signed adjacent/near/equal float pairs over1e-300..1e300 preserve comparison; strict JSON scalar/heatmap checks pass"
+  },
+  "native": {
+    "surface": "localChrome CUA Analyze DFM",
+    "below_limit_file": "155-plate-transformed-0.79999.step",
+    "before": "FDM failed0.8mm while visible/API evidence said0.80/0.8.",
+    "after": "FDM and die-casting text say0.79999mm versus0.8mm; grouped issue card,3D callout and aria-label preserve0.79999.",
+    "exact_limit_file": "155-plate-transformed-0.8.step",
+    "exact_limit": "No FDM thin-wall finding; legitimate overhang/build-envelope findings remain.",
+    "saved_measurement": 0.7999899966221643,
+    "saved_required_value": 0.8,
+    "all_source_hashes_preserved": true,
+    "historical_records_unchanged": 4,
+    "note": "A repeated select toggled an already selected finding off during the final native check; the resulting missing-card timeout was resolved by inspecting selection and selecting again. This was a check interaction, not a product failure."
+  },
+  "limits": [
+    "Presentation fidelity does not establish exact source-CAD/manufacturing accuracy.",
+    "Old reports that already lost digits remain immutable; reanalysis creates new versioned evidence.",
+    "Real email/identity/vendor/customer-quote/storage/callback proof and production rollout are still pending.",
+    "Separate follow-ups: generic geometry-unit suffixes on dimensionless/angle findings; possible 3D marker overlap over callout text; sheet gauge predicate/message threshold mismatch."
+  ],
+  "evidence_sha256": {
+    "157-wall-before.txt": "42352a52d3f1c6e7e48025982cfe13654d624dd8bd5a5c0e21a3492f4cff090f",
+    "157-wall-before.png": "ba4b3aec2f0ea668997005b33e4f69de813ceee6aa7dbb06ec68a3fa35f6c4ba",
+    "157-wall-after.txt": "49449edb031b3e90a3261bee13c16ad26807d79e38769488699b0920d02587bb",
+    "157-wall-after.png": "e7756768e011fb0bb4e3527466d5bfa289d4044cabbd98b1f6fffde51513a7bc",
+    "157-overlay-before.json": "ff5372a8a2c0a81704a53b7df2e97f90b7796d8429a1511daebf431bf8a1bb62",
+    "157-overlay-after.json": "fb02006562c57586b0e1e37bca785bf5ae17fc20e2b865e31ae3575f3bb91312",
+    "157-exact-boundary.txt": "d4a0d46d8f7420d58f66f9762961efd826646790a165ebd7ac5c69968872fab9",
+    "157-exact-boundary.png": "3b2912ac69d183d238f662b608243e442fd7211e294f4cbac42a36dd9ba357fe",
+    "157-saved-readback.json": "0b7c596a0767963defd6e8a550f842b1b8456222e1c5a07b501e512951c78378"
+  },
+  "local_check_log_sha256": {
+    "measurement-precision-backend.log": "c2dfc9410e651450d10be5c290c41e9eeaabf556a863126055eac88a9a8f1d90",
+    "measurement-precision-frontend-checks.log": "e87a5e4c10e1a92212e882b9328c58c4ce2f571fa1ed4fd0d777f217ea2b9ffe",
+    "measurement-precision-frontend-final.log": "29668152467ee608f2c748742c3278c0a7171993725051817be5b582b69d8090",
+    "measurement-precision-pyright.json": "4685b3daa061076fdd15b7337773a2cbee400e90d8b6cc769ab3b21d55b986d7",
+    "measurement-precision-trap.log": "432b4323528aea9a61bc47ae5e294249087cd662b83d060b30b63a9207bd612f"
+  }
+}

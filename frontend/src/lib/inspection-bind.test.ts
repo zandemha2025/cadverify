@@ -16,6 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  formatIssueMeasure,
   citationRef,
   citationChipLabel,
   affectedFacesSummary,
@@ -24,6 +25,21 @@ import {
   hasLocatableCostBlocker,
   reportCostBlockerLocators,
 } from "./inspection-bind.ts";
+
+test("issue evidence never rounds a distinct measurement onto its threshold", () => {
+  for (const [measured, required] of [
+    [0.79999, 0.8], [0.80000000001, 0.8], [0.7999999999999999, 0.8],
+    [0.79999999, 0.80000001], [6.000000001, 6], [1e-8, 0.8],
+    [6000000.1, 6000000], [-0.79999999, -0.80000001], [0.8, 0.8],
+  ]) {
+    const shown = Number(formatIssueMeasure(measured, required));
+    const limit = Number(formatIssueMeasure(required, measured));
+    assert.equal(Math.sign(shown - limit), Math.sign(measured - required));
+  }
+  assert.equal(formatIssueMeasure(0.799989999996, 0.8), "0.79999");
+  assert.equal(formatIssueMeasure(1e-8), "1e-8");
+  assert.equal(formatIssueMeasure(Number.NaN), "—");
+});
 
 /* ---- 1. citations -------------------------------------------------- */
 

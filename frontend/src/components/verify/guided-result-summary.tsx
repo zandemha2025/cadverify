@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueMeasure } from "@/lib/inspection-bind";
+
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import type { CSSProperties } from "react";
 import {
@@ -288,11 +290,11 @@ function formatMeasure(value: number): string {
 function formatIssueEvidence(measured: number | null, required: number | null): string | null {
   if (measured == null && required == null) return null;
   if (measured != null && required != null) {
-    return `measured ${formatMeasure(measured)} · threshold ${formatMeasure(required)}`;
+    return `measured ${formatIssueMeasure(measured, required)} · threshold ${formatIssueMeasure(required, measured)}`;
   }
   return measured != null
-    ? `measured ${formatMeasure(measured)}`
-    : `threshold ${formatMeasure(required as number)}`;
+    ? `measured ${formatIssueMeasure(measured, required)}`
+    : `threshold ${formatIssueMeasure(required as number)}`;
 }
 
 function shopFitSummary(result: VerifyResult | null): { title: string; detail: string } {

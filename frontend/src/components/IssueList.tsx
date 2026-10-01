@@ -1,5 +1,7 @@
 "use client";
 
+import { formatIssueMeasure } from "@/lib/inspection-bind";
+
 import { useEffect, useRef } from "react";
 import { Crosshair } from "lucide-react";
 import { severityTone, type Tone } from "@/lib/status";
@@ -147,7 +149,7 @@ function IssueRow({
           {issue.measured_value !== undefined &&
             issue.required_value !== undefined && (
               <span className="num text-xs text-muted-foreground">
-                {issue.measured_value.toFixed(2)} / {issue.required_value}{" "}
+                {formatIssueMeasure(issue.measured_value, issue.required_value)} / {formatIssueMeasure(issue.required_value, issue.measured_value)}{" "}
                 required
               </span>
             )}

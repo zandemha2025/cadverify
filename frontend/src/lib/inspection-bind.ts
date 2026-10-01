@@ -23,6 +23,17 @@
 import type { Issue, IssueCitation, CostEstimate } from "@/lib/api";
 import type { IndexedIssue } from "@/lib/dfm-scope";
 
+/** Compact evidence that preserves the comparison with its displayed limit. */
+export function formatIssueMeasure(value: number, reference?: number | null): string {
+  if (!Number.isFinite(value)) return "—";
+  const shown = Number(value.toPrecision(6));
+  if (reference != null && Number.isFinite(reference)) {
+    const limit = Number(reference.toPrecision(6));
+    if (Math.sign(shown - limit) !== Math.sign(value - reference)) return String(value);
+  }
+  return String(shown);
+}
+
 /* ------------------------------------------------------------------ */
 /*  1 — structured citation → render-ready reference                   */
 /* ------------------------------------------------------------------ */
