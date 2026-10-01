@@ -42,6 +42,7 @@ export default function AnalysisDashboard({
   const scoped = dfmScopedFlagsEnabled();
   const dfm = partitionDfmByRoute(result, result.best_process);
   const routeIssues = canonicalIssues ?? (scoped ? dfm.route : dfm.all);
+  const notes = canonicalIssues ? dfm.all.filter((row) => row.issue.severity === "info") : [];
   const extraIssues = canonicalIssues ? [] : (scoped ? dfm.extra : []);
   const routeLabel = result.best_process
     ? procLabel(result.best_process)
@@ -163,6 +164,10 @@ export default function AnalysisDashboard({
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {notes.length > 0 && (
+          <div className="mt-4"><IssueList items={notes} /></div>
         )}
 
         {scoped && extraIssues.length > 0 && (

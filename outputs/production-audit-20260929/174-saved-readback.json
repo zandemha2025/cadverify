@@ -1,0 +1,488 @@
+{
+  "engine_version": "0.3.38",
+  "historical_records_unchanged": {
+    "analyses": 124,
+    "cost_decisions": 133
+  },
+  "controls": [
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analyses": {
+        "id": 1719,
+        "version": "0.3.38",
+        "result_sha256": "d9418139254f9800013bcd1b01e200bd19c79c761a770a2b5498298ecfdba088",
+        "unchanged_other_process_scores": 20,
+        "investment_casting": {
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "PATTERN_TOOLING_REVIEW",
+              "scope": "whole_part",
+              "message": "Investment casting has no universal minimum draft angle; pattern and core tooling need separate review.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "Draft Angles in Investment Casting \u2014 https://www.improprecision.com/draft-angles-investment-casting/",
+                "standard": "Impro Precision"
+              },
+              "severity": "info",
+              "fix_suggestion": "Confirm wax-pattern and ceramic-core release with the foundry. Some tooling geometries need draft even though the casting shell is broken away."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5266 of 57916 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 12mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 12.0,
+              "measurement_unit": "mm"
+            }
+          ]
+        },
+        "before_verdict": "fail"
+      },
+      "cost_decisions": {
+        "id": 5918,
+        "version": "0.3.38",
+        "result_sha256": "98cf8920d6b9fa8db6e762b1d715f0113e800a665f7d9606d88a4c495a8d22c0",
+        "unchanged_unit_prices": 20,
+        "unchanged_other_estimates": 18,
+        "investment_casting": [
+          {
+            "process": "investment_casting",
+            "quantity": 1,
+            "unit_cost_usd": 13571.59,
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "dfm_blockers": []
+          },
+          {
+            "process": "investment_casting",
+            "quantity": 100,
+            "unit_cost_usd": 154.62,
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "dfm_blockers": []
+          }
+        ],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31160 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 137.95,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.34,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+      "analyses": {
+        "id": 1720,
+        "version": "0.3.38",
+        "result_sha256": "0c8e405c9dbee83585ee4adccb8b896890520a3b957513c5ef4ef2a7af08fcea",
+        "unchanged_other_process_scores": 20,
+        "investment_casting": {
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "PATTERN_TOOLING_REVIEW",
+              "scope": "whole_part",
+              "message": "Investment casting has no universal minimum draft angle; pattern and core tooling need separate review.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "Draft Angles in Investment Casting \u2014 https://www.improprecision.com/draft-angles-investment-casting/",
+                "standard": "Impro Precision"
+              },
+              "severity": "info",
+              "fix_suggestion": "Confirm wax-pattern and ceramic-core release with the foundry. Some tooling geometries need draft even though the casting shell is broken away."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5074 of 45666 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 12mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 11.999999999999957,
+              "measurement_unit": "mm"
+            }
+          ]
+        },
+        "before_verdict": "issues"
+      },
+      "cost_decisions": {
+        "id": 5919,
+        "version": "0.3.38",
+        "result_sha256": "a0a880e7b578ff9c1a3efccada2e968df1e1172934f418acc403be5e36c44329",
+        "unchanged_unit_prices": 20,
+        "unchanged_other_estimates": 18,
+        "investment_casting": [
+          {
+            "process": "investment_casting",
+            "quantity": 1,
+            "unit_cost_usd": 13571.59,
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "dfm_blockers": []
+          },
+          {
+            "process": "investment_casting",
+            "quantity": 100,
+            "unit_cost_usd": 154.62,
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "dfm_blockers": []
+          }
+        ],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 137.95,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.34,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": true
+        }
+      }
+    },
+    {
+      "filename": "166-transverse-hole-bar.step",
+      "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+      "analyses": {
+        "id": 1721,
+        "version": "0.3.38",
+        "result_sha256": "dc7823e0a3d16d8d062ab9e17747da8c9fe72525d1f493acf18ade2f01d8f0be",
+        "unchanged_other_process_scores": 20,
+        "investment_casting": {
+          "verdict": "issues",
+          "score": 0.7,
+          "issues": [
+            {
+              "code": "PATTERN_TOOLING_REVIEW",
+              "scope": "whole_part",
+              "message": "Investment casting has no universal minimum draft angle; pattern and core tooling need separate review.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "Draft Angles in Investment Casting \u2014 https://www.improprecision.com/draft-angles-investment-casting/",
+                "standard": "Impro Precision"
+              },
+              "severity": "info",
+              "fix_suggestion": "Confirm wax-pattern and ceramic-core release with the foundry. Some tooling geometries need draft even though the casting shell is broken away."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5020 of 60238 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 12mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 12.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "scope": "whole_part",
+              "message": "Sampled wall ratio 5.85096:1 (2.05095\u201312mm) may increase warping risk in investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "1mm min wall achievable.",
+                "standard": "ICI"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Aim for uniform 5.0mm. Use ribs, not solid. ICI: 1mm min wall achievable.",
+              "measured_value": 5.850960423507237,
+              "required_value": 2.0,
+              "measurement_unit": "ratio"
+            }
+          ]
+        },
+        "before_verdict": "fail"
+      },
+      "cost_decisions": {
+        "id": 5920,
+        "version": "0.3.38",
+        "result_sha256": "1c78aad5ea599cd09642398e35fd9c814666abfbb2d110cd3924c1cec838acd4",
+        "unchanged_unit_prices": 20,
+        "unchanged_other_estimates": 18,
+        "investment_casting": [
+          {
+            "process": "investment_casting",
+            "quantity": 1,
+            "unit_cost_usd": 13571.59,
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "dfm_blockers": []
+          },
+          {
+            "process": "investment_casting",
+            "quantity": 100,
+            "unit_cost_usd": 154.61,
+            "dfm_ready": true,
+            "dfm_verdict": "issues",
+            "dfm_blockers": []
+          }
+        ],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $138.12/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31006 sidewall faces (99.2% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 138.12,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.51,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+      "analyses": {
+        "id": 1722,
+        "version": "0.3.38",
+        "result_sha256": "5ca27d9f8550ac9cf23de231c51e287061a6c967f7982d1a8736514f86e0fc39",
+        "unchanged_other_process_scores": 20,
+        "investment_casting": {
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "PATTERN_TOOLING_REVIEW",
+              "scope": "whole_part",
+              "message": "Investment casting has no universal minimum draft angle; pattern and core tooling need separate review.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "Draft Angles in Investment Casting \u2014 https://www.improprecision.com/draft-angles-investment-casting/",
+                "standard": "Impro Precision"
+              },
+              "severity": "info",
+              "fix_suggestion": "Confirm wax-pattern and ceramic-core release with the foundry. Some tooling geometries need draft even though the casting shell is broken away."
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "THIN_WALL_MOLDING",
+              "scope": "whole_part",
+              "message": "Min wall 0.81mm < 1.0mm for investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "1mm min wall achievable.",
+                "standard": "ICI"
+              },
+              "severity": "error",
+              "fix_suggestion": "Increase to >= 1.0mm. ICI: 1mm min wall achievable.",
+              "measured_value": 0.8099999999999999,
+              "required_value": 1.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "WALL_UNIFORMITY_SAMPLED",
+              "scope": "whole_part",
+              "message": "Largest sampled interior section: 10mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+              "process": "investment_casting",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+              "measured_value": 10.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "NON_UNIFORM_WALLS",
+              "scope": "whole_part",
+              "message": "Sampled wall ratio 12.3457:1 (0.81\u201310mm) may increase warping risk in investment_casting.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "1mm min wall achievable.",
+                "standard": "ICI"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Aim for uniform 5.0mm. Use ribs, not solid. ICI: 1mm min wall achievable.",
+              "measured_value": 12.34567901234568,
+              "required_value": 2.0,
+              "measurement_unit": "ratio"
+            },
+            {
+              "code": "MISSING_FILLETS",
+              "scope": "whole_part",
+              "message": "24 sharp concave mesh edges need >= 0.5mm fillets for investment_casting flow and stress distribution.",
+              "process": "investment_casting",
+              "citation": {
+                "text": "0.5mm min fillet.",
+                "standard": "ICI"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Add 0.5mm+ fillets. ICI: 0.5mm min fillet.",
+              "required_value": 0.5,
+              "measurement_unit": "mm"
+            }
+          ]
+        },
+        "before_verdict": "fail"
+      },
+      "cost_decisions": {
+        "id": 5921,
+        "version": "0.3.38",
+        "result_sha256": "f1184eda611e42a218134e7c29fdba68d97d46c1e99b639a97470924923b7369",
+        "unchanged_unit_prices": 20,
+        "unchanged_other_estimates": 18,
+        "investment_casting": [
+          {
+            "process": "investment_casting",
+            "quantity": 1,
+            "unit_cost_usd": 27072.39,
+            "dfm_ready": false,
+            "dfm_verdict": "fail",
+            "dfm_blockers": [
+              "Min wall 0.81mm < 1.0mm for investment_casting."
+            ]
+          },
+          {
+            "process": "investment_casting",
+            "quantity": 100,
+            "unit_cost_usd": 290.41,
+            "dfm_ready": false,
+            "dfm_verdict": "fail",
+            "dfm_blockers": [
+              "Min wall 0.81mm < 1.0mm for investment_casting."
+            ]
+          }
+        ],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: ded (AlSi10Mg) \u2014 $300.0/unit. Costed make-route picks: qty 1: ded; qty 100: waam. Estimated sand_casting crossover against the cheapest eligible no-tooling route: ~2251 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $130.55/unit at qty 100. Note: sand_casting requires redesign for DFM (2584 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": 2251.0,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "ded",
+              "material": "AlSi10Mg",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 12.6,
+              "unit_cost_usd": 300.0,
+              "lead_high_days": 23.4
+            },
+            "100": {
+              "process": "waam",
+              "material": "AlSi10Mg",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 12.6,
+              "unit_cost_usd": 30.0,
+              "lead_high_days": 23.4
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "ded",
+          "make_now_material": "AlSi10Mg",
+          "tooling_dfm_ready": false
+        }
+      }
+    }
+  ]
+}

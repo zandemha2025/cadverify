@@ -357,6 +357,45 @@ def test_cost_estimate_carries_structured_blocker_details():
     assert draft["citation"]["standard"]  # structured standard rode through
 
 
+def test_investment_casting_draft_is_tooling_advice_not_a_part_rejection():
+    from src.api.routes import _to_response
+    from src.costing import EstimateOptions, estimate_decision
+
+    for thickness, angle in [(12, 0), (12, 0.7), (0.8, 0)]:
+        mesh = trimesh.creation.box(extents=[80, 12, thickness])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, 0.3]))
+        result, mesh, ctx = _analyze(mesh)
+        scores = {s.process: s for s in result.process_scores}
+        casting = scores[ProcessType.INVESTMENT_CASTING]
+        assert not any(i.code == "INSUFFICIENT_DRAFT" for i in casting.issues)
+        advice = next(i for i in casting.issues if i.code == "PATTERN_TOOLING_REVIEW")
+        assert advice.severity == Severity.INFO
+        assert not advice.affected_faces and advice.required_value is None
+        assert "wax-pattern" in advice.fix_suggestion and "ceramic-core" in advice.fix_suggestion
+        serialized = _to_response(result)
+        detail = next(i for s in serialized["process_scores"]
+                      if s["process"] == "investment_casting" for i in s["issues"]
+                      if i["code"] == "PATTERN_TOOLING_REVIEW")
+        assert detail["scope"] == "whole_part"
+        assert detail["citation"]["standard"] == "Impro Precision"
+        assert casting.verdict == ("fail" if thickness < 1 else "issues")
+        report = estimate_decision(result, mesh, ctx.features,
+                                   EstimateOptions(material_class="aluminum", quantities=[100]))
+        estimates = [e for e in report.estimates if e["process"] == "investment_casting"]
+        assert estimates
+        for estimate in estimates:
+            assert estimate["dfm_ready"] == (thickness >= 1)
+            assert estimate["dfm_verdict"] == casting.verdict
+            codes = {i["code"] for i in estimate["dfm_blocker_details"]}
+            assert "INSUFFICIENT_DRAFT" not in codes
+            assert ("THIN_WALL_MOLDING" in codes) == (thickness < 1)
+        if angle == 0:
+            for process in (ProcessType.INJECTION_MOLDING, ProcessType.DIE_CASTING,
+                            ProcessType.SAND_CASTING, ProcessType.FORGING):
+                assert any(i.code == "INSUFFICIENT_DRAFT" and i.severity == Severity.ERROR
+                           for i in scores[process].issues)
+
+
 def test_cost_dfm_blockers_strings_unchanged_for_legacy_consumers():
     """dfm_blockers stays a list[str] (decision.py / report.py depend on it)."""
     from src.costing import EstimateOptions, estimate_decision

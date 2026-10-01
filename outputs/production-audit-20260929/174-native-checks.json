@@ -1,0 +1,29 @@
+{
+  "aligned": {
+    "verdict": "Advisory 80%",
+    "note": true,
+    "preview": true,
+    "unit_cost_quantity1": 13571.59
+  },
+  "controls": [
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "row": "        - row \"Investment Casting Advisory 80% —\":",
+      "note": true,
+      "preview": true
+    },
+    {
+      "filename": "166-transverse-hole-bar.step",
+      "row": "        - row \"Investment Casting Advisory 70% —\":",
+      "note": true,
+      "preview": true
+    },
+    {
+      "filename": "156-plate-with-boss.step",
+      "row": "        - row \"Investment Casting Required 0% Min wall 0.81mm < 1.0mm for investment_casting.\":",
+      "note": true,
+      "preview": true
+    }
+  ],
+  "boss_wait": "Initial automation wait timed out; next DOM inspection showed completed routing, expected verdict and ready preview."
+}
