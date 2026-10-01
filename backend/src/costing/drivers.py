@@ -9,13 +9,13 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass
-from itertools import permutations
 
 import numpy as np
 import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
 from src.analysis.context import enclosing_box_dimensions, flat_sheet_geometry, wall_thickness_tolerance
+from src.analysis.context import fitting_box_dimensions as build_orientation
 from src.costing.routing import is_rotational
 
 
@@ -106,17 +106,6 @@ class GeoDrivers:
                 f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
 
-def build_orientation(bbox_mm, envelope):
-    """Lowest-height fitting axis permutation of an enclosing box, or None.
-
-    ponytail: bounded box candidates, not a continuous orientation/nesting solver.
-    Failure establishes no priced setup; it does not prove all orientations fail.
-    """
-    candidates = (d for d in permutations(bbox_mm)
-                  if all(v > 0 and v <= lim + 1e-9 for v, lim in zip(d, envelope)))
-    return min(candidates, key=lambda d: (d[2], d[0], d[1]), default=None)
-
-
 def parts_per_build(proc, bbox_mm, rates, envelope=None) -> int:
     """Build-plate nesting count (weaknesses #1, #2; R2 serial XY nesting).
 
@@ -125,7 +114,7 @@ def parts_per_build(proc, bbox_mm, rates, envelope=None) -> int:
     the process packing_density (unchanged).
 
     serial (FDM/SLA): AREAL (XY-footprint) fit — one layer on the plate, using
-    the lowest-height fitting axis permutation of the enclosing box.
+    an established enclosing-box placement (axis swaps, then diagonal fallback).
     Real service bureaus nest many parts in X-Y on one build plate (just not
     stacked in Z like powder bed). Both density estimates are bounded by a
     spaced grid in that orientation. No fitting box yields zero, not one.

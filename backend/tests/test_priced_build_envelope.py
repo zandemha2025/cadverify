@@ -9,10 +9,41 @@ from src.analysis.models import ProcessType as PT
 from src.costing import EstimateOptions, estimate_decision
 from src.costing.cost_model import _additive_machine, cost_breakdown
 from src.costing.drivers import extract_drivers, parts_per_build
-from src.costing.makeability import MachineCap, ShopCaps
+from src.costing.makeability import MachineCap, ShopCaps, fit_machine, part_req_from_drivers
 from src.costing.rates import build_rate_card
 from src.costing.routing import select_material
 from tests.test_costing_model import _analyze
+
+
+@pytest.mark.parametrize("length,envelope", [(250, (200, 200, 200)), (400, (300, 300, 350))])
+def test_diagonal_bar_fit_agrees_in_dfm_owned_machine_and_price(length, envelope):
+    from math import sqrt
+    from src.analysis.models import Severity
+    from src.analysis.processes.checks import check_build_volume
+    from tests.test_analyzers import _build_ctx
+
+    # A 45-degree placement is an independent constructive fit proof.
+    assert (length + 12) / sqrt(2) < min(envelope[:2])
+    rates = build_rate_card()
+    material = select_material(PT.FDM, "polymer", rates)
+    machine = MachineCap(process="fdm", name="Diagonal fixture", max_workpiece_kg=5,
+                         materials=("polymer",), hourly_rate_usd=10,
+                         capabilities=dict(zip(("x", "y", "z"), envelope)))
+    for angle in (0, pi / 4, .73):
+        mesh = trimesh.creation.box(extents=(length, 12, 12))
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, (0, 0, 1)))
+        ctx = _build_ctx(mesh)
+        assert not any(i.severity == Severity.ERROR for i in check_build_volume(ctx, envelope, PT.FDM))
+        drivers = extract_drivers(ctx.info, mesh, ctx.features)
+        req = part_req_from_drivers(PT.FDM, drivers, material, "standard")
+        fit = fit_machine(req, machine)
+        assert fit.passes, fit.failures
+        override = {**fit.resource_hint, "machine_name": fit.machine}
+        hours, count, source = _additive_machine(PT.FDM, drivers, rates, override)
+        assert count == 1
+        assert hours == pytest.approx(length * 12 * 12 / 1000 / rates.p(PT.FDM, "deposition")
+                                     + 12 / rates.p(PT.FDM, "vert"))
+        assert "Diagonal fixture" in source
 
 
 def test_priced_build_fit_controls_all_quantities_overrides_and_owned_machines():

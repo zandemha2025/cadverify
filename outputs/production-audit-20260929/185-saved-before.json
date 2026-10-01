@@ -1,0 +1,73 @@
+{
+  "baseline_records": 307,
+  "control_records": {
+    "analyses": [
+      {
+        "id": 1881,
+        "file": "185-diagonal-400-aligned.step",
+        "quantities": null
+      },
+      {
+        "id": 1882,
+        "file": "185-diagonal-400-rotated.step",
+        "quantities": null
+      },
+      {
+        "id": 1883,
+        "file": "185-diagonal-250-aligned.step",
+        "quantities": null
+      },
+      {
+        "id": 1884,
+        "file": "185-diagonal-250-rotated.step",
+        "quantities": null
+      }
+    ],
+    "cost_decisions": [
+      {
+        "id": 6472,
+        "file": "185-diagonal-400-aligned.step",
+        "quantities": [
+          1,
+          100
+        ]
+      },
+      {
+        "id": 6473,
+        "file": "185-diagonal-400-rotated.step",
+        "quantities": [
+          1,
+          100
+        ]
+      },
+      {
+        "id": 6474,
+        "file": "185-diagonal-250-aligned.step",
+        "quantities": [
+          1,
+          100
+        ]
+      },
+      {
+        "id": 6475,
+        "file": "185-diagonal-250-rotated.step",
+        "quantities": [
+          1,
+          100
+        ]
+      },
+      {
+        "id": 6476,
+        "file": "185-diagonal-250-aligned.step",
+        "quantities": [
+          1,
+          100,
+          1000,
+          2000,
+          5000,
+          10000
+        ]
+      }
+    ]
+  }
+}

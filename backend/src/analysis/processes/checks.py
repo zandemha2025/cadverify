@@ -21,7 +21,7 @@ import numpy as np
 from src.analysis.citations import parse_citation
 from src.analysis.serialization import format_measurement
 from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
-from src.analysis.context import GeometryContext, wall_thickness_tolerance
+from src.analysis.context import GeometryContext, fitting_box_dimensions, wall_thickness_tolerance
 from src.analysis.features.base import (
     Feature,
     FeatureKind,
@@ -224,7 +224,8 @@ def check_build_volume(
     uncertain = bool(precision and not exceeds)
     if process != ProcessType.CNC_TURNING and not ctx.metadata.get("decimation", {}).get("succeeded"):
         enclosing, basis = ctx.enclosing_box
-        if all(d <= cap + tolerance for d, cap in zip(enclosing, sorted(max_dims_mm))):
+        fitting = fitting_box_dimensions(enclosing, tuple(cap + tolerance for cap in max_dims_mm))
+        if fitting is not None:
             if not exceeds:
                 return []
             return [Issue(
@@ -232,7 +233,7 @@ def check_build_volume(
                 severity=Severity.INFO,
                 message=(
                     f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process.value}, "
-                    f"but a {tuple(round(d, 6) for d in enclosing)}mm enclosing box fits after reorientation "
+                    f"but a {tuple(round(d, 6) for d in fitting)}mm enclosing box fits after reorientation "
                     f"({basis})."
                 ),
                 process=process,
@@ -244,8 +245,9 @@ def check_build_volume(
             )]
         # The enclosure already includes +precision. Subtract it twice for
         # the lower bound; overlap cannot establish either fit or non-fit.
-        uncertain = uncertain or bool(precision and all(
-            d - 2 * precision <= cap + tolerance for d, cap in zip(enclosing, sorted(max_dims_mm))))
+        uncertain = uncertain or bool(precision and fitting_box_dimensions(
+            tuple(d - 2 * precision for d in enclosing),
+            tuple(cap + tolerance for cap in max_dims_mm)) is not None)
     if uncertain:
         return [Issue(
             code="BUILD_ENVELOPE_PRECISION", severity=Severity.WARNING, process=process,

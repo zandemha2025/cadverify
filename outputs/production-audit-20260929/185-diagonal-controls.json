@@ -1,0 +1,50 @@
+[
+  {
+    "file": "185-diagonal-250-aligned.step",
+    "sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+    "solid_dimensions_mm": [
+      250,
+      12,
+      12
+    ],
+    "volume_mm3": 36000,
+    "rotation_z_deg": 0,
+    "xy_extent_at_45_deg_mm": 185.26197667087544
+  },
+  {
+    "file": "185-diagonal-250-rotated.step",
+    "sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+    "solid_dimensions_mm": [
+      250,
+      12,
+      12
+    ],
+    "volume_mm3": 36000,
+    "rotation_z_deg": 45,
+    "xy_extent_at_45_deg_mm": 185.26197667087544
+  },
+  {
+    "file": "185-diagonal-400-aligned.step",
+    "sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+    "solid_dimensions_mm": [
+      400,
+      12,
+      12
+    ],
+    "volume_mm3": 57600,
+    "rotation_z_deg": 0,
+    "xy_extent_at_45_deg_mm": 291.32799384885755
+  },
+  {
+    "file": "185-diagonal-400-rotated.step",
+    "sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+    "solid_dimensions_mm": [
+      400,
+      12,
+      12
+    ],
+    "volume_mm3": 57600,
+    "rotation_z_deg": 45,
+    "xy_extent_at_45_deg_mm": 291.32799384885755
+  }
+]

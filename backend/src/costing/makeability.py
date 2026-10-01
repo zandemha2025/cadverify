@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
-from src.analysis.context import sheet_envelope_dimensions
+from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions
 from src.costing.rates import (
     MATERIAL_FAMILY,
     normalize_tolerance_class,
@@ -378,7 +378,7 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
                 f"(need >={need_len:.0f}mm)"))
         return fails
 
-    # rectangular / sheet — orientation permutation (sorted vs sorted)
+    # Rectangular box placements / sheet outline placements.
     if env is None:
         return [FitFailure("envelope", "envelope", tuple(part.bbox_mm), None,
                            "work envelope not declared")]
@@ -391,6 +391,16 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     else:
         need = list(part.bbox_mm)
         labels = ("shortest", "mid", "longest")
+        limits = tuple(d + part.geometry_tolerance_mm for d in env)
+        if fitting_box_dimensions(tuple(d + part.geometry_precision_mm for d in need), limits) is not None:
+            return []
+        if part.geometry_precision_mm and fitting_box_dimensions(
+            tuple(d - part.geometry_precision_mm for d in need), limits
+        ) is not None:
+            return [FitFailure(
+                "envelope", "envelope", tuple(need), None,
+                f"STL coordinate uncertainty ±{part.geometry_precision_mm:.3g}mm overlaps the declared "
+                f"{tuple(env)}mm envelope; confirm fit using source CAD")]
     if part.geometry_precision_mm and kind == "sheet" and part.sheet_outline_xy:
         smaller = [d - part.geometry_precision_mm for d in env]
         if all(d > 0 for d in smaller):

@@ -21,6 +21,7 @@ import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
+from itertools import permutations
 from typing import TYPE_CHECKING, Any
 
 import logging
@@ -128,6 +129,38 @@ def enclosing_box_dimensions(mesh: trimesh.Trimesh) -> tuple[tuple[float, ...], 
     except Exception:
         pass  # The uploaded-axis box remains an enclosing, labeled fallback.
     return tuple(float(d) + 2 * error for d in blank), basis
+
+
+def fitting_box_dimensions(box, envelope) -> tuple[float, ...] | None:
+    """A proved enclosing-box placement, expressed in the machine's XYZ axes.
+
+    Preserve existing axis-permutation setups; otherwise reuse the continuous
+    2D bed-fit check on each box face. None means no setup was established.
+    ponytail: one box axis stays aligned; a full 3D orientation search is not certified.
+    """
+    if len(box) != 3 or len(envelope) != 3 or any(
+        not np.isfinite(v) or v <= 0 for v in (*box, *envelope)
+    ):
+        return None
+    fits = lambda d: all(v <= limit + 1e-9 for v, limit in zip(d, envelope))
+    height_order = lambda d: (d[2], d[0], d[1])
+    direct = [d for d in permutations(box) if fits(d)]
+    if direct:
+        return min(direct, key=height_order)
+    candidates = []
+    for dims in permutations(box):
+        for fixed in range(3):
+            if dims[fixed] > envelope[fixed] + 1e-9:
+                continue
+            i, j = [axis for axis in range(3) if axis != fixed]
+            a, b = dims[i], dims[j]
+            plane = sheet_envelope_dimensions(((0, 0), (a, 0), (a, b), (0, b)),
+                                              (envelope[i], envelope[j]))
+            candidate = list(dims)
+            candidate[i], candidate[j] = plane if envelope[i] <= envelope[j] else plane[::-1]
+            if fits(candidate):
+                candidates.append(tuple(candidate))
+    return min(candidates, key=height_order, default=None)
 
 
 @dataclass
