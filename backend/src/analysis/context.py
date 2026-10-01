@@ -171,6 +171,52 @@ class GeometryContext:
                 return measured
         return None
 
+    @cached_property
+    def undercut_free_geometry(self) -> bool:
+        """Positive geometry evidence with reorientation; not a toolpath/fixture check."""
+        mesh = self.mesh
+        if (self.metadata.get("decimation", {}).get("succeeded")
+                or mesh.metadata.get("coordinate_error", 0.0) != 0
+                or not mesh.is_volume or mesh.body_count != 1
+                or np.any(self.face_areas <= 0)
+                or not np.all(np.linalg.norm(self.normals, axis=1) > .99)):
+            return False
+        tol = wall_thickness_tolerance(mesh, self.scale_eps)
+        # Local projections only nominate a convex candidate: skinny triangles
+        # can make concave-edge projections arbitrarily small. Certify each
+        # entire triangle against a global supporting plane of its convex hull.
+        projections = mesh.face_adjacency_projections
+        if len(projections) and np.all(np.isfinite(projections) & (projections <= tol)):
+            try:
+                hull = mesh.convex_hull
+                batch = max(1, min(_wall_thickness_ray_batch(), _wall_thickness_ray_budget() // len(hull.faces)))
+                for start in range(0, len(mesh.faces), batch):
+                    surface, _, face = hull.nearest.on_surface(self.centroids[start:start + batch])
+                    offsets = mesh.triangles[start:start + batch] - surface[:, None, :]
+                    distances = np.einsum("nvi,ni->nv", offsets, hull.face_normals[face])
+                    if not np.all(np.abs(distances) <= tol):
+                        break
+                else:
+                    return True
+            except Exception:
+                logger.warning("Convex setup verification failed", exc_info=True)
+        if self.straight_profile_geometry is not None:
+            return True
+        vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
+        # ponytail: eight dominant planar faces bound this setup search; leave
+        # other orientations unverified until explicit CAM setup axes exist.
+        facets = sorted(self.facet_groups, key=lambda f: -float(self.face_areas[f].sum()))[:8]
+        for facet in facets:
+            normal = self.normals[int(facet[np.argmax(self.face_areas[facet])])]
+            for axis in (normal, -normal):
+                downward = self.normals @ axis < -1e-7
+                heights = vertices @ axis
+                # Only the actual planar base is exempt. A percentage band
+                # near the bottom can contain a real pocket or closed cavity.
+                if np.all(heights[mesh.faces[downward]] <= heights.min() + tol):
+                    return True
+        return False
+
     @property
     def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
         measured = self.flat_sheet_geometry

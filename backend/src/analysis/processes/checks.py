@@ -585,32 +585,32 @@ def check_wall_uniformity(
 # ──────────────────────────────────────────────────────────────
 # Undercuts (CNC / molding)
 # ──────────────────────────────────────────────────────────────
-def check_undercuts_from_z(
+def check_setup_access(
     ctx: GeometryContext,
     process: ProcessType,
     *,
-    severity: Severity = Severity.ERROR,
     cite: str = "",
 ) -> list[Issue]:
-    """Faces unreachable from +Z direction (3-axis CNC, mold pull)."""
-    bottom_z = float(ctx.info.bounding_box.min_z)
-    height = float(ctx.info.bounding_box.max_z - bottom_z)
-    margin = height * 0.05
-
-    downward = ctx.normals[:, 2] < -0.1
-    not_bottom = ctx.centroids[:, 2] > (bottom_z + margin)
-    undercut_mask = downward & not_bottom
-    uc_faces = np.where(undercut_mask)[0]
-    if len(uc_faces) == 0:
+    """Find geometry without re-entrant surfaces; otherwise request setup review."""
+    if ctx.undercut_free_geometry:
         return []
-    pct = len(uc_faces) / max(len(ctx.centroids), 1) * 100
+    faces = np.empty(0, dtype=int)
+    if len(ctx.mesh.faces) and not ctx.metadata.get("decimation", {}).get("succeeded"):
+        tol = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+        z = ctx.mesh.vertices[:, 2]
+        base = np.all(z[ctx.mesh.faces] <= z.min() + tol, axis=1)
+        faces = np.where((ctx.normals[:, 2] < -1e-7) & ~base)[0]
     return [Issue(
-        code="UNDERCUT",
-        severity=severity,
-        message=f"{len(uc_faces)} faces ({pct:.1f}%) are undercuts for {process.value}.",
+        code="SETUP_ACCESS_UNVERIFIED",
+        severity=Severity.WARNING,
+        message=(
+            "A setup without re-entrant surfaces could not be verified from this mesh. "
+            + (f"{len(faces)} mesh faces point away from file +Z above its base. " if len(faces) else "")
+            + "Part orientation and the actual tooling may change access."
+        ),
         process=process,
-        affected_faces=uc_faces.tolist(),
-        fix_suggestion=f"Remove undercuts or plan multi-setup machining. {cite}",
+        affected_faces=faces.tolist(),
+        fix_suggestion=f"Review setup direction, fixturing/tooling and clearance. {cite}".strip(),
         citation=parse_citation(cite),
     )]
 

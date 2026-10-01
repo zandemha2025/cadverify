@@ -1,0 +1,615 @@
+[
+  {
+    "filename": "165-stock-bar-aligned.step",
+    "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+    "analyses": {
+      "id": 1652,
+      "version": "0.3.36",
+      "result_sha256": "ea27b7a4987a06c560422c616761499cbe33a50bf5a6a79a8272e651f9a15d01",
+      "processes": [
+        {
+          "process": "cnc_3axis",
+          "verdict": "issues",
+          "score": 0.9,
+          "issues": [
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5266 of 57916 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_3axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.9,
+          "issues": [
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5266 of 57916 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_5axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "forging",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "INSUFFICIENT_DRAFT",
+              "scope": "localized",
+              "message": "31160 sidewall faces (100.0% of sidewall area) below 5.0\u00b0 draft for forging.",
+              "process": "forging",
+              "citation": {
+                "text": "5\u00b0 external, 7-10\u00b0 internal.",
+                "standard": "FIA"
+              },
+              "severity": "error",
+              "fix_suggestion": "Add >= 5.0\u00b0 draft to all walls in pull direction. FIA: 5\u00b0 external, 7-10\u00b0 internal.",
+              "required_value": 5.0,
+              "measurement_unit": "deg",
+              "affected_face_count": 31160,
+              "affected_faces_sample": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5266 of 57916 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "HIGH_RIB_RATIO",
+              "scope": "whole_part",
+              "message": "Aspect ratio 6.66667:1 exceeds 6:1 max rib height:width for forging.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Reduce rib height or increase web thickness. FIA \u00a74.2.",
+              "measured_value": 6.666666666666667,
+              "required_value": 6.0,
+              "measurement_unit": "ratio"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5683,
+      "version": "0.3.36",
+      "result_sha256": "5600217528cff343e5744077c0821a3c39948c18092dd328cd4a70d70b0eb27a"
+    }
+  },
+  {
+    "filename": "171-profile-bar-rotated.step",
+    "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+    "analyses": {
+      "id": 1651,
+      "version": "0.3.36",
+      "result_sha256": "7e5648aa8f89cb8b20d81215853c822f04d0a7d240465cb8ed1442143a304f25",
+      "processes": [
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "UNDERCUT",
+              "scope": "localized",
+              "message": "22456 faces (49.2%) are undercuts for cnc_5axis.",
+              "process": "cnc_5axis",
+              "citation": {
+                "text": "5-axis may reach \u2014 verify tool clearance."
+              },
+              "severity": "warning",
+              "fix_suggestion": "Remove undercuts or plan multi-setup machining. 5-axis may reach \u2014 verify tool clearance.",
+              "affected_face_count": 22456,
+              "affected_faces_sample": [
+                1584,
+                1585,
+                1586,
+                1587,
+                1588,
+                1589,
+                1590,
+                1591,
+                1592,
+                1593
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5074 of 45666 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_5axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "cnc_3axis",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "UNDERCUT",
+              "scope": "localized",
+              "message": "22456 faces (49.2%) are undercuts for cnc_3axis.",
+              "process": "cnc_3axis",
+              "citation": {
+                "text": "3-axis: tool access from +Z only"
+              },
+              "severity": "error",
+              "fix_suggestion": "Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only.\n\nAlternative: Switch to 5-axis CNC, or redesign to eliminate undercuts.",
+              "affected_face_count": 22456,
+              "affected_faces_sample": [
+                1584,
+                1585,
+                1586,
+                1587,
+                1588,
+                1589,
+                1590,
+                1591,
+                1592,
+                1593
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5074 of 45666 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_3axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "forging",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "UNDERCUT",
+              "scope": "localized",
+              "message": "22456 faces (49.2%) are undercuts for forging.",
+              "process": "forging",
+              "citation": {
+                "text": "Forging: no undercuts \u2014 die cannot open"
+              },
+              "severity": "error",
+              "fix_suggestion": "Remove undercuts or plan multi-setup machining. Forging: no undercuts \u2014 die cannot open.",
+              "affected_face_count": 22456,
+              "affected_faces_sample": [
+                1584,
+                1585,
+                1586,
+                1587,
+                1588,
+                1589,
+                1590,
+                1591,
+                1592,
+                1593
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5074 of 45666 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5682,
+      "version": "0.3.36",
+      "result_sha256": "9a2a218ce2ffcd9e59791f5d1157c1016b597c292f623462c691f1ceefe6fe9f"
+    }
+  },
+  {
+    "filename": "166-transverse-hole-bar.step",
+    "source_sha256": "3cdcdf18cbdc3354c41fed71a88ad1641ec4bf121ac2299396097e12cd4d0817",
+    "analyses": {
+      "id": 1653,
+      "version": "0.3.36",
+      "result_sha256": "46b57b9529570eb41dcb23732244a0f331f86f2ed45ea83eaccbc410ae006dbe",
+      "processes": [
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "UNDERCUT",
+              "scope": "localized",
+              "message": "974 faces (1.6%) are undercuts for cnc_5axis.",
+              "process": "cnc_5axis",
+              "citation": {
+                "text": "5-axis may reach \u2014 verify tool clearance."
+              },
+              "severity": "warning",
+              "fix_suggestion": "Remove undercuts or plan multi-setup machining. 5-axis may reach \u2014 verify tool clearance.",
+              "affected_face_count": 974,
+              "affected_faces_sample": [
+                58073,
+                58074,
+                58075,
+                58077,
+                58078,
+                58081,
+                58082,
+                58083,
+                58084,
+                58085
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5020 of 60238 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_5axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "cnc_3axis",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "UNDERCUT",
+              "scope": "localized",
+              "message": "974 faces (1.6%) are undercuts for cnc_3axis.",
+              "process": "cnc_3axis",
+              "citation": {
+                "text": "3-axis: tool access from +Z only"
+              },
+              "severity": "error",
+              "fix_suggestion": "Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only.\n\nAlternative: Switch to 5-axis CNC, or redesign to eliminate undercuts.",
+              "affected_face_count": 974,
+              "affected_faces_sample": [
+                58073,
+                58074,
+                58075,
+                58077,
+                58078,
+                58081,
+                58082,
+                58083,
+                58084,
+                58085
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5020 of 60238 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_3axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "forging",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "INSUFFICIENT_DRAFT",
+              "scope": "localized",
+              "message": "31122 sidewall faces (99.6% of sidewall area) below 5.0\u00b0 draft for forging.",
+              "process": "forging",
+              "citation": {
+                "text": "5\u00b0 external, 7-10\u00b0 internal.",
+                "standard": "FIA"
+              },
+              "severity": "error",
+              "fix_suggestion": "Add >= 5.0\u00b0 draft to all walls in pull direction. FIA: 5\u00b0 external, 7-10\u00b0 internal.",
+              "required_value": 5.0,
+              "measurement_unit": "deg",
+              "affected_face_count": 31122,
+              "affected_faces_sample": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "UNDERCUT",
+              "scope": "localized",
+              "message": "974 faces (1.6%) are undercuts for forging.",
+              "process": "forging",
+              "citation": {
+                "text": "Forging: no undercuts \u2014 die cannot open"
+              },
+              "severity": "error",
+              "fix_suggestion": "Remove undercuts or plan multi-setup machining. Forging: no undercuts \u2014 die cannot open.",
+              "affected_face_count": 974,
+              "affected_faces_sample": [
+                58073,
+                58074,
+                58075,
+                58077,
+                58078,
+                58081,
+                58082,
+                58083,
+                58084,
+                58085
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5020 of 60238 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "THIN_WALL",
+              "scope": "localized",
+              "message": "2 faces (0.0%) below 3.0mm min wall for forging. Thinnest: 2.05095mm.",
+              "process": "forging",
+              "citation": {
+                "text": "3mm min web thickness.",
+                "standard": "FIA"
+              },
+              "severity": "warning",
+              "region_center": [
+                -0.51,
+                -5.92,
+                0.92
+              ],
+              "fix_suggestion": "Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness.",
+              "measured_value": 2.050945337416391,
+              "required_value": 3.0,
+              "measurement_unit": "mm",
+              "affected_face_count": 2,
+              "affected_faces_sample": [
+                60216,
+                60228
+              ],
+              "affected_faces_truncated": false
+            },
+            {
+              "code": "HIGH_RIB_RATIO",
+              "scope": "whole_part",
+              "message": "Aspect ratio 6.66667:1 exceeds 6:1 max rib height:width for forging.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Reduce rib height or increase web thickness. FIA \u00a74.2.",
+              "measured_value": 6.666666666666667,
+              "required_value": 6.0,
+              "measurement_unit": "ratio"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5684,
+      "version": "0.3.36",
+      "result_sha256": "6a64df2db92f65300b874eef89165ae9b404e4defeb76e65cf0f1f950202cce5"
+    }
+  },
+  {
+    "filename": "156-plate-with-boss.step",
+    "source_sha256": "bcbaa8cdfb6322c8df969802a1c76d49667e0f795d31db207da6dee9b8f7916b",
+    "analyses": {
+      "id": 1654,
+      "version": "0.3.36",
+      "result_sha256": "7d4711183459c17cd0c02d561a2ac11e44eb13a43f0c1413afd456ccb10cf12f",
+      "processes": [
+        {
+          "process": "cnc_3axis",
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "SHARP_INTERNAL_CORNERS",
+              "scope": "whole_part",
+              "message": "24 sharp concave edges \u2014 tool radius 0.5mm cannot reach. Applies to cnc_3axis.",
+              "process": "cnc_3axis",
+              "citation": {
+                "text": "smallest end mill 1mm \u00d8 \u2192 0.5mm radius.",
+                "standard": "Sandvik"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Add fillets >= 0.5mm to internal corners. Sandvik: smallest end mill 1mm \u00d8 \u2192 0.5mm radius.",
+              "required_value": 0.5,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_3axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "cnc_5axis",
+          "verdict": "issues",
+          "score": 0.8,
+          "issues": [
+            {
+              "code": "SHARP_INTERNAL_CORNERS",
+              "scope": "whole_part",
+              "message": "24 sharp concave edges \u2014 tool radius 0.5mm cannot reach. Applies to cnc_5axis.",
+              "process": "cnc_5axis",
+              "citation": {
+                "text": "1mm end mill \u2192 0.5mm radius min.",
+                "standard": "Sandvik"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Add fillets >= 0.5mm to internal corners. Sandvik: 1mm end mill \u2192 0.5mm radius min.",
+              "required_value": 0.5,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "cnc_5axis",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            }
+          ]
+        },
+        {
+          "process": "forging",
+          "verdict": "fail",
+          "score": 0.0,
+          "issues": [
+            {
+              "code": "INSUFFICIENT_DRAFT",
+              "scope": "localized",
+              "message": "2584 sidewall faces (100.0% of sidewall area) below 5.0\u00b0 draft for forging.",
+              "process": "forging",
+              "citation": {
+                "text": "5\u00b0 external, 7-10\u00b0 internal.",
+                "standard": "FIA"
+              },
+              "severity": "error",
+              "fix_suggestion": "Add >= 5.0\u00b0 draft to all walls in pull direction. FIA: 5\u00b0 external, 7-10\u00b0 internal.",
+              "required_value": 5.0,
+              "measurement_unit": "deg",
+              "affected_face_count": 2584,
+              "affected_faces_sample": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "MISSING_FILLETS",
+              "scope": "whole_part",
+              "message": "24 sharp concave mesh edges need >= 3.0mm fillets for forging flow and stress distribution.",
+              "process": "forging",
+              "citation": {
+                "text": "3mm min corner radius for die life.",
+                "standard": "FIA"
+              },
+              "severity": "warning",
+              "fix_suggestion": "Add 3.0mm+ fillets. FIA: 3mm min corner radius for die life.",
+              "required_value": 3.0,
+              "measurement_unit": "mm"
+            },
+            {
+              "code": "WALL_THICKNESS_PRECISION",
+              "scope": "whole_part",
+              "message": "Wall checks have stable measurements for 5045 of 90808 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+            },
+            {
+              "code": "THIN_WALL",
+              "scope": "localized",
+              "message": "4891 faces (5.4%) below 3.0mm min wall for forging. Thinnest: 0.81mm.",
+              "process": "forging",
+              "citation": {
+                "text": "3mm min web thickness.",
+                "standard": "FIA"
+              },
+              "severity": "warning",
+              "region_center": [
+                2.5,
+                5.61,
+                0.41
+              ],
+              "fix_suggestion": "Increase wall thickness to >= 3.0mm. FIA: 3mm min web thickness.",
+              "measured_value": 0.8099999999999999,
+              "required_value": 3.0,
+              "measurement_unit": "mm",
+              "affected_face_count": 4891,
+              "affected_faces_sample": [
+                1116,
+                1134,
+                1152,
+                1170,
+                1188,
+                1206,
+                1224,
+                1242,
+                1260,
+                1278
+              ],
+              "affected_faces_truncated": true
+            },
+            {
+              "code": "HIGH_RIB_RATIO",
+              "scope": "whole_part",
+              "message": "Aspect ratio 27.7521:1 exceeds 6:1 max rib height:width for forging.",
+              "process": "forging",
+              "severity": "warning",
+              "fix_suggestion": "Reduce rib height or increase web thickness. FIA \u00a74.2.",
+              "measured_value": 27.75208140610546,
+              "required_value": 6.0,
+              "measurement_unit": "ratio"
+            }
+          ]
+        }
+      ]
+    },
+    "cost_decisions": {
+      "id": 5685,
+      "version": "0.3.36",
+      "result_sha256": "2531876ff46675a7ef6c77e231e943f717156334a2e5c1d9c7a3b412416d6e80"
+    }
+  }
+]

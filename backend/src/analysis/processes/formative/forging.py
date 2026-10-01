@@ -7,7 +7,7 @@ from src.analysis.processes.base import register
 from src.analysis.processes.checks import (
     check_draft_angles,
     check_fillet_requirements,
-    check_undercuts_from_z,
+    check_setup_access,
     check_wall_thickness,
 )
 
@@ -27,8 +27,8 @@ class ForgingAnalyzer:
                  cite="FIA: 5° external, 7-10° internal."))
         i.extend(check_fillet_requirements(ctx, 3.0, self.process,
                  cite="FIA: 3mm min corner radius for die life."))
-        i.extend(check_undercuts_from_z(ctx, self.process,
-                 cite="Forging: no undercuts — die cannot open."))
+        i.extend(check_setup_access(ctx, self.process,
+                 cite="For forging, confirm die pull direction, parting line and core removal."))
         i.extend(check_wall_thickness(ctx, 3.0, self.process,
                  cite="FIA: 3mm min web thickness."))
         i.extend(self._check_rib_aspect(ctx))

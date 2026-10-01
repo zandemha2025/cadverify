@@ -1,0 +1,115 @@
+{
+  "scope": "Local CNC/forging setup-access geometry; no complete toolpath, fixture or production certification",
+  "engine_version": "0.3.37",
+  "root_cause": "File +Z normals and a bottom-five-percent exemption invented undercuts after rigid rotation and could hide a real bottom cavity.",
+  "fix": "Cache positive geometry evidence from globally verified convex surfaces, complete straight-extrusion verification or a bounded planar setup search. Unverified geometry receives process-specific setup review; only the actual planar base is excluded from nominal +Z annotations.",
+  "regressions": {
+    "initial_red": [
+      "rotated convex part falsely rejected",
+      "bottom-five-percent cavity ignored"
+    ],
+    "peer_red": "Skinny coplanar triangle strips made local adjacency projections hide a re-entrant chamber.",
+    "peer_fix": "Local adjacency only nominates a convex candidate. Verify all three vertices of every original triangle against a global convex-hull supporting plane."
+  },
+  "checks": {
+    "full_backend_passed": 2802,
+    "protected_skips": [
+      "real corpus manifest absent",
+      "OCP XDE unavailable (two checks)"
+    ],
+    "final_focused_passed": 79,
+    "final_routing_passed": 19,
+    "peer_rotated_translated_controls": 27,
+    "peer_reentrant_and_exception_probes_passed": true,
+    "peer_no_remaining_actionable_findings": true,
+    "new_type_diagnostics": 0,
+    "current_type_errors": 209,
+    "current_type_warnings": 3,
+    "bandit_medium_high": 0,
+    "existing_bandit_low": 3,
+    "historical_records_unchanged": {
+      "analyses": 120,
+      "cost_decisions": 129
+    },
+    "other_process_scores_unchanged_per_control": 18,
+    "unit_prices_unchanged_per_control": 20
+  },
+  "native": {
+    "171-profile-bar-rotated.step": "CNC3 Required0 becomes Advisory90, with only existing wall precision finding. CNC3 geometric route and quantity100 cost pick agree. Preview ready.",
+    "165-stock-bar-aligned.step": "CNC3 Advisory90 matches rotated control; no invented setup warning. Independent forging draft finding remains. Preview ready.",
+    "166-transverse-hole-bar.step": "CNC3 Advisory80 retains SETUP_ACCESS_UNVERIFIED and wall precision. Own setup advice and nominal +Z face highlight shown; no universal impossibility assertion. Preview ready.",
+    "156-plate-with-boss.step": "CNC3 Advisory80 retains sharp-corner and wall findings; positive setup geometry removes no unrelated issue. WireEDM profile and forging draft warnings remain independent. Preview ready."
+  },
+  "source_reference": {
+    "url": "https://www.protolabs.com/resources/design-tips/6-ways-to-optimize-part-design-for-cnc-machining/",
+    "supports": "3-axis machining can use multiple workpiece setups; file +Z alone does not prove a part impossible."
+  },
+  "ci": {
+    "run_id": 36829004289,
+    "head": "93385690216f37553765c2a23a0213fbb1952ae3",
+    "status": "completed",
+    "conclusion": "failure",
+    "jobs_passed": 8,
+    "browser": "success",
+    "only_failed_step": "Scan backend image (high/critical vulnerabilities)",
+    "backend_high": 5,
+    "backend_critical": 0,
+    "covers_172": false,
+    "covers_170_training_wait_fix": false
+  },
+  "limits": [
+    "Mesh geometry does not certify tool/holder clearance, fixturing, threading or the complete manufacturing process.",
+    "Curved-source geometry without analytic associations or a tessellation-error bound remains unverified.",
+    "Eight dominant planar facets bound setup candidates; other orientations can remain unverified.",
+    "Convex nearest-surface batches reuse the existing candidate budget; it is a soft cap if one hull alone exceeds a configured budget. Default analysis-face cap is below the default budget.",
+    "Separate forging/molding draft and pull-direction heuristics remain orientation-dependent and require follow-up. Native aligned/tilted forging verdicts still differ because of that independent draft check.",
+    "Real services, customer/physical accuracy, security, approved production rollout and the full feature ledger remain incomplete."
+  ],
+  "release": "Not deployed; PR107 draft. Production baseline recorded09555c1. Prior approval covered PR106 only.",
+  "files": [
+    {
+      "path": "172-setup-before.png",
+      "sha256": "4358475ffb20a90408d546c70e2efaac17f483d4f7018d271968f7531854839a"
+    },
+    {
+      "path": "172-setup-before.txt",
+      "sha256": "3b1dbf11d29deb33a5b4a1c0c53d7e9f3428a2cb519ed343557f5889b891ac38"
+    },
+    {
+      "path": "172-saved-before.json",
+      "sha256": "23ead0e9e69a4cf2ca632aa0082465e7c637f1b037b8c15a253d23797bd6f8aa"
+    },
+    {
+      "path": "172-saved-readback.json",
+      "sha256": "011ff44b21c01b289fdaa8d94bbb1abbef029205a2e32ecfd082d35073bc6264"
+    },
+    {
+      "path": "172-rotated-after.txt",
+      "sha256": "b782a8f1397e17c212e138baae233b57ee2844c0d198e172823f104fa1efc3db"
+    },
+    {
+      "path": "172-setup-after.png",
+      "sha256": "c746bfac76a5d32970f8aed52b1ac4ce19c6e29f875623f85e0c253f529a6e79"
+    },
+    {
+      "path": "172-aligned-after.txt",
+      "sha256": "f297acb1325d056a812d1d25a6ccb3dceeaac7d9f704eaee8570d16b77b1494c"
+    },
+    {
+      "path": "172-hole-after.txt",
+      "sha256": "216fa7a021a6f0e048976c767f4a249f4c8983518371b46ebdf72d3f7dfade35"
+    },
+    {
+      "path": "172-hole-after.png",
+      "sha256": "7898c8a23817d88cef85e0326c9107862a595b481b02cf60e793bc49d97d9c6e"
+    },
+    {
+      "path": "172-boss-after.txt",
+      "sha256": "34e654c3ada254c5d014e79434e7edee606c06161c34c17cec0399eea3dbf11e"
+    },
+    {
+      "path": "ci-36829004289-summary.json",
+      "sha256": "0e21f2ae6794178b6ac38897ab49856f67734e601ed8d68573009197f2b72041"
+    }
+  ]
+}

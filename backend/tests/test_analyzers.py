@@ -12,7 +12,7 @@ from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all
 from src.analysis.models import ProcessType
 from src.analysis.processes import get_analyzer, registered_processes
-from src.analysis.processes.checks import check_prismatic
+from src.analysis.processes.checks import check_prismatic, check_setup_access
 
 
 def _build_ctx(mesh):
@@ -138,3 +138,75 @@ def test_profile_check_discloses_rounding_decimation_and_nonextrusions():
         issues = check_prismatic(_build_ctx(source), ProcessType.WIRE_EDM)
         assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
         assert issues[0].severity.value == "warning"
+
+
+def test_reorienting_convex_parts_does_not_invent_machining_undercuts():
+    for source in [trimesh.creation.box(extents=[80, 12, 12]),
+                   trimesh.creation.icosphere(subdivisions=1, radius=5)]:
+        for angle in [0., .5, 1.3]:
+            mesh = source.copy()
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, .3]))
+            mesh.apply_translation([200, -300, 100])
+            before = mesh.vertices.copy()
+            ctx = _build_ctx(mesh)
+            for process in [ProcessType.CNC_3AXIS, ProcessType.CNC_5AXIS, ProcessType.FORGING]:
+                assert check_setup_access(ctx, process) == []
+            np.testing.assert_array_equal(mesh.vertices, before)
+
+
+def test_access_check_does_not_ignore_a_cavity_in_the_bottom_five_percent():
+    outer = trimesh.creation.box(extents=[20, 20, 20])
+    cavity = trimesh.creation.box(extents=[1, 1, .2])
+    cavity.apply_translation([0, 0, -9.8]); cavity.invert()
+    mesh = outer + cavity
+    assert mesh.is_volume
+    issues = check_setup_access(_build_ctx(mesh), ProcessType.CNC_3AXIS)
+    assert [i.code for i in issues] == ["SETUP_ACCESS_UNVERIFIED"]
+    assert issues[0].severity.value == "warning"
+    assert issues[0].affected_faces
+    assert min(issues[0].affected_faces) >= len(outer.faces)
+
+
+def test_setup_search_accepts_rotated_boss_and_retains_uncertain_geometry():
+    from src.parsers.step_mesher import step_to_trimesh_from_bytes
+    from src.parsers.stl_parser import parse_stl_from_bytes
+
+    source = Path(__file__).resolve().parents[2] / "outputs/production-audit-20260929/shape-controls/156-plate-with-boss.step"
+    boss = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
+    for angle in [0., .5]:
+        mesh = boss.copy()
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 1, .3]))
+        assert check_setup_access(_build_ctx(mesh), ProcessType.CNC_3AXIS) == []
+
+    mesh = trimesh.creation.box(extents=[80, 12, 12])
+    rounded = parse_stl_from_bytes(mesh.export(file_type="stl"))
+    assert check_setup_access(_build_ctx(rounded), ProcessType.CNC_3AXIS)[0].code == "SETUP_ACCESS_UNVERIFIED"
+    ctx = _build_ctx(mesh); ctx.metadata["decimation"] = {"succeeded": True}
+    issue = check_setup_access(ctx, ProcessType.CNC_3AXIS)[0]
+    assert issue.code == "SETUP_ACCESS_UNVERIFIED" and not issue.affected_faces
+    torus = trimesh.creation.torus(major_radius=5, minor_radius=1, major_sections=24, minor_sections=12)
+    assert check_setup_access(_build_ctx(torus), ProcessType.CNC_3AXIS)[0].code == "SETUP_ACCESS_UNVERIFIED"
+
+
+def test_skinny_triangulation_cannot_hide_a_reentrant_chamber():
+    from src.analysis.context import wall_thickness_tolerance
+
+    outer = trimesh.creation.box(extents=[20, 20, 20])
+    chamber = trimesh.creation.box(extents=[10, 10, 10])
+    neck = trimesh.creation.box(extents=[4, 4, 12]); neck.apply_translation([0, 0, 6])
+    mesh = trimesh.boolean.difference([outer, chamber, neck])
+    # Inset each triangle without changing its surface. Thin coplanar edge
+    # strips shrink local adjacency projections at every concave edge.
+    inner = mesh.triangles * (1 - 1e-10) + mesh.triangles_center[:, None, :] * 1e-10
+    faces = []
+    for index, (a, b, c) in enumerate(mesh.faces):
+        x, y, z = len(mesh.vertices) + 3 * index + np.arange(3)
+        faces.extend([[a, b, y], [a, y, x], [b, c, z], [b, z, y],
+                      [c, a, x], [c, x, z], [x, y, z]])
+    refined = trimesh.Trimesh(np.vstack([mesh.vertices, inner.reshape(-1, 3)]), faces, process=False)
+    assert refined.is_volume and refined.body_count == 1
+    np.testing.assert_allclose(refined.volume, mesh.volume, rtol=1e-12)
+    ctx = _build_ctx(refined)
+    assert refined.face_adjacency_projections.max() <= wall_thickness_tolerance(refined, ctx.scale_eps)
+    for process in [ProcessType.CNC_3AXIS, ProcessType.CNC_5AXIS, ProcessType.FORGING]:
+        assert check_setup_access(ctx, process)[0].code == "SETUP_ACCESS_UNVERIFIED"

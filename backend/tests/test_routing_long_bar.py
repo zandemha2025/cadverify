@@ -125,7 +125,7 @@ def test_rotated_bar_report_keeps_the_same_costed_routes():
         (e['process'], e['quantity']) for e in reports[1].estimates]
 
 
-def test_transverse_hole_bar_keeps_five_axis_when_three_axis_fails():
+def test_transverse_hole_bar_keeps_both_milling_options():
     solid = trimesh.creation.box(extents=[80, 12, 12])
     hole = trimesh.creation.cylinder(radius=2, height=14, sections=48)
     hole.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
@@ -133,10 +133,14 @@ def test_transverse_hole_bar_keeps_five_axis_when_three_axis_fails():
     result, mesh, _, features = _analyze(mesh)
     report = estimate_decision(result, mesh, features,
         EstimateOptions(quantities=[1, 100], material_class="aluminum"))
-    assert _est(report, "cnc_3axis")[0]["dfm_verdict"] == "fail"
-    assert _est(report, "cnc_5axis")[0]["dfm_verdict"] != "fail"
+    # The ideal mesh is a straight extrusion along the hole: re-fixturing
+    # permits 3-axis access. Its feature still warrants retaining 5-axis quotes.
+    for process in ["cnc_3axis", "cnc_5axis"]:
+        estimate = _est(report, process)[0]
+        assert estimate["dfm_verdict"] == "pass"
+        assert not estimate.get("environment_excluded")
     assert report.routing["archetype"] == "long_prismatic_bar"
-    assert report.routing["recommended_process"] == "cnc_5axis"
+    assert report.routing["recommended_process"] == "cnc_3axis"
     assert "not warranted" not in report.routing["reasoning"]
 
 
