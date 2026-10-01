@@ -1,0 +1,121 @@
+{
+  "engine_version": "0.3.42",
+  "historical_records_unchanged": {
+    "analyses": 142,
+    "cost_decisions": 151
+  },
+  "controls": [
+    {
+      "filename": "trap-build-300.1mm.stl",
+      "source_sha256": "0e34ab9b3292e3fd4ff2209c4602c77f35cfdb41182b9544b934102bb2da8e4e",
+      "fdm": {
+        "verdict": "issues",
+        "score": 0.8,
+        "issues": [
+          {
+            "code": "WALL_THICKNESS_PRECISION",
+            "scope": "whole_part",
+            "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+            "process": "fdm",
+            "severity": "warning",
+            "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+          },
+          {
+            "code": "BUILD_ENVELOPE_PRECISION",
+            "scope": "whole_part",
+            "message": "Source-coordinate rounding (enclosing dimensions up to \u00b13.74e-05mm) overlaps the (300, 300, 350)mm envelope for fdm; fit remains uncertain.",
+            "process": "fdm",
+            "citation": {
+              "standard": "Bambu Lab X1C / Prusa MK4"
+            },
+            "severity": "warning",
+            "fix_suggestion": "Confirm dimensions and the planned orientation in source CAD, or use a larger machine."
+          }
+        ]
+      },
+      "analyses": {
+        "id": 1805,
+        "result_sha256": "3e090f56c7a6601c9edc926110ba753bae1fbf3f8e3c30a4a8abe4ca9d4279d6",
+        "unchanged_fields": [
+          "geometry",
+          "features",
+          "segments",
+          "universal_issues",
+          "analysis_mesh_hash"
+        ]
+      },
+      "cost_decisions": {
+        "id": 6198,
+        "result_sha256": "0699ab415c8b5ed5f00c242873e0bf36ad6faa03ffd73b3539dff0ceb93755fb",
+        "unchanged_fields": [
+          "geometry",
+          "estimates",
+          "decision",
+          "routing",
+          "notes",
+          "assumptions",
+          "quantities",
+          "material_class",
+          "verification"
+        ],
+        "unchanged_estimates": 16
+      }
+    },
+    {
+      "filename": "trap-build-cube-300.1mm.stl",
+      "source_sha256": "faf4a5ef77a53353c333f6e64d03167b67f7207d5c28e97e367e221df4617527",
+      "fdm": {
+        "verdict": "fail",
+        "score": 0.0,
+        "issues": [
+          {
+            "code": "WALL_THICKNESS_PRECISION",
+            "scope": "whole_part",
+            "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+            "process": "fdm",
+            "severity": "warning",
+            "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+          },
+          {
+            "code": "EXCEEDS_BUILD_VOLUME",
+            "scope": "whole_part",
+            "message": "Part exceeds build envelope for fdm: X: 300.1mm > 300mm, Y: 300.1mm > 300mm. Bambu Lab X1C / Prusa MK4.",
+            "process": "fdm",
+            "citation": {
+              "standard": "Bambu Lab X1C / Prusa MK4"
+            },
+            "severity": "error",
+            "fix_suggestion": "Scale down, split part, or use a larger machine.\n\nAlternative: Use BigRep (1m\u00b3) or split into multiple parts."
+          }
+        ]
+      },
+      "analyses": {
+        "id": 1804,
+        "result_sha256": "9edf837d463dd9242eade5a11533b92e57746ab92b9d0b12151112df1cd42a8f",
+        "unchanged_fields": [
+          "geometry",
+          "features",
+          "segments",
+          "universal_issues",
+          "analysis_mesh_hash"
+        ]
+      },
+      "cost_decisions": {
+        "id": 6175,
+        "result_sha256": "21fe5bdf67e18c8e579bf028ec08e46898917c656b5036fa1d1b9934c58edd28",
+        "unchanged_fields": [
+          "geometry",
+          "estimates",
+          "decision",
+          "routing",
+          "notes",
+          "assumptions",
+          "quantities",
+          "material_class",
+          "verification"
+        ],
+        "unchanged_estimates": 16
+      }
+    }
+  ]
+}

@@ -217,12 +217,16 @@ def check_build_volume(
     for dim, limit, axis in zip(dims, max_dims_mm, ("X", "Y", "Z")):
         if dim > limit:
             exceeds.append(f"{axis}: {format_measurement(dim, limit)}mm > {limit}mm")
-    if not exceeds:
+    tolerance = 0.0 if process == ProcessType.CNC_TURNING else wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    precision = 0.0 if process == ProcessType.CNC_TURNING else 2 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+    if not exceeds and all(d + precision <= cap + tolerance for d, cap in zip(dims, max_dims_mm)):
         return []
+    uncertain = bool(precision and not exceeds)
     if process != ProcessType.CNC_TURNING and not ctx.metadata.get("decimation", {}).get("succeeded"):
         enclosing, basis = ctx.enclosing_box
-        tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
         if all(d <= cap + tolerance for d, cap in zip(enclosing, sorted(max_dims_mm))):
+            if not exceeds:
+                return []
             return [Issue(
                 code="BUILD_REORIENTATION_REQUIRED",
                 severity=Severity.INFO,
@@ -238,6 +242,18 @@ def check_build_volume(
                 ),
                 citation=parse_citation(cite),
             )]
+        # The enclosure already includes +precision. Subtract it twice for
+        # the lower bound; overlap cannot establish either fit or non-fit.
+        uncertain = uncertain or bool(precision and all(
+            d - 2 * precision <= cap + tolerance for d, cap in zip(enclosing, sorted(max_dims_mm))))
+    if uncertain:
+        return [Issue(
+            code="BUILD_ENVELOPE_PRECISION", severity=Severity.WARNING, process=process,
+            message=(f"Source-coordinate rounding (enclosing dimensions up to ±{precision:.3g}mm) "
+                     f"overlaps the {max_dims_mm}mm envelope for {process.value}; fit remains uncertain."),
+            fix_suggestion="Confirm dimensions and the planned orientation in source CAD, or use a larger machine.",
+            citation=parse_citation(cite),
+        )]
     return [Issue(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,

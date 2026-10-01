@@ -251,3 +251,29 @@ def test_persistent_hit_keeps_its_measurement_when_nearer_hit_is_ambiguous(monke
                                       .001, np.array([0]), source_points=np.array([[0, 0, 0.]]), upper_bounds=upper)
     assert value[0] == .4
     assert .4 < upper[0] < .401
+
+
+@pytest.mark.parametrize("units", ["mm", "inch"])
+@pytest.mark.parametrize("angle", [0, .71])
+@pytest.mark.parametrize("dims,expected", [
+    ((300.1, 290, 300), "uncertain"),
+    ((300, 300, 300), "uncertain"),
+    ((299.9, 299.9, 299.9), "fits"),
+    ((300.1, 300.1, 300.1), "too_large"),
+])
+def test_build_envelope_rounding_keeps_boundary_unknown_and_real_excess(dims, expected, angle, units):
+    from src.analysis.processes.checks import check_build_volume
+    mesh = trimesh.creation.box(extents=dims)
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 2, 3]))
+    mesh.apply_translation([100, -200, 300])
+    if units == "inch":
+        mesh.apply_scale(1 / 25.4)
+    parsed = scale_mesh_to_mm(parse_stl_from_bytes(mesh.export(file_type="stl")), units)
+    ctx = GeometryContext.build(parsed, analyze_geometry(parsed))
+    issues = check_build_volume(ctx, (300, 300, 350), ProcessType.FDM)
+    codes = {i.code for i in issues}
+    assert ("EXCEEDS_BUILD_VOLUME" in codes) == (expected == "too_large")
+    assert ("BUILD_ENVELOPE_PRECISION" in codes) == (expected == "uncertain")
+    if expected == "uncertain":
+        assert all(i.severity == "warning" for i in issues)
+        assert "fit remains uncertain" in issues[0].message

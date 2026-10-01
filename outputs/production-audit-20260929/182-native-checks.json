@@ -1,0 +1,9 @@
+{
+  "before_false_fdm_rejection": true,
+  "after_fdm_advisory": true,
+  "after_visible_uncertainty": true,
+  "after_no_fdm_exceeds": true,
+  "after_actionable": true,
+  "oversized_still_rejected": true,
+  "both_previews_ready": true
+}
