@@ -388,9 +388,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mass_src = drivers.billet_source(material.density, rates.g("stock_allowance"), material.name)
     elif process in FABRICATION:
         # you buy the rectangular blank (footprint × gauge), not just the net part
-        input_mass = drivers.bbox_volume_cm3 * material.density / 1000.0
-        mass_src = (f"sheet blank {drivers.bbox_mm[1]:.0f}×{drivers.bbox_mm[2]:.0f}×"
-                    f"{drivers.sheet_gauge_mm:g}mm = {drivers.bbox_volume_cm3:.2f} cm³ × "
+        blank = drivers.sheet_blank_mm or drivers.bbox_mm
+        blank_volume = blank[0] * blank[1] * blank[2] / 1000.0
+        input_mass = blank_volume * material.density / 1000.0
+        mass_src = (f"sheet blank {blank[1]:.0f}×{blank[2]:.0f}×"
+                    f"{drivers.sheet_gauge_mm:g}mm = {blank_volume:.2f} cm³ × "
                     f"{material.name} density {material.density:.2f} g/cm³ (rectangular blank)")
     elif process in CASTING:
         # poured metal = net part mass × (1 + yield_loss) for gating + risers

@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
+from src.analysis.context import sheet_envelope_dimensions
 from src.costing.rates import (
     MATERIAL_FAMILY,
     normalize_tolerance_class,
@@ -88,6 +89,8 @@ class PartReq:
     required_secondary_ops: tuple = ()
     thickness_mm: "float | None" = None
     sheet_like: bool = False
+    geometry_tolerance_mm: float = 0.0  # numerical measurement noise only
+    sheet_outline_xy: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -272,6 +275,8 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
     # thickness (stock/gauge) for laser/EDM/sheet gates: sheet gauge when the
     # part reads as a flat blank, else the thinnest bbox extent (blank thickness)
     bbox = tuple(drivers.bbox_mm)
+    if pt == ProcessType.SHEET_METAL and getattr(drivers, "sheet_blank_mm", None):
+        bbox = tuple(drivers.sheet_blank_mm)
     sheet_like = bool(getattr(drivers, "sheet_like", False))
     if sheet_like and getattr(drivers, "sheet_gauge_mm", 0.0):
         thickness_mm = float(drivers.sheet_gauge_mm)
@@ -297,6 +302,10 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
         required_secondary_ops=req_ops,
         thickness_mm=thickness_mm,
         sheet_like=sheet_like,
+        geometry_tolerance_mm=(float(getattr(drivers, "sheet_tolerance_mm", 0.0))
+                               if pt == ProcessType.SHEET_METAL else 0.0),
+        sheet_outline_xy=(getattr(drivers, "sheet_outline_xy", ())
+                          if pt == ProcessType.SHEET_METAL else ()),
     )
 
 
@@ -367,6 +376,8 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     if kind == "sheet":
         b = part.bbox_mm
         need = sorted([b[1], b[2]]) if len(b) >= 3 else sorted(b)
+        if part.sheet_outline_xy and all(d > 0 for d in env):
+            need = list(sheet_envelope_dimensions(part.sheet_outline_xy, env))
         labels = ("footprint", "footprint")
     else:
         need = list(part.bbox_mm)
@@ -375,7 +386,7 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     n = min(len(need), len(env))
     worst = None
     for i in range(n):
-        if need[i] > env[i]:
+        if need[i] > env[i] + part.geometry_tolerance_mm:
             delta = need[i] - env[i]
             if worst is None or delta > worst[0]:
                 worst = (delta, need[i], env[i], labels[min(i, len(labels) - 1)])
@@ -495,7 +506,7 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             max_t = tmap.get(part_req.material_class)
         if max_t is None:
             max_t = tmap.get("@" + part_req.material_class)
-        if _is_number(max_t) and part_req.thickness_mm > max_t:
+        if max_t is not None and _is_number(max_t) and part_req.thickness_mm > max_t + part_req.geometry_tolerance_mm:
             failures.append(FitFailure(
                 "thickness", "cut_thickness_mm", round(part_req.thickness_mm, 2),
                 round(float(max_t), 2),

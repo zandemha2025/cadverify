@@ -437,6 +437,7 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
 
     # 1) SHEET PANEL ----------------------------------------------------------
     if drivers.sheet_like:
+        d = drivers.sheet_blank_mm or d
         bends = drivers.bend_count
         op = "flat laser/punch blank" if bends == 0 else f"blank + {bends} press-brake bend(s)"
         return RoutingRecommendation(
@@ -446,8 +447,8 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             material_hint=(material_class if material_class in SHEET_METAL_CLASSES else "aluminum"),
             confidence=0.85,
             reasoning=(
-                f"Constant ~{wall:.1f}mm wall over a {d[1]:.0f}×{d[2]:.0f}mm planar "
-                f"footprint (thinnest extent {d[0]:.1f}mm ≈ gauge, planar aspect "
+                f"Constant {gauge:g}mm gauge over a {d[1]:.0f}×{d[2]:.0f}mm planar "
+                f"blank (parallel sheet faces, planar aspect "
                 f"{aspect:.0f}:1) → a flat sheet, not a printed/cut solid. Route to "
                 f"sheet-metal / stamping: {op}, {drivers.outline_perimeter_mm:.0f}mm cut "
                 f"length. Powder-bed/MJF here is a prototyping fallback, not the "

@@ -1,0 +1,44 @@
+[
+  {
+    "filename": "159-sheet-30x20x0.5.step",
+    "row": "        - row \"Sheet Metal Pass 100% —\":",
+    "engine_version": "0.3.29",
+    "screenshot": "160-159-sheet-30x20x0.5-after.png",
+    "snapshot": "160-159-sheet-30x20x0.5-after.txt"
+  },
+  {
+    "filename": "159-sheet-30x20x0.5-rotated.step",
+    "row": "        - row \"Sheet Metalcost pick · qty 50 Pass 100% —\":",
+    "engine_version": "0.3.29",
+    "screenshot": "160-159-sheet-30x20x0.5-rotated-after.png",
+    "snapshot": "160-159-sheet-30x20x0.5-rotated-after.txt"
+  },
+  {
+    "filename": "160-thin-rotated.step",
+    "row": "        - row \"Sheet Metal Required 0% Thickness 0.4mm below the default 0.5mm minimum sheet gauge.\":",
+    "engine_version": "0.3.29",
+    "screenshot": "160-160-thin-rotated-after.png",
+    "snapshot": "160-160-thin-rotated-after.txt"
+  },
+  {
+    "filename": "160-triangle-rotated.step",
+    "row": "        - row \"Sheet Metal Pass 100% —\":",
+    "engine_version": "0.3.29",
+    "screenshot": "160-160-triangle-rotated-after.png",
+    "snapshot": "160-160-triangle-rotated-after.txt"
+  },
+  {
+    "filename": "160-cutout-rotated.step",
+    "row": "        - row \"Sheet Metalcost pick · qty 50 Pass 100% —\":",
+    "engine_version": "0.3.29",
+    "screenshot": "160-160-cutout-rotated-after.png",
+    "snapshot": "160-160-cutout-rotated-after.txt"
+  },
+  {
+    "filename": "156-plate-with-boss.step",
+    "row": "        - row \"Sheet Metalfeasibility-only Advisory 90% —\":",
+    "engine_version": "0.3.29",
+    "screenshot": "160-156-plate-with-boss-after.png",
+    "snapshot": "160-156-plate-with-boss-after.txt"
+  }
+]

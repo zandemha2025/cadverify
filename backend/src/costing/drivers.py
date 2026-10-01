@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
+from src.analysis.context import flat_sheet_geometry, wall_thickness_tolerance
 from src.costing.routing import is_rotational
 
 
@@ -39,11 +40,14 @@ class GeoDrivers:
     rot_axis_len_mm: float
     rot_cross_dia_mm: float
     # ---- sheet / fabrication drivers (MEASURED) -------------------------
-    sheet_gauge_mm: float = 0.0       # thinnest bbox extent = sheet gauge proxy
+    sheet_gauge_mm: float = 0.0       # distance between verified parallel sheet caps
     planar_aspect: float = 0.0        # mid_dim / gauge — flatness of the part
     outline_perimeter_mm: float = 0.0 # laser/punch cut length (outer + cutouts)
-    bend_count: int = 0               # distinct planar fold lines (0 = flat blank)
+    bend_count: int = 0               # verified flat blanks have no bends
     sheet_like: bool = False          # geometry reads as a constant-gauge flat sheet
+    sheet_blank_mm: tuple | None = None  # gauge, short side, long side in the sheet plane
+    sheet_tolerance_mm: float = 0.0   # numeric transform noise, not manufacturing allowance
+    sheet_outline_xy: tuple = ()      # convex outline in the measured sheet plane
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -125,63 +129,33 @@ def parts_per_build(proc, bbox_mm, rates) -> int:
     return max(1, n)
 
 
-def _bend_count(mesh) -> int:
-    """Distinct planar fold lines (sheet-metal bend count).
-
-    Counts distinct UNDIRECTED orientations among the part's broad planar facets
-    (>=8% of total area each), clustering parallel/antiparallel faces onto one
-    axis. A flat blank has a single axis (top+bottom) -> 0 bends; an L-bracket
-    has two axes -> 1 bend; a U-channel three -> 2. Defaults to 0 on any failure
-    (a flat blank is the safe assumption for a sheet candidate).
-    """
-    try:
-        fa = np.asarray(mesh.facets_area, dtype=np.float64)
-        fn = np.asarray(mesh.facets_normal, dtype=np.float64)
-        if len(fa) == 0:
-            return 0
-        total = float(fa.sum())
-        if total <= 0:
-            return 0
-        big = fn[fa > 0.08 * total]
-        axes: list = []
-        for n in big:
-            norm = float(np.linalg.norm(n))
-            if norm <= 0:
-                continue
-            u = n / norm
-            if not any(abs(float(u @ a)) > 0.95 for a in axes):
-                axes.append(u)
-        return max(0, len(axes) - 1)
-    except Exception:
-        return 0
-
-
-def _sheet_geometry(volume_mm3, surface_area_mm2, dims):
+def _sheet_geometry(volume_mm3, surface_area_mm2, dims, tolerance=0.0):
     """Sheet gauge, planar aspect, cut perimeter, and the sheet-like predicate.
 
-    gauge t   = thinnest bbox extent (the stock thickness when laid flat).
+    gauge t   = verified separation of the sheet's parallel caps.
     blank A   = V / t  (developed flat area; exact for a constant-thickness plate).
     perimeter = rim_area / t where rim_area = SA - 2*blank  (the thickness-walls
                 swept by the cut path: outer outline + every hole/cutout edge),
-                floored at the bbox-rectangle perimeter. This is the MEASURED
+                without counting unused rectangular stock as a cut. This is the MEASURED
                 laser/punch cut length — not a magic constant.
     sheet_like = constant thin gauge (t<=6mm, wall~=t) AND broadly planar
                  (mid extent >= 4x gauge). Distinguishes a flat sheet from a
                  deep thin-walled box (whose thin extent is NOT the wall).
     """
+    if dims is None:
+        return 0.0, 0.0, 0.0, False
     t = max(dims[0], 1e-6)
     wall = (2.0 * volume_mm3 / surface_area_mm2) if surface_area_mm2 > 0 else t
     blank_area = volume_mm3 / t
     rim_area = max(0.0, surface_area_mm2 - 2.0 * blank_area)
     rim_perim = rim_area / t
-    bbox_perim = 2.0 * (dims[1] + dims[2])
-    perimeter = max(bbox_perim, rim_perim)
+    perimeter = rim_perim
     planar_aspect = dims[1] / t if t > 0 else 0.0
     sheet_like = bool(
-        wall <= SHEET_GAUGE_MAX_MM
-        and dims[0] <= SHEET_GAUGE_MAX_MM + 2.0      # thin extent is in/near gauge range
-        and dims[0] <= 2.2 * wall                    # thin extent IS the wall (a plate, not a deep shell)
-        and dims[1] >= 4.0 * dims[0]                 # broadly planar, not a stick/block
+        wall <= SHEET_GAUGE_MAX_MM + tolerance
+        and dims[0] <= SHEET_GAUGE_MAX_MM + 2.0 + tolerance
+        and dims[0] <= 2.2 * wall + 3.2 * tolerance
+        and dims[1] + 5.0 * tolerance >= 4.0 * dims[0]
     )
     return dims[0], planar_aspect, perimeter, sheet_like
 
@@ -209,9 +183,12 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
     rotational, axis_len, cross_dia = is_rotational(geometry, mesh, features)
     is_valid = bool((geometry.volume or 0.0) > 0.0 and geometry.is_watertight)
 
+    sheet_geometry = flat_sheet_geometry(mesh)
+    sheet_blank_mm = sheet_geometry[0] if sheet_geometry is not None else None
+    sheet_tolerance_mm = wall_thickness_tolerance(
+        mesh, max(1e-4, min(float(np.linalg.norm(dims)) * 1e-4, .1)))
     sheet_gauge_mm, planar_aspect, outline_perimeter_mm, sheet_like = _sheet_geometry(
-        geometry.volume or 0.0, geometry.surface_area or 0.0, dims)
-    bend_count = _bend_count(mesh)
+        geometry.volume or 0.0, geometry.surface_area or 0.0, sheet_blank_mm, sheet_tolerance_mm)
     # A rotational solid is a turned/spun part, not a flat blank.
     sheet_like = sheet_like and not rotational
 
@@ -228,9 +205,12 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         rotational=rotational,
         rot_axis_len_mm=axis_len,
         rot_cross_dia_mm=cross_dia,
-        sheet_gauge_mm=round(sheet_gauge_mm, 3),
+        sheet_gauge_mm=sheet_gauge_mm,
         planar_aspect=round(planar_aspect, 2),
         outline_perimeter_mm=round(outline_perimeter_mm, 2),
-        bend_count=int(bend_count),
+        bend_count=0,  # Only verified flat blanks are sheet-costable; no bends.
         sheet_like=sheet_like,
+        sheet_blank_mm=sheet_blank_mm,
+        sheet_tolerance_mm=sheet_tolerance_mm,
+        sheet_outline_xy=(tuple(map(tuple, sheet_geometry[1])) if sheet_geometry is not None else ()),
     )

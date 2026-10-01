@@ -1,0 +1,23 @@
+[
+  {
+    "filename": "160-thin-rotated.step",
+    "thickness_mm": 0.4,
+    "volume_mm3": 240.0,
+    "cut_perimeter_mm": 100.0,
+    "source_sha256": "9f8d77df487b8ff131820f304c03886139da2c9521ded3a0611aa4ff9d936976"
+  },
+  {
+    "filename": "160-triangle-rotated.step",
+    "thickness_mm": 0.5,
+    "volume_mm3": 150.0,
+    "cut_perimeter_mm": 86.05551275463989,
+    "source_sha256": "bc58b1a70990263a88c9f7d813f6a93910e2371ff70cfd731cfeeba2a7645862"
+  },
+  {
+    "filename": "160-cutout-rotated.step",
+    "thickness_mm": 0.5,
+    "volume_mm3": 287.5,
+    "cut_perimeter_mm": 120.0,
+    "source_sha256": "ee7146a96b4c0d6fd4b4e87c313bdb041819f526cc256ac9d11424cfb56d18f0"
+  }
+]

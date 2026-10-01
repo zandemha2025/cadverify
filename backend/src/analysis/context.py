@@ -27,7 +27,7 @@ import logging
 
 import numpy as np
 import trimesh
-from scipy.spatial import KDTree
+from scipy.spatial import ConvexHull, KDTree
 
 from src.analysis.models import FeatureSegment, GeometryInfo
 
@@ -140,6 +140,10 @@ class GeometryContext:
 
     # Room for extensions (symmetry axis, SAM-3D labels, ...)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @cached_property
+    def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
+        return flat_sheet_dimensions(self.mesh)
 
     @cached_property
     def maximum_inscribed_diameter(self) -> float | None:
@@ -456,6 +460,108 @@ def wall_thickness_tolerance(mesh: trimesh.Trimesh, eps: float) -> float:
     bounds = mesh.bounds
     magnitude = float(np.abs(bounds).max()) if bounds is not None else 0.0
     return max(eps * 1e-6, float(np.spacing(magnitude)) * 8)
+
+
+def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] | None:
+    measured = flat_sheet_geometry(mesh)
+    return measured[0] if measured is not None else None
+
+
+def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, float], np.ndarray] | None:
+    """Gauge and in-plane blank extents of a verified straight, flat extrusion.
+
+    Opposing caps must bound all vertices; every other surface must run through
+    the gauge. This rejects bosses, pockets, bent sheets and open/multiple bodies
+    instead of calling their overall envelope a measured material thickness.
+    """
+    try:
+        if not mesh.is_volume or mesh.body_count != 1:
+            return None
+        largest_face = int(np.argmax(mesh.area_faces))
+        normal = mesh.face_normals[largest_face]
+        if len(mesh.facets_area) and mesh.facets_area.max() > mesh.area_faces[largest_face]:
+            normal = mesh.facets_normal[int(np.argmax(mesh.facets_area))]
+        vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
+        heights = vertices @ normal
+        low, high = float(heights.min()), float(heights.max())
+        gauge = high - low
+        eps = max(1e-4, min(float(np.linalg.norm(mesh.extents)) * 1e-4, .1))
+        tol = wall_thickness_tolerance(mesh, eps)
+        alignment = np.abs(mesh.face_normals @ normal)
+        caps = np.isclose(alignment, 1., rtol=0, atol=1e-7)
+        if gauge <= tol or not np.all(caps | (alignment <= 1e-7)):
+            return None
+        cap_heights = heights[mesh.faces[caps]]
+        if not np.all((np.abs(cap_heights - low) <= tol) | (np.abs(cap_heights - high) <= tol)):
+            return None
+        rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
+        footprint = (vertices @ rotation.T)[:, :2]
+        hull = footprint[ConvexHull(footprint).vertices]
+        edges = np.roll(hull, -1, axis=0) - hull
+        lengths = np.linalg.norm(edges, axis=1)
+        directions = edges[lengths > tol] / lengths[lengths > tol, None]
+        # Same hull-edge projections as trimesh.oriented_bounds_2D, bounded in
+        # memory and with a stable minimum-perimeter tie break for equal areas.
+        # ponytail: quadratic hull scan; use rotating calipers if very detailed
+        # curved flat outlines make this a measured bottleneck.
+        batch = max(1, min(512, _wall_thickness_ray_budget() // len(hull)))
+        rectangles = []
+        for start in range(0, len(directions), batch):
+            axes = directions[start:start + batch]
+            widths = np.ptp(axes @ hull.T, axis=1)
+            heights_2d = np.ptp((axes[:, ::-1] * [-1, 1]) @ hull.T, axis=1)
+            rectangles.extend(zip(widths, heights_2d))
+        extents = np.sort(np.asarray(rectangles), axis=1)
+        areas = np.prod(extents, axis=1)
+        area_tol = tol * float(np.linalg.norm(np.ptp(hull, axis=0))) * 4
+        candidates = extents[areas <= areas.min() + area_tol]
+        widths = candidates[int(np.argmin(candidates.sum(axis=1)))]
+        if not np.all(np.isfinite(widths)) or widths[0] <= tol:
+            return None
+        return (gauge, float(widths[0]), float(widths[1])), hull
+    except Exception:
+        logger.warning("Flat sheet measurement failed", exc_info=True)
+        return None
+
+
+def sheet_envelope_dimensions(outline, envelope) -> tuple[float, float]:
+    """Best in-plane orientation for a particular rectangular machine bed.
+
+    Between hull-edge angles the four supporting vertices stay fixed. Each
+    span is a positive sinusoid (concave); the maximum normalized span can
+    minimize only at an interval endpoint or where the two spans cross.
+    Checking both bed-axis assignments therefore covers every orientation.
+    """
+    hull = np.asarray(outline, dtype=np.float64)
+    edges = np.roll(hull, -1, axis=0) - hull
+    angles = np.unique(np.r_[0., np.mod(np.arctan2(edges[:, 1], edges[:, 0]), np.pi / 2), np.pi / 2])
+    mids = (angles[1:] + angles[:-1]) / 2
+    candidates = list(angles)
+    batch = max(1, min(512, _wall_thickness_ray_budget() // len(hull)))
+    for start in range(0, len(mids), batch):
+        theta = mids[start:start + batch]
+        u = np.column_stack([np.cos(theta), np.sin(theta)])
+        v = u[:, ::-1] * [-1, 1]
+        x, y = u @ hull.T, v @ hull.T
+        dx = hull[x.argmax(axis=1)] - hull[x.argmin(axis=1)]
+        dy = hull[y.argmax(axis=1)] - hull[y.argmin(axis=1)]
+        for width, height in (envelope, envelope[::-1]):
+            a = dx[:, 0] / width - dy[:, 1] / height
+            b = dx[:, 1] / width + dy[:, 0] / height
+            roots = np.mod(np.arctan2(-a, b), np.pi)
+            inside = (roots >= angles[start:start + len(theta)]) & (roots <= angles[start + 1:start + len(theta) + 1])
+            candidates.extend(roots[inside])
+    best, best_ratio = (float("inf"), float("inf")), float("inf")
+    for start in range(0, len(candidates), batch):
+        theta = np.asarray(candidates[start:start + batch])
+        u = np.column_stack([np.cos(theta), np.sin(theta)])
+        dims = np.sort(np.column_stack([np.ptp(u @ hull.T, axis=1),
+                                        np.ptp((u[:, ::-1] * [-1, 1]) @ hull.T, axis=1)]), axis=1)
+        ratios = (dims / np.sort(envelope)).max(axis=1)
+        i = int(ratios.argmin())
+        if ratios[i] < best_ratio:
+            best, best_ratio = (float(dims[i, 0]), float(dims[i, 1])), float(ratios[i])
+    return best
 
 
 def _compute_wall_thickness(

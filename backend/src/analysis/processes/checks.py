@@ -887,7 +887,14 @@ def check_sheet_gauge(
     process: ProcessType,
 ) -> list[Issue]:
     issues: list[Issue] = []
-    dims = sorted(ctx.info.bounding_box.dimensions)
+    dims = ctx.flat_sheet_dimensions
+    if dims is None:
+        return [Issue(
+            code="SHEET_GAUGE_UNVERIFIED", severity=Severity.WARNING,
+            message="A constant flat-sheet gauge could not be verified from this geometry.",
+            process=process,
+            fix_suggestion="Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.",
+        )]
     t = dims[0]
     tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
     if t < SHEET_GAUGE_MIN_MM - tolerance:

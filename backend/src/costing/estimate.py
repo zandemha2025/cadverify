@@ -364,10 +364,11 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         "reasoning": rec.reasoning,
         "alternatives": rec.alternatives,
         "drivers": {
-            "sheet_gauge_mm": drivers.sheet_gauge_mm,
-            "planar_aspect": drivers.planar_aspect,
-            "bend_count": drivers.bend_count,
-            "outline_perimeter_mm": drivers.outline_perimeter_mm,
+            **({"sheet_gauge_mm": drivers.sheet_gauge_mm,
+                "planar_aspect": drivers.planar_aspect,
+                "outline_perimeter_mm": drivers.outline_perimeter_mm,
+                "bend_count": drivers.bend_count}
+               if drivers.sheet_blank_mm is not None else {}),
             "nominal_wall_mm": round(drivers.nominal_wall_mm, 2),
             "rotational": drivers.rotational,
             "sheet_like": drivers.sheet_like,
