@@ -15,7 +15,8 @@ for package, expected in VERSIONS.items():
         ["dpkg-query", "-W", "-f=${Version}", package], text=True
     ).strip()
     assert actual == expected, (package, actual, expected)
-    assert not subprocess.check_output(["dpkg", "--verify", package], text=True)
+    integrity = subprocess.check_output(["dpkg", "--verify", package], text=True)
+    assert not integrity, (package, integrity)
 
 # Exercise the installed shared library, not Python's possibly bundled Expat.
 lib = ctypes.CDLL("libexpat.so.1")

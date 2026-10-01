@@ -142,7 +142,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (fail: the 4 X libs + libgomp, all surfaced at once via ldd) -> this commit.
 
 COPY --from=native-security /patched /tmp/patched
-RUN apt-get install -y --no-install-recommends /tmp/patched/*.deb \
+# Keep these packages' documentation too: slim's path exclusions otherwise
+# leave their manifests incomplete and make the full dpkg integrity check fail.
+RUN apt-get -o 'Dpkg::Options::=--path-include=/usr/share/*' \
+    install -y --no-install-recommends /tmp/patched/*.deb \
     && rm -rf /tmp/patched
 COPY security/check-native-fixes.py /usr/local/bin/check-native-fixes.py
 RUN python /usr/local/bin/check-native-fixes.py
