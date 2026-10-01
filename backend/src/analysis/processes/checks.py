@@ -36,6 +36,29 @@ logger = logging.getLogger("cadverify.checks")
 # ──────────────────────────────────────────────────────────────
 # Wall thickness
 # ──────────────────────────────────────────────────────────────
+def _wall_upper(ctx: GeometryContext) -> np.ndarray:
+    upper = ctx.wall_thickness_upper
+    if upper is None:
+        upper = (np.full(len(ctx.wall_thickness), np.inf) if ctx.mesh.metadata.get("coordinate_error")
+                 else ctx.wall_thickness)
+    return np.where(np.isfinite(ctx.wall_thickness), upper, np.inf)
+
+
+def _wall_precision_issues(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
+    upper = _wall_upper(ctx)
+    if not ctx.mesh.metadata.get("coordinate_error") and np.all(np.isfinite(upper)):
+        return []
+    return [Issue(
+        code="WALL_THICKNESS_PRECISION", severity=Severity.WARNING, process=process,
+        message=(
+            f"Wall checks have stable measurements for {int(np.isfinite(upper).sum())} of {len(upper)} faces. "
+            "Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and "
+            "unsampled faces cannot verify a minimum wall; a result near the limit is uncertain."
+        ),
+        fix_suggestion="Confirm critical wall thicknesses in the source CAD before manufacturing.",
+    )]
+
+
 def check_wall_thickness(
     ctx: GeometryContext,
     min_wall_mm: float,
@@ -45,15 +68,16 @@ def check_wall_thickness(
 ) -> list[Issue]:
     wt = ctx.wall_thickness
     finite = np.isfinite(wt)
-    thin = finite & (wt < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
+    thin = finite & (_wall_upper(ctx) < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
     thin_faces = np.where(thin)[0]
+    issues = _wall_precision_issues(ctx, process)
     if len(thin_faces) == 0:
-        return []
+        return issues
     pct = len(thin_faces) / max(len(ctx.centroids), 1) * 100
     min_measured = float(wt[thin].min())
     region = _region_center(ctx, thin_faces)
     sev = Severity.ERROR if pct > 10 else Severity.WARNING
-    return [Issue(
+    issues.append(Issue(
         code="THIN_WALL",
         measurement_unit="mm",
         severity=sev,
@@ -68,7 +92,8 @@ def check_wall_thickness(
         required_value=min_wall_mm,
         fix_suggestion=f"Increase wall thickness to >= {min_wall_mm}mm. {cite}",
         citation=parse_citation(cite),
-    )]
+    ))
+    return issues
 
 
 # ──────────────────────────────────────────────────────────────
@@ -127,16 +152,35 @@ def check_small_features(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    if len(ctx.edge_lengths) == 0:
-        return []
-    small = ctx.edge_lengths[ctx.edge_lengths < min_size_mm]
+    precision = ctx.edge_length_precision
+    if precision is None:
+        precision = np.full(len(ctx.edge_lengths), np.inf if ctx.mesh.metadata.get("coordinate_error") else 0.)
+    return small_feature_issues(ctx.edge_lengths, precision, min_size_mm, process,
+                               cite=cite, topology_stable=ctx.edge_topology_stable)
+
+
+def small_feature_issues(
+    lengths: np.ndarray, precision: np.ndarray, min_size_mm: float,
+    process: ProcessType, *, cite: str = "", topology_stable: bool = True,
+) -> list[Issue]:
+    issues: list[Issue] = []
+    uncertain = (~np.isfinite(precision) | ((lengths - precision <= min_size_mm) &
+                                         (lengths + precision >= min_size_mm) & (precision > 0)))
+    if np.any(uncertain) or not topology_stable:
+        issues.append(Issue(
+            code="FEATURE_SIZE_PRECISION", severity=Severity.WARNING, process=process,
+            message=("Some geometric boundaries cannot be compared reliably with "
+                     f"the {min_size_mm}mm resolution limit because of source precision or unstable rim measurements."),
+            fix_suggestion="Measure these features in the source CAD before manufacturing.",
+        ))
+    small = lengths[lengths + precision < min_size_mm]
     if len(small) == 0:
-        return []
-    pct = len(small) / len(ctx.edge_lengths) * 100
+        return issues
+    pct = len(small) / len(lengths) * 100
     if pct < 5:
-        return []  # not significant
+        return issues  # not significant
     smallest = float(small.min())
-    return [Issue(
+    issues.append(Issue(
         code="SMALL_FEATURES",
         measurement_unit="mm",
         severity=Severity.WARNING,
@@ -149,7 +193,8 @@ def check_small_features(
         required_value=min_size_mm,
         fix_suggestion=f"Enlarge features to >= {min_size_mm}mm. {cite}",
         citation=parse_citation(cite),
-    )]
+    ))
+    return issues
 
 
 # ──────────────────────────────────────────────────────────────
@@ -456,15 +501,15 @@ def check_wall_uniformity(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    issues: list[Issue] = []
+    issues = _wall_precision_issues(ctx, process)
     wt = ctx.wall_thickness
-    finite_mask = np.isfinite(wt)
-    t = wt[finite_mask]
-    t_min = float(t.min()) if len(t) else float("inf")
+    upper = _wall_upper(ctx)
+    t_min_upper = float(upper.min()) if len(upper) else float("inf")
+    t_min = float(wt[np.argmin(upper)]) if np.isfinite(t_min_upper) else float("inf")
     t_max = ctx.maximum_inscribed_diameter
     tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
 
-    if t_min < min_wall - tolerance:
+    if t_min_upper < min_wall - tolerance:
         issues.append(Issue(
             code="THIN_WALL_MOLDING",
             measurement_unit="mm",
@@ -501,7 +546,13 @@ def check_wall_uniformity(
         measured_value=t_max,
         fix_suggestion="Confirm critical wall sections in the source CAD.",
     ))
-    if t_max > max_wall + tolerance:
+    # The observed interior point remains inside only when its clearance is
+    # larger than source rounding. This bounds this witness, not global maxima.
+    diameter_error = 2 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+    if (ctx.metadata.get("decimation", {}).get("succeeded") or t_max <= diameter_error):
+        diameter_error = float("inf")
+    t_max_lower = t_max - diameter_error
+    if t_max_lower > max_wall + tolerance:
         issues.append(Issue(
             code="THICK_WALL",
             measurement_unit="mm",
@@ -513,7 +564,7 @@ def check_wall_uniformity(
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max > 2.0 * t_min + 3.0 * tolerance:
+    if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max_lower > 2.0 * t_min_upper + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
             measurement_unit="ratio",

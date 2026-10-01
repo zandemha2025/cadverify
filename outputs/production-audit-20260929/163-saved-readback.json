@@ -1,0 +1,854 @@
+{
+  "engine_version": "0.3.33",
+  "controls": [
+    {
+      "filename": "160-rotated-float32.stl",
+      "thickness_mm": 0.5,
+      "source_units": "mm",
+      "source_sha256": "035c027b337ffa52e25670607f5bf112beb51af92ad63e5ccfd0daee41a7e0c1",
+      "analyses": {
+        "id": 1574,
+        "ulid": "01M3TW9W63T2JCJPFKMKHQTPCK",
+        "version": "0.3.33",
+        "result_sha256": "a28b5f90a0fae45aad4db6850c7c6259c4f2353e93d3594f7f9c5c8f2cad4acb",
+        "processes": {
+          "mjf": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "mjf",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              }
+            ]
+          },
+          "injection_molding": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "WALL_UNIFORMITY_SAMPLED",
+                "scope": "whole_part",
+                "message": "Largest sampled interior section: 0.5mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+                "measured_value": 0.49999953362028693,
+                "measurement_unit": "mm"
+              },
+              {
+                "code": "UNDERCUT_MOLDING",
+                "scope": "localized",
+                "message": "2 faces form undercuts requiring side actions in injection_molding tooling.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "Side actions add $5\u201315K tooling."
+                },
+                "severity": "warning",
+                "fix_suggestion": "Redesign to eliminate undercuts or add slides. Side actions add $5\u201315K tooling.",
+                "affected_face_count": 2,
+                "affected_faces_sample": [
+                  3,
+                  6
+                ]
+              }
+            ]
+          },
+          "binder_jetting": {
+            "verdict": "fail",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "THIN_WALL",
+                "scope": "localized",
+                "message": "4 faces (33.3%) below 1.0mm min wall for binder_jetting. Thinnest: 0.5mm.",
+                "process": "binder_jetting",
+                "citation": {
+                  "text": "Green part: 1mm min wall; 0.8mm post-sinter"
+                },
+                "severity": "error",
+                "region_center": [
+                  100.0,
+                  -200.0,
+                  300.0
+                ],
+                "fix_suggestion": "Increase wall thickness to >= 1.0mm. Green part: 1mm min wall; 0.8mm post-sinter.",
+                "measured_value": 0.49999953361695015,
+                "required_value": 1.0,
+                "measurement_unit": "mm",
+                "affected_face_count": 4,
+                "affected_faces_sample": [
+                  3,
+                  4,
+                  6,
+                  8
+                ]
+              },
+              {
+                "code": "FEATURE_SIZE_PRECISION",
+                "scope": "whole_part",
+                "message": "Some geometric boundaries cannot be compared reliably with the 0.5mm resolution limit because of source precision or unstable rim measurements.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Measure these features in the source CAD before manufacturing."
+              },
+              {
+                "code": "SINTERING_SHRINKAGE",
+                "scope": "whole_part",
+                "message": "Binder jetting parts shrink 15-20% during sintering. Ensure CAD model is scaled to compensate.",
+                "process": "binder_jetting",
+                "severity": "info",
+                "fix_suggestion": "Scale model 1.18\u20131.22x to compensate for sintering shrinkage. Desktop Metal Studio pre-compensates automatically."
+              }
+            ]
+          }
+        },
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5435,
+        "ulid": "01M3TW9W6E0JJS81C455J0KAYK",
+        "version": "0.3.33",
+        "result_sha256": "ab484780f1a8c0f9dd4a716ffffd95c71c2f8105296383a0a7fdf3d64ce5598a",
+        "estimates": [
+          {
+            "process": "injection_molding",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "injection_molding",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          }
+        ]
+      }
+    },
+    {
+      "filename": "161-sheet-0.499-mm.stl",
+      "thickness_mm": 0.499,
+      "source_units": "mm",
+      "source_sha256": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78",
+      "analyses": {
+        "id": 1578,
+        "ulid": "01M3TWC3PAJ6QYW8QAWW6CJVTT",
+        "version": "0.3.33",
+        "result_sha256": "6fe7e01b592fe597ef1a4613d51c2b4e6904d11c946453d1a123c1db4a2ec8b2",
+        "processes": {
+          "mjf": {
+            "verdict": "fail",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "mjf",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "THIN_WALL",
+                "scope": "localized",
+                "message": "4 faces (33.3%) below 0.5mm min wall for mjf. Thinnest: 0.498996mm.",
+                "process": "mjf",
+                "citation": {
+                  "text": "0.5mm min wall for PA12.",
+                  "clause": "\u00a73.1",
+                  "standard": "HP MJF DG"
+                },
+                "severity": "error",
+                "region_center": [
+                  100.0,
+                  -200.0,
+                  300.0
+                ],
+                "fix_suggestion": "Increase wall thickness to >= 0.5mm. HP MJF DG \u00a73.1: 0.5mm min wall for PA12.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 0.5,
+                "measurement_unit": "mm",
+                "affected_face_count": 4,
+                "affected_faces_sample": [
+                  3,
+                  4,
+                  6,
+                  8
+                ]
+              }
+            ]
+          },
+          "injection_molding": {
+            "verdict": "fail",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "THIN_WALL_MOLDING",
+                "scope": "whole_part",
+                "message": "Min wall 0.498996mm < 0.5mm for injection_molding.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "0.5\u20136mm, ideal 2.5mm for ABS.",
+                  "standard": "GE Plastics"
+                },
+                "severity": "error",
+                "fix_suggestion": "Increase to >= 0.5mm. GE Plastics: 0.5\u20136mm, ideal 2.5mm for ABS.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              },
+              {
+                "code": "WALL_UNIFORMITY_SAMPLED",
+                "scope": "whole_part",
+                "message": "Largest sampled interior section: 0.498997mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+                "measured_value": 0.498996520351586,
+                "measurement_unit": "mm"
+              },
+              {
+                "code": "UNDERCUT_MOLDING",
+                "scope": "localized",
+                "message": "2 faces form undercuts requiring side actions in injection_molding tooling.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "Side actions add $5\u201315K tooling."
+                },
+                "severity": "warning",
+                "fix_suggestion": "Redesign to eliminate undercuts or add slides. Side actions add $5\u201315K tooling.",
+                "affected_face_count": 2,
+                "affected_faces_sample": [
+                  3,
+                  6
+                ]
+              }
+            ]
+          },
+          "binder_jetting": {
+            "verdict": "fail",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "THIN_WALL",
+                "scope": "localized",
+                "message": "4 faces (33.3%) below 1.0mm min wall for binder_jetting. Thinnest: 0.498996mm.",
+                "process": "binder_jetting",
+                "citation": {
+                  "text": "Green part: 1mm min wall; 0.8mm post-sinter"
+                },
+                "severity": "error",
+                "region_center": [
+                  100.0,
+                  -200.0,
+                  300.0
+                ],
+                "fix_suggestion": "Increase wall thickness to >= 1.0mm. Green part: 1mm min wall; 0.8mm post-sinter.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 1.0,
+                "measurement_unit": "mm",
+                "affected_face_count": 4,
+                "affected_faces_sample": [
+                  3,
+                  4,
+                  6,
+                  8
+                ]
+              },
+              {
+                "code": "SMALL_FEATURES",
+                "scope": "whole_part",
+                "message": "4 geometric boundary spans (33.3%) below 0.5mm resolution for binder_jetting. Smallest: 0.498996mm.",
+                "process": "binder_jetting",
+                "citation": {
+                  "text": "0.5mm min feature.",
+                  "standard": "Desktop Metal"
+                },
+                "severity": "warning",
+                "fix_suggestion": "Enlarge features to >= 0.5mm. Desktop Metal: 0.5mm min feature.",
+                "measured_value": 0.4989958017002516,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              },
+              {
+                "code": "SINTERING_SHRINKAGE",
+                "scope": "whole_part",
+                "message": "Binder jetting parts shrink 15-20% during sintering. Ensure CAD model is scaled to compensate.",
+                "process": "binder_jetting",
+                "severity": "info",
+                "fix_suggestion": "Scale model 1.18\u20131.22x to compensate for sintering shrinkage. Desktop Metal Studio pre-compensates automatically."
+              }
+            ]
+          }
+        },
+        "volume_mm3": 299.4
+      },
+      "cost_decisions": {
+        "id": 5441,
+        "ulid": "01M3TWC3PJ1G4XSMDD2GF2T07Y",
+        "version": "0.3.33",
+        "result_sha256": "4261b58c793dfa5d039cd9463ff1a0ceddbabe11dee4c1dbf629a9c069542ffb",
+        "estimates": [
+          {
+            "process": "injection_molding",
+            "quantity": 50,
+            "dfm_verdict": "fail",
+            "dfm_blocker_details": [
+              {
+                "code": "THIN_WALL_MOLDING",
+                "scope": "whole_part",
+                "message": "Min wall 0.498996mm < 0.5mm for injection_molding.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "0.5\u20136mm, ideal 2.5mm for ABS.",
+                  "standard": "GE Plastics"
+                },
+                "severity": "error",
+                "fix_suggestion": "Increase to >= 0.5mm. GE Plastics: 0.5\u20136mm, ideal 2.5mm for ABS.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ],
+            "eligible": null
+          },
+          {
+            "process": "injection_molding",
+            "quantity": 5000,
+            "dfm_verdict": "fail",
+            "dfm_blocker_details": [
+              {
+                "code": "THIN_WALL_MOLDING",
+                "scope": "whole_part",
+                "message": "Min wall 0.498996mm < 0.5mm for injection_molding.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "0.5\u20136mm, ideal 2.5mm for ABS.",
+                  "standard": "GE Plastics"
+                },
+                "severity": "error",
+                "fix_suggestion": "Increase to >= 0.5mm. GE Plastics: 0.5\u20136mm, ideal 2.5mm for ABS.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 0.5,
+                "measurement_unit": "mm"
+              }
+            ],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 50,
+            "dfm_verdict": "fail",
+            "dfm_blocker_details": [
+              {
+                "code": "THIN_WALL",
+                "scope": "localized",
+                "message": "4 faces (33.3%) below 0.5mm min wall for mjf. Thinnest: 0.498996mm.",
+                "process": "mjf",
+                "citation": {
+                  "text": "0.5mm min wall for PA12.",
+                  "clause": "\u00a73.1",
+                  "standard": "HP MJF DG"
+                },
+                "severity": "error",
+                "region_center": [
+                  100.0,
+                  -200.0,
+                  300.0
+                ],
+                "fix_suggestion": "Increase wall thickness to >= 0.5mm. HP MJF DG \u00a73.1: 0.5mm min wall for PA12.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 0.5,
+                "measurement_unit": "mm",
+                "affected_face_count": 4,
+                "affected_faces_sample": [
+                  3,
+                  4,
+                  6,
+                  8
+                ]
+              }
+            ],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 5000,
+            "dfm_verdict": "fail",
+            "dfm_blocker_details": [
+              {
+                "code": "THIN_WALL",
+                "scope": "localized",
+                "message": "4 faces (33.3%) below 0.5mm min wall for mjf. Thinnest: 0.498996mm.",
+                "process": "mjf",
+                "citation": {
+                  "text": "0.5mm min wall for PA12.",
+                  "clause": "\u00a73.1",
+                  "standard": "HP MJF DG"
+                },
+                "severity": "error",
+                "region_center": [
+                  100.0,
+                  -200.0,
+                  300.0
+                ],
+                "fix_suggestion": "Increase wall thickness to >= 0.5mm. HP MJF DG \u00a73.1: 0.5mm min wall for PA12.",
+                "measured_value": 0.49899616100172706,
+                "required_value": 0.5,
+                "measurement_unit": "mm",
+                "affected_face_count": 4,
+                "affected_faces_sample": [
+                  3,
+                  4,
+                  6,
+                  8
+                ]
+              }
+            ],
+            "eligible": null
+          }
+        ]
+      }
+    },
+    {
+      "filename": "161-sheet-0.5-inch.stl",
+      "thickness_mm": 0.5,
+      "source_units": "inch",
+      "source_sha256": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556",
+      "analyses": {
+        "id": 1579,
+        "ulid": "01M3TWDX7W6F63K7Z5BVAJ5D6T",
+        "version": "0.3.33",
+        "result_sha256": "9874fe8de5b8c2dc8f83bac090bfea7480913fbe28ebd5fc3ce6cb56878d9556",
+        "processes": {
+          "mjf": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "mjf",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              }
+            ]
+          },
+          "injection_molding": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "WALL_UNIFORMITY_SAMPLED",
+                "scope": "whole_part",
+                "message": "Largest sampled interior section: 0.500001mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+                "measured_value": 0.5000014144422835,
+                "measurement_unit": "mm"
+              },
+              {
+                "code": "UNDERCUT_MOLDING",
+                "scope": "localized",
+                "message": "2 faces form undercuts requiring side actions in injection_molding tooling.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "Side actions add $5\u201315K tooling."
+                },
+                "severity": "warning",
+                "fix_suggestion": "Redesign to eliminate undercuts or add slides. Side actions add $5\u201315K tooling.",
+                "affected_face_count": 2,
+                "affected_faces_sample": [
+                  3,
+                  6
+                ]
+              }
+            ]
+          },
+          "binder_jetting": {
+            "verdict": "fail",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "THIN_WALL",
+                "scope": "localized",
+                "message": "4 faces (33.3%) below 1.0mm min wall for binder_jetting. Thinnest: 0.5mm.",
+                "process": "binder_jetting",
+                "citation": {
+                  "text": "Green part: 1mm min wall; 0.8mm post-sinter"
+                },
+                "severity": "error",
+                "region_center": [
+                  100.0,
+                  -200.0,
+                  300.0
+                ],
+                "fix_suggestion": "Increase wall thickness to >= 1.0mm. Green part: 1mm min wall; 0.8mm post-sinter.",
+                "measured_value": 0.5000004639792703,
+                "required_value": 1.0,
+                "measurement_unit": "mm",
+                "affected_face_count": 4,
+                "affected_faces_sample": [
+                  3,
+                  4,
+                  6,
+                  8
+                ]
+              },
+              {
+                "code": "FEATURE_SIZE_PRECISION",
+                "scope": "whole_part",
+                "message": "Some geometric boundaries cannot be compared reliably with the 0.5mm resolution limit because of source precision or unstable rim measurements.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Measure these features in the source CAD before manufacturing."
+              },
+              {
+                "code": "SINTERING_SHRINKAGE",
+                "scope": "whole_part",
+                "message": "Binder jetting parts shrink 15-20% during sintering. Ensure CAD model is scaled to compensate.",
+                "process": "binder_jetting",
+                "severity": "info",
+                "fix_suggestion": "Scale model 1.18\u20131.22x to compensate for sintering shrinkage. Desktop Metal Studio pre-compensates automatically."
+              }
+            ]
+          }
+        },
+        "volume_mm3": 300.0
+      },
+      "cost_decisions": {
+        "id": 5442,
+        "ulid": "01M3TWDX84T19XWZRCX8TS5FGH",
+        "version": "0.3.33",
+        "result_sha256": "e175873d5dd5835ed3fe2359b96b3f7d7f3dd84836692b5598ab151537f559b5",
+        "estimates": [
+          {
+            "process": "injection_molding",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "injection_molding",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          }
+        ]
+      }
+    },
+    {
+      "filename": "163-wall-6.0-mm.stl",
+      "thickness_mm": 6.0,
+      "source_units": "mm",
+      "source_sha256": "f94b68cd10075c4f4643345eac37820669e9ff43ec6c8b05113c45e86860a6de",
+      "analyses": {
+        "id": 1580,
+        "ulid": "01M3TWFP676DYTP6YX59MRTXSG",
+        "version": "0.3.33",
+        "result_sha256": "a566dcbe1faafad2ba64da8fd69e88b54e4284a46d9b5e7b7901f6e2f6cc09e4",
+        "processes": {
+          "mjf": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "mjf",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              }
+            ]
+          },
+          "injection_molding": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "WALL_UNIFORMITY_SAMPLED",
+                "scope": "whole_part",
+                "message": "Largest sampled interior section: 6mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+                "measured_value": 5.999995751067808,
+                "measurement_unit": "mm"
+              }
+            ]
+          },
+          "binder_jetting": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "SINTERING_SHRINKAGE",
+                "scope": "whole_part",
+                "message": "Binder jetting parts shrink 15-20% during sintering. Ensure CAD model is scaled to compensate.",
+                "process": "binder_jetting",
+                "severity": "info",
+                "fix_suggestion": "Scale model 1.18\u20131.22x to compensate for sintering shrinkage. Desktop Metal Studio pre-compensates automatically."
+              }
+            ]
+          }
+        },
+        "volume_mm3": 3600.0
+      },
+      "cost_decisions": {
+        "id": 5443,
+        "ulid": "01M3TWFP6N8KG1JEGQK1P3VKHH",
+        "version": "0.3.33",
+        "result_sha256": "800832dd36aad1c2e08d7cffe272be10792d90e1ceb976cc3f0e22873ad7f92d",
+        "estimates": [
+          {
+            "process": "injection_molding",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "injection_molding",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          }
+        ]
+      }
+    },
+    {
+      "filename": "163-wall-6.001-mm.stl",
+      "thickness_mm": 6.001,
+      "source_units": "mm",
+      "source_sha256": "9ed3993874e1e1a19c1d4793d19f4455db7c8420b434e3af28941e4b803b70e8",
+      "analyses": {
+        "id": 1581,
+        "ulid": "01M3TWHGKNCAK52DZ4MJQ2XM7S",
+        "version": "0.3.33",
+        "result_sha256": "776d903c0423d9c8d7665a14a238e8d5e47ffff9e6ffc1e6cf1f5ea790b107af",
+        "processes": {
+          "mjf": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "mjf",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              }
+            ]
+          },
+          "injection_molding": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "WALL_UNIFORMITY_SAMPLED",
+                "scope": "whole_part",
+                "message": "Largest sampled interior section: 6.001mm. Thickness uses interior clearances; unsampled sections may be thicker.",
+                "process": "injection_molding",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall sections in the source CAD.",
+                "measured_value": 6.00099607040673,
+                "measurement_unit": "mm"
+              },
+              {
+                "code": "THICK_WALL",
+                "scope": "whole_part",
+                "message": "Sampled thick section 6.001mm > 6.0mm \u2014 sink marks / long cycle risk.",
+                "process": "injection_molding",
+                "citation": {
+                  "text": "0.5\u20136mm, ideal 2.5mm for ABS.",
+                  "standard": "GE Plastics"
+                },
+                "severity": "warning",
+                "fix_suggestion": "Core out thick sections. Target 2.5mm. GE Plastics: 0.5\u20136mm, ideal 2.5mm for ABS.",
+                "measured_value": 6.00099607040673,
+                "required_value": 6.0,
+                "measurement_unit": "mm"
+              }
+            ]
+          },
+          "binder_jetting": {
+            "verdict": "issues",
+            "issues": [
+              {
+                "code": "WALL_THICKNESS_PRECISION",
+                "scope": "whole_part",
+                "message": "Wall checks have stable measurements for 12 of 12 faces. Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and unsampled faces cannot verify a minimum wall; a result near the limit is uncertain.",
+                "process": "binder_jetting",
+                "severity": "warning",
+                "fix_suggestion": "Confirm critical wall thicknesses in the source CAD before manufacturing."
+              },
+              {
+                "code": "SINTERING_SHRINKAGE",
+                "scope": "whole_part",
+                "message": "Binder jetting parts shrink 15-20% during sintering. Ensure CAD model is scaled to compensate.",
+                "process": "binder_jetting",
+                "severity": "info",
+                "fix_suggestion": "Scale model 1.18\u20131.22x to compensate for sintering shrinkage. Desktop Metal Studio pre-compensates automatically."
+              }
+            ]
+          }
+        },
+        "volume_mm3": 3600.6
+      },
+      "cost_decisions": {
+        "id": 5444,
+        "ulid": "01M3TWHGKTJ03GWETK2PYMP1D1",
+        "version": "0.3.33",
+        "result_sha256": "788d59011e16f3845926bde7d1df1152126a25b45144f47ede77ca3c94e3e863",
+        "estimates": [
+          {
+            "process": "injection_molding",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "injection_molding",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 50,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          },
+          {
+            "process": "mjf",
+            "quantity": 5000,
+            "dfm_verdict": "issues",
+            "dfm_blocker_details": [],
+            "eligible": null
+          }
+        ]
+      }
+    }
+  ],
+  "historical_records_unchanged": {
+    "analyses": 102,
+    "cost_decisions": 111
+  }
+}

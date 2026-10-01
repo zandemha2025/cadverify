@@ -1,0 +1,72 @@
+{
+  "status": "completed",
+  "conclusion": "failure",
+  "headSha": "a413a1f3635a15062131e7e6092e2950cf877dbb",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206846975"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206847173"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206847221"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206847231"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206847232"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206847281"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110206923816"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110210272890"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/zandemha2025/cadverify/actions/runs/36811342637/job/110210272991"
+    }
+  ],
+  "image_runtime_probes": "Frontend default startup/share PNG and backend native STEP passed",
+  "remaining_scan_findings": {
+    "HIGH": 5,
+    "CRITICAL": 0,
+    "packages": [
+      "libexpat1 2.8.3-1~deb13u1: CVE-2026-93990",
+      "libx11-6/libx11-data/libx11-xcb1 2:1.8.12-1: CVE-2026-88806",
+      "libxrender1 1:0.9.12-1: CVE-2026-88807"
+    ]
+  }
+}

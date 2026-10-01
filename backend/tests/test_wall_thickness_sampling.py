@@ -39,7 +39,10 @@ def test_plate_wall_is_surface_distance_not_ray_offset(width, thickness, thin, s
     mesh.apply_translation([10000, -20000, 30000])
     ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
     assert float(np.min(ctx.wall_thickness)) == pytest.approx(thickness, abs=1e-7)
-    assert bool(check_wall_thickness(ctx, 0.8, ProcessType.FDM)) is thin
+    issues = check_wall_thickness(ctx, 0.8, ProcessType.FDM)
+    assert any(i.code == "THIN_WALL" for i in issues) is thin
+    if subdivisions == 5:
+        assert any(i.code == "WALL_THICKNESS_PRECISION" for i in issues)
     molding = check_wall_uniformity(ctx, 0.8, 400, 2.5, ProcessType.INJECTION_MOLDING)
     assert any(issue.code == "THIN_WALL_MOLDING" for issue in molding) is thin
 

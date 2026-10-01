@@ -1,0 +1,32 @@
+[
+  {
+    "filename": "160-rotated-float32.stl",
+    "thickness_mm": 0.5,
+    "source_units": "mm",
+    "source_sha256": "035c027b337ffa52e25670607f5bf112beb51af92ad63e5ccfd0daee41a7e0c1"
+  },
+  {
+    "filename": "161-sheet-0.499-mm.stl",
+    "thickness_mm": 0.499,
+    "source_units": "mm",
+    "source_sha256": "35aa4866f02c0ef1efad5cc0a91c1294ea6c7fea8f95b764176f8ac6dc9bcf78"
+  },
+  {
+    "filename": "161-sheet-0.5-inch.stl",
+    "thickness_mm": 0.5,
+    "source_units": "inch",
+    "source_sha256": "ad5282f16b1aec7a06f330da67e0d1a6b5097a73ee9ee2361ca2cfb024477556"
+  },
+  {
+    "filename": "163-wall-6.0-mm.stl",
+    "thickness_mm": 6.0,
+    "source_units": "mm",
+    "source_sha256": "f94b68cd10075c4f4643345eac37820669e9ff43ec6c8b05113c45e86860a6de"
+  },
+  {
+    "filename": "163-wall-6.001-mm.stl",
+    "thickness_mm": 6.001,
+    "source_units": "mm",
+    "source_sha256": "9ed3993874e1e1a19c1d4793d19f4455db7c8420b434e3af28941e4b803b70e8"
+  }
+]

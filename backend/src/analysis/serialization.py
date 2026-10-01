@@ -140,7 +140,9 @@ def serialize_wall_thickness(
         "units": "mm",
         "values": values,
         "note": (
-            "Per-face inward-ray wall thickness aligned to the analyzed mesh "
+            "Sampled inward-ray wall thickness on the analyzed mesh; unsampled faces "
+            "may contain nearest-sample estimates. Values describe uploaded coordinates, "
+            "not certified source-CAD dimensions. Aligned to the analyzed mesh "
             "face indices (same index space as issue.affected_faces_sample). "
             "null = uncomputable (open/degenerate face)."
         ),

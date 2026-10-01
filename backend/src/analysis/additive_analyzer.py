@@ -10,7 +10,7 @@ import logging
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
-from src.analysis.context import manufacturing_edge_lengths
+from src.analysis.context import manufacturing_edge_measurements
 
 from src.analysis.constants import (
     BUILD_VOLUMES,
@@ -192,37 +192,11 @@ def check_small_features(
     mesh: trimesh.Trimesh,
     process: ProcessType,
 ) -> list[Issue]:
-    """Detect features smaller than the process resolution."""
-    issues = []
-    min_feature = MIN_FEATURE_SIZE.get(process, 0.4)
-
-    edge_lengths = manufacturing_edge_lengths(mesh)
-
-    small_edges = edge_lengths[edge_lengths < min_feature]
-    if len(small_edges) > 0:
-        pct = len(small_edges) / len(edge_lengths) * 100
-        smallest = float(np.min(small_edges))
-
-        if pct > 5:  # Only flag if significant
-            issues.append(Issue(
-                code="SMALL_FEATURES",
-                measurement_unit="mm",
-                severity=Severity.WARNING,
-                message=(
-                    f"{len(small_edges)} geometric boundary spans ({pct:.1f}%) are smaller than "
-                    f"{min_feature}mm minimum feature size for {process.value}. "
-                    f"Smallest: {smallest:.3f}mm."
-                ),
-                process=process,
-                measured_value=smallest,
-                required_value=min_feature,
-                fix_suggestion=(
-                    f"Features below {min_feature}mm may not resolve in "
-                    f"{process.value}. Increase feature size or switch to a "
-                    f"higher-resolution process like SLA (min {MIN_FEATURE_SIZE[ProcessType.SLA]}mm)."
-                ),
-            ))
-    return issues
+    """Use the shared boundary-size and source-precision contract."""
+    from src.analysis.processes.checks import small_feature_issues
+    lengths, precision, stable = manufacturing_edge_measurements(mesh)
+    return small_feature_issues(lengths, precision, MIN_FEATURE_SIZE.get(process, 0.4),
+                                process, topology_stable=stable)
 
 
 def check_trapped_volumes(

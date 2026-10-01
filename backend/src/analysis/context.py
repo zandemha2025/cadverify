@@ -140,6 +140,11 @@ class GeometryContext:
 
     # Room for extensions (symmetry axis, SAM-3D labels, ...)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Upper bounds apply only to persistent, directly cast hits. They are not
+    # two-sided intervals: a perturbed ray can encounter another surface first.
+    wall_thickness_upper: np.ndarray | None = None
+    edge_length_precision: np.ndarray | None = None
+    edge_topology_stable: bool = True
 
     @cached_property
     def flat_sheet_geometry(self):
@@ -173,7 +178,7 @@ class GeometryContext:
             ids = np.arange(0, n, stride)
             ids = ids[::max(1, (len(ids) + 4999) // 5000)]
             ids = ids[np.isfinite(self.wall_thickness[ids])]
-            points = self.centroids[ids] - self.normals[ids] * self.wall_thickness[ids, None] / 2
+            points = _wall_sample_points(self.mesh)[ids] - self.normals[ids] * self.wall_thickness[ids, None] / 2
             batch = min(_wall_thickness_ray_batch(), max(8, _wall_thickness_ray_budget() // n))
             tol = wall_thickness_tolerance(self.mesh, self.scale_eps)
             # Facet centers recover broad planar sections even on coarse CAD
@@ -249,9 +254,13 @@ class GeometryContext:
             cos_z = np.clip(normals @ np.array([0.0, 0.0, 1.0]), -1.0, 1.0)
             angles_from_up_deg = np.degrees(np.arccos(cos_z))
 
-        wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps)
+        wall_upper = np.full(len(centroids), np.inf)
+        wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps, wall_upper)
 
-        edge_lengths = manufacturing_edge_lengths(mesh)
+        edge_lengths, edge_precision, edge_stable = manufacturing_edge_measurements(mesh)
+        if decimation and decimation.get("succeeded"):
+            wall_upper[:] = np.inf
+            edge_precision[:] = np.inf
         adjacency = _safe_attr(mesh, "face_adjacency", default=np.empty((0, 2), dtype=int))
         dihedral = _safe_attr(mesh, "face_adjacency_angles", default=np.empty(0))
         try:
@@ -315,7 +324,10 @@ class GeometryContext:
             face_areas=face_areas,
             angles_from_up_deg=angles_from_up_deg,
             wall_thickness=wall_thickness,
+            wall_thickness_upper=wall_upper,
             edge_lengths=np.asarray(edge_lengths, dtype=np.float64),
+            edge_length_precision=edge_precision,
+            edge_topology_stable=edge_stable and not bool(decimation and decimation.get("succeeded")),
             dihedral_angles_rad=np.asarray(dihedral, dtype=np.float64),
             face_adjacency=np.asarray(adjacency, dtype=np.int64),
             concave_mask=concave_mask,
@@ -339,17 +351,29 @@ def analysis_mesh_hash(mesh: trimesh.Trimesh) -> str:
 
 
 def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:
+    return manufacturing_edge_measurements(mesh)[0]
+
+
+def manufacturing_edge_measurements(mesh: trimesh.Trimesh) -> tuple[np.ndarray, np.ndarray, bool]:
     """Measure geometric boundaries, never the edges of the export triangles.
 
     Join subdivision segments until a junction or a real corner. A smooth
     closed rim contributes its in-plane width (e.g. bore diameter), not its
     individual tessellation chords. The work is linear in boundary size.
     """
-    edges = np.asarray(mesh.face_adjacency_edges)[
-        np.asarray(mesh.face_adjacency_angles) > np.radians(30)
-    ]
+    angles = np.asarray(mesh.face_adjacency_angles)
+    edges = np.asarray(mesh.face_adjacency_edges)[angles > np.radians(30)]
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    # Both selected AND omitted adjacencies must stay on the same side of the
+    # sharp-edge threshold; otherwise chain membership itself is uncertain.
+    stable = True
+    if error:
+        normal_error = _normal_precision(mesh, error)
+        angle_error = 2 * np.arcsin(np.minimum(1., normal_error / 2))
+        stable = bool(np.all(np.abs(angles - np.radians(30)) >
+                             angle_error[mesh.face_adjacency].sum(axis=1)))
     if len(edges) == 0:
-        return np.empty(0)
+        return np.empty(0), np.empty(0), stable
     vertices = np.asarray(mesh.vertices)
     neighbors: dict[int, list[int]] = defaultdict(list)
     for index, (a, b) in enumerate(edges):
@@ -364,11 +388,17 @@ def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:
         ends = [int(edges[i].sum()) - vertex for i in incident]
         directions = vertices[ends] - vertices[vertex]
         lengths = np.linalg.norm(directions, axis=1)
+        if error:
+            # Unit-vector change for a segment whose endpoints each move <= e.
+            direction_error = np.minimum(2., 4 * error / np.maximum(lengths - 2 * error, 1e-300))
+            cosine = float(np.dot(*directions) / max(float(np.prod(lengths)), 1e-300))
+            stable &= abs(cosine + np.cos(np.radians(30))) > direction_error.sum()
         if np.any(lengths <= 1e-12) or np.dot(*directions) > -np.cos(np.radians(30)) * np.prod(lengths):
             breaks.add(vertex)
 
     visited: set[int] = set()
     sizes = []
+    precisions = []
     # Start open chains at their ends; the remaining components are closed rims.
     for start in [*breaks, *neighbors]:
         for first in neighbors[start]:
@@ -384,6 +414,7 @@ def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:
                     break
                 edge = next(i for i in neighbors[vertex] if i != edge)
             points = vertices[path]
+            precision = 2 * error * (len(path) - 1) if stable else float("inf")
             if path[-1] == start:
                 # ponytail: planar rim width; freeform openings need B-rep
                 # feature measurements before claiming full feature coverage.
@@ -393,11 +424,16 @@ def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:
                 if len(singular) < 2 or singular[1] <= 1e-12:
                     continue
                 size = float(np.ptp(centered @ axes[:2].T, axis=0).min())
+                # PCA axes can jump at repeated singular values. Do not claim
+                # a coordinate-rounding bound for this heuristic rim width.
+                if error:
+                    precision = float("inf")
             else:
                 size = float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum())
             if np.isfinite(size) and size > 1e-12:
                 sizes.append(size)
-    return np.asarray(sizes, dtype=np.float64)
+                precisions.append(precision)
+    return np.asarray(sizes, dtype=np.float64), np.asarray(precisions, dtype=np.float64), bool(stable)
 
 
 def _max_split_bodies() -> int:
@@ -472,6 +508,16 @@ def wall_thickness_tolerance(mesh: trimesh.Trimesh, eps: float) -> float:
     return max(eps * 1e-6, float(np.spacing(magnitude)) * 8)
 
 
+def _normal_precision(mesh: trimesh.Trimesh, error: float) -> np.ndarray:
+    """Euclidean unit-normal change when each triangle vertex moves <= error."""
+    if not error:
+        return np.zeros(len(mesh.faces))
+    edges = mesh.triangles[:, 1:] - mesh.triangles[:, :1]
+    cross_error = 2 * error * np.linalg.norm(edges, axis=2).sum(axis=1) + 4 * error**2
+    cross_length = 2 * mesh.area_faces
+    return np.minimum(2., 2 * cross_error / np.maximum(cross_length - cross_error, 1e-300))
+
+
 def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] | None:
     measured = flat_sheet_geometry(mesh)
     return measured[0] if measured is not None else None
@@ -503,14 +549,7 @@ def flat_sheet_geometry(mesh: trimesh.Trimesh) -> tuple[tuple[float, float, floa
             return None
         # If each vertex moves at most e, either triangle edge moves at most
         # 2e. Bound its cross-product change, then the unit-normal change.
-        normal_error = np.zeros(len(mesh.faces))
-        if error:
-            edges = mesh.triangles[:, 1:] - mesh.triangles[:, :1]
-            cross_error = 2 * error * np.linalg.norm(edges, axis=2).sum(axis=1) + 4 * error**2
-            cross_length = 2 * mesh.area_faces
-            if np.any(cross_length <= cross_error):
-                return None  # Source precision cannot resolve these triangles.
-            normal_error = 2 * cross_error / (cross_length - cross_error)
+        normal_error = _normal_precision(mesh, error)
         precision = 2 * error + float(np.linalg.norm(mesh.extents)) * normal_error[largest_face]
         angular_tol = 1e-7 + normal_error + normal_error[largest_face]
         if np.any(angular_tol >= np.sqrt(.5)):
@@ -592,23 +631,32 @@ def sheet_envelope_dimensions(outline, envelope) -> tuple[float, float]:
     return best
 
 
+def _wall_sample_points(mesh: trimesh.Trimesh) -> np.ndarray:
+    if mesh.metadata.get("coordinate_error"):
+        # Symmetric CAD centroid rays often hit an export diagonal exactly.
+        # A fixed interior barycentric point avoids that common ambiguous hit.
+        return np.einsum("ijk,j->ik", mesh.triangles, [1 / 2, 1 / 3, 1 / 6])
+    return np.asarray(mesh.triangles_center)
+
+
 def _compute_wall_thickness(
     mesh: trimesh.Trimesh,
     normals: np.ndarray,
     centroids: np.ndarray,
     eps: float,
+    upper_bounds: np.ndarray | None = None,
 ) -> np.ndarray:
     """Measure per-face wall thickness via inward ray cast.
 
     For each face, fires one ray from slightly outside the surface along -normal.
-    The nearest valid hit (not the source face itself) is the wall thickness.
-    Old code did this with a Python per-face loop; this version uses
-    np.minimum.at to scatter-min distances back to their source rays, which is
-    strictly vectorized and correctly handles the multi-hit case.
+    With source rounding, prefer the persistent hit having the smallest upper
+    bound and retain its actual distance. Otherwise retain the nearest valid
+    hit. A finite raw value without a finite bound is an uncertain estimate.
 
     Returns an array of length N_faces. Uncomputable faces get np.inf, which
     analyzers interpret as 'unknown' rather than 'thick'.
     """
+    centroids = _wall_sample_points(mesh)
     n = len(centroids)
     thickness = np.full(n, np.inf, dtype=np.float64)
     if n == 0:
@@ -616,14 +664,14 @@ def _compute_wall_thickness(
 
     threshold = _raycast_sample_threshold()
     if n > threshold:
-        return _compute_wall_thickness_sampled(mesh, normals, centroids, eps, n)
+        return _compute_wall_thickness_sampled(mesh, normals, centroids, eps, n, upper_bounds)
 
     # Below threshold we cast one ray per face — but in memory-bounded batches,
     # so even here peak RSS is capped instead of spiking to gigabytes.
     origins = centroids + normals * eps  # do not step past a thin opposite wall
     directions = -normals
     source_face_idx = np.arange(n, dtype=np.int64)
-    return _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx)
+    return _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx, upper_bounds=upper_bounds)
 
 
 def _cast_inward_rays_batched(
@@ -634,13 +682,15 @@ def _cast_inward_rays_batched(
     source_face_idx: np.ndarray,
     *,
     source_points: np.ndarray | None = None,
+    upper_bounds: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Cast inward rays in memory-bounded batches; return per-ray min thickness.
+    """Cast inward rays in memory-bounded batches; return per-ray hit distances.
 
     ``source_face_idx[i]`` is the mesh-face index ray ``i`` originates from,
     used to drop self-hits. Returns an array of length ``len(origins)`` with the
-    nearest inward distance from the original face, not the offset ray origin
-    (``np.inf`` where none).
+    inward distance from the original face, not the offset ray origin (``np.inf``
+    where none). When requested, upper_bounds selects a persistent hit and the
+    returned distance stays paired with that hit, even if a closer hit is uncertain.
 
     The pure-Python ``RayMeshIntersector`` allocates (rays × candidate-triangle)
     intermediates *per call*. Casting only ``WALL_THICKNESS_RAY_BATCH`` rays at a
@@ -661,6 +711,9 @@ def _cast_inward_rays_batched(
     # Reject numerical self-hits without discarding walls thinner than the
     # scale-dependent ray offset. Account for translated CAD coordinates too.
     surface_tol = wall_thickness_tolerance(mesh, eps)
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    normal_error = _normal_precision(mesh, error) if upper_bounds is not None else np.empty(0)
+    samples = _wall_sample_points(mesh) if source_points is None else source_points
     for start in range(0, m, batch):
         stop = min(start + batch, m)
         b_origins = origins[start:stop]
@@ -683,12 +736,39 @@ def _cast_inward_rays_batched(
 
         # Measure from the actual surface; the offset must not bias thickness.
         # Signed projection also excludes any hit outside the source surface.
-        reference = mesh.triangles_center[b_source] if source_points is None else source_points[start:stop]
+        reference = samples[b_source] if source_points is None else samples[start:stop]
         offsets = locs - reference[idx_ray]
         dists = np.einsum("ij,ij->i", offsets, b_directions[idx_ray])
         valid = (idx_tri != b_source[idx_ray]) & (dists > surface_tol)
         if np.any(valid):
             np.minimum.at(out, start + idx_ray[valid], dists[valid])
+            if upper_bounds is not None:
+                rays, targets, distances = idx_ray[valid], idx_tri[valid], dists[valid]
+                if not error:
+                    np.minimum.at(upper_bounds, start + rays, distances)
+                    continue
+                source_error = normal_error[b_source[rays]]
+                denominator = (np.abs(np.einsum("ij,ij->i", b_directions[rays], mesh.face_normals[targets]))
+                               - source_error - normal_error[targets])
+                bound = np.full(len(rays), np.inf)
+                positive = denominator > 0
+                bound[positive] = (2 * error + distances[positive] * source_error[positive]) / denominator[positive]
+                triangles = mesh.triangles[targets]
+                edges = np.roll(triangles, -1, axis=1) - triangles
+                edge_distance = np.linalg.norm(np.cross(edges, locs[valid, None] - triangles), axis=2)
+                edge_distance /= np.maximum(np.linalg.norm(edges, axis=2), 1e-300)
+                # A corresponding plane hit must stay forward and inside its
+                # triangle. A new nearer hit can only make the wall thinner.
+                persistent = ((distances > bound + surface_tol) &
+                              (edge_distance.min(axis=1) > 2 * error + distances * source_error + bound))
+                candidates = np.flatnonzero(persistent)
+                order = candidates[np.lexsort(((distances + bound)[candidates], rays[candidates]))]
+                _, first = np.unique(rays[order], return_index=True)
+                chosen = order[first]
+                # Keep the measured chord paired with the hit that supplies
+                # the bound, even when a closer hit is ambiguous.
+                upper_bounds[start + rays[chosen]] = (distances + bound)[chosen]
+                out[start + rays[chosen]] = distances[chosen]
 
     return out
 
@@ -699,8 +779,10 @@ def _compute_wall_thickness_sampled(
     centroids: np.ndarray,
     eps: float,
     n: int,
+    upper_bounds: np.ndarray | None = None,
 ) -> np.ndarray:
     """Sampled wall thickness: ray-cast ~5000 faces (batched), propagate via KDTree."""
+    centroids = _wall_sample_points(mesh)
     thickness = np.full(n, np.inf, dtype=np.float64)
     stride = max(1, n // 5000)
     sample_idx = np.arange(0, n, stride)
@@ -710,9 +792,12 @@ def _compute_wall_thickness_sampled(
 
     # Reuse the memory-bounded batched caster. `sample_idx` doubles as the
     # per-ray source-face index used to drop self-hits.
+    sampled_upper = np.full(len(sample_idx), np.inf) if upper_bounds is not None else None
     sampled_thickness = _cast_inward_rays_batched(
-        mesh, origins, directions, eps, sample_idx
+        mesh, origins, directions, eps, sample_idx, upper_bounds=sampled_upper
     )
+    if upper_bounds is not None:
+        upper_bounds[sample_idx] = sampled_upper
     if not np.any(np.isfinite(sampled_thickness)):
         return thickness
 

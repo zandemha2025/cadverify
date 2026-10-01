@@ -118,3 +118,136 @@ def test_sheet_hole_comparison_keeps_real_violation_without_roundoff_failure(dia
                             centroid=(100, -200, 300), radius=diameter / 2)]
     issues = get_analyzer(ProcessType.SHEET_METAL).analyze(ctx)
     assert any(i.code == "SMALL_HOLE_SHEET" for i in issues) == (diameter < .5)
+
+
+@pytest.mark.parametrize("units", ["mm", "inch"])
+@pytest.mark.parametrize("thickness", [.499, .5, .501])
+def test_binary_wall_and_feature_limits_keep_real_defects(units, thickness):
+    from src.analysis.additive_analyzer import check_small_features as legacy_check
+    from src.analysis.processes.checks import check_small_features, check_wall_thickness, check_wall_uniformity
+    mesh = trimesh.creation.box(extents=[30., 20., thickness])
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(.71, [1, 2, 3]))
+    mesh.apply_translation([100, -200, 300])
+    if units == "inch":
+        mesh.apply_scale(1 / 25.4)
+    parsed = scale_mesh_to_mm(parse_stl_from_bytes(mesh.export(file_type="stl")), units)
+    ctx = GeometryContext.build(parsed, analyze_geometry(parsed))
+    wall = check_wall_thickness(ctx, .5, ProcessType.MJF)
+    molding = check_wall_uniformity(ctx, .5, 6., 2., ProcessType.INJECTION_MOLDING)
+    feature = check_small_features(ctx, .5, ProcessType.BINDER_JET)
+    assert any(i.code == "THIN_WALL" for i in wall) is (thickness < .5)
+    assert any(i.code == "THIN_WALL_MOLDING" for i in molding) is (thickness < .5)
+    assert any(i.code == "SMALL_FEATURES" for i in feature) is (thickness < .5)
+    assert any(i.code == "SMALL_FEATURES" for i in legacy_check(parsed, ProcessType.BINDER_JET)) is (thickness < .5)
+    if thickness == .5:
+        assert any("PRECISION" in i.code for i in wall)
+        assert any("PRECISION" in i.code for i in molding)
+        assert any("PRECISION" in i.code for i in feature)
+
+
+@pytest.mark.parametrize("thickness", [5.999, 6., 6.001])
+def test_binary_molding_maximum_keeps_real_thick_sections(thickness):
+    from src.analysis.processes.checks import check_wall_uniformity
+    mesh = trimesh.creation.box(extents=[30., 20., thickness])
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(.71, [1, 2, 3]))
+    mesh.apply_translation([100, -200, 300])
+    parsed = parse_stl_from_bytes(mesh.export(file_type="stl"))
+    ctx = GeometryContext.build(parsed, analyze_geometry(parsed))
+    issues = check_wall_uniformity(ctx, .5, 6., 2., ProcessType.INJECTION_MOLDING)
+    assert any(i.code == "THICK_WALL" for i in issues) is (thickness > 6.)
+    if thickness == 6.:
+        assert any("PRECISION" in i.code for i in issues)
+
+
+def test_binary_bounds_cover_analytic_boxes_without_erasing_clear_defects():
+    import numpy as np
+    from src.analysis.processes.checks import check_wall_thickness
+    rng = np.random.default_rng(163)
+    for _ in range(20):
+        thickness = rng.uniform(.2, .45)
+        mesh = trimesh.creation.box(extents=[30., 20., thickness])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(rng.uniform(-3, 3), rng.normal(size=3)))
+        mesh.apply_translation(rng.uniform(-300, 300, size=3))
+        parsed = parse_stl_from_bytes(mesh.export(file_type="stl"))
+        ctx = GeometryContext.build(parsed, analyze_geometry(parsed))
+        assert thickness <= ctx.wall_thickness_upper.min() < thickness + .001
+        assert any(i.code == "THIN_WALL" for i in check_wall_thickness(ctx, .5, ProcessType.MJF))
+
+
+def test_interpolated_faces_do_not_inherit_a_thin_wall_proof():
+    import numpy as np
+    from src.analysis.context import _compute_wall_thickness_sampled
+    mesh = trimesh.creation.box(extents=[30., 20., .4])
+    for _ in range(5):
+        mesh = mesh.subdivide()
+    upper = np.full(len(mesh.faces), np.inf)
+    values = _compute_wall_thickness_sampled(mesh, mesh.face_normals, mesh.triangles_center,
+                                             .001, len(mesh.faces), upper)
+    sampled = np.arange(0, len(mesh.faces), len(mesh.faces) // 5000)
+    unsampled = np.ones(len(mesh.faces), dtype=bool); unsampled[sampled] = False
+    assert np.isfinite(values[unsampled]).all()
+    assert np.isinf(upper[unsampled]).all()
+    assert np.isfinite(upper[sampled]).any()
+
+
+def test_decimation_and_closed_rims_disclose_unknown_precision(monkeypatch):
+    import numpy as np
+    import src.analysis.context as context
+    from src.analysis.processes.checks import check_small_features, check_wall_thickness, check_wall_uniformity
+    rim = parse_stl_from_bytes(trimesh.creation.annulus(r_min=.2, r_max=2, height=4).export(file_type="stl"))
+    ctx = GeometryContext.build(rim, analyze_geometry(rim))
+    issues = check_small_features(ctx, .5, ProcessType.BINDER_JET)
+    assert any(i.code == "FEATURE_SIZE_PRECISION" for i in issues)
+    assert not any(i.code == "SMALL_FEATURES" for i in issues)
+    part = parse_stl_from_bytes(trimesh.creation.box(extents=[.4, 20, 30]).export(file_type="stl"))
+    monkeypatch.setattr(context, "_maybe_decimate", lambda m: (m, {"succeeded": True}))
+    ctx = GeometryContext.build(part, analyze_geometry(part))
+    assert np.isinf(ctx.wall_thickness_upper).all()
+    assert np.isinf(ctx.edge_length_precision).all()
+    assert not any(i.code == "THIN_WALL" for i in check_wall_thickness(ctx, .5, ProcessType.MJF))
+    assert not any(i.code in {"THIN_WALL_MOLDING", "THICK_WALL", "NON_UNIFORM_WALLS"}
+                   for i in check_wall_uniformity(ctx, .5, .1, .2, ProcessType.INJECTION_MOLDING))
+
+
+def test_unstable_sharp_edge_threshold_is_unknown():
+    import numpy as np
+    from src.analysis.context import manufacturing_edge_measurements
+    mesh = trimesh.Trimesh(vertices=[[0, 0, 0], [10, 0, 0], [0, 10, 0],
+                                    [0, -10 * np.cos(np.pi / 6), 10 * np.sin(np.pi / 6)]],
+                           faces=[[0, 1, 2], [1, 0, 3]], process=False)
+    parsed = parse_stl_from_bytes(mesh.export(file_type="stl"))
+    _, precision, stable = manufacturing_edge_measurements(parsed)
+    assert not stable
+    assert not np.isfinite(precision).any()
+
+
+def test_findings_report_the_measurement_that_proves_the_defect():
+    import numpy as np
+    from src.analysis.processes.checks import check_wall_uniformity
+    part = trimesh.creation.box(extents=[1., 1., 1.])
+    ctx = GeometryContext.build(part, analyze_geometry(part))
+    ctx.wall_thickness[:] = .4; ctx.wall_thickness_upper[:] = .41
+    ctx.wall_thickness[0] = .01; ctx.wall_thickness_upper[0] = np.inf
+    ctx.maximum_inscribed_diameter = 1.
+    issues = check_wall_uniformity(ctx, .5, 6, 2, ProcessType.INJECTION_MOLDING)
+    assert next(i for i in issues if i.code == "THIN_WALL_MOLDING").measured_value == .4
+    assert next(i for i in issues if i.code == "NON_UNIFORM_WALLS").measured_value == 2.5
+
+
+def test_persistent_hit_keeps_its_measurement_when_nearer_hit_is_ambiguous(monkeypatch):
+    import numpy as np
+    from src.analysis.context import _cast_inward_rays_batched
+    # One inward ray, an edge hit on a nearer triangle, and a stable interior
+    # hit on a farther triangle. The bound must retain the farther distance.
+    triangles = np.array([[[-2, -2, 0], [2, -2, 0], [0, 2, 0]],
+                          [[0, 0, -.01], [2, 0, -.01], [0, 2, -.01]],
+                          [[-2, -2, -.4], [2, -2, -.4], [0, 2, -.4]]])
+    mesh = trimesh.Trimesh(vertices=triangles.reshape((-1, 3)), faces=np.arange(9).reshape((-1, 3)), process=False)
+    mesh.metadata['coordinate_error'] = 1e-6
+    monkeypatch.setattr(mesh.ray, 'intersects_location', lambda **kw:
+                        (np.array([[0, 0, -.01], [0, 0, -.4]]), np.array([0, 0]), np.array([1, 2])))
+    upper = np.array([np.inf])
+    value = _cast_inward_rays_batched(mesh, np.array([[0, 0, .001]]), np.array([[0, 0, -1.]]),
+                                      .001, np.array([0]), source_points=np.array([[0, 0, 0.]]), upper_bounds=upper)
+    assert value[0] == .4
+    assert .4 < upper[0] < .401
