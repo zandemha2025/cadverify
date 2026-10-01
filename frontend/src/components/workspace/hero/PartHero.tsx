@@ -261,10 +261,12 @@ export function PartHero({
     ? analysisFailureCopy(dfmError || costError)
     : null;
   const analysisFailureMessage = analysisFailure
-    ? `${analysisFailure.explanation} ${analysisFailure.action}`
+    ? report && dfmError
+      ? `${dfmError} Cost results are available; detailed DFM findings could not be loaded.`
+      : `${analysisFailure.explanation} ${analysisFailure.action}`
     : null;
 
-  const headerBadge = geomError || analysisFailure?.kind === "geometry" ? (
+  const headerBadge = geomError || (!report && analysisFailure?.kind === "geometry") ? (
     <StatusBadge tone="fail" label="Geometry refused" />
   ) : validation || report ? (
     <StatusBadge
@@ -292,7 +294,7 @@ export function PartHero({
               {headerBadge}
             </div>
             <p className="text-xs text-muted-foreground">
-              One drop · inspected and costed in-process
+              Cost and manufacturability workspace
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

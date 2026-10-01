@@ -178,9 +178,6 @@ export default function PartWorkspace({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [dfmLoading, setDfmLoading] = useState(false);
   const [dfmError, setDfmError] = useState<string | null>(null);
-  // Both analysis requests share one parse but have separate HTTP lifecycles. A
-  // canonical /validate 4xx outranks a sibling transport exception.
-  const dfmTerminalFailureRef = useRef<string | null>(null);
   const analysisAttemptRef = useRef(0);
 
   // analyze ↔ geometry linking
@@ -437,10 +434,7 @@ export default function PartWorkspace({
       if (err instanceof CostGeometryInvalidError) {
         setGeomError({ reason: err.message, geometry: err.geometry });
       } else {
-        setCostError(
-          dfmTerminalFailureRef.current ??
-            (err instanceof Error ? err.message : "Cost estimate failed."),
-        );
+        setCostError(err instanceof Error ? err.message : "Cost estimate failed.");
       }
     } finally {
       if (attempt === analysisAttemptRef.current) setCostLoading(false);
@@ -463,13 +457,7 @@ export default function PartWorkspace({
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;
       const message = err instanceof Error ? err.message : "Analysis failed";
-      dfmTerminalFailureRef.current = message;
       setDfmError(message);
-      // /validate is the canonical geometry-analysis response. If it refuses the
-      // upload, end the sibling cost loader and retain this server diagnosis even
-      // when the other streamed request failed at the transport layer.
-      setCostError(message);
-      setCostLoading(false);
     } finally {
       if (attempt === analysisAttemptRef.current) setDfmLoading(false);
     }
@@ -479,7 +467,6 @@ export default function PartWorkspace({
     // Draft edits must not change the preview or leave DFM on an older scale.
     // A new submission also invalidates both responses from the previous one.
     const attempt = ++analysisAttemptRef.current;
-    dfmTerminalFailureRef.current = null;
     setSubmittedOptions(theOpts);
     void runCost(theFile, theOpts, attempt);
     void runDfm(theFile, theOpts.units, attempt);
@@ -540,7 +527,8 @@ export default function PartWorkspace({
     setCostError(null);
     setValidation(null);
     setDfmError(null);
-    dfmTerminalFailureRef.current = null;
+    setCostLoading(false);
+    setDfmLoading(false);
     ++analysisAttemptRef.current;
     setSelectedIssueKey(null);
     setScenarios([]);
@@ -687,7 +675,7 @@ export default function PartWorkspace({
         onSaveScenario={onSaveScenario}
         onRecallScenario={onRecallScenario}
         handleRecost={handleRecost}
-        runDfm={(candidate) => runAnalyses(candidate, submittedOptions)}
+        runDfm={(candidate) => void runDfm(candidate, submittedOptions.units)}
         reset={reset}
       />
     );
@@ -724,7 +712,7 @@ export default function PartWorkspace({
                 <h1 className="num truncate text-lg font-semibold text-foreground">{file.name}</h1>
                 {headerBadge}
               </div>
-              <p className="text-xs text-muted-foreground">One drop · costed and analyzed in-process</p>
+              <p className="text-xs text-muted-foreground">Cost and manufacturability workspace</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {report && calibration && (
@@ -748,6 +736,14 @@ export default function PartWorkspace({
           </div>
 
           <UnitWarningBanner warnings={report?.unit_warnings} />
+
+          {dfmError && report && (
+            <ErrorState
+              title="Detailed DFM analysis unavailable"
+              message={`${dfmError} Cost results are available below.`}
+              onRetry={() => void runDfm(file, submittedOptions.units)}
+            />
+          )}
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as WorkTab)}>
             <TabsList className="w-full justify-start overflow-x-auto">
@@ -870,7 +866,13 @@ export default function PartWorkspace({
                       filename={file.name}
                     />
                   ) : costError ? (
-                    <ErrorState title="Cost estimate failed" message={costError} onRetry={handleRecost} />
+                    <ErrorState
+                      title={dfmError ? analysisFailureCopy(dfmError).title : "Cost estimate failed"}
+                      message={dfmError
+                        ? `${analysisFailureCopy(dfmError).explanation} ${analysisFailureCopy(dfmError).action}`
+                        : costError}
+                      onRetry={handleRecost}
+                    />
                   ) : report ? (
                     <div className="space-y-5">
                       <CostDecisionView
