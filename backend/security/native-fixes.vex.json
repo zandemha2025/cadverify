@@ -3,7 +3,7 @@
   "@id": "https://github.com/zandemha2025/cadverify/blob/main/backend/security/native-fixes.vex.json",
   "author": "CadVerify",
   "timestamp": "2026-10-01T16:00:00Z",
-  "version": 1,
+  "version": 2,
   "statements": [
     {
       "vulnerability": {
@@ -23,13 +23,13 @@
       },
       "products": [
         {
-          "@id": "pkg:deb/debian/libx11-6@2%3A1.8.12-1%2Bcadverify1"
+          "@id": "pkg:deb/debian/libx11-6@1.8.12-1%2Bcadverify1?epoch=2"
         },
         {
-          "@id": "pkg:deb/debian/libx11-data@2%3A1.8.12-1%2Bcadverify1"
+          "@id": "pkg:deb/debian/libx11-data@1.8.12-1%2Bcadverify1?epoch=2"
         },
         {
-          "@id": "pkg:deb/debian/libx11-xcb1@2%3A1.8.12-1%2Bcadverify1"
+          "@id": "pkg:deb/debian/libx11-xcb1@1.8.12-1%2Bcadverify1?epoch=2"
         }
       ],
       "status": "fixed",
@@ -41,7 +41,7 @@
       },
       "products": [
         {
-          "@id": "pkg:deb/debian/libxrender1@1%3A0.9.12-1%2Bcadverify1"
+          "@id": "pkg:deb/debian/libxrender1@0.9.12-1%2Bcadverify1?epoch=1"
         }
       ],
       "status": "fixed",
