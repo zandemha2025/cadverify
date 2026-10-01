@@ -23,7 +23,7 @@ import math
 import os
 
 from src.analysis.models import ProcessType
-from src.costing.drivers import parts_per_build
+from src.costing.drivers import build_orientation, parts_per_build
 from src.costing.provenance import CostEstimate, Driver, Provenance
 from src.costing.rates import (
     ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, CASTING, FORGING_FAMILY, EDM,
@@ -81,7 +81,11 @@ def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
 # MACHINE sub-models. Additive returns (machine_hr, parts_per_build, src);
 # subtractive/formative return (cycle_hr, src) with parts_per_build = 1.
 # ──────────────────────────────────────────────────────────────────────────
-def _additive_machine(process, drivers, rates: RateCard):
+class BuildEnvelopeError(ValueError):
+    """No fitting setup established for the machine being priced."""
+
+
+def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
     """Build-plate nesting model (weaknesses #1, #2).
 
     build_job (powder-bed laser/fuse, DLP whole-layer): the machine sweeps every
@@ -97,32 +101,46 @@ def _additive_machine(process, drivers, rates: RateCard):
     physically-honest fix that collapses the medium-part over-cost.
     """
     bbox = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
-    n = parts_per_build(process, bbox, rates)
+    shrink = rates.p(process, "shrinkage_linear") if process in BINDER_JET_FAMILY else 0
+    bbox = tuple(d * (1 + shrink) for d in bbox)
+    envelope = (machine_override or {}).get("build_env_mm") or rates.build_env(process)
+    orientation = build_orientation(bbox, envelope)
+    n = parts_per_build(process, bbox, rates, envelope)
+    if orientation is None or n == 0:
+        raise BuildEnvelopeError(
+            f"{process.value}: price withheld — no fitting orientation established for "
+            f"the {tuple(round(d, 4) for d in bbox)}mm enclosing box in the priced build "
+            f"envelope {tuple(envelope)}mm. Confirm a build setup or select a larger "
+            "machine; this is not proof that every possible orientation fails.")
     mode = rates.nesting_mode(process)
     if mode == "build_job":
-        Z = rates.build_env(process)[2]
+        Z = envelope[2]
         vert = rates.p(process, "vert")
         build_job_hr = Z / vert                       # full-build duration (height-driven)
         machine_hr = build_job_hr / n                 # this part's amortized share
         src = (f"build-job {Z:g}mm ÷ {vert:g}mm/hr = {build_job_hr:.1f}hr full build "
                f"÷ {n} parts/build (packing {rates.packing_density(process):g}, "
-               f"env {rates.build_env(process)}) = {machine_hr:.3f}hr/part")
+               f"env {tuple(envelope)}) = {machine_hr:.3f}hr/part")
     else:  # serial (FDM single nozzle / SLA laser): XY-nested plate
         dep = rates.p(process, "deposition")
         vert = rates.p(process, "vert")
-        build_h = bbox[0]                             # smallest enclosing extent = build height
+        build_h = orientation[2]
         deposition_hr = drivers.volume_cm3 / dep      # per-part — single nozzle/laser, irreducible
         sweep_hr = (build_h / vert) / n               # per-PLATE Z-climb, amortized over the XY nest
         machine_hr = deposition_hr + sweep_hr
-        src = (f"serial XY-nested: deposition V/{dep:g} = {drivers.volume_cm3:.2f}/{dep:g} "
+        src = (f"serial XY nest: deposition V/{dep:g} = {drivers.volume_cm3:.2f}/{dep:g} "
                f"= {deposition_hr:.3f}hr/part (per-part nozzle) + Z-sweep "
                f"({build_h:.1f}/{vert:g})÷{n} parts/plate = {sweep_hr:.3f}hr/part "
                f"(plate Z-climb amortized; XY packing {rates.xy_packing_density(process):g}, "
-               f"plate {rates.build_env(process)[0]:g}×{rates.build_env(process)[1]:g}mm) "
+               f"plate {envelope[0]:g}×{envelope[1]:g}mm) "
                f"= {machine_hr:.3f}hr/part")
-    if getattr(drivers, "billet_bbox_mm", None):
-        src += (f"; {drivers.billet_basis} {tuple(round(d, 6) for d in bbox)}mm "
-                "(packing/setup assumption, not a verified nesting plan)")
+    src += (f"; {drivers.billet_basis} oriented XYZ "
+            f"{tuple(round(d, 6) for d in orientation)}mm; spaced-grid capacity limit "
+            "(packing/setup assumption, not a verified nesting plan)")
+    if shrink:
+        src += f"; green dimensions ×{1 + shrink:g} for sinter shrinkage"
+    if (machine_override or {}).get("build_env_mm"):
+        src += f"; USER-declared envelope of '{(machine_override or {}).get('machine_name')}'"
     return machine_hr, n, src
 
 
@@ -500,19 +518,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # ---- MACHINE ---------------------------------------------------------
     finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
     if family == "additive":
-        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
-        if rates.nesting_mode(process) == "serial":
-            pp_src = (f"XY nest: plate {rates.build_env(process)[0]:g}×"
-                      f"{rates.build_env(process)[1]:g}mm × xy_packing "
-                      f"{rates.xy_packing_density(process):g} ÷ footprint "
-                      f"({drivers.bbox_mm[1]:.1f}×{drivers.bbox_mm[2]:.1f}+"
-                      f"{rates.part_spacing(process):g}mm) = {n} parts/plate")
-            pp_prov = rates.prov_tag(f"xy_packing_density.{process.name}")
-        else:
-            pp_src = (f"nesting: packing {rates.packing_density(process):g} × env "
-                      f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
-                      f"{rates.part_spacing(process):g}mm spacing = {n} parts/build")
-            pp_prov = rates.prov_tag(f"packing_density.{process.name}")
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
+        pp_src = cycle_src
+        pp_prov = rates.prov_tag(
+            f"{'xy_packing_density' if rates.nesting_mode(process) == 'serial' else 'packing_density'}.{process.name}")
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=pp_prov,
@@ -537,23 +546,19 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     elif family == "metal_powder_bed":
         # REUSE the build-job additive time model (full-build Z-sweep ÷ parts/build)
         # with metal params. Metal-only post (plate/support/stress-relief) added below.
-        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=rates.prov_tag(f"packing_density.{process.name}"),
-            source=(f"nesting: packing {rates.packing_density(process):g} × env "
-                    f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
-                    f"{rates.part_spacing(process):g}mm spacing = {n} parts/build"),
+            source=cycle_src,
         ))
     elif family == "binder_jet":
         # green-part PRINT reuses the fast build-job model; debind+sinter added below.
-        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=rates.prov_tag(f"packing_density.{process.name}"),
-            source=(f"green print nesting: packing {rates.packing_density(process):g} × env "
-                    f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
-                    f"{rates.part_spacing(process):g}mm spacing = {n} parts/build"),
+            source=cycle_src,
         ))
     elif family == "ded":
         machine_hr, ded_deposited_kg, cycle_src = _ded_cycle(process, drivers, material, rates)

@@ -1,0 +1,177 @@
+{
+  "engine_version": "0.3.40",
+  "historical_records_unchanged": {
+    "analyses": 135,
+    "cost_decisions": 144
+  },
+  "controls": [
+    {
+      "filename": "178-priced-envelope-cube.step",
+      "source_sha256": "f8c568558ba7c2dc097dd694698d4666f39e21478e64e12a1125854f0641c022",
+      "analyses": {
+        "id": 1771,
+        "result_sha256": "ee388456abf47a0470d686a40764c4cde68ec9331ef9608339e0aa966eac38a7",
+        "geometry_and_all_dfm_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6081,
+        "result_sha256": "8f264368f77a0cbed9d1cd7a7481ce373b2413db52b48d2e85c1589b9a944a02",
+        "removed_estimates": [
+          {
+            "process": "dmls",
+            "quantity": 1,
+            "previous_price": 24357.44
+          },
+          {
+            "process": "dmls",
+            "quantity": 100,
+            "previous_price": 24357.44
+          },
+          {
+            "process": "slm",
+            "quantity": 1,
+            "previous_price": 24357.44
+          },
+          {
+            "process": "slm",
+            "quantity": 100,
+            "previous_price": 24357.44
+          }
+        ],
+        "unchanged_remaining_prices": 16,
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $1592.99/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. Estimated sand_casting crossover against the cheapest eligible no-tooling route: ~27 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $898.46/unit at qty 100. Note: sand_casting requires redesign for DFM (124602 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": 27.0,
+          "if_redesigned": {
+            "1": null,
+            "100": {
+              "caveat": "add draft, tooling-dominated",
+              "process": "sand_casting",
+              "material": "A356 Aluminum",
+              "unit_cost_usd": 898.46
+            }
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 1592.99,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 13.3,
+              "unit_cost_usd": 1480.38,
+              "lead_high_days": 24.7
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analyses": {
+        "id": 1772,
+        "result_sha256": "83fdc75660f27440896bdcc71b80a163d5d34f936178240818268a906230b65c",
+        "geometry_and_all_dfm_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6082,
+        "result_sha256": "f36237178c48e8375aeefe84e77ab5ab94554f0c8d35291b32c6ae7a6d6c95d2",
+        "removed_estimates": [],
+        "unchanged_remaining_prices": 20,
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31160 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 137.95,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.34,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+      "analyses": {
+        "id": 1773,
+        "result_sha256": "9484aed2a4c8163c0ee0b8f9e06e30f769aae1b16d74d97195a29b3f9cafa7b2",
+        "geometry_and_all_dfm_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6083,
+        "result_sha256": "dc6443ce2f4b3b053c4cdd8c465e6598a12bf6c6c27439ebae51849695ffdb3e",
+        "removed_estimates": [],
+        "unchanged_remaining_prices": 20,
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 137.95,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.34,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": true
+        }
+      }
+    }
+  ],
+  "rotated_bar_additive_prices_equal": true
+}

@@ -15,7 +15,7 @@ from src.analysis.models import Severity
 from src.costing.confidence import confidence_interval
 from src.costing.decision import Decision, make_vs_buy
 from src.costing.drivers import extract_drivers
-from src.costing.cost_model import cost_breakdown
+from src.costing.cost_model import BuildEnvelopeError, cost_breakdown
 from src.costing.leadtime import lead_time
 from src.costing.provenance import Driver, Provenance
 from src.costing.rates import COSTED_PROCESSES, RateCard, build_rate_card
@@ -341,7 +341,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     env_excluded: dict = {}
     if options.inventory or options.service_environment:
         verification, machine_override_by_pv, env_excluded = _build_verification(
-            elig, drivers, options)
+            elig, drivers, options, rates)
     if options.inventory and verification is not None:
         # A declared process cannot grant in-house savings when the actual
         # inventory fails (or cannot establish) fit for this part and material.
@@ -351,9 +351,45 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             in {"makeable_in_house", "makeable_with_secondary_op"}
         ))
 
+    estimates_serialized = []
+    estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
+    leadtimes_by_key = {}
+    elig_by_pv = {}                  # process_value -> eligible item (for arbitrary-qty costing)
+
+    cost_exclusions = {}
+    for item in elig:
+        process = item["process"]
+        material = item["material"]
+        ps = item["score"]
+        for q in options.quantities:
+            try:
+                est = cost_breakdown(process, drivers, material, options.material_class,
+                                     q, rates, region,
+                                     n_cavities=options.n_cavities,
+                                     complexity=options.complexity, process_score=ps,
+                                     owned=process in options.owned_processes,
+                                     tolerance_class=options.tolerance_class,
+                                     machine_override=machine_override_by_pv.get(
+                                         process.value))
+            except BuildEnvelopeError as exc:
+                # Fit is independent of quantity; never offer an impossible price
+                # or feed it into recommendation/crossover/lead-time calculations.
+                cost_exclusions[process.value] = str(exc)
+                break
+            elig_by_pv[process.value] = item
+            # cycle_hr from the estimate keeps lead time consistent with cost
+            cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
+            lt = lead_time(process, cycle_hr, q, rates)
+            leadtimes_by_key[(process.value, q)] = lt
+            estimates_by_pq[(process.value, q)] = est
+            estimates_serialized.append(
+                _serialize(est, lt, drivers, options.residual_model, options.ci_level,
+                           options.calibration))
+
+    costed_processes = {e["process"] for e in estimates_serialized}
     rec = recommend_routing(drivers, options.material_class,
                             dfm_failed=dfm_failed, dfm_clean=dfm_clean,
-                            available_processes={item["process"].value for item in elig}
+                            available_processes=costed_processes
                             - set(env_excluded.get("excluded_pv") or ()))
     routing_info = {
         "archetype": rec.archetype,
@@ -375,37 +411,10 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         },
     } if rec is not None else None
 
-    estimates_serialized = []
-    estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
-    leadtimes_by_key = {}
-    elig_by_pv = {}                  # process_value -> eligible item (for arbitrary-qty costing)
-
-    for item in elig:
-        process = item["process"]
-        material = item["material"]
-        ps = item["score"]
-        elig_by_pv[process.value] = item
-        for q in options.quantities:
-            est = cost_breakdown(process, drivers, material, options.material_class,
-                                 q, rates, region,
-                                 n_cavities=options.n_cavities,
-                                 complexity=options.complexity, process_score=ps,
-                                 owned=process in options.owned_processes,
-                                 tolerance_class=options.tolerance_class,
-                                 machine_override=machine_override_by_pv.get(
-                                     process.value))
-            # cycle_hr from the estimate keeps lead time consistent with cost
-            cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
-            lt = lead_time(process, cycle_hr, q, rates)
-            leadtimes_by_key[(process.value, q)] = lt
-            estimates_by_pq[(process.value, q)] = est
-            estimates_serialized.append(
-                _serialize(est, lt, drivers, options.residual_model, options.ci_level,
-                           options.calibration))
-
-    costed_processes = {e["process"] for e in estimates_serialized}
     for row in feas:
         row["costed"] = row["process"] in costed_processes
+        if row["process"] in cost_exclusions:
+            row["cost_exclusion_reason"] = cost_exclusions[row["process"]]
 
     # ── env-excluded cost entries stay in the list, but carry an inline flag +
     # the SAME cited reason the verdict shows (Phase C coherence fix) so the cost
@@ -442,7 +451,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                            excluded_pv=env_excluded.get("excluded_pv"),
                            env_note=env_excluded.get("note"))
 
-    notes = []
+    notes = list(cost_exclusions.values())
     if shop is not None:
         bound = sorted({k.split(".", 1)[0] for k in rates.shop_keys})
         notes.append(
@@ -620,7 +629,7 @@ def _env_decision_note(env, excluded_materials, excluded_routes=()) -> str:
             f"decision computed over {over}")
 
 
-def _build_verification(elig, drivers, options):
+def _build_verification(elig, drivers, options, rates):
     """Compute the §0 makeability verdict + per-process marginal-rate overrides.
 
     Returns ``(verification_dict, machine_override_by_pv, env_excluded)`` where
@@ -664,6 +673,11 @@ def _build_verification(elig, drivers, options):
         preq = part_req_from_drivers(process, drivers, mat,
                                      options.tolerance_class,
                                      material_props=props, env=env)
+        if process.value == "binder_jetting":
+            scale = 1 + rates.p(process, "shrinkage_linear")
+            preq = replace(preq, bbox_mm=tuple(d * scale for d in preq.bbox_mm),
+                           geometry_precision_mm=preq.geometry_precision_mm * scale,
+                           geometry_tolerance_mm=preq.geometry_tolerance_mm * scale)
         part_req_by_route[process.value] = preq
         if preq.material_name:
             material_props[preq.material_name] = props
@@ -690,11 +704,12 @@ def _build_verification(elig, drivers, options):
         if not res:
             continue
         rate = res.get("hourly_rate_usd")
-        if isinstance(rate, (int, float)) and not isinstance(rate, bool):
+        if res.get("build_env_mm") or (isinstance(rate, (int, float)) and not isinstance(rate, bool)):
             machine_override_by_pv[pv] = {
                 "hourly_rate_usd": rate,
                 "capital_frac": res.get("capital_frac"),
                 "machine_name": res.get("machine"),
+                **({"build_env_mm": res["build_env_mm"]} if res.get("build_env_mm") else {}),
                 # Persistence does not turn a user declaration into calibration.
                 "provenance": Provenance.USER,
             }

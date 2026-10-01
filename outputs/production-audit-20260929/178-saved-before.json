@@ -1,0 +1,422 @@
+{
+  "historical_counts": {
+    "analyses": 135,
+    "cost_decisions": 144
+  },
+  "controls": [
+    {
+      "filename": "178-priced-envelope-cube.step",
+      "source_sha256": "f8c568558ba7c2dc097dd694698d4666f39e21478e64e12a1125854f0641c022",
+      "analysis_id": 1750,
+      "cost_id": 6004,
+      "processes": [
+        {
+          "process": "wire_edm",
+          "score": 1.0,
+          "verdict": "pass",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_3axis",
+          "score": 0.95,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_5axis",
+          "score": 0.95,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sls",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "ebm",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "binder_jetting",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "ded",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "waam",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sheet_metal",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "dmls",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "investment_casting",
+          "score": 0.6,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "fdm",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": [
+            "Part exceeds build envelope for fdm: X: 320mm > 300mm, Y: 320mm > 300mm. Bambu Lab X1C / Prusa MK4."
+          ]
+        },
+        {
+          "process": "sla",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": [
+            "Part exceeds build envelope for sla: X: 320mm > 200mm, Y: 320mm > 125mm, Z: 320mm > 210mm. Formlabs Form 4."
+          ]
+        },
+        {
+          "process": "dlp",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": [
+            "Part exceeds build envelope for dlp: X: 320mm > 218mm, Y: 320mm > 123mm, Z: 320mm > 250mm. Elegoo Saturn 4 Ultra."
+          ]
+        },
+        {
+          "process": "mjf",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": [
+            "Part exceeds build envelope for mjf: Y: 320mm > 284mm. HP Jet Fusion 5200."
+          ]
+        },
+        {
+          "process": "slm",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": [
+            "Part exceeds build envelope for slm: Y: 320mm > 280mm. SLM 500."
+          ]
+        },
+        {
+          "process": "cnc_turning",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": [
+            "Part exceeds build envelope for cnc_turning: X: 320mm > 254mm, Y: 320mm > 254mm. Haas ST-20 (10in chuck)."
+          ]
+        },
+        {
+          "process": "injection_molding",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "die_casting",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "sand_casting",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "forging",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        }
+      ]
+    },
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analysis_id": 1747,
+      "cost_id": 6002,
+      "processes": [
+        {
+          "process": "wire_edm",
+          "score": 1.0,
+          "verdict": "pass",
+          "envelope_issues": []
+        },
+        {
+          "process": "dlp",
+          "score": 1.0,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "fdm",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sla",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sls",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "mjf",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "ebm",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "binder_jetting",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "ded",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "waam",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_3axis",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_5axis",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sheet_metal",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "dmls",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "slm",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "investment_casting",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_turning",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "injection_molding",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "die_casting",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "sand_casting",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        },
+        {
+          "process": "forging",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        }
+      ]
+    },
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+      "analysis_id": 1748,
+      "cost_id": 6003,
+      "processes": [
+        {
+          "process": "wire_edm",
+          "score": 1.0,
+          "verdict": "pass",
+          "envelope_issues": []
+        },
+        {
+          "process": "dlp",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sls",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "mjf",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "binder_jetting",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_3axis",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_5axis",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sheet_metal",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "forging",
+          "score": 0.9,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "fdm",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sla",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "dmls",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "slm",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "ebm",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "ded",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "waam",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "investment_casting",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "sand_casting",
+          "score": 0.8,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "die_casting",
+          "score": 0.7,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "injection_molding",
+          "score": 0.6,
+          "verdict": "issues",
+          "envelope_issues": []
+        },
+        {
+          "process": "cnc_turning",
+          "score": 0.0,
+          "verdict": "fail",
+          "envelope_issues": []
+        }
+      ]
+    }
+  ]
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass
+from itertools import permutations
 
 import numpy as np
 import trimesh
@@ -105,38 +106,49 @@ class GeoDrivers:
                 f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
 
-def parts_per_build(proc, bbox_mm, rates) -> int:
+def build_orientation(bbox_mm, envelope):
+    """Lowest-height fitting axis permutation of an enclosing box, or None.
+
+    ponytail: bounded box candidates, not a continuous orientation/nesting solver.
+    Failure establishes no priced setup; it does not prove all orientations fail.
+    """
+    candidates = (d for d in permutations(bbox_mm)
+                  if all(v > 0 and v <= lim + 1e-9 for v, lim in zip(d, envelope)))
+    return min(candidates, key=lambda d: (d[2], d[0], d[1]), default=None)
+
+
+def parts_per_build(proc, bbox_mm, rates, envelope=None) -> int:
     """Build-plate nesting count (weaknesses #1, #2; R2 serial XY nesting).
 
     build_job (powder-bed/DLP): VOLUMETRIC fit — how many part bounding boxes
     (each grown by part-spacing on every axis) pack into the machine envelope at
     the process packing_density (unchanged).
 
-    serial (FDM/SLA): AREAL (XY-footprint) fit — parts laid FLAT in one layer on
-    the plate (smallest bbox dim = build height, the two largest = footprint).
+    serial (FDM/SLA): AREAL (XY-footprint) fit — one layer on the plate, using
+    the lowest-height fitting axis permutation of the enclosing box.
     Real service bureaus nest many parts in X-Y on one build plate (just not
-    stacked in Z like powder bed); count = xy_packing_density × plate_area ÷
-    part footprint. DEFAULT-driven, fully-traceable, overridable (not a true
-    packer).
+    stacked in Z like powder bed). Both density estimates are bounded by a
+    spaced grid in that orientation. No fitting box yields zero, not one.
     """
-    dd = sorted(bbox_mm)                          # ascending: dd[0]=height, dd[1],dd[2]=footprint
+    envelope = rates.build_env(proc) if envelope is None else envelope
+    dims = build_orientation(bbox_mm, envelope)
+    if dims is None:
+        return 0
     s = rates.part_spacing(proc)
+    # A density fraction alone cannot prove that even two boxes fit. Bound it
+    # by an actual spaced grid in the same orientation used for build height.
+    grid = [math.floor((lim + s + 1e-9) / (d + s)) for d, lim in zip(dims, envelope)]
     if rates.nesting_mode(proc) == "serial":
-        X, Y, _Z = rates.build_env(proc)
+        X, Y, _Z = envelope
         plate_area = X * Y                                       # mm^2
-        footprint = (dd[1] + s) * (dd[2] + s)                   # mm^2 (laid flat, height = dd[0])
-        if footprint <= 0:
-            return 1
+        footprint = (dims[0] + s) * (dims[1] + s)
         n = int(rates.xy_packing_density(proc) * plate_area / footprint)
-        return max(1, n)
-    # build_job: volumetric (unchanged)
-    X, Y, Z = rates.build_env(proc)
-    part_vol_cm3 = ((dd[0] + s) * (dd[1] + s) * (dd[2] + s)) / 1000.0
+        return min(grid[0] * grid[1], max(1, n))
+    X, Y, Z = envelope
+    part_vol_cm3 = math.prod(d + s for d in dims) / 1000.0
     env_vol_cm3 = (X * Y * Z) / 1000.0
-    if part_vol_cm3 <= 0:
-        return 1
     n = int(rates.packing_density(proc) * env_vol_cm3 / part_vol_cm3)
-    return max(1, n)
+    return min(math.prod(grid), max(1, n))
 
 
 def _sheet_geometry(volume_mm3, surface_area_mm2, dims, tolerance=0.0):

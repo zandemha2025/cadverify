@@ -1,0 +1,42 @@
+[
+  {
+    "filename": "178-priced-envelope-sphere.step",
+    "sha256": "03d3c2992895a007f60d066d778bcee5a41beac294364fc114451e1670a16ac2",
+    "dimensions_mm": [
+      320,
+      320,
+      320
+    ],
+    "volume_mm3": 17157284.678805057,
+    "default_dmls_dfm_envelope_mm": [
+      400,
+      400,
+      400
+    ],
+    "default_dmls_cost_envelope_mm": [
+      250,
+      250,
+      325
+    ]
+  },
+  {
+    "filename": "178-priced-envelope-cube.step",
+    "sha256": "f8c568558ba7c2dc097dd694698d4666f39e21478e64e12a1125854f0641c022",
+    "dimensions_mm": [
+      320,
+      320,
+      320
+    ],
+    "volume_mm3": 32768000,
+    "default_dmls_dfm_envelope_mm": [
+      400,
+      400,
+      400
+    ],
+    "default_dmls_cost_envelope_mm": [
+      250,
+      250,
+      325
+    ]
+  }
+]

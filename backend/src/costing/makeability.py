@@ -630,6 +630,9 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             "hourly_rate_usd": machine_cap.hourly_rate_usd,
             "capital_frac": machine_cap.capital_frac,
             "secondary_ops": tuple(dict.fromkeys(needed_secondary)),
+            **({"build_env_mm": tuple(cap[k] for k in ("x", "y", "z"))}
+               if part_req.process in {"fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting"}
+               and all(_is_number(cap.get(k)) for k in ("x", "y", "z")) else {}),
         }
     return FitResult(machine=machine_cap.name, passes=passes,
                      failures=tuple(failures), resource_hint=resource_hint)

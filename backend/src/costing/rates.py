@@ -862,6 +862,11 @@ def _validate_rate_values(value, path: str = "") -> None:
             _validate_rate_values(item, f"{path}.{key}" if path else str(key))
         return
     if isinstance(value, (tuple, list)):
+        if path.endswith(".build_env_mm") and (len(value) != 3 or any(
+            isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0
+            for v in value
+        )):
+            raise ValueError(f"{path} must contain three positive dimensions")
         for i, item in enumerate(value):
             _validate_rate_values(item, f"{path}[{i}]")
         return

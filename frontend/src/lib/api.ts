@@ -882,6 +882,7 @@ export interface CostFeasibility {
   score: number;
   costed: boolean;
   blockers?: string[];
+  cost_exclusion_reason?: string;
 }
 
 export interface CostUnitWarning {

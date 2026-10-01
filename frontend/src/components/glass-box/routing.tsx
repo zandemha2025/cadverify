@@ -126,7 +126,7 @@ export function DfmMatrix({
                   key={f.process}
                   className={cn(
                     "border-b border-border last:border-0",
-                    !f.costed && "opacity-55"
+                    !f.costed && !f.cost_exclusion_reason && "opacity-55"
                   )}
                 >
                   <td className="px-3 py-2 align-top">
@@ -137,7 +137,12 @@ export function DfmMatrix({
                       </span>
                     )}
                     {!f.costed && (
-                      <span className="ml-1.5 text-micro text-muted-foreground">feasibility-only</span>
+                      <span className="ml-1.5 text-micro text-muted-foreground">
+                        {f.cost_exclusion_reason ? "price withheld" : "feasibility-only"}
+                      </span>
+                    )}
+                    {f.cost_exclusion_reason && (
+                      <p className="mt-1 max-w-lg text-xs text-foreground">{f.cost_exclusion_reason}</p>
                     )}
                   </td>
                   <td className="px-3 py-2 align-top">
