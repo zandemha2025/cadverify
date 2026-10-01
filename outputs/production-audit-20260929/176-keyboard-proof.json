@@ -1,0 +1,160 @@
+{
+  "scope": "Finding keyboard shortcuts in the default part workspace",
+  "root_cause": "Window-level finding shortcuts ran on every tab and handled events from quantity sliders, textboxes and dialogs. Escape closed the command dialog and cleared the underlying finding.",
+  "fix": "Attach shortcuts only in Routing & DFM of the default layout. Ignore handled/composing/modified keys, editable targets and native or ARIA controls/dialogs/tablists. Reuse existing selection navigation unchanged.",
+  "native": {
+    "checksPassed": 9,
+    "source": "165-stock-bar-aligned.step",
+    "originalIssueUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "nextIssueUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A3&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "quantityControlKeptDecisionTab": true,
+    "quantityControlKeptFinding": true,
+    "textCursorKeptFinding": true,
+    "dialogEscapeKeptFinding": true,
+    "modifierChordKeptFinding": true,
+    "routingArrowNextWorked": true,
+    "routingArrowPreviousWorked": true,
+    "routingEscapeClearedFinding": true,
+    "sliderPositionBefore": 0,
+    "sliderPositionAfter": 1,
+    "tabNavigationKeptFinding": true
+  },
+  "regression": {
+    "runnable": "176-keyboard-check.mjs: verifyIssueKeyboard(CUA_tab)",
+    "old_build": "Failed: Quantity key changed the active tab.",
+    "new_build": "9 checks passed",
+    "harness_note": "The added tab-arrow probe initially observed state before the tab transition completed; awaiting the visible Glass Box panel makes the assertion follow the rendered result."
+  },
+  "checks": {
+    "frontend_tests_passed": 525,
+    "frontend_duration_ms": 650.79275,
+    "types": "pass",
+    "changed_source_lint": "pass, zero warnings",
+    "production_build": "pass",
+    "backend_source": "unchanged; audit174 full baseline 2803 passed, 3 protected skips",
+    "historical_records_unchanged": {
+      "analyses": 128,
+      "cost_decisions": 137
+    }
+  },
+  "ci": {
+    "status": "completed",
+    "conclusion": "failure",
+    "headSha": "6edd51360587e451ce3d2c4877fa7e3d7b83efab",
+    "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511",
+    "jobs": [
+      {
+        "name": "Backend Tests",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106274"
+      },
+      {
+        "name": "Frontend Build & Lint",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106310"
+      },
+      {
+        "name": "Commit hook integrity policy",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106324"
+      },
+      {
+        "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106408"
+      },
+      {
+        "name": "Every /api/v1 route calls require_api_key",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106542"
+      },
+      {
+        "name": "Trap Corpus Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285106844"
+      },
+      {
+        "name": "Auth material never appears in captured Sentry payload",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110285217805"
+      },
+      {
+        "name": "Browser E2E (human + enterprise)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110291826997"
+      },
+      {
+        "name": "Container Images & Deploy Config Proof",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/zandemha2025/cadverify/actions/runs/36836510511/job/110291827071"
+      }
+    ],
+    "passed_jobs": 8,
+    "failed_steps": [
+      {
+        "job": "Container Images & Deploy Config Proof",
+        "step": "Scan backend image (high/critical vulnerabilities)"
+      }
+    ],
+    "coverage": "Audits through 172; excludes 173\u2013176.",
+    "image_scan": {
+      "backend_high": 5,
+      "backend_critical": 0,
+      "frontend": "pass",
+      "actual_image_runtime_probes": "frontend startup/share PNG and backend native STEP passed",
+      "waiver": false
+    }
+  },
+  "limits": [
+    "Stage layout native checks and OS clipboard delivery remain open.",
+    "Real email, company identity, vendor/customer proof, remaining physical accuracy and image security remain open.",
+    "Local fix prepared for draft PR107; no merge or production rollout."
+  ],
+  "files": [
+    {
+      "path": "176-dialog-closed-after.txt",
+      "sha256": "3d8c97f789eb7a5b8af62aca11f7c05d3bfc52ff0ed927d9aed28ef664e327d4"
+    },
+    {
+      "path": "176-keyboard-after.png",
+      "sha256": "0316ce6e2a9275d65eaae134631a43fb5469c05ae45fe1a844b587fad239a19c"
+    },
+    {
+      "path": "176-keyboard-before.json",
+      "sha256": "217e3adb65ddc346e8e06b922b3d036bffaea5c886bae36e518d7d00ca8c9555"
+    },
+    {
+      "path": "176-keyboard-check.mjs",
+      "sha256": "1542359c8292337e780e77da2e47ec9d330f479eb658507ae94edb9457be8a8a"
+    },
+    {
+      "path": "176-keyboard-native.json",
+      "sha256": "76290e11b70842756180467cb25821990af5545a0397f7b4648c58c142547400"
+    },
+    {
+      "path": "176-keyboard-red.json",
+      "sha256": "8bc94867c5d00ec9da59b8db892a3cd855a7d830ae4ea380a65577810ad06b1f"
+    },
+    {
+      "path": "176-quantity-after.txt",
+      "sha256": "6c94d7eaae5e40110bdcc4feb6be8371bb8358230f74b08f0bf0cd52c46429ea"
+    },
+    {
+      "path": "176-saved-readback.json",
+      "sha256": "c094b542bb56a123c4fe573e7c77463b18d2469f86c563de9a33e94dd00934f0"
+    },
+    {
+      "path": "176-tab-navigation-after.txt",
+      "sha256": "6669ae7422c5186ba3af8cc1b900991b3c7201c8302b8a9a9dca4d367be1c7dc"
+    }
+  ]
+}

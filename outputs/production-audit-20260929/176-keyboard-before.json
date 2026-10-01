@@ -1,0 +1,14 @@
+{
+  "quantity": {
+    "beforeUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "afterUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A3&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "beforeTab": "Decision",
+    "afterTab": "Routing & DFM"
+  },
+  "commandPalette": {
+    "beforeUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A3&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "afterTextArrowUrl": "http://127.0.0.1:3017/analyze?issue=INSUFFICIENT_DRAFT%7Cfaces%3A2&issue_evidence=4569d2aa87ae20297f0e76fb4653cb4481fbcb10a415cc467a16dec22043a07b",
+    "afterEscapeUrl": "http://127.0.0.1:3017/analyze"
+  },
+  "observed": "Quantity arrow changed Sand Casting to Forging and switched tabs; text cursor arrow changed Forging to Sand Casting behind the command dialog; dialog Escape also cleared the finding."
+}

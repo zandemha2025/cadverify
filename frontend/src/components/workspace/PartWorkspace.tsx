@@ -302,8 +302,12 @@ export default function PartWorkspace({
   }, [pinpointGroups, selectPinpoint]);
 
   useEffect(() => {
-    if (!selectedGroup) return;
+    if (!selectedGroup || tab !== "routing" || STAGE_UI) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement | null;
+      if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey
+          || event.altKey || event.shiftKey || element?.isContentEditable
+          || element?.closest?.('input, textarea, select, [role="slider"], [role="spinbutton"], [role="combobox"], [role="listbox"], [role="menu"], [role="dialog"], [role="tablist"]')) return;
       if (event.key === "Escape") {
         event.preventDefault();
         clearPinpoint();
@@ -317,7 +321,7 @@ export default function PartWorkspace({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearPinpoint, selectGroupAt, selectedGroup, selectedIndex]);
+  }, [clearPinpoint, selectGroupAt, selectedGroup, selectedIndex, tab]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !validation) return;
