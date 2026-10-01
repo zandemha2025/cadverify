@@ -54,3 +54,20 @@ export function groupForIssueKey(groups: readonly PinpointGroup[], issueKey: str
   if (!issueKey) return null;
   return groups.find((group) => group.members.some((row) => row.key === issueKey)) ?? null;
 }
+
+/** A positional issue key is safe to restore only against the same evidence. */
+export async function pinpointLinkEvidence(
+  groups: readonly PinpointGroup[], meshHash: string | undefined,
+): Promise<string | null> {
+  if (!meshHash) return null;
+  try {
+    const data = JSON.stringify([meshHash, groups.map((group) => [
+      group.key, issueIdentity(group.issue), group.faces, [...group.processes].sort(),
+    ])]);
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    // A missing browser digest must not prevent local analysis or selection.
+    return null;
+  }
+}

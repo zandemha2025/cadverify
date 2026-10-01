@@ -73,7 +73,7 @@ import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/gl
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
 import { STAGE_UI } from "@/lib/stage-flag";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
-import { groupForIssueKey, groupPinpointIssues } from "@/lib/pinpoint-groups";
+import { groupForIssueKey, groupPinpointIssues, pinpointLinkEvidence } from "@/lib/pinpoint-groups";
 import { highestPriorityIssue, issueProcesses } from "@/lib/dfm-scope";
 
 /* PartHero (~1900 lines, stage-only) is code-split into its own lazy chunk so a
@@ -183,6 +183,7 @@ export default function PartWorkspace({
 
   // analyze ↔ geometry linking
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
+  const [issueLinkEvidence, setIssueLinkEvidence] = useState<string | null>(null);
   const [pendingIssueLink, setPendingIssueLink] = useState<string | null>(null);
   useEffect(() => {
     setPendingIssueLink(new URLSearchParams(window.location.search).get("issue"));
@@ -264,9 +265,11 @@ export default function PartWorkspace({
 
   const clearPinpoint = useCallback(() => {
     setSelectedIssueKey(null);
+    setPendingIssueLink(null);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.delete("issue");
+      url.searchParams.delete("issue_evidence");
       window.history.replaceState(window.history.state, "", url);
     }
   }, []);
@@ -280,10 +283,17 @@ export default function PartWorkspace({
     setTab("routing");
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      url.searchParams.set("issue", key);
+      if (issueLinkEvidence) {
+        url.searchParams.set("issue", key);
+        url.searchParams.set("issue_evidence", issueLinkEvidence);
+      } else {
+        url.searchParams.delete("issue");
+        url.searchParams.delete("issue_evidence");
+        toast("A shareable issue link is unavailable for this analysis.");
+      }
       window.history.replaceState(window.history.state, "", url);
     }
-  }, [clearPinpoint, selectedIssueKey]);
+  }, [clearPinpoint, selectedIssueKey, issueLinkEvidence]);
 
   const selectGroupAt = useCallback((index: number) => {
     const count = pinpointGroups.length;
@@ -310,12 +320,19 @@ export default function PartWorkspace({
   }, [clearPinpoint, selectGroupAt, selectedGroup, selectedIndex]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || pinpointGroups.length === 0) return;
-    const linked = new URLSearchParams(window.location.search).get("issue");
-    if (linked && pinpointGroups.some((group) => group.key === linked)) {
+    if (typeof window === "undefined" || !validation) return;
+    const params = new URLSearchParams(window.location.search);
+    const linked = params.get("issue");
+    if (!linked) return;
+    if (issueLinkEvidence && params.get("issue_evidence") === issueLinkEvidence
+        && pinpointGroups.some((group) => group.key === linked)) {
       setSelectedIssueKey(linked);
+      setTab("routing");
+    } else {
+      clearPinpoint();
+      toast("This issue link does not match the current geometry and findings. Select a finding to create a new link.");
     }
-  }, [pinpointGroups]);
+  }, [pinpointGroups, validation, issueLinkEvidence, clearPinpoint]);
 
   const calibration = useMemo(
     () => (report ? parseCalibration({ ...report, assumptions }) : null),
@@ -448,9 +465,12 @@ export default function PartWorkspace({
     setDfmError(null);
     setValidation(null);
     setSelectedIssueKey(null);
+    setIssueLinkEvidence(null);
     try {
       const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits);
+      const evidence = await pinpointLinkEvidence(groupPinpointIssues(flattenIssues(data)), data.analysis_mesh_hash);
       if (attempt !== analysisAttemptRef.current) return;
+      setIssueLinkEvidence(evidence);
       setValidation(data);
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;
@@ -528,12 +548,13 @@ export default function PartWorkspace({
     setCostLoading(false);
     setDfmLoading(false);
     ++analysisAttemptRef.current;
-    setSelectedIssueKey(null);
+    clearPinpoint();
+    setIssueLinkEvidence(null);
     setScenarios([]);
     // Part-door mode: hand control back to the door landing instead of showing
     // this workspace's own cold-start dropzone. No-op on flag-off / direct routes.
     onExit?.();
-  }, [onExit]);
+  }, [onExit, clearPinpoint]);
 
   const onFaceClick = useCallback(
     (faceIndex: number) => {
@@ -610,7 +631,7 @@ export default function PartWorkspace({
         {pendingIssueLink && (
           <Card className="border-warn/40 bg-warn-bg p-4" role="status">
             <p className="font-medium text-foreground">Issue link ready: {pendingIssueLink}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload the original CAD file to restore this issue. The file is not stored in the URL.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload the original CAD file to restore this issue only if the geometry and findings still match. The file is not stored in the URL.</p>
           </Card>
         )}
         <Dropzone
