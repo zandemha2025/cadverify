@@ -210,8 +210,8 @@ const definitions = [
     report: "enterprise",
     fields: [
       ["releaseEvidence.criticalPaths.ENT-04.quantity", (value) => value === 12000, "12,000 units"],
-      ["releaseEvidence.criticalPaths.ENT-04.unitCostUsd", (value) => sameNumber(value, 2.46, 0.001), "$2.46"],
-      ["releaseEvidence.criticalPaths.ENT-04.annualExposureUsd", (value) => sameNumber(value, 29520, 0.01), "$29,520"],
+      ["releaseEvidence.criticalPaths.ENT-04.unitCostUsd", (value) => sameNumber(value, 3.44, 0.001), "$3.44"],
+      ["releaseEvidence.criticalPaths.ENT-04.annualExposureUsd", (value) => sameNumber(value, 41280, 0.01), "$41,280"],
       ["releaseEvidence.criticalPaths.ENT-04.basis", (value) => value === "decision.recommendation", "decision.recommendation"],
       ["releaseEvidence.criticalPaths.ENT-04.withheldBeforeExactQuantity", (value) => value === true, "true"],
       ["releaseEvidence.criticalPaths.ENT-04", (value) => sameNumber(value?.unitCostUsd * value?.quantity, value?.annualExposureUsd, 0.01), "unit cost × quantity equals annual exposure"],

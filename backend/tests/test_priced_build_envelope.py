@@ -1,5 +1,6 @@
 """Costed builds must fit the very machine whose capacity/time is priced."""
 from dataclasses import asdict, replace
+from math import pi
 
 import pytest
 import trimesh
@@ -78,3 +79,24 @@ def test_priced_build_fit_controls_all_quantities_overrides_and_owned_machines()
     for invalid in [(), (250, 250), (250, 250, 325, 1), (250, 250, 0)]:
         with pytest.raises(ValueError, match="build_env_mm"):
             build_rate_card({"build_env_mm.DMLS": invalid})
+
+
+def test_enterprise_binder_green_batch_cost_oracle():
+    # cube.step is a 20x15x10 block with a diameter-6 through bore.
+    # Use its analytic volume so the oracle is independent of the CAD tessellator.
+    result, mesh, features = _analyze(trimesh.creation.box(extents=[20, 15, 10]))
+    drivers = replace(extract_drivers(result.geometry, mesh, features),
+                      volume_cm3=(20 * 15 * 10 - pi * 3**2 * 10) / 1000)
+    rates = build_rate_card()
+    estimate = cost_breakdown(PT.BINDER_JET, drivers,
+                              select_material(PT.BINDER_JET, "stainless", rates),
+                              "stainless", 12000, rates, "US")
+    # 18% declared green oversize, 6mm spacing, 12% packing in 400x250x250:
+    # floor(3,000,000 / (29.6 * 23.7 * 17.8)) = 240 parts/build.
+    assert next(d.value for d in estimate.drivers if d.name == "parts_per_build") == 240
+    assert estimate.line_items == pytest.approx({
+        "material": 0.1962, "machine": 1.6667, "sinter": 1.5,
+        "labor": 0, "amortized_fixed": 0.0729,
+    }, abs=0.00005)
+    assert round(estimate.unit_cost_usd, 2) == 3.44
+    assert round(estimate.unit_cost_usd, 2) * 12000 == 41280

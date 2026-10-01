@@ -22,8 +22,8 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
-  annualizedUnitCostUsd: 2.46,
-  annualizedCostUsd: 29520,
+  annualizedUnitCostUsd: 3.44,
+  annualizedCostUsd: 41280,
   singlePartHeadlineUsd: 110.00,
   procurementThresholdsUsd: {
     engineerSelfServe: 25000,
