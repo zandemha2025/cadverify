@@ -1,0 +1,224 @@
+{
+  "scope": "Positive build reorientation, additive build dimensions and declared rectangular machine matching",
+  "first_divergence": "first divergence: step2, expected the rotated290\u00d7290\u00d710mm STEP plate to fit the same FDM envelope, state was Required0% based on410.122\u00d7410.122mm file-axis dimensions.",
+  "fix": "Move the existing bounded enclosing-stock calculation into the shared geometry module. Reuse it for a positive build-fit check, additive packing/build height and declared rectangular machine requirements. Keep source-coordinate bounds separate for unknown borderline machine fit. Add a visible reorientation note and packing/setup provenance. Preserve lathe axes, sheet-specific matching, all other DFM findings and the existing failure when no fitting candidate is found. Do not certify fit from decimated geometry.",
+  "engine_version": "0.3.39",
+  "native": {
+    "real_step_uploads": 4,
+    "ready_previews": 4,
+    "plate": {
+      "dimensions_mm": [
+        290,
+        290,
+        10
+      ],
+      "rotation_degrees": 45,
+      "before_rotated_fdm": "Required 0%",
+      "after_both_fdm": "Advisory80%",
+      "after_both_cnc3": "Advisory90%",
+      "reorientation_notes_visible": true,
+      "smaller_sla_envelope_failure_retained": true
+    },
+    "bar": {
+      "physical_dimensions_mm": [
+        80,
+        12,
+        12
+      ],
+      "source_files": [
+        "165-stock-bar-aligned.step",
+        "171-profile-bar-rotated.step"
+      ],
+      "rotated_dmls_100_before_usd": 692.49,
+      "after_both_dmls_100_usd": 206.25,
+      "native_glass_box_price_matches_saved_record": true,
+      "native_parts_per_build": 58,
+      "expanded_machine_driver_discloses_enclosing_dimensions_and_setup_assumption": true
+    },
+    "limits": "Generic cost defaults remain assumptions; no customer quote or manufacturing result is certified."
+  },
+  "checks": {
+    "initial_behavior_regressions": "Both failed before their respective fixes",
+    "focused_passed": 250,
+    "focused_initial_database_skips": 3,
+    "full_backend_passed": 2805,
+    "full_backend_protected_skips": 3,
+    "full_backend_seconds": 332.01,
+    "final_focused_passed": 32,
+    "full_suite_scope": "Full suite collected before the final decimation guard; final32 focused checks include that guard and regression. No source edits followed.",
+    "changed_source_pyright_existing_errors": 40,
+    "new_type_diagnostics_against_prior_full_baseline": 0,
+    "bandit_findings": 0,
+    "frontend": "unchanged; audit176 baseline525 tests/types/lint/build passed",
+    "diff_check": "pass"
+  },
+  "saved_records": {
+    "unchanged": {
+      "analyses": 130,
+      "cost_decisions": 139
+    },
+    "equal_additive_estimates_across_rotation": 16,
+    "new_control_ids": [
+      [
+        1745,
+        6000
+      ],
+      [
+        1746,
+        6001
+      ],
+      [
+        1747,
+        6002
+      ],
+      [
+        1748,
+        6003
+      ]
+    ]
+  },
+  "ci": {
+    "status": "in_progress",
+    "conclusion": "",
+    "headSha": "c868b220d77b6cce3caa646ebcc77476602c716a",
+    "url": "https://github.com/zandemha2025/cadverify/actions/runs/36844294172",
+    "jobs": [
+      {
+        "name": "Commit hook integrity policy",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Every /api/v1 route calls require_api_key",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Frontend Build & Lint",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Trap Corpus Gate",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Backend Tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Auth material never appears in captured Sentry payload",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Browser E2E (human + enterprise)",
+        "status": "in_progress",
+        "conclusion": ""
+      },
+      {
+        "name": "Container Images & Deploy Config Proof",
+        "status": "in_progress",
+        "conclusion": ""
+      }
+    ],
+    "covers_177": false
+  },
+  "limits": [
+    "A bounded enclosing candidate proves a positive fit; it does not prove global non-fit when that candidate fails. More complex fitting orientations and the remaining negative classification still need review.",
+    "Support, draft, tooling pull direction, tool/holder clearance and fixtures are separate checks; reorientation does not clear them.",
+    "Packing density is an assumption, not a verified nesting layout or physical shop capacity. Native declared-inventory UI parity still needs its own replay.",
+    "Five HIGH image findings, OS clipboard, alternate stage layout, external services/customer accuracy and approved production rollout remain open."
+  ],
+  "security_sources_checked": [
+    "https://security-tracker.debian.org/tracker/CVE-2026-93990",
+    "https://security-tracker.debian.org/tracker/CVE-2026-88806",
+    "https://security-tracker.debian.org/tracker/CVE-2026-88807"
+  ],
+  "release": "Local only while exact-head CI36844294172 checks published176. Do not cancel that run with a push. PR107 remains draft/undeployed; production baseline09555c1.",
+  "files": [
+    {
+      "path": "177-aligned-after.txt",
+      "sha256": "7a3305420409ae1576ff6578cb81298c306852fb6783b46009dbf2039c5133dd"
+    },
+    {
+      "path": "177-aligned-before.txt",
+      "sha256": "2b119bb1488cc26054ac766471d1a25a500868c09276593385fd78a9f93ca4e7"
+    },
+    {
+      "path": "177-bar-aligned-after.txt",
+      "sha256": "5b570c6de86e06de7881e179293cef8190f305a7c25ca5559654eb12fc5d5fc7"
+    },
+    {
+      "path": "177-bar-rotated-after.txt",
+      "sha256": "c40614e9849f5859694dce4a226850641853bf35c2ad004607e67f26dc998e32"
+    },
+    {
+      "path": "177-cost-after.png",
+      "sha256": "12704bd3de536630039c236f963cd174b28bae52492c4aedda121e50ff1df2f9"
+    },
+    {
+      "path": "177-dmls-100-after.txt",
+      "sha256": "3f65b3b7bff7db7d181512b956f2c7a9aee95b3bf8eadf761a178266db8962f5"
+    },
+    {
+      "path": "177-envelope-after.png",
+      "sha256": "27df87c8e3245185cfb604d7967473f5731339fcd10bf5c7981471f69f7b99e4"
+    },
+    {
+      "path": "177-envelope-before.png",
+      "sha256": "d339549f6bef1ebd7e7af26a78f2ab85983ce5f7ef5cbea4fa7d938f03f13731"
+    },
+    {
+      "path": "177-envelope-controls.py",
+      "sha256": "7a6ee09b2cf62a4845891cabc231c2d8523daf21a69af17629fd5965fb7601ba"
+    },
+    {
+      "path": "177-native-checks.json",
+      "sha256": "0dfa9de22ef6cf097f2686e7d84b9e2febb36c723f4b98828ed3997ab817fa18"
+    },
+    {
+      "path": "177-rotated-after.txt",
+      "sha256": "1b4d0b7caef4d7cf2f0081b632a279e6fccaa17f6fd34910c54a1f6775747b96"
+    },
+    {
+      "path": "177-rotated-before.txt",
+      "sha256": "3e616fbc1e316de47ecb543bbda3a8f77e1185103b2e883c8dcb7769990dfd21"
+    },
+    {
+      "path": "177-runtime-retry.json",
+      "sha256": "4144b623827b29b19598defc6ebe14753255c0a6e371563d01813f4bfa41c909"
+    },
+    {
+      "path": "177-saved-before.json",
+      "sha256": "62c05b1aeb1db55e2d5ee75b12a5301c9161eb269d89c271f1d7fe302a7fd3f7"
+    },
+    {
+      "path": "177-saved-readback.json",
+      "sha256": "c8ec10182e507dd67cf788e615c777ff646544239c975a0c361b3ed93338166f"
+    },
+    {
+      "path": "shape-controls/177-envelope-aligned.step",
+      "sha256": "793c8addd4afc56c242938c9cc7ba3836f59dd7f1c31897087bccf777eb54e90"
+    },
+    {
+      "path": "shape-controls/177-envelope-rotated.step",
+      "sha256": "5a7b46e5c440deefe7a5a482ed3e5d66000c15c735d093190f803d999b6a0fcb"
+    },
+    {
+      "path": "shape-controls/177-envelope-controls.json",
+      "sha256": "8947a3cb0dcda8a992d1307fa06b8d37b16bfb332517dede159a1d645d377b1a"
+    },
+    {
+      "path": "177-machine-source-after.txt",
+      "sha256": "50bcf1771fba2055515da75de4d2eb206f8b5cc3aba15f9747d40b36a02f9dc9"
+    }
+  ]
+}

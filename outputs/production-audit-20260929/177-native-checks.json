@@ -1,0 +1,34 @@
+{
+  "real_step_uploads": 4,
+  "ready_previews": 4,
+  "plate": {
+    "dimensions_mm": [
+      290,
+      290,
+      10
+    ],
+    "rotation_degrees": 45,
+    "before_rotated_fdm": "Required 0%",
+    "after_both_fdm": "Advisory80%",
+    "after_both_cnc3": "Advisory90%",
+    "reorientation_notes_visible": true,
+    "smaller_sla_envelope_failure_retained": true
+  },
+  "bar": {
+    "physical_dimensions_mm": [
+      80,
+      12,
+      12
+    ],
+    "source_files": [
+      "165-stock-bar-aligned.step",
+      "171-profile-bar-rotated.step"
+    ],
+    "rotated_dmls_100_before_usd": 692.49,
+    "after_both_dmls_100_usd": 206.25,
+    "native_glass_box_price_matches_saved_record": true,
+    "native_parts_per_build": 58,
+    "expanded_machine_driver_discloses_enclosing_dimensions_and_setup_assumption": true
+  },
+  "limits": "Generic cost defaults remain assumptions; no customer quote or manufacturing result is certified."
+}

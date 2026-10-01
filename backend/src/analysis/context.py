@@ -105,6 +105,31 @@ if TYPE_CHECKING:  # avoid circular import at runtime
     from src.analysis.features.base import Feature
 
 
+def enclosing_box_dimensions(mesh: trimesh.Trimesh) -> tuple[tuple[float, ...], str]:
+    """An enclosing stock/build candidate, padded for source-coordinate error."""
+    blank = np.sort(mesh.extents)
+    basis = "file-axis fallback"
+    error = float(mesh.metadata.get("coordinate_error", 0.0))
+    if not np.isfinite(error) or error < 0:
+        raise ValueError("Invalid source coordinate uncertainty")
+    try:
+        # ponytail: bounded stock candidates, not a certified minimum or setup.
+        # Large hulls avoid trimesh's quadratic oriented-bound projection arrays.
+        if len(mesh.convex_hull.vertices) <= 2048:
+            _, candidate = trimesh.bounds.oriented_bounds(mesh)
+            candidate_basis = "oriented candidate"
+        else:
+            axes = mesh.principal_inertia_transform[:3, :3]
+            candidate = np.ptp((mesh.vertices - mesh.bounds.mean(axis=0)) @ axes.T, axis=0)
+            candidate_basis = "principal-axis candidate"
+        if np.all(np.isfinite(candidate)) and np.all(candidate > 0):
+            blank = np.sort(candidate)
+            basis = candidate_basis
+    except Exception:
+        pass  # The uploaded-axis box remains an enclosing, labeled fallback.
+    return tuple(float(d) + 2 * error for d in blank), basis
+
+
 @dataclass
 class GeometryContext:
     """Precomputed, shared geometry state handed to every ProcessAnalyzer."""
@@ -145,6 +170,10 @@ class GeometryContext:
     wall_thickness_upper: np.ndarray | None = None
     edge_length_precision: np.ndarray | None = None
     edge_topology_stable: bool = True
+
+    @cached_property
+    def enclosing_box(self):
+        return enclosing_box_dimensions(self.mesh)
 
     @cached_property
     def flat_sheet_geometry(self):

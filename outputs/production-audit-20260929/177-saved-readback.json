@@ -1,0 +1,426 @@
+{
+  "engine_version": "0.3.39",
+  "historical_records_unchanged": {
+    "analyses": 130,
+    "cost_decisions": 139
+  },
+  "controls": [
+    {
+      "filename": "177-envelope-aligned.step",
+      "source_sha256": "793c8addd4afc56c242938c9cc7ba3836f59dd7f1c31897087bccf777eb54e90",
+      "analyses": {
+        "id": 1745,
+        "result_sha256": "155cd67cf0a6a085407601b657edc3735f5f2b8aeb33c6ce2c995690cb5fd484",
+        "reorientation": [
+          {
+            "process": "mjf",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (380, 284, 380)mm envelope for mjf, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "slm",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (500, 280, 365)mm envelope for slm, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          }
+        ],
+        "unchanged_other_processes": 19,
+        "other_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6000,
+        "result_sha256": "c5a8b95719bc0b24f3c9d93c8f342e40efadcb2fadc7a7ba761f3288605b8a82",
+        "unchanged_nonadditive_estimates": 12,
+        "changed_unit_prices": [],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $385.08/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. Estimated sand_casting crossover against the cheapest eligible no-tooling route: ~46 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $146.59/unit at qty 100. Note: sand_casting requires redesign for DFM (6848 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": 46.0,
+          "if_redesigned": {
+            "1": null,
+            "100": {
+              "caveat": "add draft, tooling-dominated",
+              "process": "sand_casting",
+              "material": "A356 Aluminum",
+              "unit_cost_usd": 146.59
+            }
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 385.08,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 8.4,
+              "unit_cost_usd": 272.47,
+              "lead_high_days": 15.6
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "177-envelope-rotated.step",
+      "source_sha256": "5a7b46e5c440deefe7a5a482ed3e5d66000c15c735d093190f803d999b6a0fcb",
+      "analyses": {
+        "id": 1746,
+        "result_sha256": "395f7ae55fdd6956cafe4c013ee26d47277c0b55464192a01c037f580678186e",
+        "reorientation": [
+          {
+            "process": "wire_edm",
+            "before_verdict": "fail",
+            "verdict": "pass",
+            "score": 1.0,
+            "note": "The uploaded orientation exceeds the (600, 400, 350)mm envelope for wire_edm, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "ebm",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.9,
+            "note": "The uploaded orientation exceeds the (350, 380, 380)mm envelope for ebm, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "cnc_3axis",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.9,
+            "note": "The uploaded orientation exceeds the (762, 406, 508)mm envelope for cnc_3axis, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "fdm",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (300, 300, 350)mm envelope for fdm, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "sls",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (340, 340, 600)mm envelope for sls, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "mjf",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (380, 284, 380)mm envelope for mjf, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "dmls",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (400, 400, 400)mm envelope for dmls, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          },
+          {
+            "process": "slm",
+            "before_verdict": "fail",
+            "verdict": "issues",
+            "score": 0.8,
+            "note": "The uploaded orientation exceeds the (500, 280, 365)mm envelope for slm, but a (10.0, 290.0, 290.0)mm enclosing box fits after reorientation (oriented candidate)."
+          }
+        ],
+        "unchanged_other_processes": 13,
+        "other_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6001,
+        "result_sha256": "30fdc35a0b36c4fb75b4cff028da400155c043ef43044818476bbf8fc0fb17ef",
+        "unchanged_nonadditive_estimates": 12,
+        "changed_unit_prices": [],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $385.08/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. Estimated sand_casting crossover against the cheapest eligible no-tooling route: ~91 units. Batch effects can shift this boundary; compare the costed options at your quantity. The tooling estimate is $251.59/unit at qty 100. Note: sand_casting requires redesign for DFM (3248 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": 91.0,
+          "if_redesigned": {
+            "1": null,
+            "100": {
+              "caveat": "add draft, tooling-dominated",
+              "process": "sand_casting",
+              "material": "A356 Aluminum",
+              "unit_cost_usd": 251.59
+            }
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 385.08,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 8.4,
+              "unit_cost_usd": 272.47,
+              "lead_high_days": 15.6
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "165-stock-bar-aligned.step",
+      "source_sha256": "52ddc75f96c6650bd80f18962f3996130c302858c62cc4676740454396990396",
+      "analyses": {
+        "id": 1747,
+        "result_sha256": "79e9c91d1ebbcb39adceaacaf2c3aab3da9e893d36cc4e1521a60e48cc79d686",
+        "reorientation": [],
+        "unchanged_other_processes": 21,
+        "other_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6002,
+        "result_sha256": "a385a6af46ce322dd29a709094ccc2ffe7991b5f5d5d3d2994cf3affd2993ad4",
+        "unchanged_nonadditive_estimates": 12,
+        "changed_unit_prices": [],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison. Note: sand_casting requires redesign for DFM (31160 sidewall faces (100.0% of sidewall area) below 3.0\u00b0 draft for sand_casting.); its cost is conditional on those changes, not a current-capability quote.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 137.95,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.34,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": false
+        }
+      }
+    },
+    {
+      "filename": "171-profile-bar-rotated.step",
+      "source_sha256": "c14db7266a99d03a9698297747123824a0df2a819dee47bcc56db937b8e831c0",
+      "analyses": {
+        "id": 1748,
+        "result_sha256": "99f9e6f29b194a3cf8a68fb10320c8e427d11cd9c2d9c7e8490970d644d3ff0e",
+        "reorientation": [],
+        "unchanged_other_processes": 21,
+        "other_findings_unchanged": true
+      },
+      "cost_decisions": {
+        "id": 6003,
+        "result_sha256": "5b8096414d1bf4dff7c185a6b823308cf7d72c80954cbb3078de6a40d1dfe3c3",
+        "unchanged_nonadditive_estimates": 12,
+        "changed_unit_prices": [
+          {
+            "process": "dmls",
+            "quantity": 1,
+            "before": 708.76,
+            "after": 250.0
+          },
+          {
+            "process": "dmls",
+            "quantity": 100,
+            "before": 692.49,
+            "after": 206.25
+          },
+          {
+            "process": "slm",
+            "quantity": 1,
+            "before": 708.76,
+            "after": 250.0
+          },
+          {
+            "process": "slm",
+            "quantity": 100,
+            "before": 692.49,
+            "after": 206.25
+          }
+        ],
+        "decision": {
+          "note": "Lowest-cost no-tooling estimate at qty 1: cnc_3axis (6061-T6 Aluminum) \u2014 $137.95/unit. Costed make-route picks: qty 1: cnc_3axis; qty 100: cnc_3axis. No tooling crossover identified in this comparison.",
+          "crossover_qty": null,
+          "if_redesigned": {
+            "1": null,
+            "100": null
+          },
+          "recommendation": {
+            "1": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 137.95,
+              "lead_high_days": 13.0
+            },
+            "100": {
+              "process": "cnc_3axis",
+              "material": "6061-T6 Aluminum",
+              "dfm_ready": true,
+              "dfm_verdict": "issues",
+              "lead_low_days": 7.0,
+              "unit_cost_usd": 25.34,
+              "lead_high_days": 13.0
+            }
+          },
+          "tooling_process": "sand_casting",
+          "make_now_process": "cnc_3axis",
+          "make_now_material": "6061-T6 Aluminum",
+          "tooling_dfm_ready": true
+        }
+      }
+    }
+  ],
+  "equal_additive_prices_across_rotation": [
+    {
+      "pair": "plate",
+      "process": "ded",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 778.7
+    },
+    {
+      "pair": "plate",
+      "process": "ded",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 747.2
+    },
+    {
+      "pair": "plate",
+      "process": "dmls",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 10240.85
+    },
+    {
+      "pair": "plate",
+      "process": "dmls",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 10240.85
+    },
+    {
+      "pair": "plate",
+      "process": "slm",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 10240.85
+    },
+    {
+      "pair": "plate",
+      "process": "slm",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 10240.85
+    },
+    {
+      "pair": "plate",
+      "process": "waam",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 476.57
+    },
+    {
+      "pair": "plate",
+      "process": "waam",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 445.07
+    },
+    {
+      "pair": "bar",
+      "process": "ded",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 300.0
+    },
+    {
+      "pair": "bar",
+      "process": "ded",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 30.0
+    },
+    {
+      "pair": "bar",
+      "process": "dmls",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 250.0
+    },
+    {
+      "pair": "bar",
+      "process": "dmls",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 206.25
+    },
+    {
+      "pair": "bar",
+      "process": "slm",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 250.0
+    },
+    {
+      "pair": "bar",
+      "process": "slm",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 206.25
+    },
+    {
+      "pair": "bar",
+      "process": "waam",
+      "material": "AlSi10Mg",
+      "quantity": 1,
+      "unit_cost_usd": 300.0
+    },
+    {
+      "pair": "bar",
+      "process": "waam",
+      "material": "AlSi10Mg",
+      "quantity": 100,
+      "unit_cost_usd": 30.0
+    }
+  ]
+}

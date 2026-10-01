@@ -279,6 +279,11 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
     bbox = tuple(drivers.bbox_mm)
     if pt == ProcessType.SHEET_METAL and getattr(drivers, "sheet_blank_mm", None):
         bbox = tuple(drivers.sheet_blank_mm)
+    elif pt != ProcessType.CNC_TURNING and getattr(drivers, "billet_bbox_mm", None):
+        # Compare the same enclosing orientation used by build checks and cost.
+        # Keep source uncertainty separate so borderline fits remain unknown.
+        precision = float(getattr(drivers, "bbox_precision_mm", 0.0))
+        bbox = tuple(d - precision for d in drivers.billet_bbox_mm)
     sheet_like = bool(getattr(drivers, "sheet_like", False))
     if sheet_like and getattr(drivers, "sheet_gauge_mm", 0.0):
         thickness_mm = float(drivers.sheet_gauge_mm)
@@ -304,10 +309,10 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
         required_secondary_ops=req_ops,
         thickness_mm=thickness_mm,
         sheet_like=sheet_like,
-        geometry_tolerance_mm=(float(getattr(drivers, "sheet_tolerance_mm", 0.0))
-                               if pt == ProcessType.SHEET_METAL else 0.0),
+        geometry_tolerance_mm=float(getattr(drivers, "sheet_tolerance_mm", 0.0)),
         geometry_precision_mm=(float(getattr(drivers, "sheet_precision_mm", 0.0))
-                               if pt == ProcessType.SHEET_METAL else 0.0),
+                               if pt == ProcessType.SHEET_METAL else
+                               float(getattr(drivers, "bbox_precision_mm", 0.0))),
         sheet_outline_xy=(getattr(drivers, "sheet_outline_xy", ())
                           if pt == ProcessType.SHEET_METAL else ()),
     )

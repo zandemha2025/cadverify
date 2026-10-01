@@ -15,6 +15,38 @@ from src.analysis.processes import get_analyzer, registered_processes
 from src.analysis.processes.checks import check_prismatic, check_setup_access
 
 
+def test_build_envelope_accepts_a_proven_reorientation_without_erasing_other_checks():
+    from src.analysis.models import Severity
+    from src.analysis.processes.checks import check_build_volume
+
+    for angle, axis in [(0, [0, 0, 1]), (np.pi / 4, [0, 0, 1]), (.71, [1, 2, 3])]:
+        mesh = trimesh.creation.box(extents=[290, 290, 10])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis))
+        mesh.apply_translation([100, -200, 300])
+        ctx = _build_ctx(mesh)
+        issues = check_build_volume(ctx, (300, 300, 350), ProcessType.FDM)
+        assert not any(i.severity == Severity.ERROR for i in issues)
+        if angle:
+            assert any(i.code == 'BUILD_REORIENTATION_REQUIRED' for i in issues)
+            ctx.metadata['decimation'] = {'succeeded': True}
+            assert any(i.code == 'EXCEEDS_BUILD_VOLUME' for i in
+                       check_build_volume(ctx, (300, 300, 350), ProcessType.FDM))
+
+    thin = trimesh.creation.box(extents=[290, 290, .4])
+    thin.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 4, [0, 0, 1]))
+    all_issues = get_analyzer(ProcessType.FDM).analyze(_build_ctx(thin))
+    assert any(i.code == 'THIN_WALL' and i.severity == Severity.ERROR for i in all_issues)
+
+    # A fitting enclosure is evidence of a possible orientation, not permission
+    # to ignore a real size excess or to fit a lathe along arbitrary axes.
+    large = _build_ctx(trimesh.creation.box(extents=[400, 400, 400]))
+    assert any(i.code == 'EXCEEDS_BUILD_VOLUME' for i in
+               check_build_volume(large, (300, 300, 350), ProcessType.FDM))
+    bar = _build_ctx(trimesh.creation.cylinder(radius=20, height=300))
+    assert any(i.code == 'EXCEEDS_BUILD_VOLUME' for i in
+               check_build_volume(bar, (400, 400, 250), ProcessType.CNC_TURNING))
+
+
 def _build_ctx(mesh):
     info = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, info)

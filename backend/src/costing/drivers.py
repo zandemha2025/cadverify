@@ -14,7 +14,7 @@ import numpy as np
 import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
-from src.analysis.context import flat_sheet_geometry, wall_thickness_tolerance
+from src.analysis.context import enclosing_box_dimensions, flat_sheet_geometry, wall_thickness_tolerance
 from src.costing.routing import is_rotational
 
 
@@ -52,6 +52,7 @@ class GeoDrivers:
     sheet_outline_xy: tuple = ()      # convex outline in the measured sheet plane
     billet_bbox_mm: tuple | None = None  # enclosing oriented stock candidate, not a certified minimum
     billet_basis: str = "file-axis fallback"
+    bbox_precision_mm: float = 0.0  # enclosing-dimension uncertainty, both sides
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -203,33 +204,7 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
     # A rotational solid is a turned/spun part, not a flat blank.
     sheet_like = sheet_like and not rotational
 
-    # Keep uploaded-axis dimensions for direction-dependent build/DFM models.
-    # Milling instead buys an enclosing block oriented around the part.
-    # ponytail: approximate stock candidates, not certified minimum/setup.
-    # Trimesh's quadratic projection arrays are bounded by 2048 hull vertices;
-    # use a linear principal-axis candidate for larger hulls. A bounded global
-    # optimizer is needed if tighter complex-part stock bounds are required.
-    blank = np.asarray(dims)
-    billet_basis = "file-axis fallback"
-    error = float(mesh.metadata.get("coordinate_error", 0.0))
-    if not math.isfinite(error) or error < 0:
-        raise ValueError("Invalid source coordinate uncertainty")
-    try:
-        if len(mesh.convex_hull.vertices) <= 2048:
-            _, candidate = trimesh.bounds.oriented_bounds(mesh)
-            basis = "oriented candidate"
-        else:
-            axes = mesh.principal_inertia_transform[:3, :3]
-            candidate = np.ptp((mesh.vertices - mesh.bounds.mean(axis=0)) @ axes.T, axis=0)
-            basis = "principal-axis candidate"
-        if np.all(np.isfinite(candidate)) and np.all(candidate > 0):
-            blank = np.sort(candidate)
-            billet_basis = basis
-    except Exception:
-        pass  # The existing enclosing file-axis box remains a labeled fallback.
-    # With either candidate orientation fixed, every source vertex can move
-    # <= error; padding both sides preserves enclosure, including the fallback.
-    billet_bbox_mm = tuple(float(d) + 2 * error for d in blank)
+    billet_bbox_mm, billet_basis = enclosing_box_dimensions(mesh)
 
     return GeoDrivers(
         volume_cm3=volume_cm3,
@@ -255,4 +230,5 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         sheet_outline_xy=(tuple(map(tuple, sheet_geometry[1])) if sheet_geometry is not None else ()),
         billet_bbox_mm=billet_bbox_mm,
         billet_basis=billet_basis,
+        bbox_precision_mm=2 * float(mesh.metadata.get("coordinate_error", 0.0)),
     )

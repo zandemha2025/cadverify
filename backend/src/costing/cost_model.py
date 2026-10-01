@@ -96,7 +96,8 @@ def _additive_machine(process, drivers, rates: RateCard):
     that V1 wrongly charged per part; amortizing it over the XY nest is the
     physically-honest fix that collapses the medium-part over-cost.
     """
-    n = parts_per_build(process, drivers.bbox_mm, rates)
+    bbox = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
+    n = parts_per_build(process, bbox, rates)
     mode = rates.nesting_mode(process)
     if mode == "build_job":
         Z = rates.build_env(process)[2]
@@ -109,7 +110,7 @@ def _additive_machine(process, drivers, rates: RateCard):
     else:  # serial (FDM single nozzle / SLA laser): XY-nested plate
         dep = rates.p(process, "deposition")
         vert = rates.p(process, "vert")
-        build_h = drivers.bbox_mm[0]                  # smallest extent = build height
+        build_h = bbox[0]                             # smallest enclosing extent = build height
         deposition_hr = drivers.volume_cm3 / dep      # per-part — single nozzle/laser, irreducible
         sweep_hr = (build_h / vert) / n               # per-PLATE Z-climb, amortized over the XY nest
         machine_hr = deposition_hr + sweep_hr
@@ -119,6 +120,9 @@ def _additive_machine(process, drivers, rates: RateCard):
                f"(plate Z-climb amortized; XY packing {rates.xy_packing_density(process):g}, "
                f"plate {rates.build_env(process)[0]:g}×{rates.build_env(process)[1]:g}mm) "
                f"= {machine_hr:.3f}hr/part")
+    if getattr(drivers, "billet_bbox_mm", None):
+        src += (f"; {drivers.billet_basis} {tuple(round(d, 6) for d in bbox)}mm "
+                "(packing/setup assumption, not a verified nesting plan)")
     return machine_hr, n, src
 
 

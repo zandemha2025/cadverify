@@ -219,6 +219,25 @@ def check_build_volume(
             exceeds.append(f"{axis}: {format_measurement(dim, limit)}mm > {limit}mm")
     if not exceeds:
         return []
+    if process != ProcessType.CNC_TURNING and not ctx.metadata.get("decimation", {}).get("succeeded"):
+        enclosing, basis = ctx.enclosing_box
+        tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+        if all(d <= cap + tolerance for d, cap in zip(enclosing, sorted(max_dims_mm))):
+            return [Issue(
+                code="BUILD_REORIENTATION_REQUIRED",
+                severity=Severity.INFO,
+                message=(
+                    f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process.value}, "
+                    f"but a {tuple(round(d, 6) for d in enclosing)}mm enclosing box fits after reorientation "
+                    f"({basis})."
+                ),
+                process=process,
+                fix_suggestion=(
+                    "Reorient in the manufacturing setup. Review supports, tool access and fixtures "
+                    "in that orientation; this envelope check does not clear other DFM findings."
+                ),
+                citation=parse_citation(cite),
+            )]
     return [Issue(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,

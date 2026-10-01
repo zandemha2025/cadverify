@@ -1,0 +1,278 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+    - generic: 171-profile-bar-rotated.step
+    - text: CNC 3-Axis · Advisory
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - generic: Decision · estimate@live
+  - heading "171-profile-bar-rotated.step" [level=1]
+  - text: CNC 3-Axis · Advisory
+  - paragraph: Cost and manufacturability workspace
+  - button "Not calibrated — generic defaults":
+    - text: Not calibrated — generic defaults
+  - button "Lens Mfg eng":
+    - generic: Lens
+    - generic: Mfg eng
+  - button "New part"
+  - tablist:
+    - tab "Decision":
+      - text: Decision
+    - tab "Routing & DFM":
+      - text: Routing & DFM
+    - tab "Glass Box" [selected]:
+      - text: Glass Box
+    - tab "Compare":
+      - text: Compare
+    - tab "History":
+      - text: History
+  - generic "Interactive 3D preview ready"
+  - generic: Volume
+  - generic: 11.5 cm³
+  - generic: Bounding box
+  - generic: 80 × 20 × 42 mm
+  - generic: Faces
+  - generic: 45,666
+  - generic: Watertight
+  - generic: "Yes"
+  - paragraph: measured · from your geometry
+  - tabpanel "Glass Box":
+    - group "Process":
+      - generic: Process
+      - button "CNC 3-Axis"
+      - button "CNC 5-Axis"
+      - button "DED"
+      - button "Die Casting"
+      - button "DMLS (Metal)" [pressed]
+      - button "Forging"
+      - button "Investment Casting"
+      - button "Sand Casting"
+      - button "SLM (Metal)"
+      - button "WAAM"
+    - group "Qty":
+      - generic: Qty
+      - button "1"
+      - button "100" [pressed]
+    - generic: DMLS (Metal) · $206.25/unit
+    - generic: Cost drivers · the open model
+    - generic: click a driver → edit its rate → re-costs
+    - button "material_cost $5.09 DEFAULT ±5%":
+      - generic: material_cost
+      - generic: $5.09
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±5%
+    - button "support_material $0.85 DEFAULT ±50%":
+      - generic: support_material
+      - generic: $0.85
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±50%
+    - button "parts_per_build 58 parts DEFAULT":
+      - generic: parts_per_build
+      - generic: 58 parts
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+    - button "machine_cost $168.10 DEFAULT ±50%" [expanded] [active]:
+      - generic: machine_cost
+      - generic: $168.10
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±50%
+    - paragraph: DEFAULT · 0.9339 hr × $180/hr × region-labor ×1 [build-job 325mm ÷ 6mm/hr = 54.2hr full build ÷ 58 parts/build (packing 0.08, env (250, 250, 325)) = 0.934hr/part; oriented candidate (12.0, 12.0, 80.0)mm (packing/setup assumption, not a verified nesting plan)]
+    - button "Override machine rate — re-tags USER, re-costs":
+      - text: Override machine rate — re-tags USER, re-costs
+    - button "labor_cost $0.00 DEFAULT ±20%":
+      - generic: labor_cost
+      - generic: $0.00
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±20%
+    - button "setup_cost $0.35 DEFAULT ±20%":
+      - generic: setup_cost
+      - generic: $0.35
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±20%
+    - button "plate_removal_cost $10.50 DEFAULT ±50%":
+      - generic: plate_removal_cost
+      - generic: $10.50
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±50%
+    - button "support_removal_cost $21.00 DEFAULT ±50%":
+      - generic: support_removal_cost
+      - generic: $21.00
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±50%
+    - button "stress_relief_cost $1.21 DEFAULT ±50%":
+      - generic: stress_relief_cost
+      - generic: $1.21
+      - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here.":
+        - generic: DEFAULT
+      - generic: ±50%
+    - generic: amortized_fixed
+    - generic: $0.35
+    - generic: material
+    - generic: $5.09
+    - generic: machine
+    - generic: $168.10
+    - generic: labor
+    - generic: $0.00
+    - generic: plate_removal
+    - generic: $10.50
+    - generic: support_removal
+    - generic: $21.00
+    - generic: stress_relief
+    - generic: $1.21
+    - generic: Σ line items = unit cost
+    - generic: $206.25
+    - generic: Confidence · 80%
+    - text: $103 – $309 / unit
+    - generic: (±50%)
+    - generic: $103
+    - generic: $206
+    - generic: $309
+    - paragraph:
+      - generic: ±50% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate — no ground truth yet
+    - generic: Assumptions · editable ones re-cost
+    - generic: override → re-tags USER
+    - generic "loaded shop-floor labor": labor_rate
+    - generic: $35/hr
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override labor_rate":
+    - 'generic "region US: labor/machine/setup ×1"': region_labor
+    - generic: 1×
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - 'generic "region US: commodity material ×1 (global feedstock, ~1.0)"': region_material
+    - generic: 1×
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - 'generic "region US: tooling ×1 (offshore toolmaking labor)"': region_tooling
+    - generic: 1×
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - 'generic "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"': margin
+    - generic: "0"
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override margin":
+    - generic "indirect burden on conversion cost (machine+labor+setup)": overhead
+    - generic: "0"
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override overhead":
+    - generic "machine utilization (idle-recovery on machine cost)": utilization
+    - generic: "1"
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override utilization":
+    - 'generic "CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"': stock_allowance
+    - generic: 1.1×
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override stock_allowance":
+    - generic "operator-labor share of the machine rate that scales with region (capital/facility stays global) [assumption, not shop-validated]": machine_labor_frac
+    - generic: "0.35"
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - generic "perishable tooling/consumables as a fraction of CNC machine cost [assumption, not shop-validated]": perishable_frac
+    - generic: "0.05"
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - generic "fallback daily capacity; process-specific machine hours take precedence": daily_machine_hours
+    - generic: 8 hr/day
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override daily_machine_hours":
+    - generic "formative tooling cavities = 1 (DEFAULT single-cavity should-cost)": n_cavities
+    - generic: 1 cav
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - button "Override n_cavities":
+    - generic "tooling complexity = moderate (DEFAULT moderate; raise for slides/side-actions)": complexity
+    - generic: 0 moderate
+    - generic "DEFAULT — Generic fallback — no calibrated value yet. We're guessing here."
+    - generic "material class = aluminum (buyer-supplied)": material_class
+    - generic: 0 aluminum
+    - generic "USER — You overrode this value."
+    - generic: MEASURED
+    - generic: Measured directly from your CAD geometry.
+    - generic: SHOP
+    - generic: Your shop's calibrated rate — bound to your real numbers.
+    - generic: USER
+    - generic: You overrode this value.
+    - generic: DEFAULT
+    - generic: Generic fallback — no calibrated value yet. We're guessing here.
+    - button "Save as scenario":
+      - text: Save as scenario
+  - button "Open Inspector":
+  - generic: Inspector
+- region "Notifications alt+T"
+- alert
+- generic: $35,000
+- status: 1Password menu is available. Press down arrow to select.

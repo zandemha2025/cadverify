@@ -176,6 +176,34 @@ def test_milling_stock_bounds_source_rounding_and_labels_fallback(monkeypatch):
     assert 'file-axis fallback' in fallback.billet_source(2.7, 1.1, 'Aluminum')
 
 
+def test_build_cost_and_declared_machine_fit_follow_the_same_rotated_part():
+    from src.costing.cost_model import _additive_machine
+    from src.costing.makeability import part_req_from_drivers, _envelope_failures
+
+    rates = build_rate_card()
+    mat = select_material(PT.FDM, 'polymer', rates)
+    before = None
+    for angle in [0, np.pi / 4]:
+        mesh = trimesh.creation.box(extents=[80, 40, 10])
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 2, 3]))
+        drivers = extract_drivers(analyze_geometry(mesh), mesh)
+        values = {pt: _additive_machine(pt, drivers, rates)[:2] for pt in [PT.FDM, PT.SLA, PT.SLS]}
+        if before is not None:
+            for pt, (hours, count) in values.items():
+                assert hours == pytest.approx(before[pt][0])
+                assert count == before[pt][1]
+        before = values
+        req = part_req_from_drivers(PT.FDM, drivers, mat, 'standard')
+        assert not _envelope_failures(req, {'x': 80, 'y': 40, 'z': 10})
+
+    # Rounded source coordinates must remain unknown where their bounds overlap.
+    mesh.metadata['coordinate_error'] = .001
+    drivers = extract_drivers(analyze_geometry(mesh), mesh)
+    req = part_req_from_drivers(PT.FDM, drivers, mat, 'standard')
+    failures = _envelope_failures(req, {'x': 80, 'y': 40, 'z': 10})
+    assert failures and all(f.have is None for f in failures)
+
+
 def test_detailed_stock_uses_bounded_principal_axis_candidate(monkeypatch):
     mesh = trimesh.creation.icosphere(subdivisions=5)
     mesh.apply_scale([10, 17, 31])
