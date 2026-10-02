@@ -17,6 +17,11 @@ Candidate: `codex/free-checks-entry-flow`, based on production commit `5b94d76`.
 - E2E fixture boundary and release-evidence unit checks: **14 passed**.
 - Real local API/Next/PostgreSQL canary: signup, invalid-file refund, preview/DFM/cost as one credit, ten completed checks, eleventh rejected, legacy demo denied after exhaustion, saved report/PDF access and login persistence. See `local-canary.json`.
 - Browser: approved desktop and mobile homepage; sample design/cost/source controls; own-part CTA leads to login; signup preserves destination and explains the ten-check allowance. Existing exhausted test account logged in and showed **0 of 10**, then rejected another guided check.
-- **38 layout checks** across 19 public routes at 390px and 1440px: one main heading, valid section links, no horizontal overflow. See `site-layout-checks.json`.
+- **57 layout checks** across 19 public routes at 320px, 390px and 1440px, after fonts loaded: one main heading, valid section links, no horizontal overflow. See `site-layout-checks.json`.
+
+- Restored production-backup rehearsal: migration 0048 → 0049 backfilled exactly 58 lifetime checks while preserving all 887 existing rows across 37 tables. See `production-backup-migration.json`.
+- Real browser upload in the older cost workspace: STEP preview, DFM and cost completed under one ledger credit; the UI showed 9 remaining. See `legacy-workspace-canary.json`.
+- The contact form saved exactly one durable local receipt; no email delivery was configured.
+- Hosted browser checks found and prompted fixes for authentication labels including hint text and mobile code-block overflow. The final label was verified in the browser; the responsive checks above cover the layout fix.
 
 No production deployment has occurred for this candidate. Hosted CI and deployment approval are separate from this local verification.
