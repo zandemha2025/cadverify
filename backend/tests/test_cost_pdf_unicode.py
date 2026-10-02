@@ -105,13 +105,18 @@ def test_cost_pdf_full_line_item_matrix_stays_inside_page(tmp_path):
         "process": "injection_molding", "material": "PP (Polypropylene)",
         "quantity": 10000, "unit_cost_usd": 6000,
         "line_items": {
-            "nre": 0, "labor": 1.75, "machine": 0.42, "material": 0.01,
-            "inspection": 0, "consumables": 0, "amortized_fixed": 5997.82,
-            "min_charge_floor": 0,
+            "nre": 105, "labor": 17.50, "machine": 3.17, "material": 0.02,
+            "inspection": 28, "consumables": 0.16, "amortized_fixed": 5791.10,
+            "min_charge_floor": 55.05,
         },
     }]}
     pdf_path = tmp_path / "wide-line-items.pdf"
-    pdf_path.write_bytes(_render_cost_pdf_sync(decision))
+    # Render's slim image uses DejaVu Sans; CI/macOS can otherwise choose
+    # narrower Arial glyphs and miss production-only table overflow.
+    html = render_cost_html(decision).replace(
+        '"Helvetica Neue", Arial, sans-serif', '"DejaVu Sans", sans-serif',
+    )
+    pdf_path.write_bytes(_render_cost_pdf_sync(decision, html))
     bounds = subprocess.run(
         [pdftotext, "-bbox", str(pdf_path), "-"],
         check=True, capture_output=True, text=True,
