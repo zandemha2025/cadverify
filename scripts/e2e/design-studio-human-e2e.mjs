@@ -488,7 +488,8 @@ class DesignStudioE2E {
     assert(filenamePattern.test(text), `Verify did not retain the selected revision filename`);
     assert(text.includes(envelope), `Verify measured envelope does not equal ${envelope}`);
     assert(text.includes(volume), `Verify measured volume does not equal ${volume}`);
-    assert(/watertight true/i.test(text), `Verify did not report watertight geometry`);
+    assert(/Closed solid:\s*yes/i.test(text), `Verify did not report a closed solid`);
+    assert(cost.geometry?.watertight === true, `Verify API did not confirm watertight geometry`);
     assert(/SHOULD-COST COMPUTED/i.test(text), `Verify did not compute should-cost`);
     if (envelopeMm) {
       assert(same(envelopeMm, measuredEnvelopeMm), `Verify API envelope ${stableJson(measuredEnvelopeMm)} does not equal ${stableJson(envelopeMm)}`);
@@ -528,7 +529,7 @@ class DesignStudioE2E {
       envelopeMm: measuredEnvelopeMm,
       volumeCm3: measuredVolumeCm3,
       uiVolumeCm3: measuredUiVolumeCm3,
-      watertight: /watertight true/i.test(text),
+      watertight: cost.geometry?.watertight === true && /Closed solid:\s*yes/i.test(text),
       shouldCostComputed: /SHOULD-COST COMPUTED/i.test(text),
       validationStatus: validationResponse.status(),
       costStatus: costResponse.status(),
@@ -888,7 +889,7 @@ class DesignStudioE2E {
         actions: ["Selected Verify revision 1.", "Observed the revision query and imported filename.", "Waited for deterministic validation and cost, then compared imported bytes with R1 SHA-256."],
         observed: {
           url: this.page.url(),
-          visible: ["Golden_mounting_plate-r1.step", "120.0 × 70.0 × 8.0 mm", "64.69 cm³", "watertight true", "SHOULD-COST COMPUTED"],
+          visible: ["Golden_mounting_plate-r1.step", "120.0 × 70.0 × 8.0 mm", "64.69 cm³", "Closed solid: yes", "SHOULD-COST COMPUTED"],
           persisted: { designId: evidence.designId, selectedRevision: evidence.revision, currentRevision: 2, r1ArtifactSha256: plateR1.hash, importedArtifactSha256: evidence.importedArtifactSha256, importedHeaderSha256: evidence.importedHeaderSha256 },
           numeric: { queryRevision: Number(evidence.queryRevision), envelopeMm: evidence.envelopeMm, volumeCm3: evidence.volumeCm3, uiVolumeCm3: evidence.uiVolumeCm3, importedBytes: evidence.importedBytes, validationStatus: evidence.validationStatus, costStatus: evidence.costStatus },
           authorization: { signedIn: true, artifactStatus: 200, validationStatus: evidence.validationStatus, costStatus: evidence.costStatus },
@@ -980,7 +981,7 @@ class DesignStudioE2E {
         actions: ["Selected Verify revision 1.", "Waited for deterministic validation and cost.", "Inspected the rotational driver, CNC Turning verdict, and complete process shortlist."],
         observed: {
           url: this.page.url(),
-          visible: ["Golden_L_bracket-r1.step", "80.0 × 50.0 × 60.0 mm", "40.20 cm³", "watertight true", "SHOULD-COST COMPUTED"],
+          visible: ["Golden_L_bracket-r1.step", "80.0 × 50.0 × 60.0 mm", "40.20 cm³", "Closed solid: yes", "SHOULD-COST COMPUTED"],
           persisted: { designId: evidence.designId, revision: evidence.revision, artifactSha256: bracketR1.hash, importedArtifactSha256: evidence.importedArtifactSha256, importedHeaderSha256: evidence.importedHeaderSha256 },
           numeric: { envelopeMm: evidence.envelopeMm, volumeCm3: evidence.volumeCm3, uiVolumeCm3: evidence.uiVolumeCm3, rotational: evidence.rotational, turningVerdict: evidence.turningVerdict, turningShortlisted: evidence.turningShortlisted, validationStatus: evidence.validationStatus, costStatus: evidence.costStatus },
           authorization: { signedIn: true, artifactStatus: 200, validationStatus: evidence.validationStatus, costStatus: evidence.costStatus },
@@ -1077,7 +1078,7 @@ class DesignStudioE2E {
         actions: ["Selected Verify revision 1.", "Waited for deterministic DFM and should-cost.", "Inspected the archetype, rotational driver, CNC Turning verdict, and process shortlist."],
         observed: {
           url: this.page.url(),
-          visible: ["Golden_open_enclosure-r1.step", "80.0 × 50.0 × 60.0 mm", "54.41 cm³", "watertight true", "SHOULD-COST COMPUTED"],
+          visible: ["Golden_open_enclosure-r1.step", "80.0 × 50.0 × 60.0 mm", "54.41 cm³", "Closed solid: yes", "SHOULD-COST COMPUTED"],
           persisted: { designId: evidence.designId, revision: evidence.revision, artifactSha256: enclosureR1.hash, importedArtifactSha256: evidence.importedArtifactSha256, importedHeaderSha256: evidence.importedHeaderSha256 },
           numeric: { envelopeMm: evidence.envelopeMm, volumeCm3: evidence.volumeCm3, uiVolumeCm3: evidence.uiVolumeCm3, routingArchetype: evidence.routingArchetype, rotational: evidence.rotational, turningVerdict: evidence.turningVerdict, turningShortlisted: evidence.turningShortlisted, validationStatus: evidence.validationStatus, costStatus: evidence.costStatus },
           authorization: { signedIn: true, artifactStatus: 200, validationStatus: evidence.validationStatus, costStatus: evidence.costStatus },
