@@ -32,7 +32,6 @@ const launchOptions = {
 };
 
 const forbiddenPatterns = [
-  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
@@ -50,7 +49,7 @@ const forbiddenPatterns = [
 ];
 
 const expectedSignals = {
-  "/": [/ProofShape/i, /cost/i],
+  "/": [/CadVerify/i, /cost/i],
   "/platform": [/Platform/i, /verification|decision layer/i],
   "/developers": [/Developers/i, /api/i],
   "/api-reference": [/API/i, /validate/i],
@@ -59,12 +58,12 @@ const expectedSignals = {
   "/teams/cost-engineering": [/Cost engineering|cost/i],
   "/teams/design-engineering": [/Design engineering|engineering/i],
   "/teams/sourcing": [/Sourcing/i, /quote/i],
-  "/teams/in-house-manufacturing": [/Triage/i, /make/i],
+  "/teams/in-house-manufacturing": [/manufacturing/i, /equipment/i],
   "/teams/shop-owners": [/Shop owners|shop/i],
   "/method": [/method/i, /geometry/i],
   "/security": [/security/i, /CAD/i],
   "/status": [/status/i],
-  "/company": [/pilot/i, /ProofShape/i],
+  "/company": [/pilot/i, /CadVerify/i],
   "/pilot-report": [/pilot/i, /report/i],
   "/privacy": [/Privacy/i],
   "/terms": [/Terms/i],
@@ -305,10 +304,9 @@ class HumanE2E {
       await this.goto("/company#pilot", "pilot request", { settleMs: 700 });
       await this.page.getByLabel("Work email").fill(uniqueEmail("pilot"));
       await this.page.getByLabel("Company").fill("ProofShape Human Simulation");
-      await this.page.getByLabel("What do you make?").fill(
+      await this.page.getByLabel("Your question").fill(
         "Precision brackets and sealed housings for production equipment",
       );
-      await this.page.getByLabel("Deployment preference").selectOption("cloud");
       const send = this.page.getByRole("button", { name: "Send request" });
       await send.waitFor({ state: "visible", timeout: 8000 });
       await this.page.waitForFunction(() => {
@@ -353,7 +351,7 @@ class HumanE2E {
       await this.context.clearCookies();
       await this.page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await this.page.waitForURL(/\/login(?:\?|$)/, { timeout: 12_000 });
-      await this.expectText(/Log in to ProofShape/i, "login gate");
+      await this.expectText(/Log in to CadVerify/i, "login gate");
       await this.scanVisibleText("login-gate");
       return { screenshot: await this.shot("login-gate") };
     });

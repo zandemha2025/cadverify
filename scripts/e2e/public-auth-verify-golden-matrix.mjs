@@ -293,8 +293,7 @@ class Matrix {
       );
       await this.page.getByLabel("Work email").fill(uniqueEmail("pilot-valid"));
       await this.page.getByLabel("Company").fill("Golden Matrix Manufacturing");
-      await this.page.getByLabel("What do you make?").fill("Precision valve brackets and sealed production housings");
-      await this.page.getByLabel("Deployment preference").selectOption("cloud");
+      await this.page.getByLabel("Your question").fill("Precision valve brackets and sealed production housings");
       const requestPromise = this.page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/pilot/request");
       const responsePromise = this.page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/pilot/request");
       await this.page.getByRole("button", { name: "Send request" }).click();
@@ -366,7 +365,7 @@ class Matrix {
       assert(postCount === 0, `incomplete form sent ${postCount} requests`);
 
       await pilotPage.getByLabel("Company").fill("Bot-shaped request");
-      await pilotPage.getByLabel("What do you make?").fill("This neutral response must not disclose the honeypot.");
+      await pilotPage.getByLabel("Your question").fill("This neutral response must not disclose the honeypot.");
       await pilotPage.locator('input[name="website"]').evaluate((element) => { element.value = "https://bot.invalid"; });
       const requestPromise = pilotPage.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/pilot/request");
       const responsePromise = pilotPage.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/pilot/request");
@@ -413,7 +412,7 @@ class Matrix {
         const response = await page.goto(route, { waitUntil: "domcontentloaded", timeout: 30_000 });
         await page.waitForURL((url) => url.pathname === "/login", { timeout: 10_000 });
         const body = await page.locator("body").innerText();
-        assert(/Log in to ProofShape/i.test(body), `${route} did not show the login boundary`);
+        assert(/Log in to CadVerify/i.test(body), `${route} did not show the login boundary`);
         assert(!/Cost history|ProofShape Design Studio|RFQ packages|Developer settings|Organization members/i.test(body), `${route} flashed protected content`);
         results.push({ route, initialStatus: response?.status(), finalPath: new URL(page.url()).pathname });
       }
@@ -431,7 +430,7 @@ class Matrix {
         actions: ["Open every protected application route directly.", "Call representative protected APIs through the same-origin proxy."],
         observed: {
           url: `${baseUrl}/login`,
-          visible: [`All ${results.length} protected routes showed Log in to ProofShape without protected-page copy.`],
+          visible: [`All ${results.length} protected routes showed Log in to CadVerify without protected-page copy.`],
           persisted: "no user, organization, or session mutation",
           numeric: { protectedRoutes: results.length, apiStatuses },
           authorization: { redirectsToLogin: results.every((item) => item.finalPath === "/login"), apiStatuses: apiStatuses.map((item) => item.status) },
@@ -677,7 +676,7 @@ class Matrix {
       // AUTH-03 belongs to this exact rejected-login instant. Capture it before
       // the valid password changes the route and before AUTH-05 captures /cost.
       const auth03VisualStep = await this.captureStage("AUTH-03", "invalid-credentials", {
-        requiredVisible: ["Log in to ProofShape", "Invalid email or password."],
+        requiredVisible: ["Log in to CadVerify", "Invalid email or password."],
       });
 
       await this.page.getByLabel("Password").fill(password);

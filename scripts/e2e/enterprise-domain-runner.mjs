@@ -93,7 +93,6 @@ const tinyPng = Buffer.from(
 );
 
 const forbiddenPatterns = [
-  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,

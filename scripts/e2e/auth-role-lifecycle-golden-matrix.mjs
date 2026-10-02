@@ -649,7 +649,7 @@ asyncio.run(main())
 
     await stale.page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
     await stale.page.waitForURL((url) => url.pathname === "/login", { timeout: 15_000 });
-    await stale.page.getByText("Log in to ProofShape", { exact: true }).waitFor();
+    await stale.page.getByText("Log in to CadVerify", { exact: true }).waitFor();
 
     const durable = await this.db("snapshot");
     this.equal(id, "password configured durably", durable.magic.password_configured, true);
@@ -681,7 +681,7 @@ asyncio.run(main())
         url: primary.page.url(),
         visible: [
           "Password configured. Older dashboard sessions were revoked.",
-          "The stale browser returned to Log in to ProofShape on its next protected navigation.",
+          "The stale browser returned to Log in to CadVerify on its next protected navigation.",
         ],
         persisted: durable.magic,
         numeric: {

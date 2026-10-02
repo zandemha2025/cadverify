@@ -1388,7 +1388,7 @@ class Matrix {
         actions: ["Sign out through Account.", "Replay the copied old cookie against a protected page and notifications API.", "Log in again and reopen Notifications."],
         observed: {
           url: session.finalUrl,
-          visible: ["Log in to ProofShape", notification.first.title, notification.second.title],
+          visible: ["Log in to CadVerify", notification.first.title, notification.second.title],
           persisted: { firstReadAt: session.firstReadAt, secondReadAt: session.secondReadAt, dismissedCount: session.dismissedCount, sessionsRevoked: session.sessionsRevoked },
           numeric: { logoutStatus: session.logoutStatus, replayApiStatus: session.replayApiStatus, activeRowsAfterLogin: 2, dismissedRowsAfterLogin: session.dismissedCount, consoleErrorCount: 0, requestFailureCount: 0 },
           authorization: { copiedSessionRejected: session.replayApiStatus === 401, freshLoginGranted: true },

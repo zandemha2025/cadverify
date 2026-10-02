@@ -1493,11 +1493,11 @@ class FullMobileBrowserRun {
     const logoutResponse = await logoutResponsePromise;
     await loginDestination;
     invariant(logoutResponse.status() === 200, `logout returned HTTP ${logoutResponse.status()}`);
-    await this.page.getByRole("heading", { name: "Log in to ProofShape", exact: true }).waitFor({ state: "visible" });
+    await this.page.getByRole("heading", { name: "Log in to CadVerify", exact: true }).waitFor({ state: "visible" });
     const visualSteps = [await this.captureStage(
       definition.id,
       "768x1024-logged-out",
-      ["Log in to ProofShape"],
+      ["Log in to CadVerify"],
     )];
 
     await this.goto("/verify", "gated Verify after logout");
@@ -1550,7 +1550,7 @@ class FullMobileBrowserRun {
       actions: ["Signed out from the account menu.", "Confirmed /verify remained gated.", "Logged in with the original credentials and reopened the exact saved record."],
       observed: {
         url: this.page.url(),
-        visible: ["Log in to ProofShape", this.cadEvidence.fixture.filename, "Open governance"],
+        visible: ["Log in to CadVerify", this.cadEvidence.fixture.filename, "Open governance"],
         persisted: { userId: this.account.userId, orgId: this.account.orgId, decisionId },
         numeric: { logoutStatus: logoutResponse.status(), loginStatus: loginResponse.status(), recordStatus: detailResponse.status() },
         authorization: { orgRole: this.account.orgRole, gatedWhileLoggedOut: true },

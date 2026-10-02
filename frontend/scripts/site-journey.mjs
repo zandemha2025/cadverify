@@ -69,9 +69,24 @@ try {
   await page.getByLabel('Work email', { exact: true }).fill('website-check@example.test');
   await page.getByRole('textbox', { name: 'Company', exact: true }).fill('Website check');
   await page.getByLabel('Your question', { exact: true }).fill('Evaluate an example part. This is an automated UI check; no email is sent.');
-  await page.getByRole('button', { name: 'Prepare pilot email' }).click();
-  await page.getByRole('status').filter({ hasText: 'It has not been sent' }).waitFor();
-  checks.push('Pilot form validates fields and prepares a draft; never claims delivery');
+  let pilotPayload;
+  await page.route('**/api/pilot/request', async route => {
+    pilotPayload = route.request().postDataJSON();
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Online intake is temporarily unavailable. Please retry later.' }) });
+  });
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'Online intake is temporarily unavailable.' }).waitFor();
+  const requestId = pilotPayload.requestId;
+  assert.match(pilotPayload.what, /^Design engineering:/);
+  await page.unroute('**/api/pilot/request');
+  await page.route('**/api/pilot/request', async route => {
+    assert.equal(route.request().postDataJSON().requestId, requestId, 'Retry keeps its idempotency key');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'received', receipt: requestId }) });
+  });
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: `CV-${requestId}` }).waitFor();
+  await page.unroute('**/api/pilot/request');
+  checks.push('Pilot form validates fields, retries outages and shows its receipt (requests stubbed; real persistence covered in human journey)');
   await page.setViewportSize({ width: 390, height: 844 });
   await visit('/');
   await page.screenshot({ path: output + 'home-mobile.png', fullPage: true });
