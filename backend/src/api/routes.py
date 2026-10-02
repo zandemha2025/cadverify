@@ -41,7 +41,7 @@ from src.api.upload_validation import (
 from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_limits import enforce_org_limits
-from src.auth.validation_caps import enforce_validation_caps
+from src.auth.validation_caps import MeteredRoute, enforce_validation_caps, paid_access_required
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -64,7 +64,7 @@ logger = logging.getLogger("cadverify.routes")
 # never the raw filename, mesh bytes, or any geometry beyond face_count.
 slog = structlog.get_logger("cadverify.cost")
 
-router = APIRouter()
+router = APIRouter(route_class=MeteredRoute)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1307,6 +1307,8 @@ async def validate_assembly(
 
     data = await _read_capped(file)
     model = await _extract_assembly_async(data, file.filename or "upload.step")
+    if model.part_count > 1 and getattr(request.state, "trial_check", None):
+        raise paid_access_required()
 
     if fmt == "analysis":
         return await _run_assembly_analysis(
@@ -1379,11 +1381,12 @@ async def validate_demo(
             "responses lean."
         ),
     ),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
-    """Public demo — full analysis, no auth, no persistence, tight rate limit."""
+    """Legacy demo URL: authenticated and metered like the main part check."""
     import asyncio
     import time
 
@@ -2262,21 +2265,12 @@ async def validate_cost_demo(
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
-    """Public demo of the should-cost / make-vs-buy decision — NO auth.
-
-    Mirrors POST /validate/cost exactly in security posture except it drops the
-    analyst role gate: kill-switch dep only, tight public rate limit (same as
-    /validate/demo), no DB/persistence, zero network egress. Reuses the same
-    parse + cost-engine + serialization path so STL and STEP both work and every
-    invariant (Σ=unit_cost, provenance, G1 broken-geometry -> clean 400
-    GEOMETRY_INVALID) holds identically. Supports the same `shop` calibration and
-    `overrides` re-cost params. Lets a local browser user get a costing decision
-    with no API key while the CAD never leaves the machine.
-    """
+    """Legacy cost demo URL: requires an account and consumes its allowance."""
     return await _run_cost_decision(
         file=file,
         qty=qty,
@@ -2307,6 +2301,8 @@ async def validate_repair(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _validation_cap: None = Depends(enforce_validation_caps),
+    _admission: None = Depends(admit_analysis),
 ):
     """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis."""
     if rule_pack:

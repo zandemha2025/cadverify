@@ -1,5 +1,6 @@
 "use client";
 
+import { partCheckHeaders } from "@/lib/verify/check-id";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
@@ -156,7 +157,7 @@ export default function PartWorkspace({
    */
   onExit?: () => void;
 }) {
-  const [file, setFile] = useState<File | null>(initialFile ?? null);
+  const [file, setFile] = useState<File | null>(null);
   const [opts, setOpts] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
   const [submittedOptions, setSubmittedOptions] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
   const [role, setRole] = useState<RoleId>(defaultRole);
@@ -443,7 +444,7 @@ export default function PartWorkspace({
     setGeomError(null);
     setReport(null);
     try {
-      const result = await costEstimate(theFile, theOpts);
+      const result = await costEstimate(theFile, theOpts, partCheckHeaders(theFile)["x-part-check-id"]);
       if (attempt !== analysisAttemptRef.current) return;
       // Save the inputs that produced this result, never the editable draft.
       reportOptionsRef.current = theOpts;
@@ -456,6 +457,7 @@ export default function PartWorkspace({
         setCostError(err instanceof Error ? err.message : "Cost estimate failed.");
       }
     } finally {
+      window.dispatchEvent(new Event("proofshape:usage-changed"));
       if (attempt === analysisAttemptRef.current) setCostLoading(false);
     }
   }, []);
@@ -471,7 +473,7 @@ export default function PartWorkspace({
     setSelectedIssueKey(null);
     setIssueLinkEvidence(null);
     try {
-      const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits);
+      const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits, partCheckHeaders(theFile)["x-part-check-id"]);
       const evidence = await pinpointLinkEvidence(groupPinpointIssues(flattenIssues(data)), data.analysis_mesh_hash);
       if (attempt !== analysisAttemptRef.current) return;
       setIssueLinkEvidence(evidence);
@@ -481,6 +483,7 @@ export default function PartWorkspace({
       const message = err instanceof Error ? err.message : "Analysis failed";
       setDfmError(message);
     } finally {
+      window.dispatchEvent(new Event("proofshape:usage-changed"));
       if (attempt === analysisAttemptRef.current) setDfmLoading(false);
     }
   }, []);
@@ -489,6 +492,9 @@ export default function PartWorkspace({
     // Draft edits must not change the preview or leave DFM on an older scale.
     // A new submission also invalidates both responses from the previous one.
     const attempt = ++analysisAttemptRef.current;
+    // A submitted recheck gets one fresh ID shared by its viewer, DFM and cost.
+    theFile = new File([theFile], theFile.name, { type: theFile.type, lastModified: theFile.lastModified });
+    setFile(theFile);
     setSubmittedOptions(theOpts);
     void runCost(theFile, theOpts, attempt);
     void runDfm(theFile, theOpts.units, attempt);
@@ -517,7 +523,6 @@ export default function PartWorkspace({
           return;
         }
       }
-      setFile(selected);
       setTab(landingTab(role));
       runAnalyses(selected, opts);
     },

@@ -22,8 +22,9 @@ const onboardingSource = await readFile(
   "utf8",
 );
 
-test("new accounts enter a forced first-run guide", () => {
-  assert.match(signupSource, /window\.location\.href = "\/onboarding"/);
+test("new accounts default to the first-run guide while retaining explicit destinations", () => {
+  assert.match(signupSource, /safeLocalPath\(useSearchParams\(\)\.get\("next"\), "\/onboarding"\)/);
+  assert.match(signupSource, /window\.location\.href = next/);
   assert.match(onboardingSource, /redirect\("\/verify\?welcome=1"\)/);
   assert.match(appSource, /params\.get\("welcome"\) === "1"/);
 });

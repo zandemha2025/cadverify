@@ -1,3 +1,4 @@
+import { partCheckHeaders } from "./check-id.ts";
 /**
  * Preview-mesh client for the Verify stage.
  *
@@ -42,20 +43,35 @@ function readNum(res: Response, header: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Fetch the decimated GLB shell for `file`. An exhausted allowance throws its
- * actionable message; other failures return null so callers show an unavailable
- * preview instead of fabricated geometry.
- */
+type PreviewData = Omit<PreviewMesh, "url" | "revoke"> & { blob: Blob };
+// Keep completed previews and join concurrent viewers. A remount must not spend
+// another operation; each consumer owns its URL, while File lifetime bounds memory.
+const previews = new WeakMap<File, Map<string, Promise<PreviewData | null>>>();
+
 export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boolean; units?: "mm" | "inch" }): Promise<PreviewMesh | null> {
+  const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : options?.units ? `?units=${options.units}` : "";
+  let byQuery = previews.get(file);
+  if (!byQuery) { byQuery = new Map(); previews.set(file, byQuery); }
+  let pending = byQuery.get(query);
+  if (!pending) { pending = fetchPreviewData(file, query); byQuery.set(query, pending); }
+  let data: PreviewData | null;
+  try { data = await pending; }
+  catch (error) { byQuery.delete(query); throw error; }
+  if (!data) { byQuery.delete(query); return null; }
+  const { blob, ...metadata } = data;
+  const url = URL.createObjectURL(blob);
+  return { ...metadata, url, revoke: () => URL.revokeObjectURL(url) };
+}
+
+async function fetchPreviewData(file: File, query: string): Promise<PreviewData | null> {
   const form = new FormData();
   form.append("file", file);
 
   let res: Response;
   try {
-    const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : options?.units ? `?units=${options.units}` : "";
     res = await fetch(`${API_BASE}/validate/preview-mesh${query}`, {
       method: "POST",
+      headers: partCheckHeaders(file),
       body: form,
     });
   } catch {
@@ -77,15 +93,13 @@ export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boo
   }
   if (!blob.size) return null;
 
-  const url = URL.createObjectURL(blob);
   return {
-    url,
+    blob,
     originalFaces: readNum(res, "x-mesh-original-faces"),
     previewFaces: readNum(res, "x-mesh-preview-faces"),
     decimated: res.headers.get("x-mesh-decimated") === "true",
     source: res.headers.get("x-mesh-source"),
     faceSpace: res.headers.get("x-mesh-face-space") === "analysis" ? "analysis" : "preview",
     faceHash: res.headers.get("x-mesh-face-hash"),
-    revoke: () => URL.revokeObjectURL(url),
   };
 }

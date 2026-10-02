@@ -5,6 +5,8 @@ socket.getaddrinfo for the hostname-resolution paths.
 """
 from __future__ import annotations
 
+from src.auth.validation_caps import require_paid_access
+
 import io
 import zipfile
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -150,6 +152,7 @@ def _batch_app():
     from src.db.engine import get_db_session
 
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.include_router(router)
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
         user_id=1, api_key_id=1, key_prefix="cv_live_test"

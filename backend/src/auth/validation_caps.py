@@ -1,247 +1,237 @@
-"""Hard product caps: at most N validations per organization AND per user.
+"""Ten lifetime part checks, reserved durably before any CAD computation.
 
-ADDITIVE to the two existing guards:
-
-  - ``src.auth.rate_limit``      -- per-IDENTITY request throttle (60/hour;500/day),
-                                    a burst control, not a product quota.
-  - ``src.auth.org_limits``      -- per-org circuit-breaker against runaway
-                                    aggregate volume (2000/hour;20000/day requests,
-                                    5000 analyses/day durable). Sized as an abuse
-                                    backstop, far above any pilot allowance.
-
-This module enforces the actual PRODUCT LIMIT the launch carries: a caller may
-run at most ``VALIDATION_CAP_PER_ORG`` validations (persisted ``analyses`` rows)
-per organization, AND at most ``VALIDATION_CAP_PER_USER`` per user -- whichever
-binds first. A validation is counted when it is persisted (an ``analyses`` row
-exists), so cached/deduped re-reads of an existing result do not burn the cap.
-
-Window semantics (env-tunable, no deploy needed):
-  ``VALIDATION_CAP_WINDOW_DAYS`` unset or 0  -> LIFETIME cap (the launch rule:
-                                                100 total validations per org
-                                                and per user).
-  ``VALIDATION_CAP_WINDOW_DAYS`` = k > 0     -> rolling trailing-k-days cap.
-
-Both counts are durable (live ``SELECT count(*)`` over ``analyses``, same query
-shape as ``org_limits._daily_analyses_count`` / ``admin_routes.get_usage_summary``),
-so the caps survive a Redis flush/outage -- Redis is not involved at all.
-
-Honesty in the error: a lifetime cap carries NO ``Retry-After`` header (there is
-nothing to wait for); a windowed cap carries ``Retry-After`` set to the window.
-
-Fail-open philosophy, mirroring ``org_limits``: a broken guard must never block
-legit traffic harder than the abuse it prevents -- a DB error during the count
-logs a WARNING and lets the request through. When the DB is down, no analysis
-row can be created anyway, so fail-open cannot be exploited to persist work.
-
-Concurrency note: the check is count-then-write, so N concurrent requests at
-cap-1 can overshoot by up to N-1. This matches the durable quota semantics
-already shipped in ``org_limits``; closing it fully needs a serializable
-transaction or a counter table, deferred deliberately (pilot scale).
-
-No-ops (fail OPEN) when:
-  - kill-switch ``VALIDATION_CAPS_DISABLED`` is set OUTSIDE of RELEASE;
-  - the caller is unauthenticated (public/demo routes, which persist nothing);
-  - the caller's org membership cannot be resolved (same defensive rule as
-    ``org_limits`` -- RBAC and the per-identity limiter already gated);
-  - the count query errors (DB blip).
+A check groups the viewer, geometry analysis and costing of one upload. Each
+operation can succeed once. The browser supplies a UUID, never an entitlement;
+the server binds it to the authenticated account and actual file bytes.
 """
 from __future__ import annotations
 
-import logging
-import os
+import hashlib
 from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
-from fastapi import HTTPException, Request
-from sqlalchemy import func, select
+from fastapi import Depends, HTTPException, Request
+from fastapi.routing import APIRoute
+from fastapi.responses import JSONResponse
+from sqlalchemy import and_, cast, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONPATH
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.datastructures import UploadFile
 
-from src.auth.models import lookup_org_membership
-from src.config.public_urls import error_doc_url
+from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_session_factory
-from src.db.models import Analysis, User
+from src.db.models import TrialCheck, User
 
-logger = logging.getLogger("cadverify.validation_caps")
-
-_TRUTHY = {"1", "true", "yes", "on"}
-
-
-def _int_env(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
+FREE_CHECKS = 10
+# A preview can reserve a slot while the user proceeds to analysis. Stale,
+# unfinished uploads release their slots; completed checks never reset.
+CHECK_LIFETIME = timedelta(hours=1)
 
 
-def _org_cap() -> int:
-    return _int_env("VALIDATION_CAP_PER_ORG", 100)
+def _problem(status: int, code: str, message: str, **details) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code, "message": message, **details})
 
 
-def _user_cap() -> int:
-    return _int_env("VALIDATION_CAP_PER_USER", 100)
+def _unavailable() -> HTTPException:
+    return _problem(503, "allowance_unavailable", "We couldn't confirm your check allowance. Please try again shortly.")
 
 
-def _window_days() -> int:
-    """0 => lifetime (the launch rule). >0 => rolling window in days."""
-    return max(_int_env("VALIDATION_CAP_WINDOW_DAYS", 0), 0)
-
-
-def _caps_disabled() -> bool:
-    """Kill-switch, same convention as ``org_limits._org_limits_disabled`` /
-    ``rate_limit._limiter_enabled``: honored only OUTSIDE of ``RELEASE``."""
-    disabled = os.getenv("VALIDATION_CAPS_DISABLED", "0").strip().lower() in _TRUTHY
-    return disabled and not os.getenv("RELEASE")
-
-
-def _cap_err(code: str, message: str, windowed: bool) -> HTTPException:
-    headers = {}
-    if windowed:
-        headers["Retry-After"] = str(_window_days() * 86400)
-    return HTTPException(
-        status_code=429,
-        headers=headers or None,
-        detail={
-            "code": code,
-            "message": message,
-            "window_days": _window_days(),
-            "doc_url": error_doc_url(code),
-        },
+def _exhausted(used: int, reserved: int) -> HTTPException:
+    return _problem(
+        403, "user_validation_cap_exceeded",
+        "Your 10 free lifetime checks are used or in progress. Request paid access to continue. Saved results remain available.",
+        used=used, reserved=reserved, cap=FREE_CHECKS, remaining=0, window_days=0, plan="trial",
     )
 
 
-async def _count(column, key, since) -> int:
-    """Live count of ``analyses`` rows for one dimension, own short-lived
-    session (same composition rule as ``org_limits._daily_analyses_count``)."""
-    factory = get_session_factory()
-    async with factory() as session:
-        stmt = select(func.count()).select_from(Analysis).where(column == key)
-        if since is not None:
-            stmt = stmt.where(Analysis.created_at >= since)
-        return int((await session.execute(stmt)).scalar_one())
-
-
-async def _user_plan(user_id: int) -> str:
-    """The caller's product plan; a missing row means 'trial' (the safe
-    default). A DB error here fails open in the caller exactly like the count
-    query: if the DB is down, no analysis row can persist anyway."""
-    factory = get_session_factory()
-    async with factory() as session:
-        plan = (
-            await session.execute(select(User.plan).where(User.id == user_id))
-        ).scalar_one_or_none()
-    return str(plan) if plan else "trial"
+async def _counts(session, user_id: int, now: datetime) -> tuple[int, int]:
+    rows = (await session.execute(
+        select(TrialCheck.completed, func.count()).where(
+            TrialCheck.user_id == user_id,
+            or_(TrialCheck.completed.is_(True), and_(
+                or_(
+                    TrialCheck.created_at > now - CHECK_LIFETIME,
+                    func.jsonb_path_exists(TrialCheck.operations, cast('$.* ? (@ == "running")', JSONPATH)),
+                ),
+                TrialCheck.operations != {},
+            )),
+        ).group_by(TrialCheck.completed)
+    )).all()
+    totals = dict(rows)
+    return int(totals.get(True, 0)), int(totals.get(False, 0))
 
 
 async def user_trial_usage(user_id: int) -> dict:
-    """Usage read for the caller's own quota card ("X of Y trial checks used").
-
-    Same durable count and window semantics as enforcement, so the card can
-    never disagree with the gate. Pilot plan reports unlimited instead of a
-    number it does not enforce."""
-    plan = await _user_plan(user_id)
-    if plan == "pilot":
-        return {"plan": plan, "unlimited": True, "used": None, "cap": None, "remaining": None}
-    since = (
-        datetime.now(timezone.utc) - timedelta(days=_window_days())
-        if _window_days() > 0
-        else None
-    )
-    used = await _count(Analysis.user_id, user_id, since)
-    cap = _user_cap()
-    return {
-        "plan": plan,
-        "unlimited": False,
-        "used": used,
-        "cap": cap,
-        "remaining": max(cap - used, 0),
-        "window_days": _window_days(),
-    }
+    try:
+        async with get_session_factory()() as session:
+            plan = (await session.execute(select(User.plan).where(User.id == user_id))).scalar_one()
+            if plan == "pilot":
+                return {"plan": plan, "unlimited": True, "used": None, "cap": None, "remaining": None}
+            used, reserved = await _counts(session, user_id, datetime.now(timezone.utc))
+            return {"plan": plan, "unlimited": False, "used": used, "reserved": reserved,
+                    "cap": FREE_CHECKS, "remaining": max(0, FREE_CHECKS - used - reserved), "window_days": 0}
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
 
 
-async def enforce_validation_caps(request: Request) -> None:
-    """FastAPI dependency: hard product caps on validations. Wire AFTER
-    ``require_api_key`` / ``require_role`` (needs ``request.state.authed_user``),
-    alongside ``enforce_org_limits`` on every analysis-creating route.
+async def require_paid_access(user: AuthedUser = Depends(require_api_key)) -> None:
+    """Manual operator approval, using the existing pilot entitlement."""
+    try:
+        async with get_session_factory()() as session:
+            plan = (await session.execute(select(User.plan).where(User.id == user.user_id))).scalar_one()
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
+    if plan != "pilot":
+        raise paid_access_required()
+
+
+def paid_access_required() -> HTTPException:
+    return _problem(403, "paid_access_required",
+                    "This tool requires approved paid access. Your free allowance includes 10 single-part CAD checks. Request paid access to use advanced tools.")
+
+
+async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: str) -> bool:
+    """Short account row lock makes admission atomic across API processes.
+
+    PostgreSQL NO KEY UPDATE serializes allowances without blocking result
+    foreign keys. No connection/lock stays held during CAD work. A crashed process leaves a
+    bounded reservation, never an uncounted concurrent computation.
     """
-    if _caps_disabled():
-        return
-
-    user = getattr(request.state, "authed_user", None)
-    if user is None:
-        return
-
+    now = datetime.now(timezone.utc)
     try:
-        membership = await lookup_org_membership(user.user_id)
-    except Exception:
-        logger.debug(
-            "validation_caps: org membership lookup failed for user_id=%s; failing open",
-            user.user_id,
-            exc_info=True,
-        )
-        return
+        async with get_session_factory()() as session, session.begin():
+            plan = (await session.execute(
+                select(User.plan).where(User.id == user_id).with_for_update(key_share=True)
+            )).scalar_one()
+            if plan == "pilot":
+                return False
+            row = await session.get(TrialCheck, (user_id, check_id))
+            if row is not None:
+                if row.file_hash != file_hash:
+                    raise _problem(409, "check_file_mismatch", "Start a new check for a different CAD file.")
+                if row.created_at <= now - CHECK_LIFETIME:
+                    raise _problem(409, "check_expired", "This check has expired. Start a new check or open your saved results.")
+                if operation in row.operations:
+                    raise _problem(409, "check_operation_exists", "This step is already running or complete. Open your saved results or start a new check.")
+            # A failed request can retry its empty reservation, but must compete
+            # for a slot again (another request may have used the released slot).
+            if row is None or (not row.completed and not row.operations):
+                used, reserved = await _counts(session, user_id, now)
+                if used + reserved >= FREE_CHECKS:
+                    raise _exhausted(used, reserved)
+            if row is None:
+                row = TrialCheck(user_id=user_id, check_id=check_id, file_hash=file_hash,
+                                 created_at=now, completed=False, operations={})
+                session.add(row)
+            row.operations = {**row.operations, operation: "running"}
+            return True
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
 
-    if not membership:
-        return
 
-    org_id = membership[0]
-
+async def finish_check(user_id: int, check_id: str, operation: str, success: bool) -> None:
     try:
-        plan = await _user_plan(user.user_id)
-    except Exception:
-        logger.debug(
-            "validation_caps: plan lookup failed for user_id=%s; enforcing as trial",
-            user.user_id,
-            exc_info=True,
-        )
-        plan = "trial"
-    if plan == "pilot":
-        # Pilot accounts (owner/demo) are never trial-gated.
+        async with get_session_factory()() as session, session.begin():
+            # Same lock order as admission, including concurrent viewer requests.
+            await session.execute(select(User.id).where(User.id == user_id).with_for_update(key_share=True))
+            row = await session.get(TrialCheck, (user_id, check_id))
+            if row is None:
+                raise _unavailable()
+            operations = dict(row.operations)
+            if success:
+                operations[operation] = "complete"
+                if operation not in {"preview", "preview-analysis", "assembly-json", "assembly-glb"}:
+                    row.completed = True
+            else:
+                operations.pop(operation, None)
+            row.operations = operations
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
+
+
+async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(require_api_key)) -> None:
+    # Reuse the route's bounded upload policy without buffering another copy.
+    from src.api.routes import _max_upload_bytes
+
+    path = request.url.path
+    if (path.endswith(("/fit", "/repair"))
+            or (path.endswith("/assembly") and request.query_params.get("format", "json").lower() != "json")
+            or request.query_params.get("segmentation") == "sam3d"):
+        await require_paid_access(user)
         return
-
-    windowed = _window_days() > 0
-    since = (
-        datetime.now(timezone.utc) - timedelta(days=_window_days())
-        if windowed
-        else None
-    )
-
+    raw_id = request.headers.get("x-part-check-id")
     try:
-        org_count = await _count(Analysis.org_id, org_id, since)
-        user_count = await _count(Analysis.user_id, user.user_id, since)
-    except Exception:
-        logger.warning(
-            "validation_caps: count query failed for org=%s user=%s; failing open",
-            org_id,
-            user.user_id,
-            exc_info=True,
-        )
-        return
+        check_id = str(UUID(raw_id)) if raw_id else str(uuid4())
+    except (ValueError, AttributeError):
+        raise _problem(400, "invalid_check_id", "The part check identifier must be a UUID.")
+    file = (await request.form()).get("file")
+    if not isinstance(file, UploadFile):
+        raise _problem(400, "check_file_required", "Upload a CAD file to start a check.")
+    # Bind exactly the file FastAPI passes to the handler. Ignored extra form
+    # fields must not change the identity, or make ambiguous multipart hashes.
+    filename = (file.filename or "").encode()
+    digest = hashlib.sha256(len(filename).to_bytes(8, "big") + filename)
+    size = 0
+    try:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > _max_upload_bytes():
+                raise _problem(413, "file_too_large", "The CAD file exceeds the upload size limit.")
+            digest.update(chunk)
+    finally:
+        await file.seek(0)
+    if not size:
+        raise _problem(400, "empty_file", "Empty file uploaded.")
+    if path.endswith('/preview-mesh'):
+        operation = 'preview-analysis' if request.query_params.get('purpose') == 'analysis' else 'preview'
+    elif path.endswith('/assembly'):
+        fmt = request.query_params.get('format', 'json').lower()
+        if fmt not in {'json', 'glb', 'analysis'}:
+            raise _problem(400, "invalid_assembly_format", "Choose json, glb, or analysis.")
+        operation = 'assembly-' + fmt
+    elif '/cost' in path:
+        operation = 'cost'
+    elif path.endswith(('/validate', '/quick', '/demo')):
+        operation = 'analysis'
+    else:
+        operation = path.rsplit('/', 1)[-1]
+    if await reserve_check(user.user_id, check_id, digest.hexdigest(), operation):
+        request.state.trial_check = (user.user_id, check_id, operation)
 
-    period = f"in the trailing {_window_days()} days" if windowed else "in total"
-    if org_count >= _org_cap():
-        raise _cap_err(
-            "org_validation_cap_exceeded",
-            f"this organization has reached its cap of {_org_cap()} validations "
-            f"{period}",
-            windowed,
-        )
-    if user_count >= _user_cap():
-        # Trial exhaustion is a plan gate, not a throttle: 403 with a
-        # remaining-count payload the UI can render honestly. The org cap
-        # above stays a 429 circuit-breaker.
-        raise HTTPException(
-            status_code=403,
-            headers={"Retry-After": str(_window_days() * 86400)} if windowed else None,
-            detail={
-                "code": "user_validation_cap_exceeded",
-                "message": (
-                    f"this account has used its {_user_cap()} trial checks {period}; "
-                    + ("retry after the rolling allowance becomes available" if windowed
-                       else "talk to the ProofShape team to keep going")
-                ),
-                "used": user_count,
-                "cap": _user_cap(),
-                "remaining": 0,
-                "window_days": _window_days(),
-                "plan": plan,
-                "doc_url": error_doc_url("user_validation_cap_exceeded"),
-            },
-        )
+
+class MeteredRoute(APIRoute):
+    """Settle at the ASGI response boundary, after function dependencies commit.
+
+    get_route_handler() returns BEFORE FastAPI closes its transaction stack.
+    Settling there deadlocks on the result's user FK and can charge a failed
+    commit. http.response.start runs after that stack has finished.
+    """
+    async def handle(self, scope, receive, send):
+        response_ready = False
+        accounting_failed = False
+
+        async def send_metered(message):
+            nonlocal response_ready, accounting_failed
+            if accounting_failed:
+                return
+            if message["type"] == "http.response.start":
+                response_ready = True
+                receipt = scope.get("state", {}).get("trial_check")
+                if receipt:
+                    try:
+                        await finish_check(*receipt, success=message["status"] < 400)
+                    except HTTPException as exc:
+                        # Keep the reservation on uncertainty. Never report
+                        # success or refund completed work after a DB outage.
+                        accounting_failed = True
+                        await JSONResponse(status_code=503, content={"detail": exc.detail})(scope, receive, send)
+                        return
+            await send(message)
+
+        try:
+            await super().handle(scope, receive, send_metered)
+        except Exception:
+            receipt = scope.get("state", {}).get("trial_check")
+            if receipt and not response_ready:
+                await finish_check(*receipt, success=False)
+            raise

@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
+from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
@@ -237,7 +238,7 @@ async def get_ground_truth(
     return svc.row_to_public(row)
 
 
-@router.post("/recalibrate", dependencies=[Depends(require_kill_switch_open)])
+@router.post("/recalibrate", dependencies=[Depends(require_kill_switch_open), Depends(require_paid_access)])
 @limiter.limit("10/hour;50/day")
 async def recalibrate_ground_truth(
     request: Request,

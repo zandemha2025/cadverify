@@ -15,6 +15,8 @@ dependencies, no Postgres/Redis required.
 """
 from __future__ import annotations
 
+from src.auth.validation_caps import require_paid_access
+
 import io
 import os
 import zipfile
@@ -40,6 +42,7 @@ _TEST_USER = AuthedUser(user_id=42, api_key_id=1, key_prefix="cv_live_test")
 
 def _build_app() -> FastAPI:
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.include_router(router)
     app.dependency_overrides[require_api_key] = lambda: _TEST_USER
     app.dependency_overrides[get_db_session] = lambda: AsyncMock()

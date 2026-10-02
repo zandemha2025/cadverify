@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.validation_caps import require_paid_access
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.rbac import (
@@ -90,6 +91,7 @@ async def create_design(
     body: CreateDesignBody,
     user: AuthedUser = Depends(require_design_mutation),
     session: AsyncSession = Depends(get_db_session),
+    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)
@@ -129,6 +131,7 @@ async def interpret_design(
     response: Response,
     body: InterpretDesignBody,
     user: AuthedUser = Depends(require_design_mutation),
+    _paid_access: None = Depends(require_paid_access),
 ):
     del user
     from src.designs.interpreter import interpret_design_prompt
@@ -162,6 +165,7 @@ async def create_revision(
     body: CreateRevisionBody,
     user: AuthedUser = Depends(require_design_mutation),
     session: AsyncSession = Depends(get_db_session),
+    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)

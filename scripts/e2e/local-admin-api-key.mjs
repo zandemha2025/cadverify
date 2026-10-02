@@ -4,6 +4,9 @@
  * must provide an explicit credential and are never mutated automatically.
  */
 
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 export function isLoopbackOrigin(apiBase) {
@@ -85,6 +88,7 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     throw new Error(`local admin signup HTTP ${signup.response.status}: ${JSON.stringify(signup.json)}`);
   }
 
+  await grantLocalPaidAccess(email);
   const created = await jsonResponse(await fetch(`${apiBase}/api/v1/keys`, {
     method: "POST",
     headers: {
@@ -105,4 +109,28 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     accountEmail: email,
     keyPrefix: created.json.prefix,
   };
+}
+
+
+/** Explicit manual entitlement for disposable local paid-feature fixtures only.
+ * Public signup and all production targets keep the real ten-check allowance.
+ */
+export async function grantLocalPaidAccess(email) {
+  const app = process.env.APP_URL || "http://localhost:3000";
+  const db = process.env.DATABASE_URL || "";
+  if (!isLoopbackOrigin(app) || !isLoopbackOrigin(db) || !/@example\.(com|test)$/.test(email)) return false;
+  const python = fileURLToPath(new URL("../../backend/.venv/bin/python", import.meta.url));
+  await promisify(execFile)(python, ["-c", `
+import asyncio, os, sys
+import asyncpg
+async def main():
+    connection = await asyncpg.connect(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        result = await connection.execute("UPDATE users SET plan='pilot' WHERE email_lower=$1", sys.argv[1].lower())
+        assert result == "UPDATE 1", "Expected exactly one disposable paid fixture"
+    finally:
+        await connection.close()
+asyncio.run(main())
+`, email], { timeout: 15000 });
+  return true;
 }

@@ -1,0 +1,306 @@
+[
+  {
+    "path": "/",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Know whatyou can make.Before you commit."
+  },
+  {
+    "path": "/teams",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Start with the work you need to move forward."
+  },
+  {
+    "path": "/method",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Know how the answer was reached."
+  },
+  {
+    "path": "/platform",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Keep the part, the decision and the evidence together."
+  },
+  {
+    "path": "/security",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Understand the boundaries before sharing the CAD."
+  },
+  {
+    "path": "/sample",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "A part you canget to know."
+  },
+  {
+    "path": "/company",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Make the decision easier to explain."
+  },
+  {
+    "path": "/teams/in-house-manufacturing",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Know which work belongs on your floor."
+  },
+  {
+    "path": "/teams/design-engineering",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Find the manufacturing issue before the next review."
+  },
+  {
+    "path": "/teams/cost-engineering",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Bring a defensible estimate to the review."
+  },
+  {
+    "path": "/teams/sourcing",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Ask a better question about the quote."
+  },
+  {
+    "path": "/teams/shop-owners",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "See whether the incoming job fits your shop."
+  },
+  {
+    "path": "/developers",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Bring the verification record into your own tools."
+  },
+  {
+    "path": "/api-reference",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "One request. A record you can inspect."
+  },
+  {
+    "path": "/pilot-report",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Leave the pilot with evidence your team can use."
+  },
+  {
+    "path": "/status",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Service updates, with the limits stated."
+  },
+  {
+    "path": "/privacy",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "How your files and account data are handled."
+  },
+  {
+    "path": "/terms",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Use the verdict as evidence, not as blind authority."
+  },
+  {
+    "path": "/dpa",
+    "width": 390,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Data terms travel with the pilot."
+  },
+  {
+    "path": "/",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Know whatyou can make.Before you commit."
+  },
+  {
+    "path": "/teams",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Start with the work you need to move forward."
+  },
+  {
+    "path": "/method",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Know how the answer was reached."
+  },
+  {
+    "path": "/platform",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Keep the part, the decision and the evidence together."
+  },
+  {
+    "path": "/security",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Understand the boundaries before sharing the CAD."
+  },
+  {
+    "path": "/sample",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "A part you canget to know."
+  },
+  {
+    "path": "/company",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Make the decision easier to explain."
+  },
+  {
+    "path": "/teams/in-house-manufacturing",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Know which work belongs on your floor."
+  },
+  {
+    "path": "/teams/design-engineering",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Find the manufacturing issue before the next review."
+  },
+  {
+    "path": "/teams/cost-engineering",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Bring a defensible estimate to the review."
+  },
+  {
+    "path": "/teams/sourcing",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Ask a better question about the quote."
+  },
+  {
+    "path": "/teams/shop-owners",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "See whether the incoming job fits your shop."
+  },
+  {
+    "path": "/developers",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Bring the verification record into your own tools."
+  },
+  {
+    "path": "/api-reference",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "One request. A record you can inspect."
+  },
+  {
+    "path": "/pilot-report",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Leave the pilot with evidence your team can use."
+  },
+  {
+    "path": "/status",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Service updates, with the limits stated."
+  },
+  {
+    "path": "/privacy",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "How your files and account data are handled."
+  },
+  {
+    "path": "/terms",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Use the verdict as evidence, not as blind authority."
+  },
+  {
+    "path": "/dpa",
+    "width": 1440,
+    "headings": 1,
+    "missingAnchors": [],
+    "overflow": false,
+    "title": "Data terms travel with the pilot."
+  }
+]

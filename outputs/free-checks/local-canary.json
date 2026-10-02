@@ -1,0 +1,24 @@
+{
+  "scope": "local application, real PostgreSQL, current candidate",
+  "checks": {
+    "signup": 200,
+    "invalid_file_not_charged": true,
+    "cost_finishes_on_check_1": true,
+    "cost_finishes_on_check_10": true,
+    "ten_successful_checks": {
+      "plan": "trial",
+      "unlimited": false,
+      "used": 10,
+      "reserved": 0,
+      "cap": 10,
+      "remaining": 0,
+      "window_days": 0
+    },
+    "eleventh_check_blocked": 403,
+    "direct_demo_and_preview_bypass_blocked": true,
+    "saved_cost_and_pdf_after_exhaustion": true,
+    "history_after_exhaustion": true,
+    "advanced_tools_require_approval": true,
+    "login_does_not_reset_allowance": true
+  }
+}

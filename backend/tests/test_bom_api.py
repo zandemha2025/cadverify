@@ -34,8 +34,10 @@ def _build_app():
 
     from src.api.bom import router as bom_router
     from src.auth.rate_limit import limiter
+    from src.auth.validation_caps import require_paid_access
 
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.state.limiter = limiter
     app.include_router(bom_router, prefix="/api/v1/bom")
     return app

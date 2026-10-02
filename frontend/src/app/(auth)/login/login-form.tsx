@@ -90,17 +90,17 @@ export function LoginForm({
   return (
     <AuthFrame
       eyebrow="Secure workspace"
-      title="Log in to ProofShape"
+      title="Log in to CadVerify"
       body={
         ssoLoginPath && !passwordEnabled
           ? "Continue through your organization's approved identity provider."
-          : "Enter the workspace where part, machine, material, and decision records stay auditable."
+          : "Welcome back. Enter your email and password."
       }
       footer={
         passwordEnabled || turnstileSiteKey ? (
-          <>New here? <AuthTextLink href="/signup">Create an account</AuthTextLink></>
+          <>New here? <AuthTextLink href={`/signup?next=${encodeURIComponent(next)}`}>Create an account</AuthTextLink></>
         ) : (
-          <span className="st-mono" style={{ fontSize: 11, color: "rgba(245,245,247,0.4)" }}>
+          <span className="st-mono" style={{ fontSize: 11, color: "#53635a" }}>
             Access is managed by your organization administrator.
           </span>
         )
@@ -116,10 +116,10 @@ export function LoginForm({
       )}
 
       {ssoLoginPath && passwordEnabled && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0", color: "rgba(245,245,247,0.36)", fontSize: 11 }}>
-          <span style={{ height: 1, flex: 1, background: "rgba(245,245,247,0.12)" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0", color: "#53635a", fontSize: 11 }}>
+          <span style={{ height: 1, flex: 1, background: "#dbe1da" }} />
           OR USE PASSWORD
-          <span style={{ height: 1, flex: 1, background: "rgba(245,245,247,0.12)" }} />
+          <span style={{ height: 1, flex: 1, background: "#dbe1da" }} />
         </div>
       )}
 
@@ -152,10 +152,10 @@ export function LoginForm({
 
       {turnstileSiteKey && (
         <>
-          <div id="magic-link" style={{ display: "flex", alignItems: "center", gap: 12, margin: passwordEnabled || ssoLoginPath ? "24px 0" : "0 0 24px", color: "rgba(245,245,247,0.36)", fontSize: 11 }}>
-            <span style={{ height: 1, flex: 1, background: "rgba(245,245,247,0.12)" }} />
+          <div id="magic-link" style={{ display: "flex", alignItems: "center", gap: 12, margin: passwordEnabled || ssoLoginPath ? "24px 0" : "0 0 24px", color: "#53635a", fontSize: 11 }}>
+            <span style={{ height: 1, flex: 1, background: "#dbe1da" }} />
             OR USE A ONE-TIME LINK
-            <span style={{ height: 1, flex: 1, background: "rgba(245,245,247,0.12)" }} />
+            <span style={{ height: 1, flex: 1, background: "#dbe1da" }} />
           </div>
           <form onSubmit={onMagicSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <AuthField

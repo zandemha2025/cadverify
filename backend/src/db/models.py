@@ -703,6 +703,17 @@ class Job(Base):
     analysis: Mapped[Optional[Analysis]] = relationship(back_populates="jobs")
 
 
+class TrialCheck(Base):
+    __tablename__ = "trial_checks"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    check_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    file_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    operations: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+
 class UsageEvent(Base):
     __tablename__ = "usage_events"
     __table_args__ = (

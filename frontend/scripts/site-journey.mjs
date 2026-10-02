@@ -1,0 +1,98 @@
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { chromium } from 'playwright-core';
+
+const base = process.env.APP_URL || 'http://localhost:3000';
+const output = (process.env.E2E_ARTIFACT_DIR || new URL('../../.gstack/qa-reports/website-redesign/', import.meta.url).pathname).replace(/\/?$/, '/');
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : [] });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const page = await context.newPage();
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+page.on('console', message => { if(message.type() === 'error' && !message.text().includes('503') && !message.text().includes('mailto:')) errors.push(message.text()); });
+const checks = [];
+async function visit(route) {
+  const response = await page.goto(base + route, { waitUntil: 'networkidle' });
+  assert.equal(response.status(), 200, route);
+  await page.evaluate(() => document.fonts.ready);
+  assert.equal(await page.locator('h1').count(), 1, `One heading on ${route}`);
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `No overflow on ${route}`);
+  for (const anchor of await page.locator('a[href^="#"]').evaluateAll(links => links.map(link => link.getAttribute('href')))) {
+    assert(await page.locator(`[id="${anchor.slice(1)}"]`).count(), `Missing anchor ${route}${anchor}`);
+  }
+}
+try {
+  await visit('/');
+  await page.screenshot({ path: output + 'home-desktop.png', fullPage: true });
+  await page.screenshot({ path: output + 'hero-desktop.png' });
+  const apiRequests = [];
+  page.on('request', request => { if(request.url().includes('/api/proxy/')) apiRequests.push(request.url()); });
+  await page.getByRole('link', { name: 'Explore a sample part', exact: true }).first().click();
+  await page.waitForURL('**/sample');
+  await page.getByRole('button', { name: 'Design review', exact: true }).click();
+  await page.getByText('1 sidewall < 1.0° draft', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Resource estimate', exact: true }).click();
+  await page.getByText('$14.14', { exact: true }).waitFor();
+  assert.match(await page.locator('.cv-sample-note').innerText(), /No measured outcomes/);
+  await page.locator('.cv-source-details summary').first().click();
+  await page.getByText(/CAD volume 4.63/).waitFor();
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download record' }).click();
+  const download = await downloadEvent;
+  assert.equal(download.suggestedFilename(), 'cadverify-sample.json');
+  await page.screenshot({ path: output + 'sample-desktop.png', fullPage: true });
+  assert.deepEqual(apiRequests, [], 'Public sample requires no backend');
+  await page.getByRole('link', { name: 'Continue with your own part' }).click();
+  await page.waitForURL(url => url.pathname === '/login');
+  assert.match(page.url(), /next=(%2F|\/)(analyze|verify)/);
+  await page.getByRole('link', { name: 'Create an account', exact: true }).click();
+  await page.waitForURL(url => url.pathname === '/signup');
+  assert.match(page.url(), /next=(%2F|\/)(analyze|verify)/);
+  // Stub only account requests: never create users or send credentials to a live service.
+  await page.route('**/api/auth/signup', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Account service is temporarily unavailable. Please try again shortly.' }) }));
+  await page.getByLabel('Email', { exact: true }).fill('website-check@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('sample-test-123');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await page.getByText('Account service is temporarily unavailable. Please try again shortly.', { exact: true }).waitFor();
+  assert(await page.getByRole('button', { name: 'Create account', exact: true }).isEnabled());
+  await page.screenshot({ path: output + 'signup-desktop.png', fullPage: true });
+  checks.push('Homepage → sample → all evidence views → source disclosure → download → login → signup; destination retained; retryable outage state');
+  const routes = ['/method','/platform','/teams','/teams/in-house-manufacturing','/teams/design-engineering','/teams/cost-engineering','/teams/sourcing','/teams/shop-owners','/security','/developers','/api-reference','/company','/pilot-report','/status','/privacy','/terms','/dpa'];
+  for(const route of routes) await visit(route);
+  checks.push(`${routes.length} supporting routes: HTTP 200, one h1, valid anchors, no horizontal overflow`);
+  await visit('/teams/design-engineering');
+  await page.getByRole('link', { name: 'Talk through your workflow' }).click();
+  await page.waitForURL(url => url.pathname === '/company');
+  assert.equal(await page.getByLabel('What are you working on?').inputValue(), 'Design engineering');
+  assert.equal(await page.locator('form').evaluate(form => form.checkValidity()), false);
+  await page.getByLabel('Work email', { exact: true }).fill('website-check@example.test');
+  await page.getByRole('textbox', { name: 'Company', exact: true }).fill('Website check');
+  await page.getByLabel('Your question', { exact: true }).fill('Evaluate an example part. This is an automated UI check; no email is sent.');
+  await page.getByRole('button', { name: 'Prepare pilot email' }).click();
+  await page.getByRole('status').filter({ hasText: 'It has not been sent' }).waitFor();
+  checks.push('Pilot form validates fields and prepares a draft; never claims delivery');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await visit('/');
+  await page.screenshot({ path: output + 'home-mobile.png', fullPage: true });
+  await page.screenshot({ path: output + 'hero-mobile.png' });
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  assert.equal(await page.getByRole('button', { name: 'Close navigation' }).getAttribute('aria-expanded'), 'true');
+  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'Workflows', exact: true }).click();
+  await page.waitForURL('**/teams');
+  await visit('/sample?view=resources');
+  await page.getByText('$14.14', { exact: true }).waitFor();
+  await page.screenshot({ path: output + 'sample-mobile.png', fullPage: true });
+  for(const route of routes) await visit(route);
+  await visit('/company');
+  await page.screenshot({ path: output + 'company-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 320, height: 740 });
+  await visit('/'); await visit('/sample');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await visit('/');
+  assert.equal(await page.locator('canvas').count(), 0, 'Marketing renders without WebGL');
+  checks.push('390px and 320px layouts, mobile navigation, reduced motion, no WebGL requirement');
+  assert.deepEqual(errors, [], 'No browser errors');
+  await writeFile(output + 'journey-results.json', JSON.stringify({ base, checks, browserErrors: errors, accountRequests: 'Stubbed only; no real accounts created', liveUpload: 'Requires user session; not claimed as tested' }, null, 2));
+  console.log(checks.join('\n'));
+} finally { await browser.close(); }

@@ -74,8 +74,8 @@ async def test_design_lifecycle_worker_artifacts_audit_and_isolation(monkeypatch
                 (
                     await session.execute(
                         text(
-                            "INSERT INTO users (email, email_lower, role, auth_provider, current_org_id) "
-                            "VALUES (:email, :email, 'analyst', 'password', :org) RETURNING id"
+                            "INSERT INTO users (email, email_lower, role, auth_provider, current_org_id, plan) "
+                            "VALUES (:email, :email, 'analyst', 'password', :org, 'pilot') RETURNING id"
                         ),
                         {"email": email, "org": org_id},
                     )

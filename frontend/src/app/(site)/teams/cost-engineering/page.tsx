@@ -1,22 +1,31 @@
 import type { Metadata } from "next";
-import CostEngineeringCinematic from "./cost-engineering-cinematic";
+import { DocumentPage } from "@/components/site/document-page";
 
-/**
- * /teams/cost-engineering — "For Cost Engineering" persona journey.
- *
- * Server shell: owns per-page metadata, then renders the client cinematic
- * (the WebGL choreography + scroll acts live in the "use client" component).
- * The dark-theater register + `.site-theater` scope come from the (site) group
- * layout; the shared chrome (SiteNav / SiteFooterTagline / PartStage / evidence
- * primitives) comes from `@/components/site`.
- */
+export const metadata: Metadata = {"title": "Cost engineering — CadVerify", "description": "Spend the conversation on the inputs that matter: material, machine time, labor and setup. Keep every source available when the number is challenged.", "alternates": {"canonical": "/teams/cost-engineering"}};
 
-export const metadata: Metadata = {
-  title: "For Cost Engineering — ProofShape",
-  description:
-    "You sign the number. You should be able to open it. From a CAD file to a resource-cost record you can defend line-by-line — every driver sourced, the ±40% band honest about being assumption-based, and eventually validated against your own invoices.",
-};
-
-export default function CostEngineeringPage() {
-  return <CostEngineeringCinematic />;
+export default function Page() {
+  return <DocumentPage label="Cost engineering" title="Bring a defensible estimate to the review." intro="Spend the conversation on the inputs that matter: material, machine time, labor and setup. Keep every source available when the number is challenged." sections={[
+  {
+    "id": "drivers",
+    "title": "Explain the drivers, not just the total.",
+    "body": "Open the resource estimate line by line. The sample separates labor, setup, machine and material costs and preserves each source string.",
+    "href": "/sample?view=resources",
+    "link": "Inspect the resource estimate"
+  },
+  {
+    "id": "basis",
+    "title": "Distinguish declared rates from assumptions.",
+    "body": "A shop rate can be declared while the cycle-time model still uses a default. Both facts belong beside the result. A precise decimal does not mean the model has been validated."
+  },
+  {
+    "id": "compare",
+    "title": "Compare on the same basis.",
+    "body": "Keep process, quantity, materials and calibration visible when comparing alternatives. A supplier quote and an internal resource estimate answer different questions."
+  },
+  {
+    "id": "actuals",
+    "title": "Bring the actuals back.",
+    "body": "Use measured outcomes to examine error and improve the next analysis. Until that evidence exists, the uncertainty remains an assumption band."
+  }
+]} />;
 }

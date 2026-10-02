@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.auth.validation_caps import require_paid_access
 from src.api.designs import require_design_mutation, router
 from src.auth.rate_limit import limiter
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -58,6 +59,7 @@ def _rows(status: str = "generating"):
 
 def _app(role: str = "analyst") -> FastAPI:
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.state.limiter = limiter
     app.include_router(router, prefix="/api/v1/designs")
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(

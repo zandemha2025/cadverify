@@ -1,3 +1,4 @@
+import { grantLocalPaidAccess } from "./local-admin-api-key.mjs";
 import { createRequire } from "node:module";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -447,6 +448,7 @@ class EnterpriseDomainQA {
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
         await this.expectText(/ProofShape|Home|Verify/i, "verify shell after login");
+        await grantLocalPaidAccess(loginEmail);
         const members = await this.expectApiOk("/admin/users");
         assert(Array.isArray(members.users), "members response missing users");
         const self = members.users.find((u) => u.email === loginEmail);
@@ -468,6 +470,7 @@ class EnterpriseDomainQA {
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
       await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
+      await grantLocalPaidAccess(email);
       const members = await this.expectApiOk("/admin/users");
       assert(Array.isArray(members.users), "members response missing users");
       const self = members.users.find((u) => u.email === email);

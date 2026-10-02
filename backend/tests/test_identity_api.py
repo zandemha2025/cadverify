@@ -10,7 +10,7 @@ retrieval engine, and the ``part_signatures`` corpus all run against the live DB
   * CONFIRM WRITE-BACK — POST /identity/confirm stamps the declared identity onto
     the corpus row (source user_confirmed, provenance USER) and a subsequent
     retrieval reflects it.
-  * ANONYMOUS — the public demo route (no org) returns ``identity: null``, no error.
+  * ANONYMOUS — legacy demo compute rejects unauthenticated callers.
   * CROSS-ORG — org B confirming org A's mesh_hash is a 404 and leaves A's row
     untouched.
 
@@ -202,7 +202,7 @@ async def test_cost_response_identity_confirm_and_isolation():
         )
         assert r.status_code == 404
 
-    # ── ANONYMOUS: the public demo route has no org → identity null ─────────
+    # ── ANONYMOUS: legacy demo cannot bypass login or allowances ──────────
     app.dependency_overrides.pop(get_db_session, None)
     app.dependency_overrides.clear()
     transport2 = ASGITransport(app=app)
@@ -212,8 +212,8 @@ async def test_cost_response_identity_confirm_and_isolation():
             files={"file": ("anon.stl", stl_bytes, "application/octet-stream")},
             data=form,
         )
-        assert r.status_code == 200, r.text
-        assert r.json()["identity"] is None
+        assert r.status_code == 401, r.text
+        assert r.json()["detail"]["code"] == "auth_missing"
 
     # A's confirmed row survived the cross-org attempt unchanged.
     async with eng.get_session_factory()() as s:

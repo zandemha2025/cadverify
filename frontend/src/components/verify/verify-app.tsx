@@ -255,6 +255,8 @@ export function VerifyApp({
           return null;
         }
       }
+      // A deliberate recheck has a fresh allowance ID; its subrequests share this File.
+      f = new File([f], f.name, { type: f.type, lastModified: f.lastModified });
       setUploadRejection(null);
       setFile(f);
       latestFile.current = f;
@@ -379,6 +381,7 @@ export function VerifyApp({
         }
         return null;
       } finally {
+        window.dispatchEvent(new Event("proofshape:usage-changed"));
         if (runSeq.current === seq) setRunning(false);
       }
     },

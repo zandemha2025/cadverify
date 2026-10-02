@@ -38,13 +38,6 @@ AUTH_DEPENDENCIES = {
 # and not listed here fails the check. Paths are decorator-relative (no mount
 # prefix), matching how they are written in source.
 PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
-    "routes.py": {
-        # Public should-cost / validate demos — NO auth by design (kill-switch dep
-        # only, tight public rate limit, no DB/persistence, zero network egress).
-        # Their authed siblings POST /validate + POST /validate/cost are role-gated.
-        ("post", "/validate/demo"),
-        ("post", "/validate/cost/demo"),
-    },
     "metrics.py": {
         # Prometheus scrape target. UNAUTHENTICATED by design (scrapers carry no
         # API key); additionally gated by METRICS_ENABLED and meant to be scraped

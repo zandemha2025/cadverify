@@ -39,6 +39,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
+from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
@@ -96,7 +97,7 @@ async def _read_capped(file: UploadFile, limit: int) -> bytes:
     return bytes(buf)
 
 
-@router.post("/ingest-assembly", dependencies=[Depends(require_kill_switch_open)])
+@router.post("/ingest-assembly", dependencies=[Depends(require_kill_switch_open), Depends(require_paid_access)])
 @limiter.limit("60/hour;500/day")
 async def ingest_assembly(
     request: Request,

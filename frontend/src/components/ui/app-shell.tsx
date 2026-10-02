@@ -49,6 +49,7 @@ import { CommandPaletteProvider, useCommandPalette } from "@/components/ui/comma
 import { InstrumentChromeProvider, useInstrumentChrome } from "@/components/instrument/instrument-chrome";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { procLabel, verdictLabel } from "@/lib/status";
+import { TrialAllowance } from "@/components/QuotaDisplay";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 /* Routes that render full-fluid (the workspace needs its width); everything
@@ -451,6 +452,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       {sidebarOpen && <AppSidebar />}
       <div className="flex min-w-0 flex-1 flex-col">
         <ContextBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((o) => !o)} />
+        <TrialAllowance />
         <main className="min-h-0 flex-1 overflow-y-auto">
           {fluid ? (
             <div className="h-full">{children}</div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { RateLimits } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { usageTone } from "@/lib/status";
@@ -10,6 +12,7 @@ export interface TrialUsage {
   used: number | null;
   cap: number | null;
   remaining: number | null;
+  reserved?: number;
   window_days?: number;
 }
 
@@ -45,8 +48,8 @@ export default function QuotaDisplay(props: Props) {
   return <div className="space-y-3">
     <QuotaUsage {...props} />
     <p className="text-sm text-muted-foreground">
-      <a className="underline" href="mailto:nazeemahmed2023@gmail.com">Talk to the ProofShape team</a>{" "}
-      about your account or workspace allowance.
+      <a className="underline" href="mailto:nazeemahmed2023@gmail.com?subject=CadVerify%20paid%20access">Request paid access</a>{" "}
+      to continue checking parts. Your saved results remain available.
     </p>
   </div>;
 }
@@ -58,7 +61,7 @@ function QuotaUsage({ rateLimits, usage }: Props) {
     if (usage.unlimited) {
       return (
         <p className="text-sm text-muted-foreground">
-          Pilot plan - unlimited checks.
+          Approved access — unlimited checks.
         </p>
       );
     }
@@ -69,9 +72,10 @@ function QuotaUsage({ rateLimits, usage }: Props) {
           <QuotaBar
             used={usage.used}
             total={usage.cap}
-            label={`${usage.used} of ${usage.cap} trial checks used`}
+            label="Free lifetime checks"
           />
-          {exhausted && <p className="text-sm text-muted-foreground">You&apos;ve used your {usage.cap} trial checks.</p>}
+          {!!usage.reserved && <p className="text-sm text-muted-foreground">{usage.reserved} checks in progress. Unfinished previews release their reserved slots after an hour.</p>}
+          {exhausted && !usage.reserved && <p className="text-sm text-muted-foreground">You&apos;ve used your {usage.cap} free checks.</p>}
           {!!usage.window_days && <p className="text-sm text-muted-foreground">Checks are counted over a rolling {usage.window_days}-day window.</p>}
         </div>
       );
@@ -97,4 +101,35 @@ function QuotaUsage({ rateLimits, usage }: Props) {
       )}
     </div>
   );
+}
+
+
+/** The allowance stays visible wherever the user starts a new operation. */
+export function TrialAllowance() {
+  const pathname = usePathname();
+  const [usage, setUsage] = useState<TrialUsage | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      fetch("/api/auth/me/usage")
+        .then((response) => response.ok ? response.json() : null)
+        .then((value) => { if (active) { setUsage(value); setLoaded(true); } })
+        .catch(() => { if (active) { setUsage(null); setLoaded(true); } });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("proofshape:usage-changed", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("proofshape:usage-changed", refresh);
+    };
+  }, [pathname]);
+  if (usage?.unlimited) return null;
+  return <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-background px-4 py-2 text-xs" role="status">
+    <span>{usage ? `${usage.remaining} of ${usage.cap} free checks available` : loaded ? "Allowance temporarily unavailable" : "Checking your allowance…"}</span>
+    <span className="text-muted-foreground">Single-part checks. Advanced tools require paid access.</span>
+    <a className="font-medium text-primary underline" href="mailto:nazeemahmed2023@gmail.com?subject=CadVerify%20paid%20access">Request paid access</a>
+  </div>;
 }

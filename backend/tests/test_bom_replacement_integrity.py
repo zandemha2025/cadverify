@@ -15,6 +15,8 @@ from tests.cad_fixtures import as1_fixture_bytes
 @pytest.mark.skipif(not os.getenv("DATABASE_URL", "").startswith("postgresql"), reason="requires local Postgres")
 @pytest.mark.asyncio
 async def test_invalid_uploads_leave_saved_bom_intact():
+    from src.parsers import parse_pool
+    parse_pool.startup()
     try:
         async with engine.get_engine().connect() as connection:
             transaction = await connection.begin()
@@ -87,4 +89,5 @@ async def test_invalid_uploads_leave_saved_bom_intact():
             finally:
                 await transaction.rollback()
     finally:
+        parse_pool.shutdown(final=True)
         await engine.dispose_engine()

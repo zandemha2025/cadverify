@@ -421,7 +421,8 @@ export async function validateFile(
   /** opt-in: request the per-face wall-thickness map for a thin-wall heatmap.
    *  Off by default → no query param → response is byte-identical to before. */
   includeThickness?: boolean,
-  sourceUnits?: "mm" | "inch"
+  sourceUnits?: "mm" | "inch",
+  partCheckId?: string
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -446,7 +447,7 @@ export async function validateFile(
     url += `?${qs}`;
   }
 
-  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData });
+  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined });
 }
 
 export async function validateQuick(file: File): Promise<{
@@ -997,7 +998,8 @@ export class CostGeometryInvalidError extends Error {
  */
 async function _costEstimate(
   file: File,
-  opts: CostOptions
+  opts: CostOptions,
+  partCheckId?: string
 ): Promise<CostReport> {
   const form = new FormData();
   form.append("file", file);
@@ -1019,7 +1021,7 @@ async function _costEstimate(
 
   let res: Response;
   try {
-    res = await fetch(url, { method: "POST", body: form });
+    res = await fetch(url, { method: "POST", body: form, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined });
   } catch (err) {
     // A transport exception has no HTTP body, so do not guess that the user's
     // network is at fault. The workspace can reconcile this sibling request with
@@ -1073,9 +1075,10 @@ async function _costEstimate(
 /** Session-authenticated should-cost (via the same-origin proxy). */
 export function costEstimate(
   file: File,
-  opts: CostOptions
+  opts: CostOptions,
+  partCheckId?: string
 ): Promise<CostReport> {
-  return _costEstimate(file, opts);
+  return _costEstimate(file, opts, partCheckId);
 }
 
 /* ------------------------------------------------------------------ */
