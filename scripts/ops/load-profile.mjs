@@ -5,7 +5,7 @@
 //   - GET  /health              (liveness, cheap)
 //   - GET  /health/deep         (dependency-level probes)
 //   - POST /api/v1/validate/cost/demo  (the costed hot path: parse -> DFM ->
-//                                        should-cost, unauthenticated demo route)
+//                                        should-cost, authenticated legacy route)
 //
 // This is a SINGLE-CONTAINER SMOKE on shared CI-grade hardware. It is NOT a
 // production-scale or SLA benchmark and the numbers must not be extrapolated.
@@ -14,6 +14,8 @@
 //
 // Env:
 //   CADVERIFY_API_URL          default http://127.0.0.1:8000
+//   CADVERIFY_API_KEY          paid-account key; local runs can create a fixture
+//   APP_URL / DATABASE_URL    loopback app/database for the local paid fixture
 //   LOAD_HEALTH_REQUESTS       default 200
 //   LOAD_HEALTH_CONCURRENCY    default 20
 //   LOAD_COST_REQUESTS         default 12
@@ -24,6 +26,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { resolveAdminApiKey } from "../e2e/local-admin-api-key.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -108,13 +111,17 @@ async function getOk(pathname) {
   return resp.status === 200 || resp.status === 503;
 }
 
-async function postCost(index, cubeBytes) {
+async function postCost(index, cubeBytes, token) {
   const form = new FormData();
   form.append("file", new Blob([cubeBytes], { type: "application/octet-stream" }), `load-${index}.step`);
   form.append("qty", "50,5000");
   form.append("material_class", "aluminum");
   form.append("region", "US");
-  const resp = await fetch(`${apiBase}/api/v1/validate/cost/demo`, { method: "POST", body: form });
+  const resp = await fetch(`${apiBase}/api/v1/validate/cost/demo`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
   const text = await resp.text();
   if (!resp.ok) return false;
   try {
@@ -142,11 +149,18 @@ async function main() {
   if (!pre) throw new Error(`backend not reachable at ${apiBase} (start uvicorn first)`);
   const preBody = await pre.text();
 
+  const credential = await resolveAdminApiKey({
+    apiBase,
+    configuredToken: process.env.PROOFSHAPE_API_KEY || process.env.CADVERIFY_API_KEY || "",
+    runId,
+    purpose: "load-profile",
+  });
+  if (!credential.token) throw new Error(credential.boundary || "A paid-account API key is required for load testing.");
   const cubeBytes = await readFile(cubePath);
 
   const health = await drive(cfg.health.requests, cfg.health.concurrency, () => getOk("/health"));
   const healthDeep = await drive(cfg.healthDeep.requests, cfg.healthDeep.concurrency, () => getOk("/health/deep"));
-  const cost = await drive(cfg.cost.requests, cfg.cost.concurrency, (i) => postCost(i, cubeBytes));
+  const cost = await drive(cfg.cost.requests, cfg.cost.concurrency, (i) => postCost(i, cubeBytes, credential.token));
 
   const header = [
     "=== CADVerify local load smoke ===",

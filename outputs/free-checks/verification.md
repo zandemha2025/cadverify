@@ -23,5 +23,7 @@ Candidate: `codex/free-checks-entry-flow`, based on production commit `5b94d76`.
 - Real browser upload in the older cost workspace: STEP preview, DFM and cost completed under one ledger credit; the UI showed 9 remaining. See `legacy-workspace-canary.json`.
 - The contact form saved exactly one durable local receipt; no email delivery was configured.
 - Hosted browser checks found and prompted fixes for authentication labels including hint text and mobile code-block overflow. The final label was verified in the browser; the responsive checks above cover the layout fix.
+- Hosted run `36964157509` passed the public, human, Design Studio, enterprise, role/failure, assembly, connector, 34-model CAD and restore journeys. Its load smoke correctly received 401 because it still called the legacy demo anonymously. Both load scripts now reuse the existing authenticated local fixture helper; the corrected smoke passed 6/6 requests (P95 3,787 ms), and the profile passed 12/12 at concurrency 2. Concurrency 4 encountered the existing per-organization limit of 3, as expected; no production protection was changed.
+- Manual paid-access canary: approval enabled unlimited checks and the advanced route; returning the account to trial preserved its previous usage (1 used, 9 remaining). See `manual-access-canary.json`.
 
 No production deployment has occurred for this candidate. Hosted CI and deployment approval are separate from this local verification.

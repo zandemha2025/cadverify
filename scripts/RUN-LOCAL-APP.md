@@ -45,8 +45,9 @@ also frees the ports first, so it is always safe to run again.)
 
 - A local account is required for the full platform because saved decisions,
   org settings, RFQ packages, notifications, and audit trails are tenant-scoped.
-- The historical public cost-demo endpoint (`/api/v1/validate/cost/demo`) remains
-  local-only, but the product surface is intentionally auth-gated.
+- The historical cost-demo endpoint (`/api/v1/validate/cost/demo`) also requires
+  authentication and shares the account's ten lifetime checks. Load scripts use
+  an isolated local paid fixture, or an explicitly configured API key.
 - Nothing about your part leaves this machine.
 
 ## If something doesn't start
