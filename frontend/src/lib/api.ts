@@ -62,6 +62,10 @@ export interface Issue {
    *  the honest total is still in affected_face_count (nothing silently dropped). */
   affected_faces_truncated?: boolean;
   region_center?: [number, number, number];
+  /** Source-coordinate defect edges in mm; never analysis/preview face indices. */
+  edge_segments?: [[number, number, number], [number, number, number]][];
+  edge_segment_count?: number;
+  edge_segments_truncated?: boolean;
   measured_value?: number;
   required_value?: number;
   measurement_unit?: "mm" | "deg" | "ratio" | "percent";
@@ -257,16 +261,20 @@ export interface SharedAnalysis {
 /* ------------------------------------------------------------------ */
 
 export interface RepairDetails {
-  tier?: "trimesh" | "pymeshfix";
+  tier?: "trimesh" | "pymeshfix" | "browser";
   original_faces?: number;
   repaired_faces?: number;
   holes_filled?: number;
   duration_ms?: number;
   error?: string;
+  reason?: string;
+  actions?: string[];
 }
 
 export interface RepairResult {
-  original_analysis: ValidationResult;
+  original_analysis: ValidationResult | null;
+  original_filename?: string;
+  local_file?: File;
   repair_applied: boolean;
   repair_details: RepairDetails;
   repaired_analysis: ValidationResult | null;
@@ -313,7 +321,7 @@ export function getLatestRateLimits(): RateLimits | undefined {
  * Centralized API client — attaches auth headers, extracts rate limits,
  * handles errors (timeout, malformed JSON, 5xx retry, 429 toast, 4xx throw).
  */
-const apiClient = {
+export const apiClient = {
   async fetch(
     url: string,
     options: RequestInit = {},
@@ -576,32 +584,13 @@ export async function downloadPdf(
 /*  Mesh Repair client (Phase 5 — REPAIR-01..03)                      */
 /* ------------------------------------------------------------------ */
 
-export async function repairAnalysis(
-  file: File,
-  processes?: string[],
-  rulePack?: string
-): Promise<RepairResult> {
-  const formData = new FormData();
-  formData.append("file", file);
+export { repairAnalysis } from "./mesh-repair-client";
 
-  const params = new URLSearchParams();
-  if (processes && processes.length > 0) {
-    params.set("processes", processes.join(","));
-  }
-  if (rulePack) {
-    params.set("rule_pack", rulePack);
-  }
-
-  let url = `${API_BASE}/validate/repair`;
-  const qs = params.toString();
-  if (qs) {
-    url += `?${qs}`;
-  }
-
-  return apiClient.fetchJson<RepairResult>(url, {
-    method: "POST",
-    body: formData,
-  });
+export function repairedFile(result: RepairResult): File | null {
+  if (result.repair_applied && result.local_file && result.repair_verification?.reverified) return result.local_file;
+  if (!result.repair_applied || !result.repaired_file_b64 || !result.repair_verification?.reverified) return null;
+  const bytes = Uint8Array.from(atob(result.repaired_file_b64), (c) => c.charCodeAt(0));
+  return new File([bytes], result.repair_verification.download_filename, { type: "model/stl" });
 }
 
 export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {

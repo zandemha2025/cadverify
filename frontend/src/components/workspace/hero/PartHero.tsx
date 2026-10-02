@@ -1,5 +1,6 @@
 "use client";
 
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
@@ -404,9 +405,9 @@ export function PartHero({
                     label="Volume"
                     value={
                       costGeo
-                        ? `${costGeo.volume_cm3.toFixed(1)} cm³`
+                        ? formatVolumeCm3(costGeo.volume_cm3, costGeo.watertight, 1)
                         : geo
-                          ? `${(geo.volume_mm3 / 1000).toFixed(1)} cm³`
+                          ? formatVolumeCm3(geo.volume_mm3 / 1000, geo.is_watertight, 1)
                           : "—"
                     }
                   />

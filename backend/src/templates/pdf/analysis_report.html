@@ -161,7 +161,7 @@
     <div class="geometry-item">
       <table>
         <tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Volume</td><td>{{ geo.get('volume_mm3', 'N/A') }} mm&sup3;</td></tr>
+        <tr><td>Volume</td><td>{% if geo.get('is_watertight') and geo.get('volume_mm3', 0) > 0 %}{{ geo.get('volume_mm3') }} mm&sup3;{% else %}Volume unavailable{% endif %}</td></tr>
         <tr><td>Surface Area</td><td>{{ geo.get('surface_area_mm2', 'N/A') }} mm&sup2;</td></tr>
         <tr><td>Bounding Box</td><td>{{ geo.get('bounding_box_mm', []) | join(' x ') }} mm</td></tr>
       </table>

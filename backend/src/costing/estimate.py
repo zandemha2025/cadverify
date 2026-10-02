@@ -300,11 +300,13 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     invalid = (g.volume is None) or (g.volume <= 0.0) or (not g.is_watertight) or has_error
     if invalid:
         geo = _geo_summary(g)
+        failures = [i.message for i in result.universal_issues if i.severity == Severity.ERROR]
+        if not failures:
+            failures = ["A closed mesh with positive volume is required to calculate material and cost."]
         return DecisionReport(
             filename=result.filename,
             status="GEOMETRY_INVALID",
-            reason=("Geometry is not a measurable solid (volume ≤ 0 or non-watertight). "
-                    "Cost requires a watertight, positive-volume mesh. Repair required."),
+            reason=" ".join(failures) + " Repair the model and upload it again.",
             geometry=geo,
             material_class=options.material_class,
             quantities=list(options.quantities),

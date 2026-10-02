@@ -573,7 +573,7 @@ async function main() {
       const bboxLabel = liveCostReport.geometry.bbox_mm.map((value) => value.toFixed(1)).join(" × ");
       assert(text.includes(`${bboxLabel} mm`), `live Verify UI did not show the measured bbox ${bboxLabel} mm`);
       assert(text.includes(`${liveCostReport.geometry.volume_cm3.toFixed(2)} cm³`), "live Verify UI did not show the measured volume");
-      assert(/watertight true/i.test(text), "live Verify UI did not show watertight true");
+      assert(/Closed solid:\s*yes/i.test(text), "live Verify UI did not show Closed solid: yes");
       assert(text.includes(pinnedCube.sha256), "live Verify UI did not show the exact source SHA-256");
       const liveScreenshot = await shot("verified-step-result");
 

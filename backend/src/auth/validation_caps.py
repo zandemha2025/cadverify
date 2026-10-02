@@ -107,6 +107,11 @@ async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: 
                 return False
             row = await session.get(TrialCheck, (user_id, check_id))
             if row is not None:
+                # Repair is its own one-credit operation, never a free add-on to
+                # an already completed check or a bundle for different bytes.
+                if ((operation == "repair" and (row.completed or row.operations))
+                        or (operation != "repair" and "repair" in row.operations)):
+                    raise _problem(409, "repair_check_separate", "Start a separate repair check. Repair includes its own verification.")
                 if row.file_hash != file_hash:
                     raise _problem(409, "check_file_mismatch", "Start a new check for a different CAD file.")
                 if row.created_at <= now - CHECK_LIFETIME:
@@ -183,7 +188,10 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
     if not size:
         raise _problem(400, "empty_file", "Empty file uploaded.")
     if path.endswith('/preview-mesh'):
-        operation = 'preview-analysis' if request.query_params.get('purpose') == 'analysis' else 'preview'
+        purpose = request.query_params.get('purpose')
+        operation = 'repair-source' if purpose == 'repair' else 'preview-analysis' if purpose == 'analysis' else 'preview'
+    elif path.endswith('/repair/verify'):
+        operation = 'repair'
     elif path.endswith('/assembly'):
         fmt = request.query_params.get('format', 'json').lower()
         if fmt not in {'json', 'glb', 'analysis'}:
@@ -219,7 +227,14 @@ class MeteredRoute(APIRoute):
                 receipt = scope.get("state", {}).get("trial_check")
                 if receipt:
                     try:
-                        await finish_check(*receipt, success=message["status"] < 400)
+                        success = message["status"] < 400
+                        if receipt[2] == "repair":
+                            success = success and scope.get("state", {}).get("repair_verified") is True
+                        elif receipt[2] == "repair-source":
+                            # Format conversion prepares local repair; only a
+                            # subsequently verified candidate spends a check.
+                            success = False
+                        await finish_check(*receipt, success=success)
                     except HTTPException as exc:
                         # Keep the reservation on uncertainty. Never report
                         # success or refund completed work after a DB outage.

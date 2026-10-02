@@ -118,6 +118,8 @@ class Issue:
     required_value: Optional[float] = None    # e.g. minimum wall thickness
     citation: Optional[Citation] = None       # structured standard behind the check
     measurement_unit: Literal["mm", "deg", "ratio", "percent"] | None = None
+    # Source-mesh coordinates (mm), independent of preview/analysis decimation.
+    edge_segments: list[list[list[float]]] = field(default_factory=list)
 
 
 @dataclass

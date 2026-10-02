@@ -96,7 +96,7 @@
   <table>
     <thead><tr><th>Volume (cm&sup3;)</th><th>Surface area (cm&sup2;)</th><th>Bounding box (mm)</th><th>Watertight</th><th>Faces</th></tr></thead>
     <tr>
-      <td class="num">{{ geo.get('volume_cm3', 'N/A') }}</td>
+      <td class="num">{% if geo.get('watertight') and geo.get('volume_cm3', 0) > 0 %}{{ geo.get('volume_cm3') }}{% else %}Volume unavailable{% endif %}</td>
       <td class="num">{{ geo.get('surface_area_cm2', 'N/A') }}</td>
       <td>{{ geo.get('bbox_mm', []) | join(' × ') }}</td>
       <td>{{ 'Yes' if geo.get('watertight') else 'No' }}</td>
