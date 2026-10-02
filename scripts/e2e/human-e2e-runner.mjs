@@ -54,13 +54,13 @@ const expectedSignals = {
   "/developers": [/Developers/i, /api/i],
   "/api-reference": [/API/i, /validate/i],
   "/docs": [/API|Docs|ProofShape/i],
-  "/teams": [/teams/i, /sourcing/i],
+  "/teams": [/Start with the work you need to move forward/i, /sourcing/i],
   "/teams/cost-engineering": [/Cost engineering|cost/i],
   "/teams/design-engineering": [/Design engineering|engineering/i],
   "/teams/sourcing": [/Sourcing/i, /quote/i],
   "/teams/in-house-manufacturing": [/manufacturing/i, /equipment/i],
   "/teams/shop-owners": [/Shop owners|shop/i],
-  "/method": [/method/i, /geometry/i],
+  "/method": [/Know how the answer was reached/i, /geometry/i],
   "/security": [/security/i, /CAD/i],
   "/status": [/status/i],
   "/company": [/pilot/i, /CadVerify/i],
@@ -303,7 +303,7 @@ class HumanE2E {
     await this.step("public pilot request records a durable receipt", async () => {
       await this.goto("/company#pilot", "pilot request", { settleMs: 700 });
       await this.page.getByLabel("Work email").fill(uniqueEmail("pilot"));
-      await this.page.getByLabel("Company").fill("ProofShape Human Simulation");
+      await this.page.getByRole("textbox", { name: "Company", exact: true }).fill("ProofShape Human Simulation");
       await this.page.getByLabel("Your question").fill(
         "Precision brackets and sealed housings for production equipment",
       );

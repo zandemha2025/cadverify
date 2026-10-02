@@ -292,7 +292,7 @@ class Matrix {
         "local production pilot boundary unexpectedly requires an external Turnstile interaction",
       );
       await this.page.getByLabel("Work email").fill(uniqueEmail("pilot-valid"));
-      await this.page.getByLabel("Company").fill("Golden Matrix Manufacturing");
+      await this.page.getByRole("textbox", { name: "Company", exact: true }).fill("Golden Matrix Manufacturing");
       await this.page.getByLabel("Your question").fill("Precision valve brackets and sealed production housings");
       const requestPromise = this.page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/pilot/request");
       const responsePromise = this.page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/pilot/request");
@@ -364,7 +364,7 @@ class Matrix {
       assert(invalidRequired === 2, `expected two missing required fields, got ${invalidRequired}`);
       assert(postCount === 0, `incomplete form sent ${postCount} requests`);
 
-      await pilotPage.getByLabel("Company").fill("Bot-shaped request");
+      await pilotPage.getByRole("textbox", { name: "Company", exact: true }).fill("Bot-shaped request");
       await pilotPage.getByLabel("Your question").fill("This neutral response must not disclose the honeypot.");
       await pilotPage.locator('input[name="website"]').evaluate((element) => { element.value = "https://bot.invalid"; });
       const requestPromise = pilotPage.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/pilot/request");
