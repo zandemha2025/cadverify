@@ -7,6 +7,7 @@
  * common shell.
  */
 import { formatVolumeCm3 } from "@/lib/geometry-display";
+import { repairedFile, type RepairResult } from "@/lib/api";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
@@ -103,12 +104,14 @@ export function VerifyApp({
   const [materialTouched, setMaterialTouched] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [geometryIssueCode, setGeometryIssueCode] = useState<string | null>(null);
+  const [repairPreview, setRepairPreview] = useState<RepairResult | null>(null);
+  const repairPreviewFile = useMemo(() => repairPreview ? repairedFile(repairPreview) : null, [repairPreview]);
   const geometryIssues = result?.validation?.universal_issues ?? [];
   const selectedGeometryIssue = geometryIssues.find((issue) => issue.code === geometryIssueCode)
     ?? geometryIssues.find((issue) => issue.severity === "error") ?? null;
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  useEffect(() => setGeometryIssueCode(null), [file]);
+  useEffect(() => { setGeometryIssueCode(null); setRepairPreview(null); }, [file]);
   const [uploadRejection, setUploadRejection] = useState<{
     fileName: string;
     title: string;
@@ -615,7 +618,12 @@ export function VerifyApp({
       analysisLoading: assemblyAnalyzing,
     };
   }, [assembly, assemblySelectedId, assemblyAnalysis, assemblyAnalyzing]);
-  const stageGeometry = result ? geometryFromResult(result) : null;
+  const repairedGeometry = repairPreview?.repaired_analysis?.geometry;
+  const stageGeometry = repairedGeometry ? {
+    bbox_mm: repairedGeometry.bounding_box_mm,
+    volume_cm3: repairedGeometry.volume_mm3 / 1000,
+    watertight: repairedGeometry.is_watertight,
+  } : result ? geometryFromResult(result) : null;
 
   const activeWorkspaceSection: Screen =
     screen === "compare" || screen === "part"
@@ -859,9 +867,9 @@ export function VerifyApp({
         {screen === "verify" && (
           <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex" }}>
             <Stage
-              issue={selectedGeometryIssue}
-              file={file}
-              partName={result?.file?.name ?? file?.name ?? "No part yet"}
+              issue={repairPreviewFile ? null : selectedGeometryIssue}
+              file={repairPreviewFile ?? file}
+              partName={repairPreviewFile ? `Repaired preview · ${repairPreviewFile.name}` : result?.file?.name ?? file?.name ?? "No part yet"}
               meta1={
                 stageAssembly
                   ? `assembly · ${stageAssembly.partCount} parts in world position`
@@ -899,8 +907,10 @@ export function VerifyApp({
               />
             ) : (
               <VerifyScreen
+                file={file}
+                onPreviewRepair={setRepairPreview}
                 selectedGeometryIssueCode={selectedGeometryIssue?.code ?? null}
-                onSelectGeometryIssue={setGeometryIssueCode}
+                onSelectGeometryIssue={(code) => { setGeometryIssueCode(code); setRepairPreview(null); }}
                 result={result}
                 running={running}
                 guided={guidedSampleState !== "idle"}

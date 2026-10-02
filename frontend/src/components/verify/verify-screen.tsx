@@ -90,6 +90,9 @@ import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyStat
 import { PipelineOverlay } from "./pipeline-overlay";
 import { geometryFromResult } from "@/lib/verify/pipeline";
 import { geometryIssueTitle, geometryIssueLocation } from "@/lib/verify/geometry-failure";
+import RepairButton from "@/components/RepairButton";
+import RepairComparison from "@/components/RepairComparison";
+import type { RepairResult } from "@/lib/api";
 
 /** Light status colour for a verdict/fit tone. */
 function toneColor(t: Tone): string {
@@ -99,6 +102,8 @@ function toneColor(t: Tone): string {
 type Nav = (screen: string) => void;
 
 interface Props {
+  file: File | null;
+  onPreviewRepair: (repair: RepairResult | null) => void;
   selectedGeometryIssueCode: string | null;
   onSelectGeometryIssue: (code: string) => void;
   result: VerifyResult | null;
@@ -206,6 +211,9 @@ export function VerifyScreen(props: Props) {
             <DropPrompt onPickFile={onPickFile} />
           ) : (
             <Walk
+              key={result.meshHash}
+              file={props.file}
+              onPreviewRepair={props.onPreviewRepair}
               onRepairUpload={onPickFile}
               selectedGeometryIssueCode={props.selectedGeometryIssueCode}
               onSelectGeometryIssue={props.onSelectGeometryIssue}
@@ -588,6 +596,8 @@ function StepShell({
 }
 
 function Walk({
+  file,
+  onPreviewRepair,
   onRepairUpload,
   selectedGeometryIssueCode,
   onSelectGeometryIssue,
@@ -602,6 +612,8 @@ function Walk({
   onRetryCost,
   nav,
 }: {
+  file: File | null;
+  onPreviewRepair: (repair: RepairResult | null) => void;
   onRepairUpload: () => void;
   selectedGeometryIssueCode: string | null;
   onSelectGeometryIssue: (code: string) => void;
@@ -616,6 +628,7 @@ function Walk({
   onRetryCost: () => void;
   nav: Nav;
 }) {
+  const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
   const { cost, costGeometryInvalid, machines, verification } = result;
   const machineCount = countMachines(machines);
 
@@ -632,12 +645,16 @@ function Walk({
   return (
     <section style={{ marginTop: 18 }}>
       {/* verdict banner */}
-      <VerdictBanner
+      {repairResult?.repair_applied ? <Card style={{ padding: 20 }}>
+        <Kicker color={C.measured}>REPAIR VERIFIED</Kicker>
+        <p style={{ margin: "8px 0", fontSize: 22 }}>A repaired copy passes the geometry checks.</p>
+        <p style={{ margin: 0, fontSize: 13 }}>Preview both versions below and download the repaired STL if the shape matches your intent. The findings listed below describe the original upload.</p>
+      </Card> : <VerdictBanner
         result={result}
         selection={selection}
         onReverify={onReverify}
         onRetryCost={onRetryCost}
-      />
+      />}
 
       {/* retrieval-grounded IDENTITY — the org's closest PRIOR part, a SUGGESTION
           to confirm (rendered only when the engine grounded one; empty/anonymous
@@ -731,7 +748,7 @@ function Walk({
             }}
           >
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: C.fail }}>
-              WHY THIS FILE FAILED
+              WHY THE ORIGINAL FILE FAILED
             </p>
             <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: 1.6, color: C.ink55 }}>
               {result.validation?.geometry?.is_watertight === false
@@ -748,6 +765,13 @@ function Walk({
                 </>
               )}
             </p>
+            <div style={{ marginTop: 12 }}>
+              {!repairResult?.repair_applied && <RepairButton file={file} originalAnalysis={result.validation} universalIssues={result.validation?.universal_issues ?? []}
+                onRepairComplete={setRepairResult} />}
+              {repairResult && <div style={{ marginTop: 12 }}><RepairComparison result={repairResult} originalFilename={file?.name ?? "part"}
+                onPreview={(repaired) => onPreviewRepair(repaired ? repairResult : null)} /></div>}
+              <GhostButton onClick={onRepairUpload}>Upload repaired file →</GhostButton>
+            </div>
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
               {(result.validation?.universal_issues ?? []).filter((issue) => issue.severity !== "info").map((issue) => (
                 <div key={issue.code} style={{ padding: 12, border: `1px solid ${selectedGeometryIssueCode === issue.code ? C.fail : C.hair}`, borderRadius: 10 }}>
@@ -765,9 +789,6 @@ function Walk({
             <p style={{ margin: "14px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink55 }}>
               The preview includes everything in the uploaded file. If it contains a backdrop, floor or unrelated pieces, remove them in your editor and export only the intended part. Removing a backdrop alone may not close the remaining mesh.
             </p>
-            <div style={{ marginTop: 12 }}>
-              <GhostButton onClick={onRepairUpload}>Upload repaired file →</GhostButton>
-            </div>
           </div>
         )}
 

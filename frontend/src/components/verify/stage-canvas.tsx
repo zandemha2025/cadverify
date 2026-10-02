@@ -93,8 +93,8 @@ function IssueOverlay({ issue, sourceTransform }: { issue: Issue; sourceTransfor
       transparent depthTest={false} depthWrite={false} toneMapped={false} />}
     {anchor && <Html position={anchor.toArray()} zIndexRange={[6, 0]}>
       <span aria-hidden="true" style={{ position: "absolute", width: 10, height: 10, left: -5, top: -5, borderRadius: "50%", background: "#dc2626", border: "2px solid #fff" }} />
-      <span aria-hidden="true" style={{ position: "absolute", width: 20, height: 2, left: 0, top: 0, background: "#dc2626" }} />
-      <div data-testid="geometry-issue-marker" style={{ marginLeft: 18, marginTop: -10, border: "1px solid #dc2626", borderRadius: 6, background: "#fff", color: "#991b1b", padding: "5px 8px", fontSize: 11, fontWeight: 600, width: 150, pointerEvents: "none", boxShadow: "0 2px 8px #0002" }}>
+      <span aria-hidden="true" style={{ position: "absolute", width: 2, height: 20, left: 0, top: -20, background: "#dc2626" }} />
+      <div data-testid="geometry-issue-marker" style={{ marginTop: -18, transform: "translate(-50%, -100%)", border: "1px solid #dc2626", borderRadius: 6, background: "#fff", color: "#991b1b", padding: "5px 8px", fontSize: 11, fontWeight: 600, width: 150, pointerEvents: "none", boxShadow: "0 2px 8px #0002" }}>
         {geometryIssueTitle(issue)}
         <div style={{ fontWeight: 400, fontSize: 10 }}>One detected location · rotate to inspect</div>
       </div>

@@ -209,6 +209,65 @@ async def test_metering_waits_for_real_result_commit_and_refunds_commit_failure(
 
 
 @pytest.mark.asyncio
+async def test_repair_charges_once_only_after_verified_success(ledger):
+    app = FastAPI()
+    router = APIRouter(route_class=vc.MeteredRoute)
+
+    @router.post('/validate/repair/verify')
+    async def repair(request: Request, _: None = Depends(vc.enforce_validation_caps)):
+        if request.query_params.get('success') == 'yes':
+            request.state.repair_verified = True
+        return {'repair_applied': request.query_params.get('success') == 'yes'}
+
+    app.include_router(router)
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=1, api_key_id=0, key_prefix='session')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        check = str(uuid4())
+        async def run(success):
+            return await client.post('/validate/repair/verify?success=' + success,
+                headers={'x-part-check-id': check}, files={'file': ('open.stl', b'CAD')})
+        assert (await run('no')).status_code == 200
+        usage = await vc.user_trial_usage(1)
+        assert usage['used'] == 0 and usage['reserved'] == 0
+        assert (await run('yes')).status_code == 200
+        assert (await vc.user_trial_usage(1))['used'] == 1
+        assert (await run('yes')).status_code == 409
+        with pytest.raises(vc.HTTPException):
+            await vc.reserve_check(1, check, 'different', 'analysis')
+        existing = str(uuid4())
+        await vc.reserve_check(1, existing, 'file', 'analysis')
+        await vc.finish_check(1, existing, 'analysis', True)
+        with pytest.raises(vc.HTTPException):
+            await vc.reserve_check(1, existing, 'file', 'repair')
+        for _ in range(8):
+            extra = str(uuid4())
+            await vc.reserve_check(1, extra, 'file', 'analysis')
+            await vc.finish_check(1, extra, 'analysis', True)
+        check = str(uuid4())
+        assert (await run('yes')).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_repair_source_conversion_releases_reservation(ledger):
+    app = FastAPI()
+    router = APIRouter(route_class=vc.MeteredRoute)
+
+    @router.post('/validate/preview-mesh')
+    async def convert(request: Request, _: None = Depends(vc.enforce_validation_caps)):
+        return {'mesh': 'full source'}
+
+    app.include_router(router)
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=1, api_key_id=0, key_prefix='session')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        for _ in range(2):
+            response = await client.post('/validate/preview-mesh?purpose=repair',
+                headers={'x-part-check-id': str(uuid4())}, files={'file': ('source.step', b'CAD')})
+            assert response.status_code == 200
+            usage = await vc.user_trial_usage(1)
+            assert usage['used'] == 0 and usage['reserved'] == 0 and usage['remaining'] == 10
+
+
+@pytest.mark.asyncio
 async def test_allowance_lock_does_not_block_existing_result_foreign_keys(ledger):
     check = str(uuid4())
     async with ledger() as session, session.begin():
