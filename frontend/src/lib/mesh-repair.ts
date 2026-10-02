@@ -81,6 +81,7 @@ export function repairMesh(input: Float32Array, progress: (message: string) => v
   const outgoing=new Map<number,Edge[]>(), incoming=new Map<number,number>();
   for (const edge of boundary) { outgoing.set(edge.a,[...(outgoing.get(edge.a)??[]),edge]); incoming.set(edge.b,(incoming.get(edge.b)??0)+1); }
   const visited=new Set<Edge>();
+  const caps: { normal: number[]; origin: number[]; span: number; min: number[]; max: number[] }[] = [];
   for (const start of boundary) {
     if (visited.has(start)) continue;
     const loop:number[]=[]; let edge:Edge|undefined=start;
@@ -100,8 +101,22 @@ export function repairMesh(input: Float32Array, progress: (message: string) => v
     if (points.some(p=>Math.abs(p.reduce((sum,n,k)=>sum+(n-origin[k])*normal[k],0))/length > span*1e-6)) continue;
     const drop=normal.map(Math.abs).indexOf(Math.max(...normal.map(Math.abs)));
     const axes=[0,1,2].filter(k=>k!==drop);
+    const unit=normal.map(n=>n/length);
+    const min=[0,1,2].map(k=>points.reduce((v,p)=>Math.min(v,p[k]),Infinity));
+    const max=[0,1,2].map(k=>points.reduce((v,p)=>Math.max(v,p[k]),-Infinity));
+    // Separate disks over nested loops can be watertight yet overlap (e.g. a
+    // hollow tube needs an annular face). Refuse ambiguous coplanar regions;
+    // do not decide which loop is a hole or silently fill a designed cavity.
+    for (const cap of caps) {
+      const tolerance=Math.max(span,cap.span)*1e-6;
+      const parallel=Math.abs(unit.reduce((sum,n,k)=>sum+n*cap.normal[k],0))>1-1e-6;
+      const samePlane=Math.abs(origin.reduce((sum,n,k)=>sum+(n-cap.origin[k])*cap.normal[k],0))<=tolerance;
+      const overlap=axes.every(k=>min[k]<=cap.max[k]+tolerance && cap.min[k]<=max[k]+tolerance);
+      if (parallel && samePlane && overlap) return failed("Planar boundary regions may overlap or contain nested holes. Capping them separately could fill a designed cavity or create overlapping surfaces. Rebuild the intended connecting face in your CAD editor. The original is unchanged and no check was charged.");
+    }
     const triangles=ShapeUtils.triangulateShape(points.map(p=>new Vector2(p[axes[0]]-origin[axes[0]],p[axes[1]]-origin[axes[1]])),[]);
     if (triangles.length!==loop.length-2) continue;
+    caps.push({normal:unit,origin,span,min,max});
     for (const tri of triangles) {
       const ids=tri.map(i=>loop[i]), [a,b,c]=ids.map(id=>vertices[id]);
       const u=b.map((n,k)=>n-a[k]), v=c.map((n,k)=>n-a[k]);

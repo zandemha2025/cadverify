@@ -102,7 +102,7 @@ export default function RepairButton({
       {error && <p role="alert" className="my-2 text-sm text-destructive">{error}</p>}
       {pendingFile && <div role="group" aria-label="Confirm automatic repair" className="my-3 space-y-2 rounded-lg border p-3 text-sm">
         <p className="font-semibold">Repair and verify {pendingFile.name}?</p>
-        <p>1 check only if the repaired file passes the geometry checks. Failed attempts cost no checks. Approved paid access is included.</p>
+        <p>1 check only if the repaired file passes the geometry checks. Failed attempts cost no checks. Included with approved paid access.</p>
         <p>Repair runs on your computer, with no triangle-count cutoff. Large files use your device’s memory and may take longer. You can cancel local repair at any time. We correct face directions, remove duplicate or collapsed triangles and close planar holes. Complex non-manifold or ambiguous shapes may need your CAD editor.</p>
         <p>Your original stays unchanged. Review the repaired STL before using it. STEP/IGES needs server conversion to a full mesh first; editable CAD features are not preserved in STL. Only the final verification is charged, if it passes.</p>
         <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => void runRepair(pendingFile)}>Repair and verify · 1 check on success</Button><Button size="sm" variant="ghost" onClick={() => setPendingFile(null)}>Cancel</Button></div>

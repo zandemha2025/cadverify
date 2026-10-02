@@ -48,3 +48,23 @@ test("local repair refuses non-planar holes and ambiguous inward shells",()=>{
   const combined=new Float32Array(outer.length+inner.length);combined.set(outer);combined.set(inner,outer.length);
   assert.match(repairMesh(combined).reason??"",/may be a cavity or an inverted part/);
 });
+
+test("local repair refuses nested coplanar holes instead of creating overlapping caps",()=>{
+  const square=(r:number)=>[[-r,-r],[r,-r],[r,r],[-r,r]];
+  const outer=square(2), inner=square(1), positions:number[]=[];
+  const quad=(a:number[],b:number[],c:number[],d:number[])=>positions.push(...a,...b,...c,...a,...c,...d);
+  for(let i=0;i<4;i++) {
+    const j=(i+1)%4;
+    const ob=[...outer[i],0],on=[...outer[j],0],ot=[...outer[i],4],ont=[...outer[j],4];
+    const ib=[...inner[i],0],inn=[...inner[j],0],it=[...inner[i],4],int=[...inner[j],4];
+    quad(ob,on,ont,ot);quad(inn,ib,it,int);quad(on,ob,ib,inn);
+  }
+  const result=repairMesh(new Float32Array(positions));
+  assert.match(result.reason??"",/nested holes/);
+  assert.equal(result.positions.length,0,"Ambiguous caps must never reach paid verification");
+  // Two disjoint holes on the same plane remain independently repairable.
+  const first=box().slice(18),second=box().slice(18);
+  for(let i=1;i<second.length;i+=3) second[i]+=100;
+  const separate=new Float32Array(first.length+second.length);separate.set(first);separate.set(second,first.length);
+  assert.equal(repairMesh(separate).reason,undefined);
+});
