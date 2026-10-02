@@ -1,5 +1,6 @@
 "use client";
 
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
@@ -231,7 +232,7 @@ export function GuidedResultSummary({
             </div>
             <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-4" style={{ marginTop: 13 }}>
               <Evidence label="ENVELOPE" value={measuredSize ? `${measuredSize.map(formatMeasure).join(" × ")} mm` : "—"} />
-              <Evidence label="VOLUME" value={volumeCm3 != null ? `${formatMeasure(volumeCm3)} cm³` : "—"} />
+              <Evidence label="VOLUME" value={formatVolumeCm3(volumeCm3, watertight)} />
               <Evidence label="FACES" value={faceCount != null ? NUM(faceCount) : "—"} />
               <Evidence label="WATERTIGHT" value={watertight == null ? "—" : watertight ? "Yes" : "No"} />
             </div>

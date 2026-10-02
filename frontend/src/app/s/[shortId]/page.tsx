@@ -1,3 +1,4 @@
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Box } from "lucide-react";
@@ -172,7 +173,7 @@ export default async function SharedAnalysisPage({
             {geo.volume_mm3 != null && (
               <StatCard
                 label="Volume"
-                value={`${(Number(geo.volume_mm3) / 1000).toFixed(1)} cm3`}
+                value={formatVolumeCm3(Number(geo.volume_mm3) / 1000, geo.is_watertight === true, 1)}
               />
             )}
             {geo.bounding_box_mm && (

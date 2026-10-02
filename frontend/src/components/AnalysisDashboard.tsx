@@ -1,5 +1,6 @@
 "use client";
 
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import { useState } from "react";
 import type { ValidationResult } from "@/lib/api";
 import { verdictTone, verdictLabel, procLabel } from "@/lib/status";
@@ -107,7 +108,7 @@ export default function AnalysisDashboard({
         <StatTile label="Dimensions" value={`${dims[0]} × ${dims[1]} × ${dims[2]} mm`} />
         <StatTile
           label="Volume"
-          value={`${(result.geometry.volume_mm3 / 1000).toFixed(1)} cm³`}
+          value={formatVolumeCm3(result.geometry.volume_mm3 / 1000, result.geometry.is_watertight, 1)}
         />
         <StatTile label="Faces" value={result.geometry.faces.toLocaleString()} />
         <StatTile

@@ -6,6 +6,7 @@
  * and tools; platform navigation, theme, search, and account controls live in the
  * common shell.
  */
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
@@ -101,8 +102,13 @@ export function VerifyApp({
   const [materialClass, setMaterialClass] = useState("polymer");
   const [materialTouched, setMaterialTouched] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
+  const [geometryIssueCode, setGeometryIssueCode] = useState<string | null>(null);
+  const geometryIssues = result?.validation?.universal_issues ?? [];
+  const selectedGeometryIssue = geometryIssues.find((issue) => issue.code === geometryIssueCode)
+    ?? geometryIssues.find((issue) => issue.severity === "error") ?? null;
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  useEffect(() => setGeometryIssueCode(null), [file]);
   const [uploadRejection, setUploadRejection] = useState<{
     fileName: string;
     title: string;
@@ -853,13 +859,14 @@ export function VerifyApp({
         {screen === "verify" && (
           <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex" }}>
             <Stage
+              issue={selectedGeometryIssue}
               file={file}
               partName={result?.file?.name ?? file?.name ?? "No part yet"}
               meta1={
                 stageAssembly
                   ? `assembly · ${stageAssembly.partCount} parts in world position`
                   : stageGeometry
-                  ? `Ø/bbox ${stageGeometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${stageGeometry.volume_cm3.toFixed(2)} cm³`
+                  ? `Ø/bbox ${stageGeometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${formatVolumeCm3(stageGeometry.volume_cm3, stageGeometry.watertight)}`
                   : running
                     ? "measuring geometry…"
                     : "drop STL, STEP or IGES to measure"
@@ -868,7 +875,7 @@ export function VerifyApp({
                 stageAssembly
                   ? undefined
                   : stageGeometry
-                  ? `watertight ${String(stageGeometry.watertight)} · ● MEASURED`
+                  ? `Closed solid: ${stageGeometry.watertight ? "yes" : "no"} · dimensions measured`
                   : undefined
               }
               bbox={stageGeometry?.bbox_mm ?? null}
@@ -892,6 +899,8 @@ export function VerifyApp({
               />
             ) : (
               <VerifyScreen
+                selectedGeometryIssueCode={selectedGeometryIssue?.code ?? null}
+                onSelectGeometryIssue={setGeometryIssueCode}
                 result={result}
                 running={running}
                 guided={guidedSampleState !== "idle"}

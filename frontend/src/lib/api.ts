@@ -62,6 +62,10 @@ export interface Issue {
    *  the honest total is still in affected_face_count (nothing silently dropped). */
   affected_faces_truncated?: boolean;
   region_center?: [number, number, number];
+  /** Source-coordinate defect edges in mm; never analysis/preview face indices. */
+  edge_segments?: [[number, number, number], [number, number, number]][];
+  edge_segment_count?: number;
+  edge_segments_truncated?: boolean;
   measured_value?: number;
   required_value?: number;
   measurement_unit?: "mm" | "deg" | "ratio" | "percent";

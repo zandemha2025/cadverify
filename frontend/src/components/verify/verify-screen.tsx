@@ -9,7 +9,8 @@
  * gates render the honest unknown/feature state — NEVER a fabricated verdict. The
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { formatVolumeCm3 } from "@/lib/geometry-display";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import {
@@ -88,6 +89,7 @@ import { useToast } from "./toast";
 import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
 import { geometryFromResult } from "@/lib/verify/pipeline";
+import { geometryIssueTitle, geometryIssueLocation } from "@/lib/verify/geometry-failure";
 
 /** Light status colour for a verdict/fit tone. */
 function toneColor(t: Tone): string {
@@ -97,6 +99,8 @@ function toneColor(t: Tone): string {
 type Nav = (screen: string) => void;
 
 interface Props {
+  selectedGeometryIssueCode: string | null;
+  onSelectGeometryIssue: (code: string) => void;
   result: VerifyResult | null;
   running: boolean;
   guided?: boolean;
@@ -150,6 +154,10 @@ export function VerifyScreen(props: Props) {
   } = props;
   const [scrubFrac, setScrubFrac] = useState(0);
   const [disclose, setDisclose] = useState<string | null>(null);
+  const walkScroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (running) walkScroll.current?.scrollTo({ top: 0 });
+  }, [running]);
   // The human outcome is loaded from and written to the saved cost-decision.
   // Reset while a new run lands; DecideHallmark then hydrates the new record.
   const [decision, setDecision] = useState<CostDisposition | null>(null);
@@ -171,7 +179,7 @@ export function VerifyScreen(props: Props) {
         background: C.bg,
       }}
     >
-      <div className="cv-verify-walk-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px", display: "flex", flexDirection: "column" }}>
+      <div ref={walkScroll} className="cv-verify-walk-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px", display: "flex", flexDirection: "column" }}>
         {/* the question */}
         <p
           style={{
@@ -198,6 +206,9 @@ export function VerifyScreen(props: Props) {
             <DropPrompt onPickFile={onPickFile} />
           ) : (
             <Walk
+              onRepairUpload={onPickFile}
+              selectedGeometryIssueCode={props.selectedGeometryIssueCode}
+              onSelectGeometryIssue={props.onSelectGeometryIssue}
               result={result}
               scrubFrac={scrubFrac}
               setScrubFrac={setScrubFrac}
@@ -514,7 +525,7 @@ function FirstInsight({ result }: { result: VerifyResult }) {
       {geometry ? (
         <div style={{ marginTop: 15, display: "flex", flexWrap: "wrap", gap: 8 }}>
           <StatusChip label={`${geometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm`} />
-          <StatusChip label={`${geometry.volume_cm3.toFixed(2)} cm³`} />
+          <StatusChip label={formatVolumeCm3(geometry.volume_cm3, geometry.watertight)} />
           <StatusChip label={`watertight ${String(geometry.watertight)}`} />
           <span style={{ alignSelf: "center", fontFamily: MONO, fontSize: 9.5, color: C.measured }}>● MEASURED</span>
         </div>
@@ -577,6 +588,9 @@ function StepShell({
 }
 
 function Walk({
+  onRepairUpload,
+  selectedGeometryIssueCode,
+  onSelectGeometryIssue,
   result,
   scrubFrac,
   setScrubFrac,
@@ -588,6 +602,9 @@ function Walk({
   onRetryCost,
   nav,
 }: {
+  onRepairUpload: () => void;
+  selectedGeometryIssueCode: string | null;
+  onSelectGeometryIssue: (code: string) => void;
   result: VerifyResult;
   scrubFrac: number;
   setScrubFrac: (f: number) => void;
@@ -642,7 +659,7 @@ function Walk({
 
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* 1 · envelope — from the real machine inventory (no faked fit) */}
-        <StepShell
+        {!gateStopped && <StepShell
           n={1}
           title="Envelope — against your machines"
           right={`${machineCount} machine${machineCount === 1 ? "" : "s"} declared`}
@@ -701,7 +718,7 @@ function Walk({
               {verification && <RouteFitBlock verification={verification} />}
             </>
           )}
-        </StepShell>
+        </StepShell>}
 
         {/* honest gate stop */}
         {gateStopped && (
@@ -714,25 +731,42 @@ function Walk({
             }}
           >
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: C.fail }}>
-              THE WALK STOPS AT THE FAILED GATE
+              WHY THIS FILE FAILED
             </p>
             <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: 1.6, color: C.ink55 }}>
-              {costGeometryInvalid?.message ||
-                "Geometry is invalid — the engine will not guess."}{" "}
-              Materials, physics, hours, and cost are not computed for a part the engine can&apos;t accept — and they are never faked to fill the page.
+              {result.validation?.geometry?.is_watertight === false
+                ? "The surfaces do not form a closed solid. Volume is unavailable; it has not been measured as zero. Material and cost estimates would be unreliable."
+                : costGeometryInvalid?.message || "The model did not pass the geometry checks required for costing."}
               {costGeometryInvalid?.geometry && (
                 <>
                   {" "}
                   <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink50 }}>
                     measured: {NUM(costGeometryInvalid.geometry.face_count)} faces ·{" "}
                     watertight {String(costGeometryInvalid.geometry.watertight)} ·{" "}
-                    vol {costGeometryInvalid.geometry.volume_cm3.toFixed(2)} cm³
+                    {formatVolumeCm3(costGeometryInvalid.geometry.volume_cm3, costGeometryInvalid.geometry.watertight)}
                   </span>
                 </>
               )}
             </p>
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+              {(result.validation?.universal_issues ?? []).filter((issue) => issue.severity !== "info").map((issue) => (
+                <div key={issue.code} style={{ padding: 12, border: `1px solid ${selectedGeometryIssueCode === issue.code ? C.fail : C.hair}`, borderRadius: 10 }}>
+                  <button type="button" aria-pressed={selectedGeometryIssueCode === issue.code}
+                    onClick={() => onSelectGeometryIssue(issue.code)}
+                    style={{ textAlign: "left", fontWeight: 600, fontSize: 13, color: C.ink }}>
+                    {geometryIssueTitle(issue)} · {issue.severity === "error" ? "Blocking" : "Also found"}
+                  </button>
+                  <p style={{ margin: "6px 0", fontSize: 12, lineHeight: 1.6 }}>{issue.message}</p>
+                  {issue.fix_suggestion && <p style={{ margin: "6px 0", fontSize: 12, lineHeight: 1.6 }}><strong>How to fix:</strong> {issue.fix_suggestion}</p>}
+                  <p style={{ margin: 0, fontSize: 11, color: C.ink55 }}>{selectedGeometryIssueCode !== issue.code && (issue.edge_segments?.length || issue.region_center) ? "Select to locate this finding on the model" : geometryIssueLocation(issue)}</p>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: "14px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink55 }}>
+              The preview includes everything in the uploaded file. If it contains a backdrop, floor or unrelated pieces, remove them in your editor and export only the intended part. Removing a backdrop alone may not close the remaining mesh.
+            </p>
             <div style={{ marginTop: 12 }}>
-              <GhostButton onClick={onReverify}>Repair &amp; re-upload →</GhostButton>
+              <GhostButton onClick={onRepairUpload}>Upload repaired file →</GhostButton>
             </div>
           </div>
         )}
@@ -1284,10 +1318,10 @@ function VerdictBanner({
       <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
         <Kicker color={C.fail}>VERDICT · GEOMETRY GATE</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
-          Geometry invalid — the engine won&apos;t guess.
+          This model needs repair before costing.
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
-          Nothing downstream is computed from broken geometry. Repair the mesh and re-upload to re-enter the walk.
+          We found geometry problems that prevent a reliable cost estimate. Review the reasons below and select a finding to locate it on the model.
         </p>
       </BannerFrame>
     );

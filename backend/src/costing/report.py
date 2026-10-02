@@ -62,12 +62,13 @@ def render_text(report) -> str:
     geo = report.geometry
     bbox = "×".join(f"{v:g}" for v in geo["bbox_mm"])
     wt = "✓" if geo["watertight"] else "✗"
-    L.append(f"Geometry: {geo['volume_cm3']:g} cm³ · {bbox} mm · watertight {wt} · "
+    volume = f"{geo['volume_cm3']:g} cm³" if geo["watertight"] and geo["volume_cm3"] > 0 else "Volume unavailable"
+    L.append(f"Geometry: {volume} · {bbox} mm · watertight {wt} · "
              f"{geo['face_count']} faces        [MEASURED]")
 
     if report.status == "GEOMETRY_INVALID":
         L.append("")
-        L.append("GEOMETRY INVALID — repair required (volume ≤ 0 / non-watertight). "
+        L.append("GEOMETRY INVALID — repair required. "
                  "No cost produced.")
         L.append(f"  Reason: {report.reason}")
         L.append("")

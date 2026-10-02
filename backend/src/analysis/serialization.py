@@ -96,6 +96,15 @@ def serialize_issue(
 
     if issue.region_center:
         d["region_center"] = [round(c, 2) for c in issue.region_center]
+    if issue.edge_segments:
+        total = len(issue.edge_segments)
+        # Spread a bounded sample across the file, including distant defects.
+        indices = range(total) if total <= max_faces else (
+            (i * (total - 1)) // max(1, max_faces - 1) for i in range(max_faces)
+        )
+        d["edge_segments"] = [issue.edge_segments[i] for i in indices]
+        d["edge_segment_count"] = total
+        d["edge_segments_truncated"] = total > max_faces
     if issue.measured_value is not None and math.isfinite(issue.measured_value):
         d["measured_value"] = float(issue.measured_value)
     if issue.required_value is not None and math.isfinite(issue.required_value):
@@ -110,7 +119,7 @@ def serialize_issue(
 
     # Honest localization: a finding with neither faces nor a region center
     # applies to the whole part; say so rather than inventing a location.
-    d["scope"] = "localized" if (issue.affected_faces or issue.region_center) else "whole_part"
+    d["scope"] = "localized" if (issue.affected_faces or issue.region_center or issue.edge_segments) else "whole_part"
     return d
 
 

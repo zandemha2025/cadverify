@@ -15,6 +15,8 @@ import { GhostButton, ProvChip } from "./primitives";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import { PreviewBoundary } from "./preview-boundary";
+import type { Issue } from "@/lib/api";
+import { geometryIssueTitle, geometryIssueLocation } from "@/lib/verify/geometry-failure";
 
 const StageCanvas = dynamic(() => import("./stage-canvas"), {
   ssr: false,
@@ -38,6 +40,7 @@ export interface StageAssembly {
 }
 
 export function Stage({
+  issue,
   file,
   partName,
   meta1,
@@ -50,6 +53,7 @@ export function Stage({
   assembly,
   onCheckFit,
 }: {
+  issue?: Issue | null;
   file: File | null;
   partName: string;
   meta1: string;
@@ -265,6 +269,17 @@ export function Stage({
       </div>
 
       <div className="cv-verify-stage-canvas" style={{ position: "relative", flex: 1, minHeight: 0, cursor: "grab" }}>
+        {issue && !assembly && (
+          <div role="status" data-testid="geometry-location-summary" style={{ position: "absolute", top: 10, left: 12, right: 12, zIndex: 5, padding: "10px 12px", borderRadius: 8, background: "rgba(255,255,255,0.95)", border: `1px solid ${C.hair}`, fontSize: 12 }}>
+            <strong>{geometryIssueTitle(issue)}</strong>
+            <p style={{ margin: "4px 0 0", color: C.ink55 }}>
+              {webGlAvailable !== true || previewFailed || !renderUrl
+                ? "3D highlighting needs a working model preview. Read the finding details beside the preview."
+                : geometryIssueLocation(issue)}
+              {webGlAvailable === true && !previewFailed && !!renderUrl && !!issue.edge_segments?.length && " · Red edges remain visible through the model."}
+            </p>
+          </div>
+        )}
         {webGlAvailable === true ? (
           <PreviewBoundary
             key={previewKey}
@@ -272,6 +287,7 @@ export function Stage({
             fallback={<div role="status" style={{ display: "grid", placeItems: "center", height: "100%", padding: 28, textAlign: "center", fontSize: 13, color: C.ink55 }}>Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available.</div>}
           >
           <StageCanvas
+            issue={issue ?? null}
             renderUrl={renderUrl}
             renderKind={renderKind}
             assemblyUrl={assembly?.glbUrl ?? null}

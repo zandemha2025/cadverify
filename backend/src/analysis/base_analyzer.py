@@ -76,22 +76,29 @@ def check_watertight(mesh: trimesh.Trimesh) -> list[Issue]:
     if not mesh.is_watertight:
         # Find boundary edges (edges that belong to only one face)
         boundary_count = 0
+        nonmanifold_count = 0
+        bad_edges = np.empty((0, 2), dtype=int)
         if hasattr(mesh, "edges_unique") and hasattr(mesh, "edges_unique_inverse"):
             edge_face_count = np.bincount(mesh.edges_unique_inverse)
             boundary_count = int(np.sum(edge_face_count == 1))
+            nonmanifold_count = int(np.sum(edge_face_count > 2))
+            bad_edges = mesh.edges_unique[edge_face_count != 2]
 
         issues.append(Issue(
             code="NON_WATERTIGHT",
             severity=Severity.ERROR,
             message=(
-                f"Mesh is not watertight — has {boundary_count} boundary edges. "
-                "All manufacturing processes require a closed solid."
+                f"The mesh is not a closed solid: {boundary_count:,} open edges "
+                f"and {nonmanifold_count:,} edges shared by more than two faces. "
+                "These prevent a reliable solid-volume and material-cost calculation."
             ),
             process=None,
+            edge_segments=mesh.vertices[bad_edges].tolist(),
+            region_center=tuple(mesh.vertices[bad_edges[0]].mean(axis=0)) if len(bad_edges) else None,
             fix_suggestion=(
-                "Close all holes in the mesh. In your CAD software, use "
-                "'Repair' or 'Heal' to find and fill gaps. Common causes: "
-                "missing faces, T-junctions, or disconnected shells."
+                "In your CAD or mesh editor, close open boundaries and repair "
+                "edges shared by extra faces. Export the intended part as a closed "
+                "solid, then upload it again."
             ),
         ))
     return issues
@@ -101,11 +108,17 @@ def check_normals(mesh: trimesh.Trimesh) -> list[Issue]:
     """Check face normal consistency."""
     issues = []
     if not mesh.is_winding_consistent:
+        pairs = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=2)
+        directed = mesh.edges[pairs]
+        inconsistent = pairs[directed[:, 0, 1] != directed[:, 1, 0]]
+        edges = mesh.edges[inconsistent[:, 0]]
         issues.append(Issue(
             code="INCONSISTENT_NORMALS",
             severity=Severity.ERROR,
-            message="Face normals are inconsistent — some faces point inward.",
+            message="Neighboring mesh faces point in inconsistent directions, so the inside and outside are ambiguous.",
             process=None,
+            edge_segments=mesh.vertices[edges].tolist(),
+            region_center=tuple(mesh.vertices[edges[0]].mean(axis=0)) if len(edges) else None,
             fix_suggestion=(
                 "Recalculate and unify face normals. Most CAD tools have "
                 "'Recalculate Normals' or 'Unify Normals' operations."
@@ -134,6 +147,7 @@ def check_degenerate_faces(mesh: trimesh.Trimesh) -> list[Issue]:
             # the count; the serializer owns the response-size cap. Mirrors the
             # processes/checks.py fix on this sibling universal-check path.)
             affected_faces=degen_indices,
+            region_center=tuple(mesh.triangles_center[degen_indices[0]]),
             fix_suggestion=(
                 "Remove degenerate triangles. These are typically artifacts "
                 "from bad tessellation. Re-export from CAD with tighter mesh quality."

@@ -13,6 +13,7 @@
  * and the single status/process/provenance source (lib/status).
  */
 
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import type {
   CostReport,
   CostEstimate,
@@ -91,7 +92,7 @@ export function CostGeometryInvalidCard({
 
       {geometry && (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Volume" value={`${geometry.volume_cm3.toFixed(1)} cm³`} />
+          <Stat label="Volume" value={formatVolumeCm3(geometry.volume_cm3, geometry.watertight, 1)} />
           <Stat
             label="Bounding box"
             value={`${geometry.bbox_mm.map((v) => Math.round(v)).join(" × ")} mm`}
@@ -396,7 +397,7 @@ export default function CostDecisionCard({ report }: { report: CostReport }) {
         )}
 
         <p className="num mt-3 text-xs text-muted-foreground">
-          Measured geometry: {geo.volume_cm3.toFixed(1)} cm³ ·{" "}
+          Measured geometry: {formatVolumeCm3(geo.volume_cm3, geo.watertight, 1)} ·{" "}
           {geo.bbox_mm.map((v) => Math.round(v)).join(" × ")} mm ·{" "}
           {geo.face_count.toLocaleString()} faces. STEP files are costed from a
           tessellated mesh (DFM + cost), not B-rep / GD&amp;T.
