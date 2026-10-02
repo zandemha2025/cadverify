@@ -303,7 +303,8 @@ jobs:
   browser-e2e:
     name: Browser E2E (human + enterprise)
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    # This job builds and migrates its own app. Run it independently for earlier
+    # UI feedback; the release still requires every CI job to succeed.
     services:
       postgres:
         image: postgres:16
