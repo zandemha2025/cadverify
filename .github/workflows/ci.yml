@@ -420,6 +420,7 @@ jobs:
             .gstack/qa-reports/*.json
             .gstack/qa-reports/*.md
             .gstack/qa-reports/screenshots/**
+            .gstack/qa-reports/website-redesign/**
             e2e-app.log
           if-no-files-found: warn
           include-hidden-files: true

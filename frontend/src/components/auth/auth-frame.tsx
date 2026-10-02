@@ -79,18 +79,19 @@ export function AuthField({
   hint,
   ...props
 }: {
+  id: string;
   label: string;
   error?: string | null;
   hint?: string;
 } & InputHTMLAttributes<HTMLInputElement>) {
   const helpId = props.id ? `${props.id}-help` : undefined;
   return (
-    <label style={label}>
-      <span>{labelText}</span>
+    <div style={label}>
+      <label htmlFor={props.id}>{labelText}</label>
       <input
         {...props}
         aria-invalid={error ? true : undefined}
-        aria-describedby={helpId}
+        aria-describedby={error || hint ? helpId : undefined}
         className="auth-input"
         style={input}
       />
@@ -99,7 +100,7 @@ export function AuthField({
           {error || hint}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 
