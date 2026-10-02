@@ -144,7 +144,7 @@ test("recovery cannot omit its path-specific stale-state prohibition", () => {
 test("required text must exist in the DOM snapshot captured with the PNG", () => {
   const entry = validEntry("AUTH-03");
   entry.visualSteps[0].requiredVisible = ["Invalid email or password."];
-  entry.visualSteps[0].capture.text = "Log in to ProofShape";
+  entry.visualSteps[0].capture.text = "Log in to CadVerify";
   const result = validateGoldenPathEvidence("AUTH-03", entry);
   assert.equal(result.valid, false);
   assert.ok(result.failures.some((item) => item.field.endsWith("requiredVisible.0.present")));

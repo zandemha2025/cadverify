@@ -180,7 +180,8 @@ def client(monkeypatch):
     import main
 
     importlib.reload(main)
-    return TestClient(main.app)
+    with TestClient(main.app) as test_client:
+        yield test_client
 
 
 @_needs_gmsh

@@ -10,6 +10,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context);
 } });
 const api = await import("./api.ts");
+const { partCheckHeaders } = await import("./verify/check-id.ts");
 hooks.deregister();
 
 test("failed compute and writes run once; reads and keyed submissions retain bounded retries", async () => {
@@ -58,5 +59,24 @@ test("failed compute and writes run once; reads and keyed submissions retain bou
     reply = async () => Response.json({ detail: "Cost analysis exceeded 60s timeout." }, { status: 504 });
     await assert.rejects(api.costEstimate(file, { qty: "1", region: "auto", material_class: "aluminum", units: "mm", complexity: "moderate", cavities: 1 }), /Cost analysis exceeded 60s timeout/);
     assert.equal(calls.length, 1);
+  } finally { fetchMock.mock.restore(); }
+});
+
+
+test("one uploaded part shares its allowance ID across DFM, cost and preview", async () => {
+  const ids: (string | null)[] = [];
+  const fetchMock = mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit = {}) => {
+    ids.push(new Headers(init.headers).get("x-part-check-id"));
+    return Response.json({});
+  });
+  try {
+    const file = new File(["CAD"], "part.stp");
+    const id = partCheckHeaders(file)["x-part-check-id"];
+    await api.validateFile(file, undefined, undefined, undefined, "mm", id);
+    await api.costEstimate(file, { qty: "1", region: "auto", material_class: "aluminum", units: "mm", complexity: "moderate", cavities: 1 }, id);
+    assert.deepEqual(ids, [id, id]);
+    assert.equal(partCheckHeaders(file)["x-part-check-id"], id);
+    const recheck = new File([file], file.name);
+    assert.notEqual(partCheckHeaders(recheck)["x-part-check-id"], id);
   } finally { fetchMock.mock.restore(); }
 });

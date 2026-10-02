@@ -1,3 +1,4 @@
+import { partCheckHeaders } from "./check-id.ts";
 /**
  * Assembly client for the Verify stage.
  *
@@ -302,6 +303,7 @@ async function postAssembly(file: File, format: "json" | "glb" | "analysis"): Pr
   try {
     return await fetch(`${API_BASE}/validate/assembly?format=${format}`, {
       method: "POST",
+      headers: partCheckHeaders(file),
       body: form,
     });
   } catch {

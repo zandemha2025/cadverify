@@ -42,3 +42,27 @@ test("preview preserves allowance exhaustion while ordinary failures remain retr
     assert.equal(await fetchPreviewMesh(file), null);
   } finally { fetchMock.mock.restore(); }
 });
+
+
+test("viewer remounts and concurrent viewers reuse one preview with independent URLs", async () => {
+  let calls = 0;
+  const fetchMock = mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return new Response(new Blob(["recorded preview"]), { headers: { "x-mesh-original-faces": "12" } });
+  });
+  try {
+    const file = new File(["CAD"], "part.stp");
+    const [a, b] = await Promise.all([fetchPreviewMesh(file), fetchPreviewMesh(file)]);
+    assert.ok(a && b);
+    assert.equal(calls, 1);
+    assert.notEqual(a.url, b.url);
+    a.revoke(); b.revoke();
+    const remount = await fetchPreviewMesh(file);
+    assert.equal(remount?.originalFaces, 12);
+    assert.equal(calls, 1);
+    remount?.revoke();
+    const recheck = await fetchPreviewMesh(new File([file], file.name));
+    assert.equal(calls, 2);
+    recheck?.revoke();
+  } finally { fetchMock.mock.restore(); }
+});

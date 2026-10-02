@@ -15,11 +15,8 @@ test("CSP permits WebAssembly hashing without enabling JavaScript eval", () => {
   assert.match(source, /NODE_ENV === "development" \? " 'unsafe-eval'" : ""/);
 });
 
-test("HOME v2 CSP pins its only inline script and exact Google Fonts hosts", () => {
-  assert.match(
-    source,
-    /script-src[^;]*'sha256-ljMPx85K\/wOdp7taG6olvwWNUP4R\/HkS2hK2QrtXg38='/,
-  );
+test("CSP needs no landing-page script exception and allows exact font hosts", () => {
+  assert.doesNotMatch(source, /script-src[^;]*sha256-/);
   assert.match(source, /style-src 'self' 'unsafe-inline' https:\/\/fonts\.googleapis\.com;/);
   assert.match(source, /font-src 'self' data: https:\/\/fonts\.gstatic\.com;/);
   assert.doesNotMatch(source, /(?:script|style|font)-src[^;]*https:\/\/\*|(?:script|style|font)-src[^;]*\*/);

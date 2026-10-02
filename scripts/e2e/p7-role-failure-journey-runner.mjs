@@ -1,3 +1,4 @@
+import { grantLocalPaidAccess } from "./local-admin-api-key.mjs";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -74,7 +75,6 @@ const visibleCopyRoutes = [
 const governanceApprovalNote = `P7 governance approval ${runId}`;
 
 const forbiddenPatterns = [
-  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
@@ -548,6 +548,7 @@ class P7RoleFailureQA {
       await this.loginWithCredentials(page, email, password, label);
     }
     await this.assertAuthenticated(page, label);
+    await grantLocalPaidAccess(email);
     return {
       context,
       page,
@@ -578,6 +579,7 @@ class P7RoleFailureQA {
       throw new Error(`${label} signup did not complete: ${text.slice(0, 260).replace(/\s+/g, " ")}`);
     }
     await this.assertAuthenticated(page, label);
+    await grantLocalPaidAccess(email);
     return { context, page, label, source: "signup", email, password };
   }
 
@@ -646,6 +648,7 @@ asyncio.run(main())
     const user = await this.seedPasswordUser(email, password);
     await this.loginWithCredentials(page, email, password, label);
     await this.assertAuthenticated(page, label);
+    await grantLocalPaidAccess(email);
     return { context, page, label, source: "seeded-password-user", email, password, userId: user.id };
   }
 
@@ -716,7 +719,7 @@ asyncio.run(main())
           throw new SkipStep(`${route.path} returned 404; Verify UI flag appears off in this build`);
         }
         const redirected = isLoginUrl(page.url());
-        const loginCopy = /Log in to ProofShape|Welcome back|Create an account/i.test(text);
+        const loginCopy = /Log in to CadVerify|Welcome back|Create an account/i.test(text);
         assert(
           redirected || loginCopy,
           `${route.path} did not redirect to or render login. URL: ${page.url()}`
@@ -829,6 +832,7 @@ asyncio.run(main())
         throw new SkipStep(`signup did not complete: ${text.slice(0, 260).replace(/\s+/g, " ")}`);
       }
       await this.assertAuthenticated(this.page, "primary-signup");
+      await grantLocalPaidAccess(email);
       this.primary = { context: this.context, page: this.page, label: "primary-signup", source: "signup" };
       this.account = { email, password };
       this.evidence.primaryAuth = { source: "signup", email };

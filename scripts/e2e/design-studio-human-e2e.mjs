@@ -1,3 +1,4 @@
+import { grantLocalPaidAccess } from "./local-admin-api-key.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -322,6 +323,7 @@ class DesignStudioE2E {
     await this.page.getByLabel("Password").fill("ProofShape2026Secure");
     await this.page.getByRole("button", { name: /^Create account$/ }).click();
     await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+    await grantLocalPaidAccess(email);
     this.account = email;
   }
 

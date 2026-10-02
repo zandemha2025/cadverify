@@ -1,183 +1,44 @@
 "use client";
 
-/**
- * SiteShell — the shared nav + footer chrome for the dark-theater marketing
- * site. Every page cross-links through these; the footer tagline everywhere is
- * "verification, made of glass" (DESIGN-DECISIONS.md / README.md).
- *
- * Ported from the shared header/footer across
- * `handoff_cadverify_2026-07-04/site/*.dc.html`. Two nav variants:
- *  - `cinematic` — fixed, transparent, fades in over the WebGL stage (home +
- *    the five persona journeys).
- *  - `document` — sticky, blurred bar (Method / Platform / Teams / Security /
- *    Developers / Company).
- *
- * `SiteShell` is the convenience wrapper for document pages (nav + main +
- * footer). Cinematic pages compose `<SiteNav variant="cinematic" />` themselves
- * so the fixed WebGL stage can sit behind the content, then close with
- * `<SiteFooter />` or an inline `<SiteFooterTagline />`.
- *
- * SHARED FOUNDATION — do not edit in a page branch.
- */
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import * as React from "react";
+import { useState } from "react";
+import { ArrowUpRight, Box, Menu, X } from "lucide-react";
+import { SITE_TAGLINE, SITE_NAV } from "@/lib/site/navigation";
+export { SITE_TAGLINE, SITE_NAV, PILOT_HREF, UPLOAD_HREF } from "@/lib/site/navigation";
 
-/** The footer tagline, verbatim, everywhere. */
-export const SITE_TAGLINE = "verification, made of glass";
-
-/** Where the primary CTA points (the pilot form anchor on Company). */
-export const PILOT_HREF = "/company#pilot";
-
-/** The canonical top-nav, in order. Personas live under /teams/* (see Teams). */
-export const SITE_NAV: { href: string; label: string }[] = [
-  { href: "/method", label: "Method" },
-  { href: "/platform", label: "Platform" },
-  { href: "/teams", label: "Teams" },
-  { href: "/security", label: "Security" },
-  { href: "/developers", label: "Developers" },
-  { href: "/company", label: "Company" },
-];
-
-function isActive(pathname: string | null, href: string): boolean {
-  if (!pathname) return false;
-  if (href === "/") return pathname === "/";
-  // /teams stays lit for the persona journeys nested under it.
-  return pathname === href || pathname.startsWith(href + "/");
-}
-
-export type SiteNavProps = {
-  variant?: "cinematic" | "document";
-  /** Override the active link (defaults to the current pathname). */
-  activeHref?: string;
-};
-
-/** The shared top nav. Wordmark → home; links + "Request a pilot" CTA. */
-export function SiteNav({ variant = "document", activeHref }: SiteNavProps) {
+export type SiteNavProps = { variant?: "cinematic" | "document"; activeHref?: string };
+export function SiteNav({ activeHref }: SiteNavProps) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
   const active = activeHref ?? pathname;
-  const closeMobileNav = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    const details = event.currentTarget.closest("details");
-    if (details instanceof HTMLDetailsElement) details.open = false;
-  };
   return (
-    <header className={`st-nav ${variant === "cinematic" ? "st-nav-cinematic" : "st-nav-document"}`}>
-      <Link href="/" className="st-wordmark">
-        ProofShape
-      </Link>
-      <nav className="st-navrow" aria-label="Primary">
-        {SITE_NAV.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="st-navlink"
-            data-active={isActive(active, item.href)}
-          >
-            {item.label}
-          </Link>
-        ))}
-        <Link href="/login" className="st-navlink st-navlogin">
-          Log in
-        </Link>
-        <Link href={PILOT_HREF} className="st-navcta">
-          Request a pilot
-        </Link>
+    <header className="cv-site-nav">
+      <a className="cv-skip" href="#main">Skip to content</a>
+      <Link href="/" className="cv-brand" aria-label="CadVerify home"><Box size={27} strokeWidth={1.7} aria-hidden="true" />CadVerify<span className="cv-brand-dot">.</span></Link>
+      <button className="cv-menu-toggle" type="button" aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open} aria-controls="site-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
+      <nav id="site-navigation" className="cv-site-links" data-open={open} aria-label="Primary" onClick={() => setOpen(false)} onKeyDown={e => { if (e.key === "Escape") { setOpen(false); document.querySelector<HTMLButtonElement>(".cv-menu-toggle")?.focus(); } }}>
+        {SITE_NAV.map(item => <Link key={item.href} href={item.href} aria-current={active === item.href || active?.startsWith(item.href + "/") ? "page" : undefined}>{item.label}</Link>)}
+        <Link href="/login" className="cv-login-link">Log in</Link>
+        <Link href="/sample" className="cv-button cv-button-small">Try a sample <ArrowUpRight size={16} aria-hidden="true" /></Link>
       </nav>
-      <details
-        className="st-mobile-nav"
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.currentTarget.open = false;
-          event.currentTarget.querySelector("summary")?.focus();
-        }}
-      >
-        <summary className="st-nav-toggle" aria-label="Open site navigation">
-          <span>Menu</span>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-            <path d="M5 8h14M5 16h14" />
-          </svg>
-        </summary>
-        <nav className="st-mobile-panel" aria-label="Mobile primary">
-          {SITE_NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="st-mobile-link"
-              data-active={isActive(active, item.href)}
-              onClick={closeMobileNav}
-            >
-              {item.label}
-            </Link>
-          ))}
-          <Link href="/login" className="st-mobile-link" onClick={closeMobileNav}>
-            Log in
-          </Link>
-          <Link href={PILOT_HREF} className="st-mobile-cta" onClick={closeMobileNav}>
-            Request a pilot
-          </Link>
-        </nav>
-      </details>
     </header>
   );
 }
 
-/** The one full footer: tagline + cross-links + legal row. */
 export function SiteFooter() {
-  return (
-    <footer className="st-footer">
-      <div className="st-footer-row">
-        <span className="st-footer-tagline">ProofShape — {SITE_TAGLINE}</span>
-        <span className="st-footer-links">
-          <Link href="/">Home</Link>
-          {SITE_NAV.map((item) => (
-            <Link key={item.href} href={item.href}>
-              {item.label}
-            </Link>
-          ))}
-          <Link href="/login">Log in</Link>
-        </span>
-      </div>
-      <div className="st-footer-legal">
-        <span>© {new Date().getFullYear()} ProofShape</span>
-        <span className="st-footer-links">
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-          <Link href="/dpa">DPA</Link>
-          <Link href="/status">Status</Link>
-        </span>
-      </div>
-    </footer>
-  );
+  return <footer className="cv-site-footer"><div className="cv-footer-grid">
+    <div><Link href="/" className="cv-brand"><Box size={25} strokeWidth={1.7} aria-hidden="true" />CadVerify.</Link><p>{SITE_TAGLINE}</p><a className="cv-text-link" href="mailto:nazeemahmed2023@gmail.com">Talk to our team <ArrowUpRight size={15} aria-hidden="true" /></a></div>
+    <nav aria-label="Explore"><h2>Explore</h2><Link href="/sample">Sample part</Link><Link href="/teams">Your workflow</Link><Link href="/method">How it works</Link><Link href="/platform">The platform</Link></nav>
+    <nav aria-label="Resources"><h2>Resources</h2><Link href="/developers">Developers</Link><Link href="/api-reference">API reference</Link><Link href="/security">Security</Link><Link href="/pilot-report">Pilot report</Link></nav>
+    <nav aria-label="Company"><h2>CadVerify</h2><Link href="/company">Company & contact</Link><Link href="/company#pilot">Plan a pilot</Link><Link href="/status">Service status</Link><Link href="/login">Log in</Link></nav>
+  </div><div className="cv-footer-bottom"><span>© {new Date().getFullYear()} CadVerify, Inc.</span><nav aria-label="Legal"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/dpa">Data processing</Link></nav><span>Built for decisions that matter.</span></div></footer>;
 }
 
-/**
- * The minimal inline tagline line the cinematic pages close with (home + the
- * personas), e.g. "ProofShape — verification, made of glass · Method · …".
- */
 export function SiteFooterTagline({ className }: { className?: string }) {
-  return (
-    <p className={`st-footer-tagline ${className ?? ""}`} style={{ margin: 0 }}>
-      ProofShape — {SITE_TAGLINE}
-      {SITE_NAV.filter((n) => ["/method", "/platform", "/security", "/developers"].includes(n.href)).map((n) => (
-        <React.Fragment key={n.href}>
-          {" · "}
-          <Link href={n.href} style={{ color: "inherit", textDecoration: "none" }}>
-            {n.label}
-          </Link>
-        </React.Fragment>
-      ))}
-    </p>
-  );
+  return <p className={className}>CadVerify — {SITE_TAGLINE}</p>;
 }
 
-/** Document-page convenience wrapper: sticky nav + main + full footer. */
 export function SiteShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <SiteNav variant="document" />
-      <main style={{ flex: 1 }}>{children}</main>
-      <SiteFooter />
-    </div>
-  );
+  return <><SiteNav /><main id="main">{children}</main><SiteFooter /></>;
 }

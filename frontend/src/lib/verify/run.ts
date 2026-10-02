@@ -1,3 +1,4 @@
+import { partCheckHeaders } from "./check-id.ts";
 /**
  * The Verify pipeline — the request lifecycle behind the walk. It calls the REAL
  * engine through the same-origin authed proxy and shapes the responses for the
@@ -154,7 +155,7 @@ async function postCost(
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/validate/cost`, { method: "POST", body: form });
+    res = await fetch(`${API_BASE}/validate/cost`, { method: "POST", body: form, headers: partCheckHeaders(input.file) });
   } catch (e) {
     return { cost: null, invalid: null, error: e instanceof Error ? e.message : "Network error" };
   }
@@ -230,7 +231,8 @@ export async function runVerification(
   // Start the first useful answer immediately. Floor/context work is lightweight
   // and runs beside it; the second geometry-heavy call (cost) still waits until
   // validation has released its worker memory.
-  const validationPromise = validateFile(input.file).then(
+  const validationPromise = validateFile(input.file, undefined, undefined, undefined, undefined,
+    partCheckHeaders(input.file)["x-part-check-id"]).then(
     (v) => ({ v, err: null as string | null }),
     (e) => ({
       v: null as ValidationResult | null,

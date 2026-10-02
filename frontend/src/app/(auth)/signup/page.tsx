@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
 import { publicPasswordSignupEnabled } from "@/lib/public-signup";
 import { SignupForm } from "./signup-form";
@@ -12,7 +13,7 @@ export default function SignupPage() {
   );
   const magicEnabled = process.env.MAGIC_LINK_UI_ENABLED === "1";
   const ssoLoginPath = (process.env.SSO_LOGIN_PATH || "").trim();
-  if (publicPasswordSignup) return <SignupForm />;
+  if (publicPasswordSignup) return <Suspense fallback={<p>Loading account form…</p>}><SignupForm /></Suspense>;
 
   if (!magicEnabled) {
     return (

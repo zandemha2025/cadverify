@@ -1,0 +1,11 @@
+{
+  "scope": "Local /cost browser workflow, real STEP fixture",
+  "completed_checks": 1,
+  "operations": {
+    "cost": "complete",
+    "analysis": "complete",
+    "preview-analysis": "complete"
+  },
+  "single_credit_for_preview_dfm_cost": true,
+  "remaining_visible": 9
+}

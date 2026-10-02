@@ -1,10 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
+import { safeLocalPath } from "@/lib/safe-return-path";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
 
 export function SignupForm() {
+  const next = safeLocalPath(useSearchParams().get("next"), "/onboarding");
   const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -28,9 +31,9 @@ export function SignupForm() {
         setError(authErrorMessage(res.status, data, "Could not create your account."));
         return;
       }
-      window.location.href = "/onboarding";
+      window.location.href = next;
     } catch {
-      setError("Could not reach the server. Is the backend running?");
+      setError("Could not connect. Please try again in a moment.");
     } finally {
       setLoading(false);
     }
@@ -38,10 +41,10 @@ export function SignupForm() {
 
   return (
     <AuthFrame
-      eyebrow="Pilot access"
+      eyebrow="Free account"
       title="Create your account"
-      body="Password signup is live on this deployment. Trial accounts include 20 part checks per account. Email-link sign-in follows when the hosted mail service is connected."
-      footer={<>Already have an account? <AuthTextLink href="/login">Log in</AuthTextLink></>}
+      body="Get 10 free lifetime single-part CAD checks. No credit card or subscription required. Request paid access for more checks or advanced tools."
+      footer={<>Already have an account? <AuthTextLink href={`/login?next=${encodeURIComponent(next)}`}>Log in</AuthTextLink></>}
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <AuthField id="email" name="email" label="Email" type="email" autoComplete="email" required placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />

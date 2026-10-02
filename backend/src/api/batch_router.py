@@ -8,6 +8,7 @@ POST /api/v1/batch/{id}/cancel   -- cancel batch
 """
 from __future__ import annotations
 
+from src.auth.validation_caps import require_paid_access
 from src.config.public_urls import error_doc_url
 
 import asyncio
@@ -94,6 +95,7 @@ async def create_batch(
     manifest_url: Optional[str] = Form(None),
     manifest: Optional[UploadFile] = File(None),
     _org_limit: None = Depends(enforce_org_limits),
+    _paid_access: None = Depends(require_paid_access),
 ):
     """Create a batch for bulk analysis (job_type=dfm) or should-costing
     (job_type=cost).

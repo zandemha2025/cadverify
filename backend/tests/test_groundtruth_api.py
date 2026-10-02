@@ -118,8 +118,8 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
             (
                 await s.execute(
                     text(
-                        "INSERT INTO users (email, email_lower, role, auth_provider) "
-                        "VALUES (:e, :el, 'analyst', 'password') RETURNING id"
+                        "INSERT INTO users (email, email_lower, role, auth_provider, plan) "
+                        "VALUES (:e, :el, 'analyst', 'password', 'pilot') RETURNING id"
                     ),
                     {"e": email, "el": email.lower()},
                 )

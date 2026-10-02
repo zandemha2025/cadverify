@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Uplo
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.validation_caps import require_paid_access
 from src.config.public_urls import error_doc_url
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -85,6 +86,7 @@ async def reconstruct(
     rule_pack: Optional[str] = Query(None, description="Industry rule pack: aerospace, automotive, oil_gas, medical."),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _paid_access: None = Depends(require_paid_access),
 ):
     """Upload 1-4 images for 3D reconstruction. Returns 202 with job_id for polling."""
     # Validate image count (cheap request-shape check, no egress).

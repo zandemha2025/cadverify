@@ -1,3 +1,4 @@
+import { grantLocalPaidAccess } from "./local-admin-api-key.mjs";
 import { createRequire } from "node:module";
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -547,6 +548,7 @@ async function main() {
         await page.keyboard.press("Escape");
         await welcomeOverlay.waitFor({ state: "detached", timeout: 10_000 });
       }
+      await grantLocalPaidAccess(email);
       return { url: page.url(), screenshot: await shot("signup-day-zero") };
     });
 

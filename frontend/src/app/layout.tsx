@@ -34,25 +34,25 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
   ),
-  title: "ProofShape — can it be made? What should it cost?",
+  title: "CadVerify — Know what you can make",
   description:
-    "Upload a 3D part file. ProofShape reads the geometry, flags what won't manufacture cleanly, chooses the process and machine that fit, and prices the run — every number traced to its source.",
+    "Check manufacturing options, review design findings, and trace the resources behind your next decision. Explore a recorded sample without an account.",
   alternates: { canonical: "/" },
   icons: {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "ProofShape — can it be made? What should it cost?",
+    title: "CadVerify — Know what you can make",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
-    siteName: "ProofShape",
+    siteName: "CadVerify",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ProofShape — can it be made? What should it cost?",
+    title: "CadVerify — Know what you can make",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],

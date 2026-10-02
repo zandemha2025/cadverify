@@ -1,6 +1,8 @@
 """Focused regressions for the batch/design release-failure matrix."""
 from __future__ import annotations
 
+from src.auth.validation_caps import require_paid_access
+
 import io
 import zipfile
 from datetime import datetime, timezone
@@ -174,6 +176,7 @@ def test_design_queue_api_returns_failed_design_and_exact_copy(monkeypatch):
     )
     monkeypatch.setattr(designs.svc, "create_design", create)
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.state.limiter = limiter
     app.include_router(designs.router, prefix="/api/v1/designs")
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
@@ -474,6 +477,7 @@ def _batch_api_app(session: AsyncMock) -> FastAPI:
     from src.api.batch_router import router
 
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.include_router(router)
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
         user_id=7,

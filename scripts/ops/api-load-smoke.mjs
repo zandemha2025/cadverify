@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { resolveAdminApiKey } from "../e2e/local-admin-api-key.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +44,7 @@ function lineItemsMatch(body) {
   return true;
 }
 
-async function postCost(index, cubeBytes) {
+async function postCost(index, cubeBytes, token) {
   const started = performance.now();
   try {
     const form = new FormData();
@@ -54,6 +55,7 @@ async function postCost(index, cubeBytes) {
 
     const response = await fetch(`${apiBase}/api/v1/validate/cost/demo`, {
       method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
       body: form,
     });
     const text = await response.text();
@@ -86,14 +88,14 @@ async function postCost(index, cubeBytes) {
   }
 }
 
-async function runPool(cubeBytes) {
+async function runPool(cubeBytes, token) {
   const results = [];
   let next = 0;
   async function worker() {
     while (next < requests) {
       const index = next;
       next += 1;
-      results.push(await postCost(index, cubeBytes));
+      results.push(await postCost(index, cubeBytes, token));
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, () => worker()));
@@ -108,9 +110,16 @@ async function main() {
   assert(health.ok, `/health failed: ${health.status} ${healthText.slice(0, 200)}`);
   const healthMs = Math.round(performance.now() - healthStarted);
 
+  const credential = await resolveAdminApiKey({
+    apiBase,
+    configuredToken: process.env.PROOFSHAPE_API_KEY || process.env.CADVERIFY_API_KEY || "",
+    runId,
+    purpose: "load-smoke",
+  });
+  assert(credential.token, credential.boundary || "A paid-account API key is required for load testing.");
   const cubeBytes = await readFile(cubePath);
   const started = performance.now();
-  const results = await runPool(cubeBytes);
+  const results = await runPool(cubeBytes, credential.token);
   const durations = results.map((item) => item.durationMs);
   const failed = results.filter((item) => item.status !== "PASS");
   const p95 = percentile(durations, 95);

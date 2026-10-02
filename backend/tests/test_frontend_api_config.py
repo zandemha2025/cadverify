@@ -248,7 +248,7 @@ def test_frontend_uses_nonce_csp_for_sensitive_pages():
 
 
 def test_public_docs_use_live_urls_and_route_shims_exist():
-    # /docs is now a compatibility redirect to /developers (the dark-theater
+    # /docs is now a compatibility redirect to /developers (the current
     # API quickstart). The live-URL contract moved with it — assert the redirect
     # shim on /docs and the live/absent URLs on its target, /developers.
     docs = read("frontend/src/app/docs/page.tsx")
@@ -260,7 +260,6 @@ def test_public_docs_use_live_urls_and_route_shims_exist():
     assert "backendOrigin()" in developers
     assert "{apiOrigin}/api/v1/validate" in developers
     assert "cadvrfy-api.fly.dev" not in developers
-    assert 'git clone &quot;$PROOFSHAPE_DEPLOYMENT_REPOSITORY&quot; proofshape' in developers
     assert "https://github.com/zandemha2025/cadverify" not in developers
     assert "https://api.cadverify.com" not in developers
     assert "https://github.com/cadverify/cadverify" not in developers

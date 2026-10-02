@@ -40,6 +40,7 @@ def _make_app_with_role(role: str) -> FastAPI:
     and is covered by the org-role tests below.
     """
     from src.api.routes import router as main_router
+    from src.auth.validation_caps import enforce_validation_caps
 
     app = FastAPI()
 
@@ -66,6 +67,7 @@ def _make_app_with_role(role: str) -> FastAPI:
 
     app.dependency_overrides[require_kill_switch_open] = lambda: None
 
+    app.dependency_overrides[enforce_validation_caps] = lambda: None
     app.include_router(main_router, prefix="/api/v1")
     return app
 
@@ -148,7 +150,7 @@ class TestAnalystPlatformRole:
             files={"file": ("cube.stl", b"dummy", "application/octet-stream")},
         )
         # Past RBAC (bad-file 400 is fine); crucially NOT 403.
-        assert resp.status_code != 403
+        assert resp.status_code == 400, resp.text
 
 
 class TestSuperadminPlatformRole:
@@ -167,7 +169,7 @@ class TestSuperadminPlatformRole:
             "/api/v1/validate",
             files={"file": ("cube.stl", b"dummy", "application/octet-stream")},
         )
-        assert resp.status_code != 403
+        assert resp.status_code == 400, resp.text
 
 
 # ---------------------------------------------------------------------------

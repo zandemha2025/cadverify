@@ -303,7 +303,8 @@ jobs:
   browser-e2e:
     name: Browser E2E (human + enterprise)
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    # This job builds and migrates its own app. Run it independently for earlier
+    # UI feedback; the release still requires every CI job to succeed.
     services:
       postgres:
         image: postgres:16
@@ -420,6 +421,7 @@ jobs:
             .gstack/qa-reports/*.json
             .gstack/qa-reports/*.md
             .gstack/qa-reports/screenshots/**
+            .gstack/qa-reports/website-redesign/**
             e2e-app.log
           if-no-files-found: warn
           include-hidden-files: true

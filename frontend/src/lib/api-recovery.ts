@@ -73,6 +73,10 @@ export function apiRecoveryMessage({
   retryAfter?: string | null;
 }): string {
   const detail = apiProblemDetail(payload);
+  const body = payload && typeof payload === "object" ? payload as { code?: string; detail?: { code?: string } } : null;
+  if (body?.code === "paid_access_required" || body?.detail?.code === "paid_access_required") {
+    return detail ?? "Request paid access to use this tool. Your free allowance includes 10 single-part CAD checks.";
+  }
   const quota = (status === 403 || status === 429) ? apiQuotaMessage(payload) : null;
   if (quota) return quota;
 

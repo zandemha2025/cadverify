@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.validation_caps import require_paid_access
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
@@ -78,6 +79,7 @@ async def initiate_multipart_upload(
     ] = None,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         upload, parts, urls_complete, replayed = await service.initiate(
@@ -114,6 +116,7 @@ async def refresh_multipart_part_urls(
     body: RefreshPartURLsBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         parts = await service.refresh_part_urls(
@@ -134,6 +137,7 @@ async def complete_multipart_upload(
     body: CompleteMultipartBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         upload = await service.complete(

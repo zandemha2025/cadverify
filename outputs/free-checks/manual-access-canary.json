@@ -1,0 +1,14 @@
+{
+  "scope": "disposable local fixture only",
+  "approved_unlimited": true,
+  "advanced_route_passed_paid_gate": 422,
+  "free_after_revocation": {
+    "plan": "trial",
+    "unlimited": false,
+    "used": 1,
+    "reserved": 0,
+    "cap": 10,
+    "remaining": 9,
+    "window_days": 0
+  }
+}

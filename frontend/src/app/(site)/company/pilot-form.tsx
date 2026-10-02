@@ -1,17 +1,9 @@
 "use client";
 
-/**
- * The pilot request form on /company#pilot. Page-local (NOT foundation).
- *
- * Ported faithfully from handoff_cadverify_2026-07-04/site/Company.dc.html: work
- * email, company, "what do you make?", deployment preference, and the Send
- * pill. Submission is server-side and returns a durable receipt; direct email
- * remains a visible fallback, never the primary transport.
- */
-
 import * as React from "react";
+import { ArrowUpRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
-import styles from "./company.module.css";
+import { PILOT_WORKFLOWS } from "@/lib/site/navigation";
 
 function errorMessage(data: unknown, fallback: string): string {
   if (data && typeof data === "object") {
@@ -21,7 +13,7 @@ function errorMessage(data: unknown, fallback: string): string {
   return fallback;
 }
 
-export function PilotForm() {
+export function PilotForm({ initialWorkflow }: { initialWorkflow?: string }) {
   const [siteKey, setSiteKey] = React.useState<string | null>(null);
   const [securityReady, setSecurityReady] = React.useState(false);
   const [turnstileToken, setTurnstileToken] = React.useState<string | null>(null);
@@ -64,7 +56,8 @@ export function PilotForm() {
     const form = new FormData(formElement);
     const email = String(form.get("email") || "").trim();
     const company = String(form.get("company") || "").trim();
-    const what = String(form.get("what") || "").trim();
+    const question = String(form.get("what") || "").trim();
+    const what = `${form.get("workflow")}: ${question}`;
     const deployment = String(form.get("deployment") || "undecided");
     const website = String(form.get("website") || "");
     requestId.current ||= crypto.randomUUID();
@@ -102,105 +95,31 @@ export function PilotForm() {
   }
 
   return (
-    <form
-      className={styles.formCard}
-      onSubmit={onSubmit}
-      aria-label="Request a pilot"
-    >
-      <p style={{ margin: 0, fontSize: 19, fontWeight: 400 }}>Request a pilot</p>
-      <p style={{ margin: "8px 0 0", fontSize: 13.5, fontWeight: 300, color: "rgba(245,245,247,0.5)" }}>
-        We reply within two business days. Security teams welcome from day one.
-      </p>
-      {receipt ? (
-        <div role="status" style={{ marginTop: 24, border: "1px solid rgba(85,184,128,0.42)", borderRadius: 12, padding: "18px 20px", background: "rgba(85,184,128,0.07)" }}>
-          <p style={{ margin: 0, color: "#71cf99", fontSize: 15, fontWeight: 500 }}>Request received and recorded.</p>
-          <p style={{ margin: "8px 0 0", color: "rgba(245,245,247,0.65)", fontSize: 13, lineHeight: 1.55 }}>
-            We&apos;ll reply within two business days. Keep this receipt if you contact us about the request.
-          </p>
-          <p className="st-mono" style={{ margin: "10px 0 0", color: "rgba(245,245,247,0.84)", fontSize: 11, overflowWrap: "anywhere" }}>
-            CV-{receipt}
-          </p>
+    <form className="cv-pilot-form" onSubmit={onSubmit} aria-label="Plan a pilot">
+      <h3>Tell us what you need to decide.</h3>
+      <p>Describe your workflow and question. We’ll record your request and give you a confirmation receipt.</p>
+      {receipt ? <div role="status" className="cv-form-note">
+        <p>Request received and recorded.</p>
+        <p>Keep this receipt if you contact us about your request.</p>
+        <p>CV-{receipt}</p>
+      </div> : <>
+        <div className="cv-form-fields">
+          <label>Work email<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="you@company.com" /></label>
+          <label>Company<input name="company" autoComplete="organization" required maxLength={120} placeholder="Your company" /></label>
+          <label>What are you working on?<select name="workflow" defaultValue={PILOT_WORKFLOWS.includes(initialWorkflow ?? "") ? initialWorkflow : PILOT_WORKFLOWS[0]}>{PILOT_WORKFLOWS.map(workflow => <option key={workflow}>{workflow}</option>)}</select></label>
+          <label>Your question<textarea name="what" required maxLength={1900} placeholder="Tell us about the parts, the decision, and any requirements we should understand." /></label>
+          <label aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, overflow: "hidden" }}>
+            Website<input name="website" tabIndex={-1} autoComplete="off" />
+          </label>
         </div>
-      ) : <>
-      <div className={styles.formGrid}>
-        <label className={styles.fieldLabel}>
-          <span>Work email</span>
-          <input
-            className={styles.pilotInput}
-            name="email"
-            type="email"
-            placeholder="you@company.com"
-            autoComplete="email"
-            required
-          />
-        </label>
-        <label className={styles.fieldLabel}>
-          <span>Company</span>
-          <input
-            className={styles.pilotInput}
-            name="company"
-            placeholder="Company name"
-            autoComplete="organization"
-            required
-          />
-        </label>
-        <label className={`${styles.fieldLabel} ${styles.formGridWide}`}>
-          <span>What do you make?</span>
-          <textarea
-            className={styles.pilotInput}
-            name="what"
-            placeholder="Parts, programs, materials, or supplier flow"
-            rows={3}
-            maxLength={2000}
-            required
-            style={{ resize: "vertical", minHeight: 92 }}
-          />
-        </label>
-        <label className={`${styles.fieldLabel} ${styles.formGridWide}`}>
-          <span>Deployment preference</span>
-          <select className={styles.pilotInput} name="deployment" defaultValue="undecided">
-            <option value="undecided">Not sure yet</option>
-            <option value="cloud">Commercial cloud SaaS</option>
-            <option value="vpc">Private VPC / customer cloud</option>
-            <option value="air-gapped">Air-gapped / regulated environment</option>
-          </select>
-        </label>
-        <label aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, overflow: "hidden" }}>
-          Website
-          <input name="website" tabIndex={-1} autoComplete="off" />
-        </label>
-      </div>
-      {siteKey && (
-        <div style={{ marginTop: 16 }}>
-          <TurnstileWidget
-            siteKey={siteKey}
-            nonce={nonce}
-            resetSignal={turnstileReset}
-            onToken={setTurnstileToken}
-          />
-        </div>
-      )}
-      {error && <p role="alert" style={{ margin: "14px 0 0", color: "#ff9b94", fontSize: 12.5, lineHeight: 1.5 }}>{error}</p>}
-      <div className={styles.formFoot}>
-        <span
-          className="st-mono"
-          style={{ fontSize: 11, color: "rgba(245,245,247,0.35)" }}
-        >
-          cloud · VPC · air-gapped — your call
-        </span>
-        <button
-          type="submit"
-          className={styles.sendBtn}
-          disabled={submitting || !securityReady || Boolean(siteKey && !turnstileToken)}
-          style={{ opacity: submitting || !securityReady || Boolean(siteKey && !turnstileToken) ? 0.55 : 1, cursor: submitting ? "wait" : "pointer" }}
-        >
-          {submitting ? "Sending…" : "Send request"}
+        {siteKey && <TurnstileWidget siteKey={siteKey} nonce={nonce} resetSignal={turnstileReset} onToken={setTurnstileToken} />}
+        {error && <p role="alert" className="cv-form-note">{error}</p>}
+        <button className="cv-button" type="submit" disabled={submitting || !securityReady || Boolean(siteKey && !turnstileToken)}>
+          {submitting ? "Sending…" : "Send request"} <ArrowUpRight size={17} aria-hidden="true" />
         </button>
-      </div>
       </>}
-      <p className={styles.mailFallback}>
-        Online requests are recorded server-side. If intake is unavailable, retry later rather than sending CAD or quote data by ordinary email. See our <a href="/privacy">privacy notice</a>.
-      </p>
+      <p className="cv-form-note">Please don’t attach sensitive CAD before agreeing on data handling. See our <a href="/privacy">privacy notice</a>.</p>
+      <a className="cv-text-link" href="mailto:nazeemahmed2023@gmail.com">Email nazeemahmed2023@gmail.com</a>
     </form>
   );
 }

@@ -11,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.auth.validation_caps import require_paid_access
 from src.api.batch_router import router
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Batch, BatchItem
@@ -104,6 +105,8 @@ def test_create_batch_returns_202(mock_bs, mock_pool, mock_validate, webhook_dat
     import io
     import zipfile
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
 
@@ -154,6 +157,8 @@ def test_webhook_without_secret_is_rejected_before_upload_or_publication(secret)
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
     data = {"webhook_url": "https://hooks.example.test/receiver"}
@@ -178,6 +183,8 @@ def test_create_batch_counts_initial_skipped_items_as_failed(mock_bs, mock_pool)
     from src.auth.require_api_key import require_api_key
     import io
     import zipfile
+
+    app.dependency_overrides[require_paid_access] = lambda: None
 
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
@@ -231,6 +238,8 @@ def test_create_batch_rejects_out_of_bounds_concurrency_before_creation(
     from src.auth.require_api_key import require_api_key
     from src.db.engine import get_db_session
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
 
@@ -272,6 +281,8 @@ def test_create_batch_s3_returns_501(mock_bs):
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
 
@@ -299,6 +310,8 @@ def test_create_batch_enqueue_failure_marks_failed_503(mock_bs, mock_pool):
     from src.auth.require_api_key import require_api_key
     import io
     import zipfile
+
+    app.dependency_overrides[require_paid_access] = lambda: None
 
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
@@ -354,6 +367,8 @@ def test_get_batch_progress(mock_bs):
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
 
@@ -394,6 +409,8 @@ def test_get_batch_not_found(mock_bs):
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
     app.dependency_overrides[get_db_session] = _override_session
 
@@ -416,6 +433,8 @@ def test_get_batch_items_paginated():
     """GET /batch/{id}/items returns paginated items."""
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
+
+    app.dependency_overrides[require_paid_access] = lambda: None
 
     app.dependency_overrides[require_api_key] = _override_auth
 
@@ -457,6 +476,8 @@ def test_csv_export_returns_csv():
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
 
+    app.dependency_overrides[require_paid_access] = lambda: None
+
     app.dependency_overrides[require_api_key] = _override_auth
 
     mock_session = AsyncMock()
@@ -496,6 +517,8 @@ def test_cancel_batch():
     """POST /batch/{id}/cancel returns cancelled status."""
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
+
+    app.dependency_overrides[require_paid_access] = lambda: None
 
     app.dependency_overrides[require_api_key] = _override_auth
 
@@ -548,6 +571,8 @@ def test_cancel_completed_batch_409():
     """Cancelling a completed batch returns 409."""
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
+
+    app.dependency_overrides[require_paid_access] = lambda: None
 
     app.dependency_overrides[require_api_key] = _override_auth
 

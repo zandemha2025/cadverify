@@ -1,0 +1,166 @@
+{
+  "ledger_backfill": {
+    "expected": 58,
+    "actual": 58
+  },
+  "archive_sha256": "d24d597031bad1258ed8984a2211399285c63d8bbd36f8789abde9221f24031b",
+  "archive_created_at": "2026-10-01T16:31:00Z",
+  "restore": "passed",
+  "restore_server": "PostgreSQL 18.6",
+  "schema_before": "0048_disposition_basis",
+  "schema_after": "0049_trial_checks",
+  "tables_checked": 37,
+  "rows_checked": 887,
+  "existing_values_unchanged": true,
+  "table_receipts": {
+    "analyses": {
+      "rows": 58,
+      "sha256": "cebcc7e473ddfff4a9a86256d303c04d7550ae903783e3e780b86ab96b18f114"
+    },
+    "api_keys": {
+      "rows": 3,
+      "sha256": "905f11567ddf3c7162dcb93526e23ec06e2d753198a0d3753dee04bad12069ff"
+    },
+    "audit_log": {
+      "rows": 239,
+      "sha256": "c5ede667eaee48f4702c5e35e78a8442251dac04d734e9e1209a6683b440cb27"
+    },
+    "auth_identities": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "batch_items": {
+      "rows": 60,
+      "sha256": "0e48da548ab9f304e86fef5e8bd33e9dd21e42703e0e5a232198f2cf0336f026"
+    },
+    "batches": {
+      "rows": 33,
+      "sha256": "3a1ec7b4afd13c6710579b1f3c0ed31072bd692022a568c8d7c8b324b9ae88da"
+    },
+    "bom_edges": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "change_requests": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "connector_credential_profiles": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "cost_decisions": {
+      "rows": 46,
+      "sha256": "45fb19e7be32603005c35442de59b7b78b408bc7df3f90e7ba7e7cec9cc6c9ef"
+    },
+    "design_projects": {
+      "rows": 1,
+      "sha256": "baaa144d8514ad73187f4d8749d138cce9ada496d910573e2a9df76fab1e064d"
+    },
+    "design_revisions": {
+      "rows": 2,
+      "sha256": "8ed8aaee21f3405e83a99461592d9cc6c546194f355e4ae45b8d6a92cc0ed5f9"
+    },
+    "direct_uploads": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ground_truth_records": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "integration_runs": {
+      "rows": 1,
+      "sha256": "2137a8cb7465637b7541dc93676ae371b0fa2360baa1e7d1ebf8fc86ddb0c42b"
+    },
+    "jobs": {
+      "rows": 2,
+      "sha256": "0759561b13dcca0661986ad00204910bdd4319772f91ae2601da129159c258ce"
+    },
+    "machine_instances": {
+      "rows": 1,
+      "sha256": "88861af54c8674d2a47d462d64cd91230c69eeeaa1f28fa4c7e2b33c9cc68035"
+    },
+    "manifest_parts": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "material_library_versions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memberships": {
+      "rows": 12,
+      "sha256": "500127b6d9ccb87d72f7b156e6a85c3e8c783903f14d7e1d9caf88ae6f0db410"
+    },
+    "notification_reads": {
+      "rows": 4,
+      "sha256": "194edeba64c913a733027a2dc105898b0155429cfa2ed30647272bb9c891605b"
+    },
+    "notifications": {
+      "rows": 50,
+      "sha256": "522fc484de56b42503e1f3278a4903260c86426cb5052ad24b207c63775e2085"
+    },
+    "org_invites": {
+      "rows": 1,
+      "sha256": "aed45747dd9e29c0a921d1016aeccf7d706c17f9ff58389ac3998bbfbc236261"
+    },
+    "organizations": {
+      "rows": 23,
+      "sha256": "33934fc4c936001491d51db57104219c6bb3507580060b905cde6a9abeaaaed6"
+    },
+    "part_contexts": {
+      "rows": 37,
+      "sha256": "f8c04946a511a103daf4e43c8f8a85988cf2e2331d833d1e288b3537bd778f47"
+    },
+    "part_signatures": {
+      "rows": 66,
+      "sha256": "aa8833e86936d8c5f290b3081b65697d82c8a0b4ad2f2cd4e445515e5777379e"
+    },
+    "part_summaries": {
+      "rows": 66,
+      "sha256": "e18da6362973ab019c53ca2b4b5f539b3254b9fd4834299ff7ea31048ff3d4e9"
+    },
+    "rate_card_versions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "rfq_packages": {
+      "rows": 1,
+      "sha256": "a4104df9ec906565e428f2d46a620823dded1761d3d23056462086cd3e8a9f4b"
+    },
+    "saml_group_mappings": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "scim_identities": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "shop_capabilities": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "shop_profile_versions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "teams": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "usage_events": {
+      "rows": 170,
+      "sha256": "7bd8be81b2290c92094fb788db51ce6dd358a82001563d2dc6036711e9c906aa"
+    },
+    "users": {
+      "rows": 11,
+      "sha256": "049b8ddd38276177478576f1bfa108cbd8cde6ec18752756016b5d6e7010131f"
+    },
+    "webhook_deliveries": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "scope": "Actual Render export restored and migrated in a private local PostgreSQL 18 instance. Production remains unchanged."
+}

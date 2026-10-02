@@ -95,6 +95,10 @@ async function handle(
   const headers: Record<string, string> = {
     Cookie: `dash_session=${token}`,
   };
+  if (method === "POST" && path[0] === "validate") {
+    const checkId = req.headers.get("x-part-check-id");
+    if (checkId) headers["x-part-check-id"] = checkId;
+  }
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
   // Browser multipart initiation and reconstruction submission are idempotent

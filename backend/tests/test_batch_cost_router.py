@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+from src.auth.validation_caps import require_paid_access
+
 import pytest
 
 
@@ -21,6 +23,7 @@ def _build_app():
     from src.db.engine import get_db_session
 
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.include_router(batch_router)
 
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(

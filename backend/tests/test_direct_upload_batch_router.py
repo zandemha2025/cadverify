@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.auth.validation_caps import require_paid_access
 from src.api.batch_router import router
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -58,6 +59,7 @@ def _upload(status: str = "completed") -> DirectUpload:
 
 def _app(session: AsyncMock | None = None) -> FastAPI:
     app = FastAPI()
+    app.dependency_overrides[require_paid_access] = lambda: None
     app.include_router(router)
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
         user_id=42,

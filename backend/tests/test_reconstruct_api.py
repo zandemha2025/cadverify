@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from src.auth.validation_caps import require_paid_access
 from src.api.reconstruct_router import router
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -110,6 +111,7 @@ class TestReconstructEndpoint:
         """
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -166,6 +168,7 @@ class TestReconstructEndpoint:
 
         test_app.add_exception_handler(_FastAPIHTTPException, structured_http_error_handler)
         test_app.add_exception_handler(_StarletteHTTPException, structured_http_error_handler)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -202,6 +205,7 @@ class TestReconstructEndpoint:
 
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -237,6 +241,7 @@ class TestReconstructEndpoint:
 
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
         create_mock = AsyncMock()
@@ -267,6 +272,7 @@ class TestReconstructEndpoint:
         """POST with no images returns 422 (FastAPI validation)."""
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -281,6 +287,7 @@ class TestReconstructEndpoint:
         """POST with 5 images returns 400."""
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -314,6 +321,7 @@ class TestReconstructEndpoint:
     def test_reconstruct_queue_failure_is_honest_503(self):
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -349,6 +357,7 @@ class TestReconstructEndpoint:
 
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -378,6 +387,7 @@ class TestReconstructionCapability:
     def _client(self) -> TestClient:
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         return TestClient(test_app)
 
@@ -615,6 +625,7 @@ class TestMeshDownload:
         """GET returns 200 with STL content after job completes."""
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
@@ -655,6 +666,7 @@ class TestMeshDownload:
         """GET before job completes returns 404."""
         test_app = FastAPI()
         test_app.include_router(router)
+        test_app.dependency_overrides[require_paid_access] = lambda: None
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
