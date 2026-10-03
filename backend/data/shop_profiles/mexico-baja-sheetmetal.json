@@ -1,0 +1,16 @@
+{
+  "name": "Mexico Baja Sheet Metal",
+  "region": "MX",
+  "labor_rate": 19.0,
+  "margin": 0.28,
+  "overhead": 0.14,
+  "utilization": 0.80,
+  "stock_allowance": null,
+  "machine_rates": {"SHEET_METAL": 42, "CNC_TURNING": 48, "CNC_3AXIS": 52, "WIRE_EDM": 44},
+  "material_prices": {"Mild Steel": 1.7, "5052 Aluminum (Sheet)": 4.6, "304 SS (Sheet)": 4.4, "Copper C110 (Sheet)": 11.0},
+  "region_multipliers": {"labor": 1.0, "material": 1.0, "tooling": 1.0},
+  "source": "Modeled exemplar - synthesized from public marketplace rate bands (Xometry/Fictiv/Protolabs quote ranges) and regional labor surveys; NOT a measured shop. For calibration coverage and UI demonstration only.",
+  "notes": "Tijuana nearshore fab archetype: laser + brake + weld, US-customer pricing, MX cost base.",
+  "created": "2026-09-14",
+  "schema_version": 1
+}
