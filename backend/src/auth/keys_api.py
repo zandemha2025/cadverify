@@ -12,7 +12,7 @@ from src.config.public_urls import error_doc_url
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 from src.auth.dashboard_session import require_dashboard_session
@@ -50,12 +50,24 @@ class KeyOut(BaseModel):
     revoked_at: Optional[str] = None
 
 
-class CreateIn(BaseModel):
-    name: str = "Default"
+class _NamedKey(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Key name cannot be blank")
+        return cleaned
 
 
-class PatchIn(BaseModel):
-    name: str
+class CreateIn(_NamedKey):
+    name: str = Field(default="Default", min_length=1, max_length=80)
+
+
+class PatchIn(_NamedKey):
+    pass
 
 
 def _set_reveal_cookie(response: Response, token: str) -> None:
@@ -108,8 +120,10 @@ async def create_key(
     kid = await create_api_key(
         user_id, body.name, prefix, hmac_index(token), secret_hash
     )
-    _set_reveal_cookie(response, token)
-    return {"id": kid, "prefix": prefix}
+    # A key created from Developer settings is returned in this one no-store
+    # response. It is never persisted in a browser-readable cookie.
+    response.headers["Cache-Control"] = "no-store"
+    return {"id": kid, "prefix": prefix, "token": token}
 
 
 @router.post("/{key_id}/rotate")
@@ -181,8 +195,8 @@ async def rotate_key(
             org_id=str(org_id),
         )
         await s.commit()
-    _set_reveal_cookie(response, token)
-    return {"id": new_id, "prefix": prefix}
+    response.headers["Cache-Control"] = "no-store"
+    return {"id": new_id, "prefix": prefix, "token": token}
 
 
 @router.delete("/{key_id}", status_code=204)

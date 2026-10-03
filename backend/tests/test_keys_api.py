@@ -158,15 +158,14 @@ def client(monkeypatch):
     m.app.dependency_overrides.clear()
 
 
-def test_create_key_returns_prefix_and_sets_reveal_cookie(client):
+def test_create_key_returns_prefix_and_one_time_token(client):
     r = client.post("/api/v1/keys", json={"name": "CI"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert "prefix" in body and len(body["prefix"]) == 8
-    sc = r.headers.get("set-cookie", "")
-    assert "cv_mint_once=cv_live_" in sc
-    assert "Path=/settings/developer" in sc
-    assert "Max-Age=60" in sc
+    assert body["token"].startswith(f"cv_live_{body['prefix']}_")
+    assert r.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in r.headers
 
 
 def test_rotate_atomic(client):
@@ -176,6 +175,9 @@ def test_rotate_atomic(client):
     new_body = r.json()
     assert new_body["prefix"] != c["prefix"]
     assert new_body["id"] != c["id"]
+    assert new_body["token"].startswith(f"cv_live_{new_body['prefix']}_")
+    assert r.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in r.headers
 
 
 def test_rotate_missing_returns_404(client):
