@@ -178,3 +178,21 @@ async def test_credential_profile_probe_route_redacts_secret(monkeypatch):
     assert resp.json()["probe"]["configured"] is True
     assert resp.json()["probe"]["read_only"] is True
     assert "secret-token" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_cad_host_catalog_fails_closed_until_real_host_verification():
+    session = AsyncMock()
+    app = _build_app(session)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/integrations/cad-hosts")
+
+    assert response.status_code == 200
+    hosts = response.json()["hosts"]
+    assert {item["host"] for item in hosts} >= {
+        "onshape", "solidworks", "fusion", "siemens_nx"
+    }
+    assert all(item["release_ready"] is False for item in hosts)
+    assert all(item["supported_host_versions"] == [] for item in hosts)
+    assert all(item["verified_capabilities"] == [] for item in hosts)
