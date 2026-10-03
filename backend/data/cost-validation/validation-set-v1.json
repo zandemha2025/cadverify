@@ -1,0 +1,159 @@
+{
+  "schema": "cadverify-cost-validation-set-v1",
+  "purpose": "PRIVATE context evidence only. Published floors, guides, and vendor-authored claims are not quotes for a specified geometry and cannot validate ProofShape estimate accuracy. Quote-locked validation requires the same geometry, quantity, material, finish, location, lead time, and quote date.",
+  "generated_at": "2026-09-14",
+  "entries": [
+    {
+      "id": "sla-resin-jlc3dp-xresin",
+      "process": "sla",
+      "material_class": "photopolymer resin (generic)",
+      "vendor": "JLC3DP",
+      "evidence_kind": "published floor price",
+      "vendor_claim": "X Resin (SLA): Price from $0.3; tolerance +/-0.2mm or 0.3%; recommended wall >0.8mm; max build 780x780x530mm",
+      "price_floor_usd": 0.3,
+      "unit": "per part (sample-size part)",
+      "source_url": "https://jlc3dp.com/help/article/x-resin",
+      "retrieved": "2026-09-14",
+      "status": "SOURCE_OBSERVED",
+      "notes": "Floor price for a tiny sample part. Validates engine small-part AM floor order of magnitude, not any specific geometry.",
+      "comparison_scope": "context_only_not_quote_locked"
+    },
+    {
+      "id": "fdm-tpu-jlc3dp",
+      "process": "fdm",
+      "material_class": "TPU 95A",
+      "vendor": "JLC3DP",
+      "evidence_kind": "published floor price",
+      "vendor_claim": "TPU (FDM): Price from $3.00; tolerance +/-0.3mm within 100mm; wall 1.6mm (1.2mm min); max build 250x250x250mm",
+      "price_floor_usd": 3.0,
+      "unit": "per part (sample-size part)",
+      "source_url": "https://jlc3dp.com/help/article/tpu",
+      "retrieved": "2026-09-14",
+      "status": "SOURCE_OBSERVED",
+      "notes": "Floor price. FDM TPU minimum wall 1.2mm is well above the engine's 0.8mm generic FDM wall gate - engine gate is for rigid materials; do not cross-apply.",
+      "comparison_scope": "context_only_not_quote_locked"
+    },
+    {
+      "id": "slm-316l-jlc3dp",
+      "process": "slm",
+      "material_class": "316L stainless steel",
+      "vendor": "JLC3DP",
+      "evidence_kind": "published floor price",
+      "vendor_claim": "316L Stainless Steel (SLM): Price from $8.00; tolerance +/-0.3mm or 0.4%; wall 2.0mm (1.5mm minimum); max build 390x390x290mm; surface Ra 3.2-12um",
+      "price_floor_usd": 8.0,
+      "unit": "per part (sample-size part)",
+      "source_url": "https://jlc3dp.com/help/article/316l-stainless-steel",
+      "retrieved": "2026-09-14",
+      "status": "SOURCE_OBSERVED",
+      "notes": "Metal AM floor roughly 25x the polymer SLA floor at the same vendor - sanity anchor for metal-vs-polymer price ratio in engine output.",
+      "comparison_scope": "context_only_not_quote_locked"
+    },
+    {
+      "id": "cnc-rates-jiga-2026",
+      "process": "cnc_3axis",
+      "material_class": "general",
+      "vendor": "jiga.io (2026 market rate guide, US shops)",
+      "evidence_kind": "published hourly rate bands",
+      "vendor_claim": "3-axis mill $35-80/hr; 4-axis $60-125/hr; 5-axis $100-200+/hr; CNC lathe $35-85/hr; Swiss $80-140/hr. Materials: Al 6061 $5-15/kg; stainless $15-25/kg; titanium $30-50/kg; PEEK $100+/kg. Worked example: basic aluminum part $145 @qty1, $55 @qty10, $38 @qty100 (setup $100 amortized).",
+      "hourly_bands_usd": {
+        "cnc_3axis": [
+          35,
+          80
+        ],
+        "cnc_4axis": [
+          60,
+          125
+        ],
+        "cnc_5axis": [
+          100,
+          200
+        ],
+        "cnc_turning": [
+          35,
+          85
+        ],
+        "swiss": [
+          80,
+          140
+        ]
+      },
+      "material_kg_usd": {
+        "al_6061": [
+          5,
+          15
+        ],
+        "stainless": [
+          15,
+          25
+        ],
+        "titanium": [
+          30,
+          50
+        ],
+        "peek": [
+          100,
+          null
+        ]
+      },
+      "worked_example_usd": {
+        "qty1": 145,
+        "qty10": 55,
+        "qty100": 38
+      },
+      "source_url": "https://jiga.io/articles/custom-cnc-machining-costs-2026/",
+      "retrieved": "2026-09-14",
+      "status": "SOURCE_OBSERVED",
+      "notes": "Rate guide, not a quote. Engine's CNC hourly rate assumptions should sit inside these bands for US shops. Worked example validates setup-amortization curve shape.",
+      "comparison_scope": "context_only_not_quote_locked"
+    },
+    {
+      "id": "im-tooling-protolabs",
+      "process": "injection_molding",
+      "material_class": "tooling (aluminum vs steel mold)",
+      "vendor": "Protolabs",
+      "evidence_kind": "published tooling price anchors",
+      "vendor_claim": "Aluminum molds begin around $1,500, deliver in 7 days or less, good for ~10,000 parts as a rule of thumb. Steel tooling for million-plus volumes exceeds $50,000.",
+      "tooling_floor_usd": {
+        "aluminum_mold": 1500,
+        "steel_mold_high_volume": 50000
+      },
+      "source_url": "https://www.protolabs.com/resources/blog/aluminum-mold-tooling-for-injection-molding/",
+      "retrieved": "2026-09-14",
+      "status": "SOURCE_OBSERVED",
+      "notes": "Validates engine IM tooling-tier floor (~$1.5k aluminum prototype tool) and the steel-tool capital band. Engine R3 reference band starts at $1.5-8k for <50mm parts - consistent.",
+      "comparison_scope": "context_only_not_quote_locked"
+    },
+    {
+      "id": "sls-mjf-quantity-fictiv",
+      "process": "sls",
+      "material_class": "nylon (PA11/PA12/PA12-GF)",
+      "vendor": "Fictiv",
+      "evidence_kind": "published process-economics claim",
+      "vendor_claim": "For quantities of 20+, SLS is the most cost effective additive process. A CNC part quoted at qty 50 lands as much as 70% lower per unit than at qty 1.",
+      "source_url": "https://www.fictiv.com/capabilities/3d-printing-services/selective-laser-sintering-sls",
+      "retrieved": "2026-09-14",
+      "status": "SOURCE_OBSERVED",
+      "notes": "Directional, not a price point. Validates the engine's quantity-curve shape: steep unit-cost drop with qty via setup/nesting amortization.",
+      "comparison_scope": "context_only_not_quote_locked"
+    },
+    {
+      "id": "fdm-resin-sls-bands-harness-r1",
+      "process": "multi",
+      "material_class": "AM polymers",
+      "vendor": "in-repo R1 reference (public service-bureau bands, stated basis in backend/src/costing/harness.py)",
+      "evidence_kind": "published price bands (secondary)",
+      "vendor_claim": "FDM 0.08-0.60 $/cm3; resin 0.20-1.80 $/cm3; powder-bed (SLS/MJF) 0.25-1.50 $/cm3; handling $3-25/part; bureau order minimums: CNC $75-150, powder-bed $50-100, resin $25-60, FDM $15-35.",
+      "source_url": "https://github.com/zandemha2025/cadverify/blob/d3164d456b9b16f56faae5303f90fce6087c9659/backend/src/costing/harness.py",
+      "retrieved": "2026-09-14",
+      "status": "SECONDARY_REPORTED",
+      "notes": "Secondary anchor, already in repo. Kept here so the validation set is self-contained. JLC3DP floors above are consistent: $0.3 SLA and $3 FDM sample floors sit under the resin/FDM minimums because they are loss-leader sample prices, not bureau order minimums.",
+      "comparison_scope": "context_only_not_quote_locked"
+    }
+  ],
+  "honesty_rules": [
+    "SOURCE_OBSERVED means the cited page text was retrieved, not that vendor-authored claims were independently confirmed.",
+    "Published floors and market guides are context only and never per-geometry accuracy evidence.",
+    "Quote-locked accuracy requires the same geometry, quantity, material, finish, location, lead time, and quote date; this set contains none.",
+    "No entry may be deleted to improve a result; unavailable or conflicting evidence remains explicit."
+  ]
+}
