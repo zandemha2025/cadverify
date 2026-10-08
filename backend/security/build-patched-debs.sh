@@ -2,7 +2,7 @@
 # Actual upstream remediation, not a vulnerability waiver. See native-fixes.vex.json.
 set -eu
 mkdir -p /patched
-for spec in expat=2.8.5-2 libx11=2:1.8.12-1 libxrender=1:0.9.12-1; do
+for spec in expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1; do
     name=${spec%%=*}
     version=${spec#*=}
     mkdir -p "/build/$name"
