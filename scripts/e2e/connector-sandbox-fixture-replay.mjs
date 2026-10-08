@@ -222,7 +222,7 @@ async function runApiCredentialLifecycle() {
 
   return {
     status: failures.length === 0 ? "PASS" : "NEEDS_FIXES",
-    boundary: "Credential create/probe/revoke lifecycle over the real ProofShape HTTP API; not live SAP/PTC vendor certification.",
+    boundary: "Credential create/probe/revoke lifecycle over the real ScaleCad HTTP API; not live SAP/PTC vendor certification.",
     steps,
     failures,
   };
@@ -277,7 +277,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     runId,
     apiBase,
-    boundary: "This proves offline sandbox-shaped SAP/Windchill normalization fixtures and the ProofShape API credential profile lifecycle. It is not live SAP/PTC certification.",
+    boundary: "This proves offline sandbox-shaped SAP/Windchill normalization fixtures and the ScaleCad API credential profile lifecycle. It is not live SAP/PTC certification.",
     credential: {
       source: credential.source,
       accountEmail: credential.accountEmail || null,

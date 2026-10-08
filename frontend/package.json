@@ -52,7 +52,7 @@
     "clsx": "^2.1.1",
     "hash-wasm": "4.12.0",
     "lucide-react": "^1.22.0",
-    "next": "16.3.6",
+    "next": "16.3.8",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.0",
@@ -66,12 +66,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.3.8",
     "playwright-core": "^1.61.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "^8.5.25"
+    "postcss": "^8.5.25",
+    "@next/eslint-plugin-next": {
+      "fast-glob": "npm:tinyglobby@0.2.15"
+    }
   }
 }

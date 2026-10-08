@@ -18,7 +18,7 @@ test("AUTH-03 captures the rejected login before valid recovery and AUTH-05", ()
   assert.ok(validPassword > auth03Capture, "valid login happened before AUTH-03 capture");
   assert.ok(auth05Capture > validPassword, "AUTH-05 was not captured after valid recovery");
   assert.match(source, /screenshot: auth03VisualStep\.screenshot,\s*visualSteps: \[auth03VisualStep\]/);
-  assert.match(source, /requiredVisible: \["Log in to CadVerify", "Invalid email or password\."\]/);
+  assert.match(source, /requiredVisible: \["Log in to ScaleCad", "Invalid email or password\."\]/);
 });
 
 test("public/auth report advertises the schema-v2 evidence envelope", () => {

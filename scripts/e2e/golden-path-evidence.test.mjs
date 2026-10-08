@@ -125,8 +125,8 @@ test("a required settled stage cannot opt out of terminal blocker checks", () =>
 
 test("a named stage cannot substitute generic text for its canonical visual oracle", () => {
   const entry = validEntry("FAIL-10");
-  entry.visualSteps[0].requiredVisible = ["ProofShape"];
-  entry.visualSteps[0].capture.text = "ProofShape";
+  entry.visualSteps[0].requiredVisible = ["ScaleCad"];
+  entry.visualSteps[0].capture.text = "ScaleCad";
   const result = validateGoldenPathEvidence("FAIL-10", entry);
   assert.equal(result.valid, false);
   assert.ok(result.failures.some((item) => item.field.includes("visualSteps.required.failure.text.Could not load progress")));
@@ -144,7 +144,7 @@ test("recovery cannot omit its path-specific stale-state prohibition", () => {
 test("required text must exist in the DOM snapshot captured with the PNG", () => {
   const entry = validEntry("AUTH-03");
   entry.visualSteps[0].requiredVisible = ["Invalid email or password."];
-  entry.visualSteps[0].capture.text = "Log in to CadVerify";
+  entry.visualSteps[0].capture.text = "Log in to ScaleCad";
   const result = validateGoldenPathEvidence("AUTH-03", entry);
   assert.equal(result.valid, false);
   assert.ok(result.failures.some((item) => item.field.endsWith("requiredVisible.0.present")));

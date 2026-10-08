@@ -208,8 +208,8 @@ class Matrix {
         const expectedPath = canonicalPublicPaths.get(route) || route;
         assert(new URL(this.page.url()).pathname === expectedPath, `${route} canonicalized to ${this.page.url()}`);
         const body = await this.page.locator("body").innerText();
-        assert(/ProofShape/i.test(body), `${route} lost the ProofShape identity`);
-        assert(!/\bCadVerify\b|\bArcus\b|under construction|coming soon|not implemented|\bTODO\b|\bTBD\b/i.test(body), `${route} exposed retired or unfinished copy`);
+        assert(/ScaleCad/i.test(body), `${route} lost the ScaleCad identity`);
+        assert(!/\bCadVerify\b|\bProofShape\b|\bArcus\b|under construction|coming soon|not implemented|\bTODO\b|\bTBD\b/i.test(body), `${route} exposed retired or unfinished copy`);
         const heading = (await this.page.locator("h1, h2").first().innerText().catch(() => "")).trim();
         assert(heading.length > 0, `${route} has no visible heading`);
         const overflow = await this.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -224,7 +224,7 @@ class Matrix {
         actions: ["Open every public, team, developer, legal, company, and status route from the canonical origin.", "Inspect the route heading, identity, overflow, console, and network result."],
         observed: {
           url: `${baseUrl}/`,
-          visible: [`All ${observed.length} routes showed a route-specific heading and one ProofShape identity.`],
+          visible: [`All ${observed.length} routes showed a route-specific heading and one ScaleCad identity.`],
           persisted: "not-applicable: public navigation performs no mutation",
           numeric: { routeCount: observed.length, statuses: observed.map((item) => item.status) },
           authorization: "public routes required no session and exposed no protected data",
@@ -412,8 +412,8 @@ class Matrix {
         const response = await page.goto(route, { waitUntil: "domcontentloaded", timeout: 30_000 });
         await page.waitForURL((url) => url.pathname === "/login", { timeout: 10_000 });
         const body = await page.locator("body").innerText();
-        assert(/Log in to CadVerify/i.test(body), `${route} did not show the login boundary`);
-        assert(!/Cost history|ProofShape Design Studio|RFQ packages|Developer settings|Organization members/i.test(body), `${route} flashed protected content`);
+        assert(/Log in to ScaleCad/i.test(body), `${route} did not show the login boundary`);
+        assert(!/Cost history|ScaleCad Design Studio|RFQ packages|Developer settings|Organization members/i.test(body), `${route} flashed protected content`);
         results.push({ route, initialStatus: response?.status(), finalPath: new URL(page.url()).pathname });
       }
       const apiStatuses = [];
@@ -430,7 +430,7 @@ class Matrix {
         actions: ["Open every protected application route directly.", "Call representative protected APIs through the same-origin proxy."],
         observed: {
           url: `${baseUrl}/login`,
-          visible: [`All ${results.length} protected routes showed Log in to CadVerify without protected-page copy.`],
+          visible: [`All ${results.length} protected routes showed Log in to ScaleCad without protected-page copy.`],
           persisted: "no user, organization, or session mutation",
           numeric: { protectedRoutes: results.length, apiStatuses },
           authorization: { redirectsToLogin: results.every((item) => item.finalPath === "/login"), apiStatuses: apiStatuses.map((item) => item.status) },
@@ -516,7 +516,7 @@ class Matrix {
         actions: ["Complete the real signup form.", "Wait for the authenticated Verify redirect.", "Inspect the Day Zero surface and authenticated self record."],
         observed: {
           url: `${baseUrl}/verify`,
-          visible: ["MAKE THE ESTIMATES YOURS", "Unified ProofShape authenticated shell"],
+          visible: ["MAKE THE ESTIMATES YOURS", "Unified ScaleCad authenticated shell"],
           persisted: { userRows, membershipRows, email: visibleEmail, orgId },
           numeric: { users: userRows, memberships: membershipRows, sessions: cookies.filter((cookie) => /session/i.test(cookie.name)).length },
           authorization: { authenticatedIdentityVisible: true, authenticatedEmail: visibleEmail },
@@ -676,7 +676,7 @@ class Matrix {
       // AUTH-03 belongs to this exact rejected-login instant. Capture it before
       // the valid password changes the route and before AUTH-05 captures /cost.
       const auth03VisualStep = await this.captureStage("AUTH-03", "invalid-credentials", {
-        requiredVisible: ["Log in to CadVerify", "Invalid email or password."],
+        requiredVisible: ["Log in to ScaleCad", "Invalid email or password."],
       });
 
       await this.page.getByLabel("Password").fill(password);

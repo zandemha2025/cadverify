@@ -36,9 +36,9 @@ try {
   status = 500;
   body = {};
   await page.goto(`${base}/magic/verify#token=synthetic-audit-token`);
-  await page.getByRole("button", { name: "Continue to ProofShape" }).waitFor();
+  await page.getByRole("button", { name: "Continue to ScaleCad" }).waitFor();
   assert.equal(new URL(page.url()).hash, "", "Token must be scrubbed from the URL");
-  await page.getByRole("button", { name: "Continue to ProofShape" }).click();
+  await page.getByRole("button", { name: "Continue to ScaleCad" }).click();
   await page.getByRole("alert").filter({ hasText: /account service could not finish/ }).waitFor();
   await page.screenshot({ path: `${artifacts}/007-magic-outage-after.png` });
   console.log("PASS: magic token survives hydration and service failures allow a retry without claiming expiration.");
