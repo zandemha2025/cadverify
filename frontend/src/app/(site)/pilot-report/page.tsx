@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Pilot report — CadVerify", "description": "A closeout should show where the analysis matched reality, where it missed, and what still needs work. This is the report structure, not a published customer outcome.", "alternates": {"canonical": "/pilot-report"}};
+export const metadata: Metadata = {"title": "Pilot report — ScaleCad", "description": "A closeout should show where the analysis matched reality, where it missed, and what still needs work. This is the report structure, not a published customer outcome.", "alternates": {"canonical": "/pilot-report"}};
 
 export default function Page() {
   return <DocumentPage label="Pilot report" title="Leave the pilot with evidence your team can use." intro="A closeout should show where the analysis matched reality, where it missed, and what still needs work. This is the report structure, not a published customer outcome." sections={[

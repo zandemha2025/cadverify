@@ -797,7 +797,7 @@ async function completeMultipartWithRecovery(
       );
     }
     throw new CompletionOutcomeUnknownError(
-      `The ZIP reached storage, but completion could not be confirmed (${detail}). Retry the same ZIP; ProofShape will resume the same upload instead of creating a duplicate.`,
+      `The ZIP reached storage, but completion could not be confirmed (${detail}). Retry the same ZIP; ScaleCad will resume the same upload instead of creating a duplicate.`,
     );
   }
 }

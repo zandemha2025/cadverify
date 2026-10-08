@@ -270,7 +270,7 @@ export function CostDecisionView({
             )}
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <Lock className="mt-px size-3.5 shrink-0 text-prov-shop" aria-hidden />
-              CAD is processed by CadVerify. Signed-in workflows retain source files
+              CAD is processed by ScaleCad. Signed-in workflows retain source files
               and decision evidence for your organization.
             </p>
           </div>

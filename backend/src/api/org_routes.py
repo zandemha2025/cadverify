@@ -1,6 +1,6 @@
 """Org membership-lifecycle API (§32) — create/invite/accept/members/switch.
 
-The org-scoped router that finally makes CadVerify multi-user: an org admin can
+The org-scoped router that finally makes ScaleCad multi-user: an org admin can
 invite teammates (single-use, hashed, expiring tokens), manage roles and
 removals (last-admin protected), and any member can switch which org is active.
 Sits on the same rails as the catalog / machine-inventory routers: per-route rate
@@ -125,7 +125,7 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
             {
                 "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a ProofShape organization",
+                "subject": "You've been invited to a ScaleCad organization",
                 "html": (
                     f'<p>You\'ve been invited{who}.</p>'
                     f'<p><a href="{link}">Accept the invitation</a> '

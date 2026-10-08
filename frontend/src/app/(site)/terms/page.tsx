@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Terms — CadVerify", "description": "CadVerify provides computational makeability and cost evidence. It does not replace engineering sign-off, supplier qualification, safety certification, export-control review, or a human decision.", "alternates": {"canonical": "/terms"}};
+export const metadata: Metadata = {"title": "Terms — ScaleCad", "description": "ScaleCad provides computational makeability and cost evidence. It does not replace engineering sign-off, supplier qualification, safety certification, export-control review, or a human decision.", "alternates": {"canonical": "/terms"}};
 
 export default function Page() {
-  return <DocumentPage label="Terms" title="Use the verdict as evidence, not as blind authority." intro="CadVerify provides computational makeability and cost evidence. It does not replace engineering sign-off, supplier qualification, safety certification, export-control review, or a human decision." sections={[
+  return <DocumentPage label="Terms" title="Use the verdict as evidence, not as blind authority." intro="ScaleCad provides computational makeability and cost evidence. It does not replace engineering sign-off, supplier qualification, safety certification, export-control review, or a human decision." sections={[
   {
     "id": "accounts",
     "title": "Accounts",

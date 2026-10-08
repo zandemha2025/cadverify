@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { NotificationsClient } from "./notifications-client";
 
 export const metadata: Metadata = {
-  title: "Notifications - ProofShape",
+  title: "Notifications - ScaleCad",
   robots: { index: false, follow: false },
 };
 

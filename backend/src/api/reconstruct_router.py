@@ -45,7 +45,7 @@ async def reconstruction_capability(
     elif egress:
         message = (
             "Image-to-3D uses an approved third-party provider. Uploaded and "
-            "derived imagery leaves this ProofShape deployment."
+            "derived imagery leaves this ScaleCad deployment."
         )
     else:
         message = (

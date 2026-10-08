@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { backendOrigin } from "@/lib/api-base";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Developers — CadVerify", "description": "Send supported CAD to the API and work with structured geometry, manufacturing findings and source-backed estimates.", "alternates": {"canonical": "/developers"}};
+export const metadata: Metadata = {"title": "Developers — ScaleCad", "description": "Send supported CAD to the API and work with structured geometry, manufacturing findings and source-backed estimates.", "alternates": {"canonical": "/developers"}};
 
 export default function Page() {
   const apiOrigin = backendOrigin();

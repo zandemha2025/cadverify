@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Workflows — CadVerify", "description": "One part can raise different questions for engineering, manufacturing and sourcing. Choose the decision on your desk; the relevant evidence follows.", "alternates": {"canonical": "/teams"}};
+export const metadata: Metadata = {"title": "Workflows — ScaleCad", "description": "One part can raise different questions for engineering, manufacturing and sourcing. Choose the decision on your desk; the relevant evidence follows.", "alternates": {"canonical": "/teams"}};
 
 export default function Page() {
   return <DocumentPage label="Workflows" title="Start with the work you need to move forward." intro="One part can raise different questions for engineering, manufacturing and sourcing. Choose the decision on your desk; the relevant evidence follows." sections={[

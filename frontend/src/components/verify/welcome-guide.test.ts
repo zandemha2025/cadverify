@@ -30,7 +30,7 @@ test("new accounts default to the first-run guide while retaining explicit desti
 });
 
 test("the first-run guide starts from user goals, not internal platform nouns", () => {
-  assert.match(guideSource, /What do you want ProofShape to help you do\?/);
+  assert.match(guideSource, /What do you want ScaleCad to help you do\?/);
   assert.match(guideSource, /Show me a real example/);
   assert.match(guideSource, /Check my CAD file/);
   assert.match(guideSource, /Create a simple part/);

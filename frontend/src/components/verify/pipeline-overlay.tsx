@@ -223,7 +223,7 @@ export function PipelineOverlay({
             Reading the shape now. The first answer appears as soon as DFM lands.
           </h2>
           <p style={{ margin: "10px 0 0", color: C.ink55, fontSize: 13, lineHeight: 1.65 }}>
-            The 3D stage stays visible while ProofShape measures, routes, and then calculates cost.
+            The 3D stage stays visible while ScaleCad measures, routes, and then calculates cost.
           </p>
           <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
             {[

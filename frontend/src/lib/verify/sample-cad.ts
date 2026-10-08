@@ -48,6 +48,6 @@ export function sampleBracketFile(): File {
         `  facet normal 0 0 0\n    outer loop\n${vertex(a)}\n${vertex(b)}\n${vertex(c)}\n    endloop\n  endfacet`,
     )
     .join("\n");
-  const stl = `solid proofshape_routing_bracket\n${facets}\nendsolid proofshape_routing_bracket\n`;
+  const stl = `solid scalecad_routing_bracket\n${facets}\nendsolid scalecad_routing_bracket\n`;
   return new File([stl], "sample-routing-bracket.stl", { type: "model/stl" });
 }

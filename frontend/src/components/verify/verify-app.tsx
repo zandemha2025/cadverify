@@ -2,7 +2,7 @@
 
 /**
  * The Verify workspace is wired to the real engine and mounted inside the shared
- * authenticated ProofShape shell. This component owns only Verify-local screens
+ * authenticated ScaleCad shell. This component owns only Verify-local screens
  * and tools; platform navigation, theme, search, and account controls live in the
  * common shell.
  */
@@ -1010,7 +1010,7 @@ function GuidedExampleBar({
         </p>
         <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
           {state === "running"
-            ? "ProofShape is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
+            ? "ScaleCad is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
             : quota ? error : failed
               ? "No completed result was created. Retry the example or check one of your own CAD files."
               : "Read geometry and DFM first; route, first issue, resource cost, and shop fit follow in decision order."}
@@ -1092,7 +1092,7 @@ function OrganizationAccessGate({
         </h1>
         <p style={{ margin: "12px 0 0", color: C.ink55, fontSize: 14, lineHeight: 1.65 }}>
           {unavailable
-            ? "ProofShape stopped before requesting organization CAD, machine, or ground-truth data. Retry the check; if it continues, your administrator can verify the workspace connection."
+            ? "ScaleCad stopped before requesting organization CAD, machine, or ground-truth data. Retry the check; if it continues, your administrator can verify the workspace connection."
             : hasMemberships
               ? "Your account has an organization membership, but no workspace is active. Select it in Organization settings before opening org-scoped records or CAD tools."
               : "Open the invitation link sent by your organization administrator. If you do not have one, ask them to invite this exact account email. No organization data has been loaded or treated as empty."}

@@ -193,7 +193,7 @@ async def deliver_webhook(
         "Host": url.netloc.decode("ascii"),
         "Content-Type": "application/json",
         "X-CadVerify-Signature": signature,
-        "User-Agent": "ProofShape-Webhook/1.0",
+        "User-Agent": "ScaleCad-Webhook/1.0",
     }
 
     now = datetime.now(timezone.utc)

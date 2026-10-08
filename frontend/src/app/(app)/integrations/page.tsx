@@ -4,7 +4,7 @@ import { getOrganizationAccess } from "../settings/organization/actions";
 import { ErrorState } from "@/components/ui/error-state";
 
 export const metadata: Metadata = {
-  title: "Integrations - ProofShape",
+  title: "Integrations - ScaleCad",
   robots: { index: false, follow: false },
 };
 

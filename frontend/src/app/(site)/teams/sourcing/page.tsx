@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Sourcing — CadVerify", "description": "Understand what drives the resource estimate so you can have a specific conversation about process, capacity and the assumptions behind a supplier’s price.", "alternates": {"canonical": "/teams/sourcing"}};
+export const metadata: Metadata = {"title": "Sourcing — ScaleCad", "description": "Understand what drives the resource estimate so you can have a specific conversation about process, capacity and the assumptions behind a supplier’s price.", "alternates": {"canonical": "/teams/sourcing"}};
 
 export default function Page() {
   return <DocumentPage label="Sourcing" title="Ask a better question about the quote." intro="Understand what drives the resource estimate so you can have a specific conversation about process, capacity and the assumptions behind a supplier’s price." sections={[

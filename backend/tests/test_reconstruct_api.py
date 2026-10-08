@@ -430,7 +430,7 @@ class TestReconstructionCapability:
         assert body["available"] is True
         assert body["customer_data_egress"] is True
         assert body["requires_egress_acknowledgement"] is True
-        assert "leaves this ProofShape deployment" in body["message"]
+        assert "leaves this ScaleCad deployment" in body["message"]
 
     def test_viewer_capability_never_advertises_a_submit_action(self):
         test_app = FastAPI()

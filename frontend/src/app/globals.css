@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ════════════════════════════════════════════════════════════════════════
-   ProofShape — "Governed Catalog" platform chrome (Phase 0 re-founding).
+   ScaleCad — "Governed Catalog" platform chrome (Phase 0 re-founding).
    Source of truth: outputs/design/platform-ia-vision.md §5 + founder decisions.
 
    The one move: stop looking like a glowing gauge in a dark cockpit; start
@@ -177,7 +177,7 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   LIGHT — ProofShape's default base register (:root).
+   LIGHT — ScaleCad's default base register (:root).
    cool graphite canvas #F5F7FA, graphite ink (#12161C, never pure black), deep
    cobalt. A user can explicitly pin dark mode; route changes do not change the
    register, so every authenticated surface stays visually continuous.

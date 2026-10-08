@@ -1,4 +1,4 @@
-"""ProofShape — Manufacturing Validation API."""
+"""ScaleCad — Manufacturing Validation API."""
 
 from __future__ import annotations
 
@@ -330,7 +330,7 @@ def _spawn_parse_pool_prewarm() -> threading.Thread:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("ProofShape starting | cors_regex=%s", CORS_ORIGIN_REGEX)
+    logger.info("ScaleCad starting | cors_regex=%s", CORS_ORIGIN_REGEX)
     from src.parsers import parse_pool
 
     parse_pool.startup()
@@ -341,7 +341,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        logger.info("ProofShape stopping")
+        logger.info("ScaleCad stopping")
 
         # Audit rows commit with their protected mutations, so there is no
         # detached compliance queue to drain. Stop CAD workers, release pooled
@@ -382,7 +382,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ProofShape API",
+    title="ScaleCad API",
     description="Manufacturing validation for STEP and STL files",
     version="0.2.0",
     lifespan=lifespan,
@@ -538,7 +538,7 @@ app.include_router(
 # multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org
 # callers are byte-identical (the whole isolation matrix is unchanged).
 app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
-# ProofShape Design Studio: validated operation plans -> immutable STEP/STL
+# ScaleCad Design Studio: validated operation plans -> immutable STEP/STL
 # revisions. Generation runs on the existing worker plane; no generated source
 # code is ever executed.
 app.include_router(designs_router, prefix="/api/v1/designs", tags=["designs"])

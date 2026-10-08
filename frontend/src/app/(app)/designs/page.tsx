@@ -537,7 +537,7 @@ export default function DesignsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="ProofShape Design Studio"
+        title="ScaleCad Design Studio"
         badge={<Badge variant="outline">Safe parametric CAD</Badge>}
         subtitle={
           canMutate

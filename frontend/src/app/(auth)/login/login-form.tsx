@@ -90,7 +90,7 @@ export function LoginForm({
   return (
     <AuthFrame
       eyebrow="Secure workspace"
-      title="Log in to CadVerify"
+      title="Log in to ScaleCad"
       body={
         ssoLoginPath && !passwordEnabled
           ? "Continue through your organization's approved identity provider."

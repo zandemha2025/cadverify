@@ -335,7 +335,7 @@ export function SamlMappingForm() {
           <Input
             id="saml-value"
             required
-            placeholder="cadverify-admins"
+            placeholder="scalecad-admins"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             error={!!error}

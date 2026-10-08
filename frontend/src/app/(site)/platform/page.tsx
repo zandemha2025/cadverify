@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Platform — CadVerify", "description": "Give engineering, manufacturing and sourcing a shared record to work from, with a clear view of what is known and what still needs review.", "alternates": {"canonical": "/platform"}};
+export const metadata: Metadata = {"title": "Platform — ScaleCad", "description": "Give engineering, manufacturing and sourcing a shared record to work from, with a clear view of what is known and what still needs review.", "alternates": {"canonical": "/platform"}};
 
 export default function Page() {
   return <DocumentPage label="Platform" title="Keep the part, the decision and the evidence together." intro="Give engineering, manufacturing and sourcing a shared record to work from, with a clear view of what is known and what still needs review." sections={[

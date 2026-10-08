@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Security — CadVerify", "description": "Your geometry is valuable intellectual property. Review the deployment, access and data handling that apply to your work before uploading sensitive files.", "alternates": {"canonical": "/security"}};
+export const metadata: Metadata = {"title": "Security — ScaleCad", "description": "Your geometry is valuable intellectual property. Review the deployment, access and data handling that apply to your work before uploading sensitive files.", "alternates": {"canonical": "/security"}};
 
 export default function Page() {
   return <DocumentPage label="Security" title="Understand the boundaries before sharing the CAD." intro="Your geometry is valuable intellectual property. Review the deployment, access and data handling that apply to your work before uploading sensitive files." sections={[

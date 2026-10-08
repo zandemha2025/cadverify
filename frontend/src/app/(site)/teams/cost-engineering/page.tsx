@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Cost engineering — CadVerify", "description": "Spend the conversation on the inputs that matter: material, machine time, labor and setup. Keep every source available when the number is challenged.", "alternates": {"canonical": "/teams/cost-engineering"}};
+export const metadata: Metadata = {"title": "Cost engineering — ScaleCad", "description": "Spend the conversation on the inputs that matter: material, machine time, labor and setup. Keep every source available when the number is challenged.", "alternates": {"canonical": "/teams/cost-engineering"}};
 
 export default function Page() {
   return <DocumentPage label="Cost engineering" title="Bring a defensible estimate to the review." intro="Spend the conversation on the inputs that matter: material, machine time, labor and setup. Keep every source available when the number is challenged." sections={[

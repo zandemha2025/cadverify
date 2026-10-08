@@ -2,7 +2,7 @@
 
 /**
  * Light-instrument primitives for the Verify workspace. Explicit-hex and theme-
- * independent inside the shared light-first ProofShape shell. These are the
+ * independent inside the shared light-first ScaleCad shell. These are the
  * honesty atoms: a provenance dot/chip, the hatched
  * (assumption) vs solid (validated) band, cards, kicker, and empty states.
  */

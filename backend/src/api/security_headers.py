@@ -26,7 +26,7 @@ SECURITY_HEADERS: dict[str, str] = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
 
-_SERVER_VALUE = "ProofShape"
+_SERVER_VALUE = "ScaleCad"
 
 
 def security_headers_enabled() -> bool:

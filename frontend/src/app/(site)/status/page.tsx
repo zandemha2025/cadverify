@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Service status — CadVerify", "description": "The public automated incident feed is not connected yet. This page does not claim that any service is currently healthy.", "alternates": {"canonical": "/status"}};
+export const metadata: Metadata = {"title": "Service status — ScaleCad", "description": "The public automated incident feed is not connected yet. This page does not claim that any service is currently healthy.", "alternates": {"canonical": "/status"}};
 
 export default function Page() {
   return <DocumentPage label="Service status" title="Service updates, with the limits stated." intro="The public automated incident feed is not connected yet. This page does not claim that any service is currently healthy." sections={[

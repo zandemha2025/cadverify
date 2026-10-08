@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "In-house manufacturing — CadVerify", "description": "A part needs making. Start with whether your equipment can do the job, what resources it needs and what capability is missing.", "alternates": {"canonical": "/teams/in-house-manufacturing"}};
+export const metadata: Metadata = {"title": "In-house manufacturing — ScaleCad", "description": "A part needs making. Start with whether your equipment can do the job, what resources it needs and what capability is missing.", "alternates": {"canonical": "/teams/in-house-manufacturing"}};
 
 export default function Page() {
   return <DocumentPage label="In-house manufacturing" title="Know which work belongs on your floor." intro="A part needs making. Start with whether your equipment can do the job, what resources it needs and what capability is missing." sections={[
