@@ -746,7 +746,7 @@ export default function PartWorkspace({
     <div className="flex h-full min-h-0">
       {/* ── content column ─────────────────────────────────────────── */}
       <div className="min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
-        <div className="space-y-5 p-6">
+        <div className="@container space-y-5 p-6">
           {/* frame header: identity + Role Lens + Calibration + reset */}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -789,18 +789,18 @@ export default function PartWorkspace({
           )}
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as WorkTab)}>
-            <TabsList className="w-full justify-start overflow-x-auto">
+            <TabsList className="h-auto w-full flex-wrap justify-start">
               {WORK_TABS.map(({ value, label, icon: Icon }) => (
-                <TabsTrigger key={value} value={value}>
+                <TabsTrigger key={value} value={value} className="shrink-0 whitespace-nowrap">
                   <Icon className="size-4" />
                   {label}
                 </TabsTrigger>
               ))}
             </TabsList>
 
-            <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-5">
+            <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-5 @max-[42rem]:grid-cols-1!">
               {/* persistent studio-lit part rail (flat platform chrome) */}
-              <div className="min-w-0 space-y-3 lg:sticky lg:top-0 lg:col-span-2 lg:self-start">
+              <div className="min-w-0 space-y-3 lg:sticky lg:top-0 lg:col-span-2 lg:self-start @max-[42rem]:col-span-1! @max-[42rem]:static!">
                 <div className="relative h-[340px]">
                   <CadViewer
                     file={file}
@@ -898,7 +898,7 @@ export default function PartWorkspace({
               </div>
 
               {/* active lens */}
-              <div className="lg:col-span-3">
+              <div className="min-w-0 lg:col-span-3 @max-[42rem]:col-span-1!">
                 <TabsContent value="decision" className="mt-0">
                   {costLoading ? (
                     <LoadingPane label="Computing should-cost across processes…" />
