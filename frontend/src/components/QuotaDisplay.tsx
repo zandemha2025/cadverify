@@ -47,10 +47,10 @@ function QuotaBar({
 export default function QuotaDisplay(props: Props) {
   return <div className="space-y-3">
     <QuotaUsage {...props} />
-    <p className="text-sm text-muted-foreground">
+    {!props.usage?.unlimited && <p className="text-sm text-muted-foreground">
       <a className="underline" href="mailto:nazeemahmed2023@gmail.com?subject=ScaleCad%20paid%20access">Request paid access</a>{" "}
       to continue checking parts. Your saved results remain available.
-    </p>
+    </p>}
   </div>;
 }
 
