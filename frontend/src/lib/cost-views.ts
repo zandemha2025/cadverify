@@ -19,7 +19,7 @@ import { procLabel, verdictLabel, verdictTone } from "./status.ts";
 import { crossoverSummary } from "./cost-decision.ts";
 import { routeScopedDfmVerdict } from "./dfm-scope.ts";
 import { routeDfmOutcome } from "./verify/derive.ts";
-import { deriveBreakeven, posToQty, qtyToPos, recommendAt } from "./breakeven.ts";
+import { deriveBreakeven, posToQty, qtyToPos, recommendAt, unitCostAt } from "./breakeven.ts";
 
 /** Header and copied-summary verdict for the workspace's make-now route.
  * A declared cost report with no route cannot borrow an unrelated geometry pass. */
@@ -44,19 +44,30 @@ export function workspaceDfmSummary(
 }
 
 /** One selection for the quantity slider, headers, routing and evidence views. */
-export function workspaceSelection(report: CostReport | null, validation: ValidationResult | null, position?: number) {
+export type WorkspaceRoute = Pick<CostEstimate, "process" | "material" | "quantity">;
+
+export function workspaceSelection(report: CostReport | null, validation: ValidationResult | null, position?: number, route?: WorkspaceRoute) {
   const breakeven = report ? deriveBreakeven(report) : null;
-  const pos = position ?? (breakeven
+  // A chosen route must still exist in this report. A material/input change
+  // cannot silently display evidence from an obsolete route.
+  const routeRows = route && report?.estimates.filter((e) => !e.environment_excluded
+    && e.process === route.process && e.material === route.material);
+  const selectedCurve = routeRows?.length && breakeven
+    ? deriveBreakeven({ ...report!, estimates: routeRows })?.curves[0] : null;
+  const selectedRoute = !!selectedCurve && !!route && Number.isFinite(route.quantity) && route.quantity > 0;
+  const pos = selectedRoute && breakeven ? qtyToPos(breakeven, route!.quantity) : position ?? (breakeven
     ? qtyToPos(breakeven, breakeven.crossoverQty ?? Math.max(...(report?.quantities.length ? report.quantities : [1])))
     : 1);
-  const quantity = breakeven ? posToQty(breakeven, pos) : null;
-  const recommendation = breakeven && quantity != null ? recommendAt(breakeven, quantity) : null;
+  const quantity = selectedRoute ? route!.quantity : breakeven ? posToQty(breakeven, pos) : null;
+  const recommendation = selectedRoute && selectedCurve && quantity != null
+    ? { curve: selectedCurve, unitCost: unitCostAt(selectedCurve, quantity), dfmReady: selectedCurve.dfmReady }
+    : breakeven && quantity != null ? recommendAt(breakeven, quantity) : null;
   const estimate = report && recommendation && quantity != null
     ? pickEstimate(report, recommendation.curve.process, quantity, recommendation.curve.material) : null;
   const dfm = workspaceDfmSummary(report, validation, breakeven
     ? recommendation && quantity != null ? { ...recommendation.curve, quantity } : null
     : undefined);
-  return { breakeven, position: pos, quantity, recommendation, estimate, dfm } as const;
+  return { breakeven, position: pos, quantity, recommendation, estimate, dfm, selectedRoute } as const;
 }
 
 /* ------------------------------------------------------------------ */

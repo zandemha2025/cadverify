@@ -41,7 +41,8 @@ import {
   type ValidationResult,
 } from "@/lib/api";
 import { severityLabel, severityTone, verdictLabel, procLabel } from "@/lib/status";
-import { buildAnswerSummary, parseCalibration, workspaceSelection } from "@/lib/cost-views";
+import { buildAnswerSummary, parseCalibration, workspaceSelection, type WorkspaceRoute } from "@/lib/cost-views";
+import { captureCostScenario } from "@/lib/cost-scenario";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
@@ -168,6 +169,7 @@ export default function PartWorkspace({
   const [report, setReport] = useState<CostReport | null>(null);
   const [quantityPosition, setQuantityPosition] = useState<{ report: CostReport; position: number } | null>(null);
   const reportOptionsRef = useRef<CostOptions | null>(null);
+  const [routeSelection, setRouteSelection] = useState<{ report: CostReport; route: WorkspaceRoute } | null>(null);
   const [assumptions, setAssumptions] = useState<CostAssumption[]>([]);
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
@@ -193,17 +195,25 @@ export default function PartWorkspace({
 
   // per-shop calibration + session-local scenarios
   const [shops, setShops] = useState<ShopProfileInfo[]>([]);
-  const [scenarios, setScenarios] = useState<(ScenarioSummary & { opts: CostOptions })[]>([]);
+  const [scenarios, setScenarios] = useState<(ScenarioSummary & { opts: CostOptions; route: WorkspaceRoute })[]>([]);
 
   const activeRole = roleById(role);
   const { setPart } = useInstrumentChrome();
   const selection = useMemo(() => workspaceSelection(report, validation,
-    quantityPosition?.report === report ? quantityPosition?.position : undefined),
-  [report, validation, quantityPosition]);
+    quantityPosition?.report === report ? quantityPosition?.position : undefined,
+    routeSelection?.report === report ? routeSelection.route : undefined),
+  [report, validation, quantityPosition, routeSelection]);
   const workspaceDfm = selection.dfm;
   const workspaceVerdict = geomError ? "fail" : workspaceDfm.verdict;
   const onPositionChange = useCallback((position: number) => {
-    if (report) setQuantityPosition({ report, position });
+    if (report) {
+      setQuantityPosition({ report, position });
+      setRouteSelection(null);
+    }
+  }, [report]);
+
+  const onSelectRoute = useCallback((route: WorkspaceRoute) => {
+    if (report) setRouteSelection({ report, route });
   }, [report]);
 
   useEffect(() => {
@@ -363,13 +373,13 @@ export default function PartWorkspace({
   /* ---- shop binding + glass-box overrides (REAL server re-cost) ----- */
 
   const recostWith = useCallback(
-    (next: CostOptions) => {
+    (next: CostOptions, route?: WorkspaceRoute) => {
       setOpts(next);
-      if (file && !validateQty(next.qty)) runAnalyses(file, next);
+      if (file && !validateQty(next.qty)) runAnalyses(file, next, route ?? (selection.selectedRoute ? selection.estimate ?? undefined : undefined));
     },
     // runAnalyses is stable; all submission paths use the same geometry inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [file]
+    [file, selection.selectedRoute, selection.estimate]
   );
 
   const onSelectShop = useCallback(
@@ -406,28 +416,17 @@ export default function PartWorkspace({
   const onSaveScenario = useCallback(() => {
     const reportOptions = reportOptionsRef.current;
     if (!report?.decision || !reportOptions) return;
-    const firstQty = report.quantities[0];
-    const rec = report.decision.recommendation[String(firstQty)];
-    const shopName = shops.find((s) => s.id === reportOptions.shop)?.name;
-    const ovr = Object.keys(reportOptions.overrides ?? {}).length;
-    const label = `${shopName ?? "Generic"}${ovr ? ` · ${ovr} ovr` : ""} · qty ${firstQty.toLocaleString()}`;
-    setScenarios((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${prev.length}`,
-        label,
-        unitCost: rec?.unit_cost_usd ?? null,
-        process: rec?.process ?? report.decision?.make_now_process ?? null,
-        opts: reportOptions,
-      },
-    ]);
+    const snapshot = captureCostScenario(selection, reportOptions,
+      shops.find((s) => s.id === reportOptions.shop)?.name);
+    if (!snapshot) return;
+    setScenarios((prev) => [...prev, { id: `${Date.now()}-${prev.length}`, ...snapshot }]);
     toast.success("Saved to this session — click it to recall and re-cost.");
-  }, [report, shops]);
+  }, [report, shops, selection]);
 
   const onRecallScenario = useCallback(
     (id: string) => {
       const scn = scenarios.find((s) => s.id === id);
-      if (scn) recostWith(scn.opts);
+      if (scn) recostWith(scn.opts, scn.route);
     },
     [scenarios, recostWith]
   );
@@ -438,6 +437,7 @@ export default function PartWorkspace({
     theFile: File,
     theOpts: CostOptions,
     attempt = analysisAttemptRef.current,
+    route?: WorkspaceRoute,
   ) => {
     setCostLoading(true);
     setCostError(null);
@@ -449,6 +449,7 @@ export default function PartWorkspace({
       // Save the inputs that produced this result, never the editable draft.
       reportOptionsRef.current = theOpts;
       setReport(result);
+      setRouteSelection(route ? { report: result, route } : null);
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;
       if (err instanceof CostGeometryInvalidError) {
@@ -488,7 +489,7 @@ export default function PartWorkspace({
     }
   }, []);
 
-  const runAnalyses = useCallback((theFile: File, theOpts: CostOptions) => {
+  const runAnalyses = useCallback((theFile: File, theOpts: CostOptions, route?: WorkspaceRoute) => {
     // Draft edits must not change the preview or leave DFM on an older scale.
     // A new submission also invalidates both responses from the previous one.
     const attempt = ++analysisAttemptRef.current;
@@ -496,7 +497,7 @@ export default function PartWorkspace({
     theFile = new File([theFile], theFile.name, { type: theFile.type, lastModified: theFile.lastModified });
     setFile(theFile);
     setSubmittedOptions(theOpts);
-    void runCost(theFile, theOpts, attempt);
+    void runCost(theFile, theOpts, attempt, route);
     void runDfm(theFile, theOpts.units, attempt);
   }, [runCost, runDfm]);
 
@@ -544,8 +545,8 @@ export default function PartWorkspace({
 
   const handleRecost = useCallback(() => {
     if (!file || validateQty(opts.qty)) return;
-    runAnalyses(file, opts);
-  }, [file, opts, runAnalyses]);
+    runAnalyses(file, opts, selection.selectedRoute ? selection.estimate ?? undefined : undefined);
+  }, [file, opts, runAnalyses, selection.selectedRoute, selection.estimate]);
 
   const handleRetryCost = useCallback(() => {
     if (!file) return;
@@ -689,6 +690,7 @@ export default function PartWorkspace({
         validation={validation}
         selection={selection}
         onPositionChange={onPositionChange}
+        onSelectRoute={onSelectRoute}
         opts={opts}
         sourceUnits={submittedOptions.units}
         setOpt={setOpt}
@@ -960,6 +962,8 @@ export default function PartWorkspace({
                   ) : report ? (
                     <GlassBoxView
                       report={report}
+                      selection={selection}
+                      onSelectRoute={onSelectRoute}
                       assumptions={assumptions}
                       overrideCount={overrideKeys.length}
                       recosting={costLoading}
@@ -1057,7 +1061,7 @@ function HistoryPanel({
   report: CostReport | null;
   validation: ValidationResult | null;
   selection: ReturnType<typeof workspaceSelection>;
-  scenarios: (ScenarioSummary & { opts: CostOptions })[];
+  scenarios: (ScenarioSummary & { opts: CostOptions; route: WorkspaceRoute })[];
   onRecallScenario: (id: string) => void;
 }) {
   const router = useRouter();
