@@ -19,6 +19,7 @@ import { computeHighlightVertexColors, computeLayeredHighlightVertexColors } fro
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
+import { perspectiveFramingDistance } from "@/lib/camera-framing";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
    during DFM inspection) so the flagged faces still pop against them. Stage
@@ -66,13 +67,14 @@ function PartModel({
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const previousFraming = useRef<{ geometry: THREE.BufferGeometry; camera: THREE.Camera; distance: number } | null>(null);
   const hasPinpoints = !!pinpointOverlays?.some((pin) => pin.faces.length > 0);
   const hasHighlights = (!!highlightFaces && highlightFaces.length > 0) || hasPinpoints;
   const highlight = useMemo(() => new THREE.Color(highlightColor), [highlightColor]);
 
   // Normalise once: centre at origin, then derive a uniform scale to TARGET.
   const norm = useMemo(() => {
-    if (!geometry) return { scale: 1, half: 1, sourceCenter: new THREE.Vector3() };
+    if (!geometry) return { scale: 1, half: 1, radius: Math.sqrt(3), sourceCenter: new THREE.Vector3() };
     geometry.computeVertexNormals();
     geometry.computeBoundingBox();
     const sourceCenter = geometry.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
@@ -80,7 +82,7 @@ function PartModel({
     geometry.boundingBox?.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const scale = TARGET / maxDim;
-    return { scale, half: (size.y * scale) / 2, sourceCenter };
+    return { scale, half: (size.y * scale) / 2, radius: size.length() * scale / 2, sourceCenter };
   }, [geometry]);
 
   useEffect(() => {
@@ -129,12 +131,26 @@ function PartModel({
     if (material) material.needsUpdate = true;
   }, [geometry, hasHighlights, hasPinpoints, highlightFaces, highlight, pinpointOverlays]);
 
-  // Hero camera frame — a well-composed 3/4 with a gentle downward tilt, pulled
-  // in so the part commands the canvas. Normalised units keep it consistent.
-  const { camera } = useThree();
+  // An enclosing sphere also keeps the whole part visible after orbiting.
+  // Resize by the change in automatic framing distance, preserving user zoom
+  // and orbit instead of resetting an inspection view when Inspector opens.
+  const { camera, size } = useThree();
   useEffect(() => {
+    if (size.width <= 0 || size.height <= 0) return;
     const dist = TARGET * distanceScale;
-    camera.position.set(dist * 0.6, dist * 0.44, dist * 0.68);
+    const direction = new THREE.Vector3(0.6, 0.44, 0.68);
+    const preferredDistance = dist * direction.length();
+    const distance = (camera as THREE.PerspectiveCamera).isPerspectiveCamera
+      ? perspectiveFramingDistance(norm.radius, size.width / size.height,
+          (camera as THREE.PerspectiveCamera).fov, preferredDistance)
+      : preferredDistance;
+    const previous = previousFraming.current;
+    if (previous?.geometry === geometry && previous.camera === camera) {
+      camera.position.multiplyScalar(distance / previous.distance);
+    } else {
+      camera.position.copy(direction.normalize().multiplyScalar(distance));
+    }
+    previousFraming.current = { geometry, camera, distance };
     // R3F camera framing is an imperative three.js boundary; React's compiler
     // cannot infer that mutating the camera instance here is intentional.
     // eslint-disable-next-line react-hooks/immutability
@@ -143,11 +159,10 @@ function PartModel({
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       camera.updateProjectionMatrix();
     }
-    camera.lookAt(0, TARGET * 0.02, 0);
-  }, [camera, distanceScale, norm.scale]);
+    camera.lookAt(0, 0, 0);
+  }, [camera, distanceScale, geometry, norm.radius, size.width, size.height]);
 
   const markerRegion = pinpointOverlays?.find((pin) => pin.regionCenter)?.regionCenter ?? null;
-  const { size } = useThree();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const lastProjection = useRef("");
   useFrame(() => {
