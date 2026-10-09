@@ -437,7 +437,6 @@ export default function PartWorkspace({
     theFile: File,
     theOpts: CostOptions,
     attempt = analysisAttemptRef.current,
-    route?: WorkspaceRoute,
   ) => {
     setCostLoading(true);
     setCostError(null);
@@ -449,7 +448,8 @@ export default function PartWorkspace({
       // Save the inputs that produced this result, never the editable draft.
       reportOptionsRef.current = theOpts;
       setReport(result);
-      setRouteSelection(route ? { report: result, route } : null);
+      setRouteSelection(null);
+      return result;
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;
       if (err instanceof CostGeometryInvalidError) {
@@ -497,7 +497,11 @@ export default function PartWorkspace({
     theFile = new File([theFile], theFile.name, { type: theFile.type, lastModified: theFile.lastModified });
     setFile(theFile);
     setSubmittedOptions(theOpts);
-    void runCost(theFile, theOpts, attempt, route);
+    void runCost(theFile, theOpts, attempt).then((result) => {
+      if (result && route && attempt === analysisAttemptRef.current) {
+        setRouteSelection({ report: result, route });
+      }
+    });
     void runDfm(theFile, theOpts.units, attempt);
   }, [runCost, runDfm]);
 
