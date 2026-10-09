@@ -73,7 +73,7 @@ export const PUBLIC_NAV_TARGETS = Object.freeze([
   Object.freeze({ label: "Teams", path: "/teams", signal: /teams|sourcing|engineering/i }),
   Object.freeze({ label: "Security", path: "/security", signal: /security|CAD/i }),
   Object.freeze({ label: "Developers", path: "/developers", signal: /developers|API/i }),
-  Object.freeze({ label: "Company", path: "/company", signal: /company|pilot|ProofShape/i }),
+  Object.freeze({ label: "Company", path: "/company", signal: /company|pilot|ScaleCad/i }),
 ]);
 
 export const VERIFY_SECTIONS = Object.freeze([
@@ -755,7 +755,7 @@ class FullMobileBrowserRun {
         visualSteps.push(await this.captureStage(
           definition.id,
           `${viewport.key}-${slug(target.label)}`,
-          [target.label, "ProofShape"],
+          [target.label, "ScaleCad"],
         ));
       }
     }
@@ -1114,7 +1114,7 @@ class FullMobileBrowserRun {
   async runDesignStudio(definition) {
     await this.setViewport(VIEWPORTS[2]);
     await this.goto("/designs", "Design Studio");
-    await this.page.getByRole("heading", { name: "ProofShape Design Studio", exact: true }).waitFor({ state: "visible" });
+    await this.page.getByRole("heading", { name: "ScaleCad Design Studio", exact: true }).waitFor({ state: "visible" });
     invariant(await this.page.getByTestId("design-mutation-workspace").isVisible(), `Design Studio is read-only for fresh ${this.account?.orgRole || "unknown"} signup`);
     const designName = `Full mobile plate ${randomBytes(4).toString("hex")}`;
     await this.clickPrimary(this.page.getByRole("button", { name: "Mounting plate", exact: true }), "Mounting plate template");
@@ -1493,11 +1493,11 @@ class FullMobileBrowserRun {
     const logoutResponse = await logoutResponsePromise;
     await loginDestination;
     invariant(logoutResponse.status() === 200, `logout returned HTTP ${logoutResponse.status()}`);
-    await this.page.getByRole("heading", { name: "Log in to CadVerify", exact: true }).waitFor({ state: "visible" });
+    await this.page.getByRole("heading", { name: "Log in to ScaleCad", exact: true }).waitFor({ state: "visible" });
     const visualSteps = [await this.captureStage(
       definition.id,
       "768x1024-logged-out",
-      ["Log in to CadVerify"],
+      ["Log in to ScaleCad"],
     )];
 
     await this.goto("/verify", "gated Verify after logout");
@@ -1550,7 +1550,7 @@ class FullMobileBrowserRun {
       actions: ["Signed out from the account menu.", "Confirmed /verify remained gated.", "Logged in with the original credentials and reopened the exact saved record."],
       observed: {
         url: this.page.url(),
-        visible: ["Log in to CadVerify", this.cadEvidence.fixture.filename, "Open governance"],
+        visible: ["Log in to ScaleCad", this.cadEvidence.fixture.filename, "Open governance"],
         persisted: { userId: this.account.userId, orgId: this.account.orgId, decisionId },
         numeric: { logoutStatus: logoutResponse.status(), loginStatus: loginResponse.status(), recordStatus: detailResponse.status() },
         authorization: { orgRole: this.account.orgRole, gatedWhileLoggedOut: true },

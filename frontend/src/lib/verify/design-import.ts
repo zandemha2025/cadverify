@@ -21,7 +21,7 @@ export function designFilename(contentDisposition: string | null): string {
   const safe = leaf.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^\.+/, "");
   return safe.toLowerCase().endsWith(".step") && safe.length <= 120
     ? safe
-    : "proofshape-design.step";
+    : "scalecad-design.step";
 }
 
 export async function importDesignStep(

@@ -154,7 +154,7 @@ const visibleCopyRoutes = [
 
 const designStudioSteps = [
   "Design Studio account signs up through the real web form",
-  "Design Studio loads inside the unified ProofShape shell",
+  "Design Studio loads inside the unified ScaleCad shell",
   "Unsupported freeform geometry is rejected without approximation",
   "Incomplete enclosure description asks for exact missing dimensions",
   "Plate description prefills exact clean millimetre values",
@@ -327,7 +327,7 @@ export const requirements = [
       step,
       "CAD design engineer",
       "Design Studio",
-      "Complete the current ProofShape Design Studio journey with exact CAD, revision, DFM, cost, archive, and responsive evidence.",
+      "Complete the current ScaleCad Design Studio journey with exact CAD, revision, DFM, cost, archive, and responsive evidence.",
       {
         criticalEvidenceId: ({ 6: "DES-05", 7: "DES-10", 8: "DES-11" })[index] || null,
       }

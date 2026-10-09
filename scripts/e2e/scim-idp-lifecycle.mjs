@@ -197,7 +197,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     runId,
     apiBase,
-    boundary: "SCIM protocol lifecycle simulation over the real ProofShape SCIM HTTP surface; not vendor sandbox certification.",
+    boundary: "SCIM protocol lifecycle simulation over the real ScaleCad SCIM HTTP surface; not vendor sandbox certification.",
     credential: {
       source: credential.source,
       accountEmail: credential.accountEmail || null,

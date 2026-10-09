@@ -48,7 +48,7 @@ export default function QuotaDisplay(props: Props) {
   return <div className="space-y-3">
     <QuotaUsage {...props} />
     <p className="text-sm text-muted-foreground">
-      <a className="underline" href="mailto:nazeemahmed2023@gmail.com?subject=CadVerify%20paid%20access">Request paid access</a>{" "}
+      <a className="underline" href="mailto:nazeemahmed2023@gmail.com?subject=ScaleCad%20paid%20access">Request paid access</a>{" "}
       to continue checking parts. Your saved results remain available.
     </p>
   </div>;
@@ -130,6 +130,6 @@ export function TrialAllowance() {
   return <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-background px-4 py-2 text-xs" role="status">
     <span>{usage ? `${usage.remaining} of ${usage.cap} free checks available` : loaded ? "Allowance temporarily unavailable" : "Checking your allowance…"}</span>
     <span className="text-muted-foreground">Single-part checks. Advanced tools require paid access.</span>
-    <a className="font-medium text-primary underline" href="mailto:nazeemahmed2023@gmail.com?subject=CadVerify%20paid%20access">Request paid access</a>
+    <a className="font-medium text-primary underline" href="mailto:nazeemahmed2023@gmail.com?subject=ScaleCad%20paid%20access">Request paid access</a>
   </div>;
 }

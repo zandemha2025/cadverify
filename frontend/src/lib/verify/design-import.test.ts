@@ -27,7 +27,7 @@ test("revision handoff is optional and bounded to a positive integer", () => {
 test("artifact filename is path-stripped, bounded, and STEP-only", () => {
   assert.equal(designFilename('attachment; filename="Motor_mount.step"'), "Motor_mount.step");
   assert.equal(designFilename('attachment; filename="../../evil.step"'), "evil.step");
-  assert.equal(designFilename('attachment; filename="payload.exe"'), "proofshape-design.step");
+  assert.equal(designFilename('attachment; filename="payload.exe"'), "scalecad-design.step");
 });
 
 test("real STEP response becomes the same File contract as a manual upload", async () => {

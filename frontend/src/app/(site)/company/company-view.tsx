@@ -106,7 +106,7 @@ export default function CompanyView() {
             That&apos;s the entire point.
           </DisplayHeading>
           <p style={{ margin: "22px 0 0", maxWidth: 620, fontSize: 16.5, lineHeight: 1.65, fontWeight: 300, color: "rgba(245,245,247,0.6)" }}>
-            A ProofShape pilot is a measurement, not a demo. You bring real parts and real paid prices;
+            A ScaleCad pilot is a measurement, not a demo. You bring real parts and real paid prices;
             we come back with a validated-on-your-parts report — including the parts we got wrong. Runs
             in your environment if your programs require it.
           </p>

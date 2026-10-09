@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The persistent ProofShape shell shared by every authenticated surface. One
+ * The persistent ScaleCad shell shared by every authenticated surface. One
  * route change never swaps the product frame, theme, account controls, or
  * navigation model underneath the user.
  *
@@ -91,7 +91,7 @@ function IconRail() {
         {/* brand mark — the datum crosshair, cobalt */}
         <Link
           href="/verify"
-          aria-label="ProofShape"
+          aria-label="ScaleCad"
           className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
@@ -306,10 +306,10 @@ function ContextBar({
     <header className="flex h-[var(--contextbar-h)] shrink-0 items-center gap-2 border-b border-border bg-background px-3">
       <Link
         href="/verify"
-        aria-label="ProofShape home"
+        aria-label="ScaleCad home"
         className="num inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-primary text-xs font-semibold text-primary-foreground sm:hidden"
       >
-        P
+        S
       </Link>
       <MobileNavigation />
       <button

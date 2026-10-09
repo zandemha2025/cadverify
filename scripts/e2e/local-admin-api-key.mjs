@@ -62,7 +62,7 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     return {
       token: "",
       source: "missing external credential",
-      boundary: "Both APP_URL and API_URL must be loopback; non-local targets require an explicit ProofShape org-admin API key.",
+      boundary: "Both APP_URL and API_URL must be loopback; non-local targets require an explicit ScaleCad org-admin API key.",
     };
   }
 
@@ -70,7 +70,7 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
   const email = `proofshape-${purpose}-${runId}-${nonce}@example.com`
     .toLowerCase()
     .replace(/[^a-z0-9@._+-]/g, "-");
-  const password = `ProofShape-${nonce}-9`;
+  const password = `ScaleCad-${nonce}-9`;
   // Production auth rejects direct backend signup because only the trusted
   // first-party ingress may attest the client IP. Exercise that real boundary
   // through Next, then use its httpOnly dashboard cookie against the backend.

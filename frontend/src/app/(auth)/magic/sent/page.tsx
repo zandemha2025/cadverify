@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AuthFrame } from "@/components/auth/auth-frame";
 
 export const metadata: Metadata = {
-  title: "Magic link sent - ProofShape",
+  title: "Magic link sent - ScaleCad",
   robots: { index: false, follow: false },
 };
 

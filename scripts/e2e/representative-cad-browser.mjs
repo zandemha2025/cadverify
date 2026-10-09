@@ -631,7 +631,7 @@ class RepresentativeCadBrowser {
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-      await this.page.getByRole("dialog", { name: "What do you want ProofShape to help you do?" }).getByRole("button", { name: "Close", exact: true }).click();
+      await this.page.getByRole("dialog", { name: "What do you want ScaleCad to help you do?" }).getByRole("button", { name: "Close", exact: true }).click();
       await this.page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 20_000 });
 
       const recoveryAlert = this.page

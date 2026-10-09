@@ -320,7 +320,7 @@ class DesignStudioE2E {
     const email = uniqueEmail();
     await this.page.goto("/signup", { waitUntil: "domcontentloaded" });
     await this.page.getByLabel("Email").fill(email);
-    await this.page.getByLabel("Password").fill("ProofShape2026Secure");
+    await this.page.getByLabel("Password").fill("ScaleCad2026Secure");
     await this.page.getByRole("button", { name: /^Create account$/ }).click();
     await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
     await grantLocalPaidAccess(email);
@@ -329,7 +329,7 @@ class DesignStudioE2E {
 
   async gotoStudio() {
     await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
-    await this.page.getByRole("heading", { name: "ProofShape Design Studio" }).waitFor();
+    await this.page.getByRole("heading", { name: "ScaleCad Design Studio" }).waitFor();
   }
 
   async waitForDesignReady(name) {
@@ -549,7 +549,7 @@ class DesignStudioE2E {
       return { screenshot: await this.shot("signup-to-verify") };
     });
 
-    await this.step("Design Studio loads inside the unified ProofShape shell", async () => {
+    await this.step("Design Studio loads inside the unified ScaleCad shell", async () => {
       await this.gotoStudio();
       await this.page.getByRole("link", { name: "Verify workspace" }).first().waitFor();
       await this.page.getByRole("link", { name: "Design Studio" }).first().waitFor();

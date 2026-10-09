@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "How it works — CadVerify", "description": "Move from a CAD file to a manufacturing decision with the inputs, assumptions and open questions still attached.", "alternates": {"canonical": "/method"}};
+export const metadata: Metadata = {"title": "How it works — ScaleCad", "description": "Move from a CAD file to a manufacturing decision with the inputs, assumptions and open questions still attached.", "alternates": {"canonical": "/method"}};
 
 export default function Page() {
   return <DocumentPage label="How it works" title="Know how the answer was reached." intro="Move from a CAD file to a manufacturing decision with the inputs, assumptions and open questions still attached." sections={[

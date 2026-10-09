@@ -546,7 +546,7 @@ async function authenticate(page, diagnostics, responseStatuses) {
     account = { mode: "existing-credentials", email };
   } else {
     const generatedEmail = `qa-manufacturing-forms-${Date.now()}-${randomBytes(5).toString("hex")}@example.test`;
-    const generatedPassword = `ProofShape-${randomBytes(10).toString("hex")}-7a`;
+    const generatedPassword = `ScaleCad-${randomBytes(10).toString("hex")}-7a`;
     documentResponse = await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
     assert.equal(documentResponse?.status(), 200, `GET /signup returned HTTP ${documentResponse?.status() ?? "none"}`);
     await requireUi(

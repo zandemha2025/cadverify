@@ -591,7 +591,7 @@ class MobileRecoveryRun {
       await password.fill(this.password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-      await this.page.getByRole("dialog", { name: "What do you want ProofShape to help you do?" }).getByRole("button", { name: "Close", exact: true }).click();
+      await this.page.getByRole("dialog", { name: "What do you want ScaleCad to help you do?" }).getByRole("button", { name: "Close", exact: true }).click();
       await this.page.goto("/onboarding", { waitUntil: "domcontentloaded" });
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 10_000 });
       const text = await this.bodyText();
@@ -650,7 +650,7 @@ class MobileRecoveryRun {
     await this.runPath("MOB-03", async () => {
       await this.setViewport(375, 812);
       await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
-      await this.page.getByRole("heading", { name: "ProofShape Design Studio" }).waitFor();
+      await this.page.getByRole("heading", { name: "ScaleCad Design Studio" }).waitFor();
       const before = await this.designList();
       await this.page.getByLabel("Design name").fill(this.primaryDesignName);
       await this.page.getByLabel("Design note").fill("mobile recovery evidence");

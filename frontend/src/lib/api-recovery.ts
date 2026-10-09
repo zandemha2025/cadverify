@@ -42,7 +42,7 @@ export function apiQuotaMessage(payload: unknown): string | null {
   // Older servers describe the organization window only in their message.
   const resets = code === "org_quota_exceeded" || (typeof windowDays === "number" && windowDays > 0)
     || /in the trailing [1-9]\d* days/.test(detail ?? "");
-  return `Verification allowance used up${resets ? " for now" : ""}. ${detail ? `${detail.replace(/[.!?]+$/, "")}. ` : ""}${resets ? "Retry after the rolling allowance becomes available. " : ""}Contact your workspace administrator or the ProofShape team to review your allowance.`;
+  return `Verification allowance used up${resets ? " for now" : ""}. ${detail ? `${detail.replace(/[.!?]+$/, "")}. ` : ""}${resets ? "Retry after the rolling allowance becomes available. " : ""}Contact your workspace administrator or the ScaleCad team to review your allowance.`;
 }
 
 export function isQuotaErrorMessage(message: string | null | undefined): boolean {

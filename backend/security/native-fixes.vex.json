@@ -1,9 +1,9 @@
 {
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/zandemha2025/cadverify/blob/main/backend/security/native-fixes.vex.json",
-  "author": "CadVerify",
-  "timestamp": "2026-10-01T16:00:00Z",
-  "version": 2,
+  "author": "ScaleCad",
+  "timestamp": "2026-10-08T23:28:00Z",
+  "version": 3,
   "statements": [
     {
       "vulnerability": {
@@ -11,11 +11,23 @@
       },
       "products": [
         {
-          "@id": "pkg:deb/debian/libexpat1@2.8.5-2%2Bcadverify1"
+          "@id": "pkg:deb/debian/libexpat1@2.9.0-1%2Bcadverify1"
         }
       ],
       "status": "fixed",
-      "status_notes": "Built from Debian expat 2.8.5-2 source on trixie, containing upstream UTF-16 validation fix 0cfd15bdf4b2c22d6b0df73610709dfb60921091 and regression tests 28fcfba540f6933aa8904a1514c4811713d2ab72. Runtime installed-library regression check is mandatory."
+      "status_notes": "Built from Debian expat 2.9.0-1 source on trixie, containing upstream UTF-16 validation fix 0cfd15bdf4b2c22d6b0df73610709dfb60921091 and regression tests 28fcfba540f6933aa8904a1514c4811713d2ab72. Runtime installed-library regression check is mandatory."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-77214"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libexpat1@2.9.0-1%2Bcadverify1"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "Built from Debian expat 2.9.0-1 source on trixie, containing upstream buffer-length validation fix 4d9b1c499ecb66323260a7274edcf86c5eab0517. The image build exercises the installed libexpat.so.1 and requires XML_ParseBuffer to reject oversized lengths before and after a valid parse chunk. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-77214."
     },
     {
       "vulnerability": {

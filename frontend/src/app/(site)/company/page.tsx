@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 import { PilotForm } from "./pilot-form";
 
-export const metadata: Metadata = {"title": "Company & contact — CadVerify", "description": "CadVerify brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on.", "alternates": {"canonical": "/company"}};
+export const metadata: Metadata = {"title": "Company & contact — ScaleCad", "description": "ScaleCad brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on.", "alternates": {"canonical": "/company"}};
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ workflow?: string }> }) {
   const { workflow } = await searchParams;
-  return <DocumentPage label="Company & contact" title="Make the decision easier to explain." intro="CadVerify brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on." sections={[
+  return <DocumentPage label="Company & contact" title="Make the decision easier to explain." intro="ScaleCad brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on." sections={[
   {
     "id": "approach",
     "title": "Built around the questions teams actually ask.",

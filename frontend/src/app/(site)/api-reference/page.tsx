@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "API reference — CadVerify", "description": "Use the interactive OpenAPI console for the current endpoint contract. Keep the evidence and its limitations attached when you integrate the result.", "alternates": {"canonical": "/api-reference"}};
+export const metadata: Metadata = {"title": "API reference — ScaleCad", "description": "Use the interactive OpenAPI console for the current endpoint contract. Keep the evidence and its limitations attached when you integrate the result.", "alternates": {"canonical": "/api-reference"}};
 
 export default function Page() {
   return <DocumentPage label="API reference" title="One request. A record you can inspect." intro="Use the interactive OpenAPI console for the current endpoint contract. Keep the evidence and its limitations attached when you integrate the result." sections={[

@@ -18,7 +18,7 @@ def cad_upload_diagnosis(message: str) -> dict[str, Any] | None:
     """Return a stable, honest diagnosis for known CAD-ingest failures.
 
     Unknown 400s are deliberately left alone: inventing a geometry diagnosis is
-    worse than a generic BAD_REQUEST. ``repairable`` means ProofShape can safely
+    worse than a generic BAD_REQUEST. ``repairable`` means ScaleCad can safely
     repair the uploaded bytes without changing design intent today.
     """
     value = (message or "").strip()
@@ -35,7 +35,7 @@ def cad_upload_diagnosis(message: str) -> dict[str, Any] | None:
     if "unsupported file type" in lower:
         return {
             "failure_class": "unsupported_type",
-            "plain_reason": "The file is not one of the CAD exchange formats ProofShape can read.",
+            "plain_reason": "The file is not one of the CAD exchange formats ScaleCad can read.",
             "location": None,
             "repairable": False,
             "next_action": "Export the original part as STL, STEP, STP, IGES, or IGS.",

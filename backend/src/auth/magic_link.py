@@ -356,12 +356,12 @@ async def magic_start(
     payload: resend.Emails.SendParams = {
         "from": os.environ["RESEND_FROM"],
         "to": email_clean,
-        "subject": "Your ProofShape login link",
+        "subject": "Your ScaleCad login link",
         "html": (
             f'<a href="{html.escape(link, quote=True)}">'
-            "Sign in to ProofShape (expires in 15 minutes)</a>"
+            "Sign in to ScaleCad (expires in 15 minutes)</a>"
         ),
-        "text": f"Sign in to ProofShape (expires in 15 minutes): {link}",
+        "text": f"Sign in to ScaleCad (expires in 15 minutes): {link}",
     }
     try:
         # The Resend SDK is synchronous; keep network I/O off the event loop.

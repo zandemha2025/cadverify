@@ -264,14 +264,14 @@ async def create_pilot_request(
                 "from": resend_from,
                 "to": inbox,
                 "reply_to": email,
-                "subject": f"ProofShape pilot request — {safe_company}",
+                "subject": f"ScaleCad pilot request — {safe_company}",
                 "text": (
                     f"Pilot request {receipt}\n\nWork email: {email}\n"
                     f"Company: {company}\nDeployment: {body.deployment}\n\n"
                     f"What they make:\n{what}"
                 ),
                 "html": (
-                    f"<h1>New ProofShape pilot request</h1>"
+                    f"<h1>New ScaleCad pilot request</h1>"
                     f"<p><strong>Receipt:</strong> {html.escape(receipt)}</p>"
                     f"<p><strong>Work email:</strong> {html.escape(email)}<br>"
                     f"<strong>Company:</strong> {html.escape(company)}<br>"

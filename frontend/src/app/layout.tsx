@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
   ),
-  title: "CadVerify — Know what you can make",
+  title: "ScaleCad — Know what you can make",
   description:
     "Check manufacturing options, review design findings, and trace the resources behind your next decision. Explore a recorded sample without an account.",
   alternates: { canonical: "/" },
@@ -42,17 +42,17 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "CadVerify — Know what you can make",
+    title: "ScaleCad — Know what you can make",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
-    siteName: "CadVerify",
+    siteName: "ScaleCad",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "CadVerify — Know what you can make",
+    title: "ScaleCad — Know what you can make",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],
@@ -80,7 +80,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: ProofShape is light-first. Dark remains an explicit
+        {/* No-flash theme: ScaleCad is light-first. Dark remains an explicit
             user preference, but route changes never imply a theme change. */}
         <script
           nonce={nonce}

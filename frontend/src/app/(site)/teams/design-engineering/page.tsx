@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Design engineering — CadVerify", "description": "See which features need attention, which process they affect and what to investigate before handing over the design.", "alternates": {"canonical": "/teams/design-engineering"}};
+export const metadata: Metadata = {"title": "Design engineering — ScaleCad", "description": "See which features need attention, which process they affect and what to investigate before handing over the design.", "alternates": {"canonical": "/teams/design-engineering"}};
 
 export default function Page() {
   return <DocumentPage label="Design engineering" title="Find the manufacturing issue before the next review." intro="See which features need attention, which process they affect and what to investigate before handing over the design." sections={[

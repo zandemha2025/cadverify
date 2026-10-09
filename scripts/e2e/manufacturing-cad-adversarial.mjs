@@ -153,7 +153,7 @@ function boxTriangles(origin = [0, 0, 0], size = [10, 10, 10]) {
   return faces.map((face) => face.map((index) => v[index]));
 }
 
-function binaryStl(triangles, label = "ProofShape deterministic E2E fixture") {
+function binaryStl(triangles, label = "ScaleCad deterministic E2E fixture") {
   const out = Buffer.alloc(84 + triangles.length * 50);
   out.write(label.slice(0, 80), 0, "ascii");
   out.writeUInt32LE(triangles.length, 80);
@@ -367,7 +367,7 @@ async function recordPath(page, spec, run) {
 
 async function signup(page) {
   const email = `qa-mfg-cad-${Date.now()}-${randomBytes(4).toString("hex")}@example.com`;
-  const password = `ProofShape-${randomBytes(8).toString("hex")}-9a`;
+  const password = `ScaleCad-${randomBytes(8).toString("hex")}-9a`;
   await page.goto(`${baseUrl}/signup`, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);

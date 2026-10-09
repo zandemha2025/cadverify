@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** Verify keeps its feature gate but shares the exact authenticated ProofShape
+/** Verify keeps its feature gate but shares the exact authenticated ScaleCad
  * shell used by Design Studio and every other signed-in route. */
 export default async function VerifyLayout({
   children,

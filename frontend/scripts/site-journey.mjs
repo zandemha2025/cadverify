@@ -40,7 +40,7 @@ try {
   const downloadEvent = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Download record' }).click();
   const download = await downloadEvent;
-  assert.equal(download.suggestedFilename(), 'cadverify-sample.json');
+  assert.equal(download.suggestedFilename(), 'scalecad-sample.json');
   await page.screenshot({ path: output + 'sample-desktop.png', fullPage: true });
   assert.deepEqual(apiRequests, [], 'Public sample requires no backend');
   await page.getByRole('link', { name: 'Continue with your own part' }).click();

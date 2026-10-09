@@ -195,7 +195,7 @@ def service_provider_config() -> dict[str, Any]:
             {
                 "type": "oauthbearertoken",
                 "name": "Bearer API key",
-                "description": "Use an org-admin ProofShape API key as the SCIM bearer token.",
+                "description": "Use an org-admin ScaleCad API key as the SCIM bearer token.",
                 "primary": True,
             }
         ],
@@ -424,7 +424,7 @@ def serialize_group(
     return {
         "schemas": [CORE_GROUP_SCHEMA],
         "id": group_id,
-        "displayName": f"ProofShape {role}",
+        "displayName": f"ScaleCad {role}",
         "members": [
             {
                 "value": str(user_id),

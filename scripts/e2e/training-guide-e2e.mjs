@@ -514,7 +514,7 @@ async function main() {
   }
 
   const email = uniqueEmail();
-  const password = "ProofShape123";
+  const password = "ScaleCad123";
   const rfqTitle = `Training guide RFQ ${runId}`;
   const rfqSupplier = "Training guide supplier";
   const rfqNote = "Pinned cube decision for semantic RFQ package validation.";

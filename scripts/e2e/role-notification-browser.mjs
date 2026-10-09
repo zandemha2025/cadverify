@@ -517,7 +517,7 @@ class RoleNotificationBrowserRunner {
     this.resources = { costs: {}, drafts: { A: {}, B: {} }, notifications: {} };
     this.shotIndex = 0;
     this.diagnostics = new Diagnostics(config.appUrl, () => this.activePathId);
-    this.password = `ProofShape-Role-${randomBytes(9).toString("hex")}-7!`;
+    this.password = `ScaleCad-Role-${randomBytes(9).toString("hex")}-7!`;
     this.tag = `${Date.now().toString(36)}-${process.pid}-${randomBytes(4).toString("hex")}`;
   }
 

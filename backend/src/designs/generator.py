@@ -116,7 +116,7 @@ def _child_generate(plan_data: dict[str, Any], step_path: str, stl_path: str, re
         gmsh.initialize(["proofshape-design-generator", "-nopopup"], interruptible=False)
         try:
             gmsh.option.setNumber("General.Terminal", 0)
-            gmsh.model.add("proofshape_design")
+            gmsh.model.add("scalecad_design")
             solids = _build_shape(gmsh, plan)
             gmsh.model.occ.synchronize()
             if not solids:

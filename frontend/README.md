@@ -34,3 +34,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Lint dependency compatibility
+
+Next's ESLint plugin uses `globSync(pattern, { onlyDirectories: true })` for root-directory discovery. Its scoped `fast-glob` override uses [tinyglobby](https://github.com/SuperchupuDev/tinyglobby), which supports that interface and avoids the unpatched [braces stack-exhaustion advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm). The toolchain unit test exercises directory globs and the actual internal-link rule so this replacement cannot silently disable route checks. Keep `npm audit` and the unit tests passing when updating this override.

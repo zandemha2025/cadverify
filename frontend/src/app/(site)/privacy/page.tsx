@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Privacy — CadVerify", "description": "CadVerify processes uploaded files to create verification records: geometry measurements, manufacturability findings, cost drivers, provenance, and user decisions. The product is built to keep the audit record, not to republish your CAD.", "alternates": {"canonical": "/privacy"}};
+export const metadata: Metadata = {"title": "Privacy — ScaleCad", "description": "ScaleCad processes uploaded files to create verification records: geometry measurements, manufacturability findings, cost drivers, provenance, and user decisions. The product is built to keep the audit record, not to republish your CAD.", "alternates": {"canonical": "/privacy"}};
 
 export default function Page() {
-  return <DocumentPage label="Privacy" title="How your files and account data are handled." intro="CadVerify processes uploaded files to create verification records: geometry measurements, manufacturability findings, cost drivers, provenance, and user decisions. The product is built to keep the audit record, not to republish your CAD." sections={[
+  return <DocumentPage label="Privacy" title="How your files and account data are handled." intro="ScaleCad processes uploaded files to create verification records: geometry measurements, manufacturability findings, cost drivers, provenance, and user decisions. The product is built to keep the audit record, not to republish your CAD." sections={[
   {
     "id": "collect",
     "title": "What we collect",

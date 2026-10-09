@@ -39,7 +39,7 @@ const artifacts = {
   md: path.join(outputRoot, `qa-report-role-tenant-boundary-${runId}.md`),
 };
 const cubePath = path.join(backendRoot, "tests", "assets", "cube.step");
-const password = `ProofShape-Roles-${randomBytes(8).toString("hex")}-9`;
+const password = `ScaleCad-Roles-${randomBytes(8).toString("hex")}-9`;
 const tag = `${Date.now().toString(36)}-${process.pid}-${randomBytes(3).toString("hex")}`;
 
 const PATH_META = {

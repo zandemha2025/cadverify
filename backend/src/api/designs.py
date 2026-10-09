@@ -1,4 +1,4 @@
-"""ProofShape Design Studio API.
+"""ScaleCad Design Studio API.
 
 Every read and write is scoped to the caller's organization. Generation is
 asynchronous and returns immutable STEP/STL revision artifacts; clients poll the
@@ -58,7 +58,7 @@ class InterpretDesignBody(BaseModel):
 
 
 def _filename(name: str, suffix: str) -> str:
-    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("._") or "proofshape-design"
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("._") or "scalecad-design"
     return f"{stem[:80]}{suffix}"
 
 

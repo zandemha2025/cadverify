@@ -3,7 +3,7 @@ import { VerifyApp } from "@/components/verify/verify-app";
 import { getSessionOrganizationAccess } from "@/lib/dal";
 
 export const metadata: Metadata = {
-  title: "Verify — ProofShape",
+  title: "Verify — ScaleCad",
   description:
     "Can this part be made, on your machines, in materials that survive its world — and what will it really take?",
 };

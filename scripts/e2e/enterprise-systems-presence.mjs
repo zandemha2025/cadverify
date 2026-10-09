@@ -390,7 +390,7 @@ function createSimulator(cadBuffer, cadHash) {
       return json(res, 200, {
         surface: "desktop-cad-workstation",
         host: "synthetic-cad-engineering-vdi",
-        installedTools: ["browser STEP viewer", "hash verifier", "CadVerify web app"],
+        installedTools: ["browser STEP viewer", "hash verifier", "ScaleCad web app"],
         mountedFiles: [
           {
             name: "cube.step",
@@ -416,8 +416,8 @@ function createSimulator(cadBuffer, cadHash) {
 
     if (url.pathname === "/mobile/ios/manifest.json") {
       return json(res, 200, {
-        name: "CadVerify Mobile Field Review",
-        short_name: "CadVerify",
+        name: "ScaleCad Mobile Field Review",
+        short_name: "ScaleCad",
         display: "standalone",
         platform: "ios-pwa-surface",
         start_url: "/verify",

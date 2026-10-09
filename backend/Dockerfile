@@ -48,7 +48,7 @@ RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.s
     && apt-get update \
     && apt-get install -y --no-install-recommends build-essential dpkg-dev fakeroot \
     && apt-get build-dep -y --no-install-recommends \
-       expat=2.8.5-2 libx11=2:1.8.12-1 libxrender=1:0.9.12-1
+       expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1
 ADD --checksum=sha256:dd9ecf20d2ca40c7ec3d8cdf3727c729f9fae3b6cc010e9436f152ae7cd6da31 \
     https://gitlab.freedesktop.org/xorg/lib/libx11/-/merge_requests/309.patch /patches/x11.patch
 ADD --checksum=sha256:565e816e88ca223cebc6f833cfcfa63d20aaa22c8293d878bdd059910c4a66fc \

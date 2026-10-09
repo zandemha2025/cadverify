@@ -42,8 +42,8 @@ const artifacts = {
 };
 const cubePath = path.join(backendRoot, "tests", "assets", "cube.step");
 const requiredIds = ["AUTH-07", "AUTH-08", "ROLE-01"];
-const password = `ProofShape-AuthRole-${randomBytes(8).toString("hex")}-9`;
-const initializedPassword = `ProofShape-Initialized-${randomBytes(8).toString("hex")}-7`;
+const password = `ScaleCad-AuthRole-${randomBytes(8).toString("hex")}-9`;
+const initializedPassword = `ScaleCad-Initialized-${randomBytes(8).toString("hex")}-7`;
 const tag = `${Date.now().toString(36)}-${process.pid}-${randomBytes(3).toString("hex")}`;
 
 const pathMeta = {
@@ -649,7 +649,7 @@ asyncio.run(main())
 
     await stale.page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
     await stale.page.waitForURL((url) => url.pathname === "/login", { timeout: 15_000 });
-    await stale.page.getByText("Log in to CadVerify", { exact: true }).waitFor();
+    await stale.page.getByText("Log in to ScaleCad", { exact: true }).waitFor();
 
     const durable = await this.db("snapshot");
     this.equal(id, "password configured durably", durable.magic.password_configured, true);
@@ -681,7 +681,7 @@ asyncio.run(main())
         url: primary.page.url(),
         visible: [
           "Password configured. Older dashboard sessions were revoked.",
-          "The stale browser returned to Log in to CadVerify on its next protected navigation.",
+          "The stale browser returned to Log in to ScaleCad on its next protected navigation.",
         ],
         persisted: durable.magic,
         numeric: {

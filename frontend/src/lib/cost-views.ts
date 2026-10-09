@@ -323,7 +323,7 @@ export function buildAnswerSummary(
   const lines: string[] = [];
   if (report?.decision) {
     const dec = report.decision;
-    lines.push(`ProofShape — ${report.filename}`);
+    lines.push(`ScaleCad — ${report.filename}`);
     const pick = selection.recommendation;
     lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
     if (pick && selection.estimate?.quantity !== selection.quantity) {

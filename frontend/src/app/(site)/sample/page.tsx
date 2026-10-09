@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { SiteShell } from "@/components/site/site-shell";
 import { SampleExplorer } from "@/components/site/sample-explorer";
-export const metadata: Metadata = { title: "Explore a sample part — CadVerify", description: "Inspect the process recommendation, design findings and source-backed estimate for a recorded CadVerify sample.", alternates: { canonical: "/sample" } };
+export const metadata: Metadata = { title: "Explore a sample part — ScaleCad", description: "Inspect the process recommendation, design findings and source-backed estimate for a recorded ScaleCad sample.", alternates: { canonical: "/sample" } };
 export default async function SamplePage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { view } = await searchParams;
   const initialView = view === "design" || view === "resources" ? view : "process";

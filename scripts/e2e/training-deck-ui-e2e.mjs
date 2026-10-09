@@ -173,7 +173,7 @@ async function startActionSink() {
     requests.push(`${url.pathname}${url.search}`);
     const label = `${url.pathname}${url.search}`.replace(/[<>&]/g, "");
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-    response.end(`<!doctype html><html><head><title>ProofShape action</title></head><body><main><h1>${label}</h1></main></body></html>`);
+    response.end(`<!doctype html><html><head><title>ScaleCad action</title></head><body><main><h1>${label}</h1></main></body></html>`);
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -983,7 +983,7 @@ async function main() {
   };
   await writeFile(reportJson, `${JSON.stringify(report, null, 2)}\n`);
   const lines = [
-    `# ProofShape interactive training deck QA — ${runId}`,
+    `# ScaleCad interactive training deck QA — ${runId}`,
     "",
     `**Status:** ${report.status}`,
     `**Surface:** ${baseUrl}`,

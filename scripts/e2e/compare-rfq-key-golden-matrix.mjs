@@ -48,7 +48,7 @@ const tag =
   process.pid +
   "-" +
   randomBytes(3).toString("hex");
-const password = "ProofShape-WorkMatrix-" + randomBytes(8).toString("hex") + "-9";
+const password = "ScaleCad-WorkMatrix-" + randomBytes(8).toString("hex") + "-9";
 const rfqTitle = "WORK-08 sourcing package " + tag;
 const rfqSupplier = "QA Supplier " + tag;
 const rfqNote =

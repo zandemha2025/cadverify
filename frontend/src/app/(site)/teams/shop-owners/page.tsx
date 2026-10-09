@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Shop owners — CadVerify", "description": "Start with the equipment, rates and manufacturing questions that determine whether a part belongs on your floor.", "alternates": {"canonical": "/teams/shop-owners"}};
+export const metadata: Metadata = {"title": "Shop owners — ScaleCad", "description": "Start with the equipment, rates and manufacturing questions that determine whether a part belongs on your floor.", "alternates": {"canonical": "/teams/shop-owners"}};
 
 export default function Page() {
   return <DocumentPage label="Shop owners" title="See whether the incoming job fits your shop." intro="Start with the equipment, rates and manufacturing questions that determine whether a part belongs on your floor." sections={[

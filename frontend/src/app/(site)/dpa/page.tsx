@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Data processing — CadVerify", "description": "A data-processing addendum is available for pilots and enterprise deployments. It covers processing purpose, confidentiality, assistance with data-subject requests, deletion/return, and subprocessor notice.", "alternates": {"canonical": "/dpa"}};
+export const metadata: Metadata = {"title": "Data processing — ScaleCad", "description": "A data-processing addendum is available for pilots and enterprise deployments. It covers processing purpose, confidentiality, assistance with data-subject requests, deletion/return, and subprocessor notice.", "alternates": {"canonical": "/dpa"}};
 
 export default function Page() {
   return <DocumentPage label="Data processing" title="Data terms travel with the pilot." intro="A data-processing addendum is available for pilots and enterprise deployments. It covers processing purpose, confidentiality, assistance with data-subject requests, deletion/return, and subprocessor notice." sections={[

@@ -186,7 +186,7 @@ def test_generated_pdf_text_extracts(tmp_path):
 
 
 def test_cache_key_versions_template():
-    assert PDF_TEMPLATE_VERSION == "v4"
+    assert PDF_TEMPLATE_VERSION == "v5"
 
 
 def test_safe_filename_contract():

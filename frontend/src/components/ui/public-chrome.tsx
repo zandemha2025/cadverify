@@ -56,7 +56,7 @@ export function PublicHeader({
             className="h-4 w-[3px] rounded-[1px] bg-primary transition-transform group-hover:scale-y-110"
           />
           <span className="cv-wordmark text-[17px] text-foreground">
-            ProofShape
+            ScaleCad
           </span>
           <span className="hidden text-xs text-subtle-foreground sm:inline">
             should-cost, made of glass

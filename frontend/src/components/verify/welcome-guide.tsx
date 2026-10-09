@@ -63,7 +63,7 @@ export function WelcomeGuide({
               color: C.ink,
             }}
           >
-            What do you want ProofShape to help you do?
+            What do you want ScaleCad to help you do?
           </DialogTitle>
           <DialogDescription
             id="proofshape-welcome-description"

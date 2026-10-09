@@ -87,7 +87,7 @@ function makeHtml(fixtureHash) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CadVerify Assembly Visual Fidelity Fixture</title>
+  <title>ScaleCad Assembly Visual Fidelity Fixture</title>
   <style>
     :root {
       color-scheme: light;
@@ -165,7 +165,7 @@ function makeHtml(fixtureHash) {
 <body>
   <div id="shell">
     <header>
-      <span>CadVerify QA assembly fixture</span>
+      <span>ScaleCad QA assembly fixture</span>
       <span id="status">exploded preview</span>
     </header>
     <div id="stage" data-testid="assembly-visual-stage">
