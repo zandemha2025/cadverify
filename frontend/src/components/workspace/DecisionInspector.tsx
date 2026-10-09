@@ -32,6 +32,7 @@ import {
   parseDriverRate,
 } from "@/lib/cost-views";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DriverBreakdown,
   ProvenanceLegend,
@@ -99,6 +100,15 @@ export function DecisionInspector({
 }) {
   const [tab, setTab] = React.useState<InspectorTab>(defaultTab);
   React.useEffect(() => setTab(defaultTab), [defaultTab]);
+  const [narrow, setNarrow] = React.useState(false);
+  const toggleRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)");
+    const update = () => setNarrow(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   const rateEditorFor = React.useCallback(
     (d: CostDriver): DriverRateEditor | null => {
@@ -122,10 +132,10 @@ export function DecisionInspector({
   );
 
   // collapsed rail — a thin spine that reopens the Inspector
-  if (!open) {
-    return (
+  const rail = (
       <div className="flex w-9 shrink-0 flex-col items-center border-l border-border bg-background py-3">
         <button
+          ref={toggleRef}
           type="button"
           onClick={onToggle}
           aria-label="Open Inspector"
@@ -141,17 +151,18 @@ export function DecisionInspector({
         </span>
       </div>
     );
-  }
+  if (!open) return rail;
 
   const drivers = estimate ? costDrivers(estimate) : [];
   const counts = tierCounts(drivers);
   const total = drivers.length;
   const governed = total - counts.DEFAULT;
 
-  return (
+  const panel = (
     <aside
       className={cn(
-        "flex w-[var(--inspector-w)] shrink-0 flex-col overflow-hidden border-l border-border bg-background",
+        "flex shrink-0 flex-col overflow-hidden border-l border-border bg-background",
+        narrow ? "h-full w-full" : "w-[var(--inspector-w)]",
         className
       )}
       aria-label="Inspector"
@@ -222,6 +233,26 @@ export function DecisionInspector({
         )}
       </div>
     </aside>
+  );
+  if (!narrow) return panel;
+
+  // A resident 340px panel would leave a phone workspace only 50px wide.
+  // The dialog keeps the workspace intact and supplies focus trapping/Escape.
+  return (
+    <>
+      {rail}
+      <Dialog open={open} onOpenChange={(next) => { if (!next) onToggle(); }}>
+        <DialogContent
+          hideClose
+          aria-describedby={undefined}
+          className="left-auto right-0 top-0 h-dvh w-[min(100vw,24rem)] max-w-full translate-x-0 translate-y-0 gap-0 rounded-none p-0"
+          onCloseAutoFocus={(event) => { event.preventDefault(); toggleRef.current?.focus(); }}
+        >
+          <DialogTitle className="sr-only">Inspector</DialogTitle>
+          {panel}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

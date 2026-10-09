@@ -25,6 +25,8 @@ import {
   driverRateLabel,
   driverRateUnit,
   parseDriverRate,
+  type workspaceSelection,
+  type WorkspaceRoute,
 } from "@/lib/cost-views";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -90,6 +92,8 @@ function Segmented<T extends string | number>({
 
 export function GlassBoxView({
   report,
+  selection,
+  onSelectRoute,
   assumptions,
   overrideCount,
   recosting,
@@ -101,6 +105,8 @@ export function GlassBoxView({
   onRecallScenario,
 }: {
   report: CostReport;
+  selection: ReturnType<typeof workspaceSelection>;
+  onSelectRoute: (route: WorkspaceRoute) => void;
   assumptions: CostAssumption[];
   /** how many ad-hoc USER overrides are currently applied */
   overrideCount: number;
@@ -117,26 +123,26 @@ export function GlassBoxView({
 }) {
   const processes = React.useMemo(() => costedProcesses(report), [report]);
   const quantities = React.useMemo(() => costedQuantities(report), [report]);
-  const defaultProcess = processes.includes(report.decision?.make_now_process ?? "")
-    ? report.decision!.make_now_process : processes[0];
+  const process = selection.estimate?.process ?? processes[0];
+  const qty = selection.quantity ?? quantities[0];
+  const candidate = process ? pickEstimate(report, process, qty ?? undefined,
+    selection.estimate?.material) : null;
+  const estimate = candidate?.quantity === qty ? candidate : null;
 
-  const [process, setProcess] = React.useState(
-    () => defaultProcess
-  );
-  const [qty, setQty] = React.useState(
-    () => quantities[0] ?? report.quantities[0]
-  );
-
-  // keep the selection valid if the report changes underneath us
+  // Opening a continuous Decision quantity snaps to a real costed row. The
+  // parent receives that exact row, so the Inspector/header/scenario agree.
   React.useEffect(() => {
-    if (!processes.includes(process)) {
-      setProcess(defaultProcess);
-    }
-    if (!quantities.includes(qty)) setQty(quantities[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report]);
+    if (candidate && !estimate) onSelectRoute(candidate);
+  }, [candidate, estimate, onSelectRoute]);
 
-  const estimate = pickEstimate(report, process, qty);
+  const selectProcess = (next: string) => {
+    const row = pickEstimate(report, next, qty ?? undefined);
+    if (row) onSelectRoute(row);
+  };
+  const selectQuantity = (next: number) => {
+    const row = pickEstimate(report, process, next, selection.estimate?.material);
+    if (row) onSelectRoute(row);
+  };
 
   /* ---- override wiring (real re-cost) ----------------------------- */
   const onOverrideAssumption = React.useCallback(
@@ -187,14 +193,14 @@ export function GlassBoxView({
           options={processes}
           value={process}
           format={procLabel}
-          onChange={setProcess}
+          onChange={selectProcess}
         />
         <Segmented
           label="Qty"
           options={quantities}
           value={qty}
           format={(q) => q.toLocaleString()}
-          onChange={setQty}
+          onChange={selectQuantity}
         />
         <span className="num ml-auto text-sm text-muted-foreground">
           {procLabel(estimate.process)} ·{" "}
@@ -205,7 +211,7 @@ export function GlassBoxView({
         </span>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4">
         {/* drivers + Σ check */}
         <Card className="space-y-3 p-4">
           <div className="flex items-baseline justify-between">

@@ -102,6 +102,7 @@ export interface PartHeroProps {
   validation: ValidationResult | null;
   selection: ReturnType<typeof workspaceSelection>;
   onPositionChange: (position: number) => void;
+  onSelectRoute: (route: import("@/lib/cost-views").WorkspaceRoute) => void;
   opts: CostOptions;
   sourceUnits: CostOptions["units"];
   setOpt: SetOpt;
@@ -135,6 +136,7 @@ export function PartHero({
   validation,
   selection,
   onPositionChange,
+  onSelectRoute,
   opts,
   sourceUnits,
   setOpt,
@@ -533,6 +535,8 @@ export function PartHero({
             </Card>
             <GlassBoxView
               report={report}
+              selection={selection}
+              onSelectRoute={onSelectRoute}
               assumptions={assumptions}
               overrideCount={overrideKeys.length}
               recosting={costLoading}

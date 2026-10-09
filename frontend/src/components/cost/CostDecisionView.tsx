@@ -101,7 +101,7 @@ export function CostDecisionView({
       {/* ── THE ANSWER (hero, above the fold) ───────────────────────── */}
       <Card className="overflow-hidden">
         <DecisionHeadline
-          title={rec ? `Make by ${procLabel(rec.curve.process)}` : "—"}
+          title={rec ? `${selection.selectedRoute ? "Selected route" : "Make by"} ${procLabel(rec.curve.process)}` : "—"}
           verdict={dfm.verdict}
           sentence={crossoverSummary(dec)}
         />

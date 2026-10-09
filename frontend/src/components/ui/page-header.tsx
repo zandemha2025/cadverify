@@ -18,13 +18,13 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
+        "flex flex-wrap items-start justify-between gap-3",
         className
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-[1_1_16rem]">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold leading-7 text-foreground">
+          <h1 className="min-w-0 break-words text-xl font-semibold leading-7 text-foreground">
             {title}
           </h1>
           {badge}
@@ -34,7 +34,7 @@ export function PageHeader({
         )}
       </div>
       {actions && (
-        <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>
+        <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 max-w-full">{actions}</div>
       )}
     </div>
   );

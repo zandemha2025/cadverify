@@ -55,7 +55,7 @@ function AssumptionItem({
         editing ? "border-prov-user-border bg-prov-user-bg/40" : "border-border bg-card"
       )}
     >
-      <span className="min-w-0 flex-1 truncate text-sm text-foreground" title={assumption.source}>
+      <span className="min-w-0 flex-[1_1_10rem] break-words text-sm text-foreground" title={assumption.source}>
         {assumption.name}
       </span>
 
@@ -132,7 +132,7 @@ export function AssumptionGrid({
   className?: string;
 }) {
   return (
-    <div className={cn("grid gap-2 sm:grid-cols-2", className)}>
+    <div className={cn("grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-2", className)}>
       {assumptions.map((a) => (
         <AssumptionItem
           key={a.name}
