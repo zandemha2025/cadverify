@@ -211,7 +211,7 @@ export function GlassBoxView({
         </span>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4">
         {/* drivers + Σ check */}
         <Card className="space-y-3 p-4">
           <div className="flex items-baseline justify-between">
