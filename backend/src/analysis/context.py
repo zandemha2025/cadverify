@@ -353,6 +353,46 @@ class GeometryContext:
         return None
 
     @cached_property
+    def convex_support_planes(self):
+        """Certify every source triangle against an outward hull support plane.
+
+        Local adjacency alone cannot prove convexity. Matching the source normal
+        only nominates a plane; all three vertices must lie on that global plane.
+        This avoids one nearest-surface search per triangle on dense planar CAD.
+        Coordinates are centered and work is batched to retain the memory bound.
+        """
+        mesh = self.mesh
+        if (self.metadata.get("decimation", {}).get("succeeded")
+                or mesh.metadata.get("coordinate_error", 0.0) != 0
+                or not mesh.is_volume or mesh.body_count != 1
+                or np.any(self.face_areas <= 0)
+                or not np.all(np.linalg.norm(self.normals, axis=1) > .99)):
+            return None
+        tol = wall_thickness_tolerance(mesh, self.scale_eps)
+        projections = mesh.face_adjacency_projections
+        if len(projections) and np.all(np.isfinite(projections) & (projections <= tol)):
+            try:
+                hull = mesh.convex_hull
+                normals = hull.face_normals
+                center = mesh.bounds.mean(axis=0)
+                origins = hull.triangles[:, 0] - center
+                tree = KDTree(normals)
+                batch = _wall_thickness_ray_batch()
+                for start in range(0, len(mesh.faces), batch):
+                    delta, face = tree.query(self.normals[start:start + batch])
+                    if not np.all(np.isfinite(delta) & (delta <= 1e-7)):
+                        break
+                    offsets = mesh.triangles[start:start + batch] - center - origins[face, None, :]
+                    distances = np.einsum("nvi,ni->nv", offsets, normals[face])
+                    if not np.all(np.abs(distances) <= tol):
+                        break
+                else:
+                    return origins, normals
+            except Exception:
+                logger.warning("Convex setup verification failed", exc_info=True)
+        return None
+
+    @cached_property
     def undercut_free_geometry(self) -> bool:
         """Positive geometry evidence with reorientation; not a toolpath/fixture check."""
         mesh = self.mesh
@@ -363,24 +403,8 @@ class GeometryContext:
                 or not np.all(np.linalg.norm(self.normals, axis=1) > .99)):
             return False
         tol = wall_thickness_tolerance(mesh, self.scale_eps)
-        # Local projections only nominate a convex candidate: skinny triangles
-        # can make concave-edge projections arbitrarily small. Certify each
-        # entire triangle against a global supporting plane of its convex hull.
-        projections = mesh.face_adjacency_projections
-        if len(projections) and np.all(np.isfinite(projections) & (projections <= tol)):
-            try:
-                hull = mesh.convex_hull
-                batch = max(1, min(_wall_thickness_ray_batch(), _wall_thickness_ray_budget() // len(hull.faces)))
-                for start in range(0, len(mesh.faces), batch):
-                    surface, _, face = hull.nearest.on_surface(self.centroids[start:start + batch])
-                    offsets = mesh.triangles[start:start + batch] - surface[:, None, :]
-                    distances = np.einsum("nvi,ni->nv", offsets, hull.face_normals[face])
-                    if not np.all(np.abs(distances) <= tol):
-                        break
-                else:
-                    return True
-            except Exception:
-                logger.warning("Convex setup verification failed", exc_info=True)
+        if self.convex_support_planes is not None:
+            return True
         if self.straight_profile_geometry is not None:
             return True
         vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
@@ -454,6 +478,25 @@ class GeometryContext:
             if extra:
                 points = np.vstack([points, extra])
             points = np.unique(np.vstack([points, self.mesh.center_mass]), axis=0)
+            planes = self.convex_support_planes
+            if planes is not None:
+                # A certified convex solid is the intersection of these inward
+                # half-spaces. For an interior point the minimum plane clearance
+                # is exactly its nearest-boundary distance (the largest ball
+                # centered there), without contains/nearest triangle searches.
+                origins, normals = planes
+                offsets = np.einsum("ij,ij->i", origins, normals)
+                points = points - self.mesh.bounds.mean(axis=0)
+                plane_batch = max(1, min(_wall_thickness_ray_batch(),
+                    _wall_thickness_ray_budget() // len(normals)))
+                best = 0.0
+                for start in range(0, len(points), plane_batch):
+                    clearance = offsets[None, :] - np.einsum(
+                        "pi,fi->pf", points[start:start + plane_batch], normals)
+                    inside = np.all(clearance > tol, axis=1)
+                    if np.any(inside):
+                        best = max(best, float(clearance[inside].min(axis=1).max()) * 2)
+                return best if np.isfinite(best) and best > tol else None
             # Distance to any actual triangle bounds nearest-surface distance
             # from above. Try the most promising samples first, then skip only
             # those that cannot improve the measured maximum.
