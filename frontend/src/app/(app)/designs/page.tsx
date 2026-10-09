@@ -809,7 +809,7 @@ export default function DesignsPage() {
                     {viewedRevision?.number !== selected.current_revision
                       ? ` · current is ${selected.current_revision}`
                       : " · current"}
-                    {` · ${viewedRevision?.generation_engine ?? "waiting for engine"}`}
+                    {` · ${viewedRevision?.generation_engine.replace(/proofshape|cadverify/gi, "ScaleCad") ?? "waiting for engine"}`}
                   </CardDescription>
                 </div>
                 {canMutate && (
