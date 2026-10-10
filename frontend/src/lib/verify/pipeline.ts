@@ -15,6 +15,7 @@
  * imports, which the type-stripping runner erases), so it runs under the repo's
  * `node --test`. Unit-tested in pipeline.test.ts.
  */
+import { formatVolumeCm3 } from "../geometry-display.ts";
 import type { VerifyResult } from "./run";
 import type { CostGeometry, CostReport, GeometryInfo } from "@/lib/api";
 import type { MakeabilityLattice, Tone, VerificationBlock } from "./verification";
@@ -288,9 +289,7 @@ export function pipelineModelFrom(
   if (geom) {
     const [x, y, z] = geom.bbox_mm;
     const source = costGeom ? "" : " · from DFM analysis";
-    const measuredDetail = `bbox ${fx(x)} × ${fx(y)} × ${fx(z)} mm · ${fx(
-      geom.volume_cm3
-    )} cm³ · watertight ${geom.watertight}${source}`;
+    const measuredDetail = `bbox ${fx(x)} × ${fx(y)} × ${fx(z)} mm · ${formatVolumeCm3(geom.volume_cm3, geom.watertight)} · watertight ${geom.watertight}${source}`;
     if (result.costGeometryInvalid) {
       stages.push(
         stage("measured", "blocked", `${measuredDetail} — ${result.costGeometryInvalid.message}`, {

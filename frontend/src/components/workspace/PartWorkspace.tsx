@@ -1,5 +1,6 @@
 "use client";
 
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import { partCheckHeaders } from "@/lib/verify/check-id";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
@@ -605,11 +606,11 @@ export default function PartWorkspace({
   const facts = useMemo<PartFact[]>(() => {
     const out: PartFact[] = [];
     if (geoForFacts) {
-      out.push({ label: "vol", value: `${geoForFacts.volume_cm3.toFixed(1)} cm³` });
+      out.push({ label: "vol", value: formatVolumeCm3(geoForFacts.volume_cm3, geoForFacts.watertight, 1) });
       out.push({ label: "bbox", value: `${geoForFacts.bbox_mm.map((v) => Math.round(v)).join("×")} mm` });
       out.push({ label: "faces", value: geoForFacts.face_count.toLocaleString() });
     } else if (vgeoForFacts) {
-      out.push({ label: "vol", value: `${(vgeoForFacts.volume_mm3 / 1000).toFixed(1)} cm³` });
+      out.push({ label: "vol", value: formatVolumeCm3(vgeoForFacts.volume_mm3 / 1000, vgeoForFacts.is_watertight, 1) });
       out.push({ label: "bbox", value: `${vgeoForFacts.bounding_box_mm.map((v) => Math.round(v)).join("×")} mm` });
       out.push({ label: "faces", value: vgeoForFacts.faces.toLocaleString() });
     }
@@ -861,9 +862,9 @@ export default function PartWorkspace({
                       label="Volume"
                       value={
                         costGeo
-                          ? `${costGeo.volume_cm3.toFixed(1)} cm³`
+                          ? formatVolumeCm3(costGeo.volume_cm3, costGeo.watertight, 1)
                           : geo
-                            ? `${(geo.volume_mm3 / 1000).toFixed(1)} cm³`
+                            ? formatVolumeCm3(geo.volume_mm3 / 1000, geo.is_watertight, 1)
                             : "—"
                       }
                     />

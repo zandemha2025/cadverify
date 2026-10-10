@@ -17,10 +17,12 @@
  */
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { Canvas, useLoader } from "@react-three/fiber";
-import { Bounds, OrbitControls, Center, ContactShadows, Environment, Lightformer } from "@react-three/drei";
+import { Bounds, OrbitControls, Center, ContactShadows, Environment, Lightformer, Html, Line } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { Issue } from "@/lib/api";
+import { geometryIssueTitle } from "@/lib/verify/geometry-failure";
 
 const TARGET = 2;
 
@@ -32,10 +34,14 @@ export type StageRenderKind = "stl" | "glb";
  *  render it with the shared studio material — the SAME look for STL and the GLB
  *  shell so the two paths are visually identical (x-ray, verdict tint, shading). */
 function PartMesh({
+  issue,
+  sourceTransform,
   geometry,
   xray,
   hostile,
 }: {
+  issue: Issue | null;
+  sourceTransform?: THREE.Matrix4;
   geometry: THREE.BufferGeometry;
   xray: boolean;
   hostile: boolean;
@@ -50,7 +56,8 @@ function PartMesh({
 
   return (
     <Center>
-      <mesh geometry={geometry} scale={scale}>
+      <group scale={scale}>
+      <mesh geometry={geometry}>
         <meshStandardMaterial
           color={hostile ? "#d8c6b6" : "#c6ccd4"}
           metalness={xray ? 0.1 : 0.85}
@@ -62,19 +69,47 @@ function PartMesh({
           flatShading={false}
         />
       </mesh>
+      {issue && <IssueOverlay issue={issue} sourceTransform={sourceTransform} />}
+      </group>
     </Center>
   );
 }
 
-function StlPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: boolean }) {
+/** Coordinate overlays cannot drift when the display mesh is decimated. */
+function IssueOverlay({ issue, sourceTransform }: { issue: Issue; sourceTransform?: THREE.Matrix4 }) {
+  const points = useMemo(() => {
+    return (issue.edge_segments ?? []).flat().map((point) => {
+      const p = new THREE.Vector3(...point);
+      return sourceTransform ? p.applyMatrix4(sourceTransform) : p;
+    });
+  }, [issue, sourceTransform]);
+  const edge = issue.edge_segments?.[0];
+  const anchor = edge
+    ? new THREE.Vector3(...edge[0]).add(new THREE.Vector3(...edge[1])).multiplyScalar(0.5)
+    : issue.region_center ? new THREE.Vector3(...issue.region_center) : null;
+  if (anchor && sourceTransform) anchor.applyMatrix4(sourceTransform);
+  return <>
+    {!!points.length && <Line points={points} segments color="#dc2626" lineWidth={2} renderOrder={10}
+      transparent depthTest={false} depthWrite={false} toneMapped={false} />}
+    {anchor && <Html position={anchor.toArray()} zIndexRange={[6, 0]}>
+      <span aria-hidden="true" style={{ position: "absolute", width: 10, height: 10, left: -5, top: -5, borderRadius: "50%", background: "#dc2626", border: "2px solid #fff" }} />
+      <span aria-hidden="true" style={{ position: "absolute", width: 2, height: 20, left: 0, top: -20, background: "#dc2626" }} />
+      <div data-testid="geometry-issue-marker" style={{ marginTop: -18, transform: "translate(-50%, -100%)", border: "1px solid #dc2626", borderRadius: 6, background: "#fff", color: "#991b1b", padding: "5px 8px", fontSize: 11, fontWeight: 600, width: 150, pointerEvents: "none", boxShadow: "0 2px 8px #0002" }}>
+        {geometryIssueTitle(issue)}
+        <div style={{ fontWeight: 400, fontSize: 10 }}>One detected location · rotate to inspect</div>
+      </div>
+    </Html>}
+  </>;
+}
+
+function StlPart({ url, xray, hostile, issue }: { url: string; xray: boolean; hostile: boolean; issue: Issue | null }) {
   const raw = useLoader(STLLoader, url);
   const geometry = useMemo(() => {
     const g = raw.clone();
     g.computeVertexNormals();
-    g.center();
     return g;
   }, [raw]);
-  return <PartMesh geometry={geometry} xray={xray} hostile={hostile} />;
+  return <PartMesh geometry={geometry} xray={xray} hostile={hostile} issue={issue} />;
 }
 
 /** The REAL tessellated shell for a STEP/IGES part, streamed from our backend as
@@ -82,9 +117,10 @@ function StlPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: 
  *  We extract the first mesh's geometry, bake its node transform (trimesh's GLB
  *  export carries a Y-up conversion on the node) so orientation is faithful, then
  *  render it through the same PartMesh as STL. */
-function GlbPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: boolean }) {
+function GlbPart({ url, xray, hostile, issue }: { url: string; xray: boolean; hostile: boolean; issue: Issue | null }) {
   const gltf = useLoader(GLTFLoader, url);
-  const geometry = useMemo(() => {
+  const { geometry, sourceTransform } = useMemo(() => {
+    const sourceTransform = new THREE.Matrix4();
     let found: THREE.BufferGeometry | null = null;
     gltf.scene.updateMatrixWorld(true);
     gltf.scene.traverse((obj) => {
@@ -92,17 +128,17 @@ function GlbPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: 
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh && mesh.geometry) {
         const g = (mesh.geometry as THREE.BufferGeometry).clone();
+        sourceTransform.copy(mesh.matrixWorld);
         g.applyMatrix4(mesh.matrixWorld);
         g.computeVertexNormals();
-        g.center();
         found = g;
       }
     });
-    return found;
+    return { geometry: found, sourceTransform };
   }, [gltf]);
 
   if (!geometry) return null;
-  return <PartMesh geometry={geometry} xray={xray} hostile={hostile} />;
+  return <PartMesh geometry={geometry} xray={xray} hostile={hostile} issue={issue} sourceTransform={sourceTransform} />;
 }
 
 /** The part-in-context render: the WHOLE assembly, every part in its baked world
@@ -241,6 +277,7 @@ function AutoOrbit({ on }: { on: boolean }) {
 }
 
 export default function StageCanvas({
+  issue,
   renderUrl,
   renderKind,
   assemblyUrl,
@@ -250,6 +287,7 @@ export default function StageCanvas({
   hostile,
   autoOrbit,
 }: {
+  issue: Issue | null;
   /** object URL for the geometry to render (STL blob or the backend GLB shell),
    *  or null → the honest bbox envelope fallback. */
   renderUrl: string | null;
@@ -295,9 +333,9 @@ export default function StageCanvas({
               hostile={hostile}
             />
           ) : renderUrl && renderKind === "stl" ? (
-            <StlPart url={renderUrl} xray={xray} hostile={hostile} />
+            <StlPart url={renderUrl} xray={xray} hostile={hostile} issue={issue} />
           ) : renderUrl && renderKind === "glb" ? (
-            <GlbPart url={renderUrl} xray={xray} hostile={hostile} />
+            <GlbPart url={renderUrl} xray={xray} hostile={hostile} issue={issue} />
           ) : (
             <BoxEnvelope bbox={bbox} xray={xray} />
           )}

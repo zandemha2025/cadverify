@@ -164,6 +164,8 @@ test("broken geometry: measured is the failed gate; everything past it is not co
   assert.equal(m.stages[1].state, "blocked");
   assert.equal(m.stages[1].blocking, true);
   assert.match(m.stages[1].detail, /repair required/);
+  assert.match(m.stages[1].detail, /Volume unavailable/);
+  assert.doesNotMatch(m.stages[1].detail, /4\.63 cm³|0\.00 cm³/);
   for (const s of m.stages.slice(2)) {
     assert.equal(s.state, "pending");
     assert.match(s.detail, /not computed past the failed gate/);

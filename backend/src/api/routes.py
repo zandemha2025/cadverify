@@ -1061,7 +1061,7 @@ def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tu
 async def validate_preview_mesh(
     request: Request,
     file: UploadFile = File(...),
-    purpose: str = Query("preview", pattern="^(preview|analysis)$"),
+    purpose: str = Query("preview", pattern="^(preview|analysis|repair)$"),
     units: str = Query("mm", pattern="^(mm|inch)$"),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
@@ -1081,6 +1081,12 @@ async def validate_preview_mesh(
     from src.costing.units import scale_mesh_to_mm
 
     mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
+    if purpose == "repair":
+        # Full source tessellation, never the decimated display mesh. Repair
+        # runs on the customer's device; this step only converts STEP/IGES.
+        import asyncio
+        data = await asyncio.to_thread(mesh.export, file_type="stl")
+        return Response(content=bytes(data), media_type="model/stl", headers={"Cache-Control": "no-store"})
     try:
         glb, original_faces, preview_faces, decimated, face_hash = _build_preview_glb(
             mesh, file.filename or "upload", for_analysis=purpose == "analysis"
@@ -2283,6 +2289,30 @@ async def validate_cost_demo(
         tolerance_class=tolerance_class,
         units=units,
     )
+
+
+@router.post("/validate/repair/verify", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("10/hour;50/day")
+async def verify_local_repair(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
+    _admission: None = Depends(admit_analysis),
+):
+    """Independently verify client-repaired bytes; charge only a geometry pass."""
+    data = await _read_capped(file)
+    result = await analysis_service.run_analysis(data, file.filename or "repaired.stl", None, None, user, session)
+    assert isinstance(result, dict)
+    geometry = result.get("geometry", {})
+    volume = geometry.get("volume_mm3", 0)
+    verified = (geometry.get("is_watertight") is True and np.isfinite(volume) and volume > 0
+                and not any(issue.get("severity") == "error" for issue in result.get("universal_issues", [])))
+    request.state.repair_verified = bool(verified)
+    return {"verified": bool(verified), "analysis": result, "sha256": hashlib.sha256(data).hexdigest()}
 
 
 @router.post("/validate/repair", dependencies=[Depends(require_kill_switch_open)])

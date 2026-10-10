@@ -6,7 +6,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === "sonner") return next("data:text/javascript,export const toast={error(){}}", context);
   if (specifier === "@sentry/nextjs") return next("data:text/javascript,export function captureException(){};export function captureMessage(){}", context);
   if (specifier === "@/lib/api-recovery") return next(new URL("./api-recovery.ts", import.meta.url).href, context);
-  if (["./api-base", "./reconstruction-id"].includes(specifier)) return next(new URL(`${specifier}.ts`, import.meta.url).href, context);
+  if (["./api-base", "./reconstruction-id", "./mesh-repair-client", "./api", "./verify/check-id"].includes(specifier)) return next(new URL(`${specifier}.ts`, import.meta.url).href, context);
   return next(specifier, context);
 } });
 const api = await import("./api.ts");

@@ -1,3 +1,4 @@
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Calculator } from "lucide-react";
@@ -207,7 +208,7 @@ export default async function SharedCostDecisionPage({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Faces" value={(geo.face_count ?? 0).toLocaleString()} />
             {geo.volume_cm3 != null && (
-              <StatCard label="Volume" value={`${geo.volume_cm3.toFixed(1)} cm3`} />
+              <StatCard label="Volume" value={formatVolumeCm3(geo.volume_cm3, geo.watertight, 1)} />
             )}
             {geo.bbox_mm && (
               <StatCard

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatVolumeCm3 } from "@/lib/geometry-display";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
@@ -364,7 +365,7 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
           </p>
           {geom && (
             <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.7, color: C.measured }}>
-              bbox {geom.bbox_mm.map((n) => n.toFixed(2)).join(" × ")} mm · {geom.volume_cm3.toFixed(2)} cm³ ·
+              bbox {geom.bbox_mm.map((n) => n.toFixed(2)).join(" × ")} mm · {formatVolumeCm3(geom.volume_cm3, geom.watertight)} ·
               watertight {geom.watertight ? "✓" : "✗"} · ● MEASURED
             </p>
           )}
