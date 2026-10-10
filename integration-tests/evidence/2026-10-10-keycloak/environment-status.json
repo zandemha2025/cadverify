@@ -1,0 +1,95 @@
+{
+  "captured_at": "2026-10-10T19:48:23.578127+00:00",
+  "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "repository_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "environment": "isolated local nonproduction",
+  "compose_project": "sc-integration-local",
+  "ports": {
+    "api": 18800,
+    "frontend": 18300,
+    "keycloak": 18080,
+    "postgres": 18832,
+    "redis": 18879
+  },
+  "processes": {
+    "api": {
+      "pid": 82329,
+      "identity": "uvicorn main:app --host 127.0.0.1 --port 18800",
+      "started_at": "2026-10-10T19:40:47.813894+00:00",
+      "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+      "process_start_fingerprint": "Sat Oct 10 15:40:47 2026",
+      "running_and_owned": true
+    },
+    "worker": {
+      "pid": 82332,
+      "identity": "arq src.jobs.worker.WorkerSettings",
+      "started_at": "2026-10-10T19:40:47.828803+00:00",
+      "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+      "process_start_fingerprint": "Sat Oct 10 15:40:47 2026",
+      "running_and_owned": true
+    },
+    "frontend": {
+      "pid": 82335,
+      "identity": "next/dist/bin/next dev --hostname 127.0.0.1 --port 18300",
+      "started_at": "2026-10-10T19:40:47.845717+00:00",
+      "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+      "process_start_fingerprint": "Sat Oct 10 15:40:47 2026",
+      "running_and_owned": true
+    }
+  },
+  "checks": {
+    "api_health": {
+      "ok": true,
+      "url": "http://127.0.0.1:18800/health",
+      "response": {
+        "status": "ok",
+        "version": "dev",
+        "build_id": "c52267285f622237250306b81ae24db1da1759c9",
+        "postgres": true,
+        "redis": true,
+        "async": {
+          "redis": true,
+          "worker": "ok",
+          "expected": true,
+          "worker_strict": true
+        },
+        "reconstruction": {
+          "available": false,
+          "backend": "none",
+          "egress": false
+        }
+      }
+    },
+    "oidc_status": {
+      "ok": true,
+      "url": "http://127.0.0.1:18800/auth/oidc/status",
+      "response": {
+        "enabled": true
+      }
+    },
+    "keycloak_discovery": {
+      "ok": true,
+      "url": "http://localhost:18080/realms/scalecad-integration/.well-known/openid-configuration",
+      "response": {
+        "issuer": "http://localhost:18080/realms/scalecad-integration",
+        "authorization_endpoint": "http://localhost:18080/realms/scalecad-integration/protocol/openid-connect/auth",
+        "token_endpoint": "http://localhost:18080/realms/scalecad-integration/protocol/openid-connect/token",
+        "jwks_uri": "http://localhost:18080/realms/scalecad-integration/protocol/openid-connect/certs",
+        "userinfo_endpoint": "http://localhost:18080/realms/scalecad-integration/protocol/openid-connect/userinfo",
+        "code_challenge_methods_supported": [
+          "plain",
+          "S256"
+        ]
+      }
+    }
+  },
+  "real_external_runtime": "official Keycloak 26.8.0, independently running container",
+  "production_configuration_loaded": false,
+  "boundaries": [
+    "local HTTP only",
+    "Next development server",
+    "not vendor-specific certification",
+    "no SAP/Windchill/Okta/Entra/Ping tenant connected",
+    "no outbound email provider configured"
+  ]
+}

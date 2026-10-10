@@ -1,0 +1,15 @@
+Browser tab: 989204249, Title: "ScaleCad — Know what you can make", URL: "http://localhost:18300/settings/security".
+1 AXWebArea ScaleCad — Know what you can make, URL: localhost:18300/settings/security
+	2 container
+		3 container Notifications alt+T
+		4 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+			5 image
+		6 menu Account, ID: radix-_R_2bmitmlbH1_
+			7 text integration.qa@scalecad.invalid
+			8 text Viewer
+			9 Settings · Security
+			10 Settings · Developer
+			11 Settings · Organization
+			12 Sign out
+
+The focused UI element is 6 menu Account, ID: radix-_R_2bmitmlbH1_

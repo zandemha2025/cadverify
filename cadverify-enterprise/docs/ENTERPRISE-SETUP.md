@@ -48,12 +48,19 @@ It is intended for enterprise IT teams deploying CadVerify on-premise.
 
 ### Identity Provider
 
-A SAML 2.0-compatible Identity Provider is required for SSO. Tested providers:
+A SAML 2.0-compatible Identity Provider is required for SSO. This guide includes
+configuration instructions for:
 - Okta
 - Azure AD (Entra ID)
 - PingFederate
 
-Any SAML 2.0-compliant IdP should work.
+These instructions are not evidence of a successful connection to any of these
+providers. Automated SAML/OIDC and SCIM protocol tests use mocks or simulated
+provider calls; they do not establish Okta, Entra ID or PingFederate compatibility.
+Validate authentication, identity and role reconciliation, failure handling and
+recovery against an authorized nonproduction tenant before enabling customer SSO.
+Keep each provider's acceptance evidence separate. A successful test with another
+SAML/OIDC provider does not certify these providers.
 
 ---
 
