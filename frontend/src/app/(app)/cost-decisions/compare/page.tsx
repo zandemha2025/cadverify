@@ -185,13 +185,13 @@ export default function CompareCostDecisionsPage() {
           ) : (
             <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1 space-y-1">
-                <label className="cv-eyebrow">Decision A</label>
+                <label htmlFor="compare-decision-a" className="cv-eyebrow">Decision A</label>
                 <Select value={idA} disabled={comparing} onValueChange={(id) => {
                   setIdA(id);
                   setComparison(null);
                   setCompareError(null);
                 }}>
-                  <SelectTrigger>
+                  <SelectTrigger id="compare-decision-a">
                     <SelectValue placeholder="Select a decision" />
                   </SelectTrigger>
                   <SelectContent>
@@ -204,13 +204,13 @@ export default function CompareCostDecisionsPage() {
                 </Select>
               </div>
               <div className="min-w-0 flex-1 space-y-1">
-                <label className="cv-eyebrow">Decision B</label>
+                <label htmlFor="compare-decision-b" className="cv-eyebrow">Decision B</label>
                 <Select value={idB} disabled={comparing} onValueChange={(id) => {
                   setIdB(id);
                   setComparison(null);
                   setCompareError(null);
                 }}>
-                  <SelectTrigger>
+                  <SelectTrigger id="compare-decision-b">
                     <SelectValue placeholder="Select a decision" />
                   </SelectTrigger>
                   <SelectContent>
