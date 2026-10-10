@@ -24,7 +24,8 @@
     .ci-honesty { font-weight: 700; color: #7a5c00; }
     .crossover { background: #eef4fb; border-left: 3px solid #2f5597; padding: 5px 8px; margin: 5px 0; }
     .disclaimer { margin-top: 6px; padding: 7px 9px; background: #fff3cd; border: 1px solid #ffe08a; border-radius: 4px; font-size: 9.5px; }
-    .footer { margin-top: 16px; padding-top: 5px; border-top: 1px solid #ccc; color: #777; font-size: 8.5px; }
+    /* Keep provenance in the reserved page margin, never on a page of its own. */
+    .footer { position: fixed; bottom: -9mm; left: 0; right: 0; padding-top: 5px; border-top: 1px solid #ccc; color: #777; font-size: 8.5px; }
     .flag { color: #843c0c; font-weight: 600; }
     .muted { color: #777; }
     .pick { background: #eaf5ea; }
