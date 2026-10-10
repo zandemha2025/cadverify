@@ -1,0 +1,13 @@
+{
+  "actual_client_id": "abd36a05-1261-466a-96d9-9e35a0a43874",
+  "actual_realm_id": "6c136661-39c2-459f-b4ef-1191c425cba1",
+  "authorization_reference": "User request in this chat, 2026-10-10: establish dedicated integration-testing environment and run real integration tests",
+  "base_url": "http://localhost:18080/realms/scalecad-integration",
+  "configuration_evidence": "keycloak-provider-receipts.json",
+  "environment_class": "self_hosted_oss_test",
+  "environment_id": "sc-integration-local-keycloak-2026-10-10",
+  "operator_reviewed": true,
+  "provider_id": "keycloak",
+  "provider_runtime_evidence": "isolation-verification.json",
+  "reviewed_scope": "Loopback-only actual official Keycloak runtime and synthetic identity. No external customer or named vendor tenant."
+}

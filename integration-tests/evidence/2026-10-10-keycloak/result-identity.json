@@ -1,0 +1,5 @@
+{
+  "email": "integration.qa@scalecad.invalid",
+  "issuer": "http://localhost:18080/realms/scalecad-integration",
+  "subject": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6"
+}

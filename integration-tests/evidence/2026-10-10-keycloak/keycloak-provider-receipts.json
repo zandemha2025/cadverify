@@ -1,0 +1,116 @@
+{
+  "captured_at": "2026-10-10T19:48:00.538081+00:00",
+  "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "repository_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "issuer": "http://localhost:18080/realms/scalecad-integration",
+  "provider": "official Keycloak 26.8.0 self-hosted local test runtime",
+  "user": {
+    "id": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+    "username": "scalecad-integration-qa",
+    "email": "integration.qa@scalecad.invalid",
+    "emailVerified": true,
+    "enabled": true,
+    "firstName": "Synthetic",
+    "lastName": "Integration QA"
+  },
+  "groups": [
+    {
+      "id": "91682df7-c42d-48d0-b636-e29a9b63586c",
+      "name": "integration-testers",
+      "path": "/integration-testers"
+    }
+  ],
+  "events": [
+    {
+      "id": "1fa4509c-2738-4ff7-8249-96f8fb0a6b12",
+      "time": 1791661522626,
+      "type": "CODE_TO_TOKEN",
+      "realmId": "6c136661-39c2-459f-b4ef-1191c425cba1",
+      "clientId": "scalecad-integration",
+      "userId": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "ipAddress": "172.21.0.1",
+      "error": null
+    },
+    {
+      "id": "1a705c70-6691-49db-81cb-63d41050e07f",
+      "time": 1791661522569,
+      "type": "LOGIN",
+      "realmId": "6c136661-39c2-459f-b4ef-1191c425cba1",
+      "clientId": "scalecad-integration",
+      "userId": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "ipAddress": "172.21.0.1",
+      "error": null
+    },
+    {
+      "id": "9cba74b5-0a94-461f-bdff-9834c939d812",
+      "time": 1791661464276,
+      "type": "CODE_TO_TOKEN",
+      "realmId": "6c136661-39c2-459f-b4ef-1191c425cba1",
+      "clientId": "scalecad-integration",
+      "userId": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "ipAddress": "172.21.0.1",
+      "error": null
+    },
+    {
+      "id": "57659977-76dd-4a48-90a5-38361a8f032d",
+      "time": 1791661464214,
+      "type": "LOGIN",
+      "realmId": "6c136661-39c2-459f-b4ef-1191c425cba1",
+      "clientId": "scalecad-integration",
+      "userId": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "ipAddress": "172.21.0.1",
+      "error": null
+    },
+    {
+      "id": "1bfe46b2-e506-400b-a096-be70b103f822",
+      "time": 1791661458531,
+      "type": "LOGIN_ERROR",
+      "realmId": "6c136661-39c2-459f-b4ef-1191c425cba1",
+      "clientId": "scalecad-integration",
+      "userId": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "ipAddress": "172.21.0.1",
+      "error": "invalid_user_credentials"
+    }
+  ],
+  "realm_configuration": {
+    "id": "6c136661-39c2-459f-b4ef-1191c425cba1",
+    "realm": "scalecad-integration",
+    "enabled": true,
+    "sslRequired": "none",
+    "eventsEnabled": true,
+    "eventsExpiration": 604800,
+    "enabledEventTypes": [
+      "CODE_TO_TOKEN_ERROR",
+      "LOGOUT",
+      "LOGIN_ERROR",
+      "LOGOUT_ERROR",
+      "CODE_TO_TOKEN",
+      "LOGIN"
+    ],
+    "registrationAllowed": false,
+    "resetPasswordAllowed": false,
+    "loginWithEmailAllowed": true,
+    "duplicateEmailsAllowed": false
+  },
+  "client_configuration": {
+    "id": "abd36a05-1261-466a-96d9-9e35a0a43874",
+    "clientId": "scalecad-integration",
+    "enabled": true,
+    "protocol": "openid-connect",
+    "publicClient": false,
+    "standardFlowEnabled": true,
+    "directAccessGrantsEnabled": false,
+    "serviceAccountsEnabled": false,
+    "implicitFlowEnabled": false,
+    "redirectUris": [
+      "http://localhost:18800/auth/oidc/callback"
+    ],
+    "webOrigins": [
+      "http://localhost:18300"
+    ],
+    "pkce_attributes": {
+      "pkce.code.challenge.method": "S256"
+    }
+  },
+  "application_authentication_evidence": "Only actual LOGIN/CODE_TO_TOKEN events for scalecad-integration count; this admin read-back is not user authentication"
+}
