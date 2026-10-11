@@ -17,6 +17,9 @@ async function visit(route) {
   assert.equal(response.status(), 200, route);
   await page.evaluate(() => document.fonts.ready);
   assert.equal(await page.locator('h1').count(), 1, `One heading on ${route}`);
+  for (const href of await page.locator('a[href^="mailto:"]').evaluateAll(links => links.map(link => link.getAttribute('href')))) {
+    assert.match(href, /^mailto:[^?]+@scalecad\.ai(?:\?|$)/, `Branded contact on ${route}`);
+  }
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `No overflow on ${route}`);
   for (const anchor of await page.locator('a[href^="#"]').evaluateAll(links => links.map(link => link.getAttribute('href')))) {
     assert(await page.locator(`[id="${anchor.slice(1)}"]`).count(), `Missing anchor ${route}${anchor}`);
@@ -24,6 +27,8 @@ async function visit(route) {
 }
 try {
   await visit('/');
+  assert.equal(await page.locator('h1').innerText(), 'Know which of your parts you should be making.');
+  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'Pricing', exact: true }).waitFor();
   await page.screenshot({ path: output + 'home-desktop.png', fullPage: true });
   await page.screenshot({ path: output + 'hero-desktop.png' });
   const apiRequests = [];
@@ -58,12 +63,25 @@ try {
   assert(await page.getByRole('button', { name: 'Create account', exact: true }).isEnabled());
   await page.screenshot({ path: output + 'signup-desktop.png', fullPage: true });
   checks.push('Homepage → sample → all evidence views → source disclosure → download → login → signup; destination retained; retryable outage state');
-  const routes = ['/method','/platform','/teams','/teams/in-house-manufacturing','/teams/design-engineering','/teams/cost-engineering','/teams/sourcing','/teams/shop-owners','/security','/developers','/api-reference','/company','/pilot-report','/status','/privacy','/terms','/dpa'];
+  const routes = ['/method','/platform','/teams','/teams/in-house-manufacturing','/teams/design-engineering','/teams/cost-engineering','/teams/sourcing','/teams/shop-owners','/security','/developers','/api-reference','/company','/pilot-report','/status','/privacy','/terms','/dpa','/pricing','/about','/contact','/pilot'];
   for(const route of routes) await visit(route);
   checks.push(`${routes.length} supporting routes: HTTP 200, one h1, valid anchors, no horizontal overflow`);
+  await visit('/about');
+  assert.equal(new URL(page.url()).pathname, '/company', 'About resolves to the canonical company page');
+  await page.getByRole('heading', { name: 'Nazeem Ahmed · Founder' }).waitFor();
+  await visit('/pricing');
+  await page.getByRole('heading', { name: '$7,500 pilot · 4–6 weeks · up to 500 parts' }).waitFor();
+  await page.getByRole('heading', { name: 'Free qualification · 25 parts' }).waitFor();
+  assert.match(await page.locator('main').innerText(), /Credit the \$7,500 pilot fee toward your first-year annual agreement/);
+  await page.screenshot({ path: output + 'pricing-desktop.png', fullPage: true });
+  await visit('/contact');
+  assert.equal(await page.locator('main a[href="mailto:nazeem@scalecad.ai"]').count(), 2);
+  await visit('/security');
+  await page.getByRole('link', { name: 'Email the security contact', exact: true }).waitFor();
+  checks.push('Audit regressions: pricing and qualification scope, about redirect, founder attribution, branded contacts');
   await visit('/teams/design-engineering');
   await page.getByRole('link', { name: 'Talk through your workflow' }).click();
-  await page.waitForURL(url => url.pathname === '/company');
+  await page.waitForURL(url => url.pathname === '/pilot');
   assert.equal(await page.getByLabel('What are you working on?').inputValue(), 'Design engineering');
   assert.equal(await page.locator('form').evaluate(form => form.checkValidity()), false);
   await page.getByLabel('Work email', { exact: true }).fill('website-check@example.test');
@@ -99,6 +117,10 @@ try {
   await page.getByText('$14.14', { exact: true }).waitFor();
   await page.screenshot({ path: output + 'sample-mobile.png', fullPage: true });
   for(const route of routes) await visit(route);
+  await visit('/pricing');
+  await page.screenshot({ path: output + 'pricing-mobile.png', fullPage: true });
+  await visit('/pilot');
+  await page.screenshot({ path: output + 'pilot-mobile.png', fullPage: true });
   await visit('/company');
   await page.screenshot({ path: output + 'company-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 320, height: 740 });

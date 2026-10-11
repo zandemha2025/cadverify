@@ -32,9 +32,9 @@ const archivo = Archivo({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+    process.env.NEXT_PUBLIC_SITE_URL || "https://scalecad.ai"
   ),
-  title: "ScaleCad — Know what you can make",
+  title: "ScaleCad — Know which of your parts you should be making",
   description:
     "Check manufacturing options, review design findings, and trace the resources behind your next decision. Explore a recorded sample without an account.",
   alternates: { canonical: "/" },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "ScaleCad — Know what you can make",
+    title: "ScaleCad — Know which of your parts you should be making",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ScaleCad — Know what you can make",
+    title: "ScaleCad — Know which of your parts you should be making",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],

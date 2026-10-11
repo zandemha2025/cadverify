@@ -1,11 +1,12 @@
 
 export const SITE_TAGLINE = "Make the decision. Keep the evidence.";
-export const PILOT_HREF = "/company#pilot";
+export const PILOT_HREF = "/pilot";
 export const UPLOAD_HREF = "/login?next=/verify";
 export const SITE_NAV = [
   { href: "/teams", label: "Workflows" },
   { href: "/method", label: "How it works" },
   { href: "/platform", label: "Platform" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/security", label: "Security" },
 ];
 
