@@ -14,7 +14,7 @@ export default function Page() {
     "id": "support",
     "title": "Use your deployment’s support channel.",
     "body": "Pilot customers receive deployment-specific incident communication. For an access problem or support question, contact the team with the deployment and the issue you are seeing.",
-    "href": "mailto:nazeemahmed2023@gmail.com",
+    "href": "mailto:hello@scalecad.ai",
     "link": "Contact support"
   }
 ]} cta={false} />;

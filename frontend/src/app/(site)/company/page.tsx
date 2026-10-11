@@ -21,14 +21,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
       "Declare equipment, materials and rates.",
       "Review results against held-out actuals, including misses.",
       "Record limitations and the next validation work."
-    ]
+    ],
+    "href": "/pilot",
+    "link": "Review pilot scope and pricing"
   },
   {
     "id": "human",
-    "title": "Talk to the people behind the product.",
-    "body": "Discuss the workflow, data requirements and deployment constraints with our team. Reach us at nazeemahmed2023@gmail.com.",
-    "href": "mailto:nazeemahmed2023@gmail.com",
-    "link": "Email the team"
+    "title": "Nazeem · Founder",
+    "body": "I’m Nazeem, the founder of ScaleCad. Talk with me about your manufacturing decisions, the data behind them and whether a pilot fits your plant. Reach me at hello@scalecad.ai.",
+    "href": "mailto:hello@scalecad.ai",
+    "link": "Email Nazeem"
   }
 ]}><section id="pilot"><h2>Start with your question.</h2><PilotForm initialWorkflow={workflow} /></section></DocumentPage>;
 }

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://scalecad.ai";
 
 const PUBLIC_ROUTES = [
   "",
@@ -16,6 +16,9 @@ const PUBLIC_ROUTES = [
   "/security",
   "/developers",
   "/company",
+  "/pricing",
+  "/contact",
+  "/pilot",
   "/privacy",
   "/terms",
   "/dpa",

@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "ScaleCad - Know what you can make";
+export const alt = "ScaleCad - Know which of your parts you should be making";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -21,8 +21,8 @@ export default function OpenGraphImage() {
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", width: "100%" }}>
           <div style={{ fontSize: 34, letterSpacing: "-0.02em", fontWeight: 700 }}>ScaleCad</div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 88, lineHeight: 0.95, letterSpacing: "-0.035em", fontWeight: 300, maxWidth: 780 }}>
-              Know what you can make.
+            <div style={{ fontSize: 70, lineHeight: 0.95, letterSpacing: "-0.035em", fontWeight: 300, maxWidth: 1000 }}>
+              Know which of your parts you should be making.
             </div>
             <div style={{ marginTop: 30, fontSize: 28, color: "#53635a", maxWidth: 820 }}>
               Your part. Your next decision. The evidence to move forward.

@@ -18,8 +18,8 @@ export default function Page() {
   {
     "id": "retention",
     "title": "Retention and deletion",
-    "body": "Pilot and customer retention terms are governed by the applicable agreement. For privacy requests, contact nazeemahmed2023@gmail.com.",
-    "href": "mailto:nazeemahmed2023@gmail.com",
+    "body": "Pilot and customer retention terms are governed by the applicable agreement. For privacy requests, contact security@scalecad.ai.",
+    "href": "mailto:security@scalecad.ai",
     "link": "Contact the privacy team"
   }
 ]} cta={false} />;

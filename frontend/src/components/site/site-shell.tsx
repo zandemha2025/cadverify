@@ -28,10 +28,10 @@ export function SiteNav({ activeHref }: SiteNavProps) {
 
 export function SiteFooter() {
   return <footer className="cv-site-footer"><div className="cv-footer-grid">
-    <div><Link href="/" className="cv-brand"><Box size={25} strokeWidth={1.7} aria-hidden="true" />ScaleCad.</Link><p>{SITE_TAGLINE}</p><a className="cv-text-link" href="mailto:nazeemahmed2023@gmail.com">Talk to our team <ArrowUpRight size={15} aria-hidden="true" /></a></div>
-    <nav aria-label="Explore"><h2>Explore</h2><Link href="/sample">Sample part</Link><Link href="/teams">Your workflow</Link><Link href="/method">How it works</Link><Link href="/platform">The platform</Link></nav>
+    <div><Link href="/" className="cv-brand"><Box size={25} strokeWidth={1.7} aria-hidden="true" />ScaleCad.</Link><p>{SITE_TAGLINE}</p><a className="cv-text-link" href="mailto:hello@scalecad.ai">Talk to our team <ArrowUpRight size={15} aria-hidden="true" /></a></div>
+    <nav aria-label="Explore"><h2>Explore</h2><Link href="/sample">Sample part</Link><Link href="/teams">Your workflow</Link><Link href="/method">How it works</Link><Link href="/platform">The platform</Link><Link href="/pricing">Pricing</Link></nav>
     <nav aria-label="Resources"><h2>Resources</h2><Link href="/developers">Developers</Link><Link href="/api-reference">API reference</Link><Link href="/security">Security</Link><Link href="/pilot-report">Pilot report</Link></nav>
-    <nav aria-label="Company"><h2>ScaleCad</h2><Link href="/company">Company & contact</Link><Link href="/company#pilot">Plan a pilot</Link><Link href="/status">Service status</Link><Link href="/login">Log in</Link></nav>
+    <nav aria-label="Company"><h2>ScaleCad</h2><Link href="/company">Company</Link><Link href="/contact">Contact</Link><Link href="/pilot">Plan a pilot</Link><Link href="/status">Service status</Link><Link href="/login">Log in</Link></nav>
   </div><div className="cv-footer-bottom"><span>© {new Date().getFullYear()} ScaleCad</span><nav aria-label="Legal"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/dpa">Data processing</Link></nav><span>Built for decisions that matter.</span></div></footer>;
 }
 

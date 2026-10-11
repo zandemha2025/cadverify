@@ -119,7 +119,7 @@ export function PilotForm({ initialWorkflow }: { initialWorkflow?: string }) {
         </button>
       </>}
       <p className="cv-form-note">Please don’t attach sensitive CAD before agreeing on data handling. See our <a href="/privacy">privacy notice</a>.</p>
-      <a className="cv-text-link" href="mailto:nazeemahmed2023@gmail.com">Email nazeemahmed2023@gmail.com</a>
+      <a className="cv-text-link" href="mailto:pilots@scalecad.ai">Email pilots@scalecad.ai</a>
     </form>
   );
 }

@@ -13,8 +13,8 @@ export default function Page() {
   {
     "id": "review",
     "title": "Security review",
-    "body": "Security questionnaires, architecture notes, and deployment boundaries are handled during pilot intake. Contact nazeemahmed2023@gmail.com.",
-    "href": "mailto:nazeemahmed2023@gmail.com",
+    "body": "Security questionnaires, architecture notes, and deployment boundaries are handled during pilot intake. Contact security@scalecad.ai.",
+    "href": "mailto:security@scalecad.ai",
     "link": "Start a security review"
   }
 ]} cta={false} />;
