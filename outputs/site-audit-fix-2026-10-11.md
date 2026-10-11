@@ -71,19 +71,24 @@ scope, schedule, credit and acceptance criteria in the signed order form.
 - Added pricing, contact and pilot pages; `/about` permanently redirects to
   `/company`. Existing `/company#pilot` intake remains available.
 - Added pricing/navigation and sitemap links, the requested homepage headline,
-  and company attribution as **Nazeem · Founder**.
-- Replaced frontend personal-email links with `hello@scalecad.ai`,
-  `pilots@scalecad.ai` and `security@scalecad.ai`; security copy says contact,
-  rather than claiming a security team.
+  and company attribution as **Nazeem Ahmed · Founder**. The full name was
+  verified against the existing ScaleCAD Google Workspace account.
+- Replaced frontend personal-email links with the existing
+  `nazeem@scalecad.ai` mailbox. Security copy says contact, rather than claiming
+  a security team. Proposed role aliases were removed because their existence
+  could not be verified.
 - Reused the connected pilot form and its existing validation/security handling.
   No live form was submitted and no email was sent.
-- The domain publishes a Google MX record. This does **not** verify that any of
-  the three proposed mailboxes exists, is monitored, or receives mail.
+- The domain publishes a Google MX record. The existing signed-in
+  `nazeem@scalecad.ai` mailbox has received external email. No test message was
+  sent. Google Admin requests reauthentication before alias configuration is
+  available; no new mailboxes, aliases or access grants were created.
 
-Before release: confirm the public name/title, verify receiving/monitoring for
-the three inboxes, accept the proposed commercial scope and perform an
-authenticated production capability-gap/ranking check. No deployment, push,
-DNS change, mailbox provisioning or production data mutation was performed.
+The three commercial answers were delivered before publication. Authenticated
+production capability-gap/ranking execution still needs a signed-in ScaleCad
+session. No unconditional production-functionality or one-day SLA claim was
+added. No DNS change, mailbox provisioning or production data mutation was
+performed. The role aliases are optional future work, not a release dependency.
 
 ## Verification
 
@@ -99,4 +104,5 @@ DNS change, mailbox provisioning or production data mutation was performed.
 - Desktop/mobile homepage screenshots reviewed; no layout overflow found.
 - Final sitemap, robots directives and HTTP 308 about redirect: passed.
 
-Browser artifacts: `/tmp/scalecad-site-audit-2026-10-11/`.
+Browser artifacts: `/tmp/scalecad-site-audit-2026-10-11/`; final identity/contact
+check: `/tmp/scalecad-site-audit-2026-10-11-final/`.

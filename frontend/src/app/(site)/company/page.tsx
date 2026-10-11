@@ -27,9 +27,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   },
   {
     "id": "human",
-    "title": "Nazeem · Founder",
-    "body": "I’m Nazeem, the founder of ScaleCad. Talk with me about your manufacturing decisions, the data behind them and whether a pilot fits your plant. Reach me at hello@scalecad.ai.",
-    "href": "mailto:hello@scalecad.ai",
+    "title": "Nazeem Ahmed · Founder",
+    "body": "I’m Nazeem Ahmed, the founder of ScaleCad. Talk with me about your manufacturing decisions, the data behind them and whether a pilot fits your plant. Reach me at nazeem@scalecad.ai.",
+    "href": "mailto:nazeem@scalecad.ai",
     "link": "Email Nazeem"
   }
 ]}><section id="pilot"><h2>Start with your question.</h2><PilotForm initialWorkflow={workflow} /></section></DocumentPage>;

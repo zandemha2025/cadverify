@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return <DocumentPage label="Contact" title="Talk through the decision." intro="Tell us about your plant, your parts and the question you need to answer." sections={[
-    { id: "general", title: "Product questions and support", body: "For product, access and deployment questions, email hello@scalecad.ai.", href: "mailto:hello@scalecad.ai", link: "Email ScaleCad" },
-    { id: "pilots", title: "Pilot evaluations", body: "For qualification and pilot scoping, email pilots@scalecad.ai or use the pilot intake form. Agree on data handling before sharing sensitive CAD.", href: "/pilot", link: "Plan a pilot" },
-    { id: "security", title: "Security and privacy", body: "For vulnerabilities, security reviews, privacy requests and data-boundary questions, email security@scalecad.ai.", href: "mailto:security@scalecad.ai", link: "Contact the security point of contact" },
+    { id: "general", title: "Product questions and support", body: "For product, access and deployment questions, email nazeem@scalecad.ai.", href: "mailto:nazeem@scalecad.ai", link: "Email ScaleCad" },
+    { id: "pilots", title: "Pilot evaluations", body: "For qualification and pilot scoping, email nazeem@scalecad.ai or use the pilot intake form. Agree on data handling before sharing sensitive CAD.", href: "/pilot", link: "Plan a pilot" },
+    { id: "security", title: "Security and privacy", body: "For vulnerabilities, security reviews, privacy requests and data-boundary questions, email nazeem@scalecad.ai.", href: "mailto:nazeem@scalecad.ai", link: "Contact the security point of contact" },
   ]} cta={false} />;
 }

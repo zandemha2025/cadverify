@@ -30,8 +30,8 @@ export default function Page() {
   {
     "id": "contact",
     "title": "Bring your security team into the conversation.",
-    "body": "For security questionnaires, architecture notes, data-boundary questions or a security concern, contact security@scalecad.ai.",
-    "href": "mailto:security@scalecad.ai",
+    "body": "For security questionnaires, architecture notes, data-boundary questions or a security concern, contact nazeem@scalecad.ai.",
+    "href": "mailto:nazeem@scalecad.ai",
     "link": "Email the security contact"
   }
 ]} />;

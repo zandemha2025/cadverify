@@ -68,15 +68,14 @@ try {
   checks.push(`${routes.length} supporting routes: HTTP 200, one h1, valid anchors, no horizontal overflow`);
   await visit('/about');
   assert.equal(new URL(page.url()).pathname, '/company', 'About resolves to the canonical company page');
-  await page.getByRole('heading', { name: 'Nazeem · Founder' }).waitFor();
+  await page.getByRole('heading', { name: 'Nazeem Ahmed · Founder' }).waitFor();
   await visit('/pricing');
   await page.getByRole('heading', { name: '$7,500 pilot · 4–6 weeks · up to 500 parts' }).waitFor();
   await page.getByRole('heading', { name: 'Free qualification · 25 parts' }).waitFor();
   assert.match(await page.locator('main').innerText(), /Credit the \$7,500 pilot fee toward your first-year annual agreement/);
   await page.screenshot({ path: output + 'pricing-desktop.png', fullPage: true });
   await visit('/contact');
-  await page.locator('main a[href="mailto:hello@scalecad.ai"]').waitFor();
-  await page.locator('main a[href="mailto:security@scalecad.ai"]').waitFor();
+  assert.equal(await page.locator('main a[href="mailto:nazeem@scalecad.ai"]').count(), 2);
   await visit('/security');
   await page.getByRole('link', { name: 'Email the security contact', exact: true }).waitFor();
   checks.push('Audit regressions: pricing and qualification scope, about redirect, founder attribution, branded contacts');
