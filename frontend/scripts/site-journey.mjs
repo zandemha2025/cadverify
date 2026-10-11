@@ -10,11 +10,12 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 1000
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
-page.on('console', message => { if(message.type() === 'error' && !message.text().includes('503') && !message.text().includes('mailto:')) errors.push(message.text()); });
+page.on('console', message => { if(message.type() === 'error' && !message.text().includes('503') && !message.text().includes('mailto:') && !(message.text().includes('400') && message.location().url.includes('/api/auth/password/reset/complete'))) errors.push(message.text()); });
 const checks = [];
 async function visit(route) {
   const response = await page.goto(base + route, { waitUntil: 'networkidle' });
-  assert.equal(response.status(), 200, route);
+  if (response) assert.equal(response.status(), 200, route);
+  else assert(route.includes('#') && new URL(page.url()).pathname === new URL(base + route).pathname, `Expected a document response or fragment navigation: ${route}`);
   await page.evaluate(() => document.fonts.ready);
   assert.equal(await page.locator('h1').count(), 1, `One heading on ${route}`);
   for (const href of await page.locator('a[href^="mailto:"]').evaluateAll(links => links.map(link => link.getAttribute('href')))) {
@@ -79,6 +80,69 @@ try {
   await visit('/security');
   await page.getByRole('link', { name: 'Email the security contact', exact: true }).waitFor();
   checks.push('Audit regressions: pricing and qualification scope, about redirect, founder attribution, branded contacts');
+  // UI fixtures never contact Turnstile or send real reset emails.
+  await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', route => route.fulfill({ contentType: 'application/javascript', body: `window.turnstile={render(el,opts){queueMicrotask(()=>opts.callback('ui-test-token'));return 'test-widget'},reset(){},remove(){}};` }));
+  await visit('/login');
+  await page.getByRole('link', { name: 'Forgot your password?', exact: true }).click();
+  await page.waitForURL('**/forgot-password');
+  await page.getByRole('heading', { name: 'Forgot your password?', exact: true }).waitFor();
+  await visit('/forgot-password');
+  if (await page.getByLabel('Account email', { exact: true }).count()) {
+    let resetRequest;
+    await page.route('**/api/auth/password/reset/start', async route => {
+      resetRequest = route.request().postDataJSON();
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: { message: 'Email recovery is temporarily unavailable.' } }) });
+    });
+    await page.getByLabel('Account email', { exact: true }).fill('recovery-ui@example.test');
+    await page.getByRole('button', { name: 'Send reset link', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: 'Email recovery is temporarily unavailable.' }).waitFor();
+    assert.equal(resetRequest.turnstileToken, 'ui-test-token');
+    await page.unroute('**/api/auth/password/reset/start');
+    await page.route('**/api/auth/password/reset/start', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+    await page.reload();
+    await page.getByLabel('Account email', { exact: true }).fill('recovery-ui@example.test');
+    await page.getByRole('button', { name: 'Send reset link', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'If an active password account matches' }).waitFor();
+    await page.unroute('**/api/auth/password/reset/start');
+    checks.push('Password recovery request: CAPTCHA token, retryable outage, generic acknowledgement (email/CAPTCHA fixture only)');
+  } else {
+    await page.getByRole('alert').filter({ hasText: 'Email password recovery is unavailable here.' }).waitFor();
+    checks.push('Password recovery request: honest unavailable state without configured Turnstile site key');
+  }
+  await page.screenshot({ path: output + 'forgot-password-desktop.png', fullPage: true });
+  await page.unroute('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit');
+  await visit('/reset-password');
+  await page.getByRole('alert').filter({ hasText: 'missing or malformed' }).waitFor();
+  const resetToken = 'A'.repeat(43);
+  let resetPayload;
+  let resetPosts = 0;
+  await page.route('**/api/auth/password/reset/complete', async route => {
+    resetPosts++;
+    resetPayload = route.request().postDataJSON();
+    await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ detail: { message: 'This reset link is invalid or expired. Request a new link.' } }) });
+  });
+  await visit(`/reset-password#token=${resetToken}`);
+  await page.getByLabel('New password', { exact: true }).waitFor();
+  assert.equal(new URL(page.url()).hash, '', 'Reset proof is scrubbed from the visible URL');
+  assert.equal(resetPosts, 0, 'Visiting the email link never consumes it');
+  await page.getByLabel('New password', { exact: true }).fill('UITestPassword456');
+  await page.getByLabel('Confirm new password', { exact: true }).fill('DifferentPassword456');
+  await page.getByRole('button', { name: 'Reset password', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'do not match' }).waitFor();
+  assert.equal(resetPosts, 0, 'Mismatched confirmation stays local');
+  await page.getByLabel('Confirm new password', { exact: true }).fill('UITestPassword456');
+  await page.getByRole('button', { name: 'Reset password', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'invalid or expired' }).waitFor();
+  assert.deepEqual(resetPayload, { token: resetToken, password: 'UITestPassword456' });
+  await page.unroute('**/api/auth/password/reset/complete');
+  await page.route('**/api/auth/password/reset/complete', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+  await page.getByRole('button', { name: 'Reset password', exact: true }).click();
+  await page.getByRole('heading', { name: 'Password reset', exact: true }).waitFor();
+  assert.equal(await page.locator('input[type="password"]').count(), 0);
+  await page.locator('main').getByRole('link', { name: 'Log in', exact: true }).waitFor();
+  await page.screenshot({ path: output + 'password-reset-success-desktop.png', fullPage: true });
+  await page.unroute('**/api/auth/password/reset/complete');
+  checks.push('Password reset: missing/expired proof, URL scrubbing, no consumption on GET, password confirmation, success and login (API fixture only)');
   await visit('/teams/design-engineering');
   await page.getByRole('link', { name: 'Talk through your workflow' }).click();
   await page.waitForURL(url => url.pathname === '/pilot');
@@ -106,6 +170,9 @@ try {
   await page.unroute('**/api/pilot/request');
   checks.push('Pilot form validates fields, retries outages and shows its receipt (requests stubbed; real persistence covered in human journey)');
   await page.setViewportSize({ width: 390, height: 844 });
+  await visit(`/reset-password#token=${resetToken}`);
+  await page.getByLabel('New password', { exact: true }).waitFor();
+  await page.screenshot({ path: output + 'reset-password-mobile.png', fullPage: true });
   await visit('/');
   await page.screenshot({ path: output + 'home-mobile.png', fullPage: true });
   await page.screenshot({ path: output + 'hero-mobile.png' });

@@ -59,6 +59,7 @@ from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
 from src.auth.oidc import oidc_provider_enabled, router as oidc_router
 from src.auth.password import router as password_router
+from src.auth.password_reset import router as password_reset_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
@@ -549,6 +550,7 @@ app.include_router(scim_router)
 # is the primary login method that works end-to-end locally with zero external
 # infra, independent of AUTH_MODE.
 app.include_router(password_router, prefix="/auth")
+app.include_router(password_reset_router, prefix="/auth")
 
 # AUTH_MODE gating: password | saml | google | hybrid (default: google)
 AUTH_MODE = os.getenv("AUTH_MODE", "google")

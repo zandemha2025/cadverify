@@ -135,11 +135,16 @@ async def structured_http_error_handler(
 async def structured_validation_error_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
+    # Pydantic errors include raw inputs, including passwords and bearer tokens.
+    errors = [
+        {"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
+        for error in exc.errors()
+    ]
     return JSONResponse(
         status_code=422,
         content=_build_error(
             422,
             "VALIDATION_ERROR",
-            str(exc.errors()),
+            str(errors),
         ),
     )
