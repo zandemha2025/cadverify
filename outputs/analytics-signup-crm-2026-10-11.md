@@ -3,6 +3,7 @@
 ## Implemented
 
 - PostHog JS SDK after explicit analytics consent; Do Not Track respected. Opaque account IDs, sanitized route templates, campaign source, daily/weekly activity, API status/latency, web vitals and redacted errors. No email, phone, password, CAD contents, filenames or report payloads in analytics events.
+- Supplied RB2B loader for account E63P0HY01JOW, with the request CSP nonce. Loads only after consent on public scalecad.ai URLs without queries/fragments. Consent is requested again because it now includes business visitor identification. Full document navigation clears the vendor runtime before app/auth links, and withdrawing consent reloads the document. The privacy page names RB2B and links its opt-out. Preview/local hosts do not load this vendor.
 - Public-page replay only, masking all text, inputs and element attributes. Forms, canvas and private app/auth pages blocked. Network body/header and console recording disabled. Heatmaps restricted to `/`, `/pricing` and `/pilot`.
 - Signup requires full name and email/password; phone is optional. Existing API clients remain compatible. Profile metadata validates timezone and bounded attribution; invalid optional attribution is discarded.
 - Migration 0050 adds nullable profile fields and durable CRM synchronization markers without replacing any account or changing any password.
@@ -36,3 +37,5 @@ The approved ScaleCad CRM internal connection was created in the correct workspa
 - Evidence: `/tmp/scalecad-analytics-2026-10-11/`.
 
 Production analytics ingestion, a real signup-to-Notion row, password email delivery, and authenticated capability-gap/equipment-ranking workflow remain unverified until deployment and missing provider credentials are supplied. No billing conversion, experiments, surveys, paid upgrade or external alert messages were launched.
+
+RB2B setup already lists scalecad.ai and the supplied account key, with status Not verified. Its exact CloudFront script URL currently returns HTTP 403 (including with a scalecad.ai referrer). Loader and URL/consent exclusions have focused tests; production RB2B activation and downstream CSP requirements remain unverified until the vendor serves the script. Existing CSP has not been broadly relaxed to unknown vendor endpoints.

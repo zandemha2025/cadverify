@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Script from "next/script";
 import { usePathname } from "next/navigation";
 import posthog from "posthog-js";
 import { ANALYTICS_CONSENT, analyticsAllowed, track } from "@/lib/analytics";
 import { cleanAnalyticsEvent, publicReplayAllowed, routeLabel } from "@/lib/analytics-privacy";
+import { RB2B_SCRIPT, rb2bAllowed } from "@/lib/rb2b";
 
-export function Analytics({ token }: { token: string }) {
+export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
   const path = usePathname();
   const [choice, setChoice] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
@@ -69,15 +71,44 @@ export function Analytics({ token }: { token: string }) {
     };
   }, [path, choice, ready]);
 
+  const visitorTracking = ready && rb2bAllowed(
+    typeof location === "undefined" ? "" : location.hostname, path,
+    typeof location === "undefined" ? "" : location.search,
+    typeof location === "undefined" ? "" : location.hash,
+    choice === "yes" && analyticsAllowed(),
+  );
+
+  React.useEffect(() => {
+    if (!visitorTracking) return;
+    // RB2B has no documented stop API; fresh documents keep it out of app/auth pages.
+    const navigate = (event: MouseEvent) => {
+      const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(anchor instanceof HTMLAnchorElement) || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const url = new URL(anchor.href);
+      if (url.origin !== location.origin || (url.pathname === location.pathname && url.search === location.search && url.hash)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      location.assign(url.href);
+    };
+    const reload = () => location.reload();
+    document.addEventListener("click", navigate, true);
+    window.addEventListener("popstate", reload);
+    return () => { document.removeEventListener("click", navigate, true); window.removeEventListener("popstate", reload); };
+  }, [visitorTracking]);
+
   function choose(value: string) {
     try { localStorage.setItem(ANALYTICS_CONSENT, value); } catch { return; }
     setChoice(value);
+    if (value !== "yes" && "reb2b" in window) location.reload();
   }
-  if (!token || !ready) return null;
-  return <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-4 left-4 right-4 sm:right-auto z-50 max-w-sm rounded-xl border border-black/15 bg-white p-4 text-sm text-black shadow-lg">
+  if (!ready) return null;
+  return <>
+    {visitorTracking && <Script id="scalecad-rb2b" nonce={nonce} strategy="afterInteractive">{RB2B_SCRIPT}</Script>}
+    <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-4 left-4 right-4 sm:right-auto z-50 max-w-sm rounded-xl border border-black/15 bg-white p-4 text-sm text-black shadow-lg">
     {choice === null ? <>
-      <p>Allow analytics and masked recordings of public pages to help us improve ScaleCad? Passwords and CAD content are excluded. <a href="/privacy" className="underline">Privacy details</a></p>
+      <p>Allow analytics, masked public-page recordings and RB2B business visitor identification for sales follow-up? Passwords and CAD content are excluded. <a href="/privacy" className="underline">Privacy details</a></p>
       <div className="mt-3 flex gap-3"><button type="button" onClick={() => choose("yes")} className="rounded bg-black px-3 py-2 text-white">Allow analytics</button><button type="button" onClick={() => choose("no")} className="rounded border px-3 py-2">Decline</button></div>
     </> : <button type="button" onClick={() => setChoice(null)}>Analytics preferences</button>}
-  </aside>;
+    </aside>
+  </>;
 }

@@ -98,7 +98,7 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         {children}
-        <Analytics token={process.env.POSTHOG_PROJECT_TOKEN || ""} />
+        <Analytics token={process.env.POSTHOG_PROJECT_TOKEN || ""} nonce={nonce} />
         {/* Toasts live bottom-right so they never occlude the top-right control
             cluster (⌘K / Jump / notifications bell) or their dropdowns — a
             recurring finding (W4 + W7). One place, fixed everywhere. */}

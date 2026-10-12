@@ -1,6 +1,7 @@
 import posthog from "posthog-js";
 
-export const ANALYTICS_CONSENT = "scalecad_analytics_consent";
+// Ask again because the choice now also covers RB2B visitor identification.
+export const ANALYTICS_CONSENT = "scalecad_analytics_consent_v2";
 export function analyticsAllowed(): boolean {
   try { return localStorage.getItem(ANALYTICS_CONSENT) === "yes" && navigator.doNotTrack !== "1"; }
   catch { return false; }
