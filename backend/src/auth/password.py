@@ -18,6 +18,7 @@ from __future__ import annotations
 from src.config.public_urls import error_doc_url
 
 import asyncio
+import hmac
 import html
 import logging
 import os
@@ -130,6 +131,21 @@ class SignupIn(ProfileContextIn):
         if value and (not re.fullmatch(r"\+?[0-9 () .-]+", value) or not 7 <= sum(c.isdigit() for c in value) <= 15):
             raise ValueError("Enter a phone number with 7–15 digits.")
         return value
+
+
+class CrmLocationIn(BaseModel):
+    model_config = {"extra": "forbid"}
+    account_id: str = Field(pattern=r"^scalecad-user-[1-9][0-9]{0,17}$")
+    country: str = Field(default="", max_length=100)
+    region: str = Field(default="", max_length=100)
+    city: str = Field(default="", max_length=100)
+
+    @field_validator("country", "region", "city")
+    @classmethod
+    def clean_location(cls, value: str) -> str:
+        if any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("Invalid location.")
+        return value.strip()
 
 
 class LoginIn(BaseModel):
@@ -628,4 +644,33 @@ async def profile_context(
         "OR signup_metadata->>'analytics_consent' IS DISTINCT FROM :consent_text)"
     ), {"uid": user_id, "metadata": json.dumps(profile_metadata(body)), "consent": body.analytics_consent, "consent_text": str(body.analytics_consent).lower()})
     await session.commit()
+    return {"ok": True}
+
+
+@router.post("/crm/location", include_in_schema=False)
+@limiter.limit("600/minute")
+async def crm_location(
+    body: CrmLocationIn,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    import json
+    from sqlalchemy import text
+
+    token = os.getenv("POSTHOG_CRM_WEBHOOK_TOKEN", "").strip()
+    if len(token) < 32:
+        raise _err(503, "crm_location_unavailable", "CRM location sync is unavailable.")
+    if not hmac.compare_digest(request.headers.get("authorization", "").encode(), f"Bearer {token}".encode()):
+        raise _err(401, "unauthorized", "Unauthorized.")
+    metadata = {key: getattr(body, key) for key in ("country", "region", "city") if getattr(body, key)}
+    if metadata:
+        # GeoIP is approximate CRM context, never an authentication or access signal.
+        await session.execute(text(
+            "UPDATE users SET signup_metadata = signup_metadata || CAST(:metadata AS jsonb), "
+            "crm_sync_after = LEAST(crm_sync_after, now()) "
+            "WHERE id = :uid AND is_active AND signup_metadata->>'analytics_consent' = 'true' "
+            "AND NOT (signup_metadata @> CAST(:metadata AS jsonb))"
+        ), {"uid": int(body.account_id.removeprefix("scalecad-user-")), "metadata": json.dumps(metadata)})
+        await session.commit()
     return {"ok": True}

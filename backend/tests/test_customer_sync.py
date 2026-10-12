@@ -32,6 +32,79 @@ def test_crm_payload_allowlists_fields_and_preserves_status_on_update():
     assert "SECRET" not in str(properties) and "HASH" not in str(properties)
 
 
+def test_crm_location_payload_is_bounded_and_excludes_other_account_data():
+    from src.auth.password import CrmLocationIn
+    assert CrmLocationIn(account_id="scalecad-user-42", city=" Boston ").city == "Boston"
+    for body in (
+        {"account_id": "42"},
+        {"account_id": "scalecad-user-42", "city": "x" * 101},
+        {"account_id": "scalecad-user-42", "country": "US\n"},
+        {"account_id": "scalecad-user-42", "ip": "192.0.2.1"},
+    ):
+        with pytest.raises(ValidationError):
+            CrmLocationIn(**body)
+
+
+@pytest.mark.skipif(not os.getenv("DATABASE_URL", "").startswith("postgresql"), reason="requires Postgres")
+@pytest.mark.asyncio
+async def test_crm_location_webhook_auth_consent_and_durable_sync(monkeypatch):
+    import uuid
+    import httpx
+    from fastapi import FastAPI
+    from sqlalchemy import text
+    from src.auth.password import router
+    from src.db.engine import get_session_factory, dispose_engine
+    monkeypatch.setenv("RELEASE", "dev")
+    monkeypatch.setenv("PUBLIC_PASSWORD_SIGNUP_ENABLED", "1")
+    monkeypatch.delenv("POSTHOG_CRM_WEBHOOK_TOKEN", raising=False)
+    token = "test-crm-webhook-" + "x" * 32
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+    uid = None
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            response = await client.post("/auth/signup", json={"email": f"geo-{uuid.uuid4().hex}@example.com", "password": "Password123"})
+            assert response.status_code == 200, response.text
+            uid = response.json()["user"]["id"]
+            body = {"account_id": f"scalecad-user-{uid}", "country": "United States", "region": "Massachusetts", "city": "Boston"}
+            assert (await client.post("/auth/crm/location", json=body)).status_code == 503
+            monkeypatch.setenv("POSTHOG_CRM_WEBHOOK_TOKEN", token)
+            assert (await client.post("/auth/crm/location", json=body)).status_code == 401
+            assert (await client.post("/auth/crm/location", json=body, headers={"authorization": "Bearer wrong"})).status_code == 401
+            headers = {"authorization": f"Bearer {token}"}
+            # A valid webhook cannot enrich an account that has not consented.
+            assert (await client.post("/auth/crm/location", json=body, headers=headers)).status_code == 200
+            async with get_session_factory()() as db:
+                assert (await db.scalar(text("SELECT signup_metadata FROM users WHERE id=:id"), {"id": uid})) == {}
+                await db.execute(text("UPDATE users SET signup_metadata=CAST(:metadata AS jsonb), crm_sync_after='infinity' WHERE id=:id"), {"id": uid, "metadata": '{"analytics_consent":true,"timezone":"America/New_York"}'})
+                await db.commit()
+            assert (await client.post("/auth/crm/location", json=body, headers=headers)).status_code == 200
+            async with get_session_factory()() as db:
+                row = (await db.execute(text("SELECT signup_metadata, crm_sync_after <= now() FROM users WHERE id=:id"), {"id": uid})).first()
+                assert row[0] == {"analytics_consent": True, "timezone": "America/New_York", "country": "United States", "region": "Massachusetts", "city": "Boston"}
+                assert row[1]
+                await db.execute(text("UPDATE users SET crm_sync_after='infinity' WHERE id=:id"), {"id": uid})
+                await db.commit()
+            # Retried delivery is a no-op after the same values were committed.
+            assert (await client.post("/auth/crm/location", json=body, headers=headers)).status_code == 200
+            async with get_session_factory()() as db:
+                assert await db.scalar(text("SELECT crm_sync_after='infinity' FROM users WHERE id=:id"), {"id": uid})
+                await db.execute(text("UPDATE users SET signup_metadata=signup_metadata || jsonb_build_object('analytics_consent', false) WHERE id=:id"), {"id": uid})
+                await db.commit()
+            body["city"] = "Elsewhere"
+            assert (await client.post("/auth/crm/location", json=body, headers=headers)).status_code == 200
+            async with get_session_factory()() as db:
+                row = (await db.execute(text("SELECT signup_metadata->>'city', crm_sync_after='infinity' FROM users WHERE id=:id"), {"id": uid})).first()
+                assert row == ("Boston", True)
+    finally:
+        if uid:
+            async with get_session_factory()() as db:
+                await db.execute(text("DELETE FROM audit_log WHERE user_id=:id"), {"id": uid})
+                await db.execute(text("DELETE FROM users WHERE id=:id"), {"id": uid})
+                await db.commit()
+        await dispose_engine()
+
+
 @pytest.mark.asyncio
 async def test_notion_retry_recovers_created_page_without_duplicates():
     from datetime import datetime, timezone
