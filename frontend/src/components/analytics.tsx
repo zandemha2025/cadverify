@@ -63,7 +63,10 @@ export function Analytics({ token }: { token: string }) {
     if (replay) posthog.startSessionRecording(); else posthog.stopSessionRecording();
     posthog.register({ surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
     track("$pageview", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
-    return () => { posthog.stopSessionRecording(); };
+    return () => {
+      track("$pageleave", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
+      posthog.stopSessionRecording();
+    };
   }, [path, choice, ready]);
 
   function choose(value: string) {

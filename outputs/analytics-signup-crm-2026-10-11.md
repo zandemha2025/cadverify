@@ -11,7 +11,7 @@
 
 ## External configuration completed
 
-PostHog project 654164 has raw IP discard enabled, session replay enabled with total privacy and a global private-page exclusion pattern, console/canvas/network-body capture disabled, and heatmaps enabled for the three public URLs. Existing dashboard 2188568 was updated to ScaleCad and contains 11 charts using implemented events rather than unconnected booking/billing promises. Queries validated; data is empty before the instrumented deployment.
+PostHog project 654164 has raw IP discard enabled, session replay enabled with total privacy and a global private-page exclusion pattern, console/canvas/network-body capture disabled, and heatmaps enabled for the three public URLs. Exception autocapture, all four web vitals and the ScaleCad web analytics domain are enabled. Existing dashboard 2188568 was updated to ScaleCad and contains 11 charts using implemented events rather than unconnected booking/billing promises. Queries validated; data is empty before the instrumented deployment.
 
 The public write-only POSTHOG_PROJECT_TOKEN is saved on Render cadverify-web for the next deployment. No PostHog secret API key or paid-plan change was made.
 
@@ -23,7 +23,7 @@ Automatic sync still needs an internal Notion integration shared with this CRM. 
 ## Validation
 
 - 29 password/profile/CRM tests passed against isolated PostgreSQL, including anonymous rejection, metadata persistence, provider failure/retry, successful sync and credential exclusion.
-- Full frontend test suite passed: 541 tests before the additional heatmap privacy assertion; the four focused analytics privacy tests also pass.
+- Full frontend test suite passed: 543 tests, including five focused analytics privacy tests.
 - Production build and TypeScript passed; changed-file ESLint has no errors (one pre-existing navigation warning in AuthProvider).
 - Chrome verified the four signup fields, required/optional behavior, consent decline, and no horizontal overflow at 320px. No real users or passwords were created for this UI check.
 - Evidence: `/tmp/scalecad-analytics-2026-10-11/`.

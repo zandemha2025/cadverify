@@ -40,3 +40,15 @@ test("SDK heatmap coordinates survive only for public pages", () => {
   assert.deepEqual(event("https://scalecad.ai/pricing")?.properties.$heatmap_data, coordinates);
   assert.equal(event("https://scalecad.ai/verify")?.properties.$heatmap_data, undefined);
 });
+
+
+test("page duration and scroll depth survive without private route identifiers", () => {
+  const event = cleanAnalyticsEvent({ event: "$pageleave", properties: {
+    $prev_pageview_duration: 12.5, $prev_pageview_max_content_percentage: 0.8,
+    $prev_pageview_pathname: "/analyses/customer-id", $prev_pageview_title: "private-part.step",
+  }});
+  assert.equal(event?.properties.$prev_pageview_duration, 12.5);
+  assert.equal(event?.properties.$prev_pageview_max_content_percentage, 0.8);
+  assert.equal(event?.properties.$prev_pageview_pathname, "/analyses/:id");
+  assert(!JSON.stringify(event).match(/customer-id|private-part/));
+});

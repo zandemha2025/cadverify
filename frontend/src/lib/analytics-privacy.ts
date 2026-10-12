@@ -27,7 +27,8 @@ export function cleanAnalyticsEvent<T extends { event: string; properties: Recor
     if (SAFE.has(key) && (typeof value === "string" || typeof value === "number" || typeof value === "boolean")) properties[key] = value;
     else if (["$current_url", "$initial_current_url"].includes(key)) properties[key] = cleanUrl(value);
     else if (["$referrer", "$initial_referrer"].includes(key)) properties[key] = cleanUrl(value, true);
-    else if (key === "$pathname") properties[key] = routeLabel(String(value));
+    else if (["$pathname", "$prev_pageview_pathname"].includes(key)) properties[key] = routeLabel(String(value));
+    else if (key.startsWith("$prev_pageview_") && typeof value === "number" && Number.isFinite(value)) properties[key] = value;
   }
   // Heatmap coordinates are SDK-generated; preserve them only on public URLs.
   const heatmapUrl = properties.$current_url;
