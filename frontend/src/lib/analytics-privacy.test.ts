@@ -52,3 +52,12 @@ test("page duration and scroll depth survive without private route identifiers",
   assert.equal(event?.properties.$prev_pageview_pathname, "/analyses/:id");
   assert(!JSON.stringify(event).match(/customer-id|private-part/));
 });
+
+
+test("scrubbing preserves the public SDK ingestion token, never account tokens", () => {
+  const clean = (token: string) => cleanAnalyticsEvent({ event: "$pageview", properties: { token, access_token: "private-session", $process_person_profile: false } });
+  assert.equal(clean("phc_publicProject123")?.properties.token, "phc_publicProject123");
+  assert.equal(clean("private-session")?.properties.token, undefined);
+  assert.equal(clean("phc_publicProject123")?.properties.access_token, undefined);
+  assert.equal(clean("phc_publicProject123")?.properties.$process_person_profile, false);
+});

@@ -17,14 +17,15 @@ function cleanUrl(value: unknown, referrer = false): string {
 }
 
 // Unknown properties are discarded, including DOM text, identifiers and request bodies.
-const SAFE = new Set(["distinct_id", "$anon_distinct_id", "$device_id", "$session_id", "$window_id", "$insert_id", "$lib", "$lib_version", "$browser", "$browser_version", "$os", "$os_version", "$device_type", "$screen_height", "$screen_width", "$viewport_height", "$viewport_width", "$referring_domain", "$is_identified", "$pageview_id", "$prev_pageview_id", "$event_type", "$time", "$web_vitals_LCP_value", "$web_vitals_INP_value", "$web_vitals_CLS_value", "$web_vitals_FCP_value", "surface", "tool", "method", "status", "duration_ms", "error_code", "plan", "auth_provider", "utm_source", "utm_medium", "utm_campaign", "timezone", "$feature_flag", "$feature_flag_response"]);
+const SAFE = new Set(["distinct_id", "$anon_distinct_id", "$device_id", "$session_id", "$window_id", "$insert_id", "$lib", "$lib_version", "$browser", "$browser_version", "$os", "$os_version", "$device_type", "$screen_height", "$screen_width", "$viewport_height", "$viewport_width", "$referring_domain", "$is_identified", "$process_person_profile", "$pageview_id", "$prev_pageview_id", "$event_type", "$time", "$web_vitals_LCP_value", "$web_vitals_INP_value", "$web_vitals_CLS_value", "$web_vitals_FCP_value", "surface", "tool", "method", "status", "duration_ms", "error_code", "plan", "auth_provider", "utm_source", "utm_medium", "utm_campaign", "timezone", "$feature_flag", "$feature_flag_response"]);
 
 export function cleanAnalyticsEvent<T extends { event: string; properties: Record<string, unknown> }>(event: T | null): T | null {
   if (!event) return null;
   if (event.event === "$snapshot") return event; // Public pages only; inputs/text/network are masked at capture.
   const properties: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(event.properties)) {
-    if (SAFE.has(key) && (typeof value === "string" || typeof value === "number" || typeof value === "boolean")) properties[key] = value;
+    if (key === "token" && typeof value === "string" && /^phc_[A-Za-z0-9]+$/.test(value)) properties[key] = value;
+    else if (SAFE.has(key) && (typeof value === "string" || typeof value === "number" || typeof value === "boolean")) properties[key] = value;
     else if (["$current_url", "$initial_current_url"].includes(key)) properties[key] = cleanUrl(value);
     else if (["$referrer", "$initial_referrer"].includes(key)) properties[key] = cleanUrl(value, true);
     else if (["$pathname", "$prev_pageview_pathname"].includes(key)) properties[key] = routeLabel(String(value));
