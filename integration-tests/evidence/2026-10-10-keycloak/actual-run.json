@@ -1,0 +1,186 @@
+{
+  "authorization": {
+    "reference": "User request in this chat, 2026-10-10: establish dedicated integration-testing environment and run real integration tests",
+    "scope": "Dedicated local synthetic Keycloak test identity and ScaleCad test database only"
+  },
+  "completed_at": "2026-10-10T19:49:43.103849+00:00",
+  "environment": {
+    "base_url": "http://localhost:18080/realms/scalecad-integration",
+    "id": "sc-integration-local-keycloak-2026-10-10"
+  },
+  "environment_class": "self_hosted_oss_test",
+  "provider_id": "keycloak",
+  "run_id": "local-keycloak-basic-oidc-2026-10-10",
+  "schema_version": 1,
+  "source": {
+    "build_id": "c52267285f622237250306b81ae24db1da1759c9",
+    "commit": "c52267285f622237250306b81ae24db1da1759c9"
+  },
+  "stages": [
+    {
+      "acceptance_review": {
+        "reference": "operator-review.json",
+        "reviewed_at": "2026-10-10T19:49:43.103849+00:00",
+        "reviewed_by": "Codex engineering operator"
+      },
+      "action_description": "Reviewed actual official container digest/loopback isolation, provider realm/client configuration, exact callback and PKCE S256 plus served ScaleCad build. Local HTTP expressly limited to isolated dev.",
+      "artifacts": [
+        {
+          "kind": "provider_receipt",
+          "path": "keycloak-provider-receipts.json",
+          "sha256": "db0ea8fbb05376bb98628404fae7a396e773bd866fb4efc64a02940205078ab8"
+        },
+        {
+          "kind": "runtime_observation",
+          "path": "isolation-verification.json",
+          "sha256": "151f46bc14eb78a04854662d48671b260a0e4adcf6f9691e95ea568316d0da9f"
+        },
+        {
+          "kind": "operator_review",
+          "path": "operator-review.json",
+          "sha256": "f2a5ee05cc03cb1739e94b2846d630a750ea9b60b56487fbcc1b55c1ba08b920"
+        }
+      ],
+      "independently_observed_action": true,
+      "outcome": "PASS",
+      "provider_receipt_id": "abd36a05-1261-466a-96d9-9e35a0a43874",
+      "request_id": "6c136661-39c2-459f-b4ef-1191c425cba1",
+      "stage_id": "configuration_trust"
+    },
+    {
+      "acceptance_review": {
+        "reference": "operator-review.json",
+        "reviewed_at": "2026-10-10T19:49:43.103849+00:00",
+        "reviewed_by": "Codex engineering operator"
+      },
+      "action_description": "Actual browser code flow exchanged authorization code at Keycloak and created a ScaleCad authenticated session; provider CODE_TO_TOKEN correlates to app auth.login audit3.",
+      "artifacts": [
+        {
+          "kind": "provider_receipt",
+          "path": "keycloak-provider-receipts.json",
+          "sha256": "db0ea8fbb05376bb98628404fae7a396e773bd866fb4efc64a02940205078ab8"
+        },
+        {
+          "kind": "runtime_observation",
+          "path": "scalecad-identity-reconciliation.json",
+          "sha256": "5140a303c67b50f4bbf35abba4e51f264f4cb3ba792071bcd93d1828895b8900"
+        },
+        {
+          "kind": "operator_review",
+          "path": "operator-review.json",
+          "sha256": "f2a5ee05cc03cb1739e94b2846d630a750ea9b60b56487fbcc1b55c1ba08b920"
+        }
+      ],
+      "independently_observed_action": true,
+      "outcome": "PASS",
+      "provider_receipt_id": "9cba74b5-0a94-461f-bdff-9834c939d812",
+      "request_id": "scalecad-audit:3",
+      "stage_id": "authentication_transport"
+    },
+    {
+      "acceptance_checks": {
+        "authorization_code_callback": "PASS",
+        "mapped_user_session": "PASS",
+        "provider_login": "PASS"
+      },
+      "acceptance_review": {
+        "reference": "operator-review.json",
+        "reviewed_at": "2026-10-10T19:49:43.103849+00:00",
+        "reviewed_by": "Codex engineering operator"
+      },
+      "action_description": "Real provider login, code callback and mapped basic identity/session confirmed by Keycloak LOGIN and ScaleCad Account UI; no enterprise group mapping claimed.",
+      "artifacts": [
+        {
+          "kind": "provider_receipt",
+          "path": "keycloak-provider-receipts.json",
+          "sha256": "db0ea8fbb05376bb98628404fae7a396e773bd866fb4efc64a02940205078ab8"
+        },
+        {
+          "kind": "runtime_observation",
+          "path": "account-identity.txt",
+          "sha256": "47c287ce07dc049739cedca3ca8a06fc6462ac5c0d35ffca28e062ac17075c5f"
+        },
+        {
+          "kind": "operator_review",
+          "path": "operator-review.json",
+          "sha256": "f2a5ee05cc03cb1739e94b2846d630a750ea9b60b56487fbcc1b55c1ba08b920"
+        }
+      ],
+      "independently_observed_action": true,
+      "outcome": "PASS",
+      "provider_receipt_id": "57659977-76dd-4a48-90a5-38361a8f032d",
+      "request_id": "scalecad-audit:3",
+      "stage_id": "functional_action"
+    },
+    {
+      "acceptance_review": {
+        "reference": "operator-review.json",
+        "reviewed_at": "2026-10-10T19:49:43.103849+00:00",
+        "reviewed_by": "Codex engineering operator"
+      },
+      "action_description": "Independent provider read-back vs read-only persisted ScaleCad issuer/subject/email projection matches, with exactly one account/identity after two actual logins.",
+      "artifacts": [
+        {
+          "kind": "provider_receipt",
+          "path": "keycloak-provider-receipts.json",
+          "sha256": "db0ea8fbb05376bb98628404fae7a396e773bd866fb4efc64a02940205078ab8"
+        },
+        {
+          "kind": "runtime_observation",
+          "path": "scalecad-identity-reconciliation.json",
+          "sha256": "5140a303c67b50f4bbf35abba4e51f264f4cb3ba792071bcd93d1828895b8900"
+        },
+        {
+          "kind": "operator_review",
+          "path": "operator-review.json",
+          "sha256": "f2a5ee05cc03cb1739e94b2846d630a750ea9b60b56487fbcc1b55c1ba08b920"
+        },
+        {
+          "kind": "source_snapshot",
+          "path": "source-identity.json",
+          "sha256": "6e1c3229e2e6fa7f577602df0e3a9c8a9dbd06a2eb9021c19e8dad974bafa6a7"
+        },
+        {
+          "kind": "result_snapshot",
+          "path": "result-identity.json",
+          "sha256": "6e1c3229e2e6fa7f577602df0e3a9c8a9dbd06a2eb9021c19e8dad974bafa6a7"
+        },
+        {
+          "kind": "reconciliation_report",
+          "path": "identity-diff.json",
+          "sha256": "ab8d3f20b835b03fb091501db4350829988e7528e735d91f64502a3e4929a015"
+        }
+      ],
+      "independently_observed_action": true,
+      "outcome": "PASS",
+      "provider_receipt_id": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "reconciliation": {
+        "changed_count": 0,
+        "diff_artifact": "identity-diff.json",
+        "extra_count": 0,
+        "missing_count": 0,
+        "result_artifact": "result-identity.json",
+        "source_artifact": "source-identity.json"
+      },
+      "request_id": "scalecad-auth-identity:1",
+      "stage_id": "source_result_reconciliation"
+    },
+    {
+      "outcome": "NOT_DEMONSTRATED",
+      "stage_id": "failure_handling"
+    },
+    {
+      "outcome": "NOT_DEMONSTRATED",
+      "stage_id": "recovery_retry"
+    }
+  ],
+  "started_at": "2026-10-10T19:44:18.531000+00:00",
+  "tenant_manifest": {
+    "path": "tenant-manifest.json",
+    "reviewed_at": "2026-10-10T19:49:43.103849+00:00",
+    "reviewed_by": "Codex engineering operator",
+    "sha256": "3c6cd15bc11d90fd09cd8fc9ce86d0d45f137321a75b48f0f07175ce3344f6eb"
+  },
+  "vendor_attempt_count": 0,
+  "workflow_id": "keycloak_oidc"
+}

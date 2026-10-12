@@ -1,0 +1,11 @@
+{
+  "changed_count": 0,
+  "compared_fields": [
+    "issuer",
+    "subject",
+    "email"
+  ],
+  "extra_count": 0,
+  "missing_count": 0,
+  "scope": "Basic immutable issuer/subject/email binding only. Group mapping, enterprise org/role mapping, email-verification propagation and offboarding are not claimed."
+}
