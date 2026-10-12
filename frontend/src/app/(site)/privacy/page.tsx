@@ -13,12 +13,12 @@ export default function Page() {
   {
     "id": "analytics",
     "title": "Analytics preferences",
-    "body": "With your analytics permission, PostHog records page and product activity, campaign attribution, browser/device information, performance and sanitized errors. It may infer approximate country, region and city from your connection; this is not precise device location. Masked recordings are limited to public pages. Forms, passwords and CAD content are excluded. Use Analytics preferences on any page to decline or change your choice. Do Not Track is respected."
+    "body": "With your analytics permission, PostHog records page and product activity, campaign attribution, browser/device information, performance and sanitized errors. It may infer approximate country, region and city from your connection; this is not precise device location. For signed-in accounts, these approximate location fields may also be stored in our Notion CRM for support and pilot follow-up. Masked recordings are limited to public pages. Forms, passwords and CAD content are excluded. Use Analytics preferences on any page to decline or change your choice. Do Not Track is respected."
   },
   {
     "id": "visitor-identification",
     "title": "Business visitor identification",
-    "body": "With your analytics permission, RB2B uses cookies and public-page visits to identify business visitors and match them with business contact information for sales follow-up. It loads only on public scalecad.ai pages without query strings or fragments, and respects Do Not Track. You can withdraw permission through Analytics preferences; the page reloads to stop the tracker. RB2B also provides its own opt-out.",
+    "body": "With your analytics permission, RB2B uses cookies and public-page visits to identify business visitors and match them with business contact information for sales follow-up. It loads only on public scalecad.ai pages and respects Do Not Track. You can withdraw permission through Analytics preferences; the page reloads to stop the tracker. RB2B also provides its own opt-out.",
     "href": "https://app.retention.com/optout",
     "link": "Opt out with RB2B"
   },

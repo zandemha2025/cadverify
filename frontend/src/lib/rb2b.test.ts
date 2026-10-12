@@ -27,3 +27,13 @@ test("the supplied loader asynchronously inserts the exact account script once",
   assert.equal(scripts[0].async, true);
   assert.equal(scripts[0].src, "https://ddwl4m2hdecbv.cloudfront.net/b/E63P0HY01JOW/E63P0HY01JOW.js.gz");
 });
+
+test("RB2B's homepage verifier works without allowing other query data", () => {
+  const query = "?verifyge=true&ec_b2b=" + "a".repeat(32);
+  assert.equal(rb2bAllowed("scalecad.ai", "/", query, "", true), true);
+  for (const [path, search, hash, consent] of [
+    ["/", query, "", false], ["/signup", query, "", true],
+    ["/", query + "&email=private", "", true], ["/", query, "#private", true],
+    ["/", "?verifyge=true&ec_b2b=private", "", true],
+  ] as const) assert.equal(rb2bAllowed("scalecad.ai", path, search, hash, consent), false);
+});

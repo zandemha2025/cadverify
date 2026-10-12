@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import posthog from "posthog-js";
-import { identifyAccount, signupMetadata } from "@/lib/analytics";
+import { identifyAccount, signupMetadata, track } from "@/lib/analytics";
 
 /**
  * Client auth context. The authoritative session is server-side (the (app)
@@ -40,7 +40,10 @@ export function AuthProvider({
     const sync = () => {
       identifyAccount(user.id);
       // Profile context is first-party account data; analytics consent travels separately.
-      void fetch("/api/auth/profile", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify(signupMetadata()) }).then(response => response.arrayBuffer()).catch(() => {});
+      void fetch("/api/auth/profile", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify(signupMetadata()) }).then(async response => {
+        await response.arrayBuffer();
+        if (response.ok) track("account_context_synced");
+      }).catch(() => {});
     };
     sync();
     window.addEventListener("scalecad-analytics-ready", sync);
