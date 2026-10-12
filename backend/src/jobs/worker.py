@@ -27,6 +27,7 @@ from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.design_tasks import run_design_generation_job
 from src.jobs.tasks import run_sam3d_job
 from src.config.production import assert_production_operations
+from src.services.customer_sync import sync_customer_accounts
 
 logger = logging.getLogger("cadverify.worker")
 
@@ -132,6 +133,7 @@ class WorkerSettings:
     # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
     # Runs every 5 minutes and once at worker startup as a backstop.
     cron_jobs = [
+        cron(sync_customer_accounts, minute=set(range(60)), second={40}, run_at_startup=True),
         # Durable DB job rows are publication intent. Re-offer queued SAM and
         # reconstruction rows in case Redis accepted a request whose response
         # was lost, or Redis was unavailable when the API committed the row.

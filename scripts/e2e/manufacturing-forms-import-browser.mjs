@@ -548,6 +548,7 @@ async function authenticate(page, diagnostics, responseStatuses) {
     const generatedEmail = `qa-manufacturing-forms-${Date.now()}-${randomBytes(5).toString("hex")}@example.test`;
     const generatedPassword = `ScaleCad-${randomBytes(10).toString("hex")}-7a`;
     documentResponse = await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     assert.equal(documentResponse?.status(), 200, `GET /signup returned HTTP ${documentResponse?.status() ?? "none"}`);
     await requireUi(
       page,

@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import posthog from "posthog-js";
+import { identifyAccount, signupMetadata } from "@/lib/analytics";
 
 /**
  * Client auth context. The authoritative session is server-side (the (app)
@@ -33,6 +35,17 @@ export function AuthProvider({
   user: SessionUser | null;
   children: React.ReactNode;
 }) {
+  React.useEffect(() => {
+    if (!user) return;
+    const sync = () => {
+      identifyAccount(user.id);
+      // Profile context is first-party account data; analytics consent travels separately.
+      void fetch("/api/auth/profile", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify(signupMetadata()) }).then(response => response.arrayBuffer()).catch(() => {});
+    };
+    sync();
+    window.addEventListener("scalecad-analytics-ready", sync);
+    return () => window.removeEventListener("scalecad-analytics-ready", sync);
+  }, [user]);
   const signOut = React.useCallback(async () => {
     try {
       const response = await fetch("/api/auth/logout", { method: "POST" });
@@ -41,6 +54,7 @@ export function AuthProvider({
       // appear as a failed browser request.
       await response.arrayBuffer();
     } finally {
+      if (posthog.__loaded) posthog.reset();
       // Hard navigation so the server re-evaluates the (cleared) session.
       window.location.href = "/login";
     }

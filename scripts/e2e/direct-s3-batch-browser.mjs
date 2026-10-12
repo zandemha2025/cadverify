@@ -59,6 +59,7 @@ async function responseJson(response) {
 
 async function signup(page, email) {
   const response = await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
   assert.equal(response?.status(), 200, `signup page HTTP ${response?.status()}`);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("Passw0rd123");

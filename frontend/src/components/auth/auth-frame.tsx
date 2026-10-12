@@ -52,7 +52,7 @@ export function AuthFrame({
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fbfcfa", color: "#183d32", fontFamily: "var(--font-geist-sans), sans-serif" }}>
       <SiteNav />
-      <main id="main" style={{ flex: 1, display: "grid", placeItems: "center", padding: "54px 16px" }}>
+      <main id="main" data-private className="ph-no-capture" style={{ flex: 1, display: "grid", placeItems: "center", padding: "54px 16px" }}>
         <section style={panel}>
           <p style={{ margin: 0, color: "#53635a", fontSize: 13 }}>{eyebrow}</p>
           <h1 style={{ margin: "16px 0 0", fontFamily: "var(--font-archivo), sans-serif", fontSize: 32, lineHeight: 1.1 }}>

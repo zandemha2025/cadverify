@@ -579,6 +579,7 @@ class MobileRecoveryRun {
     await this.runPath("MOB-01", async () => {
       await this.setViewport(320, 568);
       await this.page.goto("/signup", { waitUntil: "domcontentloaded" });
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       const email = this.page.getByLabel("Email");
       const password = this.page.getByLabel("Password");
       await email.click();

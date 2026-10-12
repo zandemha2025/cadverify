@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { Toaster } from "sonner";
 import { STAGE_UI } from "@/lib/stage-flag";
+import { Analytics } from "@/components/analytics";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -97,6 +98,7 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         {children}
+        <Analytics token={process.env.POSTHOG_PROJECT_TOKEN || ""} nonce={nonce} />
         {/* Toasts live bottom-right so they never occlude the top-right control
             cluster (⌘K / Jump / notifications bell) or their dropdowns — a
             recurring finding (W4 + W7). One place, fixed everywhere. */}

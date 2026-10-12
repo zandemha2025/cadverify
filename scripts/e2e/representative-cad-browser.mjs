@@ -627,6 +627,7 @@ class RepresentativeCadBrowser {
     await this.context.route(machineRoute, injectOneMachineFailure);
     try {
       await this.page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();

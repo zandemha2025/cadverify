@@ -782,6 +782,7 @@ class FullMobileBrowserRun {
   async runSignupDayZero(definition) {
     await this.setViewport(VIEWPORTS[0]);
     await this.goto("/signup", "signup");
+    await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     const email = `full-mobile-${Date.now()}-${process.pid}-${randomBytes(4).toString("hex")}@example.com`;
     const password = `FullMobile-${randomBytes(8).toString("hex")}-9a`;
     await this.fillPrimary(this.page.getByLabel("Email"), email, "signup email");

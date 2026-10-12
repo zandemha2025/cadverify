@@ -1,5 +1,5 @@
 /**
- * Same-origin signup. Proxies {email,password} to the backend; on success sets
+ * Same-origin signup. Proxies credentials and profile fields; on success sets
  * the first-party httpOnly `dash_session` cookie (auto-login). The session token
  * is never exposed to browser JS.
  */

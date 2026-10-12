@@ -358,6 +358,7 @@ class HumanE2E {
 
     await this.step("signup rejects weak password", async () => {
       await this.goto("/signup", "signup");
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
       await this.page.getByLabel("Password").fill("short");
       const consoleStart = this.consoleErrors.length;

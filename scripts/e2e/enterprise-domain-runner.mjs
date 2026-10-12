@@ -464,6 +464,7 @@ class EnterpriseDomainQA {
     this.account = { email, password };
     await this.step("enterprise engineer signs up and receives an org", async () => {
       await this.goto("/signup", "signup", 500);
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();

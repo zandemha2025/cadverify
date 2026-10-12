@@ -203,6 +203,7 @@ class Matrix {
     this.watch(page);
     const email = uniqueEmail(prefix);
     await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: /^Create account$/ }).click();

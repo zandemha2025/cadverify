@@ -8,6 +8,7 @@ from __future__ import annotations
 from src.config.public_urls import error_doc_url
 
 from dataclasses import dataclass
+import json
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -208,6 +209,9 @@ async def create_password_user(
     email_lower: str,
     password_hash: str,
     disposable_flag: bool = False,
+    full_name: str | None = None,
+    phone: str | None = None,
+    signup_metadata: dict | None = None,
 ) -> int | None:
     """INSERT a new email+password user.
 
@@ -219,11 +223,12 @@ async def create_password_user(
         row = (
             await s.execute(
                 text(
-                    "INSERT INTO users (email, email_lower, password_hash, auth_provider, disposable_flag) "
-                    "VALUES (:e, :el, :ph, 'password', :d) "
+                    "INSERT INTO users (email, email_lower, password_hash, auth_provider, disposable_flag, full_name, phone, signup_metadata) "
+                    "VALUES (:e, :el, :ph, 'password', :d, :name, :phone, CAST(:metadata AS jsonb)) "
                     "ON CONFLICT (email_lower) DO NOTHING RETURNING id"
                 ),
-                {"e": email, "el": email_lower, "ph": password_hash, "d": disposable_flag},
+                {"e": email, "el": email_lower, "ph": password_hash, "d": disposable_flag,
+                 "name": full_name, "phone": phone, "metadata": json.dumps(signup_metadata or {})},
             )
         ).first()
         if row is None:
