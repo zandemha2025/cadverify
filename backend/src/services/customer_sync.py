@@ -29,7 +29,8 @@ def notion_properties(user: dict) -> dict:
         "Region": metadata.get("region"), "City": metadata.get("city"),
     }.items():
         properties[name] = {"rich_text": [{"text": {"content": str(value)[:200]}}] if value else []}
-    properties["Name"] = {"title": [{"text": {"content": user["full_name"] or user["email"]}}]}
+    properties["Company"] = {"title": [{"text": {"content": user["full_name"] or user["email"]}}]}
+    properties["Contact Person"] = {"rich_text": [{"text": {"content": user["full_name"]}}] if user["full_name"] else []}
     properties["Email"] = {"email": user["email"]}
     properties["Phone"] = {"phone_number": user["phone"] or None}
     for name, column in (("Joined at", "created_at"), ("Last seen", "last_seen_at")):
@@ -52,11 +53,13 @@ async def sync_notion_user(client: httpx.AsyncClient, user: dict, data_source: s
         page_id = results[0]["id"] if results else None
     if page_id:
         page_id = str(UUID(page_id))
+        # Keep a company name entered by sales after the individual lead was created.
+        properties.pop("Company")
         response = await client.patch(f"/v1/pages/{page_id}", json={"properties": properties})
     else:
         response = await client.post("/v1/pages", json={
             "parent": {"type": "data_source_id", "data_source_id": data_source},
-            "properties": {**properties, "Status": {"select": {"name": "New"}}},
+            "properties": {**properties, "Status": {"status": {"name": "New Lead"}}},
         })
     response.raise_for_status()
     await asyncio.sleep(0.4)

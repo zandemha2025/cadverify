@@ -25,6 +25,9 @@ def test_crm_payload_allowlists_fields_and_preserves_status_on_update():
     properties = notion_properties(user)
     assert properties["Account ID"]["rich_text"][0]["text"]["content"] == "scalecad-user-42"
     assert properties["Joined at"]["date"]["start"] == "2026-10-11T00:00:00+00:00"
+    assert properties["Company"]["title"][0]["text"]["content"] == "A Person"
+    assert properties["Contact Person"]["rich_text"][0]["text"]["content"] == "A Person"
+    assert "Name" not in properties
     assert "Status" not in properties
     assert "SECRET" not in str(properties) and "HASH" not in str(properties)
 
@@ -42,11 +45,34 @@ async def test_notion_retry_recovers_created_page_without_duplicates():
             return httpx.Response(200, json={"results": [{"id": page_id}]})
         assert request.method == "PATCH"
         assert "Status" not in request.content.decode()
+        assert "Company" not in request.content.decode()
         return httpx.Response(200, json={"id": page_id})
     user = {"id": 42, "email": "lead@example.com", "full_name": None, "phone": None, "created_at": datetime.now(timezone.utc), "last_seen_at": None, "auth_provider": "oidc", "signup_metadata": {}}
     async with httpx.AsyncClient(base_url="https://api.notion.com", transport=httpx.MockTransport(handle)) as client:
         assert await sync_notion_user(client, user, page_id) == page_id
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_new_lead_uses_existing_clients_database_schema():
+    from datetime import datetime, timezone
+    import json
+    import httpx
+    from src.services.customer_sync import sync_notion_user
+    page_id = "01234567-89ab-4def-8123-456789abcdef"
+    data_source = "6e8703f9-0aae-8263-b7b8-070691bd03f0"
+    def handle(request):
+        if request.url.path.endswith("/query"):
+            return httpx.Response(200, json={"results": []})
+        body = json.loads(request.content)
+        assert body["parent"]["data_source_id"] == data_source
+        assert body["properties"]["Status"] == {"status": {"name": "New Lead"}}
+        assert body["properties"]["Company"]["title"][0]["text"]["content"] == "lead@example.com"
+        assert body["properties"]["Contact Person"] == {"rich_text": []}
+        return httpx.Response(200, json={"id": page_id})
+    user = {"id": 42, "email": "lead@example.com", "full_name": None, "phone": None, "created_at": datetime.now(timezone.utc), "last_seen_at": None, "auth_provider": "oidc", "signup_metadata": {}}
+    async with httpx.AsyncClient(base_url="https://api.notion.com", transport=httpx.MockTransport(handle)) as client:
+        assert await sync_notion_user(client, user, data_source) == page_id
 
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL", "").startswith("postgresql"), reason="requires Postgres")
@@ -63,7 +89,7 @@ async def test_profile_signup_crm_retry_and_sync_with_real_postgres(monkeypatch)
     monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
     monkeypatch.setenv("PUBLIC_PASSWORD_SIGNUP_ENABLED", "1")
     monkeypatch.setenv("NOTION_INTEGRATION_TOKEN", "test-not-real")
-    monkeypatch.setenv("NOTION_CRM_DATA_SOURCE_ID", "487fc305-1834-4b27-959f-767c54e91648")
+    monkeypatch.setenv("NOTION_CRM_DATA_SOURCE_ID", "6e8703f9-0aae-8263-b7b8-070691bd03f0")
     app = FastAPI()
     app.include_router(router, prefix="/auth")
     uid = None

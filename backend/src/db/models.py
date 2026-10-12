@@ -36,6 +36,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Text,
     UniqueConstraint,
     text,
@@ -280,7 +281,7 @@ class User(Base):
     password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     full_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    signup_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    signup_metadata: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, server_default="{}")
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     notion_page_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     crm_sync_after: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)

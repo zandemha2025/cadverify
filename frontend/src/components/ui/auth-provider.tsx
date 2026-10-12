@@ -40,7 +40,7 @@ export function AuthProvider({
     const sync = () => {
       identifyAccount(user.id);
       // Profile context is first-party account data; analytics consent travels separately.
-      void fetch("/api/auth/profile", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify(signupMetadata()) }).catch(() => {});
+      void fetch("/api/auth/profile", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify(signupMetadata()) }).then(response => response.arrayBuffer()).catch(() => {});
     };
     sync();
     window.addEventListener("scalecad-analytics-ready", sync);

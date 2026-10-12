@@ -15,10 +15,13 @@ PostHog project 654164 has raw IP discard enabled, session replay enabled with t
 
 The public write-only POSTHOG_PROJECT_TOKEN is saved on Render cadverify-web for the next deployment. No PostHog secret API key or paid-plan change was made.
 
-Notion CRM: https://www.notion.so/ebb2f38f76f341dba036b7c78b290651
-Data source: 487fc305-1834-4b27-959f-767c54e91648
+Notion CRM: https://app.notion.com/p/Client-List-CRM-176703f90aae83c58df8817e043c20f9
+Workspace: Nazeem Ahmed’s Space under nazeem@scalecad.ai. Use the existing Clients database, not the earlier empty CRM created in Arcus.
+Clients data source: 6e8703f9-0aae-8263-b7b8-070691bd03f0 (copied from Notion’s data-source actions; distinct from its database page ID).
 
-Automatic sync still needs an internal Notion integration shared with this CRM. Add its token as NOTION_INTEGRATION_TOKEN and the data-source UUID as NOTION_CRM_DATA_SOURCE_ID to the ARQ worker, then deploy. The chat connector cannot provide runtime website authentication. Secrets must be entered directly in Render.
+The existing Contact Person, Email and Phone fields are reused. New accounts start in the existing native Status option New Lead. Company initially uses the individual’s name or email because signup does not collect a company; subsequent sync preserves Company and Status managed by sales. Ten tracking fields were added without replacing the template’s contacts, views or pipeline.
+
+The approved ScaleCad CRM internal connection was created in the correct workspace, with read/update/insert capabilities, no Notion user information, and only the Clients database selected for content access. The correct data-source UUID is saved on the Render ARQ worker. The user still needs to copy the new integration token into the prepared NOTION_INTEGRATION_TOKEN field and save it directly in Render before sync can run. The chat connector cannot provide runtime website authentication.
 
 ## Validation
 
@@ -27,7 +30,9 @@ Automatic sync still needs an internal Notion integration shared with this CRM. 
 - Production build and TypeScript passed; changed-file ESLint has no errors (one pre-existing navigation warning in AuthProvider).
 - Chrome verified the four signup fields, required/optional behavior, consent decline, and no horizontal overflow at 320px. No real users or passwords were created for this UI check.
 - Consenting Chrome preview sent real events successfully to PostHog. Query-string canary was removed; pageview, pageleave duration and web-vitals ingestion confirmed. Public SDK ingestion token and person-profile control survive scrubbing; private account tokens remain excluded.
-- Profile context requests use fetch keepalive so navigation does not cancel CRM metadata updates; full browser CI is rerunning after this repair.
+- Five CRM tests passed against isolated PostgreSQL after adapting the existing Clients schema, including new-lead creation, duplicate prevention, sales-edit preservation and credential exclusion.
+- Signup metadata retains PostgreSQL JSONB and uses the standard JSON type for SQLite-based SAML tests; all four SAML service tests pass.
+- Profile context requests use fetch keepalive and consume the response stream so navigation does not cancel CRM metadata updates; full browser CI must pass after this repair.
 - Evidence: `/tmp/scalecad-analytics-2026-10-11/`.
 
 Production analytics ingestion, a real signup-to-Notion row, password email delivery, and authenticated capability-gap/equipment-ranking workflow remain unverified until deployment and missing provider credentials are supplied. No billing conversion, experiments, surveys, paid upgrade or external alert messages were launched.
