@@ -11,7 +11,7 @@
 
 ## External configuration completed
 
-PostHog project 654164 has raw IP discard enabled, session replay enabled with total privacy and a global private-page exclusion pattern, console/canvas/network-body capture disabled, and heatmaps enabled for the three public URLs. Exception autocapture, all four web vitals and the ScaleCad web analytics domain are enabled. Existing dashboard 2188568 was updated to ScaleCad and contains 11 charts using implemented events rather than unconnected booking/billing promises. Queries validated; data is empty before the instrumented deployment.
+PostHog project 654164 has raw IP discard enabled, session replay enabled with total privacy and a global private-page exclusion pattern, console/canvas/network-body capture disabled, and heatmaps enabled for the three public URLs. Exception autocapture, all four web vitals and the ScaleCad web analytics domain are enabled. Existing dashboard 2188568 was updated to ScaleCad and contains 11 charts using implemented events rather than unconnected booking/billing promises. Queries validated. Dashboard defaults to sessions starting on scalecad.ai, excluding localhost setup activity. Production charts remain empty until the instrumented release deploys.
 
 The public write-only POSTHOG_PROJECT_TOKEN is saved on Render cadverify-web for the next deployment. No PostHog secret API key or paid-plan change was made.
 
@@ -23,9 +23,11 @@ Automatic sync still needs an internal Notion integration shared with this CRM. 
 ## Validation
 
 - 29 password/profile/CRM tests passed against isolated PostgreSQL, including anonymous rejection, metadata persistence, provider failure/retry, successful sync and credential exclusion.
-- Full frontend test suite passed: 543 tests, including five focused analytics privacy tests.
+- Full frontend test suite passed: 544 tests, including six focused analytics privacy tests.
 - Production build and TypeScript passed; changed-file ESLint has no errors (one pre-existing navigation warning in AuthProvider).
 - Chrome verified the four signup fields, required/optional behavior, consent decline, and no horizontal overflow at 320px. No real users or passwords were created for this UI check.
+- Consenting Chrome preview sent real events successfully to PostHog. Query-string canary was removed; pageview, pageleave duration and web-vitals ingestion confirmed. Public SDK ingestion token and person-profile control survive scrubbing; private account tokens remain excluded.
+- Profile context requests use fetch keepalive so navigation does not cancel CRM metadata updates; full browser CI is rerunning after this repair.
 - Evidence: `/tmp/scalecad-analytics-2026-10-11/`.
 
-Live analytics ingestion, a real signup-to-Notion row, password email delivery, and authenticated capability-gap/equipment-ranking workflow remain unverified until deployment and missing provider credentials are supplied. No billing conversion, experiments, surveys, paid upgrade or external alert messages were launched.
+Production analytics ingestion, a real signup-to-Notion row, password email delivery, and authenticated capability-gap/equipment-ranking workflow remain unverified until deployment and missing provider credentials are supplied. No billing conversion, experiments, surveys, paid upgrade or external alert messages were launched.
