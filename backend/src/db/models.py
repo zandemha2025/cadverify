@@ -278,6 +278,12 @@ class User(Base):
         Text, server_default="analyst", nullable=False
     )
     password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    full_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    signup_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    notion_page_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    crm_sync_after: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
     # Product plan gate (trial enforcement): 'trial' accounts are capped at
     # VALIDATION_CAP_PER_USER completed validations; 'pilot' is uncapped.
     plan: Mapped[str] = mapped_column(Text, server_default="trial", nullable=False)

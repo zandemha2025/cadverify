@@ -319,6 +319,7 @@ class DesignStudioE2E {
   async signup() {
     const email = uniqueEmail();
     await this.page.goto("/signup", { waitUntil: "domcontentloaded" });
+    await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     await this.page.getByLabel("Email").fill(email);
     await this.page.getByLabel("Password").fill("ScaleCad2026Secure");
     await this.page.getByRole("button", { name: /^Create account$/ }).click();

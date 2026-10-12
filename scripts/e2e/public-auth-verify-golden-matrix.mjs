@@ -447,6 +447,7 @@ class Matrix {
     const weakEmail = uniqueEmail("weak-password");
     await this.path("AUTH-02", async () => {
       await this.page.goto("/signup", { waitUntil: "domcontentloaded" });
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(weakEmail);
       await this.page.getByLabel("Password").fill("short");
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
@@ -490,6 +491,7 @@ class Matrix {
     const password = "GoldenPass123";
     await this.path("AUTH-04", async () => {
       await this.page.goto("/signup", { waitUntil: "domcontentloaded" });
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();

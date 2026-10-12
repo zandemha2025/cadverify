@@ -26,7 +26,8 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,9 +85,51 @@ def _err(status: int, code: str, message: str) -> HTTPException:
     )
 
 
-class SignupIn(BaseModel):
+class ProfileContextIn(BaseModel):
+    timezone: str = Field(default="", max_length=80)
+    analytics_consent: bool = False
+    utm_source: str = Field(default="", max_length=100)
+    utm_medium: str = Field(default="", max_length=100)
+    utm_campaign: str = Field(default="", max_length=100)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        if value:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise ValueError("Choose a valid timezone.") from None
+        return value
+
+    @field_validator("utm_source", "utm_medium", "utm_campaign")
+    @classmethod
+    def clean_attribution(cls, value: str) -> str:
+        if value and not re.fullmatch(r"[\w .:/-]{1,100}", value):
+            return ""
+        return value.strip()
+
+
+class SignupIn(ProfileContextIn):
     email: str = Field(max_length=320)
     password: str = Field(max_length=_PASSWORD_MAX)
+    name: str = Field(default="", max_length=160)
+    phone: str = Field(default="", max_length=32)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        if any(ord(c) < 32 for c in value):
+            raise ValueError("Invalid name.")
+        return value.strip()
+
+    @field_validator("phone")
+    @classmethod
+    def clean_phone(cls, value: str) -> str:
+        value = value.strip()
+        if value and (not re.fullmatch(r"\+?[0-9 () .-]+", value) or not 7 <= sum(c.isdigit() for c in value) <= 15):
+            raise ValueError("Enter a phone number with 7–15 digits.")
+        return value
 
 
 class LoginIn(BaseModel):
@@ -387,11 +430,15 @@ async def signup(body: SignupIn, request: Request) -> dict:
     verdict = await _run_abuse_controls(request, email_norm)
 
     password_hash = await asyncio.to_thread(hash_password, body.password)
+    from src.services.customer_sync import profile_metadata
     uid = await create_password_user(
         email=email,
         email_lower=email_norm,
         password_hash=password_hash,
         disposable_flag=(verdict == "soft_flag"),
+        full_name=body.name or None,
+        phone=body.phone or None,
+        signup_metadata=profile_metadata(body),
     )
     if uid is None:
         raise _err(
@@ -561,3 +608,24 @@ async def me(user_id: int = Depends(require_dashboard_session)) -> dict:
         "auth_provider": auth_provider,
         "has_password": has_password,
     }
+
+
+@router.post("/me/profile")
+async def profile_context(
+    body: ProfileContextIn,
+    user_id: int = Depends(require_dashboard_session),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    from src.services.customer_sync import profile_metadata
+    import json
+    from sqlalchemy import text
+
+    await session.execute(text(
+        "UPDATE users SET signup_metadata = CAST(:metadata AS jsonb) || signup_metadata || "
+        "jsonb_build_object('analytics_consent', CAST(:consent AS boolean)), "
+        "last_seen_at = now(), crm_sync_after = LEAST(crm_sync_after, now()) "
+        "WHERE id = :uid AND (last_seen_at IS NULL OR last_seen_at < now() - interval '1 hour' "
+        "OR signup_metadata->>'analytics_consent' IS DISTINCT FROM :consent_text)"
+    ), {"uid": user_id, "metadata": json.dumps(profile_metadata(body)), "consent": body.analytics_consent, "consent_text": str(body.analytics_consent).lower()})
+    await session.commit()
+    return {"ok": True}

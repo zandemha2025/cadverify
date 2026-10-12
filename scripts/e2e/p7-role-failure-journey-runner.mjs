@@ -566,6 +566,7 @@ class P7RoleFailureQA {
     const email = uniqueEmail(prefix);
     const password = "Passw0rd123";
     await this.goto("/signup", `${label}-signup`, { page });
+    await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: /^Create account$/i }).click();
@@ -819,6 +820,7 @@ asyncio.run(main())
       const password = "Passw0rd123";
       await this.context.clearCookies();
       await this.goto("/signup", "primary-signup");
+      await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/i }).click();

@@ -531,6 +531,7 @@ class BatchDesignRecoveryMatrix {
 
   async signup() {
     await this.page.goto("/signup", { waitUntil: "domcontentloaded" });
+    await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     await this.page.getByLabel("Email").fill(this.email);
     await this.page.getByLabel("Password").fill(this.password);
     await this.page.getByRole("button", { name: /^Create account$/ }).click();

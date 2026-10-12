@@ -369,6 +369,7 @@ async function signup(page) {
   const email = `qa-mfg-cad-${Date.now()}-${randomBytes(4).toString("hex")}@example.com`;
   const password = `ScaleCad-${randomBytes(8).toString("hex")}-9a`;
   await page.goto(`${baseUrl}/signup`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   const signupResponse = page.waitForResponse((response) =>

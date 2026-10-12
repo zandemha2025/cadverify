@@ -36,7 +36,7 @@ export default async function AppLayout({
   const tree = (
     <AuthProvider user={user}>
       <TempoProvider>
-        <AppShell>{children}</AppShell>
+        <div data-private className="contents ph-no-capture"><AppShell>{children}</AppShell></div>
       </TempoProvider>
     </AuthProvider>
   );

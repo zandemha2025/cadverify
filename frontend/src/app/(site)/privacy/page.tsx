@@ -8,7 +8,12 @@ export default function Page() {
   {
     "id": "collect",
     "title": "What we collect",
-    "body": "Account details, authentication events, uploaded files, generated reports, machine/rate declarations, pilot correspondence, and operational telemetry needed to run and secure the service."
+    "body": "Account details include your name, email, optional phone number, signup time and browser timezone. We store contact and account details in our Notion CRM for support and pilot follow-up. Passwords, authentication credentials and CAD files are excluded from the CRM. We also process uploaded files, generated reports, machine/rate declarations and authentication events to operate the service."
+  },
+  {
+    "id": "analytics",
+    "title": "Analytics preferences",
+    "body": "With your analytics permission, PostHog records page and product activity, campaign attribution, browser/device information, performance and sanitized errors. It may infer approximate country, region and city from your connection; this is not precise device location. Masked recordings are limited to public pages. Forms, passwords and CAD content are excluded. Use Analytics preferences on any page to decline or change your choice. Do Not Track is respected."
   },
   {
     "id": "use",

@@ -11,6 +11,7 @@ import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
 import { createReconstructionSubmissionId } from "./reconstruction-id";
+import { track } from "./analytics";
 
 export interface GeometryInfo {
   vertices: number;
@@ -334,8 +335,12 @@ const apiClient = {
       }
 
       let res: Response;
+      const started = performance.now();
       try {
         res = await fetch(url, { ...options, headers });
+        track("api_request", { tool: resource, method: options.method || "GET", status: res.status, duration_ms: Math.round(performance.now() - started) });
+        if (res.ok && /\/validate(?:\?|$)/.test(url)) track("product_active", { tool: "verification" });
+        if (!res.ok) track("check_failed", { tool: resource, error_code: `http_${res.status}` });
       } catch (err) {
         if (
           options.signal?.aborted ||
@@ -343,6 +348,7 @@ const apiClient = {
         ) {
           throw err;
         }
+        track("check_failed", { tool: resource, error_code: "network_error" });
         // Network error / timeout
         lastError = new Error(networkRecoveryMessage(resource), { cause: err });
         if (attempt === retries) {
@@ -1018,10 +1024,14 @@ async function _costEstimate(
   }
 
   const url = `${API_BASE}/validate/cost`;
+  const started = performance.now();
 
   let res: Response;
   try {
     res = await fetch(url, { method: "POST", body: form, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined });
+    track("api_request", { tool: "cost", method: "POST", status: res.status, duration_ms: Math.round(performance.now() - started) });
+    if (res.ok) track("product_active", { tool: "cost" });
+    else track("check_failed", { tool: "cost", error_code: `http_${res.status}` });
   } catch (err) {
     // A transport exception has no HTTP body, so do not guess that the user's
     // network is at fault. The workspace can reconcile this sibling request with

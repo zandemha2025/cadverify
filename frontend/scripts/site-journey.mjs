@@ -57,6 +57,7 @@ try {
   assert.match(page.url(), /next=(%2F|\/)(analyze|verify)/);
   // Stub only account requests: never create users or send credentials to a live service.
   await page.route('**/api/auth/signup', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Account service is temporarily unavailable. Please try again shortly.' }) }));
+  await page.getByLabel('Full name', { exact: true }).fill('ScaleCad QA User');
   await page.getByLabel('Email', { exact: true }).fill('website-check@example.test');
   await page.getByLabel('Password', { exact: true }).fill('sample-test-123');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
