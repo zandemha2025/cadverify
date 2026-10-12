@@ -30,7 +30,7 @@ def commit_range() -> str:
     base = os.getenv("GITHUB_BASE_REF")
     before = os.getenv("GITHUB_EVENT_BEFORE")
     if base:
-        subprocess.run(["git", "fetch", "origin", base, "--depth=1"], cwd=ROOT, check=False)
+        subprocess.run(["git", "fetch", "origin", base], cwd=ROOT, check=False)
         return f"origin/{base}..HEAD"
     if before and set(before) != {"0"}:
         return f"{before}..HEAD"

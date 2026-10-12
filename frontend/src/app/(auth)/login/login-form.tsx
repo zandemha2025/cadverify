@@ -148,6 +148,9 @@ export function LoginForm({
           onChange={(e) => setPassword(e.target.value)}
         />
         <AuthSubmit loading={loading} disabled={!hydrated}>Log in</AuthSubmit>
+        <div style={{ textAlign: "center", fontSize: 13 }}>
+          <AuthTextLink href="/forgot-password">Forgot your password?</AuthTextLink>
+        </div>
       </form>}
 
       {turnstileSiteKey && (

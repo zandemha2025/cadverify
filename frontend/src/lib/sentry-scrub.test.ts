@@ -12,3 +12,11 @@ test("password changes never send either credential to telemetry", () => {
   assert.deepEqual(scrubbed.tags, event.tags);
   assert.equal(event.request.data.current_password, "OldCredential123");
 });
+
+test("password reset links and POST bodies are scrubbed from telemetry", () => {
+  const token = "reset-proof-test-sentinel";
+  const event = { request: { url: `https://scalecad.ai/reset-password#token=${token}`, data: { token, password: "ResetPassword456" } } };
+  const scrubbed = JSON.stringify(scrubSentryEvent(event));
+  assert.equal(scrubbed.includes(token), false);
+  assert.equal(scrubbed.includes("ResetPassword456"), false);
+});
