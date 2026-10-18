@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { PhotoScreen } from "@/components/v4/make/photo";
 
 export default function Page() {
-  return <Stub title="Photo to 3D" section="make" board="F4" />;
+  return <PhotoScreen />;
 }

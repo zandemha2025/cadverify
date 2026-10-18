@@ -175,7 +175,7 @@ function Frame({ box, signature }: { box: THREE.Box3; signature: string }) {
     const radius = (s.length() / 2) * scale;
     const aspect = size.width / Math.max(1, size.height);
     const half = Math.atan(Math.tan((persp.fov * Math.PI) / 360) * Math.min(1, aspect));
-    const dist = Math.max(2.6, (radius * 1.08) / Math.sin(half));
+    const dist = Math.max(2.6, (radius * 1.2) / Math.sin(half));
     camera.position.copy(new THREE.Vector3(0.62, 0.46, 0.66).normalize().multiplyScalar(dist));
     camera.lookAt(0, 0, 0);
     persp.updateProjectionMatrix();
