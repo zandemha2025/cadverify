@@ -142,7 +142,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             ref={fileRef}
             type="file"
             accept={CAD_ACCEPT}
-            aria-label="Choose a CAD file to check"
+            aria-label="Check a part (top bar file picker)"
             tabIndex={-1}
             style={{ display: "none" }}
             onChange={(e) => {
@@ -398,8 +398,8 @@ function AccountMenu({ usage, onShortcuts }: { usage: Usage | null; onShortcuts:
             </span>
           </div>
           <div style={{ height: 1, background: "var(--rule)", margin: "4px 10px" }} />
-          <Link href={R.setup} onClick={() => setOpen(false)} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", borderRadius: 10, color: "var(--ink)", textDecoration: "none" }}>
-            Start here<span style={{ color: "var(--ink3)", fontSize: 12.5 }}>setup steps</span>
+          <Link href={`${R.home}?welcome=1`} onClick={() => setOpen(false)} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", borderRadius: 10, color: "var(--ink)", textDecoration: "none" }}>
+            Start here<span style={{ color: "var(--ink3)", fontSize: 12.5 }}>get started</span>
           </Link>
           <button
             type="button"

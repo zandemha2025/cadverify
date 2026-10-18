@@ -1141,6 +1141,7 @@ def test_public_share_hides_shop_inputs(client, real_result_json):
         {"name": "tolerance_class", "unit": "×", "value": 1.2, "provenance": "USER",
          "source": "declared tolerance 'precision'"},
     ]
+    rj["estimates"][0]["owned_in_house"] = True
     rj["estimates"][0]["lead_time"]["capacity"] = {
         "n_machines": 3, "machine_hours_per_day": 20.0, "provenance": "USER",
         "basis": "capacity-bound: 3 machines × 20 hr/day"}
@@ -1159,11 +1160,12 @@ def test_public_share_hides_shop_inputs(client, real_result_json):
         assert private not in text, f"public share leaked {private}"
     drivers = {d["name"]: d for d in body["estimates"][0]["drivers"] if d.get("provenance") == "USER"}
     assert drivers["machine_cost"]["value"] == 1.43  # the cost line itself stays
-    assert drivers["owned_in_house"]["value"] is None
+    assert "owned_in_house" not in drivers  # its presence alone says the sharer owns the machine
     assert drivers["tolerance_class"]["source"] == "declared tolerance 'precision'"
     assert body["estimates"][0]["lead_time"]["capacity"]["n_machines"] is None
     margin = next(a for a in body["assumptions"] if a["name"] == "margin" and a["provenance"] == "SHOP")
     assert margin["value"] is None and margin["provenance"] == "SHOP"
+    assert all(e.get("owned_in_house") is None for e in body["estimates"])
     # The owner's stored record is untouched.
     assert "Haas VF-2" in json.dumps(dec.result_json)
 

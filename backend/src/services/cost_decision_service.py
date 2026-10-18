@@ -879,10 +879,16 @@ def _redact_private_inputs(node: Any) -> Any:
     if isinstance(node, str):
         return _MACHINE_NAME.sub(r"\1 (name hidden)", _SHOP_TAG.sub("", node))
     if isinstance(node, list):
-        return [_redact_private_inputs(v) for v in node]
+        # The "owned in-house" driver exists only when the sharer owns the machine:
+        # its presence alone is their shop's fact, so it's left out entirely.
+        return [_redact_private_inputs(v) for v in node
+                if not (isinstance(v, dict) and v.get("name") == "owned_in_house")]
     if not isinstance(node, dict):
         return node
     out = {k: _redact_private_inputs(v) for k, v in node.items()}
+    # Whether the sharer owns a machine for this route is their shop's fact too.
+    if "owned_in_house" in out and not isinstance(out.get("owned_in_house"), dict):
+        out["owned_in_house"] = None
     if out.get("provenance") in _PRIVATE_PROVENANCE and out.get("name") not in _PART_DECLARATIONS:
         for key in ("source", "basis"):
             if key in out:
