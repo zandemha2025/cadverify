@@ -19,7 +19,7 @@ import {
 import { allAwaitingGeometry, coverageHeadline, partMetaBits, type ManifestCoverage, type ManifestPart } from "@/lib/verify/manifest";
 import { R, TABS } from "../routes";
 import { Content, Empty, Loading, Panel, cx } from "../ui";
-import { ManyWorld, PilotGate, Thumb, errorText, isPaidAccessError, useManyTabs, usePilotAccess, useToast } from "./common";
+import { ManyWorld, PilotGate, Thumb, errorText, unchanged, isPaidAccessError, useManyTabs, usePilotAccess, useToast } from "./common";
 import { CapabilitySheet, type Ranking } from "./capability-sheet";
 import { ToolingSheet } from "./tooling-sheet";
 import { fetchBucket, fetchMachines, fetchRollup, type Rollup } from "./many-api";
@@ -282,7 +282,7 @@ export function TriageScreen() {
                 </button>
               }
             >
-              Saved checks are unchanged. {rollErr}
+              {unchanged("Saved checks are unchanged.", rollErr)}
             </Empty>
           </Panel>
         ) : !roll ? (

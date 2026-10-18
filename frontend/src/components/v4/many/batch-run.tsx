@@ -22,7 +22,7 @@ import { batchActivityCopy } from "@/lib/batch-progress-copy";
 import { batchProgressSettled } from "@/lib/recovery-records";
 import { R } from "../routes";
 import { Chip, Content, Empty, Fig, Figs, Loading, PageHead, Panel, Row, Sheet, cx } from "../ui";
-import { ConfirmDialog, ManyWorld, PilotGate, Thumb, errorText, revealSheetOnPhone, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
+import { ConfirmDialog, ManyWorld, PilotGate, Thumb, errorText, unchanged, revealSheetOnPhone, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
 import { BATCH_GATE } from "./batches-screen";
 import {
   ITEM_FILTERS,
@@ -358,7 +358,7 @@ export function BatchRun({ batchId }: { batchId: string }) {
         {progErr ? (
           <div className="panel errx" role="alert">
             <b>Progress didn’t load</b>
-            <span>Saved results are unchanged. {progErr.msg}</span>
+            <span>{unchanged("Saved results are unchanged.", progErr.msg)}</span>
             <span>
               <button className="btn sm ink" type="button" onClick={() => setPollKey((k) => k + 1)}>
                 Try again
@@ -469,7 +469,7 @@ export function BatchRun({ batchId }: { batchId: string }) {
                   </button>
                 }
               >
-                Saved results are unchanged. {listItems.err}
+                {unchanged("Saved results are unchanged.", listItems.err)}
               </Empty>
             ) : !listItems.items ? (
               <Loading rows={4} label="Loading items" />

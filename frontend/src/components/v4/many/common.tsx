@@ -98,6 +98,12 @@ export function isPaidAccessError(err: unknown): boolean {
   return typeof e.message === "string" && /paid_access_required|part of a pilot or Enterprise plan/i.test(e.message);
 }
 
+/** "Saved results are unchanged." plus the server's message, without saying "unchanged" twice. */
+export function unchanged(lead: string, msg: string | null | undefined): string {
+  if (!msg) return lead;
+  return /unchanged/i.test(msg) ? msg : `${lead} ${msg}`;
+}
+
 export function errorText(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }

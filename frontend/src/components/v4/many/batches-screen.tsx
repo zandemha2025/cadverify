@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { downloadBatchCsv, listBatches, type BatchSummaryRow } from "@/lib/api/batch";
 import { R } from "../routes";
 import { Chip, Content, Empty, Loading, PageHead, Panel } from "../ui";
-import { ManyWorld, PilotGate, errorText, isPaidAccessError, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
+import { ManyWorld, PilotGate, errorText, unchanged, isPaidAccessError, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
 import { batchStatus } from "./batch-model";
 import { NewBatchSheet } from "./new-batch";
 
@@ -116,7 +116,7 @@ export function BatchesScreen() {
                 </button>
               }
             >
-              Saved batches are unchanged. {err}
+              {unchanged("Saved batches are unchanged.", err)}
             </Empty>
           ) : !rows ? (
             <Loading rows={3} label="Loading batches" />

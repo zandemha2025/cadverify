@@ -25,7 +25,7 @@ import {
 } from "@/lib/integrations-api";
 import { R } from "../routes";
 import { Chip, Content, Empty, Loading, PageHead, Panel, Sheet, cx } from "../ui";
-import { ManyWorld, PilotGate, errorText, revealSheetOnPhone, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
+import { ManyWorld, PilotGate, errorText, unchanged, revealSheetOnPhone, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
 
 export const IMPORTS_GATE = {
   title: "Imports",
@@ -271,7 +271,7 @@ export function ImportsScreen() {
                 </button>
               }
             >
-              Imported parts are unchanged. {runsErr}
+              {unchanged("Imported parts are unchanged.", runsErr)}
             </Empty>
           ) : !runs ? (
             <Loading rows={2} label="Loading runs" />
