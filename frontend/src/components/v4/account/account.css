@@ -9,7 +9,6 @@
 .ob .world.a-page>.stage{position:absolute;inset:0;height:auto}
 .ob .world.a-page .sheet{margin:12px 16px 24px;border-radius:20px}
 .ob .world.a-page .pagehead,.ob .world.a-page .content{margin:12px 16px;top:auto!important;left:auto!important;right:auto!important}
-.ob .world.a-page{min-height:0}
 }
 
 /* ---------- shared bits ---------- */

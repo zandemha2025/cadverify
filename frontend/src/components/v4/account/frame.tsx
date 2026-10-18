@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Page frame for the Account screens: the v4 world (stage backdrop) with a
- * phone fix (the stage stays a backdrop instead of a 480px block), the page
+ * Page frame for the Account screens: the v4 world (stage backdrop; `page`
+ * keeps it a background on phones, a- adds the 16px gutters and undoes the
+ * wide page head's inline right offset there), the page
  * head with the Account tabs, and small shared pieces (banner, inline confirm,
  * part glyph, copy button). Same markup as `World` in ../ui.tsx plus a class.
  */
@@ -13,7 +14,7 @@ import "./account.css";
 
 export function AccountFrame({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <main className="world a-page" aria-label={label}>
+    <main className="world page a-page" aria-label={label}>
       <div className="stage" aria-hidden="true" />
       {children}
     </main>
