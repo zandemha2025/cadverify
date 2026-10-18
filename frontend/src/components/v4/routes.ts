@@ -92,7 +92,7 @@ export const TABS: Record<Exclude<NavSection, "home">, { label: string; href: st
 
 /** Which top-bar section a pathname belongs to. */
 export function sectionOf(pathname: string): NavSection {
-  if (pathname.startsWith("/app/parts") || pathname.startsWith("/app/part/")) return "parts";
+  if (pathname.startsWith("/app/parts") || pathname.startsWith("/app/part/") || pathname.startsWith("/app/check")) return "parts";
   if (pathname.startsWith("/app/many")) return "many";
   if (pathname.startsWith("/app/make")) return "make";
   if (pathname.startsWith("/app/shop")) return "shop";
