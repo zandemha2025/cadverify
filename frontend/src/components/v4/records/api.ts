@@ -505,6 +505,44 @@ export function repairedFile(r: RepairResult, original: string): File | null {
   return new File([bytes], name, { type: r.repair_verification?.download_media_type ?? "model/stl" });
 }
 
+/* ── analysis → part key ────────────────────────────────────────────────── */
+
+/**
+ * The part an analysis belongs to. The analysis detail doesn't carry the part
+ * key (its `analysis_mesh_hash` is a different digest), so read it from a linked
+ * record in the shared record list, else from the catalog's latest analysis per
+ * part (one cached read).
+ */
+let catalogP: Promise<Map<string, string>> | null = null;
+
+function catalogIndex(): Promise<Map<string, string>> {
+  if (!catalogP) {
+    catalogP = json<{ rows: { part_key: string; analysis: { id: string } | null }[] }>(`/catalog?page_size=100`)
+      .then((b) => new Map((b.rows ?? []).filter((r) => r.analysis?.id).map((r) => [r.analysis!.id, r.part_key])))
+      .catch(() => {
+        catalogP = null;
+        return new Map<string, string>();
+      });
+  }
+  return catalogP;
+}
+
+export function usePartKeyForAnalysis(analysisId: string, linkIds: string[]): string | null | undefined {
+  const records = useStore(recordList);
+  const fromRecords = linkIds.map((id) => records.rows?.find((r) => r.id === id)?.mesh_hash).find(Boolean) ?? null;
+  const [fromCatalog, setFromCatalog] = React.useState<{ id: string; key: string | null } | null>(null);
+  React.useEffect(() => {
+    if (fromRecords) return;
+    let alive = true;
+    void catalogIndex().then((m) => alive && setFromCatalog({ id: analysisId, key: m.get(analysisId) ?? null }));
+    return () => {
+      alive = false;
+    };
+  }, [analysisId, fromRecords]);
+  if (fromRecords) return fromRecords;
+  return fromCatalog && fromCatalog.id === analysisId ? fromCatalog.key : undefined;
+}
+
 /* ── supplier packages ──────────────────────────────────────────────────── */
 
 export async function listPackages(): Promise<RfqPackageSummary[]> {

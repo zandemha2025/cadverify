@@ -1,5 +1,4 @@
-import { Stub } from "@/components/v4/stub";
-
+/** Analyses (board P4). The screen is rendered by ./layout.tsx; with no id the newest analysis is shown. */
 export default function Page() {
-  return <Stub title="Analyses" section="parts" board="P4" />;
+  return null;
 }
