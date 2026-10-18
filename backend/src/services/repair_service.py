@@ -80,9 +80,12 @@ def _tier2_repair(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         return mesh
 
     try:
+        # Portable across pymeshfix 0.17 and 0.18: 0.18 removed repair(verbose=)
+        # (it is quiet by default in both) and the .v/.f aliases, so pass no
+        # kwargs and read .points/.faces, which exist in both releases.
         meshfix = pymeshfix.MeshFix(mesh.vertices, mesh.faces)
-        meshfix.repair(verbose=False)
-        repaired = trimesh.Trimesh(vertices=meshfix.v, faces=meshfix.f)
+        meshfix.repair()
+        repaired = trimesh.Trimesh(vertices=meshfix.points, faces=meshfix.faces)
         logger.info(
             "Tier 2 pymeshfix repair: watertight=%s faces=%d",
             repaired.is_watertight,
@@ -92,6 +95,87 @@ def _tier2_repair(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     except (RuntimeError, Exception) as exc:
         logger.warning("pymeshfix repair failed: %s", exc)
         return mesh
+
+
+# ---------------------------------------------------------------------------
+# Volume-change check
+# ---------------------------------------------------------------------------
+
+# Warn when the repaired solid's volume differs from the pre-repair estimate by
+# more than this many percent. Measured against _pre_repair_volume, correct hole
+# fills land at 0.0% (planar holes are capped exactly) up to 0.9% (a hole across
+# a curved wall, the noisiest correct fill observed), while filling the 6 mm bore
+# of tests/assets/open-bored-block-mm.iges lands at +10.4%. 2% keeps more than 2x
+# margin over that noise and still flags a filled feature worth 2% of the part.
+# It is a coarse guard: a smaller filled feature can stay under it, so a quiet
+# result is never presented as proof that the design's features survived.
+REPAIR_VOLUME_WARN_PCT = 2.0
+
+
+def _pre_repair_volume(mesh: trimesh.Trimesh) -> float | None:
+    """Origin-independent volume of ``mesh`` with each hole capped flat.
+
+    ``mesh.volume`` of an open mesh depends on where the origin sits relative to
+    the holes (a box missing one face reads 500 of 1000 mm3; the same open part
+    rotated can read negative), so it cannot anchor a volume-change check.
+    Instead every boundary loop is closed by a fan to its own centroid -- the cap
+    a hole "obviously" needs, exact for planar holes -- after making the winding
+    consistent on a copy. The input mesh is never mutated.
+    """
+    try:
+        if not mesh.is_winding_consistent:
+            mesh = mesh.copy()
+            trimesh.repair.fix_winding(mesh)
+        # Centred for conditioning only: a closed surface's volume is
+        # translation-invariant.
+        vertices = mesh.vertices - mesh.bounds.mean(axis=0)
+        tris = vertices[mesh.faces]
+        six_volume = np.einsum(
+            "ij,ij->i", tris[:, 0], np.cross(tris[:, 1], tris[:, 2])
+        ).sum()
+        boundary = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
+        if len(boundary):
+            edges = mesh.edges[boundary]  # directed, in face winding order
+            labels = trimesh.graph.connected_component_labels(
+                edges, node_count=len(vertices)
+            )
+            _, loop = np.unique(labels[edges[:, 0]], return_inverse=True)
+            starts, ends = vertices[edges[:, 0]], vertices[edges[:, 1]]
+            centroids = np.stack(
+                [np.bincount(loop, weights=starts[:, k]) for k in range(3)], axis=1
+            ) / np.bincount(loop)[:, None]
+            # Cap triangle (end, start, centroid) runs each boundary edge opposite
+            # to its face, so the capped surface stays consistently wound.
+            six_volume += np.einsum(
+                "ij,ij->i", ends, np.cross(starts, centroids[loop])
+            ).sum()
+        volume = abs(float(six_volume)) / 6.0
+    except Exception as exc:
+        logger.warning("Pre-repair volume estimate failed: %s", exc)
+        return None
+    return volume if np.isfinite(volume) and volume > 0 else None
+
+
+def _volume_check(
+    original_mm3: float | None, repaired_mm3: float
+) -> tuple[float | None, str | None]:
+    """Return ``(volume_change_pct, volume_warning)`` for a repaired solid."""
+    if not original_mm3:
+        return None, (
+            "The pre-repair volume could not be measured, so it is unknown whether "
+            "repair added or removed material. Compare the repaired file with your "
+            "design before using it."
+        )
+    change_pct = (repaired_mm3 - original_mm3) / original_mm3 * 100.0
+    if abs(change_pct) <= REPAIR_VOLUME_WARN_PCT:
+        return round(change_pct, 2), None
+    return round(change_pct, 2), (
+        f"Repair changed the part's volume by {change_pct:+.1f}% "
+        f"({original_mm3:,.0f} → {repaired_mm3:,.0f} mm³), more than the "
+        f"{REPAIR_VOLUME_WARN_PCT:g}% expected from closing gaps. It may have filled "
+        "holes, bores, or pockets that belong to the design. Compare the repaired "
+        "file with your design before using it."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -160,17 +244,15 @@ async def repair_mesh(
     # assert the contract instead of silently misreading an AnalysisRun.
     assert isinstance(original_result, dict)
 
+    loop = asyncio.get_event_loop()
+    original_faces = len(mesh.faces)
+    # Volume before repair, every hole capped flat (see _pre_repair_volume): the
+    # baseline that discloses a repair which filled design features instead of
+    # silently substituting a different solid. CPU-bound, so off the event loop.
+    original_volume_mm3 = await loop.run_in_executor(None, _pre_repair_volume, mesh)
+
     # Run repair with timeout (T-05A-01)
     repair_start = time.time()
-    original_faces = len(mesh.faces)
-    # Volume before repair: unreliable for a non-watertight mesh (that is why
-    # repair is needed) but recorded so the post-repair delta is disclosed,
-    # not silent — hole filling can materially change enclosed volume.
-    try:
-        original_volume_mm3 = float(mesh.volume)
-    except Exception:
-        original_volume_mm3 = None
-    loop = asyncio.get_event_loop()
     try:
         repaired_mesh, tier, holes_filled = await asyncio.wait_for(
             loop.run_in_executor(None, _do_repair, mesh),
@@ -178,10 +260,17 @@ async def repair_mesh(
         )
     except (asyncio.TimeoutError, Exception) as exc:
         logger.warning("Repair failed: %s", exc)
+        # ``reason`` is the user-facing explanation on every refusal path; a
+        # timeout's str(exc) is empty, so ``error`` alone explained nothing.
+        reason = (
+            f"Repair timed out after {_repair_timeout_sec():g} s."
+            if isinstance(exc, asyncio.TimeoutError)
+            else "Repair stopped with an internal error before producing a solid."
+        )
         return {
             "original_analysis": original_result,
             "repair_applied": False,
-            "repair_details": {"error": str(exc)},
+            "repair_details": {"error": str(exc), "reason": reason},
             "repaired_analysis": None,
             "repaired_file_b64": None,
             "repair_verification": None,
@@ -221,17 +310,7 @@ async def repair_mesh(
     )
     assert isinstance(repaired_result, dict)
 
-    try:
-        repaired_volume_mm3 = float(repaired_mesh.volume)
-    except Exception:
-        repaired_volume_mm3 = None
-    volume_change_pct = None
-    if original_volume_mm3 and repaired_volume_mm3:
-        volume_change_pct = round(
-            (repaired_volume_mm3 - original_volume_mm3)
-            / abs(original_volume_mm3) * 100.0,
-            2,
-        )
+    volume_change_pct, volume_warning = _volume_check(original_volume_mm3, repaired_volume)
 
     repair_details = {
         "tier": tier,
@@ -239,12 +318,14 @@ async def repair_mesh(
         "repaired_faces": len(repaired_mesh.faces),
         "holes_filled": holes_filled,
         "duration_ms": repair_duration_ms,
-        # Honest disclosure: repair changes geometry. The pre-repair volume of
-        # a non-watertight mesh is itself an estimate; the delta is reported
-        # so a materially different solid is never silently substituted.
+        # Honest disclosure: repair changes geometry. The pre-repair volume is
+        # an estimate (holes capped flat); the delta is reported, and warned on
+        # past REPAIR_VOLUME_WARN_PCT, so a materially different solid is never
+        # silently substituted.
         "original_volume_mm3": original_volume_mm3,
-        "repaired_volume_mm3": repaired_volume_mm3,
+        "repaired_volume_mm3": repaired_volume,
         "volume_change_pct": volume_change_pct,
+        "volume_warning": volume_warning,
     }
 
     # Verification receipt: both verdicts came from run_analysis, the identical

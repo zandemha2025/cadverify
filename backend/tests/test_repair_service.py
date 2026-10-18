@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -9,12 +10,19 @@ import pytest
 import trimesh
 
 from src.services.repair_service import (
+    REPAIR_VOLUME_WARN_PCT,
     _do_repair,
+    _pre_repair_volume,
     _repair_max_faces,
     _repair_timeout_sec,
     _tier1_repair,
     _tier2_repair,
+    _volume_check,
 )
+
+OPEN_BORED_BLOCK = Path(__file__).parent / "assets" / "open-bored-block-mm.iges"
+# 20 x 15 x 10 mm block with a 6 mm through-bore: 3000 - pi * 3^2 * 10 mm3.
+BORED_BLOCK_MM3 = 3000.0 - np.pi * 9.0 * 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +38,24 @@ def _make_non_watertight_box() -> trimesh.Trimesh:
         faces=mesh.faces[:-2],
         process=False,
     )
+
+
+@pytest.fixture(scope="module")
+def open_bored_block() -> trimesh.Trimesh:
+    """The bored block with its upper cap removed (945 open boundary edges).
+
+    Tessellating this IGES takes ~40 s, so parse it once per module through the
+    route parser, which also warms the parse cache repair_mesh reads. Repair
+    mutates its input: tests take ``.copy()``.
+    """
+    from src.api.routes import _parse_mesh
+
+    mesh, _ = _parse_mesh(OPEN_BORED_BLOCK.read_bytes(), OPEN_BORED_BLOCK.name)
+    return mesh
+
+
+def _boundary_edge_count(mesh: trimesh.Trimesh) -> int:
+    return len(trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1))
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +128,128 @@ def test_tier2_runtime_error_returns_original():
         result = _tier2_repair(mesh)
     assert isinstance(result, trimesh.Trimesh)
     assert len(result.faces) == len(mesh.faces)
+
+
+def test_tier2_real_pymeshfix_closes_open_cad_mesh(open_bored_block, caplog):
+    """Unmocked: the installed pymeshfix must actually close a real open mesh.
+
+    _tier2_repair swallows engine errors and hands back the input, so an API
+    mismatch (pymeshfix 0.18 dropped repair(verbose=) and .v/.f) only shows up
+    as a still-open mesh -- assert the repaired solid, not merely no exception.
+    """
+    mesh = open_bored_block.copy()
+    assert not mesh.is_watertight
+    assert _boundary_edge_count(mesh) == 945
+
+    with caplog.at_level("WARNING", logger="cadverify.repair_service"):
+        repaired = _tier2_repair(mesh)
+
+    assert "pymeshfix repair failed" not in caplog.text
+    assert repaired is not mesh
+    assert repaired.is_watertight
+    assert _boundary_edge_count(repaired) == 0
+    assert repaired.volume > 0
+
+
+def test_do_repair_falls_through_to_pymeshfix_on_open_cad_mesh(open_bored_block):
+    """trimesh alone cannot close the open cap; the pipeline reaches tier 2."""
+    repaired, tier, _ = _do_repair(open_bored_block.copy())
+    assert tier == "pymeshfix"
+    assert repaired.is_watertight
+
+
+# ---------------------------------------------------------------------------
+# Volume-change check
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("offset", [(0.0, 0.0, 0.0), (1000.0, -250.0, 40.0)])
+def test_pre_repair_volume_caps_holes_independent_of_origin(offset):
+    """A box missing one face is 1000 mm3 once capped, wherever it sits.
+
+    trimesh's open-mesh volume reads 500 here (and about -99,500 at x=+1000), which
+    would report a perfect fill as a +100% change.
+    """
+    mesh = _make_non_watertight_box()
+    mesh.apply_translation(offset)
+    assert _pre_repair_volume(mesh) == pytest.approx(1000.0)
+
+
+def test_pre_repair_volume_open_bored_block_matches_authored_solid(open_bored_block):
+    """Capping the missing top face (square loop + bore loop) restores the bore."""
+    mesh = open_bored_block.copy()
+    faces_before = mesh.faces.copy()
+    assert _pre_repair_volume(mesh) == pytest.approx(BORED_BLOCK_MM3, rel=1e-3)
+    rotated = mesh.copy()
+    rotated.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
+    assert _pre_repair_volume(rotated) == pytest.approx(BORED_BLOCK_MM3, rel=1e-3)
+    np.testing.assert_array_equal(mesh.faces, faces_before)  # never mutated
+
+
+def test_pre_repair_volume_ignores_flipped_and_inverted_winding():
+    flipped = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    flipped.faces[:4] = flipped.faces[:4, ::-1]
+    flipped = trimesh.Trimesh(flipped.vertices, flipped.faces, process=False)
+    inverted = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    inverted.invert()
+    assert _pre_repair_volume(flipped) == pytest.approx(1000.0)
+    assert _pre_repair_volume(inverted) == pytest.approx(1000.0)
+
+
+def test_pre_repair_volume_unmeasurable_returns_none():
+    sheet = trimesh.Trimesh(
+        vertices=[[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces=[[0, 1, 2]], process=False
+    )
+    assert _pre_repair_volume(sheet) is None
+
+
+def test_volume_check_threshold_boundary():
+    assert REPAIR_VOLUME_WARN_PCT == 2.0
+    assert _volume_check(1000.0, 1000.0) == (0.0, None)
+    assert _volume_check(1000.0, 1019.9) == (1.99, None)
+    assert _volume_check(1000.0, 980.1) == (-1.99, None)
+    pct, warning = _volume_check(1000.0, 1020.1)
+    assert pct == 2.01 and "+2.0%" in warning
+    pct, warning = _volume_check(1000.0, 900.0)
+    assert pct == -10.0 and "-10.0%" in warning
+
+
+def test_volume_check_without_baseline_warns_instead_of_staying_silent():
+    pct, warning = _volume_check(None, 1000.0)
+    assert pct is None
+    assert "could not be measured" in warning
+
+
+@pytest.mark.asyncio
+async def test_repair_mesh_warns_when_repair_fills_the_bore(open_bored_block, monkeypatch):
+    """End to end through repair_mesh: the shell closes, the bore is filled, warn."""
+    from src.services import analysis_service, repair_service
+
+    # The open_bored_block fixture warmed the parse cache, so repair_mesh's own
+    # _parse_mesh call is a cache hit rather than a second ~40 s tessellation.
+
+    monkeypatch.setattr(
+        analysis_service,
+        "run_analysis",
+        AsyncMock(return_value={"overall_verdict": "fail"}),
+    )
+    result = await repair_service.repair_mesh(
+        file_bytes=OPEN_BORED_BLOCK.read_bytes(),
+        filename="open-bored-block-mm.iges",
+        processes=None,
+        rule_pack=None,
+        user=MagicMock(),
+        session=AsyncMock(),
+    )
+
+    assert result["repair_applied"] is True
+    details = result["repair_details"]
+    assert details["tier"] == "pymeshfix"
+    assert details["original_volume_mm3"] == pytest.approx(BORED_BLOCK_MM3, rel=1e-3)
+    assert details["repaired_volume_mm3"] == pytest.approx(3000.0, rel=1e-3)
+    assert details["volume_change_pct"] == pytest.approx(10.4, abs=0.1)
+    assert "+10.4%" in details["volume_warning"]
+    assert "bores" in details["volume_warning"]
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +359,8 @@ async def test_timeout_returns_original_analysis(monkeypatch):
     )
     assert result["repair_applied"] is False
     assert result["repair_details"].get("error") is not None
+    # str(TimeoutError()) is empty; the user-facing reason must still explain.
+    assert result["repair_details"]["reason"] == "Repair timed out after 0.1 s."
 
 
 # ---------------------------------------------------------------------------

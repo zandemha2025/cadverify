@@ -263,6 +263,15 @@ export interface RepairDetails {
   repaired_faces?: number;
   holes_filled?: number;
   duration_ms?: number;
+  /** Pre-repair volume with each hole capped flat (an estimate). */
+  original_volume_mm3?: number | null;
+  repaired_volume_mm3?: number | null;
+  volume_change_pct?: number | null;
+  /** Set when repair changed volume past the API threshold (or it was unmeasurable). */
+  volume_warning?: string | null;
+  /** User-facing explanation on every refused repair. */
+  reason?: string;
+  /** Raw engine error (exception path only; empty on timeout). */
   error?: string;
 }
 

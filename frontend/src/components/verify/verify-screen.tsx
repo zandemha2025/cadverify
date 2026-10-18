@@ -246,6 +246,7 @@ export function VerifyScreen(props: Props) {
               setDisclose={setDisclose}
               decision={decision}
               setDecision={setDecision}
+              onPickFile={onPickFile}
               onReverify={onReverify}
               onRetryCost={onRetryCost}
               nav={nav}
@@ -751,6 +752,7 @@ function Walk({
   setDisclose,
   decision,
   setDecision,
+  onPickFile,
   onReverify,
   onRetryCost,
   nav,
@@ -762,6 +764,7 @@ function Walk({
   setDisclose: (s: string | null) => void;
   decision: CostDisposition | null;
   setDecision: (d: CostDisposition | null) => void;
+  onPickFile: () => void;
   onReverify: () => void;
   onRetryCost: () => void;
   nav: Nav;
@@ -899,7 +902,9 @@ function Walk({
               )}
             </p>
             <div style={{ marginTop: 12 }}>
-              <GhostButton onClick={onReverify}>Repair &amp; re-upload →</GhostButton>
+              {/* No repair runs here: re-verifying the same bytes cannot pass this
+                  gate, so the action asks for a file repaired at the source. */}
+              <GhostButton onClick={onPickFile}>Upload a repaired file →</GhostButton>
             </div>
           </div>
         )}

@@ -203,6 +203,24 @@ def test_repair_reverifies_and_binds_download_to_verdicts(client):
     assert stamp["download_media_type"] == "model/stl"
 
 
+def test_repair_exact_hole_fill_reports_no_volume_change(client):
+    """Closing the box's missing face restores exactly the 1000 mm3 cube.
+
+    The old origin-dependent baseline read the open box as 500 mm3 and reported
+    this perfect fill as +100%; a warning must not fire on a correct repair.
+    """
+    r = client.post(
+        "/api/v1/validate/repair",
+        files={"file": ("broken.stl", _non_watertight_stl(), "model/stl")},
+    )
+    assert r.status_code == 200, r.text
+    details = r.json()["repair_details"]
+    assert details["original_volume_mm3"] == pytest.approx(1000.0)
+    assert details["repaired_volume_mm3"] == pytest.approx(1000.0)
+    assert details["volume_change_pct"] == 0.0
+    assert details["volume_warning"] is None
+
+
 def test_repair_refuses_non_watertight_engine_output(client, monkeypatch):
     from src.services import repair_service
     broken = trimesh.Trimesh(vertices=trimesh.creation.box().vertices,
