@@ -40,6 +40,7 @@ import { longDate, procName, shortWhen, type RateVersionLike } from "./shop-deri
 import {
   PROV_TAG,
   countInputs,
+  defaultsFrom,
   headlineEstimate,
   headlineQty,
   previewAt,
@@ -100,9 +101,10 @@ export function RatesScreen() {
   const payload = rc.eff?.payload ?? null;
   const counts = React.useMemo(() => (details ? countInputs(details.map(headlineEstimate)) : null), [details]);
 
-  // v0: the defaults the engine recorded on your newest check that has them.
-  const v0src = React.useMemo(() => (details ?? []).find((d) => rowsFromAssumptions(d.result?.assumptions).length > 0) ?? null, [details]);
-  const rows = governed ? rowsFromPayload(payload) : rowsFromAssumptions(v0src?.result?.assumptions);
+  // v0: the defaults the engine recorded on your newest checks.
+  const v0defaults = React.useMemo(() => defaultsFrom((details ?? []).map((d) => d.result?.assumptions)), [details]);
+  const v0src = details && v0defaults.length ? details[0] : null;
+  const rows = governed ? rowsFromPayload(payload) : rowsFromAssumptions(v0defaults);
   const regions = governed ? regionsFromPayload(payload) : regionsFromAssumptions((details ?? []).map((d) => d.result?.assumptions));
   const versions = (rc.page?.versions ?? []) as RateVersionLike[];
   const waiting = (changes ?? []).filter((c) => c.status === "proposed" && c.asset_type === "rate_card");
@@ -178,7 +180,7 @@ export function RatesScreen() {
               ))}
               {!governed && v0src ? (
                 <p className="fh" style={{ margin: "4px 0 6px" }}>
-                  As the engine recorded them on {v0src.label || v0src.filename}, {shortWhen(v0src.created_at)}.
+                  As the engine recorded them on your newest checks, latest {shortWhen(v0src.created_at)}. Checks costed with a shop profile or your own override aren&apos;t counted.
                 </p>
               ) : null}
             </div>
@@ -529,8 +531,13 @@ function RatePreview({
   const usable = React.useMemo(
     () =>
       (details ?? [])
-        .map((d) => ({ d, e: headlineEstimate(d), base: (d.result?.assumptions ?? []).find((a) => a.name === "labor_rate")?.value }))
-        .filter((x): x is { d: RecordDetail; e: NonNullable<ReturnType<typeof headlineEstimate>>; base: number } => !!x.e && typeof x.base === "number"),
+        .map((d) => {
+          const a = (d.result?.assumptions ?? []).find((x) => x.name === "labor_rate");
+          return { d, e: headlineEstimate(d), base: a?.value, card: a?.provenance === "DEFAULT" };
+        })
+        .filter((x): x is { d: RecordDetail; e: NonNullable<ReturnType<typeof headlineEstimate>>; base: number; card: boolean } => !!x.e && typeof x.base === "number")
+        // Checks costed on the card first: a shop profile's labor rate isn't the card's.
+        .sort((a, b) => Number(b.card) - Number(a.card)),
     [details]
   );
   // Prefer a part where labor moves the cost.

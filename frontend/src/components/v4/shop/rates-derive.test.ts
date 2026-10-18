@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   costLines,
+  defaultsFrom,
   countInputs,
   headlineEstimate,
   headlineQty,
@@ -122,4 +123,15 @@ test("preview: cost each moves by the labor lines; withheld when a floor applies
 test("cost inputs are counted per part by where they come from", () => {
   const c = countInputs([est(), null, est({ confidence: { validated: true } })]);
   assert.deepEqual(c, { parts: 2, total: 14, yours: 2, file: 0, typ: 12, measured: 7 });
+});
+
+test("v0 defaults merge across checks; a shop-profile check doesn't stand in for the card", () => {
+  const shop: Assumption[] = [
+    { name: "labor_rate", value: 52, unit: "$/hr", provenance: "SHOP", source: "[shop: Midwest]" },
+    { name: "stock_allowance", value: 1.1, unit: "×", provenance: "DEFAULT", source: "" },
+  ];
+  const merged = defaultsFrom([shop, assumptions]);
+  assert.equal(merged.find((a) => a.name === "labor_rate")?.value, 35);
+  assert.equal(merged.filter((a) => a.name === "stock_allowance").length, 1);
+  assert.ok(!merged.some((a) => a.name === "overhead"));
 });

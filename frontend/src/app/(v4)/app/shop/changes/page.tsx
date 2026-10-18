@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { ChangesScreen } from "@/components/v4/shop/changes-screen";
 
 export default function Page() {
-  return <Stub title="Changes to review" section="shop" board="S3" />;
+  return <ChangesScreen />;
 }

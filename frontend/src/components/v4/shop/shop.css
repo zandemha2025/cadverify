@@ -80,6 +80,7 @@
 .ob .shp .kv{grid-template-columns:max-content minmax(0,1fr)}
 .ob .shp .kv span{white-space:nowrap}
 .ob .shp .kv b{overflow-wrap:anywhere}
+@media (max-width:640px){.ob .shp .kv{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}.ob .shp .kv span{white-space:normal}}
 .ob .shp .prn{margin:8px 12px 4px;padding:10px 12px;border-radius:12px;background:rgba(20,24,31,.035)}
 .ob .shp .prn .kv{padding:2px 0 0}
 

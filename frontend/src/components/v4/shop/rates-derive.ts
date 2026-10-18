@@ -66,6 +66,17 @@ export function rowsFromAssumptions(assumptions: Assumption[] | null | undefined
   return out;
 }
 
+/**
+ * The default (v0) values across saved checks, newest first: for each input the
+ * newest value the engine tagged DEFAULT. A check costed with a shop profile or
+ * a user override records those instead, and they aren't the card.
+ */
+export function defaultsFrom(lists: (Assumption[] | null | undefined)[]): Assumption[] {
+  const seen = new Map<string, Assumption>();
+  for (const list of lists) for (const a of list ?? []) if (a.provenance === "DEFAULT" && !seen.has(a.name)) seen.set(a.name, a);
+  return Array.from(seen.values());
+}
+
 /* ------------------------------------------------------------------ */
 /*  Regional multipliers                                                */
 /* ------------------------------------------------------------------ */
