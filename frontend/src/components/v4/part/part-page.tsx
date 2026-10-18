@@ -1,0 +1,196 @@
+"use client";
+
+/**
+ * /app/part/[key]: the part by its mesh hash. A check that just ran is shown from
+ * memory (and keeps updating while it runs); otherwise the latest saved record,
+ * its analysis and the part's context are loaded. 3D comes from the check, from
+ * this browser's own copy, or from dropping the same file again.
+ */
+import * as React from "react";
+import Link from "next/link";
+import { getCachedMesh } from "./mesh-cache";
+import { loadSavedPart, type SavedPart } from "./api";
+import { previewFromFile, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
+import { liveData, savedData } from "./data";
+import { PartView, type MeshSource } from "./part-view";
+import { ProgressPanel } from "./progress";
+import { OutOfChecks } from "./blocked";
+import { liveMesh } from "./check-page";
+import type { Lens } from "./ctx";
+import { R } from "../routes";
+import { Empty, Failed, Loading } from "../ui";
+import { isQuotaErrorMessage } from "@/lib/api-recovery";
+import "./part.css";
+
+const LENS_KEYS: Lens[] = ["make", "cost", "use", "shop", "decide"];
+
+export function PartPage({ partKey }: { partKey: string }) {
+  const session = useSessionForKey(partKey);
+  const [saved, setSaved] = React.useState<SavedPart | null>(null);
+  const [state, setState] = React.useState<"loading" | "ready" | "error">("loading");
+  const [error, setError] = React.useState<string | null>(null);
+  const [cache, setCache] = React.useState<{ url: string; faceHash: string | null; faceSpace: "analysis" | "preview" } | null | undefined>(undefined);
+  const [drop, setDrop] = React.useState<{ url: string | null; faceHash: string | null; faceSpace: "analysis" | "preview"; error: string | null; loading: boolean } | null>(null);
+  const [dropped, setDropped] = React.useState<File | null>(null);
+  const [lens, setLens] = React.useState<Lens | null>(null);
+  const [quotaClosed, setQuotaClosed] = React.useState(false);
+  const [reload, setReload] = React.useState(0);
+  const sessionDone = session?.status === "done";
+
+  React.useEffect(() => {
+    const l = new URLSearchParams(window.location.search).get("lens") as Lens | null;
+    setLens(l && LENS_KEYS.includes(l) ? l : "make");
+  }, []);
+
+  // What's saved about the part (records, analysis, context). Reloaded once a live check finishes.
+  React.useEffect(() => {
+    let live = true;
+    setState((s) => (saved ? s : "loading"));
+    loadSavedPart(partKey)
+      .then((p) => {
+        if (!live) return;
+        setSaved(p);
+        setState("ready");
+      })
+      .catch((e) => {
+        if (!live) return;
+        setError(e instanceof Error ? e.message : "This part didn't load.");
+        setState("error");
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partKey, sessionDone, reload]);
+
+  // This browser's copy of the 3D preview.
+  React.useEffect(() => {
+    let live = true;
+    let url: string | null = null;
+    getCachedMesh(partKey).then((m) => {
+      if (!live) return;
+      if (!m) return setCache(null);
+      url = URL.createObjectURL(m.blob);
+      setCache({ url, faceHash: m.faceHash, faceSpace: m.faceSpace });
+    });
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [partKey]);
+
+  const data = React.useMemo(() => (session ? liveData(session, saved) : saved ? savedData(partKey, saved) : null), [session, saved, partKey]);
+
+  const mesh: MeshSource = React.useMemo(() => {
+    if (session && (session.preview.url || session.preview.status === "loading")) return liveMesh(session);
+    if (drop) return { url: drop.url, faceHash: drop.faceHash, faceSpace: drop.faceSpace, kind: "glb", origin: drop.url ? "drop" : null, loading: drop.loading, error: drop.error };
+    if (cache) return { url: cache.url, faceHash: cache.faceHash, faceSpace: cache.faceSpace, kind: "glb", origin: "cache", loading: false, error: null };
+    return { url: null, faceHash: null, faceSpace: "preview", kind: "glb", origin: null, loading: cache === undefined, error: session?.preview.error ?? null };
+  }, [session, drop, cache]);
+
+  const onDropFile = React.useCallback(
+    async (file: File) => {
+      setDrop({ url: null, faceHash: null, faceSpace: "preview", error: null, loading: true });
+      const r = await previewFromFile(file, partKey);
+      if (r.ok) {
+        setDropped(file);
+        setDrop({ url: r.url, faceHash: r.faceHash, faceSpace: r.faceSpace, error: null, loading: false });
+      } else setDrop({ url: null, faceHash: null, faceSpace: "preview", error: r.error, loading: false });
+    },
+    [partKey],
+  );
+
+  const file = session?.file ?? dropped;
+  const recheck = React.useCallback(
+    (opts?: { materialClass?: string }) => {
+      if (!file) return;
+      setQuotaClosed(false);
+      startCheck(file, { materialClass: opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer", sample: session?.sample });
+    },
+    [file, session?.materialClass, session?.sample, data?.cost?.material_class],
+  );
+
+  if (!lens) return null;
+  if (!data) {
+    if (state === "error")
+      return (
+        <main className="world" aria-label="Part">
+          <div className="pagehead" style={{ right: 24 }}>
+            <h1 className="ptitle">Part</h1>
+          </div>
+          <div className="content full">
+            <Failed title="This part didn't load" detail={error} onRetry={() => setReload((n) => n + 1)} />
+          </div>
+        </main>
+      );
+    return (
+      <main className="world" aria-label="Part">
+        <div className="pagehead" style={{ right: 24 }}>
+          <h1 className="ptitle">Part</h1>
+        </div>
+        <div className="content full">
+          <div className="panel">
+            <Loading rows={5} label="Loading this part" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+  if (!session && saved && !saved.latest && !saved.validation && !saved.decisions.length) {
+    return (
+      <main className="world" aria-label="Part">
+        <div className="pagehead" style={{ right: 24 }}>
+          <Link href={R.parts} style={{ fontSize: 12.5, textDecoration: "none" }}>
+            ‹ Parts
+          </Link>
+          <h1 className="ptitle">Part not found</h1>
+          <p className="pmeta">
+            <span className="mono">{partKey.slice(0, 16)}</span>
+          </p>
+        </div>
+        <div className="content full">
+          <div className="panel">
+            <Empty title="Nothing saved for this part" actions={<Link className="btn ink sm" href={R.check}>Check a part</Link>}>
+              No check or record in your organization has this fingerprint. If you checked it in another organization, switch to it from the account menu.
+            </Empty>
+          </div>
+        </div>
+      </main>
+    );
+  }
+  const running = session?.status === "running";
+  const costQuota = !!session && isQuotaErrorMessage(session.result?.costError ?? null) && !quotaClosed;
+  const overlay = (
+    <>
+      {session && (running || session.panel) && session.status !== "failed" ? (
+        <ProgressPanel
+          session={session}
+          open={session.panel}
+          onOpenChange={(o) => setPanel(session.id, o)}
+          action={
+            !running ? (
+              <button className="btn ink sm" type="button" onClick={() => setPanel(session.id, false)}>
+                Open result
+              </button>
+            ) : undefined
+          }
+        />
+      ) : null}
+      {costQuota ? <OutOfChecks message={session!.result!.costError!} onClose={() => setQuotaClosed(true)} /> : null}
+    </>
+  );
+  return (
+    <PartView
+      key={partKey}
+      data={data}
+      session={session}
+      mesh={mesh}
+      initialLens={lens}
+      canRecheck={!!file}
+      onRecheck={recheck}
+      onRetryPrices={() => session && void retryPrices(session.id)}
+      onDropFile={session ? undefined : (f) => void onDropFile(f)}
+      overlay={overlay}
+    />
+  );
+}

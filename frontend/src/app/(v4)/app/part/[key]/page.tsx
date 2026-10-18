@@ -1,5 +1,6 @@
-import { Stub } from "@/components/v4/stub";
+import { PartPage } from "@/components/v4/part/part-page";
 
-export default function Page() {
-  return <Stub title="Part" section="parts" board="Main / O4–O7" />;
+export default async function Page({ params }: { params: Promise<{ key: string }> }) {
+  const { key } = await params;
+  return <PartPage partKey={decodeURIComponent(key)} />;
 }

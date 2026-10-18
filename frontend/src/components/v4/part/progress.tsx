@@ -1,0 +1,112 @@
+"use client";
+
+/** X10: the check's progress, stage by stage, from the real responses as they land. */
+import * as React from "react";
+import { progressSteps, type Step } from "./model";
+import type { CheckSession } from "./store";
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+export function progressModel(s: CheckSession) {
+  const r = s.result;
+  const steps: Step[] = progressSteps({
+    fileName: s.file.name,
+    sample: s.sample,
+    validation: s.validation ?? r?.validation ?? null,
+    cost: r?.cost ?? null,
+    costError: r ? r.costError : null,
+    geometryInvalid: s.status === "stopped" ? r?.costGeometryInvalid?.message ?? "not a closed solid" : null,
+    done: s.status !== "running",
+  });
+  const running = s.status === "running";
+  const stopped = s.status === "stopped";
+  const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;
+  const title = running ? (s.sample ? "Checking the sample" : "Checking") : stopped ? "Stopped at Measured" : "Checked";
+  const meta = running ? [s.file.name, s.sample ? "Uses 1 check" : "About 30 s"] : stopped ? [s.file.name, "Not watertight"] : [s.file.name, seconds(elapsed)];
+  const foot = running ? "Hiding this doesn’t stop the check." : stopped ? "Nothing after this step ran." : "Same file, same result, every time.";
+  return { steps, running, stopped, title, meta, foot };
+}
+
+export function ProgressPanel({
+  session,
+  open,
+  onOpenChange,
+  action,
+}: {
+  session: CheckSession;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** "See what's wrong" (stopped) or "Open result" (done). */
+  action?: React.ReactNode;
+}) {
+  const m = progressModel(session);
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+  const reopenRef = React.useRef<HTMLButtonElement>(null);
+  const wasOpen = React.useRef(open);
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector(".ob [aria-modal='true']")) return;
+      e.preventDefault();
+      onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+  React.useEffect(() => {
+    if (wasOpen.current && !open) reopenRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
+  const hideLabel = m.running ? "Hide progress" : "Close";
+  if (!open)
+    return (
+      <button ref={reopenRef} className="btn sm reopen" type="button" onClick={() => onOpenChange(true)}>
+        {m.running ? "Checking · Show progress" : "Show progress"}
+      </button>
+    );
+  return (
+    <section className="prog" role="status" aria-live="polite" aria-labelledby="pg-title">
+      <div className="hd">
+        <div style={{ minWidth: 0 }}>
+          <h1 className="stitle" id="pg-title">
+            {m.title}
+          </h1>
+          <p className="pmeta" style={{ marginTop: 4 }}>
+            {m.meta.map((t, i) => (
+              <span key={i} style={{ overflowWrap: "anywhere" }}>
+                {t}
+              </span>
+            ))}
+          </p>
+        </div>
+        <button ref={closeRef} className="btn x" type="button" onClick={() => onOpenChange(false)} aria-label={hideLabel} title={hideLabel}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="m3 3 8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+      <ol className="steps">
+        {m.steps.map((s) => (
+          <li key={s.t} className={`st ${s.state}`}>
+            <span className="m" aria-hidden="true">
+              {s.state === "done" ? "✓" : s.state === "bad" ? "✕" : ""}
+            </span>
+            <span>
+              <b>{s.t}</b>
+              <span>
+                <span className="sr">{s.state === "done" ? "Done: " : s.state === "now" ? "In progress: " : s.state === "bad" ? "Failed: " : s.state === "skip" ? "Skipped: " : "Waiting: "}</span>
+                {s.d}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="ft">
+        <span>{m.foot}</span>
+        {action}
+      </div>
+    </section>
+  );
+}

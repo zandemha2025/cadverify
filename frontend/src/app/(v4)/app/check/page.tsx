@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { CheckPage } from "@/components/v4/part/check-page";
 
 export default function Page() {
-  return <Stub title="Check a part" section="home" board="O1 / O2" />;
+  return <CheckPage />;
 }
