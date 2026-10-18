@@ -83,7 +83,10 @@ export function MachinesScreen() {
       const want = wanted.current;
       if (want && list.some((m) => m.id === want)) setSel(want);
       else {
-        if (want) showToast("That machine isn't in your inventory.");
+        if (want) {
+          showToast("That machine isn't in your inventory.");
+          setQuery(list[0]?.id ?? null);
+        }
         setSel(list[0]?.id ?? null);
       }
     });
