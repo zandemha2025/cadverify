@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { MachinesScreen } from "@/components/v4/shop/machines-screen";
 
 export default function Page() {
-  return <Stub title="Machines and printers" section="shop" board="O9" />;
+  return <MachinesScreen />;
 }

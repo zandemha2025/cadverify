@@ -1,0 +1,442 @@
+"use client";
+
+/**
+ * Machines and printers (board O9). The org's declared machines as tiles with
+ * the work area drawn to scale; the selected one opens in the right sheet.
+ * Add, edit, delete (confirmed), CSV import and template, catalog prefill, and
+ * the shop's in-house operations. `?add=1` opens the add form and
+ * `?machine=<id>` selects a machine (the search palette links to both).
+ */
+import * as React from "react";
+import {
+  countMachines,
+  deleteMachine,
+  importMachinesCsv,
+  listMachines,
+  machineImportTemplate,
+  type MachineImportSummary,
+  type OwnedMachine,
+} from "@/lib/verify/machine-api";
+import Link from "next/link";
+import { R, TABS } from "../routes";
+import { Content, Empty, Loading, PageHead, Panel, Sheet, cx } from "../ui";
+import { Banner, LaborFact, RateCardChip, ShopWorld, useLaborRate, useRateCard, useRecords, useToast } from "./common";
+import { MachineDialog } from "./machine-dialog";
+import { MachineSheet } from "./machine-sheet";
+import { downloadText, getShopCapabilities, putShopCapabilities } from "./shop-api";
+import { SHOP_OPS, envelopeOf, isoBox, machineName, machineStatus, opOn, tileSub, toggleOp } from "./shop-derive";
+
+type DialogState = { mode: "add"; process?: string } | { mode: "edit"; machine: OwnedMachine } | null;
+type BannerState =
+  | { kind: "import"; s: MachineImportSummary }
+  | { kind: "importError"; msg: string }
+  | { kind: "template" }
+  | { kind: "templateError"; msg: string }
+  | null;
+
+function setQuery(id: string | null) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("add");
+  if (id) url.searchParams.set("machine", id);
+  else url.searchParams.delete("machine");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+}
+
+export function MachinesScreen() {
+  const [machines, setMachines] = React.useState<OwnedMachine[] | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [sel, setSel] = React.useState<string | null>(null);
+  const [dialog, setDialog] = React.useState<DialogState>(null);
+  const [banner, setBanner] = React.useState<BannerState>(null);
+  const [busyCsv, setBusyCsv] = React.useState(false);
+  const wanted = React.useRef<string | null>(null);
+  const csvRef = React.useRef<HTMLInputElement>(null);
+  const sheetRef = React.useRef<HTMLSpanElement>(null);
+  const [toast, showToast] = useToast();
+  const rc = useRateCard();
+  const recs = useRecords();
+  const labor = useLaborRate(rc, recs.data);
+
+  const load = React.useCallback(async () => {
+    setLoadError(null);
+    try {
+      const page = await listMachines();
+      setMachines(page.machines);
+      return page.machines;
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Couldn't load machines.");
+      setMachines(null);
+      return null;
+    }
+  }, []);
+
+  // Deep links: ?add=1 opens the add form, ?machine=<id> selects that machine.
+  React.useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    wanted.current = q.get("machine");
+    if (q.get("add") === "1") {
+      setDialog({ mode: "add" });
+      setQuery(wanted.current);
+    }
+    void load().then((list) => {
+      if (!list) return;
+      const want = wanted.current;
+      if (want && list.some((m) => m.id === want)) setSel(want);
+      else {
+        if (want) showToast("That machine isn't in your inventory.");
+        setSel(list[0]?.id ?? null);
+      }
+    });
+  }, [load, showToast]);
+
+  const pick = (id: string) => {
+    setSel(id);
+    setQuery(id);
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(() => sheetRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }));
+    }
+  };
+
+  const onCsv = async (file: File) => {
+    setBusyCsv(true);
+    setBanner(null);
+    try {
+      const s = await importMachinesCsv(file);
+      setBanner({ kind: "import", s });
+      if (s.imported > 0) {
+        const list = await load();
+        if (list && !sel) setSel(list[0]?.id ?? null);
+        recs.reload();
+      }
+    } catch (e) {
+      setBanner({ kind: "importError", msg: e instanceof Error ? e.message : "Import failed." });
+    } finally {
+      setBusyCsv(false);
+    }
+  };
+
+  const onTemplate = async () => {
+    try {
+      downloadText(await machineImportTemplate(), "machines.csv");
+      setBanner({ kind: "template" });
+    } catch (e) {
+      setBanner({ kind: "templateError", msg: e instanceof Error ? e.message : "Couldn't download the template." });
+    }
+  };
+
+  const selected = (machines ?? []).find((m) => m.id === sel) ?? null;
+  const total = machines ? countMachines(machines) : null;
+  const rated = machines ? machines.filter((m) => m.hourly_rate_usd != null).length : null;
+
+  const onDelete = async () => {
+    if (!selected) return;
+    const name = machineName(selected);
+    const idx = (machines ?? []).findIndex((m) => m.id === selected.id);
+    await deleteMachine(selected.id);
+    const list = await load();
+    const next = list?.[Math.min(idx, (list?.length ?? 1) - 1)]?.id ?? null;
+    setSel(next);
+    setQuery(next);
+    recs.reload();
+    showToast(`Removed ${name}. Older decisions are marked for re-costing.`);
+  };
+
+  const onSaved = async (m: OwnedMachine, mode: "add" | "edit") => {
+    setDialog(null);
+    await load();
+    setSel(m.id);
+    setQuery(m.id);
+    recs.reload();
+    showToast(`${mode === "add" ? "Added" : "Saved"} ${machineName(m)}. Older decisions are marked for re-costing.`);
+  };
+
+  const actions = (
+    <>
+      <button className="btn ink sm" type="button" onClick={() => setDialog({ mode: "add" })}>
+        Add machine
+      </button>
+      <button className="btn sm" type="button" onClick={() => csvRef.current?.click()} disabled={busyCsv}>
+        {busyCsv ? "Importing…" : "Import CSV"}
+      </button>
+      <button className="btn sm" type="button" onClick={onTemplate}>
+        Download template
+      </button>
+    </>
+  );
+
+  const fig = (v: number | null) => (loadError ? "—" : v == null ? "…" : v);
+  const tabs = TABS.shop.map((t) => (t.href === R.shop && total != null ? { ...t, count: total } : t));
+
+  return (
+    <ShopWorld label="Your machines">
+      <PageHead
+        title="Machines and printers"
+        actions={actions}
+        meta={[
+          <>
+            Machines <b className="num">{fig(total)}</b>
+          </>,
+          <>
+            Rates declared <b className="num">{fig(rated)}</b>
+          </>,
+          <>
+            Rate card <RateCardChip rc={rc} action={{ label: "Open Rates", href: R.rates }} />
+          </>,
+          <LaborFact key="l" src={labor} />,
+        ]}
+        tabs={tabs}
+        tabsLabel="Your shop"
+      />
+      <input
+        ref={csvRef}
+        type="file"
+        accept=".csv,text/csv"
+        aria-label="Choose a machines CSV to import"
+        tabIndex={-1}
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void onCsv(f);
+        }}
+      />
+      <Content>
+        {banner?.kind === "import" ? (
+          <Banner tone={banner.s.errors.length ? "warn" : "ok"} onDismiss={() => setBanner(null)}>
+            <b>
+              Import complete: {banner.s.imported} imported · {banner.s.skipped} skipped · {banner.s.total} total
+            </b>
+            {banner.s.imported > 0 ? <> Older decisions are marked for re-costing.</> : null}
+            {banner.s.errors.length ? (
+              <ul>
+                {banner.s.errors.map((er, i) => (
+                  <li key={i}>
+                    {er.line != null ? `Line ${er.line}: ` : ""}
+                    {er.reason}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Banner>
+        ) : null}
+        {banner?.kind === "importError" ? (
+          <Banner tone="bad" alert onDismiss={() => setBanner(null)}>
+            <b>Import failed.</b> {banner.msg} Existing machines weren&apos;t changed.
+          </Banner>
+        ) : null}
+        {banner?.kind === "template" ? (
+          <Banner tone="ok" onDismiss={() => setBanner(null)}>
+            <b>machines.csv template downloaded.</b> Existing machines aren&apos;t removed on import.
+          </Banner>
+        ) : null}
+        {banner?.kind === "templateError" ? (
+          <Banner tone="bad" alert onDismiss={() => setBanner(null)}>
+            <b>Couldn&apos;t download the template.</b> {banner.msg}
+          </Banner>
+        ) : null}
+        {loadError ? (
+          <Banner
+            tone="bad"
+            alert
+            actions={
+              <button className="btn sm" type="button" onClick={() => void load()}>
+                Retry
+              </button>
+            }
+          >
+            <b>Couldn&apos;t load machines.</b> {loadError}
+          </Banner>
+        ) : machines == null ? (
+          <div className="panel">
+            <Loading rows={3} label="Loading machines" />
+          </div>
+        ) : machines.length === 0 ? (
+          <section className="panel">
+            <Empty title="No machines" actions={actions}>
+              Parts are checked against typical machines until you add yours.
+            </Empty>
+          </section>
+        ) : (
+          <div className="mgrid">
+            {machines.map((m) => (
+              <MachineTile key={m.id} m={m} on={m.id === sel} onPick={() => pick(m.id)} />
+            ))}
+            <AddTile onPick={() => setDialog({ mode: "add", process: "fdm" })} />
+          </div>
+        )}
+        <ShopOps onSaved={() => recs.reload()} />
+      </Content>
+      <Sheet label="Machine details" style={{ bottom: 20 }}>
+        <span ref={sheetRef} aria-hidden="true" style={{ display: "block", height: 0 }} />
+        {selected ? (
+          <MachineSheet
+            m={selected}
+            records={recs.data}
+            recordsError={recs.error}
+            onRetryRecords={recs.reload}
+            rc={rc}
+            onEdit={() => setDialog({ mode: "edit", machine: selected })}
+            onDelete={onDelete}
+          />
+        ) : (
+          <div className="top">
+            <h2 className="stitle">No machine selected</h2>
+            <p className="smeta">{loadError ? "Machines didn’t load." : machines && machines.length === 0 ? "Typical machines are used until you add yours." : machines ? "Pick a machine to see its spec." : "Loading…"}</p>
+          </div>
+        )}
+      </Sheet>
+      {dialog ? (
+        <MachineDialog
+          key={dialog.mode === "edit" ? dialog.machine.id : `add-${dialog.process ?? ""}`}
+          mode={dialog.mode}
+          machine={dialog.mode === "edit" ? dialog.machine : null}
+          presetProcess={dialog.mode === "add" ? dialog.process : undefined}
+          onClose={() => setDialog(null)}
+          onSaved={onSaved}
+        />
+      ) : null}
+      {toast}
+    </ShopWorld>
+  );
+}
+
+function MachineTile({ m, on, onPick }: { m: OwnedMachine; on: boolean; onPick: () => void }) {
+  const env = envelopeOf(m);
+  const st = machineStatus(m);
+  const box = env ? isoBox(env.w, env.d, env.h) : null;
+  return (
+    <button type="button" className={cx("mt", on && "on")} onClick={onPick} aria-pressed={on}>
+      <b>{machineName(m)}</b>
+      <small>{tileSub(m)}</small>
+      {box ? (
+        <svg height="128" viewBox="0 0 300 150" aria-hidden="true">
+          <polygon points={box.floor} fill="#E3E7EC" fillOpacity="0.85" />
+          <path d={box.back} stroke="#AEB5BE" strokeWidth="1" strokeDasharray="3 4" fill="none" />
+          <path d={box.front} stroke="#5F656E" strokeWidth="1.4" fill="none" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg height="128" viewBox="0 0 300 150" aria-hidden="true">
+          <rect x="95" y="30" width="110" height="90" rx="10" fill="none" stroke="#C3C8CE" strokeWidth="1.4" strokeDasharray="4 4" />
+        </svg>
+      )}
+      <span className="foot">
+        <span className="num">{env ? env.text : "Work area not declared"}</span>
+        <span className={cx("chip", st.rated ? "c-ok" : "c-warn")}>
+          <i aria-hidden="true" />
+          {st.rated ? "Rate declared" : "No rate"}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function AddTile({ onPick }: { onPick: () => void }) {
+  const box = isoBox(256, 256, 256);
+  return (
+    <button type="button" className="mt add" onClick={onPick}>
+      <b>Add a printer</b>
+      <small>From the catalog or blank</small>
+      <svg height="128" viewBox="0 0 300 150" aria-hidden="true">
+        <polygon points={box.floor} fill="#E3E7EC" fillOpacity="0.5" />
+        <path d={box.back} stroke="#AEB5BE" strokeWidth="1" strokeDasharray="3 4" fill="none" />
+        <path d={box.front} stroke="#8A9099" strokeWidth="1.4" strokeDasharray="4 4" fill="none" strokeLinejoin="round" />
+      </svg>
+      <span className="foot">
+        <span className="num">e.g. 256 × 256 × 256 mm</span>
+        <span className="chip c-unk">
+          <i aria-hidden="true" />
+          Not added
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** "Across the shop": the shop-level operations the engine asks for by name. */
+function ShopOps({ onSaved }: { onSaved: () => void }) {
+  const [ops, setOps] = React.useState<Record<string, unknown> | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [n, setN] = React.useState(0);
+  React.useEffect(() => {
+    let live = true;
+    setError(null);
+    getShopCapabilities().then(
+      (r) => live && setOps(r.ops ?? {}),
+      (e) => live && setError(e instanceof Error ? e.message : "Couldn't load shop operations.")
+    );
+    return () => {
+      live = false;
+    };
+  }, [n]);
+
+  const toggle = async (key: string, label: string) => {
+    if (!ops || saving) return;
+    const next = toggleOp(ops, key);
+    setSaving(key);
+    setNote(null);
+    try {
+      const r = await putShopCapabilities(next);
+      setOps(r.ops ?? next);
+      setNote({ ok: true, text: `${label} ${opOn(r.ops ?? next, key) ? "is done in-house" : "isn't done in-house"}. Older decisions are marked for re-costing.` });
+      onSaved();
+    } catch (e) {
+      setNote({ ok: false, text: `Couldn't save: ${e instanceof Error ? e.message : "try again."}` });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <Panel
+      title="Across the shop"
+      note={
+        <>
+          Labor rate is set in <Link href={R.rates}>Rates</Link>
+        </>
+      }
+    >
+      {error ? (
+        <div style={{ padding: "0 16px 14px" }}>
+          <Banner
+            tone="bad"
+            alert
+            actions={
+              <button className="btn sm" type="button" onClick={() => setN((x) => x + 1)}>
+                Retry
+              </button>
+            }
+          >
+            <b>Couldn&apos;t load shop operations.</b> {error}
+          </Banner>
+        </div>
+      ) : (
+        <div className="ops" role="group" aria-label="Done in-house">
+          <span style={{ fontSize: 13, color: "var(--ink2)", marginRight: 4 }} aria-hidden="true">
+            Done in-house
+          </span>
+          {SHOP_OPS.map(([key, label]) => {
+            const on = ops ? opOn(ops, key) : false;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={cx("tog2", on && "on")}
+                aria-pressed={on}
+                aria-disabled={!ops || saving != null}
+                onClick={() => void toggle(key, label)}
+              >
+                {saving === key ? "Saving…" : label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p className={cx("fh")} aria-live="polite" style={{ margin: "-6px 16px 12px", color: note && !note.ok ? "var(--bad)" : undefined }}>
+        {note ? note.text : "A part that needs one of these fits in-house only when it's on."}
+      </p>
+    </Panel>
+  );
+}
