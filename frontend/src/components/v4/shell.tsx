@@ -74,6 +74,19 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const pickFile = React.useCallback(() => fileRef.current?.click(), []);
 
+  // Back from Stripe Checkout (?upgraded=1): say so once; the webhook may land a moment later.
+  const [upgraded, setUpgraded] = React.useState(false);
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upgraded") !== "1") return;
+    setUpgraded(true);
+    params.delete("upgraded");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    const t = window.setTimeout(() => window.dispatchEvent(new Event("proofshape:usage-changed")), 4000);
+    return () => window.clearTimeout(t);
+  }, []);
+
   // ⌘K / Ctrl K opens search from anywhere; ? and go-to letters only outside text fields and dialogs.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -143,6 +156,20 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           <Bell />
           <AccountMenu usage={usage} onShortcuts={() => setShortcuts(true)} />
         </header>
+        {upgraded ? (
+          <div className="toast" role="status" style={{ position: "absolute", right: 20, top: 66, zIndex: 20 }}>
+            <span>
+              <b style={{ fontWeight: 600 }}>You&apos;re on Pro.</b>{" "}
+              {usage?.plan === "pro" && usage.cap ? `${usage.cap} checks a month.` : "Your monthly checks are ready."} Your receipt is on its way by email.
+            </span>
+            <Link href={R.billing} onClick={() => setUpgraded(false)}>
+              Manage billing
+            </Link>
+            <button type="button" aria-label="Dismiss" onClick={() => setUpgraded(false)} style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 16 }}>
+              ✕
+            </button>
+          </div>
+        ) : null}
         {children}
         <Palette onPickFile={pickFile} onShortcuts={() => setShortcuts(true)} />
         {shortcuts ? <Shortcuts onClose={() => setShortcuts(false)} /> : null}

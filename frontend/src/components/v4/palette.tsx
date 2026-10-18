@@ -104,7 +104,6 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
     returnTo.current = document.activeElement as HTMLElement | null;
     setQuery("");
     setSel(0);
-    requestAnimationFrame(() => inputRef.current?.focus());
     if (recs == null)
       fetch(`${API_BASE}/cost-decisions?limit=50`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
@@ -193,6 +192,7 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
           </svg>
           <input
             ref={inputRef}
+            autoFocus
             type="text"
             value={query}
             aria-label="Search parts, records, machines and tools, or ask"
