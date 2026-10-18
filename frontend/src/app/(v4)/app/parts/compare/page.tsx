@@ -1,5 +1,11 @@
-import { Stub } from "@/components/v4/stub";
+import { Suspense } from "react";
+import { CompareScreen } from "@/components/v4/records/compare-screen";
 
+/** Compare two records (board P3). `?a=` and `?b=` pick the records. */
 export default function Page() {
-  return <Stub title="Compare" section="parts" board="P3" />;
+  return (
+    <Suspense fallback={null}>
+      <CompareScreen />
+    </Suspense>
+  );
 }

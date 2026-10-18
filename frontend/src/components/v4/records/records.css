@@ -235,6 +235,11 @@
 .ob .sheet.rc-sheet{bottom:auto;margin:0 16px 24px}
 .ob .rc-toastwrap{position:fixed;left:16px;right:16px;bottom:16px}
 .ob .pair{grid-template-columns:1fr}
+.ob .world:has(> .rc-mark) .panel .ph{flex-wrap:wrap}
+.ob .world:has(> .rc-mark) .seg button{white-space:nowrap}
+.ob .side .still{height:96px;width:120px}
+.ob .side .still svg{width:56px;height:56px}
+.ob .tr{min-width:0;grid-template-columns:minmax(0,1.1fr) minmax(68px,1fr) minmax(68px,1fr) 40px;gap:6px;font-size:13px}
 .ob .lrow.rec{grid-template-columns:minmax(0,1fr) auto;row-gap:4px}
 .ob .lrow.rec>.chip,.ob .lrow.rec>.sh{grid-row:2}
 .ob .lrow.rec>.t{grid-row:1;grid-column:2}
