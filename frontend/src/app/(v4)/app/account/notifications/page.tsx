@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { NotificationsScreen } from "@/components/v4/account/notifications-screen";
 
 export default function Page() {
-  return <Stub title="Notifications" section="account" board="A5" />;
+  return <NotificationsScreen />;
 }
