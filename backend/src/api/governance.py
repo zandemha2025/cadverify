@@ -35,6 +35,7 @@ from src.auth.rbac import (
 )
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.services import cost_decision_service
 from src.services import governance_service as svc
 from src.services import notification_service
 
@@ -61,6 +62,15 @@ async def _write_org(ctx: OrgAuthContext, session: AsyncSession) -> str:
     if not org_id:
         raise HTTPException(status_code=400, detail="no organization for caller")
     return org_id
+
+
+def _published_stale_reason(asset_type: str, published) -> str:
+    """The ``stale_reason`` the direct publish routes write (``rate_library.py`` /
+    ``shop_library.py``), so a decision reads the same however the draft was
+    published."""
+    if asset_type == svc.ASSET_SHOP_PROFILE:
+        return f"shop_profile_published:{getattr(published, 'slug', '')}:v{published.version}"
+    return f"rate_library_published:v{published.version}"
 
 
 @router.post("/change-requests")
@@ -147,6 +157,14 @@ async def approve_change_request(
     org_id = await _write_org(ctx, session)
     row, published = await svc.approve(session, org_id, request_id, ctx.user_id)
     lib = svc._library_for(row.asset_type)
+    # Approval publishes through the library's own path, so older decisions go
+    # stale exactly as on a direct publish (same txn, same reason).
+    await cost_decision_service.mark_org_decisions_stale(
+        session,
+        org_id,
+        reason=_published_stale_reason(row.asset_type, published),
+        stale_at=published.effective_from,
+    )
     await notification_service.resolve_by_source(
         session,
         org_id=org_id,
