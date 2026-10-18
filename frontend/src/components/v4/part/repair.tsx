@@ -88,7 +88,7 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
   const failedReason = out.s === "failed" ? ((out.r.repair_details as { reason?: string }).reason ?? out.r.repair_details.error ?? "Repair did not produce a watertight solid.") : null;
   const rv = fixed?.r.repaired_analysis;
   return (
-    <main className="world" aria-label="Repair">
+    <main className="world pv" aria-label="Repair">
       <section className="stage" aria-label="The file">
         <div className="floor" />
         <div className="hud">

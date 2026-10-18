@@ -53,7 +53,7 @@ export function CantReadView({
   const meta = open ? [edges != null ? plural(edges, "open edge") : "Open shell", dims ?? ""].filter(Boolean) : [problem === "unsupported" ? "Format not supported" : "Nothing checked"];
   const fileMeta = open ? [dims, "open shell", v ? `${v.geometry.faces.toLocaleString("en-US")} faces` : null].filter(Boolean).join(" · ") : `${(session.file.name.split(".").pop() ?? "").toUpperCase()} · not checked`;
   return (
-    <main className="world" aria-label="The file you dropped">
+    <main className="world pv" aria-label="The file you dropped">
       <section className="stage" aria-label="The file you dropped">
         <div className="hud">
           <Link href={R.parts} style={{ fontSize: 12.5, textDecoration: "none", marginBottom: 2 }}>

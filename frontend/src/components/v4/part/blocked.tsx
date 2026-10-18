@@ -36,7 +36,7 @@ export function OutOfChecks({ message, onClose }: { message: string; onClose?: (
   const price = formatProPrice(plans?.pro.price ?? null);
   const close = () => (onClose ? onClose() : router.push(R.parts));
   return (
-    <div className="v4-over">
+    <div className="v4-over pv">
       <button type="button" className="scrim" tabIndex={-1} aria-hidden="true" onClick={close} />
       <section
         ref={ref}

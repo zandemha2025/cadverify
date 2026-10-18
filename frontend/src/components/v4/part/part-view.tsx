@@ -48,6 +48,7 @@ export function PartView({
   onRecheck,
   onRetryPrices,
   onDropFile,
+  onRetryPreview,
   overlay,
 }: {
   data: PartData;
@@ -58,6 +59,8 @@ export function PartView({
   onRecheck: (opts?: { materialClass?: string }) => void;
   onRetryPrices: () => void;
   onDropFile?: (file: File) => void;
+  /** Ask for the 3D preview again (same file, same check) after it failed. */
+  onRetryPreview?: () => void;
   /** The progress panel or a dialog over the part. */
   overlay?: React.ReactNode;
 }) {
@@ -78,6 +81,15 @@ export function PartView({
   const [xray, setXray] = React.useState(false);
   const [hint, setHint] = React.useState(true);
   const [viewer, setViewer] = React.useState<ViewerState>("loading");
+  const retryPreview = mesh.url ? (
+    <button className="btn sm" type="button" onClick={() => setViewer("loading")}>
+      Retry preview
+    </button>
+  ) : mesh.error && onRetryPreview && !mesh.loading ? (
+    <button className="btn sm" type="button" onClick={onRetryPreview}>
+      Retry preview
+    </button>
+  ) : null;
   const [over, setOver] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const controller = React.useRef(null) as ViewerController;
@@ -241,7 +253,7 @@ export function PartView({
   const objLabel = "The part. Drag, or use the arrow keys, to turn it.";
   return (
     <PartProvider value={value}>
-      <main className="world" aria-label={data.fileName}>
+      <main className="world pv" aria-label={data.fileName}>
         <section className="stage" aria-label="The part">
           <div className="floor" />
           <div className="hud">
@@ -314,7 +326,7 @@ export function PartView({
             </button>
           ) : (
             <div
-              className={cx("no3d swap", over && "over")}
+              className={cx("no3d swap", `l-${lens}`, over && "over")}
               onDragEnter={(e) => {
                 if (!onDropFile) return;
                 e.preventDefault();
@@ -337,7 +349,7 @@ export function PartView({
                 <path d="M20 40 L75 14 L130 40 L130 78 L75 104 L20 78 Z M20 40 L75 66 L130 40 M75 66 L75 104" fill="none" stroke="#9AA3AE" strokeWidth="1.5" strokeDasharray="4 4" strokeLinejoin="round" />
               </svg>
               <b>{viewer === "nowebgl" ? "No 3D view on this device" : mesh.origin === null && !mesh.error ? "No 3D view of this part here" : "No 3D view on this device"}</b>
-              <span>Every answer on the right still holds; they come from the file, not the picture.</span>
+              <span>Every answer <span className="on-desk">on the right</span><span className="on-phone">below</span> still holds; they come from the file, not the picture.</span>
               {dims ? <span className="num">Measured envelope {dims}</span> : null}
               {mesh.error ? <span className="err" role="alert">{mesh.error}</span> : null}
               {onDropFile ? (
@@ -347,18 +359,12 @@ export function PartView({
                     <button className="btn sm" type="button" onClick={() => fileRef.current?.click()}>
                       Choose the file
                     </button>
-                    {mesh.url ? (
-                      <button className="btn sm" type="button" onClick={() => setViewer("loading")}>
-                        Retry preview
-                      </button>
-                    ) : null}
+                    {retryPreview}
                   </span>
                 </>
-              ) : mesh.url ? (
-                <button className="btn sm" type="button" onClick={() => setViewer("loading")}>
-                  Retry preview
-                </button>
-              ) : null}
+              ) : (
+                retryPreview
+              )}
             </div>
           )}
           <input

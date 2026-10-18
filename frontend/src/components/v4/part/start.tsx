@@ -69,7 +69,7 @@ export function StartScreen({
   const done = steps.filter((s) => s[2] === true).length;
   const nowIdx = steps.findIndex((s) => s[2] !== true);
   return (
-    <main className="world" aria-label="Check a part">
+    <main className="world pv" aria-label="Check a part">
       <section className="stage" aria-label="Check a part">
         <div className="floor" />
         <div className="pagehead">

@@ -8,14 +8,16 @@
  */
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getCachedMesh } from "./mesh-cache";
 import { loadSavedPart, type SavedPart } from "./api";
-import { previewFromFile, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
+import { previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
 import { PartView, type MeshSource } from "./part-view";
 import { ProgressPanel } from "./progress";
 import { OutOfChecks } from "./blocked";
 import { liveMesh } from "./check-page";
+import { SampleFlow } from "../home/sample-result";
 import type { Lens } from "./ctx";
 import { R } from "../routes";
 import { Empty, Failed, Loading } from "../ui";
@@ -25,6 +27,7 @@ import "./part.css";
 const LENS_KEYS: Lens[] = ["make", "cost", "use", "shop", "decide"];
 
 export function PartPage({ partKey }: { partKey: string }) {
+  const router = useRouter();
   const session = useSessionForKey(partKey);
   const [saved, setSaved] = React.useState<SavedPart | null>(null);
   const [state, setState] = React.useState<"loading" | "ready" | "error">("loading");
@@ -79,7 +82,12 @@ export function PartPage({ partKey }: { partKey: string }) {
     };
   }, [partKey]);
 
-  const data = React.useMemo(() => (session ? liveData(session, saved) : saved ? savedData(partKey, saved) : null), [session, saved, partKey]);
+  // A re-check that stopped before any answer (out of checks) leaves the saved answers in place.
+  const stoppedEarly = !!session && session.status === "failed" && !session.validation && session.failure?.kind === "quota" && !!saved;
+  const data = React.useMemo(
+    () => (session && !stoppedEarly ? liveData(session, saved) : saved ? savedData(partKey, saved) : null),
+    [session, saved, partKey, stoppedEarly],
+  );
 
   const mesh: MeshSource = React.useMemo(() => {
     if (session && (session.preview.url || session.preview.status === "loading")) return liveMesh(session);
@@ -114,7 +122,7 @@ export function PartPage({ partKey }: { partKey: string }) {
   if (!data) {
     if (state === "error")
       return (
-        <main className="world" aria-label="Part">
+        <main className="world pv" aria-label="Part">
           <div className="pagehead" style={{ right: 24 }}>
             <h1 className="ptitle">Part</h1>
           </div>
@@ -124,7 +132,7 @@ export function PartPage({ partKey }: { partKey: string }) {
         </main>
       );
     return (
-      <main className="world" aria-label="Part">
+      <main className="world pv" aria-label="Part">
         <div className="pagehead" style={{ right: 24 }}>
           <h1 className="ptitle">Part</h1>
         </div>
@@ -138,7 +146,7 @@ export function PartPage({ partKey }: { partKey: string }) {
   }
   if (!session && saved && !saved.latest && !saved.validation && !saved.decisions.length) {
     return (
-      <main className="world" aria-label="Part">
+      <main className="world pv" aria-label="Part">
         <div className="pagehead" style={{ right: 24 }}>
           <Link href={R.parts} style={{ fontSize: 12.5, textDecoration: "none" }}>
             ‹ Parts
@@ -159,10 +167,11 @@ export function PartPage({ partKey }: { partKey: string }) {
     );
   }
   const running = session?.status === "running";
-  const costQuota = !!session && isQuotaErrorMessage(session.result?.costError ?? null) && !quotaClosed;
+  const quotaMessage = !session || quotaClosed ? null : session.failure?.kind === "quota" ? session.failure.message : isQuotaErrorMessage(session.result?.costError ?? null) ? session.result!.costError! : null;
   const overlay = (
     <>
-      {session && (running || session.panel) && session.status !== "failed" ? (
+      {session?.sample && !running ? <SampleFlow status={session.status} result={session.result} onRetry={() => router.push(`${R.check}?sample=1`)} /> : null}
+      {session && (running || (session.panel && !session.sample)) && session.status !== "failed" ? (
         <ProgressPanel
           session={session}
           open={session.panel}
@@ -176,20 +185,21 @@ export function PartPage({ partKey }: { partKey: string }) {
           }
         />
       ) : null}
-      {costQuota ? <OutOfChecks message={session!.result!.costError!} onClose={() => setQuotaClosed(true)} /> : null}
+      {quotaMessage ? <OutOfChecks message={quotaMessage} onClose={() => setQuotaClosed(true)} /> : null}
     </>
   );
   return (
     <PartView
       key={partKey}
       data={data}
-      session={session}
+      session={stoppedEarly ? null : session}
       mesh={mesh}
       initialLens={lens}
       canRecheck={!!file}
       onRecheck={recheck}
       onRetryPrices={() => session && void retryPrices(session.id)}
       onDropFile={session ? undefined : (f) => void onDropFile(f)}
+      onRetryPreview={session?.preview.status === "failed" ? () => retryPreview(session.id) : undefined}
       overlay={overlay}
     />
   );

@@ -98,7 +98,7 @@ export async function putDisposition(
 export type AssemblyProbeV4 =
   | { kind: "single" }
   | { kind: "assembly"; model: AssemblyModel; glbUrl: string | null; gate: "pilot" | null; glbError: string | null }
-  | { kind: "refused"; title: string; detail: string; retry: boolean };
+  | { kind: "refused"; title: string; detail: string; retry: boolean; status: number | null };
 
 async function post(file: File, format: "json" | "glb" | "analysis"): Promise<Response | null> {
   const form = new FormData();
@@ -118,7 +118,7 @@ function paidGate(body: unknown): boolean {
 /** Is this STEP/IGES file several bodies? Keeps the product tree even when the 3D view is gated. */
 export async function probeAssemblyV4(file: File): Promise<AssemblyProbeV4> {
   const json = await post(file, "json");
-  if (!json) return { kind: "refused", title: "Couldn't reach the server", detail: "Check the connection and try again. Nothing was checked.", retry: true };
+  if (!json) return { kind: "refused", title: "Couldn't reach the server", detail: "Check the connection and try again. Nothing was checked.", retry: true, status: null };
   const body = await json.json().catch(() => null);
   if (!json.ok) {
     return {
@@ -126,10 +126,11 @@ export async function probeAssemblyV4(file: File): Promise<AssemblyProbeV4> {
       title: json.status >= 500 || json.status === 429 ? "The check couldn't start" : "Can't read this file",
       detail: apiProblemDetail(body) ?? apiRecoveryMessage({ status: json.status, payload: body, resource: "verification" }),
       retry: json.status >= 500 || json.status === 429,
+      status: json.status,
     };
   }
   const model = body as AssemblyModel | null;
-  if (!model || !Array.isArray(model.parts)) return { kind: "refused", title: "Can't read this file", detail: "The assembly reader returned nothing usable. Try again.", retry: true };
+  if (!model || !Array.isArray(model.parts)) return { kind: "refused", title: "Can't read this file", detail: "The assembly reader returned nothing usable. Try again.", retry: true, status: json.status };
   if (model.kind !== "assembly" || model.part_count < 2) return { kind: "single" };
   const glb = await post(file, "glb");
   if (!glb) return { kind: "assembly", model, glbUrl: null, gate: null, glbError: "The 3D view couldn't reach the server." };

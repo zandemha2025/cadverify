@@ -154,6 +154,11 @@ export function setPanel(id: number, open: boolean) {
   patch(id, { panel: open });
 }
 
+/** The same file and the same check id, so asking again doesn't use another check. */
+export function retryPreview(id: number) {
+  void loadPreview(id);
+}
+
 export function retryAssemblyAnalysis(id: number) {
   void runAssembly(id);
 }
@@ -179,7 +184,11 @@ async function run(id: number) {
 
   if (isAssemblyCandidate(file.name)) {
     const probe = await probeAssemblyV4(file);
-    if (probe.kind === "refused") {
+    // The assembly reader only takes solids. A file it can't read as solids (an open
+    // shell, surfaces) still goes through the single-part check, which measures it
+    // and says exactly what's wrong instead of refusing it unread.
+    const readable = probe.kind === "refused" && probe.status != null && [400, 415, 422].includes(probe.status);
+    if (probe.kind === "refused" && !readable) {
       const failure = classify(probe.detail);
       patch(id, {
         status: "failed",

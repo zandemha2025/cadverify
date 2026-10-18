@@ -1,5 +1,6 @@
-import { Stub } from "@/components/v4/stub";
+import { HistoryPage } from "@/components/v4/part/history-page";
 
-export default function Page() {
-  return <Stub title="Part history" section="parts" board="O11" />;
+export default async function Page({ params }: { params: Promise<{ key: string }> }) {
+  const { key } = await params;
+  return <HistoryPage partKey={decodeURIComponent(key)} />;
 }

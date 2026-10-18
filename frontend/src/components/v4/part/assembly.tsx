@@ -93,7 +93,7 @@ export function AssemblyView({ session, onPick }: { session: CheckSession; onPic
   ];
   const alts = (pa?.should_cost?.estimates ?? []).filter((e) => e !== est && e.unit_cost_usd != null).sort((x, y) => (x.unit_cost_usd ?? 0) - (y.unit_cost_usd ?? 0)).slice(0, 3);
   return (
-    <main className="world" aria-label="The assembly">
+    <main className="world pv" aria-label="The assembly">
       <section className="stage" aria-label="The assembly">
         <div className="floor" />
         <div className="hud">
