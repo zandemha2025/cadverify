@@ -127,6 +127,34 @@ async def test_checkout_creates_one_customer_and_a_subscription_session(db):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_checkout_and_portal_return_to_the_v4_app_only_when_asked(db):
+    sessions = respx.post(f"{STRIPE}/v1/checkout/sessions").mock(
+        return_value=httpx.Response(200, json={"id": "cs_1", "url": "https://checkout.stripe.com/c/pay/cs_1"}))
+    respx.post(f"{STRIPE}/v1/customers").mock(return_value=httpx.Response(200, json={"id": "cus_1"}))
+    portal = respx.post(f"{STRIPE}/v1/billing_portal/sessions").mock(
+        return_value=httpx.Response(200, json={"url": "https://billing.stripe.com/p/session/x"}))
+    async with _client(_session_user()) as client:
+        v4 = await client.post("/api/v1/billing/checkout", json={"return_to": "app"})
+        legacy = await client.post("/api/v1/billing/checkout", json={})
+        bad = await client.post("/api/v1/billing/checkout", json={"return_to": "https://evil.example"})
+        portal_v4 = await client.post("/api/v1/billing/portal", json={"return_to": "app"})
+        portal_legacy = await client.post("/api/v1/billing/portal")
+    assert v4.status_code == 200 and legacy.status_code == 200, (v4.text, legacy.text)
+    assert bad.status_code == 422  # only the two fixed destinations exist
+    first = parse_qs(sessions.calls[0].request.content.decode())
+    assert first["success_url"] == ["https://app.example.test/app?upgraded=1"]
+    assert first["cancel_url"] == ["https://app.example.test/app/account/billing?checkout=cancelled"]
+    second = parse_qs(sessions.calls[1].request.content.decode())
+    assert second["success_url"] == ["https://app.example.test/verify?upgraded=1"]
+    assert second["cancel_url"] == ["https://app.example.test/pricing?checkout=cancelled"]
+    assert sessions.call_count == 2
+    assert portal_v4.status_code == 200 and portal_legacy.status_code == 200
+    assert parse_qs(portal.calls[0].request.content.decode())["return_url"] == ["https://app.example.test/app/account/billing"]
+    assert parse_qs(portal.calls[1].request.content.decode())["return_url"] == ["https://app.example.test/history"]
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_checkout_refuses_api_keys_pilots_and_missing_configuration(db, monkeypatch):
     respx.post(f"{STRIPE}/v1/customers").mock(return_value=httpx.Response(200, json={"id": "cus_x"}))
     async with _client(AuthedUser(user_id=1, api_key_id=9, key_prefix="cv_live_abc")) as client:

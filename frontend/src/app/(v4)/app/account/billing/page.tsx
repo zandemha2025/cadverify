@@ -1,5 +1,9 @@
-import { Stub } from "@/components/v4/stub";
+import { getPlans } from "@/lib/plans";
+import { BillingScreen } from "@/components/v4/account/billing-screen";
 
-export default function Page() {
-  return <Stub title="Plan and billing" section="account" board="A4" />;
+export const dynamic = "force-dynamic";
+
+export default async function Page() {
+  const plans = await getPlans();
+  return <BillingScreen plans={plans} />;
 }

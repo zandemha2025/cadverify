@@ -13,9 +13,10 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -48,6 +49,25 @@ SUBSCRIPTION_EVENTS = frozenset({
     "customer.subscription.paused",
     "customer.subscription.resumed",
 })
+
+
+class ReturnBody(BaseModel):
+    """Where Stripe sends the person back. "verify" (the default) is today's app;
+    "app" is the v4 app, sent by its Plan and billing page (behind the
+    frontend's NEXT_PUBLIC_UI_V4 flag). Only these two fixed paths exist, so the
+    caller can't point Stripe anywhere else."""
+
+    return_to: Literal["verify", "app"] = "verify"
+
+
+_RETURN_PATHS = {
+    "verify": {"success": "/verify?upgraded=1", "cancel": "/pricing?checkout=cancelled", "portal": "/history"},
+    "app": {"success": "/app?upgraded=1", "cancel": "/app/account/billing?checkout=cancelled", "portal": "/app/account/billing"},
+}
+
+
+def _return_paths(body: ReturnBody | None) -> dict[str, str]:
+    return _RETURN_PATHS[(body or ReturnBody()).return_to]
 
 
 def _problem(status: int, code: str, message: str) -> HTTPException:
@@ -127,7 +147,12 @@ async def billing_status(user: AuthedUser = Depends(require_api_key)) -> dict:
 
 @router.post("/checkout")
 @limiter.limit("10/minute;30/hour")
-async def create_checkout(request: Request, response: Response, user: AuthedUser = Depends(require_api_key)) -> dict:
+async def create_checkout(
+    request: Request,
+    response: Response,
+    body: ReturnBody | None = None,
+    user: AuthedUser = Depends(require_api_key),
+) -> dict:
     _require_browser_session(user)
     if not billing_enabled():
         raise _billing_unavailable()
@@ -162,6 +187,7 @@ async def create_checkout(request: Request, response: Response, user: AuthedUser
         else:
             customer_id = account.stripe_customer_id
         origin = dashboard_origin()
+        paths = _return_paths(body)
         checkout = await stripe_request("POST", "/v1/checkout/sessions", {
             "mode": "subscription",
             "customer": customer_id,
@@ -170,8 +196,8 @@ async def create_checkout(request: Request, response: Response, user: AuthedUser
             "allow_promotion_codes": True,
             "metadata": {"scalecad_user_id": user.user_id},
             "subscription_data": {"metadata": {"scalecad_user_id": user.user_id}},
-            "success_url": f"{origin}/verify?upgraded=1",
-            "cancel_url": f"{origin}/pricing?checkout=cancelled",
+            "success_url": f"{origin}{paths['success']}",
+            "cancel_url": f"{origin}{paths['cancel']}",
         })
     except (StripeError, KeyError, SQLAlchemyError) as exc:
         logger.warning("billing checkout failed: %s", type(exc).__name__)
@@ -184,7 +210,12 @@ async def create_checkout(request: Request, response: Response, user: AuthedUser
 
 @router.post("/portal")
 @limiter.limit("10/minute;30/hour")
-async def create_portal(request: Request, response: Response, user: AuthedUser = Depends(require_api_key)) -> dict:
+async def create_portal(
+    request: Request,
+    response: Response,
+    body: ReturnBody | None = None,
+    user: AuthedUser = Depends(require_api_key),
+) -> dict:
     _require_browser_session(user)
     if not billing_enabled():
         raise _billing_unavailable()
@@ -198,7 +229,7 @@ async def create_portal(request: Request, response: Response, user: AuthedUser =
     try:
         portal = await stripe_request("POST", "/v1/billing_portal/sessions", {
             "customer": account.stripe_customer_id,
-            "return_url": f"{dashboard_origin()}/history",
+            "return_url": f"{dashboard_origin()}{_return_paths(body)['portal']}",
         })
     except StripeError as exc:
         logger.warning("billing portal failed: %s", exc)
