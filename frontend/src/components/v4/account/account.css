@@ -137,7 +137,8 @@
 .ob .a-frow,.ob .a-tr{grid-template-columns:1fr!important}
 .ob .a-tr.th{display:none}
 .ob .a-tr>[data-l]{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ob .a-tr>[data-l]::before{content:attr(data-l);color:var(--ink3);font-size:12px;min-width:104px}
+.ob .a-tr>[data-l]::before{content:attr(data-l);color:var(--ink3);font-size:12px;min-width:104px;font-family:var(--v4-sans);font-weight:400}
+.ob .a-url code{white-space:normal;overflow-wrap:anywhere}
 .ob .a-acts{justify-content:flex-start}
 .ob .a-roles,.ob .a-figs4{grid-template-columns:repeat(2,minmax(0,1fr))}
 .ob .a-url{grid-template-columns:minmax(0,1fr) auto}
