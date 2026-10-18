@@ -93,7 +93,7 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
   const { signOut } = useAuth();
   const router = useRouter();
   const [query, setQuery] = React.useState("");
-  const [sel, setSel] = React.useState(0);
+  const [sel, setSel] = React.useState(-1);
   const [recs, setRecs] = React.useState<Rec[] | null>(null);
   const [machines, setMachines] = React.useState<Mach[] | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -103,7 +103,7 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
     if (!open) return;
     returnTo.current = document.activeElement as HTMLElement | null;
     setQuery("");
-    setSel(0);
+    setSel(-1);
     if (recs == null)
       fetch(`${API_BASE}/cost-decisions?limit=50`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
@@ -165,7 +165,9 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
       flat.push(...shown);
       return { name, items: shown, start };
     });
-  const cur = Math.min(sel, Math.max(0, flat.length - 1));
+  // Until the user moves the selection, an exact name match is selected (so "Records" ↵ opens Records).
+  const exact = q ? flat.findIndex((f) => f.label.toLowerCase() === q) : -1;
+  const cur = Math.min(sel < 0 ? Math.max(exact, 0) : sel, Math.max(0, flat.length - 1));
 
   const activate = (it: PaletteItem | undefined) => {
     if (!it) return;
@@ -203,15 +205,15 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
             placeholder="Search parts, records, machines and tools, or ask"
             onChange={(e) => {
               setQuery(e.target.value);
-              setSel(0);
+              setSel(-1);
             }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setSel((s) => Math.min(s + 1, flat.length - 1));
+                setSel(Math.min(cur + 1, flat.length - 1));
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
-                setSel((s) => Math.max(s - 1, 0));
+                setSel(Math.max(cur - 1, 0));
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 activate(flat[cur]);
