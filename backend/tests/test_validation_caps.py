@@ -67,13 +67,14 @@ async def test_lifetime_bundle_race_refund_and_account_isolation(ledger):
     await vc.reserve_check(1, pending, 'file', 'analysis')
     ids = [str(uuid4()) for _ in range(16)]
     results = await asyncio.gather(*(vc.reserve_check(1, check, 'file', 'analysis') for check in ids), return_exceptions=True)
-    assert results.count(True) == 1
-    rejected = [result for result in results if result is not True]
+    admitted = [result for result in results if not isinstance(result, BaseException)]
+    assert admitted == [ids[results.index(admitted[0])]]
+    rejected = [result for result in results if isinstance(result, BaseException)]
     assert all(isinstance(result, vc.HTTPException) and result.status_code == 403 for result in rejected)
     assert (await vc.user_trial_usage(1))['remaining'] == 0
     # The tenth check can still finish its own cost and preview, never an
     # eleventh check. Changing its file or repeating a successful step is denied.
-    last = ids[results.index(True)]
+    last = admitted[0]
     await vc.finish_check(1, last, 'analysis', True)
     for op in ('cost', 'preview'):
         await vc.reserve_check(1, last, 'file', op)
@@ -138,6 +139,39 @@ async def test_http_bundle_success_failure_replay_and_fail_closed(ledger, monkey
         monkeypatch.setattr(vc, '_counts', unavailable)
         assert (await post('/validate', str(uuid4()))).status_code == 503
         assert len(calls) == 4
+
+
+@pytest.mark.asyncio
+async def test_headerless_api_calls_count_one_check_per_part(ledger):
+    # API clients that never send x-part-check-id: analysis and cost of the
+    # same file are one part check, not two.
+    app = FastAPI()
+    router = APIRouter(route_class=vc.MeteredRoute)
+
+    @router.post('/validate')
+    @router.post('/validate/cost')
+    @router.post('/validate/preview-mesh')
+    async def compute(_: None = Depends(vc.enforce_validation_caps)):
+        return {'result': 'computed'}
+
+    app.include_router(router)
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=1, api_key_id=7, key_prefix='cv_live')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        async def post(path, data):
+            return await client.post(path, files={'file': ('part.stp', data)})
+        for path in ('/validate/preview-mesh', '/validate', '/validate/cost'):
+            assert (await post(path, b'PART A')).status_code == 200
+        assert (await vc.user_trial_usage(1))['used'] == 1
+        # Re-running a finished step is a new check; another file is its own.
+        assert (await post('/validate', b'PART A')).status_code == 200
+        assert (await post('/validate', b'PART B')).status_code == 200
+        assert (await post('/validate/cost', b'PART B')).status_code == 200
+        assert (await vc.user_trial_usage(1))['used'] == 3
+        # An hour later the same file starts a fresh check.
+        async with ledger() as session, session.begin():
+            await session.execute(update(TrialCheck).values(created_at=datetime.now(timezone.utc) - timedelta(hours=2)))
+        assert (await post('/validate/cost', b'PART A')).status_code == 200
+        assert (await vc.user_trial_usage(1))['used'] == 4
 
 
 @pytest.mark.asyncio

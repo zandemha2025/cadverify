@@ -175,8 +175,10 @@ def paid_access_required() -> HTTPException:
                     "This tool is part of a pilot or Enterprise plan. Your plan covers single-part checks. Talk to us to add it.")
 
 
-async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: str) -> bool:
-    """Short account row lock makes admission atomic across API processes.
+async def reserve_check(user_id: int, check_id: str | None, file_hash: str, operation: str) -> str | None:
+    """Reserve a check slot; return the check id that holds it, or None when unlimited.
+
+    Short account row lock makes admission atomic across API processes.
 
     PostgreSQL NO KEY UPDATE serializes allowances without blocking result
     foreign keys. No connection/lock stays held during CAD work. A crashed process leaves a
@@ -187,7 +189,20 @@ async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: 
         async with get_session_factory()() as session, session.begin():
             allowance = await _allowance(session, user_id, lock=True)
             if allowance.cap is None:
-                return False
+                return None
+            if check_id is None:
+                # Without a client check id, one part's steps (analysis, cost,
+                # previews) share the open check for the same file, as the app's
+                # x-part-check-id does. Repeating a step starts a new check.
+                recent = (await session.execute(
+                    select(TrialCheck).where(
+                        TrialCheck.user_id == user_id,
+                        TrialCheck.file_hash == file_hash,
+                        TrialCheck.created_at > now - CHECK_LIFETIME,
+                    ).order_by(TrialCheck.created_at.desc()).limit(10)
+                )).scalars().all()
+                open_check = next((r for r in recent if operation not in r.operations), None)
+                check_id = open_check.check_id if open_check else str(uuid4())
             row = await session.get(TrialCheck, (user_id, check_id))
             if row is not None:
                 if row.file_hash != file_hash:
@@ -209,7 +224,7 @@ async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: 
                                  created_at=now, completed=False, operations={})
                 session.add(row)
             row.operations = {**row.operations, operation: "running"}
-            return True
+            return check_id
     except SQLAlchemyError as exc:
         raise _unavailable() from exc
 
@@ -246,7 +261,7 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
         return
     raw_id = request.headers.get("x-part-check-id")
     try:
-        check_id = str(UUID(raw_id)) if raw_id else str(uuid4())
+        check_id = str(UUID(raw_id)) if raw_id else None
     except (ValueError, AttributeError):
         raise _problem(400, "invalid_check_id", "The part check identifier must be a UUID.")
     file = (await request.form()).get("file")
@@ -280,8 +295,9 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
         operation = 'analysis'
     else:
         operation = path.rsplit('/', 1)[-1]
-    if await reserve_check(user.user_id, check_id, digest.hexdigest(), operation):
-        request.state.trial_check = (user.user_id, check_id, operation)
+    reserved = await reserve_check(user.user_id, check_id, digest.hexdigest(), operation)
+    if reserved:
+        request.state.trial_check = (user.user_id, reserved, operation)
 
 
 class MeteredRoute(APIRoute):
