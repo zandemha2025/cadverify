@@ -342,12 +342,14 @@ const EVENT: Record<string, [string, string]> = {
   analysis_cached: ["served from cache", "served from cache"],
 };
 
+const EVENT_ORDER = ["analysis_complete", "analysis_cached"];
+
 /** "Usage events: 12 checks completed, 9 served from cache." from the event counts. */
 export function usageEventsLine(counts: Record<string, number> | null | undefined): string | null {
   if (!counts) return null;
   const parts = Object.entries(counts)
     .filter(([, n]) => typeof n === "number" && n > 0)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => (EVENT_ORDER.indexOf(a[0]) + 1 || 99) - (EVENT_ORDER.indexOf(b[0]) + 1 || 99) || b[1] - a[1])
     .map(([k, n]) => {
       const w = EVENT[k];
       return w ? `${n} ${n === 1 ? w[0] : w[1]}` : `${n} ${k.replace(/_/g, " ")}`;

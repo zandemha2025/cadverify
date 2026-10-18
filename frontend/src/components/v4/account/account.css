@@ -139,6 +139,10 @@
 .ob .a-tr>[data-l]{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ob .a-tr>[data-l]::before{content:attr(data-l);color:var(--ink3);font-size:12px;min-width:104px;font-family:var(--v4-sans);font-weight:400}
 .ob .a-url code{white-space:normal;overflow-wrap:anywhere}
+.ob .a-tr.a-audit{grid-template-columns:52px minmax(0,1fr)!important;gap:2px 10px;align-items:start}
+.ob .a-tr.a-audit>*{grid-column:2}
+.ob .a-tr.a-audit>:first-child{grid-column:1;grid-row:1 / span 3;color:var(--ink3)}
+.ob .a-tr.a-audit>:last-child{color:var(--ink3);font-size:12px}
 .ob .a-acts{justify-content:flex-start}
 .ob .a-roles,.ob .a-figs4{grid-template-columns:repeat(2,minmax(0,1fr))}
 .ob .a-url{grid-template-columns:minmax(0,1fr) auto}

@@ -1,5 +1,9 @@
-import { Stub } from "@/components/v4/stub";
+import { getHealthDeep } from "@/app/(app)/settings/organization/actions";
+import { ActivityScreen } from "@/components/v4/account/activity-screen";
 
-export default function Page() {
-  return <Stub title="Activity" section="account" board="A7" />;
+export const dynamic = "force-dynamic";
+
+export default async function Page() {
+  const health = await getHealthDeep();
+  return <ActivityScreen health={{ ...health, checkedAt: new Date().toISOString() }} />;
 }

@@ -145,6 +145,7 @@ test("notifications group by part, newest group first, with unread counts", () =
 
 test("usage events and health rows", () => {
   assert.equal(usageEventsLine({ analysis_complete: 12, analysis_cached: 9 }), "Usage events: 12 checks completed, 9 served from cache.");
+  assert.equal(usageEventsLine({ analysis_cached: 20, analysis_complete: 17 }), "Usage events: 17 checks completed, 20 served from cache.");
   assert.equal(usageEventsLine({}), null);
   const rows = healthRows({
     postgres: { ok: true, error: null },
