@@ -27,7 +27,7 @@ export function SharedCheck({ data }: { data: SharedAnalysis }) {
   const whole = partFindings(d);
   return (
     <SharedFrame kind="Shared check">
-      <main className="world h-page" aria-label="Shared check">
+      <main className="world" aria-label="Shared check">
         <SharedStage title={d.filename} facts={facts} foot="Checks from the file's shape; no material or machines given" />
         <aside className="sheet" aria-label="The check">
           <div className="top">

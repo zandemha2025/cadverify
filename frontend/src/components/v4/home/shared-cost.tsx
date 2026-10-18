@@ -22,7 +22,7 @@ export function SharedCost({ data }: { data: SharedCostDecision }) {
   const figs = priceFigs(d);
   return (
     <SharedFrame kind="Shared should-cost">
-      <main className="world h-page" aria-label="Shared should-cost">
+      <main className="world" aria-label="Shared should-cost">
         <SharedStage title={title} facts={facts} foot="Model prices, not supplier quotes" />
         <aside className="sheet" aria-label="The should-cost">
           <div className="top">
@@ -58,20 +58,22 @@ export function SharedCost({ data }: { data: SharedCostDecision }) {
                     </div>
                   ))}
                 </div>
-                {range || cross ? (
-                  <div className="kv" style={{ marginTop: 6 }}>
-                    {range ? (
-                      <>
-                        <span>Range</span>
-                        <b>{range}</b>
-                      </>
-                    ) : null}
-                    {cross ? (
-                      <>
-                        <span>Tooling</span>
-                        <b>{cross}</b>
-                      </>
-                    ) : null}
+                {range ? (
+                  <div className="h-way">
+                    <span>
+                      Range
+                      <small>{range}</small>
+                    </span>
+                    <b />
+                  </div>
+                ) : null}
+                {cross ? (
+                  <div className="h-way">
+                    <span>
+                      Tooling
+                      <small>{cross}</small>
+                    </span>
+                    <b />
                   </div>
                 ) : null}
               </>
