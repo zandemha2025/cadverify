@@ -160,7 +160,7 @@ test("filters, search over name and part id, counts", () => {
   assert.equal(c.in, 1);
   assert.equal(c.unknown, 1);
   assert.equal(c.stale, 1);
-  assert.deepEqual(partsFacts(2, 1, c).map((f) => `${f.n} ${f.t}`), ["2 parts", "1 costed", "1 on your machines as drawn", "1 machine verdict out of date"]);
+  assert.deepEqual(partsFacts(2, 1, c).map((f) => `${f.n} ${f.t}`), ["2 parts", "1 costed", "1 on your machines as drawn"]);
 });
 
 test("filter round-trips through the URL and rejects junk", () => {
@@ -178,4 +178,16 @@ test("words", () => {
   assert.equal(tidyReason("24 faces (100.0%) below 1.5mm min wall for ded. Thinnest: 0.5mm."), "24 faces below 1.5 mm min wall · thinnest 0.5 mm");
   assert.equal(sizeText([20, 15.2, 6.04]), "20 × 15 × 6 mm");
   assert.equal(shortWhen("2026-10-17T05:00:00", new Date("2026-10-18T12:00:00")), "Oct 17");
+});
+
+test("peek figures: price, range and machine; withheld stays withheld", async () => {
+  const { peekFigs, verdictOf: vo } = await import("./parts-derive.ts");
+  const row = part();
+  const v = vo(row, { verdict: "makeable_in_house", stale: false, gap: null });
+  const d = { result: { estimates: [{ process: "cnc_3axis", quantity: 10, unit_cost_usd: 19.05, confidence: { low_usd: 9.53, high_usd: 28.58, half_width_pct: 50, validated: false } }], verification: { per_route: { cnc_3axis: { verdict: "makeable_in_house", best_machine: "Haas VF-2" } } } } };
+  const f = peekFigs(row, v, d);
+  assert.deepEqual(f.map((x) => `${x.k}=${x.v}|${x.s}`), ["Each, at 10=$19.05|Haas VF-2, yours", "Range=$9.53–$28.58|±50%, no real costs yet", "Machines=On your machines|3-axis milling · 6061-T6 Aluminum"]);
+  const w = part({ unit_cost: { usd: null, qty: 10, withheld: true, withheld_reason: "thin", validated: false } });
+  assert.equal(peekFigs(w, vo(w, null), null)[0].v, "Withheld");
+  assert.equal(peekFigs(w, vo(w, null), null).length, 2, "no range for a withheld price");
 });

@@ -18,6 +18,34 @@ export function Frame({ children, label }: { children: React.ReactNode; label: s
   );
 }
 
-export function Column({ children, top, full }: { children: React.ReactNode; top?: 84 | 132 | 220; full?: boolean }) {
-  return <div className={cx("content", full && "full", top && `h-c${top}`)}>{children}</div>;
+/**
+ * The scrolling column under a page head. Its desktop offset follows the head's
+ * real height (facts can wrap), passed as a CSS variable so phones, where the
+ * column is a normal block, ignore it.
+ */
+export function Column({ children, full, head }: { children: React.ReactNode; full?: boolean; head: React.RefObject<HTMLElement | null> }) {
+  const [top, setTop] = React.useState<number | null>(null);
+  React.useLayoutEffect(() => {
+    const el = head.current;
+    if (!el) return;
+    const measure = () => setTop(el.offsetTop + el.offsetHeight + 14);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [head]);
+  return (
+    <div className={cx("content h-ctop", full && "full")} style={top != null ? ({ "--h-top": `${top}px` } as React.CSSProperties) : undefined}>
+      {children}
+    </div>
+  );
 }
+
+/** The page head block (title, facts, tabs, controls) whose height the column follows. */
+export const Head = React.forwardRef<HTMLDivElement, { children: React.ReactNode }>(function Head({ children }, ref) {
+  return (
+    <div className="pagehead" ref={ref}>
+      {children}
+    </div>
+  );
+});

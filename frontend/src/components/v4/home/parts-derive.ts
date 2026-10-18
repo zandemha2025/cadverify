@@ -204,6 +204,47 @@ export function partsFacts(total: number, costed: number, c: Record<VerdictKey |
   if (c.machine) facts.push({ n: n(c.machine), t: c.machine === 1 ? "needs a machine you don't have" : "need a machine you don't have" });
   if (c.outside) facts.push({ n: n(c.outside), t: "outside only" });
   if (c.out) facts.push({ n: n(c.out), t: "ruled out" });
-  if (c.stale) facts.push({ n: n(c.stale), t: c.stale === 1 ? "machine verdict out of date" : "machine verdicts out of date" });
   return facts;
+}
+
+/** The parts of GET /cost-decisions/{id} the peek reads. */
+export interface DecisionLite {
+  created_at?: string;
+  result?: {
+    geometry?: { bbox_mm?: number[] } | null;
+    estimates?: { process: string; quantity: number; unit_cost_usd: number; confidence?: { low_usd: number; high_usd: number; half_width_pct: number; validated: boolean } }[];
+    verification?: { per_route?: Record<string, { verdict: string; best_machine: string | null }> } | null;
+  } | null;
+}
+
+export interface PeekFig {
+  k: string;
+  v: string;
+  s?: string;
+  c?: "ok" | "warn" | "bad";
+}
+
+/**
+ * The peek's key figures: the price at the quoted quantity (and who makes it),
+ * the engine's range at that quantity, and the machine verdict. A figure whose
+ * source hasn't loaded or doesn't exist is left out, not guessed.
+ */
+export function peekFigs(row: PartRow, v: Verdict, d: DecisionLite | null): PeekFig[] {
+  const figs: PeekFig[] = [];
+  const uc = row.unit_cost;
+  const route = row.recommended_route?.process ?? null;
+  const fit = route ? d?.result?.verification?.per_route?.[route] : undefined;
+  const maker = fit && (fit.verdict === "makeable_in_house" || fit.verdict === "makeable_with_secondary_op") && fit.best_machine ? `${fit.best_machine}, yours` : fit ? "Outside" : route ? wayName(route) : "";
+  if (uc?.withheld) figs.push({ k: "Price", v: "Withheld", c: "warn", s: "Way needs a design change" });
+  else if (uc && uc.usd != null) figs.push({ k: uc.qty != null ? `Each, at ${uc.qty.toLocaleString("en-US")}` : "Each", v: money(uc.usd), s: maker });
+  else figs.push({ k: "Price", v: "Not priced", s: row.lifecycle_state === "Drafted" ? "Checked, not costed" : "No price for this way" });
+  if (uc && !uc.withheld && uc.usd != null && route && d?.result?.estimates) {
+    const e = d.result.estimates.find((x) => x.process === route && x.quantity === uc.qty);
+    const c = e?.confidence;
+    if (c && Number.isFinite(c.low_usd) && Number.isFinite(c.high_usd)) {
+      figs.push({ k: "Range", v: `${money(c.low_usd)}–${money(c.high_usd)}`, s: `±${Math.round(c.half_width_pct)}%${c.validated ? ", from your real costs" : ", no real costs yet"}` });
+    }
+  }
+  figs.push({ k: "Machines", v: v.label, c: v.tone === "ok" ? "ok" : v.tone === "bad" ? "bad" : v.tone === "warn" ? "warn" : undefined, s: v.stale ? `${v.where} · out of date` : v.where });
+  return figs;
 }

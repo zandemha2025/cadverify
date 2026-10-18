@@ -16,11 +16,10 @@
 
 /* Page frame: on phones the stage stays a backdrop instead of a 480px block, and
    content offsets are classes (an inline top would shift a relative block). */
-.ob .content.h-c84{top:84px}
-.ob .content.h-c132{top:132px}
-.ob .content.h-c220{top:220px}
+.ob .content.h-ctop{top:var(--h-top,132px)}
+.ob .content.h-ctop>:first-child{margin-top:4px}
 @media (max-width:900px){.ob .world.h-page>.stage{position:absolute;inset:0;height:auto}
-.ob .content.h-c84,.ob .content.h-c132,.ob .content.h-c220{top:auto}}
+.ob .content.h-ctop{top:auto}}
 
 /* ---------- list states (P8) ---------- */
 .ob .h-alert{margin:10px 12px;padding:10px 12px;border-radius:12px;background:#FFF4E5;color:#5C3800;font-size:13px;display:flex;flex-direction:column;gap:8px}
@@ -122,7 +121,7 @@
 .ob .h-ctl select{height:34px;padding:0 10px;border:1px solid rgba(20,24,31,.16);border-radius:999px;background:#fff;font-size:13px}
 .ob .h-ctl .h-cnt{margin-left:auto;color:var(--ink3);font-size:12.5px}
 .ob .h-ctl .seg{flex-wrap:wrap}
-.ob .h-shelf{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:start}
+.ob .h-shelf{padding:3px 3px 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:start}
 .ob .h-tile{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:10px 14px 12px;border-radius:18px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.8);box-shadow:0 1px 0 rgba(20,24,31,.03),0 6px 20px rgba(20,24,31,.05);color:var(--ink);cursor:pointer;transition:transform 180ms var(--ease),box-shadow 180ms ease;min-width:0}
 .ob .h-tile:active{transform:scale(.98)}
 .ob .h-tile:focus-visible{outline:2px solid var(--file);outline-offset:2px}
@@ -222,4 +221,4 @@
 .ob .h-opts,.ob .h-rbody{padding-left:18px;padding-right:18px}
 .ob .h-dfoot{padding:12px 18px 18px}
 }
-@media (max-width:520px){.ob .h-shelf{grid-template-columns:minmax(0,1fr)}.ob .h-steps{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:520px){.ob .h-shelf{gap:8px}.ob .h-tile{padding:8px 10px 10px}.ob .h-tile .h-pic{height:72px}.ob .h-tile .h-tr{flex-wrap:wrap;gap:4px}.ob .h-steps{grid-template-columns:minmax(0,1fr)}}

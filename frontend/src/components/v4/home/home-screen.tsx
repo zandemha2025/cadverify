@@ -9,8 +9,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { R } from "../routes";
-import { Chip, Fig, Figs, PageHead, Panel, cx } from "../ui";
-import { Column, Frame } from "./frame";
+import { Chip, Fig, Figs, Panel, cx } from "../ui";
+import { Column, Frame, Head } from "./frame";
 import { DropZone } from "./drop";
 import { PartialAlert, NoneYet, Skeleton, InlineFailed } from "./states";
 import { PartThumb } from "./thumb";
@@ -126,22 +126,31 @@ export function HomeScreen() {
   const [pick, setPick] = React.useState<string | null>(null);
   const sel = queue.find((q) => q.key === pick) ?? queue[0] ?? null;
   const sheetRef = React.useRef<HTMLElement>(null);
+  const headRef = React.useRef<HTMLDivElement>(null);
 
   const missing = [...failed].map((s) => SOURCE_NAME[s]);
   const retrying = [...failed].some((s) => pending.has(s));
 
   return (
     <Frame label="Home">
-      <PageHead
-        title="Home"
-        meta={facts.length ? factNodes(facts) : undefined}
-        actions={
+      <Head ref={headRef}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 className="ptitle">Home</h1>
+            {facts.length ? (
+              <p className="pmeta" style={{ marginTop: 6 }}>
+                {factNodes(facts).map((n, i) => (
+                  <span key={i}>{n}</span>
+                ))}
+              </p>
+            ) : null}
+          </div>
           <button type="button" className="btn ghost sm" onClick={guide.openGuide}>
             Start here
           </button>
-        }
-      />
-      <Column top={84}>
+        </div>
+      </Head>
+      <Column head={headRef}>
         {missing.length ? (
           <section className="panel" aria-label="Some data didn't load">
             <PartialAlert missing={missing} rest={pending.size === 0 ? "Everything else on Home is complete." : undefined} onRetry={retry} busy={retrying} />
