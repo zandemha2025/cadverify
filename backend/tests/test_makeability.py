@@ -891,3 +891,91 @@ def test_env_exclusion_cites_property():
     # exclusion must carry the standard + the offending property, not a naked drop
     assert exclusions[0].gate == "environment"
     assert "nace_mr0175" in exclusions[0].have
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NOZZLE gate — a filament printer can't lay a wall thinner than its nozzle
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def printer(nozzle=None, **cap):
+    caps = {"x": 256, "y": 256, "z": 256, **cap}
+    if nozzle is not None:
+        caps["nozzle_dia_mm"] = nozzle
+    return MachineCap(process="fdm", name="X1C", max_workpiece_kg=5.0,
+                      hourly_rate_usd=8.0, materials=("PLA", "polymer"),
+                      capabilities=caps)
+
+
+def fdm_part(wall=None, precision=0.0):
+    return replace(part(process="fdm", bbox=(20, 40, 60), mass=0.05,
+                        material_name="PLA", material_class="polymer"),
+                   min_wall_mm=wall, geometry_precision_mm=precision)
+
+
+def _nozzle(fr):
+    return [f for f in fr.failures if f.axis == "nozzle_dia_mm"]
+
+
+def test_nozzle_wider_than_thinnest_measured_wall_fails_with_cited_reason():
+    fr = fit_machine(fdm_part(wall=0.45), printer(nozzle=0.6))
+    (f,) = _nozzle(fr)
+    assert not fr.passes
+    assert (f.gate, f.need, f.have) == ("min_feature", 0.45, 0.6)
+    assert "nozzle 0.60mm is wider than the thinnest wall 0.45mm" in f.human
+    assert "measured by the DFM wall-thickness check" in f.human
+
+
+def test_nozzle_at_or_under_the_thinnest_wall_passes():
+    assert fit_machine(fdm_part(wall=0.45), printer(nozzle=0.4)).passes
+    assert fit_machine(fdm_part(wall=0.4), printer(nozzle=0.4)).passes
+
+
+def test_nozzle_gate_needs_a_declared_nozzle_and_a_measured_wall():
+    # No thin wall measured (the DFM check found none below its limit) → no claim.
+    assert fit_machine(fdm_part(wall=None), printer(nozzle=1.0)).passes
+    # No nozzle declared → the gate does not engage (display-only otherwise).
+    assert fit_machine(fdm_part(wall=0.3), printer()).passes
+
+
+def test_nozzle_gate_within_source_uncertainty_is_unknown_not_a_failure():
+    fr = fit_machine(fdm_part(wall=0.38, precision=0.05), printer(nozzle=0.4))
+    (f,) = _nozzle(fr)
+    assert f.have is None and "uncertainty" in f.human
+
+
+def test_nozzle_gate_only_reads_filament_routes():
+    resin = MachineCap(process="sla", name="Form 4", max_workpiece_kg=5.0,
+                       hourly_rate_usd=12.0, materials=("polymer",),
+                       capabilities={"x": 200, "y": 125, "z": 210, "nozzle_dia_mm": 0.4})
+    p = replace(fdm_part(wall=0.2), process="sla")
+    assert _nozzle(fit_machine(p, resin)) == []
+
+
+def test_thinnest_wall_comes_from_the_route_dfm_measurement():
+    from src.analysis.models import Issue, ProcessScore, ProcessType, Severity
+    from src.costing.makeability import thinnest_measured_wall
+
+    pt = ProcessType.FDM
+    score = ProcessScore(process=pt, score=0.6, verdict="issues", issues=[
+        Issue(code="THIN_WALL", severity=Severity.WARNING, process=pt,
+              message="thin", measured_value=0.62, required_value=0.8),
+        Issue(code="THIN_WALL", severity=Severity.WARNING, process=pt,
+              message="thinner (rule pack)", measured_value=0.5, required_value=1.0),
+        Issue(code="SHARP_CORNER", severity=Severity.WARNING, process=pt,
+              message="not a wall", measured_value=0.1),
+    ])
+    assert thinnest_measured_wall(score) == 0.5
+    assert thinnest_measured_wall(None) is None
+    assert thinnest_measured_wall(ProcessScore(process=pt, score=1.0, verdict="pass")) is None
+    req = part_req_from_drivers("fdm", FakeDrivers((20, 40, 60), nominal_wall_mm=3.0),
+                                FakeMaterial("PLA", 1.24), "standard", process_score=score)
+    # The measured minimum, not the 2·V/A nominal wall.
+    assert (req.min_wall_mm, req.min_feature_mm) == (0.5, 3.0)
+
+
+def test_nozzle_failure_makes_an_owned_printer_a_gap_not_in_house():
+    v = verify_part({"fdm": fdm_part(wall=0.45)}, [printer(nozzle=0.6)])
+    assert v.verdict == "makeable_not_on_owned"
+    assert any(g.axis == "nozzle_dia_mm" for g in v.gap)
+    assert verify_part({"fdm": fdm_part(wall=0.45)}, [printer(nozzle=0.4)]).verdict == "makeable_in_house"

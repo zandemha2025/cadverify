@@ -17,6 +17,7 @@ import csv
 import io
 import json
 import os
+import re
 
 import pytest
 
@@ -610,6 +611,136 @@ async def test_unknown_top_level_fields_are_a_400_over_http(monkeypatch):
                          json={"opps": {"hip": True}})
         assert r.status_code == 400, r.text
         assert "unknown field 'opps'" in r.json()["detail"]
+
+
+# ── printer details (additive capability keys) ────────────────────────────────
+def _printer(**caps) -> dict:
+    return {
+        "name": "Bambu Lab X1C", "process": "fdm", "count": 1,
+        "capabilities": {"x": 256, "y": 256, "z": 256, **caps},
+        "materials": ["PLA", "PETG"],
+    }
+
+
+_FDM_DETAILS = {"nozzle_dia_mm": 0.4, "min_layer_um": 80, "max_layer_um": 280,
+                "enclosure": "heated", "max_chamber_c": 60,
+                "stocked_materials": ["pla", "PETG"]}
+
+
+def test_printer_details_validate_on_a_filament_printer():
+    svc.validate_machine(_printer(**_FDM_DETAILS))  # no raise
+    for enclosure in ("none", "enclosed"):
+        svc.validate_machine(_printer(enclosure=enclosure))
+    # Resin printers carry a layer range and stocked resin, nothing filament-only.
+    svc.validate_machine({"process": "sla", "capabilities": {
+        "min_layer_um": 25, "max_layer_um": 300, "stocked_materials": ["Standard Resin"]}})
+    # Metal powder bed and binder jetting carry a layer range.
+    for process in ("dmls", "slm", "ebm", "binder_jetting", "sls", "mjf"):
+        svc.validate_machine({"process": process, "capabilities": {"min_layer_um": 20, "max_layer_um": 100}})
+
+
+def test_printer_details_on_the_wrong_method_are_reported():
+    cases = [
+        ("cnc_3axis", {"nozzle_dia_mm": 0.4}, "'nozzle_dia_mm' applies to fdm machines only (got cnc_3axis)"),
+        ("sla", {"enclosure": "heated"}, "'enclosure' applies to fdm machines only (got sla)"),
+        ("ded", {"max_layer_um": 300}, "'max_layer_um' applies to"),
+        ("mjf", {"stocked_materials": ["PA12 (Nylon 12)"]}, "'stocked_materials' applies to dlp, fdm, sla"),
+        ("cnc_turning", {"max_chamber_c": 60}, "'max_chamber_c' applies to fdm"),
+    ]
+    for process, caps, msg in cases:
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            svc.validate_machine({"process": process, "capabilities": caps})
+    # The older min_layer_um key stays accepted on any machine (no stored row breaks).
+    svc.validate_machine({"process": "cnc_3axis", "capabilities": {"min_layer_um": 40}})
+
+
+def test_printer_details_are_checked_against_each_other_and_the_registry():
+    bad = [
+        ({"nozzle_dia_mm": 0}, "'nozzle_dia_mm' must be > 0"),
+        ({"nozzle_dia_mm": "0.4"}, "'nozzle_dia_mm' must be a finite number"),
+        ({"min_layer_um": 300, "max_layer_um": 100}, "max_layer_um (100) must be >= min_layer_um (300)"),
+        ({"enclosure": "warm"}, "enclosure must be one of ['enclosed', 'heated', 'none']"),
+        ({"enclosure": "enclosed", "max_chamber_c": 60}, "max_chamber_c needs enclosure 'heated'"),
+        ({"max_chamber_c": 60}, "max_chamber_c needs enclosure 'heated'"),
+        ({"enclosure": "heated", "max_chamber_c": -5}, "'max_chamber_c' must be > 0"),
+        ({"stocked_materials": "PLA"}, "stocked_materials must be a list"),
+        ({"stocked_materials": ["PA12-CF"]}, "stocked_materials has unknown material 'PA12-CF'"),
+        ({"stocked_materials": [""]}, "stocked_materials entries must be non-empty strings"),
+    ]
+    for caps, msg in bad:
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            svc.validate_machine(_printer(**caps))
+
+
+def test_stocked_materials_are_stored_under_canonical_names():
+    out = svc._normalize(_printer(stocked_materials=["pla", "Polymer", "petg"]))
+    assert out["capabilities"]["stocked_materials"] == ["PLA", "polymer", "PETG"]
+    # Nothing else in the bag changes.
+    assert {k: v for k, v in out["capabilities"].items() if k != "stocked_materials"} == {"x": 256, "y": 256, "z": 256}
+
+
+def test_catalog_prefill_carries_the_layer_range_on_layered_printers_only():
+    by_name = {o["name"]: o for o in svc.catalog_options()}
+    assert by_name["Bambu Lab X1C"]["capabilities"]["min_layer_um"] == 40.0
+    assert by_name["Bambu Lab X1C"]["capabilities"]["max_layer_um"] == 400.0
+    assert by_name["HP Jet Fusion 5200"]["capabilities"]["max_layer_um"] == 80.0
+    assert "max_layer_um" not in by_name["Haas VF-2"]["capabilities"]
+    for o in svc.catalog_options():  # and every prefill still validates unedited
+        svc.validate_machine(o)
+
+
+@pytest.mark.asyncio
+async def test_printer_details_round_trip_over_http(monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+
+    session = _FakeSession()
+    app = _validation_app(monkeypatch, session)
+    stored = _stored_lathe(ulid="m1", created_at=None)
+
+    async def get_stored(session, org_id, ulid):
+        return stored
+
+    monkeypatch.setattr(svc, "get_machine", get_stored)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.post("/api/v1/machine-inventory", json=_printer(**_FDM_DETAILS))
+        assert r.status_code == 201, r.text
+        caps = r.json()["capabilities"]
+        assert caps == {"x": 256, "y": 256, "z": 256, **_FDM_DETAILS,
+                        "stocked_materials": ["PLA", "PETG"]}
+        assert session.added[-1].capabilities == caps
+
+        # A detail on a method that can't carry it is a 400, never dropped.
+        r = await ac.post("/api/v1/machine-inventory",
+                          json={"process": "cnc_3axis", "capabilities": {"nozzle_dia_mm": 0.4}})
+        assert r.status_code == 400, r.text
+        assert "applies to fdm machines only" in r.json()["detail"]
+
+        # PATCH: the stored lathe can't take a nozzle; turned into a printer it can.
+        r = await ac.patch("/api/v1/machine-inventory/m1",
+                           json={"capabilities": {"swing_dia": 254, "nozzle_dia_mm": 0.4}})
+        assert r.status_code == 400, r.text
+        r = await ac.patch("/api/v1/machine-inventory/m1", json={
+            "process": "fdm", "materials": ["PLA"],
+            "capabilities": {"x": 256, "y": 256, "z": 256, "nozzle_dia_mm": 0.6, "enclosure": "none"}})
+        assert r.status_code == 200, r.text
+        assert r.json()["capabilities"]["nozzle_dia_mm"] == 0.6
+        assert r.json()["capabilities"]["enclosure"] == "none"
+        assert stored.capabilities == r.json()["capabilities"]
+
+
+def test_printer_details_import_from_csv():
+    caps = json.dumps({"x": 256, "y": 256, "z": 256, "nozzle_dia_mm": 0.4,
+                       "enclosure": "enclosed", "stocked_materials": ["PLA"]})
+    bad = json.dumps({"nozzle_dia_mm": 0.4})
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["process", "name", "capabilities"])
+    w.writerow(["fdm", "X1C", caps])
+    w.writerow(["cnc_3axis", "VF-2", bad])
+    rows, errors = svc.parse_machine_csv(buf.getvalue())
+    assert [r["name"] for r in rows] == ["X1C"]
+    assert rows[0]["capabilities"]["stocked_materials"] == ["PLA"]
+    assert errors and errors[0]["line"] == 3 and "applies to fdm machines only" in errors[0]["reason"]
 
 
 # ── pure: service-environment validation ──────────────────────────────────────

@@ -101,6 +101,11 @@ class PartReq:
     # The route's own DFM blockers (FitFailure, gate "dfm") when the engine's
     # verdict for this process is "fail". Empty => DFM-ready (or not supplied).
     dfm_failures: tuple = ()
+    # Thinnest wall MEASURED by the route's own DFM wall-thickness check (inward
+    # ray cast, see ``thinnest_measured_wall``). None => that check found no wall
+    # below its process limit, or the route was not checked — never a guess.
+    # (``min_feature_mm`` above is 2·V/A, a nominal-wall average, not a minimum.)
+    min_wall_mm: "float | None" = None
 
 
 @dataclass(frozen=True)
@@ -278,6 +283,24 @@ def dfm_failures_from_score(process_score) -> tuple:
     return tuple(out)
 
 
+def thinnest_measured_wall(process_score) -> "float | None":
+    """The thinnest wall the route's DFM check MEASURED (duck-typed ProcessScore).
+
+    The wall-thickness check reports ``THIN_WALL`` with ``measured_value`` = the
+    thinnest ray-cast wall among the faces below its limit (FDM 0.8 mm). Absent
+    such an issue the walls are at least that limit, so this returns ``None``
+    (no measured thin wall), never a fabricated thickness.
+    """
+    out = None
+    for issue in getattr(process_score, "issues", None) or ():
+        if getattr(issue, "code", None) != "THIN_WALL":
+            continue
+        v = getattr(issue, "measured_value", None)
+        if _is_number(v) and v > 0 and (out is None or v < out):
+            out = float(v)
+    return out
+
+
 def part_req_from_drivers(process, drivers, material, tolerance_class,
                           material_props=None, env=None,
                           process_score=None) -> PartReq:
@@ -360,6 +383,7 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
         minimum_width_bound_mm=float(getattr(drivers, "minimum_width_bound_mm", 0.0)),
         enclosing_cylinder_mm=getattr(drivers, "enclosing_cylinder_mm", None),
         dfm_failures=dfm_failures_from_score(process_score),
+        min_wall_mm=thinnest_measured_wall(process_score),
     )
 
 
@@ -658,6 +682,29 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             round(float(m_minfeat), 3),
             f"feature {part_req.min_feature_mm:.2f}mm < machine min "
             f"{float(m_minfeat):.2f}mm"))
+
+    # (g2) NOZZLE vs THINNEST MEASURED WALL (filament printers) ------------
+    #   One extruded line is about a nozzle wide, so a filament printer cannot
+    #   lay a wall thinner than its nozzle. Engaged only when the printer
+    #   DECLARES a nozzle and the route's DFM check MEASURED a thin wall; within
+    #   the source-coordinate uncertainty the gate is unknown, never a guess.
+    nozzle = cap.get("nozzle_dia_mm")
+    wall = part_req.min_wall_mm
+    if pt == ProcessType.FDM and _is_number(nozzle) and _is_number(wall) and nozzle > wall:
+        precision = part_req.geometry_precision_mm or 0.0
+        if nozzle > wall + precision:
+            failures.append(FitFailure(
+                "min_feature", "nozzle_dia_mm", round(float(wall), 3),
+                round(float(nozzle), 3),
+                f"nozzle {float(nozzle):.2f}mm is wider than the thinnest wall "
+                f"{float(wall):.2f}mm (measured by the DFM wall-thickness check); "
+                f"a filament printer can't lay a wall thinner than its nozzle"))
+        else:
+            failures.append(FitFailure(
+                "min_feature", "nozzle_dia_mm", round(float(wall), 3), None,
+                f"STL coordinate uncertainty ±{precision:.3g}mm overlaps the "
+                f"{float(nozzle):g}mm nozzle against the {float(wall):.2f}mm "
+                f"thinnest wall; confirm using source CAD"))
 
     # (h) SECONDARY OPS (physics-mandated; grinding is owned by the tol gate) --
     for op in part_req.required_secondary_ops:

@@ -44,6 +44,7 @@ from sqlalchemy.exc import DBAPIError
 from ulid import ULID
 
 from src.analysis.models import ProcessType
+from src.costing.rates import ADDITIVE, BINDER_JET_FAMILY, METAL_POWDER_BED
 from src.db.models import MachineInstance, ShopCapabilities
 from src.profiles.database import MACHINES, get_material_by_name
 # Reuse the EXACT material-class vocabulary the ground-truth / manifest importers
@@ -119,9 +120,32 @@ _CAP_SPEC: dict[str, str] = {
     "min_feature_mm": _POS, "max_taper_deg": _POS,
     # Material special gates.
     "conductive_required": _BOOL,
+    # Printer details (additive only; see _PRINTER_KEY_PROCESSES). Layer heights
+    # are µm like min_layer_um; the chamber limit is °C.
+    "nozzle_dia_mm": _POS, "max_layer_um": _POS, "max_chamber_c": _POS,
 }
 _MOTION_MODES = frozenset({"positional_3plus2", "simultaneous_5"})
 _CHAMBER_TYPES = frozenset({"hot", "cold"})
+_ENCLOSURES = frozenset({"none", "enclosed", "heated"})
+
+# ── printer details: which additive methods each key describes ───────────────
+# From the costing families (``src.costing.rates``): an extrusion nozzle and a
+# build enclosure belong to filament printers; a layer-height range to every
+# layer-by-layer printer (polymer additive, metal powder bed, binder jetting —
+# not bead-deposition DED/WAAM); stocked feedstock to filament and resin
+# printers (powder printers declare what they run in ``materials``). A key on
+# any other method is reported, never stored. ``min_layer_um`` predates these
+# and stays accepted on every machine.
+_FILAMENT = frozenset({ProcessType.FDM.value})
+_LAYERED = frozenset(p.value for p in (ADDITIVE | METAL_POWDER_BED | BINDER_JET_FAMILY))
+_FEEDSTOCK = frozenset({ProcessType.FDM.value, ProcessType.SLA.value, ProcessType.DLP.value})
+_PRINTER_KEY_PROCESSES: dict[str, frozenset] = {
+    "nozzle_dia_mm": _FILAMENT,
+    "enclosure": _FILAMENT,
+    "max_chamber_c": _FILAMENT,
+    "max_layer_um": _LAYERED,
+    "stocked_materials": _FEEDSTOCK,
+}
 
 
 def _is_number(v: Any) -> bool:
@@ -131,20 +155,40 @@ def _is_number(v: Any) -> bool:
         return False
 
 
-def _validate_capabilities(caps: Any, errors: list[str]) -> None:
+def _validate_capabilities(caps: Any, errors: list[str], process: Any = None) -> None:
     """Validate the per-family ``capabilities`` dict; append precise errors.
 
     Every recognised key is type/sign-checked; an UNKNOWN key is a reported error
     (never silently ignored — a typo'd capability must not vanish). An empty dict
     is valid: a machine may legitimately declare only some gates (the missing
-    ones read ``unknown`` downstream, never a fabricated pass).
+    ones read ``unknown`` downstream, never a fabricated pass). Printer details
+    are checked against ``process`` (a key the method can't carry is reported)
+    and against each other (layer range order; a chamber limit needs a heated
+    enclosure).
     """
     if caps is None:
         return
     if not isinstance(caps, dict):
         errors.append("capabilities must be a JSON object")
         return
+    for key, allowed in _PRINTER_KEY_PROCESSES.items():
+        if key in caps and isinstance(process, str) and process in _VALID_PROCESSES and process not in allowed:
+            errors.append(
+                f"capability '{key}' applies to {', '.join(sorted(allowed))} machines only (got {process})"
+            )
+    lo, hi = caps.get("min_layer_um"), caps.get("max_layer_um")
+    if _is_number(lo) and _is_number(hi) and hi < lo:
+        errors.append(f"max_layer_um ({hi}) must be >= min_layer_um ({lo})")
+    if "max_chamber_c" in caps and caps.get("enclosure") != "heated":
+        errors.append("max_chamber_c needs enclosure 'heated'")
     for key, val in caps.items():
+        if key == "enclosure":
+            if not isinstance(val, str) or val not in _ENCLOSURES:
+                errors.append(f"enclosure must be one of {sorted(_ENCLOSURES)}")
+            continue
+        if key == "stocked_materials":
+            _validate_material_list(val, errors, field_name="stocked_materials")
+            continue
         if key == "achievable_it_grade":
             if isinstance(val, bool) or not isinstance(val, int):
                 errors.append("achievable_it_grade must be an integer IT grade")
@@ -239,25 +283,32 @@ def _canonical_material(name: str) -> Optional[str]:
     return None
 
 
-def _validate_materials(materials: Any, errors: list[str]) -> None:
-    """Each declared material must be a known material NAME, CLASS, or an
-    unambiguous shorthand (see ``_MATERIAL_ALIASES``)."""
+def _validate_material_list(materials: Any, errors: list[str], *, field_name: str) -> None:
+    """Each entry must be a known material NAME, CLASS, or an unambiguous
+    shorthand (see ``_MATERIAL_ALIASES``)."""
     if materials is None:
         return
     if not isinstance(materials, (list, tuple)):
-        errors.append("materials must be a list")
+        errors.append(f"{field_name} must be a list")
         return
+    label = "material" if field_name == "materials" else field_name
     for m in materials:
         if not isinstance(m, str) or not m.strip():
-            errors.append(f"material entries must be non-empty strings (got {m!r})")
+            errors.append(f"{label} entries must be non-empty strings (got {m!r})")
             continue
         name = m.strip()
         if _canonical_material(name) is not None:
             continue
+        prefix = "unknown material" if field_name == "materials" else f"{field_name} has unknown material"
         errors.append(
-            f"unknown material '{name}' (not a known material, class, or shorthand; "
+            f"{prefix} '{name}' (not a known material, class, or shorthand; "
             f"{_MATERIAL_VOCAB_HINT})"
         )
+
+
+def _validate_materials(materials: Any, errors: list[str]) -> None:
+    """The machine's qualified materials (see ``_validate_material_list``)."""
+    _validate_material_list(materials, errors, field_name="materials")
 
 
 def _canonical_thickness_key(key: str) -> Optional[str]:
@@ -312,7 +363,9 @@ def validate_machine(fields: dict) -> None:
     Validates: ``process`` ∈ ProcessType; ``count`` a positive int;
     ``max_workpiece_kg`` > 0; ``hourly_rate_usd`` >= 0; ``capital_frac`` ∈ [0,1];
     each ``capabilities`` scalar positive / typed per gate; ``achievable_it_grade``
-    an int IT grade; ``materials`` against the material DB / class vocabulary;
+    an int IT grade; printer details only on the methods they describe, with
+    ``stocked_materials`` against the same vocabulary as ``materials``;
+    ``materials`` against the material DB / class vocabulary;
     ``material_thickness_map`` a {name: positive} map. An unknown top-level field
     is reported like an unknown capability key, never silently dropped. Nothing
     is coerced — every violation is reported.
@@ -359,7 +412,7 @@ def validate_machine(fields: dict) -> None:
         if not _is_number(cf) or not (0.0 <= cf <= 1.0):
             errors.append("capital_frac must be in [0,1] and finite")
 
-    _validate_capabilities(fields.get("capabilities"), errors)
+    _validate_capabilities(fields.get("capabilities"), errors, fields.get("process"))
     _validate_materials(fields.get("materials"), errors)
     _validate_thickness_map(fields.get("material_thickness_map"), errors)
 
@@ -397,6 +450,15 @@ def _normalize(fields: dict) -> dict:
         out["count"] = 1
     if out.get("capabilities") is None:
         out["capabilities"] = {}
+    # Stocked filament/resin is stored under the same canonical names as materials.
+    caps = out.get("capabilities")
+    if isinstance(caps, dict) and isinstance(caps.get("stocked_materials"), (list, tuple)):
+        caps = dict(caps)
+        caps["stocked_materials"] = [
+            _canonical_material(m) or m if isinstance(m, str) else m
+            for m in caps["stocked_materials"]
+        ]
+        out["capabilities"] = caps
     # Canonicalize accepted materials (shorthand → registry name) so the stored
     # value is the real material the form advertised, not the bare shorthand.
     mats = out.get("materials")
@@ -953,6 +1015,8 @@ def _profile_to_payload(prof) -> dict:
             caps["x"], caps["y"], caps["z"] = float(bv[0]), float(bv[1]), float(bv[2])
     if prof.min_layer_height:
         caps["min_layer_um"] = round(prof.min_layer_height * 1000.0, 3)
+    if prof.max_layer_height and proc in _LAYERED:
+        caps["max_layer_um"] = round(prof.max_layer_height * 1000.0, 3)
     if prof.resolution_xy:
         caps["min_feature_mm"] = float(prof.resolution_xy)
     materials, not_prefilled = _catalog_materials(prof)

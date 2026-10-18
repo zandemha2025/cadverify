@@ -266,7 +266,7 @@ export function MachineDialog({
       <div className="g2">
         <label className="field">
           Name
-          <input type="text" value={form.name} placeholder="Haas VF-2" onChange={(e) => set("name", e.target.value)} />
+          <input aria-label="Name" type="text" value={form.name} placeholder="Haas VF-2" onChange={(e) => set("name", e.target.value)} />
         </label>
         <label className="field">
           Method
@@ -280,12 +280,12 @@ export function MachineDialog({
         </label>
         <label className="field">
           How many
-          <input type="text" inputMode="numeric" value={form.count} onChange={(e) => set("count", e.target.value)} {...inv("count")} />
+          <input aria-label="How many" type="text" inputMode="numeric" value={form.count} onChange={(e) => set("count", e.target.value)} {...inv("count")} />
           {err("count")}
         </label>
         <label className="field">
           Hourly rate (USD)
-          <input type="text" inputMode="decimal" value={form.rate} placeholder="95" onChange={(e) => set("rate", e.target.value)} {...inv("rate")} />
+          <input aria-label="Hourly rate (USD)" type="text" inputMode="decimal" value={form.rate} placeholder="95" onChange={(e) => set("rate", e.target.value)} {...inv("rate")} />
           {err("rate")}
         </label>
       </div>
@@ -293,12 +293,12 @@ export function MachineDialog({
         <div className="g2">
           <label className="field">
             Swing diameter (mm)
-            <input type="text" inputMode="decimal" value={form.swing} onChange={(e) => set("swing", e.target.value)} {...inv("swing")} />
+            <input aria-label="Swing diameter (mm)" type="text" inputMode="decimal" value={form.swing} onChange={(e) => set("swing", e.target.value)} {...inv("swing")} />
             {err("swing")}
           </label>
           <label className="field">
             Between centers (mm)
-            <input type="text" inputMode="decimal" value={form.between} onChange={(e) => set("between", e.target.value)} {...inv("between")} />
+            <input aria-label="Between centers (mm)" type="text" inputMode="decimal" value={form.between} onChange={(e) => set("between", e.target.value)} {...inv("between")} />
             {err("between")}
           </label>
         </div>
@@ -306,7 +306,7 @@ export function MachineDialog({
         <div className="g3">
           <label className="field">
             Work area X (mm)
-            <input type="text" inputMode="decimal" value={form.x} onChange={(e) => set("x", e.target.value)} {...inv("x")} />
+            <input aria-label="Work area X (mm)" type="text" inputMode="decimal" value={form.x} onChange={(e) => set("x", e.target.value)} {...inv("x")} />
             {err("x")}
           </label>
           <label className="field">
@@ -324,7 +324,7 @@ export function MachineDialog({
       <div className="g2">
         <label className="field">
           Heaviest part (kg)
-          <input
+          <input aria-label="Heaviest part (kg)"
             type="text"
             inputMode="decimal"
             value={form.kg}
@@ -358,7 +358,7 @@ export function MachineDialog({
         </label>
         <label className="field full">
           Materials
-          <input type="text" value={form.mats} placeholder="6061, 316L, PP" onChange={(e) => set("mats", e.target.value)} aria-describedby={`${ids}-math`} />
+          <input aria-label="Materials" type="text" value={form.mats} placeholder="6061, 316L, PP" onChange={(e) => set("mats", e.target.value)} aria-describedby={`${ids}-math`} />
           <span className="fh" id={`${ids}-math`}>
             Comma-separated: a class (aluminum, steel, stainless, titanium, polymer), a grade (6061-T6 Aluminum, SS316L) or a shorthand (6061, 7075, 304, 316L,
             PP, 4130, 4140).
@@ -373,7 +373,7 @@ export function MachineDialog({
           {shown.nozzle ? (
             <label className="field">
               Nozzle diameter (mm)
-              <input type="text" inputMode="decimal" value={form.printer.nozzle} placeholder="0.4" onChange={(e) => setP("nozzle", e.target.value)} {...inv("nozzle")} aria-describedby={errors.nozzle ? `${ids}-nozzle` : `${ids}-nzh`} />
+              <input aria-label="Nozzle diameter (mm)" type="text" inputMode="decimal" value={form.printer.nozzle} placeholder="0.4" onChange={(e) => setP("nozzle", e.target.value)} {...inv("nozzle")} aria-describedby={errors.nozzle ? `${ids}-nozzle` : `${ids}-nzh`} />
               {err("nozzle")}
               <span className="fh" id={`${ids}-nzh`}>
                 A wall thinner than the nozzle fails fit on this printer.
@@ -396,12 +396,12 @@ export function MachineDialog({
             <>
               <label className="field">
                 Finest layer (mm)
-                <input type="text" inputMode="decimal" value={form.printer.layerMin} placeholder="0.08" onChange={(e) => setP("layerMin", e.target.value)} {...inv("layerMin")} />
+                <input aria-label="Finest layer (mm)" type="text" inputMode="decimal" value={form.printer.layerMin} placeholder="0.08" onChange={(e) => setP("layerMin", e.target.value)} {...inv("layerMin")} />
                 {err("layerMin")}
               </label>
               <label className="field">
                 Thickest layer (mm)
-                <input type="text" inputMode="decimal" value={form.printer.layerMax} placeholder="0.28" onChange={(e) => setP("layerMax", e.target.value)} {...inv("layerMax")} />
+                <input aria-label="Thickest layer (mm)" type="text" inputMode="decimal" value={form.printer.layerMax} placeholder="0.28" onChange={(e) => setP("layerMax", e.target.value)} {...inv("layerMax")} />
                 {err("layerMax")}
               </label>
             </>
@@ -409,14 +409,14 @@ export function MachineDialog({
           {shown.enclosure && form.printer.enclosure === "heated" ? (
             <label className="field">
               Max chamber temperature (°C)
-              <input type="text" inputMode="decimal" value={form.printer.chamber} placeholder="60" onChange={(e) => setP("chamber", e.target.value)} {...inv("chamber")} />
+              <input aria-label="Max chamber temperature (°C)" type="text" inputMode="decimal" value={form.printer.chamber} placeholder="60" onChange={(e) => setP("chamber", e.target.value)} {...inv("chamber")} />
               {err("chamber")}
             </label>
           ) : null}
           {shown.stocked ? (
             <label className="field full">
               {stockLabel}
-              <input type="text" value={form.printer.stocked} placeholder={form.process === "fdm" ? "PETG, PLA, ABS" : "Standard Resin, Tough Resin"} onChange={(e) => setP("stocked", e.target.value)} aria-describedby={`${ids}-stk`} />
+              <input type="text" aria-label={stockLabel} value={form.printer.stocked} placeholder={form.process === "fdm" ? "PETG, PLA, ABS" : "Standard Resin, Tough Resin"} onChange={(e) => setP("stocked", e.target.value)} aria-describedby={`${ids}-stk`} />
               <span className="fh" id={`${ids}-stk`}>
                 Comma-separated material names from the registry, or a class. Shown on the printer; fit uses Materials.
               </span>
@@ -426,7 +426,7 @@ export function MachineDialog({
       ) : null}
       <label className="field">
         Notes
-        <textarea rows={2} value={form.notes} placeholder="Throughput, fixturing, secondary ops" onChange={(e) => set("notes", e.target.value)} />
+        <textarea aria-label="Notes" rows={2} value={form.notes} placeholder="Throughput, fixturing, secondary ops" onChange={(e) => set("notes", e.target.value)} />
       </label>
       <span className="fh">Only the fields shown are checked when you save. Saving marks older decisions for re-costing.</span>
       {saveError ? (
