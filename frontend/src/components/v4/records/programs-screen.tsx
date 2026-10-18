@@ -470,7 +470,7 @@ export function ProgramsScreen() {
                       </div>
                     );
                   })}
-                  {!candidates.length ? <p className="ro-note">Every priced part is in this program.</p> : null}
+                  {!candidates.length ? <p className="ro-note">{rows.length ? "Every priced part is in this program." : "No priced parts yet. A part can join once it has a price."}</p> : null}
                 </div>
               </>
             ) : (
