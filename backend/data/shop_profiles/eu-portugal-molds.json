@@ -1,0 +1,16 @@
+{
+  "name": "EU Portugal Molds",
+  "region": "EU",
+  "labor_rate": 34.0,
+  "margin": 0.30,
+  "overhead": 0.15,
+  "utilization": 0.78,
+  "stock_allowance": null,
+  "machine_rates": {"INJECTION_MOLDING": 55, "CNC_3AXIS": 70, "WIRE_EDM": 48, "CNC_5AXIS": 95},
+  "material_prices": {"ABS (Molded)": 2.8, "PP (Molded)": 2.2, "PC (Polycarbonate)": 4.8, "PA66-GF30": 5.8},
+  "region_multipliers": {"labor": 1.0, "material": 1.0, "tooling": 1.0},
+  "source": "Modeled exemplar - synthesized from public marketplace rate bands (Xometry/Fictiv/Protolabs quote ranges) and regional labor surveys; NOT a measured shop. For calibration coverage and UI demonstration only.",
+  "notes": "Marinha Grande mold-making cluster archetype: mold tooling + trial molding, EDM-heavy finishing.",
+  "created": "2026-09-14",
+  "schema_version": 1
+}

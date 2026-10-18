@@ -27,7 +27,7 @@
     "material": 1.0,
     "tooling": 1.0
   },
-  "source": "Shop accounting export 2026-Q2 (loaded rates + negotiated resin lots)",
+  "source": "Modeled exemplar - legacy calibration profile with synthetic loaded rates; NOT a verified accounting export; NOT a measured shop. For calibration coverage and UI demonstration only.",
   "notes": "Aerospace/automotive job shop, 8 CNC machines, in-house SLS.",
   "created": "2026-06-29",
   "schema_version": 1

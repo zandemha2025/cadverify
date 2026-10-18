@@ -1,0 +1,16 @@
+{
+  "name": "India Pune Turn-Mill",
+  "region": "IN",
+  "labor_rate": 13.0,
+  "margin": 0.25,
+  "overhead": 0.13,
+  "utilization": 0.82,
+  "stock_allowance": 1.25,
+  "machine_rates": {"CNC_TURNING": 30, "CNC_3AXIS": 34, "CNC_5AXIS": 58, "INJECTION_MOLDING": 38},
+  "material_prices": {"AISI 4140": 2.4, "6061-T6 Aluminum": 6.8, "Mild Steel": 1.5, "ABS (Molded)": 2.6},
+  "region_multipliers": {"labor": 1.0, "material": 1.0, "tooling": 1.0},
+  "source": "Modeled exemplar - synthesized from public marketplace rate bands (Xometry/Fictiv/Protolabs quote ranges) and regional labor surveys; NOT a measured shop. For calibration coverage and UI demonstration only.",
+  "notes": "Pune automotive-corridor job shop archetype: price-aggressive, export and domestic mix.",
+  "created": "2026-09-14",
+  "schema_version": 1
+}

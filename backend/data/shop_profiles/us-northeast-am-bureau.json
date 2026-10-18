@@ -1,0 +1,16 @@
+{
+  "name": "US Northeast AM Bureau",
+  "region": "US",
+  "labor_rate": 45.0,
+  "margin": 0.42,
+  "overhead": 0.22,
+  "utilization": 0.65,
+  "stock_allowance": null,
+  "machine_rates": {"SLS": 32, "MJF": 34, "FDM": 14, "SLA": 22, "DLP": 24, "DMLS": 78},
+  "material_prices": {"PA12 (Nylon 12)": 8.5, "PA11": 9.5, "@polymer": 8.0, "AlSi10Mg": 130.0, "Ti6Al4V": 380.0},
+  "region_multipliers": {"labor": 1.0, "material": 1.0, "tooling": 1.0},
+  "source": "Modeled exemplar - synthesized from public marketplace rate bands (Xometry/Fictiv/Protolabs quote ranges) and regional labor surveys; NOT a measured shop. For calibration coverage and UI demonstration only.",
+  "notes": "Additive service bureau archetype: high-mix low-volume, machine time sold by build, powder/recoat economics dominate.",
+  "created": "2026-09-14",
+  "schema_version": 1
+}

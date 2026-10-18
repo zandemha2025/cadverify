@@ -157,7 +157,10 @@ class TestBackwardCompat:
     def test_machines_list_exists(self):
         from src.profiles.database import MACHINES
 
-        assert len(MACHINES) == 19
+        # Floor raised 2026-09-14 (data-plane depth expansion): catalog grew
+        # 19 -> 51 so every ProcessType has real machine coverage. A floor, not
+        # an exact count, so later additions never break backward-compat.
+        assert len(MACHINES) >= 51
 
     def test_get_materials_for_process_fdm(self):
         from src.profiles.database import get_materials_for_process
