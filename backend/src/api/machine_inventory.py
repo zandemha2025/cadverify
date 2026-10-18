@@ -31,7 +31,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
@@ -51,7 +51,13 @@ _CHUNK = 1024 * 1024  # 1 MiB
 
 
 # ── request bodies ────────────────────────────────────────────────────────────
+# Unknown fields are KEPT (``extra="allow"``) so the service reports them as a
+# 400 — the same treatment as an unknown capability key — instead of Pydantic
+# silently dropping them. ``provenance`` lets a catalog template be submitted
+# as-is; it is validated but never stored (a saved machine is always ``user``).
 class MachineBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     name: Optional[str] = None
     process: str
     count: Optional[int] = None
@@ -62,9 +68,12 @@ class MachineBody(BaseModel):
     materials: Optional[list] = None
     material_thickness_map: Optional[dict] = None
     notes: Optional[str] = None
+    provenance: Optional[str] = None
 
 
 class MachinePatchBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     name: Optional[str] = None
     process: Optional[str] = None
     count: Optional[int] = None
@@ -75,9 +84,12 @@ class MachinePatchBody(BaseModel):
     materials: Optional[list] = None
     material_thickness_map: Optional[dict] = None
     notes: Optional[str] = None
+    provenance: Optional[str] = None
 
 
 class ShopCapabilitiesBody(BaseModel):
+    model_config = ConfigDict(extra="allow")  # reported below, never dropped
+
     ops: dict = {}
 
 
@@ -204,6 +216,12 @@ async def put_shop_capabilities(
     non-limits value, or a non-positive limit) is a 400 — reported, never coerced.
     """
     org_id = await _require_org(session, user)
+    if body.model_extra:
+        # e.g. a typo'd ``{"opps": ...}`` would otherwise replace ops with {}.
+        raise HTTPException(
+            status_code=400,
+            detail="; ".join(f"unknown field '{k}'" for k in body.model_extra),
+        )
     try:
         row = await svc.upsert_shop_capabilities(
             session, org_id, body.ops, created_by=user.user_id
@@ -280,8 +298,9 @@ async def create_machine(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Declare one owned machine. A malformed capability field is a 400 (reported,
-    never coerced). The response is always ``provenance: "user"``."""
+    """Declare one owned machine. A malformed capability field or an unknown field
+    is a 400 (reported, never coerced or dropped). The response is always
+    ``provenance: "user"``."""
     org_id = await _require_org(session, user)
     try:
         row = await svc.create_machine(

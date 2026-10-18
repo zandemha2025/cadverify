@@ -332,6 +332,279 @@ def test_shop_ops_negative_limit_reported():
         svc.validate_shop_ops({"hip": {"dia_mm": -5}})
 
 
+# ── catalog prefill must save unedited (11 of 19 used to 400 on materials) ────
+def test_every_catalog_entry_saves_unedited():
+    from src.api.machine_inventory import MachineBody
+    from src.profiles.database import MACHINES
+
+    opts = svc.catalog_options()
+    assert len(opts) == len(MACHINES)
+    for prof, payload in zip(MACHINES, opts):
+        # Exactly what POST /machine-inventory hands the service, provenance
+        # marker included.
+        fields = MachineBody(**payload).model_dump()
+        svc.validate_machine(fields)  # no raise
+        assert svc._normalize(fields)["materials"] == payload["materials"]
+        # No catalog material silently vanishes: each is registry vocabulary or
+        # an explicit, reviewed translation/omission named in the notes.
+        _, skipped = svc._catalog_materials(prof)
+        for name in prof.materials:
+            key = (prof.process_type.value, name)
+            assert key in svc._CATALOG_MATERIALS or svc._canonical_material(name), name
+        for name in skipped:
+            assert name in payload["notes"]
+
+
+def test_catalog_material_translations_are_registry_materials_for_that_process():
+    from src.profiles.database import get_material_by_name
+
+    for (proc, name), target in svc._CATALOG_MATERIALS.items():
+        if target is None:
+            continue
+        mat = get_material_by_name(target)
+        assert mat is not None and mat.name == target, (name, target)
+        assert proc in {p.value for p in mat.process_types}, (proc, name, target)
+
+
+def test_hp_jet_fusion_prefill_uses_registry_materials():
+    payload = svc.add_from_catalog("HP Jet Fusion 5200")
+    assert payload["materials"] == ["PA12 (Nylon 12)", "PA11", "PP (MJF)"]
+    assert "TPU" in payload["notes"]  # no MJF TPU in the registry: named, not guessed
+    svc.validate_machine(payload)
+
+
+def test_catalog_lathe_prefill_is_the_turning_envelope():
+    payload = svc.add_from_catalog("Haas ST-20")
+    assert payload["capabilities"] == {"swing_dia": 254.0, "between_centers": 533.0}
+    svc.validate_machine(payload)
+
+
+def test_turning_envelope_has_one_representation():
+    from src.costing.makeability import _machine_envelope
+
+    svc.validate_machine({"process": "cnc_turning",
+                          "capabilities": {"swing_dia": 254, "between_centers": 533}})
+    with pytest.raises(ValueError, match="unknown capability 'swing_dia_mm'"):
+        svc.validate_machine({"process": "cnc_turning",
+                              "capabilities": {"swing_dia_mm": 254}})
+    # The engine no longer reads a key the API can never store.
+    assert _machine_envelope({"swing_dia_mm": 254}) == ("rect", None)
+    assert _machine_envelope({"swing_dia": 254, "between_centers": 533})[0] == "turning"
+
+
+class _FakeSession:
+    def __init__(self):
+        self.added = []
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        return None
+
+    async def commit(self):
+        return None
+
+
+def _stored_lathe(**over):
+    import types
+
+    base = dict(name="ST-20", process="cnc_turning", count=1, max_workpiece_kg=100.0,
+                hourly_rate_usd=None, capital_frac=None,
+                capabilities={"swing_dia": 254.0, "between_centers": 533.0},
+                materials=["304 Stainless"], material_thickness_map=None, notes=None,
+                updated_at=None)
+    base.update(over)
+    return types.SimpleNamespace(**base)
+
+
+@pytest.mark.asyncio
+async def test_rate_only_edit_preserves_every_other_field(monkeypatch):
+    row = _stored_lathe(material_thickness_map={"steel": 20.0})
+    before = {k: getattr(row, k) for k in svc._MUTABLE_FIELDS if k != "hourly_rate_usd"}
+
+    async def fake_get(session, org_id, ulid):
+        return row
+
+    monkeypatch.setattr(svc, "get_machine", fake_get)
+    out = await svc.update_machine(_FakeSession(), "org", "m1", {"hourly_rate_usd": 80.0})
+    assert out.hourly_rate_usd == 80.0
+    assert {k: getattr(out, k) for k in before} == before
+
+
+@pytest.mark.asyncio
+async def test_unrelated_edit_not_blocked_by_legacy_thickness_map(monkeypatch):
+    # Stored before thickness-map keys were validated; the form never shows it.
+    row = _stored_lathe(material_thickness_map={"unobtainium": 3.0})
+
+    async def fake_get(session, org_id, ulid):
+        return row
+
+    monkeypatch.setattr(svc, "get_machine", fake_get)
+    out = await svc.update_machine(_FakeSession(), "org", "m1", {"hourly_rate_usd": 80.0})
+    assert out.material_thickness_map == {"unobtainium": 3.0}
+    # ...but writing it is validated.
+    with pytest.raises(ValueError, match="unknown material 'unobtainium'"):
+        await svc.update_machine(_FakeSession(), "org", "m1",
+                                 {"material_thickness_map": {"unobtainium": 3.0}})
+
+
+# ── material_thickness_map keys use the material vocabulary ───────────────────
+def test_thickness_map_unknown_material_reported():
+    with pytest.raises(ValueError, match="material_thickness_map has unknown material 'unobtainium'"):
+        svc.validate_machine({**_good_machine(), "material_thickness_map": {"unobtainium": 3}})
+    with pytest.raises(ValueError, match="unknown material '@6061'"):  # @ marks a class only
+        svc.validate_machine({**_good_machine(), "material_thickness_map": {"@6061": 3}})
+    with pytest.raises(ValueError, match="twice"):
+        svc.validate_machine({**_good_machine(),
+                              "material_thickness_map": {"6061": 3, "6061-T6 Aluminum": 4}})
+
+
+def test_thickness_map_keys_stored_as_the_names_the_engine_looks_up():
+    fields = {**_good_machine(),
+              "material_thickness_map": {"6061": 3, "Steel": 20, "@aluminum": 4, "SS316L": 6}}
+    svc.validate_machine(fields)
+    assert svc._normalize(fields)["material_thickness_map"] == {
+        "6061-T6 Aluminum": 3, "steel": 20, "@aluminum": 4, "SS316L": 6,
+    }
+
+
+# ── shop-op names are case/separator-insensitive ──────────────────────────────
+def test_shop_op_names_normalized_and_collisions_reported():
+    assert svc._normalize_shop_ops({"HIP": True, "Stress Relief": True, "heat-treat": True}) == {
+        "hip": True, "stress_relief": True, "heat_treat": True,
+    }
+    with pytest.raises(ValueError, match="duplicates"):
+        svc.validate_shop_ops({"HIP": True, "hip": {"dia_mm": 300}})
+
+
+@pytest.mark.asyncio
+async def test_uppercase_shop_op_satisfies_engine_requirement(monkeypatch):
+    import types
+
+    from src.costing.makeability import MachineCap, PartReq, fit_machine
+
+    session = _FakeSession()
+
+    async def no_row(s, org_id):
+        return None
+
+    monkeypatch.setattr(svc, "get_shop_capabilities", no_row)
+    stored = await svc.upsert_shop_capabilities(session, "org", {"HIP": True})
+    assert stored.ops == {"hip": True}
+
+    async def legacy_row(s, org_id):  # saved before names were canonicalized
+        return types.SimpleNamespace(ops={"HIP": True})
+
+    monkeypatch.setattr(svc, "get_shop_capabilities", legacy_row)
+    shop = await svc.load_shop_caps(session, "org")
+    assert shop.ops == {"hip": True}
+
+    machine = MachineCap(process="dmls", name="M400", max_workpiece_kg=50.0,
+                         materials=("Ti6Al4V",),
+                         capabilities={"x": 400, "y": 400, "z": 400})
+    part = PartReq(process="dmls", bbox_mm=(50, 50, 50), mass_kg=1.0,
+                   material_name="Ti6Al4V", material_class="titanium",
+                   required_secondary_ops=("hip",))
+    assert fit_machine(part, machine, shop).passes
+
+
+# ── unknown top-level fields are reported like unknown capability keys ────────
+def test_unknown_top_level_field_reported():
+    with pytest.raises(ValueError, match="unknown field 'colour'"):
+        svc.validate_machine({**_good_machine(), "colour": "red"})
+    with pytest.raises(ValueError, match="provenance must be"):
+        svc.validate_machine({**_good_machine(), "provenance": "measured"})
+    for marker in (None, "user", "catalog_template"):
+        svc.validate_machine({**_good_machine(), "provenance": marker})  # no raise
+    # provenance is never stored
+    assert "provenance" not in svc._normalize({**_good_machine(), "provenance": "user"})
+
+
+@pytest.mark.asyncio
+async def test_unknown_field_on_patch_reported(monkeypatch):
+    async def fake_get(session, org_id, ulid):
+        return _stored_lathe()
+
+    monkeypatch.setattr(svc, "get_machine", fake_get)
+    with pytest.raises(ValueError, match="unknown field 'hourly_rate'"):
+        await svc.update_machine(_FakeSession(), "org", "m1", {"hourly_rate": 80.0})
+
+
+def _validation_app(monkeypatch, session=None):
+    """The real router with auth/org/storage stubbed out, so request parsing and
+    validation run for real without a database."""
+    from fastapi import FastAPI
+
+    import src.api.machine_inventory as api
+    from src.auth.kill_switch import require_kill_switch_open
+    from src.auth.rate_limit import limiter
+    from src.auth.require_api_key import AuthedUser, require_api_key
+    from src.db.engine import get_db_session
+
+    async def org(session, user_id):
+        return "org-test"
+
+    async def stored(session, org_id, ulid):
+        return _stored_lathe()
+
+    async def no_db():
+        yield session if session is not None else _FakeSession()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(api, "resolve_org", org)
+    monkeypatch.setattr(svc, "get_machine", stored)
+    monkeypatch.setattr(api.part_summary_service, "mark_org_makeability_stale_safe", noop)
+    monkeypatch.setattr(api, "_emit_machine_audit", noop)
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.include_router(api.router, prefix="/api/v1/machine-inventory")
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+        user_id=1, api_key_id=0, key_prefix="session", role="analyst")
+    app.dependency_overrides[get_db_session] = no_db
+    app.dependency_overrides[require_kill_switch_open] = lambda: None
+    return app
+
+
+@pytest.mark.asyncio
+async def test_every_catalog_entry_posts_unedited_over_http(monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+
+    session = _FakeSession()
+    app = _validation_app(monkeypatch, session)
+    opts = svc.catalog_options()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        for payload in opts:
+            r = await ac.post("/api/v1/machine-inventory", json=payload)
+            assert r.status_code == 201, (payload["name"], r.text)
+            assert r.json()["provenance"] == "user"
+    assert len(session.added) == len(opts)
+    for row, payload in zip(session.added, opts):
+        assert row.materials == payload["materials"]
+        assert row.capabilities == payload["capabilities"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_top_level_fields_are_a_400_over_http(monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+
+    app = _validation_app(monkeypatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.post("/api/v1/machine-inventory",
+                          json={"process": "cnc_3axis", "colour": "red"})
+        assert r.status_code == 400, r.text
+        assert "unknown field 'colour'" in r.json()["detail"]
+        r = await ac.patch("/api/v1/machine-inventory/m1", json={"hourly_rate": 80})
+        assert r.status_code == 400, r.text
+        assert "unknown field 'hourly_rate'" in r.json()["detail"]
+        r = await ac.put("/api/v1/machine-inventory/shop-capabilities",
+                         json={"opps": {"hip": True}})
+        assert r.status_code == 400, r.text
+        assert "unknown field 'opps'" in r.json()["detail"]
+
+
 # ── pure: service-environment validation ──────────────────────────────────────
 def test_service_environment_valid():
     pcs.validate_service_environment(

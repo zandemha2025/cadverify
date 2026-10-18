@@ -33,6 +33,7 @@ import io
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -259,15 +260,45 @@ def _validate_materials(materials: Any, errors: list[str]) -> None:
         )
 
 
+def _canonical_thickness_key(key: str) -> Optional[str]:
+    """Canonical stored form of a ``material_thickness_map`` key, or ``None``.
+
+    The engine looks a part up by its registry material name, then its class,
+    then ``@<class>`` (``makeability.fit_machine``), so a key must resolve the
+    same way a declared material does; ``@`` is kept only on a material class.
+    """
+    text = key.strip()
+    prefix = "@" if text.startswith("@") else ""
+    canon = _canonical_material(text[len(prefix):])
+    if canon is None or (prefix and canon not in KNOWN_MATERIAL_CLASSES):
+        return None
+    return prefix + canon
+
+
 def _validate_thickness_map(tmap: Any, errors: list[str]) -> None:
     if tmap is None:
         return
     if not isinstance(tmap, dict):
         errors.append("material_thickness_map must be a JSON object")
         return
+    seen: dict[str, str] = {}
     for k, v in tmap.items():
         if not isinstance(k, str) or not k.strip():
             errors.append("material_thickness_map keys must be material names")
+        else:
+            canon = _canonical_thickness_key(k)
+            if canon is None:
+                errors.append(
+                    f"material_thickness_map has unknown material '{k.strip()}' "
+                    f"(not a known material, @class, or shorthand; {_MATERIAL_VOCAB_HINT})"
+                )
+            elif canon in seen:
+                errors.append(
+                    f"material_thickness_map lists '{canon}' twice "
+                    f"('{seen[canon]}' and '{k}')"
+                )
+            else:
+                seen[canon] = k
         if not _is_number(v) or v <= 0:
             errors.append(
                 f"material_thickness_map['{k}'] must be a positive number and finite"
@@ -282,10 +313,21 @@ def validate_machine(fields: dict) -> None:
     ``max_workpiece_kg`` > 0; ``hourly_rate_usd`` >= 0; ``capital_frac`` ∈ [0,1];
     each ``capabilities`` scalar positive / typed per gate; ``achievable_it_grade``
     an int IT grade; ``materials`` against the material DB / class vocabulary;
-    ``material_thickness_map`` a {name: positive} map. Nothing is coerced — every
-    violation is reported.
+    ``material_thickness_map`` a {name: positive} map. An unknown top-level field
+    is reported like an unknown capability key, never silently dropped. Nothing
+    is coerced — every violation is reported.
     """
     errors: list[str] = []
+
+    for key in fields:
+        if key == "provenance":
+            if fields[key] not in _ACCEPTED_PROVENANCE:
+                errors.append(
+                    "provenance must be 'user' or 'catalog_template' "
+                    "(a saved machine is always a USER declaration)"
+                )
+        elif key not in _MUTABLE_FIELDS:
+            errors.append(f"unknown field '{key}'")
 
     process = fields.get("process")
     if not process or not isinstance(process, str):
@@ -339,6 +381,11 @@ _MUTABLE_FIELDS = (
     "notes",
 )
 
+# ``provenance`` is the one non-stored field a write may carry: a catalog
+# template marks itself ``catalog_template`` and can be submitted as-is. It is
+# never persisted — a saved machine is always serialized as ``user``.
+_ACCEPTED_PROVENANCE = (None, "user", "catalog_template")  # tuple: values may be unhashable
+
 
 def _normalize(fields: dict) -> dict:
     """Apply the non-fabricating defaults: ``count`` → 1, ``capabilities`` → {}.
@@ -357,6 +404,14 @@ def _normalize(fields: dict) -> dict:
         out["materials"] = [
             _canonical_material(m) or m if isinstance(m, str) else m for m in mats
         ]
+    # Same for thickness-map keys, so the engine's registry-name / class lookup
+    # actually finds the limit the user declared under a shorthand.
+    tmap = out.get("material_thickness_map")
+    if isinstance(tmap, dict):
+        out["material_thickness_map"] = {
+            (_canonical_thickness_key(k) or k) if isinstance(k, str) else k: v
+            for k, v in tmap.items()
+        }
     return out
 
 
@@ -616,8 +671,19 @@ async def update_machine(
     for k in _MUTABLE_FIELDS:
         if k in fields:
             merged[k] = fields[k]
-    validate_machine(merged)
+    # Unknown / marker keys ride along so validate_machine reports them (they are
+    # never stored — _normalize keeps only the mutable set).
+    to_validate = {**merged, **{k: v for k, v in fields.items() if k not in _MUTABLE_FIELDS}}
+    keep_tmap = "material_thickness_map" not in fields
+    if keep_tmap:
+        # A map stored before its keys were checked may name a non-registry
+        # material. It is validated whenever it is written; re-checking it here
+        # would block an unrelated edit (the form never shows this field).
+        to_validate["material_thickness_map"] = None
+    validate_machine(to_validate)
     merged = _normalize(merged)
+    if keep_tmap:
+        merged["material_thickness_map"] = row.material_thickness_map
     for k in _MUTABLE_FIELDS:
         setattr(row, k, merged[k])
     row.updated_at = datetime.now(timezone.utc)
@@ -712,7 +778,9 @@ async def load_org_inventory(session: AsyncSession, org_id: str) -> list:
 async def load_shop_caps(session: AsyncSession, org_id: str):
     """Hydrate the org's shop-level secondary ops to ``ShopCaps`` (or empty)."""
     row = await get_shop_capabilities(session, org_id) if org_id else None
-    return ShopCaps(ops=dict(row.ops or {}) if row is not None else {})
+    # Normalized on read too, so a row saved before names were canonicalized
+    # (e.g. ``{"HIP": true}``) still satisfies the engine's ``hip``.
+    return ShopCaps(ops=_normalize_shop_ops(row.ops) if row is not None else {})
 
 
 # ── shop-level secondary-op capabilities (org-scoped, one row per org) ────────
@@ -728,21 +796,45 @@ async def get_shop_capabilities(
     ).scalars().first()
 
 
+def _canonical_op(name: str) -> str:
+    """Op names match case- and separator-insensitively: the engine asks for
+    ``hip`` / ``stress_relief`` / ``sinter`` / ``grinding``, so ``"HIP"`` or
+    ``"Stress Relief"`` must name the same op rather than silently miss."""
+    return re.sub(r"[\s\-]+", "_", name.strip().lower())
+
+
+def _normalize_shop_ops(ops: Any) -> dict:
+    """``ops`` with canonical op names. On a (legacy) collision the entry already
+    spelled canonically wins; otherwise the first spelling is kept."""
+    out: dict = {}
+    for key, val in (ops or {}).items():
+        canon = _canonical_op(key) if isinstance(key, str) else key
+        if canon not in out or key == canon:
+            out[canon] = val
+    return out
+
+
 def validate_shop_ops(ops: Any) -> None:
     """Raise ``ValueError`` unless ``ops`` is a valid secondary-op map.
 
     ``{op: True | {size/temp limits}}``: each key a non-empty string; each value a
-    bool OR a dict of numeric size/temp limits. Malformed → reported, never coerced.
+    bool OR a dict of numeric size/temp limits. Two keys naming the same op
+    (``"HIP"`` and ``"hip"``) are reported. Malformed → reported, never coerced.
     """
     if ops is None:
         return
     if not isinstance(ops, dict):
         raise ValueError("shop capabilities 'ops' must be a JSON object")
     errors: list[str] = []
+    seen: dict[str, str] = {}
     for key, val in ops.items():
         if not isinstance(key, str) or not key.strip():
             errors.append("op names must be non-empty strings")
             continue
+        canon = _canonical_op(key)
+        if canon in seen:
+            errors.append(f"op '{key}' duplicates '{seen[canon]}' (both name '{canon}')")
+        seen.setdefault(canon, key)
         if isinstance(val, bool):
             continue
         if isinstance(val, dict):
@@ -763,8 +855,10 @@ async def upsert_shop_capabilities(
     ops: dict,
     created_by: Optional[int] = None,
 ) -> ShopCapabilities:
-    """Insert or update the org's single shop-capabilities row (validated)."""
+    """Insert or update the org's single shop-capabilities row (validated; op
+    names stored canonically)."""
     validate_shop_ops(ops)
+    ops = _normalize_shop_ops(ops)
     row = await get_shop_capabilities(session, org_id)
     if row is None:
         row = ShopCapabilities(org_id=org_id, ops=ops or {}, created_by=created_by)
@@ -795,16 +889,82 @@ def add_from_catalog(profile_name: str) -> dict:
     return _profile_to_payload(prof)
 
 
+# The static catalog names materials the way vendors do ("PA12", "Tough",
+# "ABS-M30"); the validator accepts only registry vocabulary, so an UNEDITED
+# prefill used to 400 on 11 of 19 entries. Each entry maps (process, catalog
+# name) to the registry material the catalog machine is actually qualified for.
+# ``None`` = no registry equivalent: left out of the prefill and named in its
+# notes, never swapped for a look-alike or widened to a class. Names not listed
+# here must already be registry vocabulary (a test enforces this).
+_CATALOG_MATERIALS: dict[tuple[str, str], Optional[str]] = {
+    ("fdm", "Nylon"): "Nylon (PA6)",
+    ("fdm", "TPU"): "TPU 95A",
+    ("fdm", "Nylon 12CF"): "CF-Nylon",
+    ("fdm", "ABS-M30"): "ABS",
+    ("fdm", "PA6/66"): None,           # copolymer; the registry has PA6 only
+    ("sla", "Standard"): "Standard Resin",
+    ("sla", "Tough"): "Tough Resin",
+    ("sla", "Flexible"): "Flexible Resin",
+    ("sla", "Castable"): "Castable Resin",
+    ("dlp", "Standard"): "Standard Resin",
+    ("dlp", "Castable"): "Castable Resin",
+    ("dlp", "ABS-like"): None,
+    ("dlp", "RPU 70"): None,
+    ("dlp", "EPU 41"): None,
+    ("dlp", "CE 221"): None,
+    ("sls", "PA12"): "PA12 (Nylon 12)",
+    ("sls", "PA-GF"): "Glass-filled PA12",
+    ("mjf", "PA12"): "PA12 (Nylon 12)",
+    ("mjf", "PP"): "PP (MJF)",
+    ("mjf", "TPU"): None,              # the registry's powder TPU is SLS-only
+    ("binder_jetting", "17-4 PH"): "17-4 PH SS",
+    ("binder_jetting", "SS316"): None,  # 316, not the registry's 316L
+    ("binder_jetting", "Sand"): None,
+    ("binder_jetting", "Bronze"): None,
+}
+
+
+def _catalog_materials(prof) -> tuple[list[str], list[str]]:
+    """``(registry_materials, not_prefilled)`` for one catalog profile."""
+    proc = prof.process_type.value
+    resolved: list[str] = []
+    skipped: list[str] = []
+    for name in prof.materials or ():
+        key = (proc, name)
+        reg = _CATALOG_MATERIALS[key] if key in _CATALOG_MATERIALS else _canonical_material(name)
+        if reg is None:
+            skipped.append(name)
+        elif reg not in resolved:
+            resolved.append(reg)
+    return resolved, skipped
+
+
 def _profile_to_payload(prof) -> dict:
     caps: dict[str, Any] = {}
+    proc = prof.process_type.value
     bv = prof.build_volume
     if bv and len(bv) == 3:
-        caps["x"], caps["y"], caps["z"] = float(bv[0]), float(bv[1]), float(bv[2])
+        if proc == ProcessType.CNC_TURNING.value:
+            # A lathe's catalog volume is (Ø, Ø, length). Declare it as the
+            # swing/between-centers envelope the engine, API and turning form use.
+            caps["swing_dia"] = float(min(bv[0], bv[1]))
+            caps["between_centers"] = float(bv[2])
+        else:
+            caps["x"], caps["y"], caps["z"] = float(bv[0]), float(bv[1]), float(bv[2])
     if prof.min_layer_height:
         caps["min_layer_um"] = round(prof.min_layer_height * 1000.0, 3)
     if prof.resolution_xy:
         caps["min_feature_mm"] = float(prof.resolution_xy)
-    proc = prof.process_type.value
+    materials, not_prefilled = _catalog_materials(prof)
+    notes = (
+        f"Prefilled from catalog '{prof.name}' ({prof.manufacturer}). "
+        "EDIT to your machine's real specs before saving."
+    )
+    if not_prefilled:
+        notes += (
+            " Not prefilled (no registry material): "
+            + ", ".join(not_prefilled) + "."
+        )
     if proc == ProcessType.CNC_5AXIS.value:
         caps["axes"] = 5
         caps["motion_mode"] = "simultaneous_5"
@@ -818,12 +978,9 @@ def _profile_to_payload(prof) -> dict:
         "hourly_rate_usd": None,
         "capital_frac": None,
         "capabilities": caps,
-        "materials": list(prof.materials) if prof.materials else None,
+        "materials": materials or None,
         "material_thickness_map": None,
-        "notes": (
-            f"Prefilled from catalog '{prof.name}' ({prof.manufacturer}). "
-            "EDIT to your machine's real specs before saving."
-        ),
+        "notes": notes,
         # Honesty: an unedited catalog prefill is a TEMPLATE, not a declaration.
         "provenance": "catalog_template",
     }

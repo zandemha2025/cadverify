@@ -411,6 +411,22 @@ def test_secondary_op_required_absent_hard_fail():
     assert not fr.passes and "stress_relief" in sf.human and sf.have is not None
 
 
+def test_secondary_op_declared_false_is_absent_not_a_pass():
+    # validate_shop_ops accepts booleans; ``false`` must never read as in-house.
+    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
+                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
+                   capabilities={"x": 400, "y": 400, "z": 400})
+    fr = fit_machine(part(process="dmls", material_name="Ti6Al4V",
+                          material_class="titanium", bbox=(50, 100, 200),
+                          sec=("stress_relief",)), m,
+                     ShopCaps(ops={"stress_relief": False}))
+    sf = [f for f in fr.failures if f.gate == "secondary_op"]
+    assert not fr.passes and sf and sf[0].have is False
+    tight = fit_machine(part(it=6), mill(it=9), ShopCaps(ops={"grinding": False}))
+    tf = [f for f in tight.failures if f.gate == "tolerance"]
+    assert not tight.passes and tf and tf[0].have == 9
+
+
 def test_secondary_op_hip_size_limited():
     m = MachineCap(process="investment_casting", name="Foundry",
                    max_workpiece_kg=100, hourly_rate_usd=55,

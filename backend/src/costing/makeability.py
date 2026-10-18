@@ -379,8 +379,10 @@ def _machine_envelope(cap: dict):
     """Return (kind, sorted_extents | special) for the machine's envelope.
 
     kind ∈ {"turning", "sheet", "rect"}; None extents => not declared (unknown).
+    A lathe envelope is ``swing_dia`` + ``between_centers`` — the same keys the
+    inventory API accepts and the turning form writes.
     """
-    if any(k in cap for k in ("swing_dia", "swing_dia_mm", "between_centers")):
+    if any(k in cap for k in ("swing_dia", "between_centers")):
         return "turning", cap
     if "bed_x" in cap or "bed_y" in cap:
         return "sheet", _sorted_env(cap, ("bed_x", "bed_y"))
@@ -395,7 +397,7 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     kind, env = _machine_envelope(cap)
     fails: list = []
     if kind == "turning":
-        swing = cap.get("swing_dia", cap.get("swing_dia_mm"))
+        swing = cap.get("swing_dia")
         length = cap.get("between_centers")
         if part.rotational:
             need_dia, need_len = part.rot_cross_dia_mm, part.rot_axis_len_mm
@@ -558,7 +560,7 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
                                        "machine achievable IT grade not declared"))
         elif ach <= part_req.tolerance_it:
             pass  # machine holds the grade natively
-        elif "grinding" in ops:
+        elif ops.get("grinding") not in (None, False):  # declared false = absent
             needed_secondary.append("grinding")  # soft: shop grind reaches it
         else:
             failures.append(FitFailure(
@@ -662,9 +664,10 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
         if op == "grinding":
             continue
         avail = ops.get(op)
-        if avail is None:
-            # a MISSING required op is a concrete gap (you lack this capability),
-            # NOT an "undeclared datum" unknown → have=False (a hard failure).
+        if avail is None or avail is False:
+            # a MISSING (or declared-unavailable) required op is a concrete gap
+            # (you lack this capability), NOT an "undeclared datum" unknown →
+            # have=False (a hard failure). ``False`` must never read as present.
             failures.append(FitFailure(
                 "secondary_op", op, op, False,
                 f"requires {op}; not available in-house"))
