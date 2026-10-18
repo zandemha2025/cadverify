@@ -286,7 +286,7 @@ export default async function SharedCostDecisionPage({
               >
                 <span className="font-medium">{a.name}</span>
                 <span className="num text-muted-foreground">
-                  {a.unit === "$/hr" ? `$${a.value}/hr` : a.unit === "frac" ? a.value : `${a.value}${a.unit && a.unit !== "frac" ? ` ${a.unit}` : ""}`}
+                  {a.value == null ? "hidden" : a.unit === "$/hr" ? `$${a.value}/hr` : a.unit === "frac" ? a.value : `${a.value}${a.unit && a.unit !== "frac" ? ` ${a.unit}` : ""}`}
                 </span>
                 <span className="num rounded-xs bg-muted px-1 text-[10px] uppercase text-muted-foreground">
                   {a.provenance}

@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -794,15 +795,49 @@ async def get_shared(short_id: str, session: AsyncSession) -> Optional[dict]:
     return sanitize_for_share(d)
 
 
+# USER/SHOP-tagged inputs are the sharer's own: their machines and declared
+# rates, markup, shop profile and capacity. A public link keeps the tag (so the
+# reader still sees the number was the shop's, not a default) but hides the
+# value and the text that names it. Declarations about the part itself stay.
+_PRIVATE_PROVENANCE = {"USER", "SHOP"}
+_PART_DECLARATIONS = {"material_class", "tolerance_class", "source_units", "n_cavities", "complexity"}
+_PRIVATE_NUMBERS = ("value", "n_machines", "machine_hours_per_day")
+_HIDDEN_SOURCE = "Set by the sharer's shop. Not shown on shared links."
+_SHOP_TAG = re.compile(r"\s*\[shop: [^\]]*\]")
+_MACHINE_NAME = re.compile(r"\b(fitted machine|machine) '[^']*'")
+
+
+def _redact_private_inputs(node: Any) -> Any:
+    if isinstance(node, str):
+        return _MACHINE_NAME.sub(r"\1 (name hidden)", _SHOP_TAG.sub("", node))
+    if isinstance(node, list):
+        return [_redact_private_inputs(v) for v in node]
+    if not isinstance(node, dict):
+        return node
+    out = {k: _redact_private_inputs(v) for k, v in node.items()}
+    if out.get("provenance") in _PRIVATE_PROVENANCE and out.get("name") not in _PART_DECLARATIONS:
+        for key in ("source", "basis"):
+            if key in out:
+                out[key] = _HIDDEN_SOURCE
+        # A "$" driver is a cost line of the result itself; anything else
+        # (a $/hr rate, a markup fraction, a machine count) is the shop's input.
+        if out.get("unit") != "$":
+            for key in _PRIVATE_NUMBERS:
+                if key in out:
+                    out[key] = None
+    return out
+
+
 def sanitize_for_share(d: CostDecision) -> dict:
     """Allow-listed public payload — ZERO owner/user PII.
 
     EXCLUDED: user_id, api_key_id, mesh_hash, params_hash, share_short_id,
     is_public, id, ulid. The decision content (geometry, estimates with
-    provenance, honest confidence band, crossover, assumptions) is preserved
-    verbatim so the public view stays as honest as the private one.
+    provenance, honest confidence band, crossover, assumptions) is preserved,
+    except the sharer's own shop inputs (``_redact_private_inputs``): machine
+    names, declared rates, markup and capacity are hidden on a public link.
     """
-    result_json = d.result_json or {}
+    result_json = _redact_private_inputs(d.result_json or {})
     return {
         "filename": d.filename,
         "file_type": d.file_type,

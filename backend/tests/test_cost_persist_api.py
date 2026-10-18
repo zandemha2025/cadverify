@@ -18,6 +18,7 @@ import copy
 import csv
 import importlib
 import io
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1022,6 +1023,44 @@ def test_public_share_sanitized_no_owner_leak(client, real_result_json):
     # ZERO owner/user PII leaks
     for leaked in ("user_id", "api_key_id", "mesh_hash", "params_hash", "share_short_id", "id", "ulid", "email"):
         assert leaked not in body, f"public share leaked {leaked}"
+
+
+def test_public_share_hides_shop_inputs(client, real_result_json):
+    cl, app = client
+    rj = copy.deepcopy(real_result_json)
+    rj["estimates"][0]["drivers"] += [
+        {"name": "machine_cost", "unit": "$", "value": 1.43, "provenance": "USER",
+         "source": "0.0258 hr × $85/hr (fitted machine 'Haas VF-2', its OWN declared rate)"},
+        {"name": "owned_in_house", "unit": "×", "value": 0.65, "provenance": "USER",
+         "source": "machine 'Haas VF-2' OWNED in-house: MARGINAL rate $55.25/hr"},
+        {"name": "tolerance_class", "unit": "×", "value": 1.2, "provenance": "USER",
+         "source": "declared tolerance 'precision'"},
+    ]
+    rj["estimates"][0]["lead_time"]["capacity"] = {
+        "n_machines": 3, "machine_hours_per_day": 20.0, "provenance": "USER",
+        "basis": "capacity-bound: 3 machines × 20 hr/day"}
+    rj["assumptions"] += [
+        {"name": "margin", "unit": "frac", "value": 0.3, "provenance": "SHOP",
+         "source": "markup on cost [shop: Acme Machining]"},
+        {"name": "labor_rate_note", "unit": "$/hr", "value": 35.0, "provenance": "DEFAULT",
+         "source": "loaded shop-floor labor [shop: Acme Machining]"},
+    ]
+    dec = _make_decision("01PUB0000000000000000000B", rj, share_short_id="shortpub5678", is_public=True)
+    _override(app, _session_returning(scalar_one=dec))
+
+    body = cl.get("/s/cost/shortpub5678").json()
+    text = json.dumps(body)
+    for private in ("Haas VF-2", "$85/hr", "$55.25/hr", "Acme Machining", "20 hr/day"):
+        assert private not in text, f"public share leaked {private}"
+    drivers = {d["name"]: d for d in body["estimates"][0]["drivers"] if d.get("provenance") == "USER"}
+    assert drivers["machine_cost"]["value"] == 1.43  # the cost line itself stays
+    assert drivers["owned_in_house"]["value"] is None
+    assert drivers["tolerance_class"]["source"] == "declared tolerance 'precision'"
+    assert body["estimates"][0]["lead_time"]["capacity"]["n_machines"] is None
+    margin = next(a for a in body["assumptions"] if a["name"] == "margin" and a["provenance"] == "SHOP")
+    assert margin["value"] is None and margin["provenance"] == "SHOP"
+    # The owner's stored record is untouched.
+    assert "Haas VF-2" in json.dumps(dec.result_json)
 
 
 def test_public_share_not_found_is_404(client):
