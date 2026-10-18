@@ -45,7 +45,8 @@ class DeclareContextBody(BaseModel):
     annual_volume: Optional[StrictInt] = None
     # The declared service environment (machine-inventory §6) rides this existing
     # PUT: {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service, medium,
-    # standard}. USER-declared, never inferred; validated in the service.
+    # standard}. USER-declared, never inferred; validated in the service. `{}`
+    # leaves a stored environment unchanged; explicit null clears it.
     service_environment: Optional[dict] = None
     # BOM-rollup linkage (Slice 3): name a persisted bom_edges tree + this part's
     # child_ref + vehicles/year, so the annual volume rolls up from the real

@@ -1,7 +1,7 @@
 /**
  * READ side of the declared part-context (GET /api/v1/part-context/{mesh_hash}).
  *
- * The frozen `part-context.ts` only WRITES the world (PUT, during the walk). The
+ * `part-context.ts` only WRITES the world (PUT, on an explicit conditions edit). The
  * Part standing page needs to READ it back to render a part's lineage
  * (program → assembly → part) and its declared annual volume. This lives in a
  * separate module by contract (part-context.ts is a wired client we must not

@@ -6,17 +6,17 @@ import { partCheckHeaders } from "./check-id.ts";
  * comes from one of these responses or is withheld.
  *
  *   POST /validate         → routing + DFM (ValidationResult)          [real]
- *   PUT  /part-context/{h} → persist the declared world (env round-trip)  [real]
+ *   GET  /part-context/{h} → the part's STORED context + service conditions [real]
  *   POST /validate/cost    → the glass-box should-cost record (CostReport) [real]
  *   GET  /machine-inventory→ the org's declared floor (OwnedMachine[])  [real]
  *
  * The cost route returns a top-level `verification` block (per-route machine fit /
  * verdict lattice / env exclusions) whenever the org declared machines and/or this
- * part's service environment. The environment door is REAL end-to-end: before the
- * cost call, the declared world is PERSISTED via the part-context API keyed by the
- * part's mesh_hash, so the block the server returns reflects it (env_exclusions
- * with cited standards, an environment-coherent decision). When neither inventory
- * nor an environment is declared, no block is emitted → the walk renders the honest
+ * part's service environment. The route reads the environment STORED on the part
+ * (keyed by mesh_hash) server-side, so a run only READS the part context to show
+ * which conditions it was costed under; it never writes it. Changing conditions is
+ * an explicit edit (service-conditions.ts). When neither inventory nor an
+ * environment is declared, no block is emitted → the walk renders the honest
  * "not evaluated" state, NEVER a fabricated verdict.
  */
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
@@ -24,12 +24,14 @@ import { API_BASE } from "@/lib/api-base";
 import { apiProblemDetail, apiQuotaMessage, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
 import { readVerification, type VerificationBlock } from "./verification";
-import {
-  computeMeshHash,
-  declarePartContext,
-  envToServiceEnvironment,
-} from "./part-context";
+import { computeMeshHash, type ServiceEnvironment } from "./part-context";
 import { fetchPartContext, type PartContext } from "./part-context-read";
+import {
+  hasServiceConditions,
+  normalizeServiceEnvironment,
+  saveServiceConditions,
+  storedServiceEnvironment,
+} from "./service-conditions";
 import { readJsonOrNull, validationAllowsCost } from "./run-gates";
 import { resolvedAnnualVolume } from "./program-rollup";
 
@@ -38,12 +40,19 @@ export type { VerificationBlock, MakeabilityLattice } from "./verification";
 
 export interface VerifyInput {
   file: File;
-  /** The declared service world. REAL round-trip: it is persisted to the part's
-   *  context (PUT /part-context/{mesh_hash}) before costing, so the engine's
-   *  verification block reflects it (environment-driven material survival — NACE
-   *  MR0175 / HDT). It is NEVER used client-side to fabricate a changed cost. */
-  env: { temp: boolean; sour: boolean; pressure: boolean };
   materialClass: string;
+  /** Conditions the user set BEFORE this part's record was shown. Saved only
+   *  when the record holds none; stored conditions always win and are never
+   *  overwritten by a run. */
+  declare?: ServiceEnvironment | null;
+}
+
+/** What happened to `VerifyInput.declare`: "saved" (the record had none),
+ *  "kept_stored" (the record's own conditions were applied instead) or "failed"
+ *  (the save failed, so the run used the record as it was). */
+export interface DeclaredBeforeRun {
+  outcome: "saved" | "kept_stored" | "failed";
+  error: string | null;
 }
 
 export interface VerifyProgress {
@@ -86,12 +95,15 @@ export interface VerifyResult {
    *  honest "not evaluated" state). Read off the cost response. */
   verification: VerificationBlock | null;
   quantities: number[];
-  /** the environment round-trip outcome, so the door tells the exact truth:
-   *  declared? captured to the part's record? or (on failure) why not. */
-  env: { temp: boolean; sour: boolean; pressure: boolean };
+  /** The service conditions STORED on the part when this run read its record:
+   *  the ones the cost route applied (env exclusions, NACE MR0175 / HDT). A run
+   *  never writes them. */
+  serviceEnvironment: ServiceEnvironment;
   envDeclared: boolean;
-  envCaptured: boolean;
+  /** why the stored conditions could not be read (null when read cleanly). */
   envError: string | null;
+  /** set only when the run carried `VerifyInput.declare`. */
+  declaredBeforeRun?: DeclaredBeforeRun | null;
   /** SHA-256 of the uploaded bytes, matching the backend's mesh_hash. */
   meshHash: string | null;
   /** Existing/persisted USER context for this part, if the org declared one. */
@@ -248,36 +260,48 @@ export async function runVerification(
     })
   );
 
-  // ── the environment round-trip (real) ──────────────────────────────────────
-  const serviceEnv = envToServiceEnvironment(input.env);
-  const envDeclared = Object.keys(serviceEnv).length > 0;
+  // ── the part's stored context ──────────────────────────────────────────────
+  // The cost route applies the STORED service conditions server-side, so a run
+  // reads them to show which conditions it was costed under. It never writes over
+  // them: writing here (as it once did, with an empty or chip-only set) erased
+  // stored conditions. The one write is `declare`, and only onto an empty record.
   const contextPromise = (async () => {
-    let envCaptured = false;
     let envError: string | null = null;
     let partContext: PartContext | null = null;
     let partContextError: string | null = null;
+    let declaredBeforeRun: DeclaredBeforeRun | null = null;
     const meshHash = await computeMeshHash(input.file).catch(() => null);
-    const validationGate = await validationPromise;
-    if (!validationAllowsCost(validationGate.v)) {
-      return {
-        meshHash,
-        envCaptured,
-        envError,
-        partContext,
-        partContextError,
-      };
-    }
     if (meshHash) {
-      const declared = await declarePartContext(meshHash, serviceEnv);
-      envCaptured = declared.ok && envDeclared;
-      if (envDeclared && !declared.ok) envError = declared.error;
-      const fresh = await fetchPartContext(meshHash);
-      if (fresh.error) partContextError = fresh.error;
-      partContext = fresh.context ?? null;
-    } else if (envDeclared) {
+      const stored = await fetchPartContext(meshHash);
+      partContextError = stored.error;
+      envError = stored.error;
+      partContext = stored.context;
+      const declare = normalizeServiceEnvironment(input.declare);
+      if (!stored.error && hasServiceConditions(declare)) {
+        if (hasServiceConditions(storedServiceEnvironment(stored.context))) {
+          declaredBeforeRun = { outcome: "kept_stored", error: null };
+        } else if (validationAllowsCost((await validationPromise).v)) {
+          // Persist only after routing + DFM returned (QA ISSUE-001).
+          const saved = await saveServiceConditions(meshHash, declare, stored.context);
+          if (saved.ok) partContext = saved.context;
+          declaredBeforeRun = saved.ok
+            ? { outcome: "saved", error: null }
+            : { outcome: "failed", error: saved.error };
+        }
+      }
+    } else {
       envError = "could not compute this part's mesh hash in the browser";
     }
-    return { meshHash, envCaptured, envError, partContext, partContextError };
+    const serviceEnvironment = storedServiceEnvironment(partContext);
+    return {
+      meshHash,
+      serviceEnvironment,
+      envDeclared: hasServiceConditions(serviceEnvironment),
+      envError,
+      declaredBeforeRun,
+      partContext,
+      partContextError,
+    };
   })();
 
   const validationOut = await validationPromise;
@@ -305,10 +329,10 @@ export async function runVerification(
       machinesError: floor.error,
       verification: null,
       quantities,
-      env: input.env,
-      envDeclared,
-      envCaptured: context.envCaptured,
+      serviceEnvironment: context.serviceEnvironment,
+      envDeclared: context.envDeclared,
       envError: context.envError,
+      declaredBeforeRun: context.declaredBeforeRun,
       meshHash: context.meshHash,
       partContext: context.partContext,
       partContextError: context.partContextError,
@@ -340,10 +364,10 @@ export async function runVerification(
     machinesError: floor.error,
     verification,
     quantities: costOut.cost?.quantities ?? quantities,
-    env: input.env,
-    envDeclared,
-    envCaptured: context.envCaptured,
+    serviceEnvironment: context.serviceEnvironment,
+    envDeclared: context.envDeclared,
     envError: context.envError,
+    declaredBeforeRun: context.declaredBeforeRun,
     meshHash: context.meshHash,
     partContext: context.partContext,
     partContextError: context.partContextError,

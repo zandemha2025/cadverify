@@ -55,6 +55,12 @@ import { UpgradeButton } from "@/components/billing/upgrade-button";
 import { browserPendingPartStore, takePendingPart } from "@/lib/pending-part";
 import { PhoneGate } from "./phone-gate";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
+import type { ServiceEnvironment } from "@/lib/verify/part-context";
+import {
+  hasServiceConditions,
+  saveServiceConditions,
+  storedServiceEnvironment,
+} from "@/lib/verify/service-conditions";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -101,7 +107,6 @@ export function VerifyApp({
     "idle" | "running" | "ready" | "error"
   >("idle");
   const [guidedSummaryOpen, setGuidedSummaryOpen] = useState(false);
-  const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
   const [materialClass, setMaterialClass] = useState("polymer");
   const [materialTouched, setMaterialTouched] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
@@ -146,11 +151,15 @@ export function VerifyApp({
   const heldPartChecked = useRef(false);
   const workspaceDestinationApplied = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // The last part the user verified — so a change to the declared world can re-run
-  // the verification (re-persist the env + re-cost against it) for the same part.
+  // The last part the user verified — so a material or inventory change can re-run
+  // the verification for the same part.
   const latestFile = useRef<File | null>(null);
+  // Conditions set before any part's record is shown ride the next verification,
+  // which saves them only if that part's record has none. A ref: editing them
+  // never re-renders or re-runs anything.
+  const pendingConditions = useRef<ServiceEnvironment | null>(null);
   const inventoryDirty = useRef(false);
-  // Monotonic run token. Selecting a material class (or toggling the world) while a
+  // Monotonic run token. Selecting a material class (or re-verifying) while a
   // prior verification is still in flight dispatches a NEW run; without this guard the
   // two async runs can resolve OUT OF ORDER and a stale result clobbers the fresh one
   // — the material-chip race where the walk still reads "Polymer" after clicking Steel.
@@ -247,9 +256,8 @@ export function VerifyApp({
             machinesError: null,
             verification: null,
             quantities: QTY_LADDER,
-            env,
-            envDeclared: env.temp || env.sour || env.pressure,
-            envCaptured: false,
+            serviceEnvironment: {},
+            envDeclared: false,
             envError: null,
             meshHash: null,
             partContext: null,
@@ -321,7 +329,7 @@ export function VerifyApp({
       let progressiveResult: VerifyResult | null = null;
       try {
         const r = await runVerification(
-          { file: f, env, materialClass },
+          { file: f, materialClass, declare: pendingConditions.current },
           {
             onValidation: ({ validation, validationError }) => {
               if (runSeq.current !== seq || !validation) return;
@@ -338,9 +346,8 @@ export function VerifyApp({
                 machinesError: null,
                 verification: null,
                 quantities: QTY_LADDER,
-                env,
-                envDeclared: env.temp || env.sour || env.pressure,
-                envCaptured: false,
+                serviceEnvironment: {},
+                envDeclared: false,
                 envError: null,
                 meshHash: null,
                 partContext: null,
@@ -351,6 +358,9 @@ export function VerifyApp({
             },
           }
         );
+        // The part's record was resolved, so the held conditions were applied or
+        // deliberately not (its own conditions win); from here edits are saves.
+        if (r.meshHash) pendingConditions.current = null;
         // Drop a result that a newer run has superseded — last dispatch wins, so the
         // displayed verdict/material always matches the most recent selection.
         if (runSeq.current === seq) {
@@ -378,9 +388,8 @@ export function VerifyApp({
                 machinesError: null,
                 verification: null,
                 quantities: QTY_LADDER,
-                env,
-                envDeclared: env.temp || env.sour || env.pressure,
-                envCaptured: false,
+                serviceEnvironment: {},
+                envDeclared: false,
                 envError: null,
                 meshHash: null,
                 partContext: null,
@@ -395,7 +404,7 @@ export function VerifyApp({
         if (runSeq.current === seq) setRunning(false);
       }
     },
-    [env, materialClass, runAssemblyAnalysis]
+    [materialClass, runAssemblyAnalysis]
   );
 
   const onReverify = useCallback(() => {
@@ -413,15 +422,40 @@ export function VerifyApp({
     setRunning(true);
     try {
       const retried = await retryVerificationCost(
-        { file, env, materialClass },
+        { file, materialClass },
         previous.machines,
         resolvedAnnualVolume(previous.partContext)
       );
-      if (runSeq.current === seq) setResult({ ...previous, ...retried });
+      // The retried cost read the conditions now on the record (a saved edit
+      // included), so the result states those as the ones it applied.
+      const applied = storedServiceEnvironment(previous.partContext);
+      if (runSeq.current === seq) {
+        setResult({
+          ...previous,
+          ...retried,
+          serviceEnvironment: applied,
+          envDeclared: hasServiceConditions(applied),
+        });
+      }
     } finally {
       if (runSeq.current === seq) setRunning(false);
     }
-  }, [env, file, materialClass, onReverify, result]);
+  }, [file, materialClass, onReverify, result]);
+
+  // An explicit conditions edit is the ONLY write of a part's service conditions.
+  // It updates the record shown with this result but does not re-run: the door
+  // flags that the verdict used the previous conditions and offers a re-verify,
+  // so editing never spends another part check by itself.
+  const onSaveConditions = useCallback(async (next: ServiceEnvironment) => {
+    const meshHash = result?.meshHash;
+    if (!meshHash) return { ok: false, error: "Verify a part before saving its conditions." };
+    const saved = await saveServiceConditions(meshHash, next, result?.partContext ?? null);
+    const context = saved.context;
+    if (saved.ok && context) {
+      setResult((prev) => (prev && prev.meshHash === meshHash ? { ...prev, partContext: context } : prev));
+    }
+    return { ok: saved.ok, error: saved.error };
+  }, [result]);
 
   const runSample = useCallback(() => {
     const guidedSeq = ++guidedRunSeq.current;
@@ -598,19 +632,6 @@ export function VerifyApp({
     );
     return () => { live = false; };
   }, [hasActiveOrganization]);
-
-  // The environment door is REAL: when the declared world changes and a part is
-  // loaded, re-run the verification so the new world is persisted to the part's
-  // record and the cost/verdict are recomputed against it. Skips the first mount.
-  const firstEnv = useRef(true);
-  useEffect(() => {
-    if (firstEnv.current) {
-      firstEnv.current = false;
-      return;
-    }
-    if (latestFile.current) void runVerify(latestFile.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env]);
 
   const firstMaterial = useRef(true);
   useEffect(() => {
@@ -937,7 +958,7 @@ export function VerifyApp({
                   : undefined
               }
               bbox={stageGeometry?.bbox_mm ?? null}
-              hostile={env.temp || env.sour || env.pressure}
+              hostile={hasServiceConditions(storedServiceEnvironment(result?.partContext))}
               autoOrbit={running && !stageAssembly}
               context={result?.partContext ?? null}
               contextError={result?.partContextError ?? null}
@@ -961,8 +982,10 @@ export function VerifyApp({
                 running={running}
                 guided={guidedSampleState !== "idle"}
                 fileName={result?.file?.name ?? file?.name ?? null}
-                env={env}
-                setEnv={setEnv}
+                onSaveConditions={onSaveConditions}
+                onPendingConditions={(next) => {
+                  pendingConditions.current = next;
+                }}
                 materialClass={materialClass}
                 materialProvenance={materialTouched ? "USER" : "DEFAULT"}
                 setMaterialClass={(next) => {

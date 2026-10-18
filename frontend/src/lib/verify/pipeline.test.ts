@@ -90,9 +90,8 @@ function result(over: Partial<VerifyResult> = {}): VerifyResult {
     machinesError: null,
     verification: null,
     quantities: [1, 100, 1000],
-    env: { temp: false, sour: false, pressure: false },
+    serviceEnvironment: {},
     envDeclared: false,
-    envCaptured: false,
     envError: null,
     ...over,
   };

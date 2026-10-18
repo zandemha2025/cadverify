@@ -1,11 +1,11 @@
 /**
  * Declared part-context client for the Verify surface — the REAL org-scoped
  * service-environment record (backend/src/api/part_context.py, mounted at
- * /api/v1/part-context/{mesh_hash}). This is what makes the environment door
- * REAL end-to-end: the walk persists the declared world keyed by the part's
- * mesh_hash BEFORE it asks for a cost, so the cost route — which resolves the
- * org server-side and reads `get_context(org_id, mesh_hash).service_environment`
- * — returns a verification block whose env_exclusions reflect the declared world.
+ * /api/v1/part-context/{mesh_hash}). The cost route resolves the org server-side
+ * and reads `get_context(org_id, mesh_hash).service_environment`, so its
+ * verification block reflects the conditions STORED on the part. A verification
+ * run only reads them; this writer is called only for an explicit user edit
+ * (see service-conditions.ts), never as a side effect of verifying.
  *
  * The mesh_hash is the SHA-256 of the raw uploaded file bytes, exactly as the
  * server computes it (analysis_service.compute_mesh_hash → sha256 hexdigest). We
@@ -18,6 +18,7 @@
  * environment is a USER assertion (`provenance: "user"`), never inferred.
  */
 import { API_BASE } from "@/lib/api-base";
+import type { PartContext } from "./part-context-read.ts";
 
 /** The declared service environment, exactly the shape the backend validates
  *  (part_context_service.validate_service_environment): numeric temp/pressure,
@@ -54,6 +55,8 @@ export interface DeclareEnvResult {
   ok: boolean;
   /** the exact server error (why the world could NOT be captured), for honest copy. */
   error: string | null;
+  /** the part's record as the PUT returned it (null on failure or an unreadable body). */
+  context: PartContext | null;
 }
 
 export interface PreservePartContextFields {
@@ -65,14 +68,15 @@ export interface PreservePartContextFields {
 
 /**
  * Persist the declared world for a part (PUT /part-context/{mesh_hash}). Idempotent
- * on (org, mesh_hash). Best-effort by contract: a failure (no org on the session,
- * insufficient role, network) is returned as `{ok:false, error}` so the caller can
- * tell the truth ("drives this preview only — not captured"), never swallowed and
- * never surfaced as a fabricated success.
+ * on (org, mesh_hash). `env` REPLACES the stored environment, so callers send the
+ * complete set; `null` explicitly clears it (the API leaves a stored environment
+ * unchanged for `{}`). A failure (no org on the session, insufficient role,
+ * network) is returned as `{ok:false, error}` so the caller can tell the truth,
+ * never swallowed and never surfaced as a fabricated success.
  */
 export async function declarePartContext(
   meshHash: string,
-  env: ServiceEnvironment,
+  env: ServiceEnvironment | null,
   preserve?: PreservePartContextFields | null
 ): Promise<DeclareEnvResult> {
   const body: Record<string, unknown> = { service_environment: env };
@@ -94,30 +98,21 @@ export async function declarePartContext(
       }
     );
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Network error" };
+    return { ok: false, error: e instanceof Error ? e.message : "Network error", context: null };
   }
-  if (res.ok) return { ok: true, error: null };
+  if (res.ok) {
+    const saved = (await res.json().catch(() => null)) as PartContext | null;
+    const context = saved && typeof saved.mesh_hash === "string" ? saved : null;
+    return { ok: true, error: null, context };
+  }
   const errorBody: Record<string, unknown> = await res.json().catch(() => ({}));
   const detail =
     (errorBody.detail as string) ||
     (errorBody.message as string) ||
     `part-context declare failed (${res.status})`;
-  return { ok: false, error: typeof detail === "string" ? detail : JSON.stringify(detail) };
-}
-
-/** Map the walk's three environment toggles to the backend service-environment
- *  shape. Ambient (nothing toggled) → an empty object, which the backend treats
- *  as a no-op (byte-identical) AND which coherently CLEARS a prior declaration on
- *  the same part when the user un-declares its world. The concrete numbers mirror
- *  the door's chip labels (120 °C / sour H₂S / 35 MPa = 350 bar). */
-export function envToServiceEnvironment(env: {
-  temp: boolean;
-  sour: boolean;
-  pressure: boolean;
-}): ServiceEnvironment {
-  const out: ServiceEnvironment = {};
-  if (env.temp) out.max_temp_c = 120;
-  if (env.sour) out.sour_service = true;
-  if (env.pressure) out.pressure_bar = 350; // 35 MPa → 350 bar
-  return out;
+  return {
+    ok: false,
+    error: typeof detail === "string" ? detail : JSON.stringify(detail),
+    context: null,
+  };
 }

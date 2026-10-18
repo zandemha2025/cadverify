@@ -180,6 +180,9 @@ async def upsert_context(
     On insert, all declared fields are written from the body. On update, only
     fields actually present in the request are changed, so a Verify-world refresh
     cannot erase separately declared lineage/demand context by omission.
+    An empty ``service_environment`` (``{}``) declares nothing, so it never
+    overwrites a stored non-empty environment; clearing one takes an explicit
+    ``null``, like every other declared field.
     ``created_by`` is stamped on insert.
     """
     validate_context(fields)
@@ -195,8 +198,15 @@ async def upsert_context(
         session.add(row)
     else:
         for key in DECLARED_FIELDS:
-            if key in fields:
-                setattr(row, key, fields.get(key))
+            if key not in fields:
+                continue
+            if (
+                key == "service_environment"
+                and fields[key] == {}
+                and row.service_environment
+            ):
+                continue
+            setattr(row, key, fields.get(key))
     await session.flush()
     return row
 
