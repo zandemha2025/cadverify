@@ -262,3 +262,6 @@
 .ob .world.page{min-height:calc(100dvh - 56px)}
 .ob .pagehead,.ob .content{top:auto}
 }
+
+/* A page head with no right sheet spans the width (desktop only; phones already span it). */
+@media (min-width:901px){.ob .pagehead.wide{right:24px}}

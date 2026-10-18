@@ -90,7 +90,7 @@ export function PageHead({
   wide?: boolean;
 }) {
   return (
-    <div className="pagehead" style={wide ? { right: 24 } : undefined}>
+    <div className={cx("pagehead", wide && "wide")}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="ptitle">{title}</h1>
