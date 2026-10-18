@@ -95,6 +95,7 @@ data/
 !backend/data/
 backend/data/*
 !backend/data/shop_profiles/
+!backend/data/cost-validation/
 
 # local dev auth secrets (run-local-app.sh)
 .env.local-auth
