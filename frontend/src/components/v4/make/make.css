@@ -46,7 +46,7 @@
 .ob .mk .matched{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);padding-left:6px;min-height:22px}
 .ob .mk .sbody{position:absolute;left:24px;right:500px;top:226px;bottom:24px;display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:10px 20px;min-height:0}
 .ob .mk .sview{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:10px;min-width:0}
-.ob .mk .sobj{flex:none;width:100%;height:clamp(220px,calc(100dvh - 56px - 226px - 24px - 250px),360px)}
+.ob .mk .sobj{flex:none;width:100%;height:clamp(220px,calc(100dvh - 56px - 226px - 24px - 310px),360px)}
 .ob .mk .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px;color:var(--ink3);flex:none}
 .ob .mk .stats b{display:block;font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ob .mk .yd{grid-column:1;grid-row:2;min-height:150px;display:flex;flex-direction:column;overflow:hidden}

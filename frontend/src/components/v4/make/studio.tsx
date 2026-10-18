@@ -722,8 +722,8 @@ export function StudioScreen() {
             </>
           ) : (
             <>
-              <h2 className="stitle">New design</h2>
-              <p className="smeta">{designs ? "Starts revision 1 · millimeters" : "Loading your designs"}</p>
+              <h2 className="stitle">{writable ? "New design" : "No design selected"}</h2>
+              <p className="smeta">{!designs ? "Loading your designs" : writable ? "Starts revision 1 · millimeters" : "Pick one from Your designs"}</p>
             </>
           )}
         </div>
