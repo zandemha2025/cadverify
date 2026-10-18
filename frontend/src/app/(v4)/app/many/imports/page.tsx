@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { ImportsScreen } from "@/components/v4/many/imports-screen";
 
 export default function Page() {
-  return <Stub title="Imports" section="many" board="M3" />;
+  return <ImportsScreen />;
 }
