@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { TriageScreen } from "@/components/v4/many/triage-screen";
 
 export default function Page() {
-  return <Stub title="Triage" section="many" board="M2" />;
+  return <TriageScreen />;
 }
