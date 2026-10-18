@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { HomeScreen } from "@/components/v4/home/home-screen";
 
 export default function Page() {
-  return <Stub title="Home" section="home" board="P1" />;
+  return <HomeScreen />;
 }
