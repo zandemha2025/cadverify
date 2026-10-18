@@ -254,3 +254,11 @@
 .ob .btn:disabled{opacity:.45;cursor:default}
 .ob .btn:disabled:active{transform:none}
 @media (max-width:900px){.ob{overflow:visible}.ob .world{height:auto}}
+
+/* Pages that aren't one part: the stage is only a background, never a block above the content on phones;
+   and the desktop header offset (.content top) never applies on phones. */
+@media (max-width:900px){
+.ob .world.page .stage{position:absolute;inset:0;height:auto}
+.ob .world.page{min-height:calc(100dvh - 56px)}
+.ob .pagehead,.ob .content{top:auto}
+}

@@ -36,11 +36,23 @@ export function Figs({ children }: { children: React.ReactNode }) {
 }
 
 /** Sibling tabs. The tab whose href matches the path (or is its longest prefix) is current. */
-export function SubNav({ tabs, label }: { tabs: { label: string; href: string; count?: number }[]; label: string }) {
+export function SubNav({
+  tabs,
+  label,
+  current: currentHref,
+}: {
+  tabs: { label: string; href: string; count?: number }[];
+  label: string;
+  /** Force the current tab (by href), or `null` for none, when the path alone can't tell. */
+  current?: string | null;
+}) {
   const pathname = usePathname() ?? "";
-  const current = tabs
-    .filter((t) => pathname === t.href || pathname.startsWith(t.href + "/"))
-    .sort((a, b) => b.href.length - a.href.length)[0];
+  const current =
+    currentHref !== undefined
+      ? tabs.find((t) => t.href === currentHref)
+      : tabs
+          .filter((t) => pathname === t.href || pathname.startsWith(t.href + "/"))
+          .sort((a, b) => b.href.length - a.href.length)[0];
   return (
     <nav className="subnav" aria-label={label}>
       {tabs.map((t) => (
@@ -60,6 +72,8 @@ export function PageHead({
   figs,
   tabs,
   tabsLabel = "Section",
+  tabsCurrent,
+  tabsAside,
   actions,
   wide,
 }: {
@@ -68,6 +82,10 @@ export function PageHead({
   figs?: React.ReactNode;
   tabs?: { label: string; href: string; count?: number }[];
   tabsLabel?: string;
+  /** See SubNav `current`. */
+  tabsCurrent?: string | null;
+  /** Tools that sit on the tab row (filters, a view switch). */
+  tabsAside?: React.ReactNode;
   actions?: React.ReactNode;
   wide?: boolean;
 }) {
@@ -87,7 +105,12 @@ export function PageHead({
         {actions ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>{actions}</div> : null}
       </div>
       {figs}
-      {tabs ? <SubNav tabs={tabs} label={tabsLabel} /> : null}
+      {tabs || tabsAside ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          {tabs ? <SubNav tabs={tabs} label={tabsLabel} current={tabsCurrent} /> : <span />}
+          {tabsAside}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -104,7 +127,7 @@ export function Content({ children, full, top }: { children: React.ReactNode; fu
 /** The world: the stage background every v4 page sits on. */
 export function World({ children, label }: { children: React.ReactNode; label?: string }) {
   return (
-    <main className="world" aria-label={label}>
+    <main className="world page" aria-label={label}>
       <div className="stage" aria-hidden="true" />
       {children}
     </main>
