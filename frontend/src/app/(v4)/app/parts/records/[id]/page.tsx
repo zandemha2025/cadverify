@@ -1,5 +1,4 @@
-import { Stub } from "@/components/v4/stub";
-
+/** One record (board P2). The screen is rendered by ../layout.tsx, which reads the id from the URL. */
 export default function Page() {
-  return <Stub title="Record" section="parts" board="P2" />;
+  return null;
 }
