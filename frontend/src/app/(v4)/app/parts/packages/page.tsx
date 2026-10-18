@@ -1,5 +1,4 @@
-import { Stub } from "@/components/v4/stub";
-
+/** Supplier packages (board P5): the builder. The screen is rendered by ./layout.tsx; `?pick=` preselects a record. */
 export default function Page() {
-  return <Stub title="Supplier packages" section="parts" board="P5" />;
+  return null;
 }

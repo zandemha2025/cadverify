@@ -1,5 +1,4 @@
-import { Stub } from "@/components/v4/stub";
-
+/** One supplier package (board P5). The screen is rendered by ../layout.tsx, which reads the id from the URL. */
 export default function Page() {
-  return <Stub title="Supplier package" section="parts" board="P5" />;
+  return null;
 }
