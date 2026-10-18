@@ -40,6 +40,7 @@ from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.services import cost_decision_service
 from src.services import machine_inventory_service as svc
 from src.services import part_summary_service
 
@@ -154,6 +155,19 @@ async def _emit_machine_audit(
     )
 
 
+async def _mark_org_verdicts_stale(session: AsyncSession, org_id: str) -> None:
+    """An inventory change outdates the org's saved verdicts and owned-machine
+    costing, which are served from TWO places: the makeability projection
+    (Triage / catalog stale counts) and the saved cost decisions it is projected
+    from (decision ``is_stale``, RFQ packages). Mark both in the caller's txn so
+    they never disagree. The projection mark stays best-effort (a derived cache);
+    the decision mark is part of the write, as on a governed-library publish."""
+    await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    await cost_decision_service.mark_org_decisions_stale(
+        session, org_id, reason=cost_decision_service.MACHINE_INVENTORY_STALE_REASON
+    )
+
+
 # ── static / prefix routes FIRST (before the /{id} path param) ────────────────
 @router.get("/catalog")
 @limiter.limit("120/hour;1000/day")
@@ -230,8 +244,9 @@ async def put_shop_capabilities(
         raise HTTPException(status_code=400, detail=str(exc))
     # Shop secondary-op capabilities changed → the §0 verdict can change for many
     # parts (a HIP/grind gap may now be satisfied). Mark the org's makeability
-    # projection stale (visible in the rollup/ranking) in the same txn.
-    await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    # projection and saved decisions stale (visible in the rollup/ranking and on
+    # each record) in the same txn.
+    await _mark_org_verdicts_stale(session, org_id)
     await session.commit()
     return svc.serialize_shop_capabilities(row)
 
@@ -274,9 +289,10 @@ async def import_machines(
     rows, parse_errors = svc.parse_machine_csv(text)
     summary = await svc.import_machines(session, org_id, user.user_id, rows)
     # New machines change the §0 verdict for many parts → mark the org's
-    # makeability projection stale (only when at least one machine was imported).
+    # makeability projection and saved decisions stale (only when at least one
+    # machine was imported).
     if summary["imported"]:
-        await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+        await _mark_org_verdicts_stale(session, org_id)
     await session.commit()
 
     errors = parse_errors + summary["errors"]
@@ -309,8 +325,9 @@ async def create_machine(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     # A new machine changes the §0 verdict for many parts → mark the org's
-    # makeability projection stale (same txn, visible in the rollup/ranking).
-    await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    # makeability projection and saved decisions stale (same txn, visible in the
+    # rollup/ranking and on each record).
+    await _mark_org_verdicts_stale(session, org_id)
     await _emit_machine_audit(
         session, user.user_id, org_id, "machine.created", row.ulid
     )
@@ -373,7 +390,7 @@ async def patch_machine(
     if row is None:
         raise HTTPException(status_code=404, detail="no such machine in org")
     # An edited machine changes the §0 verdict for many parts → mark stale.
-    await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    await _mark_org_verdicts_stale(session, org_id)
     await _emit_machine_audit(
         session, user.user_id, org_id, "machine.updated", row.ulid
     )
@@ -396,8 +413,9 @@ async def delete_machine(
     if not removed:
         raise HTTPException(status_code=404, detail="no such machine in org")
     # A removed machine changes the §0 verdict for many parts (a fit may vanish) →
-    # mark the org's makeability projection stale in the same txn.
-    await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    # mark the org's makeability projection and saved decisions stale in the
+    # same txn.
+    await _mark_org_verdicts_stale(session, org_id)
     await _emit_machine_audit(
         session, user.user_id, org_id, "machine.deleted", machine_id
     )

@@ -662,6 +662,12 @@ async def set_disposition_owned(
     return d
 
 
+# stale_reason for a decision that predates a change to the org's declared
+# machines or shop secondary ops: its §0 verdict and its owned-machine costing
+# were computed against the old inventory.
+MACHINE_INVENTORY_STALE_REASON = "machine_inventory_changed"
+
+
 async def mark_org_decisions_stale(
     session: AsyncSession,
     org_id: str,
@@ -673,7 +679,8 @@ async def mark_org_decisions_stale(
 
     This is deliberately additive: the saved glass-box artifact is never edited.
     It gains a stale marker saying the record predates a governed library update
-    and should be re-costed before being used as a current decision.
+    (or a machine-inventory change, ``MACHINE_INVENTORY_STALE_REASON``) and
+    should be re-costed before being used as a current decision.
     """
     when = stale_at or datetime.now(timezone.utc)
     result = await session.execute(
