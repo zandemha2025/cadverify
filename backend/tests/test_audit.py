@@ -408,28 +408,12 @@ def test_audit_export_90_day_limit():
 
 
 async def _sqlite_audit_sessionmaker():
-    """In-memory SQLite with the real ``audit_log`` table shape.
-
-    Copies the ORM tables into a scratch MetaData and swaps Postgres JSONB for
-    generic JSON so the DDL renders on SQLite; ``query_audit_log``'s own
-    ``select(AuditLog)`` then runs unmodified against it.
-    """
-    from sqlalchemy import JSON, MetaData
-    from sqlalchemy.dialects.postgresql import JSONB
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
+    """In-memory SQLite with the real ``audit_log`` table shape;
+    ``query_audit_log``'s own ``select(AuditLog)`` runs unmodified against it."""
     from src.db.models import AuditLog, Organization, User
+    from tests.sqlite_tables import sqlite_sessionmaker
 
-    md = MetaData()
-    for model in (Organization, User, AuditLog):
-        table = model.__table__.to_metadata(md)
-        for col in table.columns:
-            if isinstance(col.type, JSONB):
-                col.type = JSON()
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(md.create_all)
-    return engine, async_sessionmaker(engine, expire_on_commit=False)
+    return await sqlite_sessionmaker(Organization, User, AuditLog)
 
 
 async def _seed_audit(maker, n: int, base: datetime):
