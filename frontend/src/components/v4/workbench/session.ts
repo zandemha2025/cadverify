@@ -400,23 +400,22 @@ export async function runRateSets(shops: readonly ShopProfileInfo[]): Promise<vo
   if (s.report && !runs[curId]) runs[curId] = { phase: "done", report: s.report, error: null };
   for (const id of ids) if (!runs[id] || runs[id].phase === "error") runs[id] = { phase: "running", report: null, error: null };
   set({ runs, runsSig: sig });
-  await Promise.all(
-    ids
-      .filter((id) => state.runs[id]?.phase === "running")
-      .map(async (id) => {
-        const f = fresh(s.file!);
-        try {
-          const r = await costEstimate(f, { ...s.opts, shop: id === "base" ? null : id }, partCheckHeaders(f)["x-part-check-id"]);
-          if (g !== gen || state.runsSig !== sig) return;
-          set((st) => ({ runs: { ...st.runs, [id]: { phase: "done", report: r, error: null } } }));
-        } catch (e) {
-          if (g !== gen || state.runsSig !== sig) return;
-          set((st) => ({ runs: { ...st.runs, [id]: { phase: "error", report: null, error: message(e, "That run didn’t finish.") } } }));
-        } finally {
-          window.dispatchEvent(new Event("proofshape:usage-changed"));
-        }
-      }),
-  );
+  // One at a time: the API refuses too many concurrent checks for one account.
+  for (const id of ids) {
+    if (state.runs[id]?.phase !== "running") continue;
+    if (g !== gen || state.runsSig !== sig) return;
+    const f = fresh(s.file);
+    try {
+      const r = await costEstimate(f, { ...s.opts, shop: id === "base" ? null : id }, partCheckHeaders(f)["x-part-check-id"]);
+      if (g !== gen || state.runsSig !== sig) return;
+      set((st) => ({ runs: { ...st.runs, [id]: { phase: "done", report: r, error: null } } }));
+    } catch (e) {
+      if (g !== gen || state.runsSig !== sig) return;
+      set((st) => ({ runs: { ...st.runs, [id]: { phase: "error", report: null, error: message(e, "That run didn’t finish.") } } }));
+    } finally {
+      window.dispatchEvent(new Event("proofshape:usage-changed"));
+    }
+  }
 }
 
 export function currentRunsSig(): string {
@@ -438,4 +437,9 @@ export async function findPackage(decisionId: string): Promise<string | null> {
 
 export function markShared(url: string): void {
   set((s) => ({ decision: s.decision ? { ...s.decision, is_public: true, share_url: url } : s.decision }));
+}
+
+/** Re-read this part's saved decisions (History's Retry). */
+export function reloadDecisions(): void {
+  if (state.key) void refreshDecisions(state.key, gen);
 }
