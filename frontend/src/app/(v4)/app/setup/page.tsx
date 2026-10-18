@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { SetupScreen } from "@/components/v4/home/setup-screen";
 
 export default function Page() {
-  return <Stub title="Organization setup" section="home" board="X13" />;
+  return <SetupScreen />;
 }

@@ -185,7 +185,8 @@ export function PartsScreen() {
   }, [picked]);
 
   const tabs = TABS.parts.map((t) => (t.href === R.parts && cat ? { ...t, count: cat.total } : t));
-  const verdictsReady = Boolean(make) || makeFailed;
+  // Machine verdicts are known only once they loaded; a blocked route is known from the catalog alone.
+  const verdictsReady = Boolean(make);
   // Until machine verdicts load, only the catalog's own facts (and blocked routes) are known.
   const known = verdictsReady ? counts : { ...countBy([]), design: counts.design };
   const facts = cat ? partsFacts(cat.total, costed, known) : [];
@@ -231,7 +232,7 @@ export function PartsScreen() {
           </select>
           <span className="seg" role="group" aria-label="Machines">
             <SegButton on={filter.machines === "all"} onClick={() => setFilter({ ...filter, machines: "all" })} label="All" n={cat ? rows.length : null} />
-            {VERDICT_FILTERS.filter((v) => v.always || counts[v.key] > 0).map((v) => (
+            {VERDICT_FILTERS.filter((v) => v.always || (verdictsReady && counts[v.key] > 0)).map((v) => (
               <SegButton key={v.key} on={filter.machines === v.key} onClick={() => setFilter({ ...filter, machines: v.key })} label={v.label} n={verdictsReady || v.key === "design" ? counts[v.key] : null} />
             ))}
             {counts.stale > 0 ? <SegButton on={filter.machines === "stale"} onClick={() => setFilter({ ...filter, machines: "stale" })} label="Out of date" n={counts.stale} /> : null}
@@ -245,7 +246,7 @@ export function PartsScreen() {
       <Column head={headRef}>
         {makeFailed ? (
           <section className="panel" aria-label="Machine verdicts didn't load">
-            <InlineFailed what="machine verdicts" detail="Parts show as Not checked until they load." onRetry={retryMake} />
+            <InlineFailed what="machine verdicts" detail="Tiles say Not loaded until they do; prices and findings are complete." onRetry={retryMake} />
           </section>
         ) : null}
         {cat?.truncated ? <p className="smeta" style={{ margin: "0 4px" }}>This list covers the most recent parts; older parts aren&apos;t included.</p> : null}
@@ -293,7 +294,7 @@ export function PartsScreen() {
                       className={cx("h-tile", on && "on")}
                       style={{ flex: 1 }}
                       aria-pressed={on}
-                      aria-label={`${r.filename}, ${verdictsReady || v.key === "design" ? v.label : "machine verdict loading"}, ${price === "—" ? "no price" : price}`}
+                      aria-label={`${r.filename}, ${verdictsReady || v.key === "design" ? v.label : makeFailed ? "machine verdict not loaded" : "machine verdict loading"}, ${price === "—" ? "no price" : price}`}
                       onClick={() => {
                         setSel(on ? null : r.part_key);
                         if (!on && window.matchMedia("(max-width:900px)").matches) {
@@ -308,7 +309,7 @@ export function PartsScreen() {
                       <b title={r.filename}>{r.filename}</b>
                       <small>{v.stale ? `${v.where} · out of date` : v.where}</small>
                       <span className="h-tr">
-                        {verdictsReady || v.key === "design" ? <Chip tone={v.tone}>{v.label}</Chip> : <Chip tone="unk">Checking</Chip>}
+                        {verdictsReady || v.key === "design" ? <Chip tone={v.tone}>{v.label}</Chip> : <Chip tone="unk">{makeFailed ? "Not loaded" : "Checking"}</Chip>}
                         <span className="c num">{price}</span>
                       </span>
                     </button>
