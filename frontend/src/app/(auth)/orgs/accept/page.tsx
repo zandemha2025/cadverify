@@ -6,6 +6,8 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AuthFrame } from "@/components/auth/auth-frame";
 import { Spinner } from "@/components/ui/spinner";
+import { UI_V4 } from "@/lib/ui-v4-flag";
+import { V4InviteAccept } from "@/components/v4/moments/invite";
 
 type State =
   | { kind: "loading" }
@@ -129,6 +131,13 @@ function AcceptInviteInner() {
 }
 
 export default function AcceptInvitePage() {
+  if (UI_V4) {
+    return (
+      <Suspense fallback={null}>
+        <V4InviteAccept />
+      </Suspense>
+    );
+  }
   return (
     <AuthFrame
       eyebrow="Organization invite"

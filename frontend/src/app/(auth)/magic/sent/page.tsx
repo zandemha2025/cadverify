@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthFrame } from "@/components/auth/auth-frame";
+import { UI_V4 } from "@/lib/ui-v4-flag";
+import { V4MagicSent } from "@/components/v4/moments/magic";
 
 export const metadata: Metadata = {
   title: "Magic link sent - ScaleCad",
@@ -9,6 +11,7 @@ export const metadata: Metadata = {
 
 export default async function MagicSentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const heldPart = (await searchParams).part === "1";
+  if (UI_V4) return <V4MagicSent heldPart={heldPart} />;
   return (
     <AuthFrame
       eyebrow="Magic link"

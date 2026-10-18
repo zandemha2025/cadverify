@@ -57,6 +57,7 @@
 .ob .mo-x12 .form{display:flex;flex-direction:column;gap:12px;padding:12px 22px 6px}
 .ob .mo-x12 .hintx{color:var(--ink2);font-size:12.5px}
 .ob .mo-x12 .hintx.bad{color:var(--bad)}
+.ob .mo-x12 .field input[aria-invalid="true"],.ob .mo-x1 .field input[aria-invalid="true"],.ob .mo-x2 .field input[aria-invalid="true"]{border-color:var(--bad)}
 .ob .mo-x12 .chipline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);min-height:22px;margin:0}
 .ob .mo-x12 .info{margin:8px 22px 0;padding:12px 14px;border-radius:14px;background:#F6F7F8;border:1px solid rgba(20,24,31,.08);display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink2)}
 .ob .mo-x12 .info .kv{padding:0}
