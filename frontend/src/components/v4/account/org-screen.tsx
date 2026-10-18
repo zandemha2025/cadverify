@@ -360,7 +360,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
         ) : (
           <div className="top">
             <h2 className="stitle">Member</h2>
-            <p className="smeta">{orgs && !active ? "No organization" : "Loading…"}</p>
+            <p className="smeta">{orgs && !active ? "No organization" : orgsErr || (orgs && !members && accessErr) ? "Members didn’t load" : "Loading…"}</p>
           </div>
         )}
       </Sheet>
