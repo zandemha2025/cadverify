@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { FitScreen } from "@/components/v4/make/fit";
 
 export default function Page() {
-  return <Stub title="Fit in context" section="make" board="F2" />;
+  return <FitScreen />;
 }

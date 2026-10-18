@@ -208,11 +208,14 @@ export default function Stage3D({
   markers = [],
   controller,
   onState,
+  frameKey,
 }: {
   layers: StageLayer[];
   markers?: StageMarker[];
   controller: StageController;
   onState?: (s: StageState, detail?: string) => void;
+  /** When set, the view is re-framed only when this changes (a live nudge mustn't move the camera). */
+  frameKey?: string;
 }) {
   const [webgl, setWebgl] = React.useState<boolean | null>(null);
   const [reduce, setReduce] = React.useState(false);
@@ -267,7 +270,7 @@ export default function Stage3D({
     }
     return b;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [framed.map((l) => sourceKey(l.source) + JSON.stringify(l.matrix ?? null)).join("|"), loaded]);
+  }, [frameKey ?? framed.map((l) => sourceKey(l.source) + JSON.stringify(l.matrix ?? null)).join("|"), ready, loaded]);
 
   if (webgl !== true || !ready || box.isEmpty()) return null;
   const size = box.getSize(new THREE.Vector3());

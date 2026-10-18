@@ -913,6 +913,40 @@ async def _parse_fit_mesh_async(data: bytes, filename: str):
     return mesh, suffix
 
 
+@router.get("/validate/fit/capability")
+async def validate_fit_capability(user: AuthedUser = Depends(require_role(Role.viewer))):
+    """Whether Fit in context can run for this caller, asked before any file moves.
+
+    Reads the caller's plan, role and the server setting only: no upload, no
+    preview mesh, no check is reserved. POST /validate/fit still enforces all of
+    it; this lets the browser show the pilot gate or the off state up front
+    instead of spending two preview meshes on a pair it can't measure.
+    """
+    from src.auth import validation_caps
+    from src.services.fit_service import context_fit_enabled
+
+    try:
+        await validation_caps.require_paid_access(user)
+        paid_access = True
+    except HTTPException as exc:
+        # Only the pilot-plan refusal means "no"; an unreadable plan stays an error.
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if exc.status_code != 403 or detail.get("code") != "paid_access_required":
+            raise
+        paid_access = False
+    try:
+        can_submit = Role(user.role).rank >= Role.analyst.rank
+    except ValueError:
+        can_submit = False
+    enabled = context_fit_enabled()
+    return {
+        "enabled": enabled,
+        "paid_access": paid_access,
+        "can_submit": can_submit,
+        "available": enabled and paid_access and can_submit,
+    }
+
+
 @router.post("/validate/fit", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("30/hour;200/day")
 async def validate_fit(

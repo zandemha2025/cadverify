@@ -24,6 +24,7 @@ export function Turntable({
   overlay,
   onState,
   hint = "Drag to turn it",
+  frameKey,
 }: {
   label: string;
   layers: StageLayer[];
@@ -33,6 +34,7 @@ export function Turntable({
   overlay?: React.ReactNode;
   onState?: (s: StageState, detail?: string) => void;
   hint?: string | null;
+  frameKey?: string;
 }) {
   const controller: StageController = React.useRef<((radians: number) => void) | null>(null);
   const [drag, setDrag] = React.useState(false);
@@ -69,7 +71,7 @@ export function Turntable({
       onPointerLeave={() => setDrag(false)}
       onKeyDown={onKey}
     >
-      {has ? <Stage3D layers={layers} markers={markers} controller={controller} onState={report} /> : null}
+      {has ? <Stage3D layers={layers} markers={markers} controller={controller} onState={report} frameKey={frameKey} /> : null}
       {has && state === "loading" && !overlay ? (
         <span className="gen plain" aria-hidden="true">
           <span className="spin" />
