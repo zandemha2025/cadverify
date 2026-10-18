@@ -1,5 +1,7 @@
-import { Stub } from "@/components/v4/stub";
+import { OrgScreen } from "@/components/v4/account/org-screen";
+
+export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <Stub title="Organization" section="account" board="A1" />;
+  return <OrgScreen authMode={process.env.AUTH_MODE || "password"} magicLink={process.env.MAGIC_LINK_UI_ENABLED === "1"} />;
 }

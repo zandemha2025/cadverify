@@ -353,6 +353,25 @@ async def list_invites(
     return {"invites": await svc.list_invites(session, org_id)}
 
 
+@router.post("/invites/preview")
+@limiter.limit("60/hour;300/day")
+async def preview_invite(
+    request: Request,
+    response: Response,
+    body: AcceptBody,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Show what accepting an invite would do, without accepting it.
+
+    The confirm step before ``/invites/accept``: the org, the role, who sent
+    it, when it expires, and whether the caller is already a member. Same
+    refusals as accept (400/404/409, and 403 for any other account, so a
+    forwarded token reveals nothing). POST keeps the token out of URLs and
+    access logs; nothing is written, so no kill-switch gate."""
+    return await svc.preview_invite(session, user.user_id, body.token)
+
+
 @router.post("/invites/accept", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;300/day")
 async def accept_invite(

@@ -338,19 +338,15 @@ async def revoke_invite(
     return inv
 
 
-async def accept_invite(
+async def _redeemable_invite(
     session: AsyncSession, user_id: int, raw_token: str
-) -> tuple[Membership, OrgInvite, bool]:
-    """Redeem a raw token → a membership for ``user_id``. Returns
-    ``(membership, invite, created)`` where ``created`` is False when the user
-    was already a member (in which case the role is NOT escalated).
+) -> OrgInvite:
+    """The invite ``raw_token`` names, if ``user_id`` may redeem it right now.
 
-    Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, the hash
-    compare (the raw token is never stored), AND recipient binding: only the
-    account whose email matches the invite's may redeem it. A leaked/forwarded
-    token cannot be claimed by another logged-in user, and an invite can never
-    escalate a *different* account into the org (including at admin). Consumes
-    the invite atomically with the membership write.
+    Shared by accept and preview so both refuse exactly the same cases: a
+    missing token (400), an unknown token (404), a revoked / used / expired
+    invite (409), and any account other than the invited one (403). Nothing is
+    written here.
     """
     if not raw_token or not raw_token.strip():
         raise _400("An invite token is required.")
@@ -419,6 +415,59 @@ async def accept_invite(
             )
         ):
             raise _403("This invite was issued to a different email address.")
+    return inv
+
+
+async def preview_invite(
+    session: AsyncSession, user_id: int, raw_token: str
+) -> dict:
+    """What accepting ``raw_token`` would do, without accepting it.
+
+    Read-only: the invite stays pending and single-use. Applies the same
+    refusals as ``accept_invite`` (so a forwarded token shows nothing about the
+    org to another account) and returns the facts the invitee confirms:
+    the org, the role, who invited them, when the invite expires, and whether
+    they are already a member (whose role accepting would not change).
+    """
+    inv = await _redeemable_invite(session, user_id, raw_token)
+    org_name = (
+        await session.execute(
+            select(Organization.name).where(Organization.id == inv.org_id)
+        )
+    ).scalar_one_or_none()
+    invited_by = None
+    if inv.created_by is not None:
+        invited_by = (
+            await session.execute(select(User.email).where(User.id == inv.created_by))
+        ).scalar_one_or_none()
+    existing = await _get_membership(session, inv.org_id, user_id)
+    return {
+        "org_id": inv.org_id,
+        "org_name": org_name,
+        "role": inv.role,
+        "email": inv.email,
+        "invited_by": invited_by,
+        "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
+        "already_member": existing is not None,
+        "current_role": existing.org_role if existing is not None else None,
+    }
+
+
+async def accept_invite(
+    session: AsyncSession, user_id: int, raw_token: str
+) -> tuple[Membership, OrgInvite, bool]:
+    """Redeem a raw token → a membership for ``user_id``. Returns
+    ``(membership, invite, created)`` where ``created`` is False when the user
+    was already a member (in which case the role is NOT escalated).
+
+    Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, the hash
+    compare (the raw token is never stored), AND recipient binding: only the
+    account whose email matches the invite's may redeem it. A leaked/forwarded
+    token cannot be claimed by another logged-in user, and an invite can never
+    escalate a *different* account into the org (including at admin). Consumes
+    the invite atomically with the membership write.
+    """
+    inv = await _redeemable_invite(session, user_id, raw_token)
 
     existing = await _get_membership(session, inv.org_id, user_id)
     if existing is not None:
