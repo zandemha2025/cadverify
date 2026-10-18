@@ -1,5 +1,8 @@
-import { Stub } from "@/components/v4/stub";
+import { backendOrigin } from "@/lib/api-base";
+import { ApiScreen } from "@/components/v4/account/api-screen";
+
+export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <Stub title="API and keys" section="account" board="A3" />;
+  return <ApiScreen apiOrigin={backendOrigin()} />;
 }

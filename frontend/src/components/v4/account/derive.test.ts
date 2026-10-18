@@ -66,6 +66,7 @@ test("initials and dates", () => {
   assert.equal(initials("x@acme.com"), "X");
   assert.equal(dateLabel("2026-10-18T02:58:37+00:00"), "Oct 18, 2026");
   assert.equal(dateLabel(null), "—");
+  assert.equal(dateLabel("2026-10-18 05:00:33.123456+00:00"), "Oct 18, 2026");
   const now = new Date("2026-10-18T12:00:00Z");
   assert.equal(whenLabel("2026-10-18T05:00:33Z", now), "05:00");
   assert.equal(whenLabel("2026-10-17T23:10:00Z", now), "Oct 17 23:10");

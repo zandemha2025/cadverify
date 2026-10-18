@@ -30,7 +30,7 @@
 .ob .a-confirm .a-bx{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .ob .btn.a-danger{background:var(--bad);border-color:var(--bad);color:#fff}
 @media (hover:hover) and (pointer:fine){.ob .btn.a-danger:hover{background:#9A1D14}}
-.ob .a-toast{position:static;align-self:flex-start;margin:4px 16px 10px}
+.ob .a-toast{position:static;display:inline-flex;align-self:flex-start;margin:4px 16px 10px}
 .ob .a-tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;margin-left:6px;border-radius:5px;background:var(--typ-bg);color:var(--ink2);font-size:11px;font-weight:700;vertical-align:1px}
 
 /* table rows (members, invites, keys, mappings, audit) */

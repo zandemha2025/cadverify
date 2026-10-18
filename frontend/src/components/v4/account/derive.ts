@@ -92,7 +92,8 @@ export function domainOf(email: string): string {
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function parse(iso: string | null | undefined): Date | null {
   if (!iso) return null;
-  const t = Date.parse(iso);
+  // Some rows come as Postgres text ("2026-10-18 05:00:00.12+00:00"); make them ISO.
+  const t = Date.parse(/^\d{4}-\d{2}-\d{2} /.test(iso) ? iso.replace(" ", "T") : iso);
   return Number.isFinite(t) ? new Date(t) : null;
 }
 const p2 = (n: number) => String(n).padStart(2, "0");
