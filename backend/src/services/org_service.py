@@ -125,6 +125,174 @@ async def _admin_count(session: AsyncSession, org_id: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Seat accounting (shared-seats quota, migration 0047)
+# ---------------------------------------------------------------------------
+#
+# An org's CONSUMED seats = active memberships + pending invites (unexpired,
+# unrevoked, unaccepted). A pending invite RESERVES a seat: counting it at
+# creation means an admin cannot over-promise seats by minting more invites
+# than the plan allows, and acceptance converts reserved -> active 1:1.
+# ``organizations.seat_limit`` NULL means unlimited — the legacy/personal-org
+# path is byte-identical to before (enforcement is a no-op).
+
+
+def seats_available(
+    seat_limit: Optional[int], active_members: int, pending_invites: int
+) -> Optional[int]:
+    """Remaining consumable seats; ``None`` when the org is unlimited.
+
+    Pure function (unit-tested without a DB). Never negative — an org pushed
+    over its limit by a limit reduction reports 0 available, not debt.
+    """
+    if seat_limit is None:
+        return None
+    return max(seat_limit - active_members - pending_invites, 0)
+
+
+def seat_capacity_ok(
+    seat_limit: Optional[int], consumed: int, additional: int = 1
+) -> bool:
+    """Pure capacity predicate: may ``additional`` more seats be consumed?"""
+    return seat_limit is None or consumed + additional <= seat_limit
+
+
+def _default_seat_limit() -> Optional[int]:
+    """Seat cap for NEW orgs from ``ORG_DEFAULT_SEAT_LIMIT`` (unset = unlimited).
+
+    A malformed value must never block org creation, so it degrades to
+    unlimited rather than raising — ops misconfiguration fails open here, while
+    an explicitly SET limit always fails closed at the enforcement points.
+    """
+    raw = os.getenv("ORG_DEFAULT_SEAT_LIMIT", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 1 else None
+
+
+async def _pending_invite_count(session: AsyncSession, org_id: str) -> int:
+    """Invites currently RESERVING a seat: unaccepted, unrevoked, unexpired."""
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(OrgInvite)
+            .where(
+                OrgInvite.org_id == org_id,
+                OrgInvite.accepted_at.is_(None),
+                OrgInvite.revoked_at.is_(None),
+                OrgInvite.expires_at > _now(),
+            )
+        )
+    ).scalar_one()
+
+
+async def _active_member_count(session: AsyncSession, org_id: str) -> int:
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(Membership)
+            .where(Membership.org_id == org_id)
+        )
+    ).scalar_one()
+
+
+async def seat_status(session: AsyncSession, org_id: str) -> dict:
+    """The org's seat ledger: limit, usage, and headroom.
+
+    ``available`` is ``None`` for an unlimited org (never a made-up number).
+    """
+    org = (
+        await session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )
+    ).scalars().first()
+    if org is None:
+        raise _404("Organization not found.")
+    active = await _active_member_count(session, org_id)
+    pending = await _pending_invite_count(session, org_id)
+    return {
+        "org_id": org_id,
+        "seat_limit": org.seat_limit,
+        "active_members": active,
+        "pending_invites": pending,
+        "consumed": active + pending,
+        "available": seats_available(org.seat_limit, active, pending),
+    }
+
+
+async def enforce_seat_capacity(
+    session: AsyncSession, org_id: str, additional: int = 1
+) -> None:
+    """Fail closed when consuming ``additional`` seats would exceed the limit.
+
+    A no-op for unlimited orgs (NULL limit). Raises 409 with the live numbers
+    so the caller can show the operator exactly why, without a second query.
+    """
+    status = await seat_status(session, org_id)
+    limit = status["seat_limit"]
+    if seat_capacity_ok(limit, status["consumed"], additional):
+        return
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "org_seat_limit_reached",
+            "message": (
+                f"This organization has consumed {status['consumed']} of "
+                f"{limit} seats (memberships plus pending invites). Revoke a "
+                "pending invite, remove a member, or raise the seat limit."
+            ),
+            "seat_limit": limit,
+            "consumed": status["consumed"],
+        },
+    )
+
+
+async def update_seat_limit(
+    session: AsyncSession, org_id: str, seat_limit: Optional[int]
+) -> Organization:
+    """Set (or clear, with ``None``) the org's seat cap — the governance write.
+
+    Guards:
+      * a limit must be >= 1 (a 0-seat org is a misconfiguration, not a plan);
+      * a limit may NOT be set below the currently consumed seats — the org
+        would instantly be over capacity and every invite/accept would 409
+        against an unachievable target. Shrink usage first, then lower it.
+    """
+    org = (
+        await session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )
+    ).scalars().first()
+    if org is None:
+        raise _404("Organization not found.")
+    if seat_limit is not None:
+        if seat_limit < 1:
+            raise _400("seat_limit must be at least 1 (or null for unlimited).")
+        active = await _active_member_count(session, org_id)
+        pending = await _pending_invite_count(session, org_id)
+        consumed = active + pending
+        if seat_limit < consumed:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "org_seat_limit_below_usage",
+                    "message": (
+                        f"Cannot set seat_limit to {seat_limit}: the org "
+                        f"already consumes {consumed} seats ({active} members "
+                        f"+ {pending} pending invites). Reduce usage first."
+                    ),
+                    "consumed": consumed,
+                },
+            )
+    org.seat_limit = seat_limit
+    await session.flush()
+    return org
+
+
+# ---------------------------------------------------------------------------
 # Create org
 # ---------------------------------------------------------------------------
 
@@ -146,7 +314,9 @@ async def create_org(
 
     org_id = str(ULID())
     slug = f"{personal_org_slug(clean.replace(' ', '-'))}"
-    org = Organization(id=org_id, name=clean, slug=slug)
+    org = Organization(
+        id=org_id, name=clean, slug=slug, seat_limit=_default_seat_limit()
+    )
     session.add(org)
     session.add(
         Membership(
@@ -201,6 +371,11 @@ async def create_invite(
     # redeemer's id to equal this — which defeats BOTH directions of the
     # collision. NULL means no account exists yet (invite-then-signup); acceptance
     # falls back to a collision-safe email check for that case.
+    # Seat reservation: a pending invite consumes a seat the moment it is
+    # minted, so capacity is checked BEFORE the token exists. Unlimited orgs
+    # (NULL limit) pass through untouched.
+    await enforce_seat_capacity(session, org_id, additional=1)
+
     invited_user_id = await _resolve_invited_user_id(session, email_norm)
 
     raw, token_hash = generate_invite_token()
@@ -426,6 +601,12 @@ async def accept_invite(
         created = False
         membership = existing
     else:
+        # Seat conversion: this pending invite's reserved seat becomes the new
+        # membership, so net consumption is unchanged — re-checking with
+        # ``additional=0`` fails closed ONLY if the limit was lowered after
+        # issuance or seats were consumed out-of-band (e.g. SAML JIT), never
+        # on the happy path the reservation already paid for.
+        await enforce_seat_capacity(session, inv.org_id, additional=0)
         membership = Membership(
             id=str(ULID()),
             org_id=inv.org_id,
