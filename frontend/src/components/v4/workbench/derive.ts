@@ -406,6 +406,10 @@ export interface FindingRow {
   sub: string;
   localized: boolean;
   kind: FindingKind;
+  /** each method's own required value, when the engine states one */
+  needs: { process: string; issue: Issue }[];
+  /** the flattened issue keys this row stands for */
+  members: string[];
 }
 
 const KIND_BY_CODE: Record<string, FindingKind> = {
@@ -439,28 +443,49 @@ function procList(names: string[]): string {
   return names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ");
 }
 
-/** One row per distinct finding (processes attached), required fixes first, then advisory, then notes. */
+/**
+ * One row per finding, processes attached: required fixes first, then
+ * advisory, then notes. Rows with the same code and severity on the same faces
+ * merge (the engine words them per method); each method's own required value
+ * is kept in `needs`.
+ */
 export function findingRows(v: ValidationResult | null): FindingRow[] {
   if (!v) return [];
   const rank: Record<Sev, number> = { error: 0, warning: 1, info: 2 };
-  return flattenIssues(v)
-    .map((row) => {
-      const issue = row.issue;
-      const processes = [...issueProcesses(row)];
-      const localized = row.faces.length > 0 || !!issue.region_center;
-      const names = processes.map(methodName);
-      return {
-        key: row.key,
-        issue,
-        faces: row.faces,
-        processes,
-        sev: sevOf(issue.severity),
-        title: findingTitleFor(issue),
-        sub: names.length ? procList(names) : "Every method",
-        localized,
-        kind: findingKind(issue, localized),
-      };
-    })
+  const merged = new Map<string, FindingRow>();
+  const order: FindingRow[] = [];
+  for (const row of flattenIssues(v)) {
+    const issue = row.issue;
+    const sev = sevOf(issue.severity);
+    const processes = [...issueProcesses(row)];
+    const localized = row.faces.length > 0 || !!issue.region_center;
+    const sig = `${issue.code}|${sev}|${issue.region_center?.join(",") ?? ""}|${row.faces.join(",")}`;
+    const need = issue.required_value != null ? processes.map((p) => ({ process: p, issue })) : [];
+    const hit = merged.get(sig);
+    if (hit) {
+      for (const p of processes) if (!hit.processes.includes(p)) hit.processes.push(p);
+      hit.needs.push(...need);
+      hit.members.push(row.key);
+      hit.sub = hit.processes.length ? procList(hit.processes.map(methodName)) : "Every method";
+      continue;
+    }
+    const r: FindingRow = {
+      key: row.key,
+      issue,
+      faces: row.faces,
+      processes,
+      sev,
+      title: findingTitleFor(issue),
+      sub: processes.length ? procList(processes.map(methodName)) : "Every method",
+      localized,
+      kind: findingKind(issue, localized),
+      needs: need,
+      members: [row.key],
+    };
+    merged.set(sig, r);
+    order.push(r);
+  }
+  return order
     .map((r, i) => ({ r, i }))
     .sort((a, b) => rank[a.r.sev] - rank[b.r.sev] || a.i - b.i)
     .map(({ r }) => r);

@@ -249,6 +249,21 @@ test("findings: required fixes first, processes attached, duplicates merged", ()
   assert.equal(findingTitle("SOMETHING_NEW", null, null, "Short engine sentence. More."), "Short engine sentence");
 });
 
+test("findings worded per method merge into one row with each method's own need", () => {
+  const v = validation();
+  v.process_scores.push({
+    process: "injection_molding", score: 0, verdict: "fail", recommended_material: null, recommended_machine: null, estimated_cost_factor: null,
+    issues: [issue("INSUFFICIENT_DRAFT", "error", [3, 4], { message: "Draft below 1° for injection_molding.", required_value: 1, measurement_unit: "deg" })],
+  });
+  v.process_scores[2].issues[0] = issue("INSUFFICIENT_DRAFT", "error", [3, 4], { message: "Draft below 5° for forging.", required_value: 5, measurement_unit: "deg" });
+  const rows = findingRows(v);
+  const draft = rows.filter((r) => r.issue.code === "INSUFFICIENT_DRAFT");
+  assert.equal(draft.length, 1);
+  assert.deepEqual(draft[0].processes, ["forging", "injection_molding"]);
+  assert.deepEqual(draft[0].needs.map((n) => [n.process, n.issue.required_value]), [["forging", 5], ["injection_molding", 1]]);
+  assert.equal(draft[0].members.length, 2);
+});
+
 test("methods matrix: fit, first blocker, cost at the nearest costed quantity", () => {
   const v = validation();
   const r = report({ routing: { archetype: "prismatic_block", recommended_process: "cnc_3axis", eval_family: "", material_hint: "", confidence: 0.6, reasoning: "", alternatives: [], drivers: {} } });

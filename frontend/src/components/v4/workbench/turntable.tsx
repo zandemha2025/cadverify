@@ -76,26 +76,37 @@ export interface PinSpec {
 const KIND_COLOR: Record<string, string> = { thin: "#E5482A", support: "#2E6BE6", reach: "#B97F0C", draft: "#7A4FD6", none: "#5F656E" };
 const BASE = new THREE.Color("#D3D7DD");
 
-/** A real point on the flagged faces: the face whose centre is nearest the faces' mean centre. */
-function anchorPoint(geometry: THREE.BufferGeometry, faces: number[]): THREE.Vector3 | null {
+/** Centre and outward normal of each flagged face (skipping indices outside the mesh). */
+function faceCentres(geometry: THREE.BufferGeometry, faces: number[]): { c: THREE.Vector3; n: THREE.Vector3 }[] {
   const pos = geometry.getAttribute("position");
-  if (!pos || !faces.length) return null;
-  const n = pos.count / 3;
-  const cs: THREE.Vector3[] = [];
-  const mean = new THREE.Vector3();
+  if (!pos || !faces.length) return [];
+  const count = pos.count / 3;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const out: { c: THREE.Vector3; n: THREE.Vector3 }[] = [];
   for (const f of faces) {
-    if (f < 0 || f >= n) continue;
-    const c = new THREE.Vector3(
-      (pos.getX(3 * f) + pos.getX(3 * f + 1) + pos.getX(3 * f + 2)) / 3,
-      (pos.getY(3 * f) + pos.getY(3 * f + 1) + pos.getY(3 * f + 2)) / 3,
-      (pos.getZ(3 * f) + pos.getZ(3 * f + 1) + pos.getZ(3 * f + 2)) / 3,
-    );
-    cs.push(c);
-    mean.add(c);
+    if (f < 0 || f >= count) continue;
+    a.fromBufferAttribute(pos, 3 * f);
+    b.fromBufferAttribute(pos, 3 * f + 1);
+    c.fromBufferAttribute(pos, 3 * f + 2);
+    const centre = a.clone().add(b).add(c).divideScalar(3);
+    const n = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+    out.push({ c: centre, n });
   }
-  if (!cs.length) return null;
-  mean.divideScalar(cs.length);
-  return cs.reduce((best, c) => (c.distanceToSquared(mean) < best.distanceToSquared(mean) ? c : best), cs[0]);
+  return out;
+}
+
+/** A real point on the flagged faces: the one nearest the viewer at the opening angle. */
+function anchorPoint(centres: { c: THREE.Vector3; n: THREE.Vector3 }[], center: THREE.Vector3, view: THREE.Vector3): THREE.Vector3 | null {
+  if (!centres.length) return null;
+  let best = centres[0], score = -Infinity;
+  for (const x of centres) {
+    const v = x.c.clone().sub(center).dot(view) + x.n.dot(view) * 1e-6;
+    if (v > score) {
+      score = v;
+      best = x;
+    }
+  }
+  return best.c.clone();
 }
 
 /** Turn state shared by the pointer handlers and the render loop (mutable, outside React). */
@@ -189,11 +200,33 @@ function Model({
     invalidate();
   }, [camera, norm.radius, size.width, size.height, invalidate]);
 
+  // The opening view direction, in the part's own frame (the turntable starts at yaw -0.6).
+  const view = React.useMemo(() => new THREE.Vector3(0, 0.62, 1).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.6), []);
+  const pinCentres = React.useMemo(() => (pin && !pin.region ? faceCentres(geometry, pin.faces) : []), [pin, geometry]);
   const anchor = React.useMemo(() => {
     if (!pin) return null;
     if (pin.region) return new THREE.Vector3(...pin.region).applyMatrix4(transform);
-    return anchorPoint(geometry, pin.faces);
-  }, [pin, geometry, transform]);
+    return anchorPoint(pinCentres, norm.center, view);
+  }, [pin, pinCentres, transform, norm.center, view]);
+
+  // The flagged faces are a sample of tiny triangles on a dense mesh; a dot on each keeps them visible.
+  const dots = React.useMemo(() => {
+    if (!lit) return null;
+    const list = faceCentres(geometry, highlight!.faces);
+    if (!list.length) return null;
+    const lift = 0.004 / norm.scale;
+    const arr = new Float32Array(list.length * 3);
+    list.forEach((x, i) => {
+      const p = x.c.clone().addScaledVector(x.n, lift);
+      arr[3 * i] = p.x;
+      arr[3 * i + 1] = p.y;
+      arr[3 * i + 2] = p.z;
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    return g;
+  }, [lit, highlight, geometry, norm.scale]);
+  React.useEffect(() => () => dots?.dispose(), [dots]);
 
   const ray = React.useMemo(() => new THREE.Raycaster(), []);
   const last = React.useRef("");
@@ -236,6 +269,11 @@ function Model({
           envMapIntensity={lit ? 0.8 : 1.1}
         />
       </mesh>
+      {dots ? (
+        <points geometry={dots} scale={norm.scale} position={norm.center.clone().multiplyScalar(-norm.scale)}>
+          <pointsMaterial size={3.2} sizeAttenuation={false} color={highlight!.color} depthTest depthWrite={false} />
+        </points>
+      ) : null}
     </group>
   );
 }
