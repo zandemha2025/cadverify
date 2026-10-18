@@ -263,3 +263,4 @@
 .ob .world:has(> .mm-mark) > .content{top:auto!important}
 .ob .world:has(> .mm-mark) > .pagehead{z-index:auto}
 }
+.ob .seg button[aria-disabled="true"]{opacity:.45;cursor:default}
