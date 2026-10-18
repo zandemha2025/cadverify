@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  isPhoneVerificationMessage,
   apiProblemDetail,
   apiResourceFromUrl,
   apiRecoveryMessage,
@@ -20,7 +21,10 @@ for (const [status, code, detail] of [
       const message = apiRecoveryMessage({ status, payload, resource: "verification", retryAfter: "60" });
       assert.match(message, /verification allowance used up/i);
       assert.ok(message.includes(detail));
-      assert.match(message, /contact.*team/i);
+      // A person's own allowance carries its own next step (upgrade); shared
+      // organization allowances still point at the people who manage them.
+      if (code === "user_validation_cap_exceeded") assert.doesNotMatch(message, /administrator/i);
+      else assert.match(message, /contact.*team/i);
       assert.doesNotMatch(message, /try again in|temporarily busy|permission|too many/i);
     }
   });
@@ -119,4 +123,27 @@ test("rolling allowances retain later retry while lifetime caps do not", () => {
     payload: { code: "org_validation_cap_exceeded", window_days: 0, message: "100 checks in total" } });
   assert.equal(isLifetimeQuotaErrorMessage(lifetime), true);
   assert.doesNotMatch(lifetime, /retry|for now/i);
+});
+
+test("free and Pro allowances read as one short next step", () => {
+  const free = apiRecoveryMessage({ status: 403, resource: "verification", payload: { detail: {
+    code: "user_validation_cap_exceeded", plan: "trial", tier: "personal", window_days: 0, resets_at: null,
+    message: "Your 3 free checks are used or in progress. Upgrade to Pro to keep checking. Saved results stay available." } } });
+  assert.equal(free, "Verification allowance used up. Your 3 free checks are used or in progress. Upgrade to Pro to keep checking. Saved results stay available.");
+  assert.equal(isLifetimeQuotaErrorMessage(free), true);
+  const pro = apiRecoveryMessage({ status: 403, resource: "verification", payload: { detail: {
+    code: "user_validation_cap_exceeded", plan: "pro", window_days: 0, resets_at: "2026-11-17T00:00:00+00:00",
+    message: "You've used this month's 50 Pro checks. They reset on November 17. Saved results stay available." } } });
+  assert.match(pro, /^Verification allowance used up for now\. You've used this month's 50 Pro checks/);
+  assert.equal(isLifetimeQuotaErrorMessage(pro), false);
+  assert.equal(isQuotaErrorMessage(pro), true);
+  assert.doesNotMatch(pro, /retry after the rolling/i);
+});
+
+test("phone verification is its own recovery, not a permission error", () => {
+  const message = apiRecoveryMessage({ status: 403, resource: "verification", payload: { detail: {
+    code: "phone_verification_required", message: "Verify your phone number to start your free checks. We send one text with a code." } } });
+  assert.equal(isPhoneVerificationMessage(message), true);
+  assert.doesNotMatch(message, /permission|admin/i);
+  assert.equal(isQuotaErrorMessage(message), false);
 });

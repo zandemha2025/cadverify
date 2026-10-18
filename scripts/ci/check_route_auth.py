@@ -62,6 +62,14 @@ PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
         # Sanitized public analysis-share view (share-link only; noindex/no-store).
         ("get", "/{short_id}"),
     },
+    "billing.py": {
+        # Public plan facts for the pricing page: tier sizes and the Pro price.
+        # No account data.
+        ("get", "/plans"),
+        # Stripe webhook. Authenticated by the Stripe-Signature HMAC (verified
+        # before any write), not by a ScaleCad session or API key.
+        ("post", "/stripe-webhook"),
+    },
     "corpus_router.py": {
         # DEV-ONLY labeling tool: mounted solely under LABELING_ENABLED=1 and
         # localhost-only by design; never ships to production. Public by intent.

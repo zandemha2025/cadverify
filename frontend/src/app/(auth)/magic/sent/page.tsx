@@ -7,12 +7,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function MagicSentPage() {
+export default async function MagicSentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const heldPart = (await searchParams).part === "1";
   return (
     <AuthFrame
       eyebrow="Magic link"
       title="Check your email."
-      body="If that address is allowed to sign in, a single-use link is on its way."
+      body={heldPart
+        ? "A single-use link is on its way. Open it on this device and your part checks itself."
+        : "If that address is allowed to sign in, a single-use link is on its way."}
     >
       <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
         <Link href="/login" style={{ borderRadius: 999, padding: "11px 18px", background: "#f5f5f7", color: "#050506", textDecoration: "none", fontSize: 13, fontWeight: 500 }}>

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { Toaster } from "sonner";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { Analytics } from "@/components/analytics";
+import { SignedInProvider } from "@/components/site/signed-in";
+import { SESSION_COOKIE } from "@/lib/session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -70,6 +72,7 @@ export default async function RootLayout({
   // for a product that handles customer CAD and authentication material.
   await connection();
   const nonce = (await headers()).get("x-nonce") || undefined;
+  const signedIn = Boolean((await cookies()).get(SESSION_COOKIE)?.value);
   return (
     <html
       lang="en"
@@ -97,7 +100,7 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <SignedInProvider signedIn={signedIn}>{children}</SignedInProvider>
         <Analytics token={process.env.POSTHOG_PROJECT_TOKEN || ""} nonce={nonce} />
         {/* Toasts live bottom-right so they never occlude the top-right control
             cluster (⌘K / Jump / notifications bell) or their dropdowns — a

@@ -288,6 +288,13 @@ class User(Base):
     # Product plan gate (trial enforcement): 'trial' accounts are capped at
     # VALIDATION_CAP_PER_USER completed validations; 'pilot' is uncapped.
     plan: Mapped[str] = mapped_column(Text, server_default="trial", nullable=False)
+    # Free-check grant recorded for accounts that predate email tiers. NULL
+    # means the allowance comes from the email domain (src.auth.validation_caps).
+    free_check_grant: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # SMS-verified number (E.164). One account per number; the signup phone
+    # field above is unverified CRM context and is never used for gating.
+    verified_phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    phone_verified_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     # Org-membership beat (§39): account-level deactivation. ``is_active`` is a
     # security control (no feature flag) — false blocks EVERY auth path (login,
     # Google/SAML/magic re-provision, existing sessions, and API keys the user
@@ -719,6 +726,28 @@ class TrialCheck(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     operations: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class BillingAccount(Base):
+    """Stripe customer/subscription for a self-serve Pro account."""
+    __tablename__ = "billing_accounts"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    stripe_customer_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(Text, unique=True, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="none")
+    current_period_start: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    current_period_end: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BillingEvent(Base):
+    """Processed Stripe webhook event IDs (Stripe retries; handle each once)."""
+    __tablename__ = "billing_events"
+
+    event_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
 
 class UsageEvent(Base):

@@ -56,6 +56,15 @@ router = APIRouter()
 TTL = 15 * 60  # 15 minutes per D-03
 logger = logging.getLogger(__name__)
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Where to land after sign-in: a same-site path only (no scheme, host, "//",
+# backslash or fragment), so the emailed link can never redirect off-site.
+_NEXT_RE = re.compile(r"^/(?![/\\])[A-Za-z0-9\-._~/?=&%]{0,511}$")
+
+
+def _safe_next(raw: object) -> str:
+    # Direct (non-HTTP) callers pass FastAPI's Form() default object.
+    value = raw.strip() if isinstance(raw, str) else ""
+    return value if _NEXT_RE.match(value) else ""
 
 
 def _err(status: int, code: str, message: str) -> HTTPException:
@@ -314,6 +323,7 @@ async def magic_start(
     request: Request,
     email: str = Form(..., max_length=320),
     cf_turnstile_response: str = Form(..., min_length=1, max_length=4096),
+    next_path: str = Form("", alias="next", max_length=512),
 ):
     # AUTH-08: cheapest check first (per-IP window), then Turnstile, then
     # per-email window. Hard-reject throwaway domains; soft-flag disposables
@@ -352,7 +362,10 @@ async def magic_start(
     # Keep the bearer token in the URL fragment: browsers do not send fragments
     # to the web server or in referrers. The landing page requires a deliberate
     # button press, so basic corporate email scanners do not burn the token.
-    link = _dashboard_url(f"/magic/verify#token={token}")
+    next_path = _safe_next(next_path)
+    link = _dashboard_url(
+        f"/magic/verify#token={token}" + (f"&next={quote(next_path, safe='')}" if next_path else "")
+    )
     payload: resend.Emails.SendParams = {
         "from": os.environ["RESEND_FROM"],
         "to": email_clean,

@@ -15,7 +15,7 @@ export default function Page() {
   {
     "id": "endpoints",
     "title": "Choose the analysis you need.",
-    "body": "Your API key uses the same account allowance as the web app: 10 lifetime single-part checks, then request paid access. Validation and costing can share an X-Part-Check-ID UUID for the same uploaded file; each operation runs once per check. Inspect error responses before interpreting a result.",
+    "body": "Your API key uses the same check allowance as the web app: your free checks, or your monthly Pro checks. Validation and costing can share an X-Part-Check-ID UUID for the same uploaded file; each operation runs once per check. Inspect error responses before interpreting a result.",
     "code": `POST ${apiOrigin}/api/v1/validate
 POST ${apiOrigin}/api/v1/validate/cost
 GET  ${apiOrigin}/api/v1/cost-decisions

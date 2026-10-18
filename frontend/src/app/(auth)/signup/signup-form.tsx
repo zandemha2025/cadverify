@@ -7,7 +7,7 @@ import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/aut
 import { authErrorMessage } from "@/lib/api-recovery";
 import { identifyAccount, signupMetadata, track } from "@/lib/analytics";
 
-export function SignupForm() {
+export function SignupForm({ freeChecks }: { freeChecks?: { work: number; personal: number } }) {
   const next = safeLocalPath(useSearchParams().get("next"), "/onboarding");
   const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
@@ -48,7 +48,7 @@ export function SignupForm() {
     <AuthFrame
       eyebrow="Free account"
       title="Create your account"
-      body="Get 10 free lifetime single-part CAD checks. No credit card or subscription required. Request paid access for more checks or advanced tools."
+      body={`Free to start: ${freeChecks?.work ?? 15} checks with a work email, ${freeChecks?.personal ?? 3} with a personal one. No credit card.`}
       footer={<>Already have an account? <AuthTextLink href={`/login?next=${encodeURIComponent(next)}`}>Log in</AuthTextLink></>}
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

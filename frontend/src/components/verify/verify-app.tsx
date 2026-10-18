@@ -49,7 +49,11 @@ import {
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
 import type { OrganizationAccess } from "@/lib/organization-access";
-import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage, isPhoneVerificationMessage } from "@/lib/api-recovery";
+import { useAuth } from "@/components/ui/auth-provider";
+import { UpgradeButton } from "@/components/billing/upgrade-button";
+import { browserPendingPartStore, takePendingPart } from "@/lib/pending-part";
+import { PhoneGate } from "./phone-gate";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
@@ -134,6 +138,12 @@ export function VerifyApp({
     | null
   >(null);
   const designImportStarted = useRef(false);
+  const { user } = useAuth();
+  const [phoneRequired, setPhoneRequired] = useState(false);
+  const [upgradedNotice, setUpgradedNotice] = useState(false);
+  // A part held through sign-in, waiting on phone verification if required.
+  const heldPart = useRef<File | null>(null);
+  const heldPartChecked = useRef(false);
   const workspaceDestinationApplied = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // The last part the user verified — so a change to the declared world can re-run
@@ -521,6 +531,53 @@ export function VerifyApp({
       });
   }, [hasActiveOrganization, runVerify]);
 
+  // Allowance gate + sign-in handoff: a part dropped before the email link
+  // checks itself here, once, for the account that dropped it.
+  useEffect(() => {
+    if (!hasActiveOrganization || !user?.email || heldPartChecked.current) return;
+    heldPartChecked.current = true;
+    let live = true;
+    void (async () => {
+      const usage = await fetch("/api/auth/me/usage").then((res) => (res.ok ? res.json() : null)).catch(() => null);
+      const held = await takePendingPart(browserPendingPartStore(), user.email);
+      if (!live) return;
+      if (held) setWelcomeOpen(false);
+      if (usage?.phone_verification_required) {
+        heldPart.current = held;
+        setPhoneRequired(true);
+      } else if (held) {
+        void runVerify(held);
+      }
+    })();
+    return () => { live = false; };
+  }, [hasActiveOrganization, user?.email, runVerify]);
+
+  // Back from Stripe Checkout: the webhook may land a moment later.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upgraded") !== "1") return;
+    setUpgradedNotice(true);
+    params.delete("upgraded");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    const refresh = window.setTimeout(() => window.dispatchEvent(new Event("proofshape:usage-changed")), 4000);
+    return () => window.clearTimeout(refresh);
+  }, []);
+
+  const phoneBlocked = phoneRequired
+    || isPhoneVerificationMessage(uploadRejection?.action)
+    || isPhoneVerificationMessage(result?.validationError)
+    || isPhoneVerificationMessage(result?.costError);
+
+  const onPhoneVerified = useCallback(() => {
+    setPhoneRequired(false);
+    setUploadRejection(null);
+    window.dispatchEvent(new Event("proofshape:usage-changed"));
+    const next = heldPart.current ?? latestFile.current;
+    heldPart.current = null;
+    if (next) void runVerify(next);
+  }, [runVerify]);
+
   // Recompute the retained file when returning from a changed machine inventory.
   useEffect(() => {
     if (screen === "verify" && inventoryDirty.current && latestFile.current) {
@@ -745,7 +802,15 @@ export function VerifyApp({
 
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {uploadRejection && (
+        {phoneBlocked && <PhoneGate onVerified={onPhoneVerified} />}
+        {upgradedNotice && (
+          <div role="status" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: `1px solid ${C.hair}`, background: "#eef7f1", color: C.ink, fontSize: 13 }}>
+            <span style={{ fontWeight: 650 }}>You&apos;re on Pro.</span>
+            <span style={{ color: C.ink55 }}>Your monthly checks are ready. Your receipt is on its way by email.</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setUpgradedNotice(false)} style={{ marginLeft: "auto", border: 0, background: "transparent", cursor: "pointer", fontSize: 18, color: "inherit" }}>×</button>
+          </div>
+        )}
+        {uploadRejection && !isPhoneVerificationMessage(uploadRejection.action) && (
           <div
             role="alert"
             data-testid="verify-upload-rejection"
@@ -773,7 +838,7 @@ export function VerifyApp({
                 Sign in again
               </Link>
             ) : isLifetimeQuotaErrorMessage(uploadRejection.action) ? (
-              <a href="/history" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>Review usage and contact options</a>
+              <span style={{ marginLeft: "auto" }}><UpgradeButton style={{ minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }} /></span>
             ) : <button
               type="button"
               onClick={() => uploadRejection.retryFile ? void runVerify(uploadRejection.retryFile) : pickOwnFile()}
@@ -1017,7 +1082,7 @@ function GuidedExampleBar({
         </p>
       </div>
       {lifetimeQuota ? (
-        <a href="/history" style={guidedBarButton(C.cond)}>Review usage and contact options</a>
+        <UpgradeButton style={guidedBarButton(C.cond)} />
       ) : failed ? (
         <button type="button" onClick={onRetry} style={guidedBarButton(C.cond)}>
           Retry example

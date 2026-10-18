@@ -32,17 +32,38 @@ export function apiProblemDetail(payload: unknown): string | null {
 /** Preserve allowance scope: only rolling quotas recover by waiting. */
 export function apiQuotaMessage(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
-  const body = payload as { code?: unknown; detail?: unknown; window_days?: unknown };
+  const body = payload as { code?: unknown; detail?: unknown; window_days?: unknown; resets_at?: unknown };
   const nested = body.detail && typeof body.detail === "object"
-    ? body.detail as { code?: unknown; window_days?: unknown } : null;
+    ? body.detail as { code?: unknown; window_days?: unknown; resets_at?: unknown } : null;
   const code = nested?.code ?? body.code;
   if (typeof code !== "string" || !["org_validation_cap_exceeded", "user_validation_cap_exceeded", "org_quota_exceeded"].includes(code)) return null;
   const detail = apiProblemDetail(payload);
   const windowDays = nested?.window_days ?? body.window_days;
+  const resetsAt = nested?.resets_at ?? body.resets_at;
+  const rolling = (typeof windowDays === "number" && windowDays > 0) || /in the trailing [1-9]\d* days/.test(detail ?? "");
   // Older servers describe the organization window only in their message.
-  const resets = code === "org_quota_exceeded" || (typeof windowDays === "number" && windowDays > 0)
-    || /in the trailing [1-9]\d* days/.test(detail ?? "");
-  return `Verification allowance used up${resets ? " for now" : ""}. ${detail ? `${detail.replace(/[.!?]+$/, "")}. ` : ""}${resets ? "Retry after the rolling allowance becomes available. " : ""}Contact your workspace administrator or the ScaleCad team to review your allowance.`;
+  const resets = code === "org_quota_exceeded" || rolling || (typeof resetsAt === "string" && resetsAt.length > 0);
+  const sentence = detail ? `${detail.replace(/[.!?]+$/, "")}. ` : "";
+  const retry = rolling || code === "org_quota_exceeded" ? "Retry after the rolling allowance becomes available. " : "";
+  // A person's own allowance names its plan and next step in the detail itself.
+  const contact = code === "user_validation_cap_exceeded" ? "" : "Contact your workspace administrator or the ScaleCad team to review your allowance.";
+  return `Verification allowance used up${resets ? " for now" : ""}. ${sentence}${retry}${contact}`.trim();
+}
+
+/** The free allowance needs a verified phone first (SMS_VERIFICATION_REQUIRED). */
+export const PHONE_VERIFICATION_PREFIX = "Verify your phone number";
+
+export function isPhoneVerificationMessage(message: string | null | undefined): boolean {
+  return Boolean(message?.startsWith(PHONE_VERIFICATION_PREFIX));
+}
+
+function phoneVerificationMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const body = payload as { code?: unknown; detail?: { code?: unknown } };
+  const code = body.detail && typeof body.detail === "object" ? body.detail.code : body.code;
+  if (code !== "phone_verification_required") return null;
+  const detail = apiProblemDetail(payload);
+  return detail?.startsWith(PHONE_VERIFICATION_PREFIX) ? detail : `${PHONE_VERIFICATION_PREFIX} to start your free checks.`;
 }
 
 export function isQuotaErrorMessage(message: string | null | undefined): boolean {
@@ -75,10 +96,12 @@ export function apiRecoveryMessage({
   const detail = apiProblemDetail(payload);
   const body = payload && typeof payload === "object" ? payload as { code?: string; detail?: { code?: string } } : null;
   if (body?.code === "paid_access_required" || body?.detail?.code === "paid_access_required") {
-    return detail ?? "Request paid access to use this tool. Your free allowance includes 10 single-part CAD checks.";
+    return detail ?? "This tool is part of a pilot or Enterprise plan. Your plan covers single-part checks.";
   }
   const quota = (status === 403 || status === 429) ? apiQuotaMessage(payload) : null;
   if (quota) return quota;
+  const phone = status === 403 ? phoneVerificationMessage(payload) : null;
+  if (phone) return phone;
 
   if (status === 401) {
     return `Your session expired. Sign in again, then retry the ${resource} action.`;

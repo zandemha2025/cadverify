@@ -73,8 +73,11 @@ try {
   await page.getByRole('heading', { name: 'Nazeem Ahmed · Founder' }).waitFor();
   await visit('/pricing');
   await page.getByRole('heading', { name: '$7,500 pilot · 4–6 weeks · up to 500 parts' }).waitFor();
-  await page.getByRole('heading', { name: 'Free qualification · 25 parts' }).waitFor();
-  assert.match(await page.locator('main').innerText(), /Credit the \$7,500 pilot fee toward your first-year annual agreement/);
+  await page.getByRole('heading', { name: 'Not sure yet? Free 25-part review' }).waitFor();
+  await page.getByRole('heading', { name: /^Pro · / }).waitFor();
+  await page.getByRole('heading', { name: 'Free · $0' }).waitFor();
+  assert.match(await page.locator('main').innerText(), /Counts toward your first year if you continue/);
+  assert.doesNotMatch(await page.locator('main').innerText(), /lifetime|paid access/i);
   await page.screenshot({ path: output + 'pricing-desktop.png', fullPage: true });
   await visit('/contact');
   assert.equal(await page.locator('main a[href="mailto:nazeem@scalecad.ai"]').count(), 2);

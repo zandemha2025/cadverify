@@ -3,17 +3,21 @@ import { Suspense } from "react";
 import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
 import { publicPasswordSignupEnabled } from "@/lib/public-signup";
 import { SignupForm } from "./signup-form";
+import { getPlans } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
-export default function SignupPage() {
+export default async function SignupPage() {
   const publicPasswordSignup = publicPasswordSignupEnabled(
     process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED,
     process.env.RELEASE,
   );
   const magicEnabled = process.env.MAGIC_LINK_UI_ENABLED === "1";
   const ssoLoginPath = (process.env.SSO_LOGIN_PATH || "").trim();
-  if (publicPasswordSignup) return <Suspense fallback={<p>Loading account form…</p>}><SignupForm /></Suspense>;
+  if (publicPasswordSignup) {
+    const { free } = await getPlans();
+    return <Suspense fallback={<p>Loading account form…</p>}><SignupForm freeChecks={{ work: free.work_checks, personal: free.personal_checks }} /></Suspense>;
+  }
 
   if (!magicEnabled) {
     return (

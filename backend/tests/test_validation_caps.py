@@ -1,4 +1,4 @@
-"""Real PostgreSQL checks for lifetime credits, races and refunds.
+"""Real PostgreSQL checks for check allowances, races and refunds.
 
 Run with DATABASE_URL pointing at a local/CI PostgreSQL. Each test creates and
 removes its own isolated schema; no existing application rows are touched.
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.auth import validation_caps as vc
 from src.auth.require_api_key import AuthedUser, require_api_key
-from src.db.models import TrialCheck
+from src.db.models import BillingAccount, TrialCheck
 
 
 @pytest_asyncio.fixture
@@ -33,10 +33,18 @@ async def ledger(monkeypatch):
     engine = create_async_engine(url, connect_args={'server_settings': {'search_path': schema}})
     try:
         async with engine.begin() as connection:
-            await connection.execute(text('CREATE TABLE users (id bigint PRIMARY KEY, plan text NOT NULL)'))
+            await connection.execute(text(
+                'CREATE TABLE users (id bigint PRIMARY KEY, plan text NOT NULL, email_lower text, '
+                'free_check_grant integer, phone_verified_at timestamptz)'
+            ))
             await connection.execute(text('CREATE TABLE evidence (user_id bigint REFERENCES users(id) DEFERRABLE INITIALLY DEFERRED)'))
             await connection.run_sync(TrialCheck.__table__.create)
-            await connection.execute(text("INSERT INTO users VALUES (1, 'trial'), (2, 'trial'), (3, 'pilot')"))
+            await connection.run_sync(BillingAccount.__table__.create)
+            # Users 1-3 predate email tiers and keep the grandfathered 10-check grant.
+            await connection.execute(text(
+                "INSERT INTO users VALUES (1, 'trial', 'one@gmail.com', 10, NULL), "
+                "(2, 'trial', 'two@acme-aero.com', 10, NULL), (3, 'pilot', 'ops@acme-aero.com', NULL, NULL)"
+            ))
         factory = async_sessionmaker(engine, expire_on_commit=False)
         monkeypatch.setattr(vc, 'get_session_factory', lambda: factory)
         yield factory
@@ -216,3 +224,93 @@ async def test_allowance_lock_does_not_block_existing_result_foreign_keys(ledger
         assert await asyncio.wait_for(vc.reserve_check(1, check, 'file', 'analysis'), timeout=5)
         await asyncio.wait_for(vc.finish_check(1, check, 'analysis', True), timeout=5)
     assert (await vc.user_trial_usage(1))['used'] == 1
+
+
+async def _add_user(ledger, user_id, plan, email, grant=None):
+    async with ledger() as session, session.begin():
+        await session.execute(text('INSERT INTO users VALUES (:id, :plan, :email, :grant, NULL)'),
+                              {'id': user_id, 'plan': plan, 'email': email, 'grant': grant})
+
+
+async def _complete(user_id, count):
+    for _ in range(count):
+        check = str(uuid4())
+        assert await vc.reserve_check(user_id, check, 'file', 'analysis')
+        await vc.finish_check(user_id, check, 'analysis', True)
+
+
+@pytest.mark.asyncio
+async def test_email_tiers_size_new_accounts_and_keep_grandfathered_grants(ledger, monkeypatch):
+    await _add_user(ledger, 4, 'trial', 'new@gmail.com')
+    await _add_user(ledger, 5, 'trial', 'eng@acme-aero.com')
+    await _add_user(ledger, 6, 'trial', 'old@yahoo.com', grant=10)
+    personal, work, legacy = [await vc.user_trial_usage(u) for u in (4, 5, 6)]
+    assert (personal['cap'], personal['tier']) == (3, 'personal')
+    assert (work['cap'], work['tier']) == (15, 'work')
+    assert (legacy['cap'], legacy['tier']) == (10, 'personal')
+    # A grandfathered work account gets the larger work tier.
+    assert (await vc.user_trial_usage(2))['cap'] == 15
+
+    await _complete(4, 3)
+    with pytest.raises(vc.HTTPException) as exhausted:
+        await vc.reserve_check(4, str(uuid4()), 'file', 'analysis')
+    detail = exhausted.value.detail
+    assert exhausted.value.status_code == 403
+    assert detail['code'] == 'user_validation_cap_exceeded'
+    assert (detail['cap'], detail['tier'], detail['plan']) == (3, 'personal', 'trial')
+    assert 'Your 3 free checks' in detail['message'] and 'lifetime' not in detail['message']
+
+    # Operators tune both tiers without a deploy of new code.
+    monkeypatch.setenv('FREE_CHECKS_PERSONAL', '5')
+    monkeypatch.setenv('FREE_CHECKS_WORK', '20')
+    assert (await vc.user_trial_usage(4))['remaining'] == 2
+    assert (await vc.user_trial_usage(5))['cap'] == 20
+    assert (await vc.user_trial_usage(6))['cap'] == 10
+
+
+@pytest.mark.asyncio
+async def test_pro_counts_only_the_current_billing_period_and_lapses_to_free(ledger, monkeypatch):
+    monkeypatch.setenv('PRO_MONTHLY_CHECKS', '4')
+    now = datetime.now(timezone.utc)
+    await _add_user(ledger, 7, 'trial', 'buyer@acme-aero.com')
+    await _complete(7, 15)  # the whole free tier, used before upgrading
+    async with ledger() as session, session.begin():
+        await session.execute(update(TrialCheck).where(TrialCheck.user_id == 7).values(created_at=now - timedelta(days=3)))
+        await session.execute(text("UPDATE users SET plan = 'pro' WHERE id = 7"))
+        session.add(BillingAccount(user_id=7, stripe_customer_id='cus_test7', stripe_subscription_id='sub_test7',
+                                   status='active', current_period_start=now - timedelta(days=1),
+                                   current_period_end=now + timedelta(days=29)))
+    usage = await vc.user_trial_usage(7)
+    assert (usage['plan'], usage['cap'], usage['used'], usage['remaining']) == ('pro', 4, 0, 4)
+    assert usage['resets_at'] is not None
+    await _complete(7, 4)
+    with pytest.raises(vc.HTTPException) as exhausted:
+        await vc.reserve_check(7, str(uuid4()), 'file', 'analysis')
+    assert exhausted.value.detail['plan'] == 'pro'
+    assert "this month's 4 Pro checks" in exhausted.value.detail['message']
+    # Past due keeps access while Stripe retries the card.
+    async with ledger() as session, session.begin():
+        await session.execute(update(BillingAccount).where(BillingAccount.user_id == 7).values(status='past_due'))
+    assert (await vc.user_trial_usage(7))['plan'] == 'pro'
+    # A cancelled subscription falls back to the free allowance, already spent.
+    async with ledger() as session, session.begin():
+        await session.execute(update(BillingAccount).where(BillingAccount.user_id == 7).values(status='canceled'))
+    lapsed = await vc.user_trial_usage(7)
+    assert (lapsed['plan'], lapsed['cap'], lapsed['used'], lapsed['remaining']) == ('trial', 15, 19, 0)
+
+
+@pytest.mark.asyncio
+async def test_phone_gate_holds_free_checks_until_verified(ledger, monkeypatch):
+    await _add_user(ledger, 8, 'trial', 'new@acme-aero.com')
+    assert await vc.reserve_check(8, str(uuid4()), 'file', 'analysis')  # off by default
+    monkeypatch.setenv('SMS_VERIFICATION_REQUIRED', '1')
+    assert (await vc.user_trial_usage(8))['phone_verification_required'] is True
+    with pytest.raises(vc.HTTPException) as gated:
+        await vc.reserve_check(8, str(uuid4()), 'file', 'analysis')
+    assert gated.value.detail['code'] == 'phone_verification_required'
+    # Pilot accounts are never gated.
+    assert not await vc.reserve_check(3, str(uuid4()), 'file', 'analysis')
+    async with ledger() as session, session.begin():
+        await session.execute(text('UPDATE users SET phone_verified_at = now() WHERE id = 8'))
+    assert (await vc.user_trial_usage(8))['phone_verification_required'] is False
+    assert await vc.reserve_check(8, str(uuid4()), 'file', 'analysis')

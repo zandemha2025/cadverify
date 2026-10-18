@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
+import { browserPendingPartStore, peekPendingPart } from "@/lib/pending-part";
 
 function safeLocalPath(raw: unknown): string {
   if (typeof raw !== "string") return "/verify";
@@ -18,12 +19,16 @@ function safeLocalPath(raw: unknown): string {
 
 export function MagicVerifyClient() {
   const [token, setToken] = React.useState<string | null>(null);
+  const [next, setNext] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const fragment = new URLSearchParams(window.location.hash.slice(1)).get("token");
+    const fragmentParams = new URLSearchParams(window.location.hash.slice(1));
+    const fragment = fragmentParams.get("token");
+    const requestedNext = fragmentParams.get("next");
+    if (requestedNext) setNext((captured) => captured ?? safeLocalPath(requestedNext));
     const query = new URLSearchParams(window.location.search).get("token");
     const candidate = fragment || query;
     // Remove both fragment and legacy query tokens immediately. The token stays
@@ -50,7 +55,9 @@ export function MagicVerifyClient() {
         setError(authErrorMessage(res.status, data, "Magic link invalid or expired."));
         return;
       }
-      const redirect = safeLocalPath(data?.redirect);
+      // A part held from sign-in checks itself first; then the page they came from.
+      const heldPart = await peekPendingPart(browserPendingPartStore());
+      const redirect = heldPart ? "/verify" : next ?? safeLocalPath(data?.redirect);
       window.history.replaceState(null, "", "/magic/verify");
       window.location.href = redirect;
     } catch {

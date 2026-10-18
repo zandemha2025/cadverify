@@ -6,6 +6,8 @@ import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/aut
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { safeLocalPath } from "@/lib/safe-return-path";
 import { authErrorMessage } from "@/lib/api-recovery";
+import { PartDrop } from "@/components/auth/part-drop";
+import { browserPendingPartStore, holdPendingPart } from "@/lib/pending-part";
 
 const POST_LOGIN_HOME = "/verify";
 
@@ -14,11 +16,13 @@ export function LoginForm({
   nonce,
   passwordEnabled,
   ssoLoginPath,
+  freeChecks,
 }: {
   turnstileSiteKey?: string;
   nonce?: string;
   passwordEnabled: boolean;
   ssoLoginPath?: string;
+  freeChecks?: { work: number; personal: number };
 }) {
   const params = useSearchParams();
   const next = safeLocalPath(params.get("next"), POST_LOGIN_HOME);
@@ -32,6 +36,7 @@ export function LoginForm({
   const [magicLoading, setMagicLoading] = React.useState(false);
   const [turnstileToken, setTurnstileToken] = React.useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = React.useState(0);
+  const [pendingPart, setPendingPart] = React.useState<File | null>(null);
 
   React.useEffect(() => setHydrated(true), []);
 
@@ -67,10 +72,12 @@ export function LoginForm({
     setMagicError(null);
     setMagicLoading(true);
     try {
+      // Hold the part before sending, so the link can never arrive first.
+      const held = pendingPart ? await holdPendingPart(browserPendingPartStore(), pendingPart, magicEmail) : false;
       const res = await fetch("/api/auth/magic/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: magicEmail, turnstileToken }),
+        body: JSON.stringify({ email: magicEmail, turnstileToken, ...(next !== POST_LOGIN_HOME ? { next } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -78,7 +85,7 @@ export function LoginForm({
         setTurnstileReset((value) => value + 1);
         return;
       }
-      window.location.href = "/magic/sent";
+      window.location.href = held ? "/magic/sent?part=1" : "/magic/sent";
     } catch {
       setMagicError("Could not send a sign-in link. Please try again.");
       setTurnstileReset((value) => value + 1);
@@ -94,7 +101,9 @@ export function LoginForm({
       body={
         ssoLoginPath && !passwordEnabled
           ? "Continue through your organization's approved identity provider."
-          : "Welcome back. Enter your email and password."
+          : passwordEnabled
+            ? "Welcome back. Enter your email and password."
+            : "New or returning, enter your email. We'll send a one-time sign-in link."
       }
       footer={
         passwordEnabled || turnstileSiteKey ? (
@@ -172,7 +181,9 @@ export function LoginForm({
               value={magicEmail}
               error={magicError}
               onChange={(e) => setMagicEmail(e.target.value)}
+              hint={freeChecks && !magicError ? `New here? A work email gets ${freeChecks.work} free checks, a personal one ${freeChecks.personal}. No credit card.` : undefined}
             />
+            <PartDrop file={pendingPart} onFile={setPendingPart} />
             <TurnstileWidget
               siteKey={turnstileSiteKey}
               nonce={nonce}

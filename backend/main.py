@@ -53,6 +53,7 @@ from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
 from src.api.designs import router as designs_router
+from src.api.billing import router as billing_router, webhook_router as billing_webhook_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -60,6 +61,7 @@ from src.auth.oauth import router as oauth_router
 from src.auth.oidc import oidc_provider_enabled, router as oidc_router
 from src.auth.password import router as password_router
 from src.auth.password_reset import router as password_reset_router
+from src.auth.phone_verify import router as phone_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
@@ -543,6 +545,13 @@ app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
 # revisions. Generation runs on the existing worker plane; no generated source
 # code is ever executed.
 app.include_router(designs_router, prefix="/api/v1/designs", tags=["designs"])
+# Self-serve Pro billing (Stripe Checkout + portal) and its signed webhook.
+# Off unless the STRIPE_* settings are present.
+app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
+app.include_router(billing_webhook_router, prefix="/billing")
+# SMS phone verification for free accounts (Twilio Verify); gating is opt-in
+# via SMS_VERIFICATION_REQUIRED.
+app.include_router(phone_router, prefix="/api/v1/account/phone", tags=["account"])
 # SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
 # than under /api/v1 so Okta/Entra can target it directly.
 app.include_router(scim_router)

@@ -4,23 +4,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ArrowUpRight, Box, Menu, X } from "lucide-react";
-import { SITE_TAGLINE, SITE_NAV } from "@/lib/site/navigation";
+import { SITE_TAGLINE, SITE_NAV, APP_HOME_HREF, SIGNUP_HREF } from "@/lib/site/navigation";
+import { useSignedIn } from "./signed-in";
 export { SITE_TAGLINE, SITE_NAV, PILOT_HREF, UPLOAD_HREF } from "@/lib/site/navigation";
 
 export type SiteNavProps = { variant?: "cinematic" | "document"; activeHref?: string };
 export function SiteNav({ activeHref }: SiteNavProps) {
   const pathname = usePathname();
+  const signedIn = useSignedIn();
   const [open, setOpen] = useState(false);
   const active = activeHref ?? pathname;
   return (
     <header className="cv-site-nav">
       <a className="cv-skip" href="#main">Skip to content</a>
       <Link href="/" className="cv-brand" aria-label="ScaleCad home"><Box size={27} strokeWidth={1.7} aria-hidden="true" />ScaleCad<span className="cv-brand-dot">.</span></Link>
+      <Link href={signedIn ? APP_HOME_HREF : SIGNUP_HREF} className="cv-button cv-button-small cv-nav-cta-mobile">{signedIn ? "Open ScaleCad" : "Try free"}</Link>
       <button className="cv-menu-toggle" type="button" aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open} aria-controls="site-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
       <nav id="site-navigation" className="cv-site-links" data-open={open} aria-label="Primary" onClick={() => setOpen(false)} onKeyDown={e => { if (e.key === "Escape") { setOpen(false); document.querySelector<HTMLButtonElement>(".cv-menu-toggle")?.focus(); } }}>
         {SITE_NAV.map(item => <Link key={item.href} href={item.href} aria-current={active === item.href || active?.startsWith(item.href + "/") ? "page" : undefined}>{item.label}</Link>)}
-        <Link href="/login" className="cv-login-link">Log in</Link>
-        <Link href="/sample" className="cv-button cv-button-small">Try a sample <ArrowUpRight size={16} aria-hidden="true" /></Link>
+        {signedIn ? (
+          <Link href={APP_HOME_HREF} className="cv-button cv-button-small cv-button-secondary">Open ScaleCad <ArrowUpRight size={16} aria-hidden="true" /></Link>
+        ) : <>
+          <Link href="/login" className="cv-login-link">Log in</Link>
+          <Link href={SIGNUP_HREF} className="cv-button cv-button-small cv-button-cta">Try ScaleCad free <ArrowUpRight size={16} aria-hidden="true" /></Link>
+        </>}
       </nav>
     </header>
   );
