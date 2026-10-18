@@ -469,14 +469,31 @@ async def reopen_owned(
     return d
 
 
-def _disposition_estimate(result_json: object, quantity: int | None) -> dict | None:
-    """Resolve an exact engine recommendation; never accept a client-priced route."""
+def _disposition_estimate(
+    result_json: object,
+    quantity: int | None,
+    process: str | None = None,
+    material: str | None = None,
+) -> dict | None:
+    """Resolve an exact engine estimate; never accept a client-priced route.
+
+    Without ``process`` this is the engine's own recommendation at the quantity
+    (the cheapest eligible route). With ``process`` (and optionally ``material``)
+    it is the user's chosen route, which must be one of this decision's own
+    estimates at exactly that quantity. An ambiguous choice (one process costed
+    in several materials, no material named) resolves to nothing.
+    """
     if not isinstance(result_json, dict):
         return None
     estimates = [e for e in result_json.get("estimates", []) if isinstance(e, dict)]
     quantities = [e["quantity"] for e in estimates if type(e.get("quantity")) is int and e["quantity"] > 0]
     if quantity is None:
         quantity = min(quantities, default=None)
+    if process is not None:
+        chosen = [e for e in estimates if e.get("quantity") == quantity
+                  and e.get("process") == process
+                  and (material is None or e.get("material") == material)]
+        return chosen[0] if len(chosen) == 1 else None
     decision = result_json.get("decision") or {}
     recommendations = decision.get("recommendation") or {}
     pick = recommendations.get(str(quantity), recommendations.get(quantity)) if recommendations else {
@@ -503,6 +520,25 @@ def _inhouse_disposition_error(result_json: dict, estimate: dict | None) -> str 
     return None
 
 
+def _chosen_route_error(disposition: str, estimate: dict) -> str | None:
+    """Rules for a route the user picked instead of the engine's cheapest.
+
+    A route the declared service environment rules out can't carry any outcome,
+    and Make outside means making the part as drawn, so its route must pass DFM.
+    Redesign and Acquire capability may name a DFM-blocked route: that is the
+    route the redesign or the investment is for.
+    """
+    if estimate.get("environment_excluded"):
+        return "The declared service conditions rule out this route. Choose a route that survives them."
+    if disposition == "outside" and (
+        estimate.get("dfm_ready") is not True
+        or estimate.get("dfm_verdict") == "fail"
+        or estimate.get("dfm_blockers")
+    ):
+        return "This route can't make the part as drawn. Record Redesign for it, or choose a route that passes DFM."
+    return None
+
+
 async def set_disposition_owned(
     session: AsyncSession,
     ulid: str,
@@ -511,6 +547,8 @@ async def set_disposition_owned(
     disposition: Optional[str],
     note: Optional[str] = None,
     quantity: int | None = None,
+    process: str | None = None,
+    material: str | None = None,
 ) -> CostDecision:
     """Persist or withdraw the human outcome on an owned cost decision.
 
@@ -519,11 +557,18 @@ async def set_disposition_owned(
     approval, because a prior signoff must never silently govern a new outcome.
     Repeating an identical PUT is idempotent and does not rewrite timestamps or
     append duplicate audit entries.
+
+    ``process``/``material`` record the route the user chose. Without them the
+    basis is the engine's recommendation at the quantity (the original
+    behaviour). With them the route must be one of this decision's own
+    estimates at that quantity. A note-only edit keeps the recorded route.
     """
     if disposition is not None and disposition not in DISPOSITION_LABELS:
         raise HTTPException(status_code=400, detail="Invalid decision disposition")
     if quantity is not None and (type(quantity) is not int or quantity <= 0):
         raise HTTPException(status_code=400, detail="Quantity must be a positive whole number")
+    if material is not None and process is None:
+        raise HTTPException(status_code=400, detail="Name the process along with its material")
     if note is not None and len(note) > 1000:
         raise HTTPException(
             status_code=400,
@@ -538,14 +583,30 @@ async def set_disposition_owned(
     basis = previous_basis if disposition is not None else None
     estimate = None
     if disposition is not None:
-        if quantity is not None or previous is None or previous_basis:
-            selected_quantity = quantity if quantity is not None else (previous_basis or {}).get("quantity")
-            estimate = _disposition_estimate(d.result_json, selected_quantity)
+        if quantity is not None or process is not None or previous is None or previous_basis:
+            prior = previous_basis if isinstance(previous_basis, dict) else {}
+            selected_quantity = quantity if quantity is not None else prior.get("quantity")
+            chosen = process is not None
+            if chosen:
+                estimate = _disposition_estimate(d.result_json, selected_quantity, process, material)
+                if not estimate:
+                    raise HTTPException(status_code=409, detail="This decision has no single computed estimate for that route at this quantity. Pick a route and quantity from the record.")
+                error = _chosen_route_error(disposition, estimate)
+                if error:
+                    raise HTTPException(status_code=409, detail=error)
+            elif quantity is None and prior.get("process"):
+                # A note-only edit keeps the route already on the record,
+                # including one the user chose over the cheapest.
+                estimate = _disposition_estimate(
+                    d.result_json, selected_quantity, prior.get("process"), prior.get("material")
+                )
+            else:
+                estimate = _disposition_estimate(d.result_json, selected_quantity)
             if not estimate:
                 raise HTTPException(status_code=409, detail="No exact computed recommendation exists at this quantity. Re-verify before recording an outcome.")
             basis = {key: estimate[key] for key in ("process", "material", "quantity")}
         # Note-only edits preserve historical outcomes, including unscoped legacy records.
-        if disposition == "inhouse" and (quantity is not None or previous != disposition):
+        if disposition == "inhouse" and (quantity is not None or process is not None or previous != disposition):
             error = _inhouse_disposition_error(d.result_json, estimate)
             if error:
                 raise HTTPException(status_code=409, detail=error)

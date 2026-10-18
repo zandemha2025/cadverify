@@ -60,6 +60,10 @@ class DispositionBody(BaseModel):
     disposition: Literal["inhouse", "outside", "acquire", "redesign"] | None
     note: str | None = Field(default=None, max_length=1000)
     quantity: int | None = Field(default=None, gt=0, strict=True)
+    # The route the user chose. Omitted: the engine's recommendation at the
+    # quantity (the cheapest eligible route), as before.
+    process: str | None = Field(default=None, min_length=1, max_length=64)
+    material: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 def _parse_dt(value: str, field: str) -> datetime:
@@ -196,6 +200,8 @@ async def set_cost_decision_disposition(
         disposition=body.disposition,
         note=body.note,
         quantity=body.quantity,
+        process=body.process,
+        material=body.material,
     )
     return {"id": d.ulid, **svc.governance_fields(d)}
 

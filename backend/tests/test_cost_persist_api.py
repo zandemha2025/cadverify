@@ -705,6 +705,111 @@ def test_disposition_contract_is_documented_in_openapi(client):
     assert note_schema["maxLength"] == 1000
 
 
+def _route_choice_decision(real_result_json, ulid):
+    report = copy.deepcopy(real_result_json)
+    rec = report["decision"]["recommendation"]["50"]
+    chosen = next(
+        e for e in report["estimates"]
+        if e["quantity"] == 50 and e["dfm_ready"] and e["dfm_verdict"] != "fail"
+        and not e["dfm_blockers"] and e["process"] != rec["process"]
+    )
+    blocked = next(e for e in report["estimates"] if e["quantity"] == 50 and e["dfm_verdict"] == "fail")
+    report["verification"] = {"verdict": "makeable_in_house", "per_route": {
+        chosen["process"]: {"verdict": "makeable_in_house"},
+        rec["process"]: {"verdict": "makeable_outsource_only"},
+    }}
+    return report, rec, chosen, blocked, _make_decision(ulid, report)
+
+
+def test_disposition_records_the_route_the_user_chose(client, real_result_json):
+    cl, app = client
+    report, rec, chosen, _blocked, dec = _route_choice_decision(real_result_json, "01DISPROUTECHOSEN000000000A")
+    session = _session_returning(scalar_one=dec)
+    _override(app, session)
+    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
+    original = copy.deepcopy(report)
+    basis = {"process": chosen["process"], "material": chosen["material"], "quantity": 50}
+
+    saved = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"],
+                              "material": chosen["material"], "note": "Second source"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["disposition_basis"] == basis
+    assert dec.disposition_basis == basis
+    # The material may be omitted when the process is costed in one material only.
+    by_process = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"],
+                                   "note": "Second source"})
+    assert by_process.status_code == 200 and by_process.json()["disposition_basis"] == basis
+    # A note-only edit keeps the chosen route instead of snapping back to the cheapest.
+    edited = cl.put(url, json={"disposition": "outside", "note": "Updated"})
+    assert edited.status_code == 200 and edited.json()["disposition_basis"] == basis
+    # Changing the outcome keeps the route and checks it: this route fits a machine you own.
+    inhouse = cl.put(url, json={"disposition": "inhouse", "note": "Updated"})
+    assert inhouse.status_code == 200, inhouse.text
+    assert inhouse.json()["disposition_basis"] == basis
+    # The cheapest route has no owned machine, so it can't be recorded in-house.
+    refused = cl.put(url, json={"disposition": "inhouse", "quantity": 50, "process": rec["process"]})
+    assert refused.status_code == 409, refused.text
+    assert dec.disposition_basis == basis
+    # The original body (quantity only) still records the engine's recommendation.
+    legacy = cl.put(url, json={"disposition": "outside", "quantity": 50})
+    assert legacy.status_code == 200
+    assert legacy.json()["disposition_basis"] == {"process": rec["process"], "material": rec["material"], "quantity": 50}
+    assert dec.result_json == original
+
+
+def test_chosen_route_must_be_an_estimate_of_this_decision(client, real_result_json):
+    cl, app = client
+    report, _rec, chosen, _blocked, dec = _route_choice_decision(real_result_json, "01DISPROUTEUNKNOWN00000000A")
+    _override(app, _session_returning(scalar_one=dec))
+    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
+
+    for body in (
+        {"disposition": "outside", "quantity": 50, "process": "laser_magic"},
+        {"disposition": "outside", "quantity": 100, "process": chosen["process"]},
+        {"disposition": "outside", "quantity": 50, "process": chosen["process"], "material": "Unobtainium"},
+    ):
+        r = cl.put(url, json=body)
+        assert r.status_code == 409, (body, r.text)
+    assert cl.put(url, json={"disposition": "outside", "quantity": 50, "material": chosen["material"]}).status_code == 400
+    assert cl.put(url, json={"disposition": "outside", "quantity": 50, "process": ""}).status_code == 422
+    assert cl.put(url, json={"disposition": "outside", "quantity": 50, "process": "x" * 65}).status_code == 422
+    assert dec.user_disposition is None
+
+    # The same process costed in two materials needs the material named.
+    twin = copy.deepcopy(chosen)
+    twin["material"] = chosen["material"] + " (alt)"
+    report["estimates"].append(twin)
+    ambiguous = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"]})
+    assert ambiguous.status_code == 409
+    named = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"],
+                              "material": twin["material"]})
+    assert named.status_code == 200, named.text
+    assert named.json()["disposition_basis"]["material"] == twin["material"]
+
+
+def test_chosen_route_respects_dfm_and_service_conditions(client, real_result_json):
+    cl, app = client
+    _report, _rec, chosen, blocked, dec = _route_choice_decision(real_result_json, "01DISPROUTERULES000000000A")
+    _override(app, _session_returning(scalar_one=dec))
+    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
+    route = {"quantity": 50, "process": blocked["process"], "material": blocked["material"]}
+
+    outside = cl.put(url, json={"disposition": "outside", **route})
+    assert outside.status_code == 409 and "as drawn" in outside.json()["message"]
+    inhouse = cl.put(url, json={"disposition": "inhouse", **route})
+    assert inhouse.status_code == 409
+    redesign = cl.put(url, json={"disposition": "redesign", "note": "Add draft", **route})
+    assert redesign.status_code == 200, redesign.text
+    assert redesign.json()["disposition_basis"] == {"process": blocked["process"], "material": blocked["material"], "quantity": 50}
+
+    chosen["environment_excluded"] = True  # the record's own estimate, ruled out by the conditions
+    for disposition in ("outside", "acquire", "redesign"):
+        r = cl.put(url, json={"disposition": disposition, "quantity": 50, "process": chosen["process"]})
+        assert r.status_code == 409, (disposition, r.text)
+        assert "service conditions" in r.json()["message"]
+    assert dec.user_disposition == "redesign"
+
+
 @pytest.mark.asyncio
 async def test_mark_org_decisions_stale_dispatches_update():
     from src.services import cost_decision_service as svc
