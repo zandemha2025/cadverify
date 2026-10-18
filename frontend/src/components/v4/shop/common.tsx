@@ -7,6 +7,7 @@
  */
 import * as React from "react";
 import Link from "next/link";
+import { API_BASE } from "@/lib/api-base";
 import { effectiveRateCard, listRateVersions, type EffectiveRateCard, type RateVersionsPage } from "@/lib/verify/rate-api";
 import { World, cx } from "../ui";
 import { rateCardView, type RateCardView } from "./shop-derive";
@@ -413,8 +414,8 @@ export function LaborFact({ src }: { src: LaborSource }) {
   if (src == null) return <span>Labor …</span>;
   if (src === "none")
     return (
-      <span>
-        Labor <b>not set</b>
+      <span title="The default card's labor rate; its value shows after your first check">
+        Labor <b>typical</b>
       </span>
     );
   const v = `$${src.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}/h`;
@@ -425,3 +426,32 @@ export function LaborFact({ src }: { src: LaborSource }) {
   );
 }
 
+
+/* ------------------------------------------------------------------ */
+/*  The active organization and your role in it                         */
+/* ------------------------------------------------------------------ */
+
+export type OrgInfo = { id: string; name: string; role: string } | "none" | null;
+
+export function useOrg(): OrgInfo {
+  const [org, setOrg] = React.useState<OrgInfo>(null);
+  React.useEffect(() => {
+    let live = true;
+    fetch(`${API_BASE}/orgs`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { active_org_id?: string; organizations?: { org_id: string; name: string; org_role: string; is_active?: boolean }[] } | null) => {
+        if (!live) return;
+        const o = b?.organizations?.find((x) => x.org_id === b.active_org_id) ?? b?.organizations?.find((x) => x.is_active) ?? null;
+        setOrg(o ? { id: o.org_id, name: o.name, role: o.org_role } : "none");
+      })
+      .catch(() => live && setOrg("none"));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return org;
+}
+
+export function isOrgAdmin(org: OrgInfo): boolean {
+  return !!org && org !== "none" && (org.role === "admin" || org.role === "owner");
+}

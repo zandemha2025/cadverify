@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { RatesScreen } from "@/components/v4/shop/rates-screen";
 
 export default function Page() {
-  return <Stub title="Rates" section="shop" board="S1" />;
+  return <RatesScreen />;
 }
