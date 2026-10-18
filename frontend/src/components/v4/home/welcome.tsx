@@ -252,14 +252,24 @@ export function useGetStarted(autoOpen: boolean) {
   const { usage } = useShell();
   const [open, setOpen] = React.useState<"closed" | "welcome" | "quota">("closed");
 
+  // `?welcome=1` stays in the address while the guide is open (a reload keeps it
+  // open) and is removed when it closes.
   React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("welcome") === "1") setOpen("welcome");
+  }, []);
+  const wasOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (open !== "closed") {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("welcome") !== "1") return;
-    setOpen("welcome");
     params.delete("welcome");
     const rest = params.toString();
-    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
-  }, []);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+  }, [open]);
 
   React.useEffect(() => {
     if (autoOpen && !welcomeSeen()) setOpen((o) => (o === "closed" ? "welcome" : o));
