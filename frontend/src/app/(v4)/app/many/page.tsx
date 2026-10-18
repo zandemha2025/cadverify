@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { BatchesScreen } from "@/components/v4/many/batches-screen";
 
 export default function Page() {
-  return <Stub title="Batches" section="many" board="M4 / M1" />;
+  return <BatchesScreen />;
 }

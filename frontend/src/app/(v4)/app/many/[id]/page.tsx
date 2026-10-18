@@ -1,5 +1,6 @@
-import { Stub } from "@/components/v4/stub";
+import { BatchRun } from "@/components/v4/many/batch-run";
 
-export default function Page() {
-  return <Stub title="Batch" section="many" board="M1" />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <BatchRun batchId={id} />;
 }
