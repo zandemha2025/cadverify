@@ -232,7 +232,8 @@ function fmtBound(v: unknown): string {
  *  own `human` string. Never invents a number the engine didn't send. */
 export function gapText(f: FitFailure): string {
   // Envelope bounds can compare a diameter to a chamber diagonal, not an axis.
-  if (f.gate === "envelope" && f.human) return f.human;
+  // A route DFM blocker's own message names the rule, unit and measured value.
+  if ((f.gate === "envelope" || f.gate === "dfm") && f.human) return f.human;
   if (isNum(f.need) && isNum(f.have)) {
     return `need ${fmtBound(f.need)}, have ${fmtBound(f.have)}`;
   }
@@ -321,8 +322,9 @@ export function marginalRate(
 }
 
 /** The top-level acquisition gap (concrete measured-vs-declared deltas) — what an
- *  org would need to acquire to make this in-house. */
+ *  org would need to acquire to make this in-house. A route DFM blocker is a
+ *  design change, not an acquisition, so it is never listed here. */
 export function acquisitionGap(v: VerificationBlock | null | undefined): FitFailure[] {
   if (!v || !Array.isArray(v.gap)) return [];
-  return v.gap;
+  return v.gap.filter((f) => f.gate !== "dfm");
 }

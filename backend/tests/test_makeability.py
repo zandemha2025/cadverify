@@ -5,6 +5,8 @@ invariants (§2), gap-analysis ordering, and the environment gate are covered.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from src.costing.makeability import (
@@ -17,6 +19,7 @@ from src.costing.makeability import (
     gap_analysis,
     environment_gate,
     part_req_from_drivers,
+    dfm_failures_from_score,
     TOLERANCE_IT_MAP,
     STANDARD_IT,
 )
@@ -726,6 +729,105 @@ def test_verdict_picks_cheapest_passing_machine():
     pricey = mill(name="pricey", rate=200)
     v = verify_part({"cnc_3axis": part()}, [pricey, cheap])
     assert v.best_machine == "cheap"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTE DFM GATE — a route whose own DFM verdict is fail is never makeable
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _thin_wall_score(process="cnc_3axis"):
+    from src.analysis.models import Issue, ProcessScore, ProcessType, Severity
+
+    pt = ProcessType(process)
+    return ProcessScore(process=pt, score=0.0, verdict="fail", issues=[
+        Issue(code="THIN_WALL", severity=Severity.ERROR, process=pt,
+              message=f"24 faces (100.0%) below 0.8mm min wall for {process}. "
+                      "Thinnest: 0.5mm.",
+              measured_value=0.5, required_value=0.8, measurement_unit="mm"),
+        Issue(code="SHARP_CORNER", severity=Severity.WARNING, process=pt,
+              message="advisory only"),
+    ])
+
+
+def _dfm_blocked(process="cnc_3axis", **kw):
+    return replace(part(process=process, **kw),
+                   dfm_failures=dfm_failures_from_score(_thin_wall_score(process)))
+
+
+def test_dfm_failures_carry_only_error_blockers_as_hard_failures():
+    (f,) = dfm_failures_from_score(_thin_wall_score())
+    assert (f.gate, f.axis, f.need, f.have) == ("dfm", "THIN_WALL", 0.8, 0.5)
+    assert f.human.startswith("24 faces (100.0%) below 0.8mm min wall")
+    assert f.have is not None  # a hard design blocker, never an "unknown"
+
+
+def test_dfm_failures_empty_unless_route_verdict_is_fail():
+    from src.analysis.models import ProcessScore, ProcessType
+
+    assert dfm_failures_from_score(None) == ()
+    issues = ProcessScore(ProcessType.CNC_3AXIS, 0.7, "issues")
+    assert dfm_failures_from_score(issues) == ()
+    # a fail verdict without a readable ERROR issue still blocks, categorically
+    (f,) = dfm_failures_from_score(ProcessScore(ProcessType.CNC_3AXIS, 0.0, "fail"))
+    assert (f.gate, f.need, f.have) == ("dfm", "pass", "fail")
+    assert "cnc_3axis" in f.human
+
+
+def test_part_req_carries_route_dfm_failures():
+    d = FakeDrivers((20, 40, 60))
+    mat = FakeMaterial("6061-T6 Aluminum", 2.7)
+    blocked = part_req_from_drivers("cnc_3axis", d, mat, "standard",
+                                    process_score=_thin_wall_score())
+    assert [f.gate for f in blocked.dfm_failures] == ["dfm"]
+    assert part_req_from_drivers("cnc_3axis", d, mat, "standard").dfm_failures == ()
+
+
+def test_verdict_dfm_fail_overrides_a_passing_owned_machine():
+    assert fit_machine(part(), mill()).passes  # the machine itself fits the part
+    v = verify_part({"cnc_3axis": _dfm_blocked()}, [mill()])
+    assert v.verdict == "not_makeable"
+    assert v.best_machine is None and v.resource is None
+    assert v.gap[0].gate == "dfm" and "0.8mm min wall" in v.gap[0].human
+    assert len(v.gap) == 1  # the fitting mill adds no acquisition gap
+    route = v.per_route["cnc_3axis"]
+    assert route["verdict"] == "not_makeable"
+    assert route["best_machine"] == "Haas VF-2"  # closest owned machine
+    assert [f.gate for f in route["failures"]] == ["dfm"]
+    assert "resource" not in route  # no marginal-rate hint on a blocked route
+
+
+def test_verdict_dfm_fail_on_unowned_route_is_not_outsource_only():
+    v = verify_part({"cnc_5axis": _dfm_blocked("cnc_5axis")}, [mill()])
+    assert v.verdict == "not_makeable"
+    route = v.per_route["cnc_5axis"]
+    assert route["verdict"] == "not_makeable"
+    assert route["machines_evaluated"] == 0 and route["best_machine"] is None
+    assert route["failures"][0].gate == "dfm"
+
+
+def test_verdict_reflects_best_dfm_ready_route():
+    # a DFM-ready unowned route outranks a DFM-blocked route on a fitting mill
+    v = verify_part({"cnc_3axis": _dfm_blocked(), "dmls": part(process="dmls")},
+                    [mill()])
+    assert v.verdict == "makeable_outsource_only"
+    assert v.per_route["cnc_3axis"]["verdict"] == "not_makeable"
+    assert v.per_route["dmls"]["verdict"] == "makeable_outsource_only"
+    # and a DFM-ready route that fits an owned machine is still in-house
+    v = verify_part({"cnc_3axis": part(), "cnc_5axis": _dfm_blocked("cnc_5axis")},
+                    [mill()])
+    assert v.verdict == "makeable_in_house" and v.best_machine == "Haas VF-2"
+    assert v.per_route["cnc_5axis"]["verdict"] == "not_makeable"
+
+
+def test_verdict_dfm_blocked_route_keeps_its_machine_gap_behind_the_blocker():
+    small = mill(x=50, y=50, z=50)
+    v = verify_part({"cnc_3axis": _dfm_blocked()}, [small])
+    assert v.verdict == "not_makeable"
+    assert v.gap[0].gate == "dfm"
+    assert "envelope" in [f.gate for f in v.gap[1:]]
+    gates = [f.gate for f in v.per_route["cnc_3axis"]["failures"]]
+    assert gates[0] == "dfm" and "envelope" in gates
 
 
 # ─────────────────────────────────────────────────────────────────────────────

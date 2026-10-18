@@ -240,6 +240,20 @@ test("environment-excluded verdict: gates is the failed gate; the record is not 
   assert.match(m.stages[4].detail, /not computed past the failed gate/);
 });
 
+test("DFM-blocked not_makeable verdict: gates stops on the route's named design blocker", () => {
+  const human = "24 faces (100.0%) below 0.8mm min wall for cnc_3axis. Thinnest: 0.5mm.";
+  const v: VerificationBlock = {
+    verdict: "not_makeable",
+    gap: [{ gate: "dfm", axis: "THIN_WALL", need: 0.8, have: 0.5, human }],
+  };
+  const m = pipelineModelFrom(result({ cost: report(), verification: v }), false, null);
+  assert.equal(m.stopIndex, 3);
+  assert.equal(m.stages[3].state, "blocked");
+  assert.equal(m.stages[3].tone, "fail");
+  assert.equal(m.stages[3].detail, `not makeable — ${human}`);
+  assert.doesNotMatch(m.stages[3].detail, /clears every gate/);
+});
+
 test("environment-excluded estimate: record withholds unit cost instead of showing a dollar", () => {
   const excluded = {
     ...est("cnc_turning", 1000, 14.14),

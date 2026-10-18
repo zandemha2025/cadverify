@@ -670,9 +670,12 @@ def _build_verification(elig, drivers, options, rates):
             "name": getattr(mat, "name", str(mat)),
             "density": getattr(mat, "density", None),
         }
+        # The route's own DFM score rides along so a design-blocked route can
+        # never read makeable on a machine fit alone (same verdict as dfm_ready).
         preq = part_req_from_drivers(process, drivers, mat,
                                      options.tolerance_class,
-                                     material_props=props, env=env)
+                                     material_props=props, env=env,
+                                     process_score=item.get("score"))
         if process.value == "binder_jetting":
             scale = 1 + rates.p(process, "shrinkage_linear")
             preq = replace(preq, bbox_mm=tuple(d * scale for d in preq.bbox_mm),
@@ -751,9 +754,10 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
 
     Honest by construction: negative/unknown verdicts are FIRST-CLASS (``unknown``
     when no inventory is declared, ``makeable_not_on_owned`` with a concrete gap,
-    ``makeable_outsource_only``, ``environment_excluded``, ``not_makeable``); a
-    machine fit is a MEASURED-geometry × USER-capability comparison, never a
-    fabricated pass.
+    ``makeable_outsource_only``, ``environment_excluded``, ``not_makeable`` — incl.
+    a route whose own DFM verdict is fail, with its ``dfm`` blockers); a machine
+    fit is a MEASURED-geometry × USER-capability comparison, never a fabricated
+    pass.
     """
     per_route: dict = {}
     for pv, info in verdict.per_route.items():
@@ -784,7 +788,9 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
         "note": (
             "Machine fit is a MEASURED-geometry × USER-declared-capability "
             "comparison. 'unknown' when inventory/capabilities are undeclared or "
-            "a fitting setup remains unverified — never a fabricated pass. Environment "
+            "a fitting setup remains unverified — never a fabricated pass. A route "
+            "that fails its own DFM rules is 'not_makeable' as modeled, whatever "
+            "machine fits. Environment "
             "exclusions cite the material property/standard. Known limitations: "
             "the 5-axis/undercut need is inherited from the upstream process "
             "router (not re-derived from geometry); force gates (tonnage/taper) "

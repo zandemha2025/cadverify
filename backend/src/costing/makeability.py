@@ -16,6 +16,10 @@ Design invariants (spec §2 — asserted in tests):
     never a measurement of the machine.
   * Environment exclusions CITE the property/standard (NACE MR0175, max service
     temp); gaps are concrete + quantified (measured-vs-declared delta).
+  * A route whose own DFM verdict is ``fail`` is ``not_makeable`` as modeled: a
+    machine fit never overrides the process's design rules, so a design-blocked
+    route is never reported in-house or outsource-only. Its blockers ride
+    ``failures`` / ``gap`` as ``dfm`` FitFailures.
   * No inventory / no env → ``unknown`` / no-op (byte-identical-when-unused).
 
 Nothing here reaches into the rate card for a price: "cost" here is only a
@@ -94,6 +98,9 @@ class PartReq:
     sheet_outline_xy: tuple = ()
     minimum_width_bound_mm: float = 0.0
     enclosing_cylinder_mm: tuple | None = None
+    # The route's own DFM blockers (FitFailure, gate "dfm") when the engine's
+    # verdict for this process is "fail". Empty => DFM-ready (or not supplied).
+    dfm_failures: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -106,7 +113,7 @@ class FitFailure:
     whose only failures are unknown to the ``unknown`` verdict, never a gap.
     """
 
-    gate: str            # envelope|mass|material|tolerance|axes|force|thickness|min_feature|secondary_op|environment
+    gate: str            # dfm|envelope|mass|material|tolerance|axes|force|thickness|min_feature|secondary_op|environment
     axis: str
     need: object = None
     have: object = None
@@ -157,9 +164,10 @@ BASE_PROCESS_IT: dict = {
 
 # Gate ordering for gap_analysis: the constraints that most DEFINE the required
 # machine class come first (envelope/axes), then qualification/precision, then
-# the rest. "Binding-constraint first" — see gap_analysis docstring.
+# the rest. "Binding-constraint first" — see gap_analysis docstring. A route's
+# own DFM blocker ("dfm") leads: no machine acquisition closes a design rule.
 GATE_PRIORITY: list = [
-    "envelope", "axes", "material", "tolerance", "mass",
+    "dfm", "envelope", "axes", "material", "tolerance", "mass",
     "force", "thickness", "min_feature", "secondary_op", "environment",
 ]
 
@@ -241,14 +249,46 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     return tuple(out)
 
 
+def dfm_failures_from_score(process_score) -> tuple:
+    """The route's DFM blockers as ``dfm`` FitFailures (duck-typed ProcessScore).
+
+    Empty unless the engine's verdict for the process is ``fail`` — the same
+    test the cost estimate uses for ``dfm_ready``. Each ERROR issue becomes one
+    hard failure carrying its MEASURED vs required value when both are numeric
+    (else the categorical ``pass``/``fail``) and the engine's own message.
+    """
+    if process_score is None or getattr(process_score, "verdict", None) != "fail":
+        return ()
+    route = _pt_value(getattr(process_score, "process", ""))
+    out: list = []
+    for issue in getattr(process_score, "issues", None) or ():
+        sev = getattr(issue, "severity", None)
+        if getattr(sev, "value", sev) != "error":
+            continue
+        need = getattr(issue, "required_value", None)
+        have = getattr(issue, "measured_value", None)
+        if not (_is_number(need) and _is_number(have)):
+            need, have = "pass", "fail"
+        out.append(FitFailure(
+            "dfm", str(getattr(issue, "code", "") or route), need, have,
+            getattr(issue, "message", "") or f"{route} fails DFM as modeled"))
+    if not out:
+        out.append(FitFailure("dfm", route, "pass", "fail",
+                              f"{route} fails DFM as modeled"))
+    return tuple(out)
+
+
 def part_req_from_drivers(process, drivers, material, tolerance_class,
-                          material_props=None, env=None) -> PartReq:
+                          material_props=None, env=None,
+                          process_score=None) -> PartReq:
     """Extract the MEASURED + DECLARED requirements into a PartReq.
 
     ``drivers`` is a GeoDrivers (duck-typed). ``material`` may be a
     MaterialProfile-like object (``.name``/``.density``) or a bare name string.
     ``material_props`` carries the property flags the env + special gates read
     (nace_mr0175, sour_service, max_temperature_c, conductive, ...).
+    ``process_score`` is the engine's DFM ProcessScore for this route; a ``fail``
+    verdict is carried as ``dfm_failures`` (see ``dfm_failures_from_score``).
     """
     pt = _resolve_pt(process)
     material_props = dict(material_props or {})
@@ -319,6 +359,7 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
                           if pt == ProcessType.SHEET_METAL else ()),
         minimum_width_bound_mm=float(getattr(drivers, "minimum_width_bound_mm", 0.0)),
         enclosing_cylinder_mm=getattr(drivers, "enclosing_cylinder_mm", None),
+        dfm_failures=dfm_failures_from_score(process_score),
     )
 
 
@@ -859,7 +900,8 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     part_req_by_route: {route(process) : PartReq}. inventory: [MachineCap].
     Honesty: empty/absent inventory → ``unknown`` (byte-identical-when-unused);
     a makeable verdict is returned ONLY when a machine passes every gate on real
-    declared data.
+    declared data AND the route's own DFM verdict is not ``fail``. A DFM-failed
+    route is ``not_makeable`` (as modeled) with its ``dfm`` blockers first.
     """
     material_props = material_props or {}
 
@@ -899,11 +941,31 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     not_on_owned: list = []           # (score, route, fits)
     unknown_routes: list = []         # route
     outsource_routes: list = []       # route
+    design_blocked: list = []         # (closeness, route, fits)
     per_route: dict = {}
 
     for r in valid_routes:
         preq = route_req[r]
         owned = [m for m in inventory if _pt_value(m.process) == r]
+        dfm = tuple(getattr(preq, "dfm_failures", ()) or ())
+        if dfm:
+            # The process's own design rules fail on this geometry as drawn. No
+            # machine (owned or outside) closes that, so the route is never
+            # in-house or outsource. Owned machines are still fitted so the
+            # closest one and any capability delta stay visible behind it.
+            fits = [fit_machine(preq, m, shop_caps) for m in owned]
+            closest = min(fits, key=_machine_score) if fits else None
+            design_blocked.append((
+                (0, _machine_score(closest), len(dfm)) if closest
+                else (1, (0, 0.0), len(dfm)), r, fits))
+            per_route[r] = {
+                "verdict": "not_makeable",
+                "machines_evaluated": len(fits),
+                "best_machine": closest.machine if closest else None,
+                "failures": dfm + (tuple(_hard(closest.failures))
+                                   if closest else ()),
+            }
+            continue
         if not owned:
             outsource_routes.append(r)
             per_route[r] = {"verdict": "makeable_outsource_only",
@@ -955,8 +1017,9 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
 
     exclusions_t = tuple(exclusions)
 
-    # verdict precedence (see module docstring / spec §0):
+    # verdict precedence (see module docstring / spec §0), over DFM-ready routes:
     #   in_house > with_secondary > not_on_owned > outsource_only > unknown
+    #   > not_makeable (every remaining route is DFM-blocked as modeled)
     if passes:
         best = min(passes, key=lambda t: (t[0], t[1]))
         sec, _cost, fr, _route = best
@@ -983,6 +1046,18 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     if unknown_routes:
         return MakeabilityVerdict(verdict="unknown", env_exclusions=exclusions_t,
                                   per_route=per_route)
+
+    if design_blocked:
+        # Name the blocker on the route closest to being made in-house (an owned
+        # machine that fits, then fewest machine gaps), DFM first, then that
+        # route's machine gap when no owned machine fits it either.
+        design_blocked.sort(key=lambda t: (t[0], t[1]))
+        _key, route, fits = design_blocked[0]
+        machine_gap = () if any(f.passes for f in fits) else gap_analysis(fits)
+        return MakeabilityVerdict(
+            verdict="not_makeable",
+            gap=tuple(route_req[route].dfm_failures) + machine_gap,
+            env_exclusions=exclusions_t, per_route=per_route)
 
     return MakeabilityVerdict(verdict="not_makeable", env_exclusions=exclusions_t,
                               per_route=per_route)

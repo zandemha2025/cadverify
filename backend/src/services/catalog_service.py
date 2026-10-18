@@ -1412,7 +1412,7 @@ MAKEABILITY_BUCKETS = (
     "makeable_in_house",   # an owned machine fits (incl. an in-house secondary op)
     "makeable_outside",    # a valid route exists but the org owns none of the family
     "needs_capability",    # owns the family but no machine fits → a concrete gap
-    "not_makeable",        # no valid route / environment-excluded on every route
+    "not_makeable",        # no valid route / env-excluded or DFM-blocked on every route
     "unknown",             # no verdict (no inventory declared, or not costed)
     "geometry_invalid",    # the geometry itself is invalid (can't be made by any)
 )

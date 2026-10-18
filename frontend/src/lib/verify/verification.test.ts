@@ -230,3 +230,34 @@ test("acquisitionGap passes the concrete gap deltas through, empty when absent",
   assert.equal(g[0].have, 20);
   assert.deepEqual(acquisitionGap({ verdict: "unknown" }), []);
 });
+
+test("a DFM-blocked route reads not makeable with its design blocker, never an acquisition", () => {
+  const dfm = {
+    gate: "dfm", axis: "THIN_WALL", need: 0.8, have: 0.5,
+    human: "24 faces (100.0%) below 0.8mm min wall for cnc_3axis. Thinnest: 0.5mm.",
+  };
+  const envelope = { gate: "envelope", axis: "z", need: 40, have: 20, human: "z too small" };
+  const v: VerificationBlock = {
+    verdict: "not_makeable",
+    gap: [dfm, envelope],
+    per_route: {
+      cnc_3axis: { verdict: "not_makeable", machines_evaluated: 1, best_machine: "Haas VF-2", failures: [dfm] },
+    },
+  };
+  assert.equal(gapText(dfm), dfm.human);
+  // the design blocker is not something to buy; a machine delta behind it still is
+  assert.deepEqual(acquisitionGap(v), [envelope]);
+  const route = verificationForRoute(v, "cnc_3axis");
+  assert.ok(route);
+  assert.equal(route.verdict, "not_makeable");
+  assert.equal(route.best_machine, null);
+  assert.equal(verdictBannerModel(route.verdict).tone, "fail");
+  assert.equal(fitMark("not_makeable").glyph, "✗");
+  const [row] = perRouteRows(v);
+  assert.equal(row.tone, "fail");
+  assert.equal(gapText(row.failures[0]), dfm.human);
+  const record = recordVerdictModel({ verification: v }, {
+    hasCostedRoute: true, process: "cnc_3axis", dfmReady: false, dfmVerdict: "fail",
+  });
+  assert.equal(record.text, "Not makeable as modeled.");
+});
