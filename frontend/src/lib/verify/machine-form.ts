@@ -117,3 +117,48 @@ export function parseMachineNumbers(input: MachineNumberInput): MachineNumberPar
     errors,
   };
 }
+
+/** Capability keys each envelope layout shows. The lathe layout uses the same
+ *  `swing_dia` + `between_centers` keys the API accepts and the engine reads. */
+export const BOX_ENVELOPE_KEYS = ["x", "y", "z"] as const;
+export const TURNING_ENVELOPE_KEYS = ["swing_dia", "between_centers"] as const;
+
+export type MachineEnvelopeText = Pick<MachineNumberInput, "x" | "y" | "z" | "swing" | "between">;
+
+function capText(cap: Record<string, unknown> | null | undefined, key: string): string {
+  const v = cap?.[key];
+  return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+}
+
+/** Envelope field text from a capability bag (a machine being edited, or the
+ *  catalog template prefilling an add). Undeclared keys stay blank. */
+export function envelopeFieldsFrom(cap: Record<string, unknown> | null | undefined): MachineEnvelopeText {
+  return {
+    x: capText(cap, "x"),
+    y: capText(cap, "y"),
+    z: capText(cap, "z"),
+    swing: capText(cap, "swing_dia"),
+    between: capText(cap, "between_centers"),
+  };
+}
+
+/**
+ * The capability bag to submit. Starts from `base` (the machine being edited,
+ * or the catalog template that prefilled an add) and replaces ONLY the envelope
+ * keys the visible layout shows; a blank visible field removes its key. Every
+ * key the form does not show (axes, motion_mode, min_layer_um, min_feature_mm,
+ * the other layout's envelope, ...) is carried through unchanged, so saving an
+ * edit to just the rate never erases a declared capability.
+ */
+export function mergeMachineCapabilities(
+  base: Record<string, unknown> | null | undefined,
+  edited: Record<string, number>,
+  isTurning: boolean
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(base ?? {}) };
+  for (const key of isTurning ? TURNING_ENVELOPE_KEYS : BOX_ENVELOPE_KEYS) {
+    delete out[key];
+    if (edited[key] != null) out[key] = edited[key];
+  }
+  return out;
+}

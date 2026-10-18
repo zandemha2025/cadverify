@@ -160,10 +160,11 @@ export function envelopeSummary(m: OwnedMachine): string | null {
     const v = cap[k];
     return typeof v === "number" && Number.isFinite(v) ? v : null;
   };
-  const swing = n("swing_dia") ?? n("swing_dia_mm");
+  // One lathe representation across engine, API and form: swing_dia + between_centers.
+  const swing = n("swing_dia");
   const between = n("between_centers");
-  if (swing != null) {
-    return `Ø${swing} × ${between ?? "?"} mm swing`;
+  if (swing != null || between != null) {
+    return `Ø${swing ?? "?"} × ${between ?? "?"} mm swing`;
   }
   const x = n("x") ?? n("bed_x") ?? n("platen_x");
   const y = n("y") ?? n("bed_y") ?? n("platen_y");

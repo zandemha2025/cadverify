@@ -25,6 +25,8 @@ import {
   type MachineImportSummary,
 } from "@/lib/verify/machine-api";
 import {
+  envelopeFieldsFrom,
+  mergeMachineCapabilities,
   parseMachineNumbers,
   type MachineNumberErrors,
   type MachineNumberField,
@@ -35,6 +37,7 @@ import {
 } from "@/lib/verify/machine-catalog-api";
 import { effectiveRateCard, listRateVersions, type EffectiveRateCard, type RateVersionsPage } from "@/lib/verify/rate-api";
 import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { Kicker, ProvDot, GhostButton, EmptyState, Spinner } from "./primitives";
 
 const PROCESS_OPTIONS = Object.keys(PROCESS_LABELS);
@@ -66,6 +69,8 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
   const [form, setForm] = useState<{ mode: "add" } | { mode: "edit"; machine: OwnedMachine } | null>(null);
   const [csvResult, setCsvResult] = useState<MachineImportSummary | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<OwnedMachine | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const csvRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -91,16 +96,21 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
     await refresh();
   }, [onChanged, refresh]);
 
+  // Runs only from the confirmation dialog; a failure keeps the dialog open.
   const onDelete = useCallback(
     async (m: OwnedMachine) => {
+      setDeleting(true);
       try {
         await deleteMachine(m.id);
+        setPendingDelete(null);
         onChanged();
         toast.success(`Removed ${m.name || procLabel(m.process)}`);
         setDetailId(null);
         await refresh();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Delete failed");
+      } finally {
+        setDeleting(false);
       }
     },
     [onChanged, refresh]
@@ -173,7 +183,16 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
           m={detail}
           onBack={() => setDetailId(null)}
           onEdit={() => setForm({ mode: "edit", machine: detail })}
-          onDelete={() => onDelete(detail)}
+          onDelete={() => setPendingDelete(detail)}
+        />
+        <AlertDialog
+          open={pendingDelete != null}
+          onOpenChange={(open) => { if (!open && !deleting) setPendingDelete(null); }}
+          title={`Delete ${detail.name || procLabel(detail.process)}?`}
+          description="This removes the machine and its declared specs from your inventory and can't be undone. Existing machine-fit verdicts are marked stale until their parts are re-costed."
+          confirmLabel="Delete machine"
+          loading={deleting}
+          onConfirm={() => { if (pendingDelete) void onDelete(pendingDelete); }}
         />
         {form && (
           <MachineFormModal
@@ -577,11 +596,6 @@ function Field({ label, children, span, error }: { label: string; children: Reac
   );
 }
 
-const capNum = (cap: Record<string, unknown>, k: string): string => {
-  const v = cap[k];
-  return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
-};
-
 function MachineFormModal({
   mode,
   machine,
@@ -593,7 +607,10 @@ function MachineFormModal({
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }) {
-  const baseCap = (machine?.capabilities as Record<string, unknown>) || {};
+  // Every capability the form does NOT show rides along from here: the machine
+  // being edited, or (add mode) the catalog template that prefilled the form.
+  const [baseCap, setBaseCap] = useState<Record<string, unknown>>(() => machine?.capabilities ?? {});
+  const initialEnvelope = envelopeFieldsFrom(machine?.capabilities);
   const [name, setName] = useState(machine?.name ?? "");
   const [process, setProcess] = useState(machine?.process ?? "cnc_3axis");
   const [count, setCount] = useState(machine?.count != null ? String(machine.count) : "1");
@@ -601,11 +618,11 @@ function MachineFormModal({
   const [maxKg, setMaxKg] = useState(machine?.max_workpiece_kg != null ? String(machine.max_workpiece_kg) : "");
   const [materials, setMaterials] = useState(machine?.materials?.join(", ") ?? "");
   const [notes, setNotes] = useState(machine?.notes ?? "");
-  const [x, setX] = useState(capNum(baseCap, "x"));
-  const [y, setY] = useState(capNum(baseCap, "y"));
-  const [z, setZ] = useState(capNum(baseCap, "z"));
-  const [swing, setSwing] = useState(capNum(baseCap, "swing_dia"));
-  const [between, setBetween] = useState(capNum(baseCap, "between_centers"));
+  const [x, setX] = useState(initialEnvelope.x);
+  const [y, setY] = useState(initialEnvelope.y);
+  const [z, setZ] = useState(initialEnvelope.z);
+  const [swing, setSwing] = useState(initialEnvelope.swing);
+  const [between, setBetween] = useState(initialEnvelope.between);
   const [busy, setBusy] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<MachineNumberErrors>({});
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -638,12 +655,16 @@ function MachineFormModal({
     if (!t) return;
     if (t.name) setName(t.name);
     if (t.process) setProcess(t.process);
-    const cap = (t.capabilities as Record<string, unknown>) || {};
-    setX(capNum(cap, "x"));
-    setY(capNum(cap, "y"));
-    setZ(capNum(cap, "z"));
-    setSwing(capNum(cap, "swing_dia"));
-    setBetween(capNum(cap, "between_centers"));
+    // Keep the WHOLE template capability bag (axes, motion_mode, min_layer_um,
+    // min_feature_mm, ...); the form only edits its envelope keys.
+    const cap = t.capabilities ?? {};
+    setBaseCap(cap);
+    const env = envelopeFieldsFrom(cap);
+    setX(env.x);
+    setY(env.y);
+    setZ(env.z);
+    setSwing(env.swing);
+    setBetween(env.between);
     setMaterials(t.materials?.join(", ") ?? "");
     setMaxKg(t.max_workpiece_kg != null ? String(t.max_workpiece_kg) : "");
     // A catalog template carries NO rate — the org declares its own. Notes are the
@@ -661,10 +682,8 @@ function MachineFormModal({
     setFieldErrors({});
     setSaveError(null);
     setBusy(true);
-    // Preserve non-envelope capability keys on edit; overwrite the ones we manage.
-    const cap: Record<string, unknown> = { ...baseCap };
-    delete cap.x; delete cap.y; delete cap.z; delete cap.swing_dia; delete cap.between_centers;
-    Object.assign(cap, parsed.value.capabilities);
+    // Replace only the envelope keys the visible layout shows; keep the rest.
+    const cap = mergeMachineCapabilities(baseCap, parsed.value.capabilities, isTurning);
     const body: MachineInput = {
       name: name.trim() || null,
       process,

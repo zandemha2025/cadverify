@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseMachineNumbers, type MachineNumberInput } from "./machine-form.ts";
+import {
+  envelopeFieldsFrom,
+  mergeMachineCapabilities,
+  parseMachineNumbers,
+  type MachineNumberInput,
+} from "./machine-form.ts";
 
 const base: MachineNumberInput = {
   count: "1",
@@ -84,4 +89,47 @@ test("turning fields are selected without leaking stale mill envelope values", (
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.deepEqual(result.value.capabilities, { swing_dia: 300, between_centers: 600 });
+});
+
+// Catalog prefill used to keep only x/y/z, so a DMU 50 saved from the catalog
+// lost axes/motion_mode and read `unknown` on every 5-axis part.
+test("a catalog prefill submits every template capability, not just the envelope", () => {
+  const template = {
+    x: 500, y: 450, z: 400, axes: 5, motion_mode: "simultaneous_5",
+    min_layer_um: 40, min_feature_mm: 0.1,
+  };
+  const result = parseMachineNumbers({ ...base, ...envelopeFieldsFrom(template) });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(mergeMachineCapabilities(template, result.value.capabilities, false), template);
+});
+
+// Editing a lathe used to delete x/y/z (and anything else outside the turning
+// fields), so even a rate-only edit left the lathe `unknown`.
+test("editing a lathe preserves its envelope and every capability the form hides", () => {
+  for (const stored of [
+    { x: 254, y: 254, z: 533, achievable_it_grade: 8 }, // saved before lathes used swing keys
+    { swing_dia: 254, between_centers: 533, live_tooling: true },
+  ]) {
+    const result = parseMachineNumbers({ ...base, rate: "80", ...envelopeFieldsFrom(stored), isTurning: true });
+    assert.equal(result.ok, true);
+    if (!result.ok) continue;
+    assert.deepEqual(mergeMachineCapabilities(stored, result.value.capabilities, true), stored);
+  }
+});
+
+test("a lathe edit shows the stored swing/length instead of blank fields", () => {
+  const fields = envelopeFieldsFrom({ swing_dia: 254, between_centers: 533 });
+  assert.equal(fields.swing, "254");
+  assert.equal(fields.between, "533");
+});
+
+test("clearing a visible envelope field removes only that key", () => {
+  const stored = { swing_dia: 254, between_centers: 533, x: 1, y: 2, z: 3 };
+  const result = parseMachineNumbers({ ...base, x: "", y: "", z: "", swing: "300", between: "", isTurning: true });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(mergeMachineCapabilities(stored, result.value.capabilities, true), {
+    swing_dia: 300, x: 1, y: 2, z: 3,
+  });
 });
