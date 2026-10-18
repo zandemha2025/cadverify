@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { StudioScreen } from "@/components/v4/make/studio";
 
 export default function Page() {
-  return <Stub title="Design Studio" section="make" board="F1" />;
+  return <StudioScreen />;
 }
