@@ -202,7 +202,7 @@ export function NewPart() {
       return;
     }
     const e = st.cost.error ?? "The cost didn’t finish.";
-    if (st.cost.geom) setErr({ kind: "geom", title: "No cost: the mesh isn’t closed", text: `${st.cost.geom.reason ?? "The geometry isn’t watertight."} Repair the mesh, then cost it again.` });
+    if (st.cost.geom) setErr({ kind: "geom", title: "No cost: the mesh isn’t closed", text: `${(st.cost.geom.reason ?? "The geometry isn’t watertight.").replace(/\s*Repair required\.?\s*$/i, "")} Repair the mesh, then cost it again.` });
     else if (isQuotaErrorMessage(e)) setErr({ kind: "quota", title: "No checks left", text: analysisFailureCopy(e).explanation || "This period’s checks are used up." });
     else setErr({ kind: "timeout", title: "Cost didn’t finish", text: `${e} File and options are kept.` });
     setPhase("err");

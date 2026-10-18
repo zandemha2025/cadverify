@@ -80,7 +80,7 @@ function Inner() {
   const setQty = React.useCallback((n: number) => setQtyState({ report: getWb().report, q: n }), []);
 
   React.useEffect(() => {
-    if (part && s.filename) palette.setCurrentPart({ label: s.filename, href: wbHref(isTab(tabParam) ? tabParam : "decision", part) });
+    if (part && s.filename) palette.setCurrentPart({ label: s.filename, href: R.part(part) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part, s.filename]);
 

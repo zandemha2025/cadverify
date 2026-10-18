@@ -239,7 +239,11 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
   }, [report]);
   const chart = be ? chartModel(be, q, at?.curve.process ?? null, max, chartW) : null;
   const red = report ? redesignNote(report) : null;
-  const [trust, setTrust] = React.useState(sp.get("trust") === "1" || lens === "buyer");
+  const trustParam = sp.get("trust") === "1";
+  const [trust, setTrust] = React.useState(trustParam || lens === "buyer");
+  React.useEffect(() => {
+    if (trustParam) setTrust(true);
+  }, [trustParam]);
   const [adj, setAdj] = React.useState(false);
   const base = React.useMemo(() => optionsToForm(s.opts), [s.opts]);
   const [form, setForm] = React.useState<FormDraft>(base);
