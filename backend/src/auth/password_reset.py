@@ -81,7 +81,8 @@ async def _deliver_reset(email: str) -> None:
         link = f"{os.environ['DASHBOARD_ORIGIN'].rstrip('/')}/reset-password#token={token}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             sent = await client.post(
-                "https://api.resend.com/emails",
+                # Same provider endpoint the Resend SDK uses for sign-in links.
+                f"{os.getenv('RESEND_API_URL', 'https://api.resend.com').rstrip('/')}/emails",
                 headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}"},
                 json={
                     "from": os.environ["RESEND_FROM"],

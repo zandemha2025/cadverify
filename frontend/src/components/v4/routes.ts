@@ -6,6 +6,8 @@ export const R = {
   home: "/app",
   setup: "/app/setup",
   check: "/app/check",
+  phone: "/app/phone",
+  notices: "/app/notices",
   part: (key: string) => `/app/part/${encodeURIComponent(key)}`,
   partHistory: (key: string) => `/app/part/${encodeURIComponent(key)}/history`,
   parts: "/app/parts",
