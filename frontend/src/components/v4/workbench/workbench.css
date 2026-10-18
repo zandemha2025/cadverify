@@ -364,4 +364,9 @@
 .ob .tst{left:16px;bottom:16px}
 .ob .drop{min-height:300px}
 .ob .dc{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ob .cell{padding:8px 6px;gap:4px}
+.ob .cell small,.ob .cell .ar2{display:none}
+.ob .ct td{padding:4px 2px}
+.ob .ct th{padding:8px 6px}
+.ob .ct .nm small{font-size:11.5px}
 }
