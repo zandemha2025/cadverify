@@ -137,6 +137,24 @@ async def read_costable_mesh_artifact(
     return stl
 
 
+async def find_source_artifact_suffix(org_id: str, mesh_hash: str) -> str | None:
+    """Return the stored source's suffix for this tenant and SHA-256, else None.
+
+    A metadata read: lists the tenant's own namespace and never touches the
+    bytes, so callers can say a source is kept without reading or exposing it.
+    """
+    org = str(org_id or "")
+    digest = str(mesh_hash or "").lower()
+    if not _SAFE_ORG.fullmatch(org) or not _SHA256.fullmatch(digest):
+        return None
+    keys = [
+        item
+        for item in await asyncio.to_thread(_store().list_keys, f"{org}/{digest}/")
+        if Path(item).stem == "source" and Path(item).suffix.lower() in _SUFFIXES
+    ]
+    return Path(sorted(keys)[0]).suffix.lower() if keys else None
+
+
 async def read_source_artifact(
     org_id: str,
     mesh_hash: str,

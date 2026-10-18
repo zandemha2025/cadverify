@@ -46,6 +46,7 @@ from src.api.notifications import router as notifications_router
 from src.api.integrations import router as integrations_router
 from src.api.scim import router as scim_router
 from src.api.part_context import router as part_context_router
+from src.api.part_preview import router as part_preview_router
 from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
@@ -503,6 +504,9 @@ app.include_router(
 app.include_router(
     part_context_router, prefix="/api/v1/part-context", tags=["part-context"]
 )
+# Stored-source 3D view: the org's own kept CAD, tessellated for the browser in
+# the analysis face space. Org-scoped, never the raw bytes, never a check.
+app.include_router(part_preview_router, prefix="/api/v1/parts", tags=["parts"])
 # Confirmed part identity (identity Slice 1): the human-in-the-loop seam that turns
 # a retrieved SUGGESTION into a USER-asserted identity on the org's corpus row.
 app.include_router(
