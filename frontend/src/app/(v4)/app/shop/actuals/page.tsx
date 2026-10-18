@@ -1,5 +1,5 @@
-import { Stub } from "@/components/v4/stub";
+import { ActualsScreen } from "@/components/v4/shop/actuals-screen";
 
 export default function Page() {
-  return <Stub title="Real costs" section="shop" board="S2" />;
+  return <ActualsScreen />;
 }
