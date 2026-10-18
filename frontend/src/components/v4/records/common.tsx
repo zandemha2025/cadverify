@@ -6,11 +6,10 @@
  * board P8 states (loading, couldn't load, none yet, not found, load more).
  */
 import * as React from "react";
-import Link from "next/link";
 import { World } from "../ui";
 import "./records.css";
 
-/** The page frame. On phones the stage stays a backdrop instead of the 3D page's 480px block (World has no list-page mode). */
+/** The page frame, marked so this area's phone rules (wrapping panel heads) apply only here. */
 export function RecWorld({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <World label={label}>
@@ -302,61 +301,9 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
   );
 }
 
-/* ── states (board P8) ──────────────────────────────────────────────────── */
+/* ── states (board P8): the shared ones from Home, plus this area's list footer ── */
 
-export function Skeleton({ rows = 4, label = "Loading" }: { rows?: number; label?: string }) {
-  const w = [70, 52, 64, 40, 58, 46];
-  return (
-    <div className="rc-skel" role="status" aria-busy="true" aria-label={label}>
-      {Array.from({ length: rows }, (_, i) => (
-        <span key={i} className="rc-sk" style={{ width: `${w[i % w.length]}%` }} aria-hidden="true" />
-      ))}
-    </div>
-  );
-}
-
-export function LoadFailed({ what, detail, onRetry }: { what: string; detail?: string | null; onRetry: () => void }) {
-  return (
-    <div className="empty" role="alert">
-      <b>Couldn&apos;t load {what}</b>
-      {detail ? <span>{detail}</span> : null}
-      <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
-        <button type="button" className="btn sm ink" onClick={onRetry}>
-          Retry
-        </button>
-      </span>
-    </div>
-  );
-}
-
-export function NoneYet({ title, children, actions }: { title: string; children?: React.ReactNode; actions?: React.ReactNode }) {
-  return (
-    <div className="empty">
-      <b>{title}</b>
-      {children ? <span>{children}</span> : null}
-      {actions ? <span style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" }}>{actions}</span> : null}
-    </div>
-  );
-}
-
-export function NotFound({ title, children, back, onRetry }: { title: string; children?: React.ReactNode; back: { label: string; href: string }; onRetry?: () => void }) {
-  return (
-    <div className="empty" role="alert">
-      <b>{title}</b>
-      {children ? <span>{children}</span> : null}
-      <span style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" }}>
-        <Link className="btn sm" href={back.href}>
-          {back.label}
-        </Link>
-        {onRetry ? (
-          <button type="button" className="btn sm ink" onClick={onRetry}>
-            Retry
-          </button>
-        ) : null}
-      </span>
-    </div>
-  );
-}
+export { ListFailed as LoadFailed, NoneYet, NotFound, Skeleton } from "../home/states";
 
 /** "20 of 20 records" (or "50 shown") with Load more while the server has more. */
 export function ListFoot({
