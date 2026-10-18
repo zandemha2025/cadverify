@@ -139,6 +139,7 @@ export function NoticesPage() {
             {spec(
               "",
               <PageError
+                name="page-error-quota"
                 title="Couldn’t load usage"
                 message="Verification allowance used up for now. Retry after the rolling allowance becomes available."
                 onRetry={example("retry")}

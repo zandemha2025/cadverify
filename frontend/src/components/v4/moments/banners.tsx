@@ -10,6 +10,7 @@
  * - `actions`   buttons/links on the right (use `className="btn ink sm"` for the main one).
  * - `onDismiss` shows the × (aria-label "Dismiss: <title>"). Leave it out where the banner must stay.
  * - `spin`      a spinner instead of the tone mark (loading).
+ * - `name`      optional stable hook for tests (`data-notice`).
  *
  * Ready-made (all props are plain values and callbacks):
  * - Before a check: `SignedOutBanner`, `FreeChecksUsedBanner`, `BusyBanner`, `CantReadBanner`,
@@ -48,6 +49,7 @@ export function Banner({
   spin,
   className,
   style,
+  name,
 }: {
   tone: BannerTone;
   title: React.ReactNode;
@@ -57,10 +59,11 @@ export function Banner({
   spin?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  name?: string;
 }) {
   const label = typeof title === "string" ? title : "notice";
   return (
-    <div className={cx("mo-bn", tone, onDismiss && "hx", className)} role={tone === "bad" || tone === "warn" ? "alert" : "status"} style={style}>
+    <div className={cx("mo-bn", tone, onDismiss && "hx", className)} role={tone === "bad" || tone === "warn" ? "alert" : "status"} style={style} data-notice={name}>
       <span className={cx("ic", spin && "spin")} aria-hidden="true">
         {spin ? "" : MARK[tone]}
       </span>
@@ -86,6 +89,7 @@ export function SignedOutBanner({ fileName, next = R.check, onDismiss }: { fileN
   return (
     <Banner
       tone="bad"
+      name="signed-out"
       title="Signed out"
       meta={`${fileName ? `${fileName} wasn’t checked` : "Nothing was checked"}. No record was made.`}
       onDismiss={onDismiss}
@@ -121,6 +125,7 @@ export function FreeChecksUsedBanner({
   return (
     <Banner
       tone="warn"
+      name="free-checks-used"
       title="Free checks used"
       meta={`${count}${fileName ? `${fileName} wasn’t checked` : "Nothing was checked"}. Your files and saved results are unchanged.`}
       onDismiss={onDismiss}
@@ -152,6 +157,7 @@ export function BusyBanner({ fileName, onRetry, onDismiss }: { fileName?: string
   return (
     <Banner
       tone="warn"
+      name="busy"
       title="Busy right now"
       meta={`${fileName ? `${fileName} wasn’t checked` : "Nothing was checked"}. Wait a moment and retry. No need to re-export.`}
       onDismiss={onDismiss}
@@ -169,6 +175,7 @@ export function CantReadBanner({ fileName, detail, onChooseFile, onDismiss }: { 
   return (
     <Banner
       tone="bad"
+      name="cant-read"
       title="Can’t read this file"
       meta={[fileName, detail ?? "Export it as STEP, STL or IGES."].filter(Boolean).join(" · ")}
       onDismiss={onDismiss}
@@ -197,12 +204,13 @@ export function DesignImportBanner({
 }) {
   const rev = revision != null && revision !== "" ? `revision ${revision}` : null;
   if (state === "loading")
-    return <Banner tone="info" spin title={`Loading ${name ?? "the design"}${rev ? `, ${rev}` : ""}`} meta="STEP from Design Studio" />;
+    return <Banner name="design-loading" tone="info" spin title={`Loading ${name ?? "the design"}${rev ? `, ${rev}` : ""}`} meta="STEP from Design Studio" />;
   if (state === "done")
-    return <Banner tone="ok" title={`Imported ${name ?? "the design"}`} meta={detail ?? [rev ? rev[0].toUpperCase() + rev.slice(1) : null, "Check finished"].filter(Boolean).join(" · ")} onDismiss={onDismiss} />;
+    return <Banner name="design-done" tone="ok" title={`Imported ${name ?? "the design"}`} meta={detail ?? [rev ? rev[0].toUpperCase() + rev.slice(1) : null, "Check finished"].filter(Boolean).join(" · ")} onDismiss={onDismiss} />;
   return (
     <Banner
       tone="bad"
+      name="design-error"
       title="Design link not valid"
       meta={detail ?? "Open the design again from Design Studio."}
       actions={
@@ -221,6 +229,7 @@ export function CheckInterruptedBanner({ onRetry, detail }: { onRetry: () => voi
   return (
     <Banner
       tone="bad"
+      name="check-interrupted"
       title="Check interrupted"
       meta={detail ?? "No result. Routing, checks and cost didn’t start. The file doesn’t need re-exporting."}
       actions={
@@ -237,6 +246,7 @@ export function CostFailedBanner({ onRetryCost, onRerun, detail }: { onRetryCost
   return (
     <Banner
       tone="warn"
+      name="cost-failed"
       title="Cost didn’t finish"
       meta={detail ?? "Routing and process checks are ready."}
       actions={
@@ -258,6 +268,7 @@ export function CostBlockedBanner({ onUpgrade, checkoutAvailable, pro }: { onUpg
   return (
     <Banner
       tone="warn"
+      name="cost-blocked"
       title="Cost not run"
       meta={`${pro ? "This month’s Pro checks used" : "Free checks used"}. Routing and process checks are ready.`}
       actions={
@@ -281,7 +292,7 @@ export function CostBlockedBanner({ onUpgrade, checkoutAvailable, pro }: { onUpg
 /** Back from checkout (?upgraded=1). Counts come from usage; say nothing you don't know. */
 export function ProBanner({ monthlyChecks, email, onDismiss }: { monthlyChecks?: number | null; email?: string | null; onDismiss?: () => void }) {
   const facts = [monthlyChecks ? `${monthlyChecks} checks this month` : "Your monthly checks are ready", email ? `Receipt sent to ${email}` : "Your receipt is on its way by email"];
-  return <Banner tone="ok" title="You’re on Pro" meta={facts.join(" · ")} onDismiss={onDismiss} />;
+  return <Banner name="pro" tone="ok" title="You’re on Pro" meta={facts.join(" · ")} onDismiss={onDismiss} />;
 }
 
 /** The part preview failed to draw. Checks still run on the file. */
@@ -309,6 +320,7 @@ export function OrgErrorBanner({ onRetry, detail }: { onRetry: () => void; detai
   return (
     <Banner
       tone="bad"
+      name="org-error"
       title="Can’t confirm your organization"
       meta={detail ?? "Nothing from your organization was loaded."}
       actions={
@@ -330,6 +342,7 @@ export function NoActiveOrgBanner({ orgName, onRetry }: { orgName?: string | nul
   return (
     <Banner
       tone="warn"
+      name="org-none"
       title="No active organization"
       meta={`Choose ${orgName ?? "an organization"} in organization settings to open its parts and tools.`}
       actions={
@@ -351,6 +364,7 @@ export function NotInOrgBanner({ email, onRetry }: { email?: string | null; onRe
   return (
     <Banner
       tone="info"
+      name="org-join"
       title="Not in an organization"
       meta={`Open the invite link from your admin, or ask them to invite ${email ?? "you"}.`}
       actions={
@@ -377,18 +391,20 @@ export function PageError({
   message,
   digest,
   onRetry,
+  name,
 }: {
   title?: string;
   message?: string | null;
   digest?: string | null;
   onRetry?: () => void;
+  name?: string;
 }) {
   const text = message?.trim() || "Couldn’t load this page.";
   const detail = distinctErrorDetail(title, text);
   const lifetime = isLifetimeQuotaErrorMessage(text);
   const quota = isQuotaErrorMessage(text);
   return (
-    <div className="mo-errc" role="alert">
+    <div className="mo-errc" role="alert" data-notice={name ?? "page-error"}>
       <b className="stitle">{title}</b>
       {detail ? <span className="msg">{detail}</span> : null}
       {digest ? <span className="id">Error ID {digest}</span> : null}

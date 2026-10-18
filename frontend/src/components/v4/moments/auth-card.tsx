@@ -104,14 +104,14 @@ export function CardField({
 }: { label: string; hint?: React.ReactNode; error?: string | null; id: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   const helpId = `${props.id}-help`;
   return (
-    <label className="field" htmlFor={props.id}>
-      {label}
+    <div className="field">
+      <label htmlFor={props.id}>{label}</label>
       <input {...props} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={hint || error ? helpId : undefined} />
       {error || hint ? (
         <span className={cx("hintx", error && "bad")} id={helpId}>
           {error || hint}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }

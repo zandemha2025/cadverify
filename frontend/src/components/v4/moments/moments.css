@@ -222,8 +222,18 @@
 .ob .mo-x1 .wait,.ob .mo-x2 .wait{position:relative;left:auto;right:auto;top:auto;bottom:auto;gap:8px}
 .ob .mo-x1 .pic,.ob .mo-x2 .pic{width:140px;height:140px}
 .ob .mo-x1 .drop1{height:140px;border-radius:20px}
-.ob .mo-x12 .area{position:relative;left:auto;right:auto;padding:16px}
+.ob .mo-x12,.ob.mo-auth .mo-x12{min-height:calc(100dvh - 56px)}
+.ob .mo-x12 .stage{position:absolute;inset:0;height:auto}
+.ob .mo-x12 .area{position:relative;left:auto;right:auto;padding:16px 16px 32px}
 .ob .mo-x12 .card{width:100%}
+.ob .mo-x1 .form,.ob .mo-x1 .sent{padding-left:16px;padding-right:16px}
+.ob .mo-x1 .fine{padding:0 16px 16px}
+.ob .mo-x12 .card .hd{padding:20px 16px 6px}
+.ob .mo-x12 .form{padding:12px 16px 6px}
+.ob .mo-x12 .acts{padding:16px 16px 8px}
+.ob .mo-x12 .links{padding:4px 16px 18px}
+.ob .mo-x12 .info,.ob .mo-x12 .err,.ob .mo-x12 .ok-note{margin-left:16px;margin-right:16px}
+.ob .mo-tsw{padding:8px}
 .ob .mo-x3{padding:12px;place-items:end center}
 .ob .mo-x3 .hd{padding:22px 20px 14px}
 .ob .mo-x3 .meter{padding:0 20px 16px}

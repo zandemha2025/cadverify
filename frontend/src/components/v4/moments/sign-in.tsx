@@ -199,6 +199,11 @@ export function V4SignIn({
               </div>
               <b>{part.name}</b>
               <span>Checks after sign-in</span>
+              {step === "password" ? (
+                <button className="btn ghost sm" type="button" onClick={() => setPart(null)}>
+                  Remove
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="wait swap">

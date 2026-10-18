@@ -16,7 +16,8 @@ import { safeLocalPath } from "@/lib/safe-return-path";
 import { setPendingFile } from "../pending-file";
 import { R } from "../routes";
 import { useShell } from "../shell";
-import { Empty, Failed, World } from "../ui";
+import { Empty, World } from "../ui";
+import { PageError } from "./banners";
 import { useHeldPart } from "./held-part";
 import { PhoneGateView } from "./phone-gate";
 import type { CheckUsage } from "./out-of-checks";
@@ -68,7 +69,7 @@ export function PhonePage() {
     return (
       <World label="Verify your phone">
         <div className="mo-pagefail">
-          <Failed title="Couldn’t read your account" detail="Your plan and phone status didn’t load. Nothing was changed." onRetry={() => setAttempt((n) => n + 1)} />
+          <PageError message="Your plan and phone status didn’t load. Nothing was changed." onRetry={() => setAttempt((n) => n + 1)} />
         </div>
       </World>
     );

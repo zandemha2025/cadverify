@@ -156,6 +156,7 @@ export function PhoneGate({
             Mobile number
             <input
               ref={phoneRef}
+              id="mo-phone-number"
               type="tel"
               autoComplete="tel"
               inputMode="tel"
@@ -198,6 +199,7 @@ export function PhoneGate({
             ))}
             <input
               ref={codeRef}
+              id="mo-phone-code"
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
