@@ -1,5 +1,10 @@
-import { Stub } from "@/components/v4/stub";
+import { Suspense } from "react";
+import { Workbench } from "@/components/v4/workbench/workbench";
 
 export default function Page() {
-  return <Stub title="Workbench" section="make" board="F3, F5–F9" />;
+  return (
+    <Suspense fallback={null}>
+      <Workbench />
+    </Suspense>
+  );
 }
