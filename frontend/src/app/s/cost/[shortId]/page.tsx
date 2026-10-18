@@ -10,6 +10,9 @@ import {
   redesignedForQty,
   crossoverSummary,
 } from "@/lib/cost-decision";
+import { UI_V4 } from "@/lib/ui-v4-flag";
+import { SharedCost } from "@/components/v4/home/shared-cost";
+import { SharedOff } from "@/components/v4/home/shared-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -113,6 +116,9 @@ export default async function SharedCostDecisionPage({
   } catch {
     /* 404 or network error */
   }
+
+  // v4 ("object first") look behind NEXT_PUBLIC_UI_V4; today's page below is unchanged when it's off.
+  if (UI_V4) return data ? <SharedCost data={data} /> : <SharedOff />;
 
   if (!data) {
     return (

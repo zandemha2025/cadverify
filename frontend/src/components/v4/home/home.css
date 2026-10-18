@@ -179,7 +179,7 @@
 .ob .h-ro{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;background:rgba(20,24,31,.06);font-size:12.5px;font-weight:600;color:var(--ink2)}
 .ob .h-still{position:absolute;left:calc(33% - 150px);top:200px;width:300px;height:300px;display:grid;place-items:center;color:rgba(20,24,31,.16)}
 .ob .h-still small{position:absolute;bottom:-8px;left:0;right:0;text-align:center;color:var(--ink3);font-size:12.5px}
-.ob .h-foot2{position:absolute;left:24px;bottom:28px;right:500px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--ink3);font-size:13px;margin:0}
+.ob .h-foot2{position:absolute;left:24px;bottom:28px;right:500px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--ink3);font-size:13px;margin:0}
 .ob .h-way{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 12px;font-size:13.5px;border-top:1px solid rgba(20,24,31,.07)}
 .ob .h-way:first-child{border-top:0}
 .ob .h-way small{display:block;color:var(--ink3);font-size:12px}
@@ -189,12 +189,13 @@
 .ob .h-as small{grid-column:1 / -1;margin-top:-2px;color:var(--ink3);font-size:12px}
 .ob .h-wy{border-top:1px solid rgba(20,24,31,.07)}
 .ob .h-wy:first-child{border-top:0}
-.ob .h-wy summary{display:grid;grid-template-columns:minmax(0,1fr) auto auto 14px;gap:10px;align-items:center;padding:8px 12px;cursor:pointer;list-style:none;font-size:13.5px;border-radius:10px}
+.ob .h-wy summary,.ob .h-wy .h-sum{display:grid;grid-template-columns:minmax(0,1fr) auto auto 14px;gap:10px;align-items:center;padding:8px 12px;cursor:pointer;list-style:none;font-size:13.5px;border-radius:10px}
 .ob .h-wy summary::-webkit-details-marker{display:none}
 .ob .h-wy summary::after{content:"";width:7px;height:7px;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);transform:rotate(-45deg);transition:transform 160ms var(--ease)}
 .ob .h-wy[open] summary::after{transform:rotate(45deg)}
 .ob .h-wy summary:focus-visible{outline:2px solid var(--file);outline-offset:-2px}
-.ob .h-wy summary small{color:var(--ink3);font-size:12.5px}
+.ob .h-wy summary small,.ob .h-wy .h-sum small{color:var(--ink3);font-size:12.5px}
+.ob .h-wy .h-sum{cursor:default}
 .ob .h-wy ul{margin:0 12px 8px;padding:8px 10px 8px 26px;border-radius:10px;background:rgba(20,24,31,.035);font-size:13px;color:var(--ink2);line-height:1.5}
 .ob .h-wy.none summary{cursor:default}
 .ob .h-wy.none summary::after{opacity:0}

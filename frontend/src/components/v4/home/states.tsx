@@ -121,9 +121,9 @@ export function LinkOff({ home = "/" }: { home?: string }) {
       <b>This link was turned off</b>
       <span>Ask whoever sent it for a new one.</span>
       <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
-        <a className="btn sm ink" href={home}>
+        <Link className="btn sm ink" href={home}>
           Go to ScaleCAD
-        </a>
+        </Link>
       </span>
     </div>
   );

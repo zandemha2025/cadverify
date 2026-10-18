@@ -3,6 +3,9 @@ import Link from "next/link";
 import { Box } from "lucide-react";
 import { fetchSharedAnalysis } from "@/lib/api";
 import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
+import { UI_V4 } from "@/lib/ui-v4-flag";
+import { SharedCheck } from "@/components/v4/home/shared-check";
+import { SharedOff } from "@/components/v4/home/shared-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -103,6 +106,9 @@ export default async function SharedAnalysisPage({
   } catch {
     /* 404 or network error */
   }
+
+  // v4 ("object first") look behind NEXT_PUBLIC_UI_V4; today's page below is unchanged when it's off.
+  if (UI_V4) return data ? <SharedCheck data={data} /> : <SharedOff />;
 
   if (!data) {
     return (
