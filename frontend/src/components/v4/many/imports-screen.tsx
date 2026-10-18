@@ -25,11 +25,12 @@ import {
 } from "@/lib/integrations-api";
 import { R } from "../routes";
 import { Chip, Content, Empty, Loading, PageHead, Panel, Sheet, cx } from "../ui";
-import { ManyWorld, PilotGate, errorText, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
+import { ManyWorld, PilotGate, errorText, revealSheetOnPhone, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
 
 export const IMPORTS_GATE = {
   title: "Imports",
   slot: "ERP, PLM and BOM data",
+  tab: 2,
   features: [
     { title: "CSV dry run", text: "Errors by line before anything is saved", tone: "#ECEEF1" },
     { title: "Live read-only connectors", text: "SAP S/4HANA and PTC Windchill, read only", tone: "#E8EEFB" },
@@ -210,7 +211,10 @@ export function ImportsScreen() {
                 const state = !isLive(c) ? ["ok", "Ready"] : n ? ["ok", n === 1 ? "Saved" : `${n} saved`] : ["unk", "Not connected"];
                 return (
                   <div role="listitem" key={c.id}>
-                    <button type="button" className={cx("lrow", sel === c.id && "on")} aria-pressed={sel === c.id} onClick={() => setSel(c.id)}>
+                    <button type="button" className={cx("lrow", sel === c.id && "on")} aria-pressed={sel === c.id} onClick={() => {
+                        setSel(c.id);
+                        revealSheetOnPhone("Connector");
+                      }}>
                       <span className={cx("ico", isLive(c) && "live")} aria-hidden="true">
                         {isLive(c) ? "Live" : "CSV"}
                       </span>

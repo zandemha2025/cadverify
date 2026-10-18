@@ -9,7 +9,7 @@ import * as React from "react";
 import Link from "next/link";
 import { listBatches } from "@/lib/api/batch";
 import { TABS } from "../routes";
-import { Content, PageHead, Sheet, World, cx } from "../ui";
+import { Content, Sheet, World, cx } from "../ui";
 import "./many.css";
 
 /* ------------------------------------------------------------------ */
@@ -115,20 +115,33 @@ export function PilotGate({
   slot,
   features,
   inputs,
+  tab = 0,
 }: {
   title: string;
   slot: string;
   features: { title: string; text: string; tone: string }[];
   inputs: string[];
+  /** Which Many parts tab is current (0 Batches, 1 Triage, 2 Imports). */
+  tab?: number;
 }) {
   return (
     <ManyWorld label={title}>
-      <PageHead
-        title={title}
-        meta={[<b key="p">Pilot plan</b>, "Your plan: single-part checks"]}
-        tabs={TABS.many}
-        tabsLabel="Many parts"
-      />
+      <div className="pagehead">
+        <h1 className="ptitle">{title}</h1>
+        <p className="pmeta" style={{ marginTop: 6 }}>
+          <span>
+            <b>Pilot plan</b>
+          </span>
+          <span>Your plan: single-part checks</span>
+        </p>
+        <nav className="subnav" aria-label="Many parts">
+          {TABS.many.map((t, i) => (
+            <Link key={t.href} href={t.href} className={cx(i === tab && "on")} aria-current={i === tab ? "page" : undefined}>
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
       <Content>
         <div className="slot">
           <span className="lab">{slot}</span>
@@ -299,6 +312,12 @@ export function Thumb({ name, className }: { name: string | null | undefined; cl
       {ext && ext !== name ? ext : "CAD"}
     </span>
   );
+}
+
+/** On phone widths the sheet sits below the page: bring it into view after a pick that changes it. */
+export function revealSheetOnPhone(label: string): void {
+  if (typeof window === "undefined" || window.innerWidth > 900) return;
+  requestAnimationFrame(() => document.querySelector(`.ob .sheet[aria-label="${label}"]`)?.scrollIntoView({ block: "start" }));
 }
 
 /** Saves a blob under `filename` through a temporary link. */

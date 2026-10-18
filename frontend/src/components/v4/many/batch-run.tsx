@@ -22,7 +22,7 @@ import { batchActivityCopy } from "@/lib/batch-progress-copy";
 import { batchProgressSettled } from "@/lib/recovery-records";
 import { R } from "../routes";
 import { Chip, Content, Empty, Fig, Figs, Loading, PageHead, Panel, Row, Sheet, cx } from "../ui";
-import { ConfirmDialog, ManyWorld, PilotGate, Thumb, errorText, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
+import { ConfirmDialog, ManyWorld, PilotGate, Thumb, errorText, revealSheetOnPhone, saveBlob, useManyTabs, usePilotAccess, useToast, whenLabel } from "./common";
 import { BATCH_GATE } from "./batches-screen";
 import {
   ITEM_FILTERS,
@@ -252,7 +252,10 @@ export function BatchRun({ batchId }: { batchId: string }) {
   const st = progress ? batchStatus(progress.status) : null;
   const p = progress;
 
-  const pickLane = (k: string) => setLane((cur) => (cur === k ? "all" : k));
+  const pickLane = (k: string) => {
+    setLane((cur) => (cur === k ? "all" : k));
+    revealSheetOnPhone("This batch");
+  };
   const tileHref = (x: LanedItem) => (x.row ? R.part(x.row.part_key) : analysisIdOf(x.item) ? R.analysis(analysisIdOf(x.item)!) : R.batch(batchId));
   const dfmLine = (it: BatchItem) => (it.best_process ? `DFM: ${procName(it.best_process)}` : "DFM checked");
   const tileWhy = (x: LanedItem) => (x.row?.makeability?.verdict ? reasonOf(x.row, machines) : dfmLine(x.item));

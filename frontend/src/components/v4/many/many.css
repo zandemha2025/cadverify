@@ -100,7 +100,7 @@
 .ob .it{width:100%;border-collapse:collapse;font-size:13.5px}
 .ob .it th{text-align:left;font-size:12px;font-weight:600;color:var(--ink3);padding:8px 10px;border-bottom:1px solid var(--rule)}
 .ob .it td{padding:8px 10px;border-bottom:1px solid rgba(20,24,31,.06);vertical-align:middle}
-.ob .it td.r,.ob .it th.r{text-align:right}
+.ob .it td.r,.ob .it th.r{text-align:right;white-space:nowrap}
 .ob .it .fn b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
 .ob .it .fn small{display:block;color:var(--ink3);font-size:12px}
 .ob .it .fn .err{display:block;color:var(--bad);font-size:12px;white-space:pre-wrap;margin-top:2px}

@@ -68,7 +68,7 @@ export function BomScreen({ profileId }: { profileId: string | null }) {
     };
   }, [pid]);
 
-  if (access === "gated") return <PilotGate {...IMPORTS_GATE} title="BOM preview" />;
+  if (access === "gated") return <PilotGate {...IMPORTS_GATE} title="BOM preview" tab={2} />;
 
   const sap = profile ? isSap(profile.connector_id) : true;
   const sysName = sap ? "SAP S/4HANA" : "PTC Windchill";

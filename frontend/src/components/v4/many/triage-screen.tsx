@@ -28,6 +28,7 @@ import { bucketDef, costLabel, countOf, isStale, orderedBuckets, reasonOf, wallT
 export const TRIAGE_GATE = {
   title: "Triage",
   slot: "Your whole inventory",
+  tab: 1,
   features: [
     { title: "Makeability buckets", text: "On your machines, outside only, one change, ruled out", tone: "#E3F1E8" },
     { title: "Capability changes", text: "Which change to your machines unlocks the most parts", tone: "#FAEFD8" },
