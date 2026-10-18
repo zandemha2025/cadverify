@@ -90,6 +90,7 @@ const GATED = [
   "/designs",
   "/onboarding",
   "/verify",
+  "/app",
 ];
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
