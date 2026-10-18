@@ -405,6 +405,13 @@ class _FakeSession:
     async def commit(self):
         return None
 
+    async def execute(self, stmt):
+        # A machine write also marks the org's saved decisions stale (one UPDATE).
+        import types
+
+        self.executed = getattr(self, "executed", []) + [stmt]
+        return types.SimpleNamespace(rowcount=0)
+
 
 def _stored_lathe(**over):
     import types
