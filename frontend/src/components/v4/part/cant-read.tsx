@@ -9,7 +9,7 @@ import { R } from "../routes";
 import type { CheckSession } from "./store";
 import { dimsText, plural } from "./model";
 import type { ViewerController } from "./viewer";
-import { CantReadSheet } from "./blocked";
+import { CantReadSheet, type CantReadProblem } from "../moments";
 import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
@@ -43,7 +43,7 @@ export function CantReadView({
   const v = session.validation ?? session.result?.validation ?? null;
   const edges = openEdges(session);
   const dims = dimsText(v?.geometry.bounding_box_mm);
-  const problem = open ? "open" : f?.kind === "unreadable" ? f.problem : "unreadable";
+  const problem: CantReadProblem = open ? "open" : f?.kind === "unreadable" && f.problem !== "refused" ? f.problem : "unreadable";
   const head = open ? "Not watertight" : f?.kind === "unreadable" ? f.title : "Can’t read this file";
   const quote = open
     ? `Every process needs a closed solid.${edges != null ? ` This one has ${plural(edges, "open edge")}.` : ""} Common causes: missing faces, T-junctions, separate shells.`

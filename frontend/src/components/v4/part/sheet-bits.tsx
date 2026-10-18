@@ -4,9 +4,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { R } from "../routes";
+import { useShell } from "../shell";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
 import { MATERIAL_CLASS_LABEL } from "./model";
+import { CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../moments";
+import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
 
 export interface FigItem {
@@ -34,43 +37,37 @@ export function SheetTop({ title, meta, figs }: { title: string; meta: string; f
   );
 }
 
-/** Interrupted check, or prices that didn't finish: what's kept and how to retry. */
+/** Interrupted check, or prices that didn't finish: the shared X11 banners, plus where usage lives. */
 export function RunNotice() {
   const p = usePart();
+  const shell = useShell();
+  const usage = (
+    <p className="pmeta" style={{ marginTop: 6 }}>
+      <Link href={R.billing}>Usage and plans</Link>
+    </p>
+  );
   if (p.interrupted) {
     return (
-      <div className="note swap" role="alert" style={{ marginTop: 8 }}>
-        <b>The service was busy</b>
-        <span>This check didn’t start routing, DFM or prices. Wait a moment and retry; the file doesn’t need re-exporting. Saved results are unchanged.</span>
-        <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn ink sm" type="button" onClick={() => p.recheck()} disabled={!p.canRecheck}>
-            Retry check
-          </button>
-          <Link className="btn sm ghost" href={R.billing}>
-            Usage and plans
-          </Link>
-        </span>
+      <div className="swap" style={{ marginTop: 8 }}>
+        <CheckInterruptedBanner onRetry={() => p.recheck()} detail="No result. Routing, checks and cost didn’t start. Wait a moment and retry; the file doesn’t need re-exporting. Saved results are unchanged." />
+        {usage}
       </div>
     );
   }
   if (p.costOff) {
+    const err = p.data.costError;
     return (
-      <div className="note swap" role="alert" style={{ marginTop: 8 }}>
-        <b>Prices didn’t finish</b>
-        <span>Methods, findings and machine fit are ready and kept. Only prices need another try.</span>
-        {p.data.costError ? <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{p.data.costError}</span> : null}
-        <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn ink sm" type="button" onClick={p.retryPrices} disabled={!p.canRecheck || !!p.session?.costRetrying}>
-            {p.session?.costRetrying ? "Retrying prices…" : "Retry prices"}
-          </button>
-          <button className="btn sm" type="button" onClick={() => p.recheck()} disabled={!p.canRecheck}>
-            Check again from the start
-          </button>
-          <Link className="btn sm ghost" href={R.billing}>
-            Usage and plans
-          </Link>
-        </span>
-        {!p.canRecheck ? <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Drop the file on the part to retry; this page doesn’t keep it.</span> : null}
+      <div className="swap" style={{ marginTop: 8 }}>
+        {isQuotaErrorMessage(err) ? (
+          <CostBlockedBanner pro={shell.usage?.plan === "pro"} />
+        ) : (
+          <CostFailedBanner
+            onRetryCost={p.retryPrices}
+            onRerun={() => p.recheck()}
+            detail={p.session?.costRetrying ? "Retrying cost…" : ["Routing and process checks are ready.", err].filter(Boolean).join(" ")}
+          />
+        )}
+        {usage}
       </div>
     );
   }

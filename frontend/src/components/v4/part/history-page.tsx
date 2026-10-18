@@ -23,8 +23,8 @@ import { computeMeshHash } from "@/lib/verify/part-context";
 import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { ConfirmButton, Empty, Failed, Loading, cx } from "../ui";
-import { getCachedMesh } from "./mesh-cache";
 import { startCheck } from "./store";
+import { loadPartMesh } from "./api";
 import { MATERIAL_CLASS_LABEL, costLines, days, dimsText, methodName, money, qtyWord, shortId, trimNum } from "./model";
 import type { ViewerController } from "./viewer";
 import "./part.css";
@@ -102,7 +102,8 @@ export function HistoryPage({ partKey }: { partKey: string }) {
   const [state, setState] = React.useState<"loading" | "ready" | "error">("loading");
   const [err, setErr] = React.useState<string | null>(null);
   const [reload, setReload] = React.useState(0);
-  const [mesh, setMesh] = React.useState<{ url: string; faceHash: string | null } | null>(null);
+  const [mesh, setMesh] = React.useState<{ url: string; faceHash: string | null; origin: "cache" | "stored" } | null>(null);
+  const [kept, setKept] = React.useState<boolean | null>(null);
   const controller = React.useRef(null) as ViewerController;
   const [, setVs] = React.useState("");
   const picker = React.useRef<HTMLInputElement>(null);
@@ -141,10 +142,12 @@ export function HistoryPage({ partKey }: { partKey: string }) {
   React.useEffect(() => {
     let url: string | null = null;
     let live = true;
-    getCachedMesh(partKey).then((m) => {
-      if (!live || !m) return;
-      url = URL.createObjectURL(m.blob);
-      setMesh({ url, faceHash: m.faceHash });
+    loadPartMesh(partKey, null).then((r) => {
+      if (!live) return;
+      setKept(r.kept);
+      if (!r.mesh) return;
+      url = URL.createObjectURL(r.mesh.blob);
+      setMesh({ url, faceHash: r.mesh.faceHash, origin: r.mesh.origin });
     });
     return () => {
       live = false;
@@ -215,7 +218,7 @@ export function HistoryPage({ partKey }: { partKey: string }) {
           ) : (
             <>
               <div className="panel" style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: "4px 16px", padding: "14px 16px" }}>
-                <div className="hist-thumb" role="img" aria-label={`${file}${mesh ? ", rendered from this browser's copy" : ", no 3D view here"}`}>
+                <div className="hist-thumb" role="img" aria-label={`${file}${mesh ? (mesh.origin === "stored" ? ", rendered from the kept source file" : ", rendered from this browser's copy") : ", no 3D view here"}`}>
                   {mesh ? <PartViewer url={mesh.url} highlight={null} xray={false} controllerRef={controller} onState={setVs} /> : <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--ink3)", fontSize: 12, textAlign: "center", padding: 8 }}>No 3D view here</span>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
@@ -230,7 +233,7 @@ export function HistoryPage({ partKey }: { partKey: string }) {
                     <b>from the file, {(g?.faces ?? cg?.face_count ?? 0).toLocaleString("en-US")} faces</b>
                     <span>File</span>
                     <b>
-                      {(latest?.file_type ?? row?.file_type ?? "").toUpperCase()} · fingerprint <span className="mono">{partKey.slice(0, 8)}</span>
+                      {(latest?.file_type ?? row?.file_type ?? "").toUpperCase()} · {kept ? "kept with the record · " : ""}fingerprint <span className="mono">{partKey.slice(0, 8)}</span>
                     </b>
                   </div>
                   <span style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
@@ -259,7 +262,7 @@ export function HistoryPage({ partKey }: { partKey: string }) {
                       </Link>
                     ) : null}
                   </span>
-                  <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Re-check runs this part again with today&apos;s machines and rates · choose its file; the record keeps results, not the CAD · uses 1 check</span>
+                  <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Re-check runs this part again with today&apos;s machines and rates · choose its file · uses 1 check</span>
                   {recheckErr ? (
                     <span role="alert" style={{ color: "var(--bad)", fontSize: 12.5 }}>
                       {recheckErr}

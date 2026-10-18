@@ -22,6 +22,7 @@ import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-re
 import { partCheckHeaders } from "@/lib/verify/check-id";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
 import type { Disposition } from "./model";
+import { getCachedMesh, putCachedMesh } from "./mesh-cache";
 
 export interface SavedPart {
   decisions: CostDecisionSummary[];
@@ -91,6 +92,56 @@ export async function putDisposition(
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(apiProblemDetail(data) ?? apiRecoveryMessage({ status: res.status, payload: data, resource: "decision" }));
   return data as CostDispositionResult;
+}
+
+/* ── the part's kept source, in 3D ──────────────────────────────────────── */
+
+/** Is the exact uploaded file kept with the record in this organization? null when it couldn't be asked. */
+export async function fetchSourceKept(key: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${API_BASE}/parts/${encodeURIComponent(key)}/source-status`, { cache: "no-store" });
+    if (res.status === 404) return false;
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { kept?: unknown } | null;
+    return body?.kept === true;
+  } catch {
+    return null;
+  }
+}
+
+export interface PartMesh {
+  blob: Blob;
+  faceHash: string | null;
+  faceSpace: "analysis" | "preview";
+  /** cache: this browser's copy · stored: built on the server from the kept source file */
+  origin: "cache" | "stored";
+}
+
+/**
+ * 3D for a saved part: this browser's copy first, else the organization's kept
+ * source tessellated on the server (the same analysis face space as a check), which
+ * is then kept in this browser too. Opening it never uses a check.
+ */
+export async function loadPartMesh(key: string, filename: string | null): Promise<{ mesh: PartMesh | null; kept: boolean | null; error: string | null }> {
+  const [cached, kept] = await Promise.all([getCachedMesh(key), fetchSourceKept(key)]);
+  if (cached) return { mesh: { blob: cached.blob, faceHash: cached.faceHash, faceSpace: cached.faceSpace, origin: "cache" }, kept, error: null };
+  if (kept !== true) return { mesh: null, kept, error: null };
+  try {
+    const res = await fetch(`${API_BASE}/parts/${encodeURIComponent(key)}/preview.glb?units=mm`, { cache: "no-store" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      if (res.status === 404) return { mesh: null, kept: false, error: null };
+      return { mesh: null, kept, error: apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "3D view" }) };
+    }
+    const blob = await res.blob();
+    if (!blob.size) return { mesh: null, kept, error: "The 3D view of the kept file came back empty." };
+    const faceHash = res.headers.get("x-mesh-face-hash");
+    const faceSpace = res.headers.get("x-mesh-face-space") === "analysis" ? "analysis" : "preview";
+    void putCachedMesh({ hash: key, blob, faceHash, faceSpace, filename: filename ?? "", savedAt: Date.now() });
+    return { mesh: { blob, faceHash, faceSpace, origin: "stored" }, kept, error: null };
+  } catch {
+    return { mesh: null, kept, error: "The 3D view of the kept file couldn't reach the server." };
+  }
 }
 
 /* ── assemblies ─────────────────────────────────────────────────────────── */

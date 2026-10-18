@@ -9,8 +9,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getCachedMesh } from "./mesh-cache";
-import { loadSavedPart, type SavedPart } from "./api";
+import { loadPartMesh, loadSavedPart, type SavedPart } from "./api";
 import { previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
 import { PartView, type MeshSource } from "./part-view";
@@ -32,17 +31,26 @@ export function PartPage({ partKey }: { partKey: string }) {
   const [saved, setSaved] = React.useState<SavedPart | null>(null);
   const [state, setState] = React.useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = React.useState<string | null>(null);
-  const [cache, setCache] = React.useState<{ url: string; faceHash: string | null; faceSpace: "analysis" | "preview" } | null | undefined>(undefined);
+  const [cache, setCache] = React.useState<{ url: string; faceHash: string | null; faceSpace: "analysis" | "preview"; origin: "cache" | "stored" } | null | undefined>(undefined);
+  const [kept, setKept] = React.useState<boolean | null>(null);
+  const [storedError, setStoredError] = React.useState<string | null>(null);
+  const [meshTick, setMeshTick] = React.useState(0);
   const [drop, setDrop] = React.useState<{ url: string | null; faceHash: string | null; faceSpace: "analysis" | "preview"; error: string | null; loading: boolean } | null>(null);
   const [dropped, setDropped] = React.useState<File | null>(null);
   const [lens, setLens] = React.useState<Lens | null>(null);
+  const [askedQty, setAskedQty] = React.useState<number | null>(null);
   const [quotaClosed, setQuotaClosed] = React.useState(false);
   const [reload, setReload] = React.useState(0);
   const sessionDone = session?.status === "done";
 
+  // ?lens= opens a lens; ?qty=N (from a program's "Price at N") opens Cost at that quantity.
   React.useEffect(() => {
-    const l = new URLSearchParams(window.location.search).get("lens") as Lens | null;
-    setLens(l && LENS_KEYS.includes(l) ? l : "make");
+    const params = new URLSearchParams(window.location.search);
+    const l = params.get("lens") as Lens | null;
+    const n = Number(params.get("qty"));
+    const qty = Number.isFinite(n) && n >= 1 ? Math.round(n) : null;
+    setAskedQty(qty);
+    setLens(l && LENS_KEYS.includes(l) ? l : qty ? "cost" : "make");
   }, []);
 
   // What's saved about the part (records, analysis, context). Reloaded once a live check finishes.
@@ -66,21 +74,24 @@ export function PartPage({ partKey }: { partKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partKey, sessionDone, reload]);
 
-  // This browser's copy of the 3D preview.
+  // 3D: this browser's copy, else the kept source file built on the server. Re-asked once a live check finishes.
   React.useEffect(() => {
     let live = true;
     let url: string | null = null;
-    getCachedMesh(partKey).then((m) => {
+    setStoredError(null);
+    loadPartMesh(partKey, null).then((r) => {
       if (!live) return;
-      if (!m) return setCache(null);
-      url = URL.createObjectURL(m.blob);
-      setCache({ url, faceHash: m.faceHash, faceSpace: m.faceSpace });
+      setKept(r.kept);
+      setStoredError(r.error);
+      if (!r.mesh) return setCache(null);
+      url = URL.createObjectURL(r.mesh.blob);
+      setCache({ url, faceHash: r.mesh.faceHash, faceSpace: r.mesh.faceSpace, origin: r.mesh.origin });
     });
     return () => {
       live = false;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [partKey]);
+  }, [partKey, sessionDone, meshTick]);
 
   // A re-check that stopped before any answer (out of checks) leaves the saved answers in place.
   const stoppedEarly = !!session && session.status === "failed" && !session.validation && session.failure?.kind === "quota" && !!saved;
@@ -92,9 +103,9 @@ export function PartPage({ partKey }: { partKey: string }) {
   const mesh: MeshSource = React.useMemo(() => {
     if (session && (session.preview.url || session.preview.status === "loading")) return liveMesh(session);
     if (drop) return { url: drop.url, faceHash: drop.faceHash, faceSpace: drop.faceSpace, kind: "glb", origin: drop.url ? "drop" : null, loading: drop.loading, error: drop.error };
-    if (cache) return { url: cache.url, faceHash: cache.faceHash, faceSpace: cache.faceSpace, kind: "glb", origin: "cache", loading: false, error: null };
-    return { url: null, faceHash: null, faceSpace: "preview", kind: "glb", origin: null, loading: cache === undefined, error: session?.preview.error ?? null };
-  }, [session, drop, cache]);
+    if (cache) return { url: cache.url, faceHash: cache.faceHash, faceSpace: cache.faceSpace, kind: "glb", origin: cache.origin, loading: false, error: null };
+    return { url: null, faceHash: null, faceSpace: "preview", kind: "glb", origin: null, loading: cache === undefined, error: session?.preview.error ?? storedError };
+  }, [session, drop, cache, storedError]);
 
   const onDropFile = React.useCallback(
     async (file: File) => {
@@ -195,11 +206,13 @@ export function PartPage({ partKey }: { partKey: string }) {
       session={stoppedEarly ? null : session}
       mesh={mesh}
       initialLens={lens}
+      initialQty={askedQty}
       canRecheck={!!file}
       onRecheck={recheck}
       onRetryPrices={() => session && void retryPrices(session.id)}
       onDropFile={session ? undefined : (f) => void onDropFile(f)}
-      onRetryPreview={session?.preview.status === "failed" ? () => retryPreview(session.id) : undefined}
+      onRetryPreview={session?.preview.status === "failed" ? () => retryPreview(session.id) : storedError ? () => setMeshTick((n) => n + 1) : undefined}
+      sourceKept={kept}
       overlay={overlay}
     />
   );

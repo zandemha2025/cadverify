@@ -114,7 +114,7 @@ export function ShopSheet() {
     figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: p.costOff ? "Not priced" : money(ih.cost), s: e && !p.costOff ? priceMeta(ih.method!, p.q)?.replace(/^Could be /, "") ?? "" : "" });
   }
   const warn = views.filter((v) => v.tone === "warn");
-  if (cant.length) figs.push({ k: "Can't", v: cant.map((v) => v.name).join(", "), s: cant.map((v) => v.verdict.toLowerCase()).join(" · "), tone: "bad" });
+  if (cant.length) figs.push({ k: "Can't", v: cant.map((v) => v.name).join(", "), s: cant.map((v) => (v.verdict === "Can't" ? "can't make it as drawn" : v.verdict.toLowerCase())).join(" · "), tone: "bad" });
   else if (warn.length) figs.push({ k: "Not set up", v: warn.map((v) => v.name).join(", "), tone: "warn" });
   const dims = dimsText(bboxOf(p));
   const est = m && m.tone === "ok" && !p.costOff ? m.method?.prices.get(p.q) ?? null : null;

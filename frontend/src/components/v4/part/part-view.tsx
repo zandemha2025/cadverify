@@ -9,13 +9,12 @@ import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { downloadCostPdf, shareCostDecision } from "@/lib/api";
-import { effectiveRateCard } from "@/lib/verify/rate-api";
 import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { useRegisterPaletteItems, usePalette, type PaletteItem } from "../palette";
 import { LENSES, PartProvider, initialPick, useMethods, type Lens, type PartCtxValue, type PartData, type Toast } from "./ctx";
-import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, priceAt, qtyWord, shortId, trimNum } from "./model";
+import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId, trimNum } from "./model";
 import type { ViewerController, ViewerHighlight, ViewerState } from "./viewer";
 import type { CheckSession } from "./store";
 import { MakeSheet } from "./lens-make";
@@ -24,6 +23,8 @@ import { ShopLayer, ShopSheet } from "./lens-shop";
 import { DecideSheet, DecideTicket } from "./lens-decide";
 import { UseLayer, UseSheet } from "./lens-use";
 import { AskDock } from "./ask";
+import { PreviewFailed, RatesChip } from "../moments";
+import { useShell } from "../shell";
 import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
@@ -33,8 +34,8 @@ export interface MeshSource {
   faceHash: string | null;
   faceSpace: "analysis" | "preview";
   kind: "glb" | "stl";
-  /** live: fetched for this check · cache: this browser's copy · drop: from a dropped copy */
-  origin: "live" | "cache" | "drop" | null;
+  /** live: fetched for this check · cache: this browser's copy · stored: built from the kept source file · drop: from a dropped copy */
+  origin: "live" | "cache" | "stored" | "drop" | null;
   loading: boolean;
   error: string | null;
 }
@@ -44,33 +45,46 @@ export function PartView({
   session,
   mesh,
   initialLens = "make",
+  initialQty = null,
   canRecheck,
   onRecheck,
   onRetryPrices,
   onDropFile,
   onRetryPreview,
+  sourceKept = null,
   overlay,
 }: {
   data: PartData;
   session: CheckSession | null;
   mesh: MeshSource;
   initialLens?: Lens;
+  /** A quantity from the link (?qty=N): shown at that quantity, or the nearest one the check priced. */
+  initialQty?: number | null;
   canRecheck: boolean;
   onRecheck: (opts?: { materialClass?: string }) => void;
   onRetryPrices: () => void;
   onDropFile?: (file: File) => void;
   /** Ask for the 3D preview again (same file, same check) after it failed. */
   onRetryPreview?: () => void;
+  /** Whether the exact uploaded file is kept with the record (GET /parts/{hash}/source-status); null when unknown. */
+  sourceKept?: boolean | null;
   /** The progress panel or a dialog over the part. */
   overlay?: React.ReactNode;
 }) {
   const [data, setData] = React.useState<PartData>(initial);
   React.useEffect(() => setData(initial), [initial]);
   const { methods, rows, qs } = useMethods(data);
-  const [q, setQState] = React.useState<number>(() => defaultQty(qs));
+  const [asked, setAsked] = React.useState<number | null>(initialQty);
+  const startQty = (list: number[]) => (asked != null ? nearestComputed(list, asked, defaultQty(list)) : defaultQty(list));
+  const [q, setQState] = React.useState<number>(() => startQty(qs));
   React.useEffect(() => {
-    if (qs.length && !qs.includes(q)) setQState(defaultQty(qs));
+    if (qs.length && !qs.includes(q)) setQState(startQty(qs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qs, q]);
+  const setQ = React.useCallback((n: number) => {
+    setAsked(null);
+    setQState(n);
+  }, []);
   const [oq, setOq] = React.useState("");
   const [lens, setLensState] = React.useState<Lens>(initialLens);
   const [selCode, setSelCode] = React.useState<string | null>(null);
@@ -81,6 +95,7 @@ export function PartView({
   const [xray, setXray] = React.useState(false);
   const [hint, setHint] = React.useState(true);
   const [viewer, setViewer] = React.useState<ViewerState>("loading");
+  const shell = useShell();
   const retryPreview = mesh.url ? (
     <button className="btn sm" type="button" onClick={() => setViewer("loading")}>
       Retry preview
@@ -134,7 +149,8 @@ export function PartView({
     rows,
     qs,
     q,
-    setQ: setQState,
+    setQ,
+    askedQty: asked != null && qs.length && !qs.includes(asked) ? asked : null,
     oq,
     setOq,
     lens,
@@ -213,16 +229,6 @@ export function PartView({
   const ctx = data.context;
   const annual = ctx?.resolved_annual_volume ?? ctx?.annual_volume ?? null;
   const hudCtx = [ctx?.program ? `Program ${ctx.program}` : "No program", ctx?.parent_assembly ? `in ${ctx.parent_assembly}` : "not in an assembly", annual ? `${qtyWord(annual)} a year` : "no yearly volume"].join(" · ");
-  const [rates, setRates] = React.useState<{ label: string; yours: boolean } | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    effectiveRateCard()
-      .then((c) => live && setRates(c.using_governed ? { label: "Rates: your rate card", yours: true } : { label: "Rates: Default v0 · typical", yours: false }))
-      .catch(() => live && setRates(null));
-    return () => {
-      live = false;
-    };
-  }, []);
 
   const share = async () => {
     if (!data.decisionId) return;
@@ -245,6 +251,8 @@ export function PartView({
 
   const li = LENSES.findIndex(([k]) => k === lens);
   const noModel = !mesh.url && !mesh.loading;
+  // This check's own preview failed (the check still runs on the file): the shared X11 notice.
+  const failedLive = !!mesh.error && !!onRetryPreview && !mesh.url && !mesh.loading && !onDropFile;
   const showNo3d = !interrupted && (noModel || viewer === "failed" || viewer === "nowebgl");
   const drop = (f: File | undefined | null) => {
     setOver(false);
@@ -273,16 +281,20 @@ export function PartView({
             </span>
             <span className="chips">
               {data.key ? (
-                <span className="src s-file" title={`Evidence fingerprint: SHA-256 of the uploaded file, ${data.key}. The record keeps this fingerprint and the results, not the CAD.`}>
-                  Fingerprint <span className="fp" style={{ marginLeft: 4 }}>{data.key.slice(0, 8)}</span>
+                <span
+                  className="src s-file"
+                  title={
+                    sourceKept
+                      ? `The exact file you uploaded is kept with the record, in your organization only. Evidence fingerprint: SHA-256 ${data.key}.`
+                      : `Evidence fingerprint: SHA-256 of the uploaded file, ${data.key}.`
+                  }
+                >
+                  {sourceKept ? "Source file kept with the record" : "Fingerprint"} <span className="fp" style={{ marginLeft: 4 }}>{data.key.slice(0, 8)}</span>
                 </span>
               ) : null}
-              {rates ? (
-                <Link className={cx("src", rates.yours ? "s-yours" : "s-typ")} href={R.rates} style={{ textDecoration: "none" }}>
-                  {rates.label}
-                </Link>
-              ) : null}
+              <RatesChip />
               {mesh.origin === "cache" && has3d ? <span className="src s-typ">3D from this browser&apos;s copy</span> : null}
+              {mesh.origin === "stored" && has3d ? <span className="src s-typ">3D from the kept source file</span> : null}
             </span>
           </div>
 
@@ -352,7 +364,9 @@ export function PartView({
               <span>Every answer <span className="on-desk">on the right</span><span className="on-phone">below</span> still holds; they come from the file, not the picture.</span>
               {dims ? <span className="num">Measured envelope {dims}</span> : null}
               {mesh.error ? <span className="err" role="alert">{mesh.error}</span> : null}
-              {onDropFile ? (
+              {failedLive && onRetryPreview ? (
+                <PreviewFailed onRetry={onRetryPreview} onChooseFile={shell.pickFile} />
+              ) : onDropFile ? (
                 <>
                   <span>Drop the file to see it in 3D. It must be the same file, and it doesn&apos;t use a check.</span>
                   <span style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>

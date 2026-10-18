@@ -53,7 +53,7 @@
 .ob .pv .tg a em{font-style:normal;color:var(--ink3);font-size:12.5px}
 
 /* X10: progress */
-.ob .pv .prog{position:absolute;right:20px;top:20px;width:452px;z-index:7;background:rgba(255,255,255,.94);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);border:1px solid rgba(255,255,255,.7);border-radius:22px;box-shadow:0 18px 50px rgba(20,24,31,.12);transition:opacity 260ms var(--sheet),transform 300ms var(--sheet)}
+.ob .pv .prog{position:absolute;right:20px;top:20px;width:452px;z-index:7;background:rgba(255,255,255,.985);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);border:1px solid rgba(255,255,255,.7);border-radius:22px;box-shadow:0 18px 50px rgba(20,24,31,.12);transition:opacity 260ms var(--sheet),transform 300ms var(--sheet)}
 @starting-style{.ob .pv .prog{opacity:0;transform:translateY(8px)}}
 .ob .pv .prog .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 12px}
 .ob .pv .btn.x{width:36px;height:36px;padding:0;flex:none}
@@ -154,3 +154,9 @@
 .ob .pv .on-phone{display:none}
 @media (max-width:900px){.ob .pv .on-desk{display:none}.ob .pv .on-phone{display:inline}}
 @media (prefers-reduced-motion:reduce){.ob .pv .st.now .m::after{animation:none}}
+/* Cost ranking rows move as one 56px track; keep each to its height. */
+.ob .pv .rank .mr>span:first-child{min-width:0}
+.ob .pv .rank .mr small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Design Studio import, while the imported revision is being checked. */
+.ob .pv .design-note{position:absolute;left:24px;top:200px;width:min(440px,calc(100% - 48px));z-index:5}
+@media (max-width:900px){.ob .pv .design-note{left:16px;top:150px;width:calc(100% - 32px)}}

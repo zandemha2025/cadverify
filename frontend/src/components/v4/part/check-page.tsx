@@ -13,7 +13,9 @@ import { takePendingFile } from "../pending-file";
 import { R } from "../routes";
 import { startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
 import { StartScreen } from "./start";
-import { OutOfChecks, PhoneNeeded } from "./blocked";
+import { OutOfChecks } from "./blocked";
+import { DesignImportBanner, PhoneGateView } from "../moments";
+import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
 import { ProgressPanel } from "./progress";
 import { PartView, type MeshSource } from "./part-view";
 import { liveData } from "./data";
@@ -51,10 +53,13 @@ export function CheckPage() {
   const started = React.useRef(false);
   // Out of checks before the sample ran (X3): the sample uses a check like any part.
   const [noChecks, setNoChecks] = React.useState<string | null>(null);
+  // Design Studio's "Verify revision n" (?design=<id>&revision=<n>): the exact STEP revision, checked like an upload.
+  const [design, setDesign] = React.useState<{ state: "loading" | "done" | "error"; name?: string; revision: number | null; detail?: string } | null>(null);
 
   const begin = React.useCallback((f: File, opts: { sample?: boolean } = {}) => {
     setPicked(null);
     setNoChecks(null);
+    setDesign(null);
     setView("progress");
     setSid(startCheck(f, opts));
   }, []);
@@ -74,7 +79,25 @@ export function CheckPage() {
     started.current = true;
     const f = takePendingFile();
     if (f) return begin(f);
-    if (new URLSearchParams(window.location.search).get("sample") === "1") {
+    const search = window.location.search;
+    if (new URLSearchParams(search).get("design") !== null) {
+      // Read once, then drop the params so Back or a reload can't import (and check) it again.
+      window.history.replaceState(window.history.state, "", R.check);
+      const id = designIdFromSearch(search);
+      const rawRevision = new URLSearchParams(search).get("revision");
+      const revision = designRevisionFromSearch(search);
+      if (!id) return setDesign({ state: "error", revision: null, detail: "That Design Studio link isn't valid. Open the design again from Design Studio." });
+      if (rawRevision !== null && revision === null) return setDesign({ state: "error", revision: null, detail: "That design revision isn't valid. Open the design again from Design Studio." });
+      setDesign({ state: "loading", revision });
+      void importDesignStep(id, fetch, revision)
+        .then((file) => {
+          begin(file);
+          setDesign({ state: "done", name: file.name, revision, detail: [revision != null ? `Revision ${revision}` : null, "STEP from Design Studio", "checking now"].filter(Boolean).join(" · ") });
+        })
+        .catch((e) => setDesign({ state: "error", revision, detail: e instanceof Error ? e.message : "The design couldn't be imported." }));
+      return;
+    }
+    if (new URLSearchParams(search).get("sample") === "1") {
       window.history.replaceState(window.history.state, "", R.check);
       void beginSample();
     }
@@ -103,10 +126,11 @@ export function CheckPage() {
     }
   }, [session?.key, session?.validation, session?.status, router]);
 
+  const designBanner = design ? <DesignImportBanner state={design.state} name={design.name} revision={design.revision} detail={design.detail} onDismiss={design.state === "done" ? () => setDesign(null) : undefined} /> : null;
   if (!session) {
     return (
       <>
-        <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={() => void beginSample()} />
+        <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={() => void beginSample()} notice={designBanner} />
         {noChecks ? <OutOfChecks message={noChecks} onClose={() => setNoChecks(null)} /> : null}
       </>
     );
@@ -121,7 +145,7 @@ export function CheckPage() {
       </>
     );
   if (f?.kind === "phone")
-    return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={() => void beginSample()} notice={<PhoneNeeded message={f.message} />} />;
+    return <PhoneGateView fileName={session.file.name} onVerified={() => undefined} onContinue={() => begin(session.file, { sample: session.sample })} continueLabel="Check the part" />;
   if (f?.kind === "unreadable") return <CantReadView session={session} onPick={(file) => begin(file)} onRetry={f.retry ? () => begin(session.file) : undefined} />;
   if (session.status === "stopped") {
     if (view === "repair") return <RepairView session={session} onPick={(file) => begin(file)} onBack={() => setView("cant")} />;
@@ -162,7 +186,10 @@ export function CheckPage() {
       onRetryPreview={() => retryPreview(session.id)}
       overlay={
         session.status === "running" ? (
-          <ProgressPanel session={session} open={session.panel} onOpenChange={(o) => setPanel(session.id, o)} />
+          <>
+            {design?.state === "done" ? <div className="design-note">{designBanner}</div> : null}
+            <ProgressPanel session={session} open={session.panel} onOpenChange={(o) => setPanel(session.id, o)} />
+          </>
         ) : session.sample ? (
           <SampleFlow status={session.status} result={session.result} onRetry={() => void beginSample()} />
         ) : null

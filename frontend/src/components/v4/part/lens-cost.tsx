@@ -50,7 +50,7 @@ export function CostLayer() {
   const lblY = sel && priceAt(sel, p.q) != null ? chart.y(priceAt(sel, p.q)!) : null;
   const crossName = d?.tooling_process ? p.methods.find((m) => m.code === d.tooling_process)?.name.toLowerCase() ?? "tooling" : "tooling";
   return (
-    <div className={cx("layer", !on && "off")} style={{ left: 64, top: 296, width: 800, height: 480 }} aria-hidden={!on}>
+    <div className={cx("layer", !on && "off")} style={{ left: 64, top: 270, width: 800, height: 480 }} aria-hidden={!on}>
       <div className="card" style={{ position: "absolute", inset: 0, padding: "16px 18px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <b style={{ fontWeight: 600 }}>Cost each, by how many you make</b>
@@ -282,6 +282,13 @@ export function CostSheet() {
       <SheetTop {...top} />
       <div className="scroll">
         <RunNotice />
+        {p.askedQty != null && cost ? (
+          <p className="note" role="status">
+            <span>
+              This check priced {p.qs.map(qtyWord).join(", ")}, not {qtyWord(p.askedQty)}. Showing {qtyWord(p.q)}, the nearest. Enter {qtyWord(p.askedQty)} in Other quantity below for a model estimate between the priced points.
+            </span>
+          </p>
+        ) : null}
         {p.interrupted || p.costOff ? null : !cost ? (
           <Empty title={p.checking ? "Pricing…" : "Not priced yet"}>{p.checking ? "Prices arrive with the record." : "This part has an analysis but no priced record. Drop the file on the part to price it."}</Empty>
         ) : (
@@ -305,7 +312,7 @@ export function CostSheet() {
                 >
                   <span>
                     <b>{m.name}</b>
-                    <small>
+                    <small title={`${m.short} · ${m.prices.get(p.q)!.material}${m.inHouse ? ` · your ${m.inHouse}` : ""}`}>
                       {m.short} · {m.prices.get(p.q)!.material}
                       {m.inHouse ? ` · your ${m.inHouse}` : ""}
                     </small>

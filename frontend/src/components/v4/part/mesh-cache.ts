@@ -1,9 +1,10 @@
 /**
  * A copy of a part's 3D preview mesh in THIS browser (IndexedDB), keyed by the
- * part's mesh hash, so a saved part reopens in 3D without sending its CAD again.
- * Nothing here leaves the browser: the server keeps the audit record, never the
- * CAD or the mesh. Every call fails soft (private windows, blocked storage,
- * quota): the page then shows its "No 3D view" state instead.
+ * part's mesh hash: the fast path in front of the server's view of the kept
+ * source (GET /parts/{hash}/preview.glb), so a saved part reopens in 3D without
+ * another round trip. Nothing here leaves the browser. Every call fails soft
+ * (private windows, blocked storage, quota): the page then asks the server, or
+ * shows its "No 3D view" state.
  */
 
 const DB = "scalecad-part-previews";

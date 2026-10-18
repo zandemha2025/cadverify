@@ -52,6 +52,8 @@ export interface PartCtxValue {
   qs: number[];
   q: number;
   setQ: (q: number) => void;
+  /** A quantity a link asked for (?qty=N) that isn't one the check priced; cleared once a quantity is picked. */
+  askedQty: number | null;
   oq: string;
   setOq: (v: string) => void;
   lens: Lens;
