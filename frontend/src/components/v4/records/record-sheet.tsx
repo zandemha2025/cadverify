@@ -255,16 +255,23 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
                 {why}
               </p>
             ) : null}
-            <label className="tx">
-              Outcome note
-              <textarea maxLength={NOTE_MAX} placeholder="Reason, owner, next review" value={note} onChange={(e) => setNote(e.target.value)} />
-              <span className="cnt">
+            <div className="tx">
+              <label htmlFor={`note-${detail.id}`}>Outcome note</label>
+              <textarea
+                id={`note-${detail.id}`}
+                maxLength={NOTE_MAX}
+                placeholder="Reason, owner, next review"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                aria-describedby={`note-${detail.id}-cnt`}
+              />
+              <span className="cnt" id={`note-${detail.id}-cnt`}>
                 <span>{!dec ? (note.length ? "Choose an outcome to save this note." : "") : dirty ? <b>Unsaved. Save before approving.</b> : savedNote ? "Saved" : ""}</span>
                 <span className="num">
                   {note.length}/{NOTE_MAX}
                 </span>
               </span>
-            </label>
+            </div>
             <div className="bar2">
               <button type="button" className={cx("btn sm", dec && dirty && "ink")} disabled={!dec || !dirty || !!busy} onClick={saveNote}>
                 {busy === "note" ? "Saving…" : "Save note"}
