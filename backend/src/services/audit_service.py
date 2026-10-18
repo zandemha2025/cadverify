@@ -183,6 +183,11 @@ async def query_audit_log(
     org-admin passes their org; a superadmin passes None for the unfiltered,
     platform-wide view). Returns
     {"entries": [...], "next_cursor": ..., "has_more": ...}.
+
+    Entries are NEWEST first (``id`` DESC, the same keyset shape as the
+    notification and integration-run lists): the first page is the most recent
+    activity, and ``next_cursor`` (the last, oldest id on the page) fetches the
+    next OLDER page. The CSV export below stays chronological for log files.
     """
     limit = max(1, min(limit, _MAX_LIMIT))
 
@@ -195,7 +200,7 @@ async def query_audit_log(
         stmt = (
             select(AuditLog)
             .where(AuditLog.timestamp >= start, AuditLog.timestamp <= end)
-            .order_by(AuditLog.id.asc())
+            .order_by(AuditLog.id.desc())
             .limit(limit + 1)
         )
 
@@ -206,7 +211,7 @@ async def query_audit_log(
         if org_id is not None:
             stmt = stmt.where(AuditLog.org_id == org_id)
         if cursor is not None:
-            stmt = stmt.where(AuditLog.id > int(cursor))
+            stmt = stmt.where(AuditLog.id < int(cursor))
 
         rows = (await session.execute(stmt)).scalars().all()
         has_more = len(rows) > limit
