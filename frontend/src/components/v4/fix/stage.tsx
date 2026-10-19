@@ -4,8 +4,9 @@
 import * as React from "react";
 import { cx } from "../ui";
 import { KIND_COLOR } from "../part/model";
-import { useFix } from "./ctx";
-import { callout, findProblem, n0, pickMethod } from "./problems";
+import { defaultMethod, useFix } from "./ctx";
+import { usePart } from "../part/ctx";
+import { callout, findProblem, n0 } from "./problems";
 import { placesOf } from "./rank";
 
 /** The words under the part when the pin is out of view (replaces "Drag to turn it"). */
@@ -15,8 +16,14 @@ export function fixHint(pin: string, kind: "problem" | "all", n: string): string
   return null;
 }
 
-export function FixStage({ has3d }: { has3d: boolean }) {
+/**
+ * In the stage: the phone pill (the callout under the part). `part` = "stage".
+ * After the stage: the key, the places and the note, so on a phone they sit
+ * between the part and the sheet (board K5). `part` = "key".
+ */
+export function FixStage({ has3d, part = "stage" }: { has3d: boolean; part?: "stage" | "key" }) {
   const fx = useFix();
+  const p = usePart();
   const v = fx.view;
   if (!v) return null;
   if (v.kind === "problem") {
@@ -36,14 +43,15 @@ export function FixStage({ has3d }: { has3d: boolean }) {
             : P.region
               ? "Pinned where the check found it"
               : "The whole part: not one place on it";
+    if (part === "stage")
+      return has3d ? (
+        <span className={cx("kpill", fx.pin !== "visible" && "off")} aria-live="polite">
+          <b>{co.main}</b>
+          <small>{co.sub}</small>
+        </span>
+      ) : null;
     return (
       <>
-        {has3d ? (
-          <span className={cx("kpill", fx.pin !== "visible" && "off")} aria-live="polite">
-            <b>{co.main}</b>
-            <small>{co.sub}</small>
-          </span>
-        ) : null}
         <div className="klegend" aria-label="Key">
           <span className="li">
             {P.id === "open" ? <i className="ln2" /> : lit ? <i className="sw2" style={{ color }} /> : null}
@@ -57,16 +65,25 @@ export function FixStage({ has3d }: { has3d: boolean }) {
   const places = placesOf(fx.ranked);
   const sel = findProblem(fx.set, v.sel) ?? fx.ranked[0]?.problem ?? null;
   const selPlace = places.find((pl) => sel && pl.ids.includes(sel.id)) ?? null;
-  const co = sel ? callout(sel, pickMethod(sel, null, null)) : null;
+  const co = sel ? callout(sel, defaultMethod(sel, fx.set, p.methods, fx.allQty, null, null)) : null;
   const note = !selPlace ? null : !selPlace.located ? "Whole part: not one place on it" : fixHint(fx.pin, "all", selPlace.n);
+  if (part === "stage")
+    return has3d && co && selPlace?.located ? (
+      <span className={cx("kpill", fx.pin !== "visible" && "off")} aria-live="polite">
+        <b>{co.main}</b>
+        <small>{co.sub}</small>
+      </span>
+    ) : null;
   return (
     <>
-      {note ? <span className="kstnote">{note}</span> : null}
-      {has3d && co && selPlace?.located ? (
-        <span className={cx("kpill", fx.pin !== "visible" && "off")} aria-live="polite">
-          <b>{co.main}</b>
-          <small>{co.sub}</small>
-        </span>
+      {note ? (
+        selPlace?.located && (fx.pin === "hidden" || fx.pin === "inside") ? (
+          <button type="button" className="kstnote kstbtn" onClick={fx.turn}>
+            {fx.pin === "inside" ? "Inside the part: show it with X-ray" : note}
+          </button>
+        ) : (
+          <span className="kstnote">{note}</span>
+        )
       ) : null}
       <div className="klocs" role="group" aria-label="Where the problems are">
         {places.map((pl) => (

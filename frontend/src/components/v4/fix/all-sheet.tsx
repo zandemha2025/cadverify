@@ -7,7 +7,7 @@ import { useShell } from "../shell";
 import { usePart } from "../part/ctx";
 import { classLabel } from "../part/sheet-bits";
 import { cheapestAt, money, priceAt, qtyWord } from "../part/model";
-import { allQuantities, useFix } from "./ctx";
+import { allQuantities, defaultMethod, useFix } from "./ctx";
 import { fixText, measuredFig, type Problem } from "./problems";
 import { placeName, placesOf, type Unlock } from "./rank";
 import { fixRoute, whoFixes } from "./capabilities";
@@ -66,7 +66,7 @@ export function AllProblemsSheet() {
     const expanded = on && openId === P.id;
     const place = places.find((pl) => pl.ids.includes(P.id));
     const who = whoFixes(P, fx.origin, millingWorks);
-    const m0 = P.methods[0] ?? null;
+    const m0 = defaultMethod(P, fx.set, p.methods, q, null, null);
     const meas = measuredFig(P, m0);
     return (
       <React.Fragment key={P.id}>
@@ -111,7 +111,7 @@ export function AllProblemsSheet() {
             <span>{fixText(P, m0, null).fix}</span>
             <span>Check</span>
             <span className="kcode">{P.codes.join(" · ")}</span>
-            <button className="btn sm go" type="button" onClick={() => fx.openProblem(P.id)}>
+            <button className="btn sm kshow" type="button" onClick={() => fx.openProblem(P.id)}>
               Show it on the part
             </button>
           </div>

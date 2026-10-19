@@ -731,7 +731,9 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
         ) : (
           <div className="kpfig">
             <small>
-              {u.partial.length
+              {u.excluded.length && !u.partial.length
+                ? `${u.excluded.map((m) => m.name).join(", ")} ${u.excluded.length === 1 ? "is" : "are"} ruled out by this part’s service conditions, so this fix adds no price: ${u.excluded[0].excludedReason}`
+                : u.partial.length
                 ? `No new price from this fix alone: each method it stops also needs ${[...new Set(u.partial.flatMap((x) => x.others.map((o) => o.title.toLowerCase())))].join(", ")}.`
                 : p.data.cost
                   ? "Nothing it stops has a price at this quantity."

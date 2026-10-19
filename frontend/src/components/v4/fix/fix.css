@@ -27,6 +27,8 @@
 .ob .pv .klocs .on{border-color:var(--ink);color:var(--ink)}
 .ob .pv .klocs .on i{background:var(--ink);color:#fff}
 .ob .pv .kstnote{position:absolute;left:calc(33% - 170px);top:620px;width:340px;text-align:center;color:var(--ink3);font-size:12.5px;z-index:2}
+.ob .pv .kstbtn{all:unset;box-sizing:border-box;position:absolute;left:calc(33% - 170px);top:620px;width:340px;text-align:center;color:var(--file);font-size:12.5px;z-index:2;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ob .pv .kstbtn:focus-visible{outline:2px solid var(--file);outline-offset:2px;border-radius:6px}
 .ob .pv .kpill{display:none}
 .ob .pv .khud-back{all:unset;cursor:pointer;color:#1F4FC4;font-size:12.5px;margin-bottom:2px}
 .ob .pv .khud-back:focus-visible{outline:2px solid var(--file);outline-offset:2px;border-radius:4px}
@@ -178,7 +180,7 @@
 @media (hover:hover) and (pointer:fine){.ob .pv .kpr:hover{background:rgba(255,255,255,.75)}.ob .pv .kpr.on:hover{background:#fff}}
 .ob .pv .kpd{margin:0 12px 6px 48px;padding:10px 12px;border-radius:12px;background:rgba(20,24,31,.035);display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px;color:var(--ink2)}
 .ob .pv .kpd span:nth-child(odd){color:var(--ink3)}
-.ob .pv .kpd .go{grid-column:1 / -1;justify-self:start}
+.ob .pv .kpd .kshow{grid-column:1 / -1;justify-self:start;margin-top:2px}
 .ob .pv .kfa{padding:12px 22px 16px;border-top:1px solid var(--rule);background:rgba(255,255,255,.55);display:flex;flex-direction:column;gap:6px}
 .ob .pv .kfa b{font-size:14.5px;font-weight:600}
 .ob .pv .kfa p{margin:0;color:var(--ink2);font-size:13px}
@@ -197,7 +199,7 @@
 .ob .pv .klegend .li{font-size:12px}
 .ob .pv .klegend .turnhelp{display:none}
 .ob .pv .klocs{position:static;margin:10px 12px 0;right:auto}
-.ob .pv .kstnote{position:static;width:auto;margin:6px 16px 0}
+.ob .pv .kstnote,.ob .pv .kstbtn{position:static;width:auto;margin:6px 16px 0}
 .ob .pv .kgo1{display:flex;gap:8px;margin-top:14px}
 .ob .pv .kgo1 .btn{flex:1;height:44px}
 .ob .pv .kact{padding:12px 16px 16px}

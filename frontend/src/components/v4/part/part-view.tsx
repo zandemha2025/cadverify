@@ -452,6 +452,7 @@ export function PartView({
             </div>
           ) : null}
         </section>
+        {fixOn ? <FixStage has3d={has3d} part="key" /> : null}
 
         <aside className="sheet" aria-label="The answer">
           {fixOn && fx.value.view?.kind === "problem" ? (

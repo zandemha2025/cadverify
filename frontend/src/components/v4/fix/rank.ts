@@ -28,6 +28,8 @@ export interface Unlock {
   priced: Priced[];
   /** Methods it stops together with other problems. */
   partial: { m: Method; others: Problem[] }[];
+  /** Methods it stops that the part's service conditions rule out anyway. */
+  excluded: Method[];
   /** The cheapest method you could order today at q. */
   today: Priced | null;
   best: Priced | null;
@@ -48,6 +50,18 @@ function joinWords(xs: string[]): string {
   return `${u.slice(0, -1).join(", ")} and ${u[u.length - 1]}`;
 }
 
+/** "Nylon powder printing (MJF)" only where two methods share a name; else just the name. */
+export function methodLabel(m: Method, all: Method[]): string {
+  return all.filter((x) => x.name === m.name).length > 1 ? `${m.name} (${m.short})` : m.name;
+}
+
+/** "A, B, C and 4 more". */
+export function someWords(xs: string[], max = 3): string {
+  const u = [...new Set(xs)];
+  if (u.length <= max) return joinWords(u);
+  return `${u.slice(0, max).join(", ")} and ${u.length - max} more`;
+}
+
 /** Single-process methods only (the Make lens groups some for display). */
 function singles(methods: Method[]): Method[] {
   return methods.filter((m) => m.members.length === 1);
@@ -64,9 +78,13 @@ export function unlockOf(p: Problem, set: ProblemSet, methods: Method[], q: numb
   const list = singles(methods);
   const added: Method[] = [];
   const partial: { m: Method; others: Problem[] }[] = [];
+  const excluded: Method[] = [];
   for (const m of list) {
-    if (m.excludedReason) continue;
     const bs = blockers.get(m.code) ?? [];
+    if (m.excludedReason) {
+      if (bs.some((b) => b.id === p.id)) excluded.push(m);
+      continue;
+    }
     if (!bs.some((b) => b.id === p.id)) continue;
     const others = bs.filter((b) => b.id !== p.id);
     if (others.length) partial.push({ m, others });
@@ -101,28 +119,29 @@ export function unlockOf(p: Problem, set: ProblemSet, methods: Method[], q: numb
     const rest = priced.slice(1, 3);
     if (today) {
       value = `−${money(today.price - best.price)} each`;
-      sub = `${best.m.name} ${money(best.price)} against ${lower(today.m.name)} ${money(today.price)} · if redesigned`;
+      sub = `${methodLabel(best.m, list)} ${money(best.price)} against ${lower(methodLabel(today.m, list))} ${money(today.price)} · if redesigned`;
     } else {
       value = `${money(best.price)} each`;
-      sub = `${best.m.name} (${best.m.short}) becomes possible${rest.length ? `; also ${rest.map((x) => `${x.m.short} ${money(x.price)}`).join(", ")}` : ""}`;
+      const short = (m: Method) => (rest.filter((x) => x.m.name === m.name).length > 1 || list.filter((x) => x.name === m.name).length > 1 ? m.short : lower(m.name));
+      sub = `${methodLabel(best.m, list)} becomes possible${rest.length ? `; also ${rest.map((x) => `${short(x.m)} ${money(x.price)}`).join(", ")}` : ""}`;
     }
   } else if (added.length) {
     tier = 1;
     key = -added.length;
     value = `+${added.length} ${added.length === 1 ? "method" : "methods"}`;
-    const names = joinWords(added.map((m) => m.name));
-    const at = best ? `${best.m.name} ${money(best.price)} each at ${qtyWord(q)}${today ? `, against ${lower(today.m.name)} ${money(today.price)}` : ""}` : null;
+    const names = someWords(added.map((m) => methodLabel(m, list)));
+    const at = best ? `${methodLabel(best.m, list)} ${money(best.price)} each at ${qtyWord(q)}${today ? `, against ${lower(methodLabel(today.m, list))} ${money(today.price)}` : ""}` : null;
     sub = [names, at].filter(Boolean).join(" · ");
   } else if (p.warnCount > 0 || partial.length) {
     tier = 2;
     key = -(p.warnCount * 1000 + partial.length);
     if (p.warnCount > 0) {
       value = `${p.warnCount} ${p.warnCount === 1 ? "warning" : "warnings"}`;
-      const who = [...p.warns, ...p.blocks].map((c) => METHODS[c]?.name ?? c);
-      sub = p.universal && !p.warns.length && !p.blocks.length ? "Every method" : `Clears it for ${joinWords(who)}`;
+      const who = [...p.warns, ...p.blocks].map((c) => list.find((m) => m.code === c)).map((m, i) => (m ? methodLabel(m, list) : [...p.warns, ...p.blocks][i]));
+      sub = p.universal && !p.warns.length && !p.blocks.length ? "Every method" : `Clears it for ${someWords(who.map((w, i) => (i ? lower(w) : w)))}`;
     } else {
       value = "Still blocked";
-      sub = `Each method it stops has another problem too: ${joinWords([...new Set(partial.flatMap((x) => x.others.map((o) => lower(o.title))))])}`;
+      sub = `Each method it stops has another problem too: ${someWords([...new Set(partial.flatMap((x) => x.others.map((o) => lower(o.title))))])}`;
     }
   } else {
     tier = 3;
@@ -130,7 +149,7 @@ export function unlockOf(p: Problem, set: ProblemSet, methods: Method[], q: numb
     value = "No change";
     sub = "Nothing it stops or flags";
   }
-  return { problem: p, q, added, priced, partial, today, best, newLow, tier, key, value, sub };
+  return { problem: p, q, added, priced, partial, excluded, today, best, newLow, tier, key, value, sub };
 }
 
 /** Every problem, ranked at quantity q (board K4's rule). */
@@ -236,7 +255,7 @@ export function unlockRows(
   }
   if (u.partial.length) {
     const others = [...new Map(u.partial.flatMap((x) => x.others).map((o) => [o.id, o])).values()];
-    rows.push({ k: joinWords(u.partial.map((x) => x.m.name)), v: "Still blocked", s: `Also need: ${joinWords(others.map((o) => lower(o.title)))}` });
+    rows.push({ k: someWords(u.partial.map((x) => methodLabel(x.m, u.partial.map((y) => y.m)))), v: "Still blocked", s: `Also need: ${joinWords(others.map((o) => lower(o.title)))}` });
   }
   if (u.best && opts.set) {
     // What the cheapest unlocked method still flags once this is fixed.
@@ -254,6 +273,7 @@ export function unlockRows(
         : { k: names, v: "Possible", s: metal ? "Need a metal, so they aren’t priced in plastic" : `Not priced at ${qtyWord(q)}`, ok: true },
     );
   }
+  if (u.excluded.length) rows.push({ k: joinWords(u.excluded.map((m) => m.name)), v: "Ruled out", s: `By this part’s service conditions: ${u.excluded[0].excludedReason}` });
   if (!u.added.length && !u.partial.length && rows.length === 0) {
     rows.push({ k: "Methods it flags", v: String(p.warns.length + p.blocks.length), s: p.warnCount ? `Clears ${p.warnCount} ${p.warnCount === 1 ? "warning" : "warnings"}; nothing it stops` : "Nothing it stops" });
   }

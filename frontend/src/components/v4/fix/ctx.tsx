@@ -160,7 +160,7 @@ export function useFixController(args: {
   const places = React.useMemo(() => placesOf(ranked), [ranked]);
   const highlight = React.useMemo<ViewerHighlight | null>(() => {
     if (!shown || !has3d) return null;
-    const m = shown === problem ? method : pickMethod(shown, null, selCode);
+    const m = shown === problem ? method : defaultMethod(shown, set, methods, allQty, null, selCode);
     const faces = lit ? (m?.issue.affected_faces_sample?.length ? m.issue.affected_faces_sample : shown.faces) : [];
     const region = lit ? shown.region : null;
     const label = shown === problem ? "1" : places.find((p) => p.ids.includes(shown.id))?.n ?? "1";
@@ -176,7 +176,7 @@ export function useFixController(args: {
       // The engine sends a sample of a large draft finding; the viewer finds every flagged face again by the same rule.
       draftRule: shown.id === "draft" && lit && m?.need != null && (m.issue.affected_face_count ?? 0) > faces.length ? { deg: m.need, count: m.issue.affected_face_count! } : null,
     };
-  }, [shown, problem, method, has3d, lit, selCode, places]);
+  }, [shown, problem, method, has3d, lit, selCode, places, set, methods, allQty]);
 
   const markers = React.useMemo<ViewerMarker[]>(() => {
     if (view?.kind !== "all" || !lit || !allSel) return [];
