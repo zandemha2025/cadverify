@@ -41,6 +41,12 @@ export interface PerRouteFit {
   machine_rate_usd?: number | null;
   capital_frac?: number | null;
   secondary_ops?: string[];
+  /** On a pass: the fields the fit took from the maker's published spec (a
+   *  catalog machine kept unedited), not the shop's own values. */
+  maker_spec?: { catalog: string; fields: ("max_workpiece_kg" | "materials")[] };
+  /** On a pass: what the fit didn't check, said plainly, e.g. "weight: no plate
+   *  load published or declared; build volume governs" for a printer. */
+  notes?: string[];
 }
 
 /** The top-level `verification` block (present only when the org declared machines

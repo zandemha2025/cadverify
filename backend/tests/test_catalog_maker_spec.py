@@ -75,10 +75,10 @@ def test_cnc_catalog_machines_prefill_weight_and_material_classes():
     assert vf2["field_provenance"]["max_workpiece_kg"]["source"] == MAKER_SPEC
     assert vf2["field_provenance"]["materials"]["source"] == MAKER_DESCRIBED
     assert by_name["Haas ST-20"]["max_workpiece_kg"] == 68.0  # per chuck, no tailstock
-    # A printer whose maker publishes no plate load stays unknown on weight.
+    # A printer whose maker publishes no plate load: nothing prefilled for weight.
     x1c = by_name["Bambu Lab X1C"]
     assert x1c["max_workpiece_kg"] is None
-    assert x1c["spec"]["max_workpiece_kg_note"] == "The maker publishes no build-plate load."
+    assert x1c["spec"]["max_workpiece_kg_note"] == "The maker publishes no build-plate load; the build volume governs."
     assert "max_workpiece_kg" not in x1c["field_provenance"]
 
 
@@ -186,3 +186,54 @@ def test_catalog_fixes_from_the_maker_pages():
     assert "CoCr" not in by_name["Arcam Q20plus"].materials
     assert by_name["ExOne S-Max Pro"].materials == ["Sand"]
     assert "ABS" not in by_name["Prusa MK4S"].materials  # needs the enclosure with filtration
+
+
+def _pla_bracket(mass_kg=0.05) -> PartReq:
+    return PartReq(process="fdm", bbox_mm=(6.0, 40.0, 50.0), mass_kg=mass_kg,
+                   material_name="PLA", material_class="polymer", min_feature_mm=2.0)
+
+
+def test_catalog_printer_gives_a_yes_and_says_the_build_volume_governs_weight():
+    from src.costing.estimate import _serialize_verification
+    from src.costing.makeability import WEIGHT_BY_BUILD_VOLUME, verify_part
+
+    x1c = _saved("Bambu Lab X1C")
+    assert x1c["max_workpiece_kg"] is None
+    fit = fit_machine(_pla_bracket(), _cap(x1c))
+    assert fit.passes, fit.failures
+    assert fit.resource_hint["notes"] == (WEIGHT_BY_BUILD_VOLUME,)
+    assert fit.resource_hint["maker_spec"]["fields"] == ("materials",)
+    verdict = verify_part({"fdm": _pla_bracket()}, [_cap(x1c)])
+    assert verdict.verdict == "makeable_in_house"
+    block = _serialize_verification(verdict, types.SimpleNamespace(inventory=(_cap(x1c),),
+                                                                   service_environment=None))
+    assert block["per_route"]["fdm"]["notes"] == [
+        "weight: no plate load published or declared; build volume governs"]
+    # The envelope still governs: a part bigger than the 256 mm cube is a no.
+    big = PartReq(process="fdm", bbox_mm=(280.0, 300.0, 320.0), mass_kg=1.0,
+                  material_name="PLA", material_class="polymer", min_feature_mm=2.0)
+    big_fit = fit_machine(big, _cap(x1c))
+    assert not big_fit.passes and big_fit.failures[0].gate == "envelope"
+
+
+def test_a_declared_plate_load_is_still_checked_on_printers():
+    declared = _saved("Bambu Lab X1C", max_workpiece_kg=0.5)
+    over = fit_machine(_pla_bracket(mass_kg=0.8), _cap(declared))
+    assert not over.passes
+    assert [(f.gate, f.have) for f in over.failures] == [("mass", 0.5)]
+    under = fit_machine(_pla_bracket(mass_kg=0.2), _cap(declared))
+    assert under.passes and "notes" not in under.resource_hint
+
+
+def test_cnc_and_bead_deposition_keep_the_weight_check():
+    vf2 = _saved("Haas VF-2", max_workpiece_kg=None)
+    fit = fit_machine(_aluminum_block(), _cap(vf2))
+    assert not fit.passes
+    assert [(f.gate, f.have) for f in fit.failures] == [("mass", None)]
+    ded = MachineCap(process="ded", name="DED cell", materials=("titanium",),
+                     capabilities={"x": 1000, "y": 1000, "z": 1000})
+    part = PartReq(process="ded", bbox_mm=(50.0, 60.0, 80.0), mass_kg=2.0,
+                   material_name="Ti6Al4V", material_class="titanium")
+    ded_fit = fit_machine(part, ded)
+    assert any(f.gate == "mass" and f.have is None for f in ded_fit.failures)
+    assert not ded_fit.passes

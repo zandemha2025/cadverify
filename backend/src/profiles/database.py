@@ -85,7 +85,7 @@ MATERIALS: list[MaterialProfile] = merge_materials(_HARDCODED_MATERIALS, _YAML_M
 # read from. A value the maker doesn't publish stays None and the note says so.
 # Pages read 2026-10-19. CNC ``materials`` are engine material classes.
 _CHECKED = "2026-10-19"
-_NO_PLATE_LOAD = "The maker publishes no build-plate load."
+_NO_PLATE_LOAD = "The maker publishes no build-plate load; the build volume governs."
 
 MACHINES: list[MachineProfile] = [
     # FDM

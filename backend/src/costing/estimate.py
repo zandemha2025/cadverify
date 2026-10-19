@@ -777,6 +777,10 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
                 # (a catalog machine kept unedited), not the shop's own.
                 entry["maker_spec"] = {"catalog": res["maker_spec"]["catalog"],
                                        "fields": list(res["maker_spec"]["fields"])}
+            if res.get("notes"):
+                # What the fit didn't check, e.g. a printer with no plate load:
+                # "weight: no plate load published or declared; build volume governs".
+                entry["notes"] = list(res["notes"])
         per_route[pv] = entry
     return {
         "verdict": verdict.verdict,

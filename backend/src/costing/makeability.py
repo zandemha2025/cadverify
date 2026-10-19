@@ -10,7 +10,10 @@ Design invariants (spec §2 — asserted in tests):
     comparisons, deterministic and exhaustively unit-testable.
   * NEVER fabricate a `makeable`. A missing capability field makes that gate
     ``unknown`` (a FitFailure whose ``have is None``), never a silent PASS. A
-    clean PASS requires every gate satisfied by real DECLARED data.
+    clean PASS requires every gate satisfied by real DECLARED data. One stated
+    exception: a printer bounded by its build volume (``BUILD_VOLUME_BOUND``)
+    with no plate load declared has no weight gate; the envelope governs, and
+    the pass carries a note saying so (``WEIGHT_BY_BUILD_VOLUME``).
   * Capabilities are USER-declared. An envelope "fits" is a MEASURED-geometry ×
     USER-capability comparison; tolerance / secondary-op capability is DECLARED,
     never a measurement of the machine.
@@ -527,6 +530,18 @@ def _material_qualified(part: PartReq, materials: tuple) -> bool:
             or part.material_class.strip().lower() in tokens)
 
 
+# Printers whose part is bounded by the build volume, not a rated plate load.
+# Makers publish no build-plate load for these (filament, resin, polymer and
+# metal powder bed, binder jet), so with no load declared the weight check does
+# not apply and the envelope gate governs. A load the maker or the shop DOES
+# declare is still checked, and bead-deposition machines (DED, wire arc) keep
+# the weight check: their part grows on a positioner with a real load limit.
+BUILD_VOLUME_BOUND = frozenset({
+    "fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting",
+})
+WEIGHT_BY_BUILD_VOLUME = "weight: no plate load published or declared; build volume governs"
+
+
 def _maker_label(cap: dict) -> bool:
     label = cap.get("maker_spec")
     return (isinstance(label, dict) and isinstance(label.get("catalog"), str)
@@ -549,12 +564,15 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
     ops = (shop_caps.ops if shop_caps else {}) or {}
     failures: list = []
     needed_secondary: list = []
+    notes: list = []
 
     # (a) ENVELOPE ----------------------------------------------------------
     failures.extend(_envelope_failures(part_req, cap))
 
     # (b) MASS --------------------------------------------------------------
-    if machine_cap.max_workpiece_kg is None:
+    if machine_cap.max_workpiece_kg is None and _pt_value(machine_cap.process) in BUILD_VOLUME_BOUND:
+        notes.append(WEIGHT_BY_BUILD_VOLUME)  # not a pass on weight: the envelope gate decides
+    elif machine_cap.max_workpiece_kg is None:
         failures.append(FitFailure("mass", "mass_kg",
                                    None if part_req.mass_kg is None
                                    else round(part_req.mass_kg, 3),
@@ -761,6 +779,8 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             **({"maker_spec": {"catalog": cap["maker_spec"]["catalog"],
                                "fields": tuple(cap["maker_spec"]["fields"])}}
                if _maker_label(cap) else {}),
+            # What this pass did NOT check, said plainly (e.g. a printer's weight).
+            **({"notes": tuple(notes)} if notes else {}),
         }
     return FitResult(machine=machine_cap.name, passes=passes,
                      failures=tuple(failures), resource_hint=resource_hint)
