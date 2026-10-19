@@ -11,7 +11,7 @@ import { API_BASE } from "@/lib/api-base";
 import { effectiveRateCard, listRateVersions, type EffectiveRateCard, type RateVersionsPage } from "@/lib/verify/rate-api";
 import { World, cx } from "../ui";
 import { rateCardView, type RateCardView } from "./shop-derive";
-import { getRecord, listRecords, type Assumption, type RecordDetail, type RecordSummary } from "./shop-api";
+import { getLatestPerPart, getRecord, listRecords, type Assumption, type PartRecords, type RecordDetail, type RecordSummary } from "./shop-api";
 import "./shop.css";
 
 /* ------------------------------------------------------------------ */
@@ -362,6 +362,38 @@ export function useRecords(): Loadable<RecordSummary[]> {
   return { data, error, reload: () => setN((x) => x + 1) };
 }
 
+/** The newest record per part with the screens' details, in one request per load. */
+export function usePartRecords(detailLimit = 12): Loadable<PartRecords> {
+  const [data, setData] = React.useState<PartRecords | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [n, setN] = React.useState(0);
+  React.useEffect(() => {
+    let live = true;
+    setError(null);
+    getLatestPerPart(detailLimit).then(
+      (rows) => live && setData(rows),
+      (err) => {
+        if (!live) return;
+        setError(err instanceof Error ? err.message : "Couldn't load records.");
+        setData(null);
+      }
+    );
+    return () => {
+      live = false;
+    };
+  }, [n, detailLimit]);
+  return { data, error, reload: () => setN((x) => x + 1) };
+}
+
+/** The default labor rate a saved check recorded, from details already in hand. */
+export function laborFromDetails(details: RecordDetail[]): LaborSource {
+  for (const d of details.slice(0, 4)) {
+    const a = (d.result?.assumptions ?? []).find((x: Assumption) => x.name === "labor_rate" && x.provenance === "DEFAULT");
+    if (a && typeof a.value === "number") return { value: a.value, from: "default", record: d.filename };
+  }
+  return "none";
+}
+
 /**
  * Where the shop's labor rate comes from: the governed card in effect, or the
  * default the engine recorded on your newest checks. Null until known; "none"
@@ -369,7 +401,7 @@ export function useRecords(): Loadable<RecordSummary[]> {
  */
 export type LaborSource = { value: number; from: "card" | "default"; version?: number | null; record?: string } | "none" | null;
 
-export function useLaborRate(rc: RateCardState, records: RecordSummary[] | null): LaborSource {
+export function useLaborRate(rc: RateCardState, records: RecordSummary[] | null, details?: RecordDetail[] | null): LaborSource {
   const [out, setOut] = React.useState<LaborSource>(null);
   const governed = rc.eff?.using_governed === true;
   const payload = rc.eff?.payload as { global?: { labor_rate?: unknown } } | null | undefined;
@@ -379,6 +411,11 @@ export function useLaborRate(rc: RateCardState, records: RecordSummary[] | null)
     if (governed) {
       const v = payload?.global?.labor_rate;
       setOut(typeof v === "number" ? { value: v, from: "card", version: rc.view?.inEffect?.version ?? null } : "none");
+      return;
+    }
+    // A screen that already read its records' details (one request) passes them: no extra reads.
+    if (details !== undefined) {
+      if (details) setOut(laborFromDetails(details));
       return;
     }
     if (!records) return;
@@ -405,7 +442,7 @@ export function useLaborRate(rc: RateCardState, records: RecordSummary[] | null)
     return () => {
       live = false;
     };
-  }, [rc.eff, governed, payload, records, rc.view?.inEffect?.version]);
+  }, [rc.eff, governed, payload, records, details, rc.view?.inEffect?.version]);
   return out;
 }
 

@@ -11,6 +11,7 @@ unauthenticated (mirrors the existing public analysis share route).
 
 Routes (mounted at /api/v1/cost-decisions):
   GET    ""                      list (cursor paginated; filter part/process/date)
+  GET    /latest-per-part        newest decision per part + the shop screens' fields
   GET    /compare?ids=a,b        structured diff of two owned decisions
   GET    /{id}                   full result_json envelope (owner-scoped, 404)
   PUT    /{id}/disposition       persist/withdraw the four-way human outcome
@@ -123,6 +124,34 @@ async def list_cost_decisions(
         "next_cursor": items[-1].ulid if has_more and items else None,
         "has_more": has_more,
     }
+
+
+@router.get("/latest-per-part")
+@limiter.limit("120/hour;1000/day")
+async def latest_cost_decisions_per_part(
+    request: Request,
+    response: Response,
+    limit: int = Query(500, ge=1, le=svc.LATEST_PARTS_MAX, description="Parts to list (max 500)"),
+    detail_limit: int = Query(
+        12, ge=0, le=svc.LATEST_DETAILS_MAX,
+        description="How many of the newest parts carry their cost details (max 50)",
+    ),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The newest saved decision for each part in the caller's organization,
+    newest first, in ONE request: summaries for every part (``parts``), and for
+    the newest ``detail_limit`` parts the fields the Rates and Real costs screens
+    read (``details[].result``: assumptions, material class, the decision's pick
+    per quantity, and the estimates at ``headline_qty``).
+
+    Replaces a screen's per-record GET /{id} reads (up to 16 per load) so
+    browsing stays well inside the per-route limits. Org-scoped like every
+    cost-decision read; the full record stays at GET /{id}.
+    """
+    return await svc.latest_per_part(
+        session, user.user_id, limit=limit, detail_limit=detail_limit
+    )
 
 
 @router.get("/compare")

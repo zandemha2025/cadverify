@@ -129,6 +129,24 @@ export function getRecord(id: string): Promise<RecordDetail> {
   return call(`/cost-decisions/${encodeURIComponent(id)}`);
 }
 
+/**
+ * The newest saved record per part, newest first, in ONE request
+ * (GET /cost-decisions/latest-per-part): a summary for every part, and for the
+ * newest `detailLimit` parts the fields Rates and Real costs read (assumptions,
+ * material class, the decision's pick, the estimates at `headline_qty`). One
+ * call per screen load instead of a per-record read for each part.
+ */
+export type PartRecords = {
+  parts: RecordSummary[];
+  total_parts: number;
+  has_more: boolean;
+  details: (RecordDetail & { headline_qty: number | null })[];
+};
+
+export function getLatestPerPart(detailLimit = 12): Promise<PartRecords> {
+  return call(`/cost-decisions/latest-per-part?detail_limit=${detailLimit}`);
+}
+
 /** The newest record per part (by mesh hash, else filename), newest first. */
 export function latestPerPart(records: RecordSummary[]): RecordSummary[] {
   const seen = new Set<string>();

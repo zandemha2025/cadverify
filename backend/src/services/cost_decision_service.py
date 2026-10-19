@@ -359,6 +359,103 @@ def _list_item(d: CostDecision) -> dict:
     }
 
 
+# ── latest saved record per part, in one read (Rates / Real costs screens) ────
+LATEST_PARTS_MAX = 500
+LATEST_DETAILS_MAX = 50
+
+
+def headline_qty(quantities: Any) -> Optional[int]:
+    """The quantity the shop screens headline: 10 when the check priced 10, else
+    its first quantity (the same rule as the screens' ``headlineQty``)."""
+    if not isinstance(quantities, list) or not quantities:
+        return None
+    return 10 if 10 in quantities else quantities[0]
+
+
+def slim_result(result_json: Any, quantities: Any) -> dict:
+    """The parts of a saved decision the Rates and Real costs screens read:
+    assumptions, the material class, the decision's pick per quantity, and the
+    estimates at the headline quantity (the screens' headline estimate is one
+    of them). The full record stays at GET /cost-decisions/{id}."""
+    r = result_json if isinstance(result_json, dict) else {}
+    qty = headline_qty(quantities)
+    decision = r.get("decision") if isinstance(r.get("decision"), dict) else None
+    return {
+        "assumptions": r.get("assumptions") or [],
+        "material_class": r.get("material_class"),
+        "decision": (
+            {k: decision.get(k) for k in ("make_now_process", "make_now_material", "recommendation")}
+            if decision is not None else None
+        ),
+        "estimates": [
+            e for e in (r.get("estimates") or [])
+            if isinstance(e, dict) and qty is not None and e.get("quantity") == qty
+        ],
+    }
+
+
+async def latest_per_part(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    limit: int = LATEST_PARTS_MAX,
+    detail_limit: int = 12,
+) -> dict:
+    """The newest saved decision for each part (by mesh hash) in the caller's
+    org, newest first, plus the screens' fields for the newest ``detail_limit``
+    parts. Org-scoped exactly like the list and detail reads.
+
+    Two queries whatever the number of parts: the summaries (no result JSON),
+    then the slim results for the parts shown with details.
+    """
+    from sqlalchemy import func
+    from sqlalchemy.orm import defer
+
+    limit = max(1, min(int(limit), LATEST_PARTS_MAX))
+    detail_limit = max(0, min(int(detail_limit), LATEST_DETAILS_MAX))
+    ranked = (
+        select(
+            CostDecision.id.label("id"),
+            func.row_number().over(
+                partition_by=CostDecision.mesh_hash,
+                order_by=CostDecision.ulid.desc(),
+            ).label("rn"),
+        )
+        .where(CostDecision.org_id == caller_org_subquery(user_id))
+        .subquery()
+    )
+    newest = select(ranked.c.id).where(ranked.c.rn == 1)
+    total = (await session.execute(select(func.count()).select_from(newest.subquery()))).scalar_one()
+    rows = (await session.execute(
+        select(CostDecision)
+        .options(defer(CostDecision.result_json))
+        .where(CostDecision.id.in_(newest))
+        .order_by(CostDecision.ulid.desc())
+        .limit(limit)
+    )).scalars().all()
+    shown = rows[:detail_limit]
+    results: dict = {}
+    if shown:
+        found = (await session.execute(
+            select(CostDecision.id, CostDecision.result_json)
+            .where(CostDecision.id.in_([d.id for d in shown]))
+        )).all()
+        results = {row_id: rj for row_id, rj in found}
+    return {
+        "parts": [_list_item(d) for d in rows],
+        "total_parts": int(total or 0),
+        "has_more": int(total or 0) > len(rows),
+        "details": [
+            {
+                **_list_item(d),
+                "headline_qty": headline_qty(d.quantities),
+                "result": slim_result(results.get(d.id), d.quantities),
+            }
+            for d in shown
+        ],
+    }
+
+
 def _iso(dt) -> str | None:
     return dt.isoformat() if isinstance(dt, datetime) else None
 

@@ -13,8 +13,8 @@ import { ApiError, groundTruthTemplate, importGroundTruthCsv, listGroundTruth, r
 import { R, TABS } from "../routes";
 import { useShell } from "../shell";
 import { Content, Loading, PageHead, Panel, Sheet, cx, usd } from "../ui";
-import { Banner, ShopWorld, recordDetail, useRecords } from "./common";
-import { downloadText, latestPerPart, logJob, ShopApiError, type RecordDetail } from "./shop-api";
+import { Banner, ShopWorld, usePartRecords } from "./common";
+import { downloadText, logJob, ShopApiError, type RecordDetail } from "./shop-api";
 import { PROCS, longDate, procName } from "./shop-derive";
 import { headlineEstimate, headlineQty } from "./rates-derive";
 import {
@@ -63,8 +63,9 @@ export function ActualsScreen() {
   const csvRef = React.useRef<HTMLInputElement>(null);
   const askRef = React.useRef<HTMLButtonElement>(null);
   const recalBtn = React.useRef<HTMLButtonElement>(null);
-  const recs = useRecords();
-  const [details, setDetails] = React.useState<RecordDetail[] | null>(null);
+  // One request per load: every part's newest record, the newest 12 with details.
+  const recs = usePartRecords(12);
+  const details: RecordDetail[] | null = recs.data?.details ?? null;
 
   const load = React.useCallback(async (): Promise<GtRecord[] | null> => {
     setLoadError(null);
@@ -91,18 +92,6 @@ export function ActualsScreen() {
   }, [load]);
 
   React.useEffect(() => {
-    if (!recs.data) return;
-    let live = true;
-    const parts = latestPerPart(recs.data).slice(0, 12);
-    Promise.allSettled(parts.map((r) => recordDetail(r.id))).then((res) => {
-      if (live) setDetails(res.filter((x): x is PromiseFulfilledResult<RecordDetail> => x.status === "fulfilled").map((x) => x.value));
-    });
-    return () => {
-      live = false;
-    };
-  }, [recs.data]);
-
-  React.useEffect(() => {
     if (banner?.kind === "ask") askRef.current?.focus();
   }, [banner]);
 
@@ -111,7 +100,7 @@ export function ActualsScreen() {
   const rows = methodRows({
     machines,
     records: records ?? [],
-    savedProcesses: latestPerPart(recs.data ?? []).map((r) => r.make_now_process),
+    savedProcesses: (recs.data?.parts ?? []).map((r) => r.make_now_process),
     estimates,
     recal,
   });
@@ -334,7 +323,7 @@ export function ActualsScreen() {
         ) : null}
 
         <LogJob
-          parts={latestPerPart(recs.data ?? [])}
+          parts={recs.data?.parts ?? []}
           machines={machines}
           onSaved={async () => countRecords(await load()).real}
         />

@@ -19,17 +19,15 @@ import {
   RateCardChip,
   ShopWorld,
   isOrgAdmin,
-  recordDetail,
   useLaborRate,
   useOrg,
+  usePartRecords,
   useRateCard,
-  useRecords,
 } from "./common";
 import {
   ShopApiError,
   createRateDraft,
   discardRateDraft,
-  latestPerPart,
   listChanges,
   proposeChange,
   updateRateDraft,
@@ -55,31 +53,14 @@ const money = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigi
 
 type Shop = { id: string; name: string; region: string | null; source: string | null };
 
-/** The latest saved record per part, with details (cached for the session). */
-function usePartDetails(records: ReturnType<typeof useRecords>["data"]): { details: RecordDetail[] | null; failed: number } {
-  const [state, setState] = React.useState<{ details: RecordDetail[] | null; failed: number }>({ details: null, failed: 0 });
-  React.useEffect(() => {
-    if (!records) return;
-    let live = true;
-    const parts = latestPerPart(records).slice(0, 12);
-    Promise.allSettled(parts.map((r) => recordDetail(r.id))).then((res) => {
-      if (!live) return;
-      const ok = res.filter((x): x is PromiseFulfilledResult<RecordDetail> => x.status === "fulfilled").map((x) => x.value);
-      setState({ details: ok, failed: res.length - ok.length });
-    });
-    return () => {
-      live = false;
-    };
-  }, [records]);
-  return state;
-}
-
 export function RatesScreen() {
   const rc = useRateCard();
-  const recs = useRecords();
+  // One request per load: every part's newest record, the newest 12 with details.
+  const recs = usePartRecords(12);
   const org = useOrg();
-  const { details, failed } = usePartDetails(recs.data);
-  const labor = useLaborRate(rc, recs.data);
+  const details: RecordDetail[] | null = recs.data?.details ?? null;
+  const failed = 0;
+  const labor = useLaborRate(rc, recs.data?.parts ?? null, details);
   const [drafting, setDrafting] = React.useState(false);
   const draftRef = React.useRef<HTMLInputElement>(null);
   const [changes, setChanges] = React.useState<ChangeRequestRow[] | null>(null);
@@ -96,7 +77,7 @@ export function RatesScreen() {
     };
   }, [nc]);
 
-  const nParts = recs.data ? latestPerPart(recs.data).length : 0;
+  const nParts = recs.data?.total_parts ?? 0;
   const governed = rc.view?.governed === true;
   const payload = rc.eff?.payload ?? null;
   const counts = React.useMemo(() => (details ? countInputs(details.map(headlineEstimate)) : null), [details]);
@@ -184,7 +165,7 @@ export function RatesScreen() {
                 </p>
               ) : null}
             </div>
-          ) : !governed && recs.data && recs.data.length === 0 ? (
+          ) : !governed && recs.data && recs.data.total_parts === 0 ? (
             <NotUsedYet />
           ) : !governed && (recs.error || (details && !v0src)) ? (
             <p className="fh" style={{ margin: "0 16px 8px" }}>
