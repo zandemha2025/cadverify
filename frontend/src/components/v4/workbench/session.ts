@@ -201,7 +201,8 @@ async function loadEnv(key: string, g: number) {
 /* ---- costing ----------------------------------------------------- */
 
 function fresh(file: File): File {
-  // A re-cost is a new check: a fresh File gets a fresh x-part-check-id.
+  // A re-cost is a new run: a fresh File gets a fresh x-part-check-id. The
+  // server counts it under the same file's check, so it never uses another.
   return new File([file], file.name, { type: file.type, lastModified: file.lastModified });
 }
 

@@ -129,7 +129,7 @@ export function buildQueue(input: HomeInput): QueueItem[] {
       figs: [
         { k: "Out of date", v: `${n} of ${make.total}`, s: "parts", c: "warn" },
         { k: "Current", v: `${make.total - n} of ${make.total}`, s: "parts" },
-        { k: "Re-check", v: "1 check", s: "per part" },
+        { k: "Re-check", v: "0 checks", s: "same file" },
       ],
       partsLabel: "Parts",
       parts: [],

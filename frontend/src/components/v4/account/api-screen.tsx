@@ -320,7 +320,7 @@ export function ApiScreen({ apiOrigin }: { apiOrigin: string }) {
           />
           <div className="note">
             <b>Metering</b>
-            <span>Same as the app. A part’s analysis, cost and preview within an hour count as 1 check.</span>
+            <span>Same as the app. A part’s analysis, cost and preview count as 1 check, and re-running them on the same file never counts again.</span>
           </div>
           <div className="note">
             <b>Audit log</b>

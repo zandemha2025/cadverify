@@ -1,8 +1,13 @@
 """Part-check allowances, reserved durably before any CAD computation.
 
-A check groups the viewer, geometry analysis and costing of one upload. Each
-operation can succeed once. The browser supplies a UUID, never an entitlement;
-the server binds it to the authenticated account and actual file bytes.
+A check means a part: the viewer, geometry analysis and costing of one file.
+The file's identity is its hash (filename and bytes). The first step on a file
+the account has not checked takes a slot; every later step on the same file,
+however long afterwards (another material, quantity, machine set or service
+conditions), reuses that file's check and never counts again. A different file
+is a different check. The browser supplies a UUID that groups one run's
+requests, never an entitlement; the server binds it to the authenticated
+account and actual file bytes.
 
 Allowance by plan:
 - trial: free checks for the account's lifetime, sized by email domain
@@ -119,25 +124,55 @@ async def _allowance(session, user_id: int, *, lock: bool = False) -> Allowance:
     )
 
 
+def _live_reservation(now: datetime):
+    """An unfinished check that still holds its slot: work running, or a fresh reservation."""
+    return and_(
+        TrialCheck.completed.is_(False),
+        or_(
+            TrialCheck.created_at > now - CHECK_LIFETIME,
+            func.jsonb_path_exists(TrialCheck.operations, cast('$.* ? (@ == "running")', JSONPATH)),
+        ),
+        TrialCheck.operations != {},
+    )
+
+
 async def _counts(session, user_id: int, now: datetime, since: datetime | None = None) -> tuple[int, int]:
-    completed = TrialCheck.completed.is_(True)
+    """``(used, reserved)`` in FILES, not requests: a check means a part.
+
+    ``used`` counts each file with a completed check once. With ``since`` (a Pro
+    billing period) it counts the files first completed in that period, so a
+    file checked earlier never counts again. ``reserved`` counts the files with
+    live unfinished work that have never completed.
+    """
+    completed_files = select(TrialCheck.file_hash).where(
+        TrialCheck.user_id == user_id, TrialCheck.completed.is_(True),
+    ).group_by(TrialCheck.file_hash)
     if since is not None:
-        completed = and_(completed, TrialCheck.created_at >= since)
-    rows = (await session.execute(
-        select(TrialCheck.completed, func.count()).where(
+        completed_files = completed_files.having(func.min(TrialCheck.created_at) >= since)
+    used = (await session.execute(select(func.count()).select_from(completed_files.subquery()))).scalar_one()
+    ever_completed = select(TrialCheck.file_hash).where(
+        TrialCheck.user_id == user_id, TrialCheck.completed.is_(True),
+    )
+    reserved = (await session.execute(
+        select(func.count(func.distinct(TrialCheck.file_hash))).where(
             TrialCheck.user_id == user_id,
-            or_(completed, and_(
-                TrialCheck.completed.is_(False),
-                or_(
-                    TrialCheck.created_at > now - CHECK_LIFETIME,
-                    func.jsonb_path_exists(TrialCheck.operations, cast('$.* ? (@ == "running")', JSONPATH)),
-                ),
-                TrialCheck.operations != {},
-            )),
-        ).group_by(TrialCheck.completed)
-    )).all()
-    totals = dict(rows)
-    return int(totals.get(True, 0)), int(totals.get(False, 0))
+            _live_reservation(now),
+            TrialCheck.file_hash.not_in(ever_completed),
+        )
+    )).scalar_one()
+    return int(used or 0), int(reserved or 0)
+
+
+async def _file_counted(session, user_id: int, file_hash: str, now: datetime) -> bool:
+    """Whether this file already holds a check: completed at any time, or live work."""
+    row = (await session.execute(
+        select(TrialCheck.check_id).where(
+            TrialCheck.user_id == user_id,
+            TrialCheck.file_hash == file_hash,
+            or_(TrialCheck.completed.is_(True), _live_reservation(now)),
+        ).limit(1)
+    )).first()
+    return row is not None
 
 
 async def user_trial_usage(user_id: int) -> dict:
@@ -183,6 +218,11 @@ async def reserve_check(user_id: int, check_id: str | None, file_hash: str, oper
     PostgreSQL NO KEY UPDATE serializes allowances without blocking result
     foreign keys. No connection/lock stays held during CAD work. A crashed process leaves a
     bounded reservation, never an uncounted concurrent computation.
+
+    A file the account already checked (completed, or with live work) never
+    takes another slot: re-running any step on it records a new run under the
+    same file and is admitted even when the allowance is spent. Only a file
+    the account has not checked competes for a slot.
     """
     now = datetime.now(timezone.utc)
     try:
@@ -192,8 +232,9 @@ async def reserve_check(user_id: int, check_id: str | None, file_hash: str, oper
                 return None
             if check_id is None:
                 # Without a client check id, one part's steps (analysis, cost,
-                # previews) share the open check for the same file, as the app's
-                # x-part-check-id does. Repeating a step starts a new check.
+                # previews) share the open run for the same file, as the app's
+                # x-part-check-id does. Repeating a step starts a new run of the
+                # same file's check (it doesn't count again).
                 recent = (await session.execute(
                     select(TrialCheck).where(
                         TrialCheck.user_id == user_id,
@@ -207,18 +248,24 @@ async def reserve_check(user_id: int, check_id: str | None, file_hash: str, oper
             if row is not None:
                 if row.file_hash != file_hash:
                     raise _problem(409, "check_file_mismatch", "Start a new check for a different CAD file.")
-                if row.created_at <= now - CHECK_LIFETIME:
-                    raise _problem(409, "check_expired", "This check has expired. Start a new check or open your saved results.")
-                if operation in row.operations:
-                    raise _problem(409, "check_operation_exists", "This step is already running or complete. Open your saved results or start a new check.")
+                expired = row.created_at <= now - CHECK_LIFETIME
+                if not expired and row.operations.get(operation) == "running":
+                    raise _problem(409, "check_operation_exists", "This step is already running. Wait for it to finish or open your saved results.")
+                if expired or operation in row.operations:
+                    # Re-running a finished step, or a run older than its
+                    # lifetime: a new run of the same file. Each run still
+                    # records each step once.
+                    check_id, row = str(uuid4()), None
             # A failed request can retry its empty reservation, but must compete
-            # for a slot again (another request may have used the released slot).
+            # for a slot again (another request may have used the released slot)
+            # unless its file already holds a check.
             if row is None or (not row.completed and not row.operations):
-                if allowance.phone_required:
-                    raise _phone_required()
-                used, reserved = await _counts(session, user_id, now, allowance.since)
-                if used + reserved >= allowance.cap:
-                    raise _exhausted(allowance, used, reserved)
+                if not await _file_counted(session, user_id, file_hash, now):
+                    if allowance.phone_required:
+                        raise _phone_required()
+                    used, reserved = await _counts(session, user_id, now, allowance.since)
+                    if used + reserved >= allowance.cap:
+                        raise _exhausted(allowance, used, reserved)
             if row is None:
                 row = TrialCheck(user_id=user_id, check_id=check_id, file_hash=file_hash,
                                  created_at=now, completed=False, operations={})

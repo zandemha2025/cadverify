@@ -145,7 +145,7 @@ export function OutOfChecks({
                 <i style={{ width: `${Math.min(100, (used / cap) * 100)}%` }} />
               </span>
             )}
-            <span>1 check = one part&apos;s preview, analysis and cost. Re-running a step uses another.</span>
+            <span>1 check = one part&apos;s preview, analysis and cost. Re-running a step on the same file doesn&apos;t use another.</span>
           </div>
         ) : null}
         {!pro ? (

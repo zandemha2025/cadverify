@@ -57,37 +57,45 @@ async def ledger(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_lifetime_bundle_race_refund_and_account_isolation(ledger):
-    # Eight completed checks plus one in-flight check leaves exactly one slot,
-    # even when sixteen requests arrive concurrently on separate connections.
-    for _ in range(8):
+    # Eight completed parts plus one in-flight part leaves exactly one slot,
+    # even when sixteen different files arrive concurrently on separate connections.
+    for i in range(8):
         check = str(uuid4())
-        assert await vc.reserve_check(1, check, 'file', 'analysis')
+        assert await vc.reserve_check(1, check, f'file-{i}', 'analysis')
         await vc.finish_check(1, check, 'analysis', True)
     pending = str(uuid4())
-    await vc.reserve_check(1, pending, 'file', 'analysis')
+    await vc.reserve_check(1, pending, 'file-pending', 'analysis')
     ids = [str(uuid4()) for _ in range(16)]
-    results = await asyncio.gather(*(vc.reserve_check(1, check, 'file', 'analysis') for check in ids), return_exceptions=True)
+    results = await asyncio.gather(*(vc.reserve_check(1, check, f'race-{n}', 'analysis') for n, check in enumerate(ids)), return_exceptions=True)
     admitted = [result for result in results if not isinstance(result, BaseException)]
     assert admitted == [ids[results.index(admitted[0])]]
+    winner = f'race-{results.index(admitted[0])}'
     rejected = [result for result in results if isinstance(result, BaseException)]
     assert all(isinstance(result, vc.HTTPException) and result.status_code == 403 for result in rejected)
     assert (await vc.user_trial_usage(1))['remaining'] == 0
-    # The tenth check can still finish its own cost and preview, never an
-    # eleventh check. Changing its file or repeating a successful step is denied.
+    # The tenth part finishes its own cost and preview. A step that is still
+    # running can't start twice; a finished step re-runs as a new run of the
+    # same part and never takes an eleventh check. Changing the file is denied.
     last = admitted[0]
     await vc.finish_check(1, last, 'analysis', True)
     for op in ('cost', 'preview'):
-        await vc.reserve_check(1, last, 'file', op)
+        await vc.reserve_check(1, last, winner, op)
+        with pytest.raises(vc.HTTPException) as running:
+            await vc.reserve_check(1, last, winner, op)
+        assert running.value.status_code == 409
+        assert running.value.detail['code'] == 'check_operation_exists'
         await vc.finish_check(1, last, op, True)
-        with pytest.raises(vc.HTTPException) as duplicate:
-            await vc.reserve_check(1, last, 'file', op)
-        assert duplicate.value.status_code == 409
+        rerun = await vc.reserve_check(1, last, winner, op)
+        assert rerun and rerun != last
+        await vc.finish_check(1, rerun, op, True)
     with pytest.raises(vc.HTTPException) as changed:
         await vc.reserve_check(1, last, 'different', 'preview-analysis')
     assert changed.value.detail['code'] == 'check_file_mismatch'
+    usage = await vc.user_trial_usage(1)
+    assert (usage['used'], usage['reserved'], usage['remaining']) == (9, 1, 0)
     await vc.finish_check(1, pending, 'analysis', False)
     assert (await vc.user_trial_usage(1))['remaining'] == 1
-    await vc.reserve_check(1, pending, 'file', 'analysis')
+    await vc.reserve_check(1, pending, 'file-pending', 'analysis')
     await vc.finish_check(1, pending, 'analysis', True)
     assert (await vc.user_trial_usage(1))['used'] == 10
     assert await vc.reserve_check(2, last, 'other-file', 'analysis')
@@ -98,7 +106,67 @@ async def test_lifetime_bundle_race_refund_and_account_isolation(ledger):
         await session.execute(update(TrialCheck).where(TrialCheck.user_id == 1).values(created_at=datetime.now(timezone.utc) - timedelta(days=90)))
     assert (await vc.user_trial_usage(1))['remaining'] == 0
     with pytest.raises(vc.HTTPException):
-        await vc.reserve_check(1, str(uuid4()), 'file', 'analysis')
+        await vc.reserve_check(1, str(uuid4()), 'a-new-file', 'analysis')
+    # A part checked 90 days ago re-runs any step without another check, even
+    # with the allowance spent.
+    for op in ('analysis', 'cost', 'preview-analysis'):
+        again = await vc.reserve_check(1, str(uuid4()), 'file-3', op)
+        await vc.finish_check(1, again, op, True)
+    assert (await vc.user_trial_usage(1))['used'] == 10
+
+
+@pytest.mark.asyncio
+async def test_a_check_means_a_part(ledger):
+    """Same file any number of times = 1 check; different files count; the cap holds for new files."""
+    await _add_user(ledger, 9, 'trial', 'new@gmail.com')  # personal tier: 3
+    # The first run of a part: preview, analysis and cost share one check id.
+    first = str(uuid4())
+    for op in ('preview-analysis', 'analysis', 'cost'):
+        assert await vc.reserve_check(9, first, 'bracket', op) == first
+        await vc.finish_check(9, first, op, True)
+    assert (await vc.user_trial_usage(9))['used'] == 1
+    # Re-cost in another material, re-check after adding machines, change the
+    # quantities: same file, new browser run ids, or no id at all.
+    for check_id in (first, str(uuid4()), None, str(uuid4())):
+        for op in ('cost', 'analysis'):
+            run = await vc.reserve_check(9, check_id, 'bracket', op)
+            await vc.finish_check(9, run, op, True)
+    assert (await vc.user_trial_usage(9))['used'] == 1
+    # A different file is its own check.
+    other = await vc.reserve_check(9, str(uuid4()), 'housing', 'analysis')
+    await vc.finish_check(9, other, 'analysis', True)
+    usage = await vc.user_trial_usage(9)
+    assert (usage['used'], usage['remaining']) == (2, 1)
+    # Sixteen simultaneous runs of one NEW file take only the last slot.
+    runs = await asyncio.gather(*(vc.reserve_check(9, str(uuid4()), 'plate', 'analysis') for _ in range(16)))
+    assert len(set(runs)) == 16
+    usage = await vc.user_trial_usage(9)
+    assert (usage['used'], usage['reserved'], usage['remaining']) == (2, 1, 0)
+    # The cap still holds for a file the account hasn't checked...
+    with pytest.raises(vc.HTTPException) as exhausted:
+        await vc.reserve_check(9, str(uuid4()), 'bracket-rev-b', 'analysis')
+    assert exhausted.value.detail['code'] == 'user_validation_cap_exceeded'
+    # ...and the plate keeps its slot while any of its runs finishes.
+    for n, run in enumerate(runs):
+        await vc.finish_check(9, run, 'analysis', n == 5)
+    usage = await vc.user_trial_usage(9)
+    assert (usage['used'], usage['reserved'], usage['remaining']) == (3, 0, 0)
+    # A run that failed releases nothing it didn't take: the file is still checked.
+    again = await vc.reserve_check(9, str(uuid4()), 'housing', 'cost')
+    await vc.finish_check(9, again, 'cost', False)
+    assert (await vc.user_trial_usage(9))['used'] == 3
+
+
+@pytest.mark.asyncio
+async def test_a_failed_only_run_of_a_new_file_releases_its_slot(ledger):
+    await _add_user(ledger, 10, 'trial', 'solo@gmail.com')
+    await _complete(10, 2)
+    attempts = [await vc.reserve_check(10, str(uuid4()), 'bad-file', 'analysis') for _ in range(3)]
+    assert (await vc.user_trial_usage(10))['remaining'] == 0
+    for run in attempts:
+        await vc.finish_check(10, run, 'analysis', False)
+    usage = await vc.user_trial_usage(10)
+    assert (usage['used'], usage['reserved'], usage['remaining']) == (2, 0, 1)
 
 
 @pytest.mark.asyncio
@@ -129,16 +197,19 @@ async def test_http_bundle_success_failure_replay_and_fail_closed(ledger, monkey
         assert (await post('/validate', check)).status_code == 200
         assert (await post('/validate/cost', check)).status_code == 200
         assert (await vc.user_trial_usage(1))['used'] == 1
-        assert (await post('/validate', check)).status_code == 409
+        # Re-running a finished step on the same file runs again, same check.
+        assert (await post('/validate', check)).status_code == 200
+        assert (await post('/validate/cost', str(uuid4()))).status_code == 200
+        assert (await vc.user_trial_usage(1))['used'] == 1
         assert (await post('/validate', str(uuid4()), b'')).status_code == 400
         assert (await post('/validate', 'not-a-uuid')).status_code == 400
-        assert len(calls) == 4
+        assert len(calls) == 6
         # A real DB query failure blocks compute rather than spending unchecked.
         async def unavailable(*args):
             raise vc.SQLAlchemyError('database unavailable')
         monkeypatch.setattr(vc, '_counts', unavailable)
-        assert (await post('/validate', str(uuid4()))).status_code == 503
-        assert len(calls) == 4
+        assert (await post('/validate', str(uuid4()), b'NEW CAD')).status_code == 503
+        assert len(calls) == 6
 
 
 @pytest.mark.asyncio
@@ -162,16 +233,17 @@ async def test_headerless_api_calls_count_one_check_per_part(ledger):
         for path in ('/validate/preview-mesh', '/validate', '/validate/cost'):
             assert (await post(path, b'PART A')).status_code == 200
         assert (await vc.user_trial_usage(1))['used'] == 1
-        # Re-running a finished step is a new check; another file is its own.
+        # Re-running a finished step is the same part's check; another file is its own.
         assert (await post('/validate', b'PART A')).status_code == 200
         assert (await post('/validate', b'PART B')).status_code == 200
         assert (await post('/validate/cost', b'PART B')).status_code == 200
-        assert (await vc.user_trial_usage(1))['used'] == 3
-        # An hour later the same file starts a fresh check.
+        assert (await vc.user_trial_usage(1))['used'] == 2
+        # Hours later the same file still doesn't count again.
         async with ledger() as session, session.begin():
             await session.execute(update(TrialCheck).values(created_at=datetime.now(timezone.utc) - timedelta(hours=2)))
         assert (await post('/validate/cost', b'PART A')).status_code == 200
-        assert (await vc.user_trial_usage(1))['used'] == 4
+        assert (await post('/validate', b'PART A')).status_code == 200
+        assert (await vc.user_trial_usage(1))['used'] == 2
 
 
 @pytest.mark.asyncio
@@ -266,10 +338,11 @@ async def _add_user(ledger, user_id, plan, email, grant=None):
                               {'id': user_id, 'plan': plan, 'email': email, 'grant': grant})
 
 
-async def _complete(user_id, count):
+async def _complete(user_id, count, prefix='file'):
+    """``count`` checks of distinct files (a check means a part)."""
     for _ in range(count):
         check = str(uuid4())
-        assert await vc.reserve_check(user_id, check, 'file', 'analysis')
+        assert await vc.reserve_check(user_id, check, f'{prefix}-{uuid4().hex}', 'analysis')
         await vc.finish_check(user_id, check, 'analysis', True)
 
 
@@ -340,11 +413,13 @@ async def test_phone_gate_holds_free_checks_until_verified(ledger, monkeypatch):
     monkeypatch.setenv('SMS_VERIFICATION_REQUIRED', '1')
     assert (await vc.user_trial_usage(8))['phone_verification_required'] is True
     with pytest.raises(vc.HTTPException) as gated:
-        await vc.reserve_check(8, str(uuid4()), 'file', 'analysis')
+        await vc.reserve_check(8, str(uuid4()), 'file-2', 'analysis')
     assert gated.value.detail['code'] == 'phone_verification_required'
+    # The part admitted before the gate can still run its other steps: no new check.
+    assert await vc.reserve_check(8, str(uuid4()), 'file', 'cost')
     # Pilot accounts are never gated.
     assert not await vc.reserve_check(3, str(uuid4()), 'file', 'analysis')
     async with ledger() as session, session.begin():
         await session.execute(text('UPDATE users SET phone_verified_at = now() WHERE id = 8'))
     assert (await vc.user_trial_usage(8))['phone_verification_required'] is False
-    assert await vc.reserve_check(8, str(uuid4()), 'file', 'analysis')
+    assert await vc.reserve_check(8, str(uuid4()), 'file-2', 'analysis')

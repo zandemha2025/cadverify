@@ -262,7 +262,7 @@ export function HistoryPage({ partKey }: { partKey: string }) {
                       </Link>
                     ) : null}
                   </span>
-                  <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Re-check runs this part again with today&apos;s machines and rates · choose its file · uses 1 check</span>
+                  <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Re-check runs this part again with today&apos;s machines and rates · choose its file · the same file doesn&apos;t use another check</span>
                   {recheckErr ? (
                     <span role="alert" style={{ color: "var(--bad)", fontSize: 12.5 }}>
                       {recheckErr}

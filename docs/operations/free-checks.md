@@ -1,6 +1,6 @@
 # Free checks and manual paid access
 
-Each authenticated account receives **10 lifetime single-part CAD checks**. A check includes that upload's preview, DFM analysis and cost estimate. A completed analysis or estimate consumes one check. Failed operations can retry; invalid files do not consume completed checks. Simultaneous requests reserve slots before compute, so they cannot exceed ten by racing. API keys and browser sessions share the account allowance.
+Each authenticated account receives **10 lifetime single-part CAD checks**. A check means a part: one file's preview, DFM analysis and cost estimate. The file is identified by its hash (filename and bytes). The first completed analysis or estimate of a file consumes one check; re-running any step on the same file later (another material, quantity, machine set or service conditions) reuses that file's check and never counts again, even after the allowance is spent. A different file is a different check. Failed operations can retry; invalid files do not consume completed checks. Simultaneous requests reserve slots before compute, so they cannot exceed ten by racing. API keys and browser sessions share the account allowance.
 
 The public `/sample` is a recorded example with no live computation. Both legacy `/validate/demo` endpoints now require authentication and use the same allowance. Batch work, reconstruction, Design Studio generation/interpretation, repair, context fit, multi-part assembly work, multipart bulk uploads and recalibration require approved access. Reading saved results and exporting existing reports remain available after the free allowance is exhausted.
 
@@ -8,7 +8,7 @@ There is no checkout or recurring subscription in this release. The **Request pa
 
 ## Deployment
 
-Apply Alembic migration `0049_trial_checks` before starting the new API. It creates the durable check ledger and backfills past analyses and cost-only results; a cost result with a matching user/mesh analysis is not counted twice. Existing approved `pilot` users remain unlimited. Deploy the matching web build so its preview, analysis and costing requests share the `X-Part-Check-ID` UUID. The server independently binds the ID to the authenticated user and uploaded filename/bytes; the header grants no authority. A recheck uses a fresh ID. The former cap override and rolling-window environment variables no longer control the product allowance.
+Apply Alembic migration `0049_trial_checks` before starting the new API. It creates the durable check ledger and backfills past analyses and cost-only results; a cost result with a matching user/mesh analysis is not counted twice. Existing approved `pilot` users remain unlimited. Deploy the matching web build so its preview, analysis and costing requests share the `X-Part-Check-ID` UUID. The server independently binds the ID to the authenticated user and uploaded filename/bytes; the header grants no authority. A recheck uses a fresh ID; it is a new run of the same file's check and does not count again. The former cap override and rolling-window environment variables no longer control the product allowance.
 
 The migration is additive; leave the table in place if rolling the application back. Do not downgrade/drop the ledger on a live system, because doing so loses the new usage history.
 

@@ -271,7 +271,7 @@ export function UseSheet() {
                 <button className="btn ink sm" type="button" disabled={!p.canRecheck} onClick={() => p.recheck({ materialClass: pendMat })}>
                   Re-check in {(MATERIAL_CLASS_LABEL[pendMat] ?? pendMat).toLowerCase()}
                 </button>
-                <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{p.canRecheck ? "Methods, prices and machines update together · uses 1 check" : "Drop the file on the part to re-check it in another material."}</span>
+                <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{p.canRecheck ? "Methods, prices and machines update together · same file, no extra check" : "Drop the file on the part to re-check it in another material."}</span>
               </div>
             ) : null}
             <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>Conditions are saved with this part and load next time it&apos;s opened. The material class is part of each check&apos;s record.</p>
