@@ -165,7 +165,9 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
     const key = p.data.key;
     const before = p.data.cost;
     if (!key || !before) return false;
-    startRecheck({ key, before, sessionId: null, machines: names });
+    // The re-check runs against every machine the shop has, the ones already there and these.
+    const all = [...p.data.machines.map((m) => m.name ?? catWhat(m.process)), ...names.filter((n) => !p.data.machines.some((m) => m.name === n))];
+    startRecheck({ key, before, sessionId: null, machines: all });
     const materialClass = before.material_class ?? p.session?.materialClass ?? "polymer";
     if (file) startCheck(file, { materialClass });
     else p.recheck({ materialClass });

@@ -30,6 +30,7 @@ export function Aha({ rc }: { rc: Recheck }) {
   const failed = !!s && s.status !== "running" && !(s.status === "done" && p.data.cost && ranOnMachines(p.data.cost));
   const hid = React.useRef<number | null>(null);
   const lensSet = React.useRef(false);
+  const wasShop = React.useRef(false);
 
   // The re-check's own progress panel would cover this sheet: it says the same here.
   React.useEffect(() => {
@@ -39,12 +40,17 @@ export function Aha({ rc }: { rc: Recheck }) {
     }
   }, [s]);
 
-  // The answer lands on the Shop lens, once; on a phone the answer is scrolled into view.
+  // The re-check runs on the Shop lens (the part beside the machine, as the answer will be);
+  // on a phone the answer is scrolled into view when it lands.
   const sheetRef = React.useRef<HTMLElement>(null);
+  const scrolled = React.useRef(false);
   React.useEffect(() => {
-    if (!running && !failed && !lensSet.current) {
+    if (!lensSet.current && !failed) {
       lensSet.current = true;
       p.setLens("shop");
+    }
+    if (!running && !failed && !scrolled.current) {
+      scrolled.current = true;
       if (window.matchMedia("(max-width:900px)").matches) {
         const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         requestAnimationFrame(() => sheetRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }));
@@ -54,7 +60,9 @@ export function Aha({ rc }: { rc: Recheck }) {
 
   // Another lens closes it.
   React.useEffect(() => {
-    if (lensSet.current && p.lens !== "shop") closeRecheck();
+    // Only once the part has been on Shop: switching to it happens a render after asking.
+    if (p.lens === "shop") wasShop.current = true;
+    else if (wasShop.current) closeRecheck();
   }, [p.lens]);
 
   const qs = p.qs;
@@ -142,7 +150,7 @@ export function Aha({ rc }: { rc: Recheck }) {
   const qw = qtyWord(q);
   return (
     <>
-      {before ? (
+      {before && !model.beforeOn ? (
         <div className="nb-empty2 swap" aria-hidden="true">
           <b>No machine to fit it in</b>
           <span>No machines were added at the first check, so in-house wasn’t checked</span>
@@ -155,7 +163,7 @@ export function Aha({ rc }: { rc: Recheck }) {
           <span className="s">{model.ticket.s}</span>
         </div>
       ) : null}
-      <aside ref={sheetRef} className={cx("sheet nb-aha", before && "nb-before")} aria-label="The answer">
+      <aside ref={sheetRef} className={cx("sheet nb-aha", before && !model.beforeOn && "nb-before")} aria-label="The answer">
         <div className="top">
           <div className="row1">
             <span className="seg" role="group" aria-label="Compare">
@@ -167,7 +175,7 @@ export function Aha({ rc }: { rc: Recheck }) {
               </button>
             </span>
             <span className="smeta" style={{ margin: 0 }}>
-              {before ? "First check" : "Re-checked just now"}
+              {before ? (model.beforeOn ? "Before this change" : "First check") : "Re-checked just now"}
             </span>
           </div>
           <h2 className="lead" aria-live="polite">
@@ -254,7 +262,7 @@ export function Aha({ rc }: { rc: Recheck }) {
                 ))}
               </div>
               <div className="gh" style={{ marginTop: 6 }}>
-                <span>{before ? "Your machines · none at the first check" : `Your machines · ${model.n}`}</span>
+                <span>{before ? (model.beforeOn ? "Your machines · before this change" : "Your machines · none at the first check") : `Your machines · ${model.n}`}</span>
                 <span>
                   <Link href={R.shop}>Edit</Link>
                 </span>

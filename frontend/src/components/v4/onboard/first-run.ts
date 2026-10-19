@@ -348,6 +348,8 @@ export interface AhaMachine {
 }
 
 export interface AhaModel {
+  /** "before" ran on machines too (a machine added later), so it isn't "no machines" */
+  beforeOn: boolean;
   /** the machine of yours that can make it, cheapest first */
   best: { name: string; process: string; price: number | null } | null;
   lead: { a: string; b: string; tone: "ok" | "no" | "plain" };
@@ -407,11 +409,28 @@ export function ahaModel(input: {
   const labN = laborRate(now);
   const fitNow = best ? readVerification(now)?.per_route?.[best.process] ?? null : null;
   const kgMax = best ? machines.find((m) => m.id === best.id)?.max_workpiece_kg ?? null : null;
+  // "Before" may itself have run on machines (a machine added later): read where it was made then.
+  const vb = readVerification(before);
+  const beforeOn = ranOnMachines(before);
+  const inHouse = (v: string | null | undefined) => v === "makeable_in_house" || v === "makeable_with_secondary_op";
+  const beforeMachineFor = (code: string | null | undefined): string | null => {
+    if (!beforeOn || !code) return null;
+    const r = vb?.per_route?.[code];
+    return r && inHouse(r.verdict) ? r.best_machine ?? null : null;
+  };
+  const beforeBest = best ? beforeMachineFor(best.process) : null;
+  const cheapBMachine = cheapB ? beforeMachineFor(cheapB.code) : null;
 
   // Lead and sub.
   let lead: AhaModel["lead"];
   let sub: string;
-  if (input.showBefore) {
+  if (input.showBefore && beforeBest) {
+    lead = { a: "Made on your ", b: beforeBest, tone: "ok" };
+    sub = beforeE ? `${money(beforeE.unit_cost_usd)} each at ${qw}, in-house, before this change.` : "In-house, before this change.";
+  } else if (input.showBefore && beforeOn) {
+    lead = { a: "In-house ", b: "no machine fit", tone: "no" };
+    sub = "Before this change, none of your machines cleared every check.";
+  } else if (input.showBefore) {
     lead = { a: "In-house ", b: "not checked", tone: "plain" };
     const m = beforeMethod ?? cheapB;
     sub = m && priceAt(m, q) != null ? `No machines added. ${m.name} at a typical shop: ${money(priceAt(m, q))} each at ${qw}.` : "No machines added, so in-house wasn’t checked.";
@@ -434,21 +453,22 @@ export function ahaModel(input: {
   const rows: AhaRow[] = [];
   rows.push({
     k: "Where it’s made",
-    b: "Outside",
-    bs: "in-house not checked",
+    b: beforeBest ?? "Outside",
+    bs: beforeBest ? "in-house" : beforeOn ? "none of your machines fit" : "in-house not checked",
     a: best ? best.name : "Outside",
     as: best ? ["in-house", kgMax != null ? `fits, ${trimNum(kgMax, 0)} kg max` : fitNow?.notes?.includes(WEIGHT_BY_BUILD_VOLUME) ? "fits the build volume" : "fits"].join(" · ") : views.length ? `none of your ${views.length} clears every check` : "no machines",
     tone: best ? "ok" : "plain",
   });
   if (best && bestMethod) {
     const rb = rateOf(beforeE);
+    const ownB = ownedBasis(beforeE);
     const own = ownedBasis(nowE);
     const yours = driverProv(nowE, "machine_cost") === "USER";
-    rows.push({ k: `${bestMethod.name}, each`, b: money(beforeE?.unit_cost_usd), bs: "typical shop", a: money(nowE?.unit_cost_usd), as: `your ${best.name}`, tone: "plain" });
+    rows.push({ k: `${bestMethod.name}, each`, b: money(beforeE?.unit_cost_usd), bs: beforeBest ? `your ${beforeBest}` : "typical shop", a: money(nowE?.unit_cost_usd), as: `your ${best.name}`, tone: "plain" });
     rows.push({
       k: "Machine time",
       b: money(driver(beforeE, "machine_cost")),
-      bs: rb != null ? `typical ${rateWord(rb)}` : "typical",
+      bs: ownB ? `${ownB.yours ? "your" : "typical"} ${rateWord(ownB.rate)}, owned` : rb != null ? `typical ${rateWord(rb)}` : "typical",
       a: money(driver(nowE, "machine_cost")),
       as: own ? `${own.yours || yours ? "your" : "typical"} ${rateWord(own.rate)}, owned` : yours ? `your ${rateWord(fitNow?.machine_rate_usd ?? null) || "rate"}` : `typical ${rateWord(rateOf(nowE))}`,
       tone: "plain",
@@ -465,7 +485,7 @@ export function ahaModel(input: {
   rows.push({
     k: "Cheapest as drawn",
     b: cheapB ? money(priceAt(cheapB, q)) : "—",
-    bs: cheapB ? `${cheapB.name}, outside` : "not priced",
+    bs: cheapB ? whereMade(cheapB, cheapBMachine) : "not priced",
     a: cheapN ? money(priceAt(cheapN, q)) : "—",
     as: cheapN ? whereMade(cheapN, cheapNMachine) : "not priced",
     tone: cheapN && cheapNMachine ? "ok" : "plain",
@@ -483,14 +503,17 @@ export function ahaModel(input: {
 
   // The foot says exactly what moved the price.
   let foot: string;
-  if (input.showBefore) foot = "Typical machines and rates, fully loaded. Lead times are a queue model, not a schedule.";
+  if (input.showBefore) foot = beforeOn ? "The answer before this change, same file and engine. Lead times are a queue model, not a schedule." : "Typical machines and rates, fully loaded. Lead times are a queue model, not a schedule.";
   else if (best && nowE && beforeE) {
     const delta = Math.round((beforeE.unit_cost_usd - nowE.unit_cost_usd) * 100) / 100;
     const own = ownedBasis(nowE);
     const yours = own?.yours || driverProv(nowE, "machine_cost") === "USER";
     const band = nowE.est_error_band_pct ? ` ±${trimNum(nowE.est_error_band_pct, 0)}%, not yet checked against your jobs.` : "";
     const rest = `Labor, setup and programming are ${labN?.yours ? "from your rate card" : "typical"}.`;
-    if (delta === 0) foot = `Where it’s made changed, not the price. ${rest}${band}`;
+    const also = can.filter((v) => v.id !== best.id && v.name !== beforeBest);
+    const alsoText = also.length ? ` ${also.map((v) => `Your ${v.name} can make it too${v.cost != null ? `, at ${money(v.cost)}` : ""}.`).join(" ")}` : "";
+    if (delta === 0 && beforeBest === best.name) foot = `Same machine and price as before.${alsoText} ${rest}${band}`;
+    else if (delta === 0) foot = `Where it’s made changed, not the price.${alsoText} ${rest}${band}`;
     else if (own)
       foot = `Only the machine line moved, by ${money(Math.abs(delta))}: a machine you own is priced without its paid-off capital share, ${Math.round(own.cap * 100)}% of ${yours ? "your" : "the typical"} ${rateWord(own.rate)} (${rateWord(ownedRate(own.rate, own.cap))} in-house).${yours ? "" : " Add your rate to price it at yours."} ${rest}${band}`;
     else foot = `Only the machine line is yours, so the price moved ${money(Math.abs(delta))}. ${rest}${band}`;
@@ -500,7 +523,7 @@ export function ahaModel(input: {
   let ticket: AhaModel["ticket"] = null;
   if (input.showBefore && beforeMethod) {
     const e = beforeMethod.prices.get(q);
-    if (e) ticket = { k: `${beforeMethod.name} · typical shop · ${qw} parts`, big: `${money(e.unit_cost_usd)} each`, s: `Outside · ${days(e.lead_time?.low_days, e.lead_time?.high_days)} · queue model` };
+    if (e) ticket = { k: `${beforeMethod.name} · ${beforeBest ? `${beforeBest} · in-house` : "typical shop"} · ${qw} parts`, big: `${money(e.unit_cost_usd)} each`, s: `${beforeBest ? "In-house" : "Outside"} · ${days(e.lead_time?.low_days, e.lead_time?.high_days)} · queue model` };
   } else if (best && nowE) {
     const lo = nowE.confidence?.low_usd ?? nowE.unit_cost_usd * (1 - nowE.est_error_band_pct / 100);
     const hi = nowE.confidence?.high_usd ?? nowE.unit_cost_usd * (1 + nowE.est_error_band_pct / 100);
@@ -511,6 +534,7 @@ export function ahaModel(input: {
   const labor = nowE && labCost != null && labN ? `${money(labCost)} of the ${money(nowE.unit_cost_usd)} at ${qw} is labor at ${labN.yours ? "your" : "a typical"} ${rateWord(labN.v)}. Your labor rate changes every in-house price.` : null;
 
   return {
+    beforeOn,
     best: best ? { name: best.name, process: best.process, price: best.cost } : null,
     lead,
     sub,

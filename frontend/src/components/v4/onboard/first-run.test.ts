@@ -165,6 +165,17 @@ test("before/now with your rate: only the machine line moves, by the engine's am
   assert.match(before.sub, /3-axis milling at a typical shop: \$31\.88 each at 10/);
 });
 
+test("a machine added later: before is the earlier answer on your machines, not \"outside\"", () => {
+  const m = ahaModel({ before: STAGING_NOW, now: STAGING_NOW, machines: STAGING_MACHINES, validation: null, q: 100, showBefore: false });
+  assert.equal(m.beforeOn, true);
+  assert.deepEqual([m.rows[0].b, m.rows[0].bs], ["Haas VF-2", "in-house"]);
+  const mt = m.rows.find((r) => r.k === "Machine time")!;
+  assert.equal(mt.bs, "typical $75/h, owned");
+  assert.match(m.foot, /^Same machine and price as before\./);
+  const b = ahaModel({ before: STAGING_NOW, now: STAGING_NOW, machines: STAGING_MACHINES, validation: null, q: 100, showBefore: true });
+  assert.deepEqual(b.lead, { a: "Made on your ", b: "Haas VF-2", tone: "ok" });
+});
+
 test("no machine that fits: says none, never a yes", () => {
   const steelOnly = MACHINES_BLANK.map((m) => ({ ...m, materials: ["steel"] }));
   const m = ahaModel({ before: BEFORE, now: { ...NOW_BLANK, verification: { verdict: "makeable_not_on_owned", per_route: {} } }, machines: steelOnly, validation: null, q: 10, showBefore: false });
