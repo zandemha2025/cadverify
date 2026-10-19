@@ -97,6 +97,16 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
   const chooseRef = React.useRef<HTMLButtonElement>(null);
   const bodyRef = React.useRef<HTMLDivElement>(null);
 
+  // On a phone the sheet covers the page: the page behind doesn't scroll while it's open.
+  React.useEffect(() => {
+    if (!window.matchMedia("(max-width:900px)").matches) return;
+    const el = document.documentElement;
+    const was = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = was;
+    };
+  }, []);
   React.useEffect(() => {
     back.current = document.activeElement as HTMLElement | null;
     searchRef.current?.focus();
