@@ -550,6 +550,17 @@ async def run_analysis(
 
         mesh = scale_mesh_to_mm(mesh, effective_units)
 
+    # The cost engine scores every registered process with no rule pack. When
+    # this analysis is exactly that (all processes, no pack), keep a copy of
+    # the analysed part so pricing this file next skips the same work.
+    from src.services import part_geometry_cache
+
+    cost_cache_key = (
+        part_geometry_cache.key(user.user_id, file_bytes, filename, effective_units)
+        if not processes and pack is None and getattr(user, "user_id", None) is not None
+        else None
+    )
+
     def _run_analysis_sync():
         sync_timings: dict[str, float] = {}
         sync_started = time.perf_counter()
@@ -608,9 +619,18 @@ async def run_analysis(
                 exc_info=True,
             )
         sync_timings["signature"] = _elapsed_ms(sync_started)
+        cost_entry = None
+        if cost_cache_key is not None:
+            try:
+                cost_entry = _cost_engine_entry(
+                    mesh, geometry, ctx, universal_issues, process_scores,
+                    suffix, filename,
+                )
+            except Exception:
+                logger.warning("analysed-part reuse skipped", exc_info=True)
         return (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings,
+            signature_vec, sync_timings, cost_entry,
         )
 
     timeout_sec = analysis_timeout_sec_fn()
@@ -618,7 +638,7 @@ async def run_analysis(
     try:
         (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings,
+            signature_vec, sync_timings, cost_entry,
         ) = (
             await asyncio.wait_for(
                 loop.run_in_executor(None, _run_analysis_sync),
@@ -813,6 +833,8 @@ async def run_analysis(
                 cached.face_count,
                 org_id=org_id,
             )
+            if cost_entry is not None:
+                part_geometry_cache.put(cost_cache_key, cost_entry)
             stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
             stage_timings_ms["total"] = _elapsed_ms(request_started)
             return _analysis_return(
@@ -825,6 +847,9 @@ async def run_analysis(
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
+    # Persistence is done with the mesh: keep the analysed part for pricing.
+    if cost_entry is not None:
+        part_geometry_cache.put(cost_cache_key, cost_entry)
     stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
     stage_timings_ms["total"] = _elapsed_ms(request_started)
     return _analysis_return(
@@ -832,6 +857,45 @@ async def run_analysis(
         persisted_analysis_id,
         return_persisted_id,
         stage_timings_ms,
+    )
+
+
+def _cost_engine_entry(mesh, geometry, ctx, universal_issues, process_scores, suffix, filename):
+    """The analysed part exactly as the cost engine builds it
+    (``routes._run_cost_engine_ctx``) from the objects this analysis made, or
+    None when this analysis didn't score every registered process.
+
+    The cost engine scores the registered processes in registry order with no
+    rule pack and keeps the issues as the analyzers wrote them; this analysis
+    goes on to add cross-process suggestions to its own issues in place, so the
+    entry takes copies first.
+    """
+    import copy
+
+    from src.analysis.processes import base as pbase
+    from src.eval.similarity import feature_vector
+    from src.services import part_geometry_cache
+
+    by_process = {ps.process: ps for ps in process_scores}
+    order = [p for p in pbase._REGISTRY if get_analyzer(p)]
+    if any(p not in by_process for p in order):
+        return None  # an analyzer failed here; the cost engine would run it again
+    result = AnalysisResult(
+        filename=filename,
+        file_type="stl",
+        geometry=geometry,
+        segments=copy.deepcopy(ctx.segments),
+        universal_issues=copy.deepcopy(universal_issues),
+        process_scores=copy.deepcopy([by_process[p] for p in order]),
+    )
+    rank_processes(result)
+    return part_geometry_cache.AnalysedPart(
+        result=result,
+        mesh=mesh,
+        features=ctx.features,
+        identity_vec=feature_vector(mesh, geometry, ctx),
+        suffix=suffix,
+        faces=int(len(mesh.faces)),
     )
 
 

@@ -64,6 +64,9 @@ export interface VerifyProgress {
 
 export interface RunVerificationOptions {
   onValidation?: (progress: VerifyProgress) => void;
+  /** Read when pricing starts, after routing + DFM return: the material the
+   *  user picked while the geometry check ran. Unset: `input.materialClass`. */
+  materialClass?: () => string;
 }
 
 /** Engine process ids the cost endpoint accepts in `owned_processes` — passing an
@@ -342,8 +345,11 @@ export async function runVerification(
   const owned = ownedProcessesFrom(floor.machines).filter((p) =>
     KNOWN_ENGINE_PROCESSES.has(p)
   );
+  // The geometry check doesn't depend on the material; the price does. Price in
+  // the material answered while the check ran (the same file and check id, so
+  // the server reuses the geometry it just analysed and uses no extra check).
   const costOut = await postCost(
-    input,
+    options.materialClass ? { ...input, materialClass: options.materialClass() } : input,
     owned,
     quantities
   );

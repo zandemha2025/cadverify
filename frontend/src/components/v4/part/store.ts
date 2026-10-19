@@ -51,7 +51,10 @@ export interface CheckSession {
   id: number;
   file: File;
   sample: boolean;
+  /** The material to price in: the answer to "What will it be made of?", else plastic. */
   materialClass: string;
+  /** The material the latest price request was sent with (null before pricing starts). */
+  pricedWith: string | null;
   key: string | null;
   startedAt: number;
   validatedAt: number | null;
@@ -218,6 +221,11 @@ async function run(id: number) {
         onValidation: ({ validation }) => {
           if (validation) patch(id, { validation, validatedAt: Date.now() });
         },
+        materialClass: () => {
+          const m = sessions.get(id)?.materialClass ?? s0.materialClass;
+          patch(id, { pricedWith: m });
+          return m;
+        },
       },
     );
   } catch (e) {
@@ -234,6 +242,9 @@ async function run(id: number) {
   }
   const open = !result.validation.geometry.is_watertight || !!result.costGeometryInvalid;
   patch(id, { result, validation: result.validation, key: result.meshHash ?? key, status: open ? "stopped" : "done", finishedAt: Date.now() });
+  // The material changed while the first price ran: price again in it.
+  const s1 = sessions.get(id);
+  if (!open && s1 && s1.pricedWith != null && s1.materialClass !== s1.pricedWith) void retryPrices(id);
 }
 
 /** Start the real check for a file. Returns the session id the pages subscribe to. */
@@ -246,6 +257,7 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
     file: f,
     sample: !!opts.sample,
     materialClass: opts.materialClass ?? "polymer",
+    pricedWith: null,
     key: null,
     startedAt: Date.now(),
     validatedAt: null,
@@ -267,16 +279,34 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
 /** Retry only the prices; methods, findings and machine fit stay as they are. */
 export async function retryPrices(id: number) {
   const s = sessions.get(id);
-  if (!s?.result?.validation) return;
-  patch(id, { costRetrying: true });
+  if (!s?.result?.validation || s.costRetrying) return;
+  const materialClass = s.materialClass;
+  patch(id, { costRetrying: true, pricedWith: materialClass });
   try {
-    const retried = await retryVerificationCost({ file: s.file, materialClass: s.materialClass }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
+    const retried = await retryVerificationCost({ file: s.file, materialClass }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
     patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
   } catch (e) {
     patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, costError: e instanceof Error ? e.message : "Prices didn’t finish." } : x.result }));
   } finally {
     window.dispatchEvent(new Event("proofshape:usage-changed"));
   }
+  // Picked another material while this price ran: price in that one too.
+  const after = sessions.get(id);
+  if (after && after.materialClass !== materialClass) void retryPrices(id);
+}
+
+/**
+ * The answer to "What will it be made of?" (N1), asked while the geometry check
+ * runs, or changed later. Before pricing starts it is the material the first
+ * price uses; once a price exists it re-prices in the new material. Same file
+ * and check id: no extra check, and the server reuses the geometry it already
+ * analysed, so a re-price takes well under a second instead of a full check.
+ */
+export function setCheckMaterial(id: number, materialClass: string) {
+  const s = sessions.get(id);
+  if (!s || s.materialClass === materialClass) return;
+  patch(id, { materialClass });
+  if (s.status === "done" && s.result?.validation && !s.costRetrying && s.pricedWith !== materialClass) void retryPrices(id);
 }
 
 /** The 3D preview for a dropped copy of a saved part. Same bytes only; no check runs. */

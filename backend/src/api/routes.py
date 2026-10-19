@@ -1541,6 +1541,7 @@ async def _run_cost_decision(
     units: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
+    response: Optional[Response] = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
@@ -1670,19 +1671,36 @@ async def _run_cost_decision(
                 material_class = cad_class
                 material_class_from_cad = True
 
-        mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
-            data, file.filename or "unknown"
+        # ── analysed-geometry reuse (re-pricing the same file) ───────────────
+        # Pricing depends on the material, quantities, rates and machines; the
+        # parse + geometry analysis below depends only on the file. When THIS
+        # account just analysed these exact bytes (same filename and units) in
+        # this process — its /validate or an earlier price — reuse those objects
+        # and go straight to costing. Same objects => the same price as a fresh
+        # run; a miss runs the full analysis exactly as before.
+        from src.services import part_geometry_cache
+
+        geometry_key = (
+            part_geometry_cache.key(user.user_id, data, file.filename or "unknown", effective_units)
+            if user is not None else None
         )
-        # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
-        # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
-        # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
-        # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
-        # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
-        # This is the SINGLE geometry-scaling site: nothing downstream rescales
-        # (EstimateOptions.units is declarative only), so there is exactly one
-        # conversion, never a double.
-        from src.costing.units import scale_mesh_to_mm
-        mesh = scale_mesh_to_mm(mesh, effective_units)
+        reused = part_geometry_cache.get(geometry_key) if geometry_key else None
+        if reused is not None:
+            mesh, suffix = reused.mesh, reused.suffix
+        else:
+            mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
+                data, file.filename or "unknown"
+            )
+            # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
+            # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
+            # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
+            # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
+            # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
+            # This is the SINGLE geometry-scaling site: nothing downstream rescales
+            # (EstimateOptions.units is declarative only), so there is exactly one
+            # conversion, never a double.
+            from src.costing.units import scale_mesh_to_mm
+            mesh = scale_mesh_to_mm(mesh, effective_units)
         tracing.set_attr(_sp_parse, "cadverify.file.suffix", suffix)
         tracing.set_attr(_sp_parse, "cadverify.file.bytes", len(data))
         tracing.set_attr(_sp_parse, "cadverify.units", effective_units)
@@ -1879,27 +1897,40 @@ async def _run_cost_decision(
     # is off. _otel_ctx is captured below, inside the cost.compute span.
     _otel_ctx = None
 
+    analysed: dict = {}
+
+    def _price(result, m, features):
+        # Span 3/4 — should-cost decision (make-vs-buy costing).
+        with tracing.span("cost.should_cost") as _sp_cost:
+            rep = estimate_decision(result, m, features, options)
+            tracing.set_attr(_sp_cost, "cadverify.status", rep.status)
+        unc = None
+        if run_ensemble and rep.status != "GEOMETRY_INVALID":
+            with tracing.span("cost.ensemble"):
+                unc = _run_ensemble_band(
+                    result, m, features, options, analogy_records
+                )
+        return rep, unc
+
     def _run():
         _otel_tok = tracing.attach_context(_otel_ctx)
         try:
+            if reused is not None:
+                # The analysed part this account just produced from these bytes.
+                with reused.lock:
+                    rep, unc = _price(reused.result, reused.mesh, reused.features)
+                return rep, unc, (reused.identity_vec if identity_wanted else None)
             # Span 2/4 — DFM / geometry analysis (the cost engine's mesh pass).
             with tracing.span("cost.dfm_analysis") as _sp_dfm:
+                _t_geo = time.perf_counter()
                 result, m, ctx = _run_cost_engine_ctx(
                     mesh, file.filename or "unknown"
                 )
                 features = ctx.features
                 geo = result.geometry if isinstance(result.geometry, dict) else {}
                 tracing.set_attr(_sp_dfm, "cadverify.face_count", geo.get("face_count"))
-            # Span 3/4 — should-cost decision (make-vs-buy costing).
-            with tracing.span("cost.should_cost") as _sp_cost:
-                rep = estimate_decision(result, m, features, options)
-                tracing.set_attr(_sp_cost, "cadverify.status", rep.status)
-            unc = None
-            if run_ensemble and rep.status != "GEOMETRY_INVALID":
-                with tracing.span("cost.ensemble"):
-                    unc = _run_ensemble_band(
-                        result, m, features, options, analogy_records
-                    )
+                analysed["geometry_ms"] = round((time.perf_counter() - _t_geo) * 1000, 1)
+            rep, unc = _price(result, m, features)
             # F2: compute the identity query signature by REUSING the geometry the
             # cost engine already analysed (result.geometry + ctx) rather than
             # re-running a SECOND full geometry pass (vector_for_mesh -> geometry_
@@ -1911,6 +1942,11 @@ async def _run_cost_decision(
             if identity_wanted:
                 from src.eval import similarity
                 id_vec = similarity.feature_vector(m, result.geometry, ctx)
+            if geometry_key is not None and rep.status != "GEOMETRY_INVALID":
+                analysed["entry"] = part_geometry_cache.AnalysedPart(
+                    result=result, mesh=m, features=features, identity_vec=id_vec,
+                    suffix=suffix, faces=int(len(m.faces)),
+                )
             return rep, unc, id_vec
         finally:
             tracing.detach_context(_otel_tok)
@@ -2003,7 +2039,14 @@ async def _run_cost_decision(
         material_class=material_class,
         shop=shop_slug,
         duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+        geometry_reused=reused is not None,
     )
+    if response is not None:
+        # Fixed stage names only (no file name, tenant or hash), as /validate does.
+        response.headers["Server-Timing"] = (
+            'geometry;desc="reused";dur=0' if reused is not None
+            else f'geometry;desc="analysed";dur={analysed.get("geometry_ms", 0)}'
+        )
 
     # Observability: the compute finished, so record its duration (both outcomes)
     # and the decision outcome. Real timings/counts only; no PII enters a label.
@@ -2044,7 +2087,13 @@ async def _run_cost_decision(
             suffix,
             data,
         )
-        costable_stl = await asyncio.to_thread(mesh.export, file_type="stl")
+        def _export_costable():
+            if reused is None:
+                return mesh.export(file_type="stl")
+            with reused.lock:  # shared with a concurrent re-price of this part
+                return mesh.export(file_type="stl")
+
+        costable_stl = await asyncio.to_thread(_export_costable)
         if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
             raise HTTPException(
                 status_code=500,
@@ -2169,6 +2218,9 @@ async def _run_cost_decision(
     result_dict = dict(result_dict)
     result_dict["identity"] = identity_payload
 
+    # Keep this request's analysed part for the next price of the same file.
+    if analysed.get("entry") is not None:
+        part_geometry_cache.put(geometry_key, analysed["entry"])
     return result_dict
 
 
@@ -2258,6 +2310,7 @@ async def validate_cost(
         units=units,
         user=user,
         session=session,
+        response=response,
     )
 
 
