@@ -17,6 +17,7 @@ import { ProgressPanel } from "./progress";
 import { OutOfChecks } from "./blocked";
 import { liveMesh } from "./check-page";
 import { SampleFlow } from "../home/sample-result";
+import { FirstRun } from "../onboard/first-run-overlay";
 import type { Lens } from "./ctx";
 import { R } from "../routes";
 import { Empty, Failed, Loading } from "../ui";
@@ -197,6 +198,7 @@ export function PartPage({ partKey }: { partKey: string }) {
         />
       ) : null}
       {quotaMessage ? <OutOfChecks message={quotaMessage} onClose={() => setQuotaClosed(true)} /> : null}
+      <FirstRun />
     </>
   );
   return (
