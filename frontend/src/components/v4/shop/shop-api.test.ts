@@ -42,10 +42,10 @@ test("the screens' records come from one latest-per-part request", async () => {
   assert.equal(body.details.length, 1);
 });
 
-test("Rates and Real costs make no per-record reads on load", () => {
-  for (const name of ["rates-screen.tsx", "actuals-screen.tsx"]) {
+test("Rates, Real costs and Changes make no per-record reads on load", () => {
+  for (const name of ["rates-screen.tsx", "actuals-screen.tsx", "changes-screen.tsx"]) {
     const src = readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
-    assert.match(src, /usePartRecords\(12\)/, name);
+    assert.match(src, /usePartRecords\((12|6)\)/, name);
     assert.doesNotMatch(src, /recordDetail\(|getRecord\(|useRecords\(|listRecords\(/, name);
   }
 });

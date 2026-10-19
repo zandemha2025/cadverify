@@ -13,8 +13,8 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
 import { R, TABS } from "../routes";
 import { Content, Empty, Loading, PageHead, Panel, Sheet, cx } from "../ui";
-import { Banner, ShopWorld, isOrgAdmin, recordDetail, useOrg, useRateCard, useRecords, useToast } from "./common";
-import { approveChange, getRateVersion, latestPerPart, listChanges, rejectChange, type Assumption, type ChangeRequestRow, type RateVersionFull, type RecordDetail } from "./shop-api";
+import { Banner, ShopWorld, isOrgAdmin, useOrg, usePartRecords, useRateCard, useToast } from "./common";
+import { approveChange, getRateVersion, listChanges, rejectChange, type Assumption, type ChangeRequestRow, type RateVersionFull, type RecordDetail } from "./shop-api";
 import { longDate, shortWhen } from "./shop-derive";
 import { costLines, defaultsFrom, headlineEstimate } from "./rates-derive";
 import { ASSET_NAMES, diffCard, initials, noteLines, personName, pipeline } from "./changes-derive";
@@ -46,7 +46,8 @@ export function ChangesScreen() {
   const org = useOrg();
   const admin = isOrgAdmin(org);
   const rc = useRateCard();
-  const recs = useRecords();
+  // One request per load: the newest record of your 6 newest parts, with details.
+  const recs = usePartRecords(6);
   const emails = useMembers();
   const [reqs, setReqs] = React.useState<ChangeRequestRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -89,19 +90,11 @@ export function ChangesScreen() {
 
   // Your newest checks: the default v0 values they recorded, and one part's labor today at v0.
   React.useEffect(() => {
-    if (!recs.data?.length) return;
-    let live = true;
-    const newest = latestPerPart(recs.data).slice(0, 6);
-    Promise.allSettled(newest.map((r) => recordDetail(r.id))).then((res) => {
-      if (!live) return;
-      const ds = res.filter((x): x is PromiseFulfilledResult<RecordDetail> => x.status === "fulfilled").map((x) => x.value);
-      const defaults = defaultsFrom(ds.map((d) => d.result?.assumptions));
-      const laborRec = ds.find((d) => d.result?.assumptions?.some((a) => a.name === "labor_rate" && a.provenance === "DEFAULT") && headlineEstimate(d)) ?? null;
-      setV0({ defaults, laborRec });
-    });
-    return () => {
-      live = false;
-    };
+    const ds: RecordDetail[] = recs.data?.details ?? [];
+    if (!ds.length) return;
+    const defaults = defaultsFrom(ds.map((d) => d.result?.assumptions));
+    const laborRec = ds.find((d) => d.result?.assumptions?.some((a) => a.name === "labor_rate" && a.provenance === "DEFAULT") && headlineEstimate(d)) ?? null;
+    setV0({ defaults, laborRec });
   }, [recs.data]);
 
   const waiting = (reqs ?? []).filter((r) => r.status === "proposed");
