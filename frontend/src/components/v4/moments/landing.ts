@@ -7,8 +7,8 @@ import { MOMENT_ROUTES } from "./routes.ts";
 
 /** After sign-in, magic link and invite acceptance. */
 export const V4_HOME = R.home;
-/** After creating an account: Home with Get started open. */
-export const V4_SIGNUP_HOME = `${R.home}?welcome=1`;
+/** After creating an account: Home, which before any part shows the three ways to a first check itself (N5). */
+export const V4_SIGNUP_HOME = R.home;
 /** A part held on the sign-in screen waits here (phone check first when needed). */
 export const V4_HELD_PART = MOMENT_ROUTES.phone;
 

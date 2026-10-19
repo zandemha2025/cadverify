@@ -19,6 +19,7 @@ import * as api from "./data";
 import { buildQueue, homeFacts, recentRows, setupSteps, STEP_CHIP, type HomeInput, type InvolvedPart, type QueueItem } from "./home-derive";
 import { verdictOf } from "./parts-derive";
 import type { MakeRow } from "./model";
+import { FirstHome, useFirstHomeMode } from "../onboard/home-first";
 import "./home.css";
 
 type Source = "records" | "parts" | "make" | "machines" | "changes" | "actuals" | "portfolio" | "rates";
@@ -120,8 +121,10 @@ export function HomeScreen() {
   const recent = recentRows(input.records);
   const steps = setupSteps(input, { records: failed.has("records"), machines: failed.has("machines"), programs: failed.has("portfolio"), actuals: failed.has("actuals") });
   const doneSteps = steps.filter((s) => s.state === "done").length;
-  const newOrg = input.records != null && input.records.length === 0;
-  const guide = useGetStarted(newOrg);
+  // Before any part, and with only a part or two, Home is the first run (N5): it shows
+  // the three ways itself, so Get started doesn't open over it on its own.
+  const first = useFirstHomeMode(input);
+  const guide = useGetStarted(false);
 
   const [pick, setPick] = React.useState<string | null>(null);
   const sel = queue.find((q) => q.key === pick) ?? queue[0] ?? null;
@@ -130,6 +133,9 @@ export function HomeScreen() {
 
   const missing = [...failed].map((s) => SOURCE_NAME[s]);
   const retrying = [...failed].some((s) => pending.has(s));
+
+  if (first.mode === "first" || first.mode === "back")
+    return <FirstHome mode={first.mode} input={input} failed={failed} pending={pending} retry={retry} openGuide={guide.openGuide} runSample={guide.runSample} overlay={guide.overlay} onDismiss={first.dismiss} />;
 
   return (
     <Frame label="Home">
@@ -163,7 +169,7 @@ export function HomeScreen() {
             <div className="h-alt">
               <button type="button" onClick={guide.runSample}>
                 <span>
-                  Run an example<small>Sample bracket, real engine · uses 1 check</small>
+                  Run an example<small>Sample bracket, real engine · uses 1 check the first time</small>
                 </span>
                 <i aria-hidden="true">→</i>
               </button>
