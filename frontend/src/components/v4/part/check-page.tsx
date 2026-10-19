@@ -23,6 +23,7 @@ import { CantReadView } from "./cant-read";
 import { RepairView } from "./repair";
 import { AssemblyView } from "./assembly";
 import { SampleFlow } from "../home/sample-result";
+import { checkedBefore } from "../onboard/checked";
 import "./part.css";
 
 export function liveMesh(s: CheckSession): MeshSource {
@@ -66,12 +67,14 @@ export function CheckPage() {
 
   const beginSample = React.useCallback(async () => {
     const usage = await readUsage();
-    if (usage && !usage.unlimited && usage.remaining <= 0) {
+    const file = sampleBracketFile();
+    // A sample that ran before reuses its check, so the server takes it even with none left.
+    if (usage && !usage.unlimited && usage.remaining <= 0 && !(await checkedBefore(file))) {
       setSid(null);
-      setNoChecks("You have no checks left. The sample uses one like any part, so it didn't run.");
+      setNoChecks("You have no checks left. The sample uses one like any part the first time, so it didn't run.");
       return;
     }
-    begin(sampleBracketFile(), { sample: true });
+    begin(file, { sample: true });
   }, [begin]);
 
   React.useEffect(() => {

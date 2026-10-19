@@ -10,6 +10,8 @@ import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { useShell } from "../shell";
+import { sampleBracketFile } from "@/lib/verify/sample-cad";
+import { checkedBefore } from "../onboard/checked";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`;
@@ -45,6 +47,24 @@ export function StartScreen({
   const [checked, setChecked] = React.useState<number | null>(null);
   const [rates, setRates] = React.useState<string | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
+  // A file checked before doesn't use another check (a check means a part), nor does a sample that ran before.
+  const [seen, setSeen] = React.useState<{ file: File; checked: boolean | null } | null>(null);
+  const [sampleRan, setSampleRan] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    if (!file) return;
+    let live = true;
+    void checkedBefore(file).then((checked) => live && setSeen({ file, checked }));
+    return () => {
+      live = false;
+    };
+  }, [file]);
+  React.useEffect(() => {
+    let live = true;
+    void checkedBefore(sampleBracketFile()).then((v) => live && setSampleRan(v));
+    return () => {
+      live = false;
+    };
+  }, []);
   React.useEffect(() => {
     listMachines().then((p) => setMachines(p.machines.length)).catch(() => setMachines(null));
     fetchCostDecisions({ limit: 1 }).then((p) => setChecked(p.cost_decisions.length)).catch(() => setChecked(null));
@@ -59,7 +79,8 @@ export function StartScreen({
       <b>{usage.remaining}</b> {usage.plan === "pro" ? `of ${usage.cap} Pro checks left` : "free checks"}
     </span>
   );
-  const uses = usage && !usage.unlimited ? ` · uses 1 of ${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} checks` : " · uses 1 check";
+  const before = file && seen?.file === file && seen.checked === true;
+  const uses = before ? " · checked before, so it doesn’t use another check" : usage && !usage.unlimited ? ` · uses 1 of ${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} checks` : " · uses 1 check";
   const steps: [string, string, boolean | null, string | null][] = [
     ["First part", "The sample or your own file.", checked == null ? null : checked > 0, null],
     ["Service conditions", "Rules out materials that won't survive heat, pressure or chemicals.", null, R.setup],
@@ -126,7 +147,7 @@ export function StartScreen({
                   Try a sample part
                 </button>
               </span>
-              <span>The sample uses 1 check.</span>
+              <span>{sampleRan ? "The sample has run before, so it doesn’t use another check." : "The sample uses 1 check the first time."}</span>
             </>
           )}
           <input

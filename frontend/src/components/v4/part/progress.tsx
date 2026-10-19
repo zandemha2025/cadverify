@@ -4,6 +4,7 @@
 import * as React from "react";
 import { progressSteps, type Step } from "./model";
 import type { CheckSession } from "./store";
+import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
@@ -80,6 +81,7 @@ export function ProgressPanel({
               </span>
             ))}
           </p>
+          <HeldNote session={session} />
         </div>
         <button ref={closeRef} className="btn x" type="button" onClick={() => onOpenChange(false)} aria-label={hideLabel} title={hideLabel}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -103,6 +105,7 @@ export function ProgressPanel({
           </li>
         ))}
       </ol>
+      <MaterialAsk session={session} />
       <div className="ft">
         <span>{m.foot}</span>
         {action}

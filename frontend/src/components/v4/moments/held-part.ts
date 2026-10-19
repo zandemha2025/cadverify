@@ -16,6 +16,7 @@ import * as React from "react";
 import { useAuth } from "@/components/ui/auth-provider";
 import { browserPendingPartStore, takePendingPart } from "@/lib/pending-part";
 import { takePendingFile } from "../pending-file";
+import { markHeld } from "../onboard/state";
 
 export function useHeldPart(): { file: File | null; ready: boolean } {
   const { user } = useAuth();
@@ -29,7 +30,13 @@ export function useHeldPart(): { file: File | null; ready: boolean } {
       pending.current = memory
         ? Promise.resolve(memory)
         : email
-          ? takePendingPart(browserPendingPartStore(), email).catch(() => null)
+          ? takePendingPart(browserPendingPartStore(), email)
+              .then((f) => {
+                // The first check says "Held from sign-up" for this file (N1).
+                if (f) markHeld(f);
+                return f;
+              })
+              .catch(() => null)
           : Promise.resolve(null);
     }
     let live = true;

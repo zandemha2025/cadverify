@@ -55,6 +55,8 @@ export interface CheckSession {
   materialClass: string;
   /** The material the latest price request was sent with (null before pricing starts). */
   pricedWith: string | null;
+  /** Started without a material (a new upload, not the sample or a re-check): the progress panel asks for one (N1). */
+  askMaterial: boolean;
   key: string | null;
   startedAt: number;
   validatedAt: number | null;
@@ -258,6 +260,7 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
     sample: !!opts.sample,
     materialClass: opts.materialClass ?? "polymer",
     pricedWith: null,
+    askMaterial: !opts.sample && opts.materialClass == null,
     key: null,
     startedAt: Date.now(),
     validatedAt: null,

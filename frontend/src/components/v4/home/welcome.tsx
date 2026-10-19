@@ -14,6 +14,8 @@ import { R } from "../routes";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { useShell } from "../shell";
 import { cx } from "../ui";
+import { sampleBracketFile } from "@/lib/verify/sample-cad";
+import { checkedBefore } from "../onboard/checked";
 import "./home.css";
 
 /** Same key today's guide uses, so a person who closed it there isn't shown it again. */
@@ -165,7 +167,7 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
             </span>
             <span>
               <b>Run the sample</b>
-              <small>A 50 × 40 × 6 mm bracket · uses 1 check</small>
+              <small>A 50 × 40 × 6 mm bracket · uses 1 check the first time</small>
             </span>
             <span aria-hidden="true">→</span>
           </button>
@@ -221,7 +223,7 @@ export function SampleQuota({ onClose, onBack }: { onClose: () => void; onBack: 
         <CloseX onClose={onClose} />
       </div>
       <div className="h-rbody">
-        <p className="h-fine">The sample runs on the real engine, so it uses a check like any part.</p>
+        <p className="h-fine">The sample runs on the real engine, so its first run uses a check like any part.</p>
       </div>
       <div className="h-dfoot">
         <span className="h-r l">
@@ -280,9 +282,9 @@ export function useGetStarted(autoOpen: boolean) {
     setOpen("closed");
   }, []);
 
-  /** Run the sample on the check page, or say why it can't run. */
-  const runSample = React.useCallback(() => {
-    if (outOfChecks(usage)) {
+  /** Run the sample on the check page, or say why it can't run (a sample that ran before reuses its check). */
+  const runSample = React.useCallback(async () => {
+    if (outOfChecks(usage) && !(await checkedBefore(sampleBracketFile()))) {
       setOpen("quota");
       return;
     }
