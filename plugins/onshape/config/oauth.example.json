@@ -1,0 +1,7 @@
+{
+  "clientId": "USER_SUPPLIED_ONSHAPE_CLIENT_ID",
+  "authorizationUrl": "https://oauth.onshape.com/oauth/authorize",
+  "tokenUrl": "https://oauth.onshape.com/oauth/token",
+  "redirectUri": "http://localhost:8787/oauth/onshape/callback",
+  "scopes": ["OAuth2Read", "OAuth2Write"]
+}
