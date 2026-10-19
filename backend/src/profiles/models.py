@@ -29,6 +29,31 @@ class MaterialProfile:
     hardness_hrc: Optional[float] = None
 
 
+# How a catalog machine's ``materials`` were read from its maker.
+MAKER_SPEC = "maker_spec"            # the maker's own list or statement
+MAKER_DESCRIBED = "maker_described"  # mapped conservatively from what the maker says it's for
+
+
+@dataclass(frozen=True)
+class MakerSpec:
+    """What the maker publishes for a catalog machine, and where it says so.
+
+    ``max_workpiece_kg`` is the maker's rated table, workpiece or chuck load.
+    ``None`` means the maker publishes none (most printers): it is never
+    estimated, and ``kg_note`` says so. ``materials_basis`` says how the
+    profile's ``materials`` were read (``MAKER_SPEC`` or ``MAKER_DESCRIBED``),
+    with the page in ``materials_url`` (else ``source_url``).
+    """
+
+    source_url: str
+    max_workpiece_kg: Optional[float] = None
+    kg_note: str = ""
+    materials_basis: Optional[str] = None
+    materials_url: Optional[str] = None
+    materials_note: str = ""
+    checked: str = ""  # ISO date the maker's page was read
+
+
 @dataclass
 class MachineProfile:
     name: str
@@ -40,6 +65,7 @@ class MachineProfile:
     resolution_xy: Optional[float] = None     # mm
     materials: list[str] = field(default_factory=list)
     notes: str = ""
+    spec: Optional[MakerSpec] = None
 
 
 @dataclass

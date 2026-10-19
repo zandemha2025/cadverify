@@ -11,6 +11,20 @@
  */
 import { API_BASE } from "@/lib/api-base";
 
+/** Where a saved value came from when it isn't the shop's own: the maker's
+ *  published spec (`maker_spec`), or materials read conservatively from what
+ *  the maker says the machine is for (`maker_described`). The server sets it
+ *  for a catalog machine's values while they're unedited; a field without a
+ *  label is the shop's own declaration. */
+export interface FieldProvenance {
+  source: "maker_spec" | "maker_described";
+  catalog: string;
+  maker: string;
+  url: string;
+  note: string;
+  checked: string;
+}
+
 /** One owned machine as the backend serializes it (machine_to_public). */
 export interface OwnedMachine {
   id: string;
@@ -25,6 +39,8 @@ export interface OwnedMachine {
   material_thickness_map: Record<string, unknown> | null;
   notes: string | null;
   provenance: "user";
+  /** Values still exactly as the maker publishes them, labelled. */
+  field_provenance?: Partial<Record<"max_workpiece_kg" | "materials", FieldProvenance>>;
   created_at: string | null;
   updated_at: string | null;
 }

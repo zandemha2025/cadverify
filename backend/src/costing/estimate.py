@@ -772,6 +772,11 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
             entry["machine_rate_usd"] = res.get("hourly_rate_usd")
             entry["capital_frac"] = res.get("capital_frac")
             entry["secondary_ops"] = list(res.get("secondary_ops", ()))
+            if res.get("maker_spec"):
+                # The fit used the maker's published values for these fields
+                # (a catalog machine kept unedited), not the shop's own.
+                entry["maker_spec"] = {"catalog": res["maker_spec"]["catalog"],
+                                       "fields": list(res["maker_spec"]["fields"])}
         per_route[pv] = entry
     return {
         "verdict": verdict.verdict,

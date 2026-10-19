@@ -179,7 +179,11 @@ async def catalog(
     """Static ``MachineProfile`` reference options as editable prefill payloads.
 
     Each is a TEMPLATE (``provenance: "catalog_template"``) to seed a declaration —
-    the org edits it to its machine's real specs before saving.
+    the org edits it to its machine's real specs before saving. It carries the
+    maker's published spec (``spec``: page, rated workpiece load or a note that
+    the maker publishes none, and what it's made to cut or print) and prefills
+    those values, labelled in ``field_provenance``. Saved unedited, they count
+    like the shop's own values and stay labelled on the machine.
     """
     return {"catalog": svc.catalog_options()}
 

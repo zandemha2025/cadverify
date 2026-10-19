@@ -11,11 +11,27 @@
  * the frozen machine-api.ts is not edited.
  */
 import { API_BASE } from "@/lib/api-base";
-import type { MachineInput } from "@/lib/verify/machine-api";
+import type { FieldProvenance, MachineInput } from "@/lib/verify/machine-api";
 
-/** One catalog reference machine as an editable prefill payload. */
+/** What the maker publishes for a catalog machine. A null weight means the
+ *  maker publishes none (most printers); the note says so. */
+export interface MakerSpecView {
+  source_url: string;
+  max_workpiece_kg: number | null;
+  max_workpiece_kg_note: string;
+  materials_basis: "maker_spec" | "maker_described" | null;
+  materials_url: string;
+  materials_note: string;
+  checked: string;
+}
+
+/** One catalog reference machine as an editable prefill payload. Its
+ *  `capabilities.maker_spec` rides along on save so the server can keep the
+ *  labels while the maker's values stay unedited. */
 export interface MachineCatalogTemplate extends MachineInput {
   provenance: "catalog_template";
+  field_provenance?: Partial<Record<"max_workpiece_kg" | "materials", FieldProvenance>>;
+  spec?: MakerSpecView | null;
 }
 
 const CATALOG_URL = `${API_BASE}/machine-inventory/catalog`;

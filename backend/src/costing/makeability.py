@@ -527,6 +527,12 @@ def _material_qualified(part: PartReq, materials: tuple) -> bool:
             or part.material_class.strip().lower() in tokens)
 
 
+def _maker_label(cap: dict) -> bool:
+    label = cap.get("maker_spec")
+    return (isinstance(label, dict) and isinstance(label.get("catalog"), str)
+            and isinstance(label.get("fields"), (list, tuple)) and bool(label["fields"]))
+
+
 def fit_machine(part_req: PartReq, machine_cap: MachineCap,
                 shop_caps: "ShopCaps | None" = None) -> FitResult:
     """Fit ONE part against ONE machine → PASS or a list of concrete failures.
@@ -749,6 +755,12 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             **({"build_env_mm": tuple(cap[k] for k in ("x", "y", "z"))}
                if part_req.process in {"fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting"}
                and all(_is_number(cap.get(k)) for k in ("x", "y", "z")) else {}),
+            # Values this pass rests on that are the maker's published spec
+            # (a catalog machine kept unedited), labelled as such. Absent when
+            # every value is the shop's own.
+            **({"maker_spec": {"catalog": cap["maker_spec"]["catalog"],
+                               "fields": tuple(cap["maker_spec"]["fields"])}}
+               if _maker_label(cap) else {}),
         }
     return FitResult(machine=machine_cap.name, passes=passes,
                      failures=tuple(failures), resource_hint=resource_hint)

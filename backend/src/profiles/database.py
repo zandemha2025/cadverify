@@ -5,7 +5,13 @@ from __future__ import annotations
 from typing import Optional
 
 from src.analysis.models import ProcessType
-from src.profiles.models import MachineProfile, MaterialProfile
+from src.profiles.models import (
+    MAKER_DESCRIBED,
+    MAKER_SPEC,
+    MachineProfile,
+    MakerSpec,
+    MaterialProfile,
+)
 from src.profiles.loader import merge_materials, MATERIALS_STRUCTURED, _YAML_MATERIALS
 
 
@@ -74,32 +80,200 @@ MATERIALS: list[MaterialProfile] = merge_materials(_HARDCODED_MATERIALS, _YAML_M
 # Machines
 # ──────────────────────────────────────────────
 
+# Each entry carries its maker's published spec (``MakerSpec``): the rated
+# workpiece load where the maker publishes one, and the page its materials were
+# read from. A value the maker doesn't publish stays None and the note says so.
+# Pages read 2026-10-19. CNC ``materials`` are engine material classes.
+_CHECKED = "2026-10-19"
+_NO_PLATE_LOAD = "The maker publishes no build-plate load."
+
 MACHINES: list[MachineProfile] = [
     # FDM
-    MachineProfile("Bambu Lab X1C", "Bambu Lab", ProcessType.FDM, (256, 256, 256), 0.04, 0.4, 0.4, ["PLA", "PETG", "ABS", "Nylon", "TPU"]),
-    MachineProfile("Prusa MK4S", "Prusa Research", ProcessType.FDM, (250, 210, 220), 0.05, 0.35, 0.4, ["PLA", "PETG", "ABS"]),
-    MachineProfile("Stratasys F900", "Stratasys", ProcessType.FDM, (914, 610, 914), 0.127, 0.508, 0.4, ["ULTEM 9085", "Nylon 12CF", "ABS-M30"]),
-    MachineProfile("BigRep ONE", "BigRep", ProcessType.FDM, (1005, 1005, 1005), 0.1, 1.0, 0.6, ["PLA", "PETG", "PA6/66"]),
+    MachineProfile(
+        "Bambu Lab X1C", "Bambu Lab", ProcessType.FDM, (256, 256, 256), 0.04, 0.4, 0.4,
+        ["PLA", "PETG", "ABS", "Nylon", "TPU"],
+        spec=MakerSpec(
+            "https://public-cdn.bambulab.com/store/bambulab-X1-carbon-tech-specs.pdf",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note="Bambu Lab lists PLA, PETG, TPU, ABS, ASA, PET, PA and PC.",
+            checked=_CHECKED)),
+    MachineProfile(
+        "Prusa MK4S", "Prusa Research", ProcessType.FDM, (250, 210, 220), 0.05, 0.35, 0.4,
+        ["PLA", "PETG"],
+        spec=MakerSpec(
+            "https://www.prusa3d.com/product/original-prusa-mk4s-3d-printer-5/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("Prusa lists PLA, PETG, Flex, PVA, PC, PP, CPE and PVB. ABS, ASA, HIPS "
+                            "and PA need the Original Prusa Enclosure with filtration, so they aren't prefilled."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "Stratasys F900", "Stratasys", ProcessType.FDM, (914.4, 609.6, 914.4), 0.127, 0.508, 0.4,
+        ["ULTEM 9085", "Nylon 12CF", "ABS-M30"],
+        spec=MakerSpec(
+            "https://www.stratasys.com/en/3d-printers/printer-catalog/fdm-printers/f900-printer/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note="Stratasys lists ULTEM 9085, FDM Nylon 12CF and ABS-M30 among its F900 materials.",
+            checked=_CHECKED)),
+    MachineProfile(
+        "BigRep ONE", "BigRep", ProcessType.FDM, (1005, 1005, 1005), 0.1, 1.0, 0.6,
+        ["PLA", "PETG", "PA6/66"],
+        spec=MakerSpec(
+            "https://bigrep.com/bigrep-one/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note="BigRep lists rPLA, rPETG, PRO HT, TPU 98A and PA6/66 among others.",
+            checked=_CHECKED)),
     # SLA/DLP
-    MachineProfile("Formlabs Form 4", "Formlabs", ProcessType.SLA, (200, 125, 210), 0.025, 0.3, 0.05, ["Standard", "Tough", "Flexible", "Castable"]),
-    MachineProfile("Carbon M2", "Carbon", ProcessType.DLP, (189, 118, 326), 0.025, 0.1, 0.075, ["RPU 70", "EPU 41", "CE 221"]),
-    MachineProfile("Elegoo Saturn 4 Ultra", "Elegoo", ProcessType.DLP, (218, 123, 250), 0.01, 0.2, 0.019, ["Standard", "ABS-like", "Castable"]),
+    MachineProfile(
+        "Formlabs Form 4", "Formlabs", ProcessType.SLA, (200, 125, 210), 0.025, 0.3, 0.05,
+        ["Standard", "Tough", "Flexible", "Castable"],
+        spec=MakerSpec(
+            "https://formlabs.com/products/form-4-complete-package/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_url="https://formlabs.com/global/materials/",
+            materials_note="Formlabs lists Standard, Tough, Flexible and Castable Wax resins for the Form 4.",
+            checked=_CHECKED)),
+    MachineProfile(
+        "Carbon M2", "Carbon", ProcessType.DLP, (189, 118, 326), 0.025, 0.1, 0.075,
+        ["RPU 70", "EPU 41", "CE 221"],
+        spec=MakerSpec(
+            "https://learn.carbon3d.com/hardware/m1-m2-features",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_url="https://docs.carbon3d.com/files/design-guides/dg_dls-design-quick-guide.pdf",
+            materials_note="Carbon lists RPU 70, EPU 41 and CE 221.",
+            checked=_CHECKED)),
+    MachineProfile(
+        "Elegoo Saturn 4 Ultra", "Elegoo", ProcessType.DLP, (218.88, 122.88, 220), 0.01, 0.2, 0.019,
+        ["Standard", "ABS-like"],
+        spec=MakerSpec(
+            "https://us.elegoo.com/products/saturn-4-ultra-12k-10inch-monochrome-lcd-resin-3d-printer",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("12K model, 405 nm. Elegoo lists its Standard, ABS-like, water-washable, "
+                            "plant-based and tough resins; no castable resin."),
+            checked=_CHECKED)),
     # SLS
-    MachineProfile("EOS P 396", "EOS", ProcessType.SLS, (340, 340, 600), 0.06, 0.18, 0.15, ["PA12", "PA11", "PA-GF"]),
-    MachineProfile("Farsoon HT1001P", "Farsoon", ProcessType.SLS, (1000, 500, 450), 0.06, 0.2, 0.15, ["PA12", "PA11", "PEEK"]),
+    MachineProfile(
+        "EOS P 396", "EOS", ProcessType.SLS, (340, 340, 600), 0.06, 0.18, 0.15,
+        ["PA12", "PA11", "PA-GF"],
+        spec=MakerSpec(
+            "https://www.eos.info/polymer-solutions/polymer-printers/data-sheets/sds-eos-p-396",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note="EOS lists PA 2200 (PA12), PA 1101 (PA11) and PA 3200 GF among 14 materials.",
+            checked=_CHECKED)),
+    MachineProfile(
+        "Farsoon HT1001P", "Farsoon", ProcessType.SLS, (1000, 500, 450), 0.06, 0.2, 0.15,
+        ["PA12", "PA-GF", "TPU", "PP"],
+        spec=MakerSpec(
+            "https://www.farsoon-gl.com/products/ht1001p/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("Farsoon lists FS3300PA (PA12), FS3401GB (glass-bead PA12), FS1092A and "
+                            "FS1088A TPU and Ultrasint PP among its powders. PA11 and PEEK aren't listed "
+                            "for this machine."),
+            checked=_CHECKED)),
     # MJF
-    MachineProfile("HP Jet Fusion 5200", "HP", ProcessType.MJF, (380, 284, 380), 0.08, 0.08, 0.08, ["PA12", "PA11", "TPU", "PP"]),
+    MachineProfile(
+        "HP Jet Fusion 5200", "HP", ProcessType.MJF, (380, 284, 380), 0.08, 0.08, 0.08,
+        ["PA12", "PA11", "TPU", "PP"],
+        spec=MakerSpec(
+            "https://www.hp.com/us-en/printers/3d-printers/products/multi-jet-fusion-5200.html",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note="HP lists HR PA 11, HR PA 12, HR PA 12 S, HR PA 12 GB, HR PP and Ultrasint TPU01.",
+            checked=_CHECKED)),
     # Metal AM
-    MachineProfile("EOS M 400-4", "EOS", ProcessType.DMLS, (400, 400, 400), 0.02, 0.1, 0.04, ["Ti6Al4V", "Inconel 718", "SS316L", "AlSi10Mg"]),
-    MachineProfile("SLM 500", "SLM Solutions", ProcessType.SLM, (500, 280, 365), 0.02, 0.09, 0.04, ["Ti6Al4V", "Inconel 718", "AlSi10Mg"]),
-    MachineProfile("Arcam Q20plus", "GE Additive", ProcessType.EBM, (350, 380, 380), 0.05, 0.2, 0.1, ["Ti6Al4V", "CoCr"]),
-    MachineProfile("ExOne S-Max Pro", "ExOne", ProcessType.BINDER_JET, (1800, 1000, 700), 0.28, 0.5, 0.3, ["Sand", "SS316", "Bronze"]),
-    MachineProfile("Desktop Metal Shop System", "Desktop Metal", ProcessType.BINDER_JET, (350, 220, 200), 0.05, 0.2, 0.1, ["17-4 PH", "SS316L"]),
-    # CNC
-    MachineProfile("Haas VF-2", "Haas", ProcessType.CNC_3AXIS, (762, 406, 508), notes="30x16x20 inches, 8100 RPM"),
-    MachineProfile("DMG MORI DMU 50", "DMG MORI", ProcessType.CNC_5AXIS, (500, 450, 400), notes="5-axis simultaneous"),
-    MachineProfile("Haas ST-20", "Haas", ProcessType.CNC_TURNING, (254, 254, 533), notes="10-inch chuck, 4000 RPM"),
-    MachineProfile("Sodick ALC600G", "Sodick", ProcessType.WIRE_EDM, (600, 400, 350), notes="Linear motor, 0.01mm accuracy"),
+    MachineProfile(
+        "EOS M 400-4", "EOS", ProcessType.DMLS, (400, 400, 400), 0.02, 0.1, 0.04,
+        ["Ti6Al4V", "Inconel 718", "SS316L", "AlSi10Mg"],
+        spec=MakerSpec(
+            "https://www.eos.info/metal-solutions/metal-printers/eos-m-400-4",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("EOS lists aluminium, case-hardening steel, nickel alloys, stainless steel, "
+                            "titanium and tool steel."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "SLM 500", "SLM Solutions", ProcessType.SLM, (500, 280, 365), 0.02, 0.09, 0.04,
+        ["Ti6Al4V", "Inconel 718", "AlSi10Mg"],
+        spec=MakerSpec(
+            "https://nikon-slm-solutions.com/slm-systems/slm500/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("Nikon SLM Solutions lists aluminium, cobalt, copper, nickel, steel, titanium "
+                            "and niobium alloys, naming Ti-6Al-4V, AlSi10Mg and IN718."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "Arcam Q20plus", "GE Additive", ProcessType.EBM, (350, 380, 380), 0.05, 0.2, 0.1,
+        ["Ti6Al4V"],
+        spec=MakerSpec(
+            "https://www.ge.com/additive/additive-manufacturing/machines/ebm-machines/arcam-ebm-q20plus/",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("GE Additive (now Colibrium Additive) listed Ti6Al4V Grade 5 and Grade 23; "
+                            "its page is offline since the rename. CoCr isn't listed for this machine."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "ExOne S-Max Pro", "ExOne", ProcessType.BINDER_JET, (1800, 1000, 700), 0.28, 0.5, 0.3,
+        ["Sand"],
+        spec=MakerSpec(
+            "https://exone.com/en-US/3D-printing-systems/sand-3D-Drucker/S-MAX-Pro",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note=("ExOne lists foundry sands from silica to ceramic with furan, phenolic or "
+                            "inorganic binders: it prints sand molds and cores, not metal parts."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "Desktop Metal Shop System", "Desktop Metal", ProcessType.BINDER_JET, (350, 220, 200), 0.05, 0.2, 0.1,
+        ["17-4 PH", "SS316L"],
+        spec=MakerSpec(
+            "https://www.desktopmetal.com/uploads/2024_Q2.1_DesktopMetal_MaterialsGuide.pdf",
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            materials_note="Desktop Metal qualifies 17-4 PH and 316L on the Shop System.",
+            checked=_CHECKED)),
+    # CNC: ``materials`` are engine material classes, kept conservative.
+    MachineProfile(
+        "Haas VF-2", "Haas", ProcessType.CNC_3AXIS, (762, 406, 508), notes="30x16x20 inches, 8100 RPM",
+        materials=["aluminum", "steel"],
+        spec=MakerSpec(
+            "https://www.haascnc.com/machines/vertical-mills/vf-series/models/small/vf-2.html",
+            max_workpiece_kg=1361.0,
+            kg_note="Max weight on table, evenly distributed: 3000 lb (1361 kg).",
+            materials_basis=MAKER_DESCRIBED,
+            materials_url="https://www.haascnc.com/productivity/spindles/8-1k-40t-in.html",
+            materials_note=("Haas lists no materials; it calls the standard 8100-rpm 40-taper spindle "
+                            "all-purpose. Aluminum and steel only: add stainless or titanium if you cut them."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "DMG MORI DMU 50", "DMG MORI", ProcessType.CNC_5AXIS, (650, 520, 475),
+        notes="3rd generation, 5-axis simultaneous",
+        materials=["aluminum", "steel", "stainless"],
+        spec=MakerSpec(
+            "https://us.dmgmori.com/products/machines/milling/5-axis-milling/dmu/dmu-50",
+            max_workpiece_kg=300.0,
+            kg_note="DMU 50 3rd Generation: max. table load 300 kg (661 lb).",
+            materials_basis=MAKER_DESCRIBED,
+            materials_url="https://us.dmgmori.com/news-and-media/news/dmu-50-3rd-generation",
+            materials_note=("DMG MORI lists no materials; it names general mechanical engineering, fixture "
+                            "construction, aerospace, medical and automotive work. Aluminum, steel and "
+                            "stainless: add titanium if you cut it."),
+            checked=_CHECKED)),
+    MachineProfile(
+        "Haas ST-20", "Haas", ProcessType.CNC_TURNING, (254, 254, 533), notes="8.3-inch chuck, 4000 RPM",
+        materials=["aluminum", "steel"],
+        spec=MakerSpec(
+            "https://www.haascnc.com/service/troubleshooting-and-how-to/reference-documents/lathe-work-piece-weight-limits.html",
+            max_workpiece_kg=68.0,
+            kg_note=("Max weight per chuck: 150 lb (68 kg), workholding excluded. 300 lb (136 kg) between "
+                     "centers needs a tailstock. Haas calls these estimates, not a safe setup."),
+            materials_basis=MAKER_DESCRIBED,
+            materials_url="https://www.haascnc.com/machines/lathes/st/models/standard/st-20.html",
+            materials_note="Haas lists no materials for the ST-20. Aluminum and steel only: add stainless or titanium if you turn them.",
+            checked=_CHECKED)),
+    MachineProfile(
+        "Sodick ALC600G", "Sodick", ProcessType.WIRE_EDM, (600, 400, 350), notes="Linear motor, 0.01mm accuracy",
+        materials=["aluminum", "steel", "stainless", "titanium"],
+        spec=MakerSpec(
+            "https://sodick.com/product/alc600g-ige/",
+            max_workpiece_kg=1000.0,
+            kg_note="Maximum workpiece weight: 2,204 lb (1,000 kg).",
+            materials_basis=MAKER_SPEC,
+            materials_url="https://sodick.com/machines/wire-edm/",
+            materials_note=("Sodick: wire EDM cuts any electrically conductive material, including hardened "
+                            "tool steels, carbide, titanium and superalloys. Plastics aren't conductive."),
+            checked=_CHECKED)),
 ]
 
 

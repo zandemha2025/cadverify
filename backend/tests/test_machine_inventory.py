@@ -376,7 +376,8 @@ def test_hp_jet_fusion_prefill_uses_registry_materials():
 
 def test_catalog_lathe_prefill_is_the_turning_envelope():
     payload = svc.add_from_catalog("Haas ST-20")
-    assert payload["capabilities"] == {"swing_dia": 254.0, "between_centers": 533.0}
+    caps = {k: v for k, v in payload["capabilities"].items() if k != svc.MAKER_SPEC_KEY}
+    assert caps == {"swing_dia": 254.0, "between_centers": 533.0}
     svc.validate_machine(payload)
 
 

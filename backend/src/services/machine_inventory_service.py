@@ -47,6 +47,7 @@ from src.analysis.models import ProcessType
 from src.costing.rates import ADDITIVE, BINDER_JET_FAMILY, METAL_POWDER_BED
 from src.db.models import MachineInstance, ShopCapabilities
 from src.profiles.database import MACHINES, get_material_by_name
+from src.profiles.models import MAKER_DESCRIBED, MAKER_SPEC
 # Reuse the EXACT material-class vocabulary the ground-truth / manifest importers
 # validate against — a machine can never smuggle in a material the cost engine
 # would later reject.
@@ -182,6 +183,9 @@ def _validate_capabilities(caps: Any, errors: list[str], process: Any = None) ->
     if "max_chamber_c" in caps and caps.get("enclosure") != "heated":
         errors.append("max_chamber_c needs enclosure 'heated'")
     for key, val in caps.items():
+        if key == MAKER_SPEC_KEY:
+            _validate_maker_marker(val, errors)
+            continue
         if key == "enclosure":
             if not isinstance(val, str) or val not in _ENCLOSURES:
                 errors.append(f"enclosure must be one of {sorted(_ENCLOSURES)}")
@@ -379,6 +383,8 @@ def validate_machine(fields: dict) -> None:
                     "provenance must be 'user' or 'catalog_template' "
                     "(a saved machine is always a USER declaration)"
                 )
+        elif key in _DISPLAY_ONLY_FIELDS:
+            continue  # server-computed labels a catalog template carries; never stored
         elif key not in _MUTABLE_FIELDS:
             errors.append(f"unknown field '{key}'")
 
@@ -438,6 +444,9 @@ _MUTABLE_FIELDS = (
 # template marks itself ``catalog_template`` and can be submitted as-is. It is
 # never persisted — a saved machine is always serialized as ``user``.
 _ACCEPTED_PROVENANCE = (None, "user", "catalog_template")  # tuple: values may be unhashable
+# A catalog template also carries its maker spec and per-field labels for the
+# form to show. They are recomputed by the server, so a submitted copy is ignored.
+_DISPLAY_ONLY_FIELDS = frozenset({"spec", "field_provenance"})
 
 
 def _normalize(fields: dict) -> dict:
@@ -474,6 +483,15 @@ def _normalize(fields: dict) -> dict:
             (_canonical_thickness_key(k) or k) if isinstance(k, str) else k: v
             for k, v in tmap.items()
         }
+    # The maker-spec label is the server's to set: it names only the fields
+    # whose saved value is still exactly the catalog machine's published value.
+    caps = out.get("capabilities")
+    if isinstance(caps, dict) and MAKER_SPEC_KEY in caps:
+        marker = maker_marker(caps.get(MAKER_SPEC_KEY), out)
+        caps = {k: v for k, v in caps.items() if k != MAKER_SPEC_KEY}
+        if marker:
+            caps[MAKER_SPEC_KEY] = marker
+        out["capabilities"] = caps
     return out
 
 
@@ -831,10 +849,24 @@ async def load_org_inventory(session: AsyncSession, org_id: str) -> list:
             capital_frac=m.capital_frac,
             materials=tuple(m.materials or ()),
             material_thickness_map=dict(m.material_thickness_map or {}),
-            capabilities=dict(m.capabilities or {}),
+            capabilities=_engine_capabilities(m),
         )
         for m in machines
     ]
+
+
+def _engine_capabilities(m: MachineInstance) -> dict:
+    """The stored capabilities, with the maker-spec label re-checked against the
+    current catalog so a verdict never cites a value the maker no longer gives."""
+    caps = dict(m.capabilities or {})
+    if MAKER_SPEC_KEY in caps:
+        marker = maker_marker(caps.pop(MAKER_SPEC_KEY), {
+            "process": m.process, "max_workpiece_kg": m.max_workpiece_kg,
+            "materials": m.materials,
+        })
+        if marker:
+            caps[MAKER_SPEC_KEY] = marker
+    return caps
 
 
 async def load_shop_caps(session: AsyncSession, org_id: str):
@@ -932,6 +964,103 @@ async def upsert_shop_capabilities(
     return row
 
 
+# ── maker-spec labels (catalog values a saved machine still carries) ─────────
+# A machine added from the catalog keeps the maker's published workpiece load and
+# materials. They count like the shop's own values (the fit can say yes), but the
+# API labels them so the form can say where they came from. The label lives in
+# ``capabilities["maker_spec"]`` as ``{"catalog": <catalog name>, "fields": [...]}``
+# and is always recomputed here: a field is labelled only while its value is
+# still exactly the catalog's, so an edit makes it the shop's own declaration.
+MAKER_SPEC_KEY = "maker_spec"
+MAKER_SPEC_FIELDS = ("max_workpiece_kg", "materials")
+
+
+def _catalog_profile(name: Any):
+    if not isinstance(name, str):
+        return None
+    low = name.strip().lower()
+    return next((m for m in MACHINES if m.name.lower() == low), None)
+
+
+def _validate_maker_marker(val: Any, errors: list[str]) -> None:
+    if (not isinstance(val, dict) or not isinstance(val.get("catalog"), str)
+            or not val["catalog"].strip()
+            or set(val) - {"catalog", "fields"}
+            or not isinstance(val.get("fields", []), list)):
+        errors.append(
+            "capability 'maker_spec' must be {\"catalog\": <catalog machine name>} "
+            "(set by the catalog prefill)"
+        )
+
+
+def _same_kg(a: Any, b: Optional[float]) -> bool:
+    return b is not None and _is_number(a) and abs(float(a) - b) <= 1e-9 * max(1.0, abs(b))
+
+
+def maker_marker(claim: Any, values: dict) -> Optional[dict]:
+    """The label for the fields of ``values`` that still equal a catalog machine's
+    maker spec, or ``None``. ``claim`` names the catalog machine; a different
+    method, an unknown name or edited values earn no label."""
+    if not isinstance(claim, dict):
+        return None
+    prof = _catalog_profile(claim.get("catalog"))
+    if prof is None or prof.spec is None or values.get("process") != prof.process_type.value:
+        return None
+    fields: list[str] = []
+    if _same_kg(values.get("max_workpiece_kg"), prof.spec.max_workpiece_kg):
+        fields.append("max_workpiece_kg")
+    mats, _ = _catalog_materials(prof)
+    have = values.get("materials")
+    if mats and isinstance(have, (list, tuple)) and len(have) == len(mats) and set(have) == set(mats):
+        fields.append("materials")
+    return {"catalog": prof.name, "fields": fields} if fields else None
+
+
+def field_provenance(values: dict) -> dict:
+    """``{field: label}`` for the values that came from a maker's spec.
+
+    A field not listed is the shop's own declaration. Each label names the
+    source (``maker_spec``: the maker publishes it; ``maker_described``:
+    materials read conservatively from what the maker says the machine is for),
+    the catalog machine, the maker's page and what it says.
+    """
+    caps = values.get("capabilities")
+    marker = maker_marker(caps.get(MAKER_SPEC_KEY), values) if isinstance(caps, dict) else None
+    if not marker:
+        return {}
+    prof = _catalog_profile(marker["catalog"])
+    spec = prof.spec
+    out: dict = {}
+    if "max_workpiece_kg" in marker["fields"]:
+        out["max_workpiece_kg"] = {
+            "source": MAKER_SPEC, "catalog": prof.name, "maker": prof.manufacturer,
+            "url": spec.source_url, "note": spec.kg_note, "checked": spec.checked,
+        }
+    if "materials" in marker["fields"]:
+        out["materials"] = {
+            "source": spec.materials_basis or MAKER_SPEC, "catalog": prof.name,
+            "maker": prof.manufacturer, "url": spec.materials_url or spec.source_url,
+            "note": spec.materials_note, "checked": spec.checked,
+        }
+    return out
+
+
+def _spec_view(prof) -> Optional[dict]:
+    """What the maker publishes for a catalog machine (GET /catalog ``spec``)."""
+    spec = prof.spec
+    if spec is None:
+        return None
+    return {
+        "source_url": spec.source_url,
+        "max_workpiece_kg": spec.max_workpiece_kg,
+        "max_workpiece_kg_note": spec.kg_note,
+        "materials_basis": spec.materials_basis,
+        "materials_url": spec.materials_url or spec.source_url,
+        "materials_note": spec.materials_note,
+        "checked": spec.checked,
+    }
+
+
 # ── "add from catalog" template pre-fill (static MachineProfile reference) ────
 def add_from_catalog(profile_name: str) -> dict:
     """Return an editable machine payload pre-filled from the static
@@ -976,13 +1105,13 @@ _CATALOG_MATERIALS: dict[tuple[str, str], Optional[str]] = {
     ("dlp", "CE 221"): None,
     ("sls", "PA12"): "PA12 (Nylon 12)",
     ("sls", "PA-GF"): "Glass-filled PA12",
+    ("sls", "TPU"): "TPU (SLS)",
+    ("sls", "PP"): None,               # the registry's PP is MJF/molding only
     ("mjf", "PA12"): "PA12 (Nylon 12)",
     ("mjf", "PP"): "PP (MJF)",
     ("mjf", "TPU"): None,              # the registry's powder TPU is SLS-only
     ("binder_jetting", "17-4 PH"): "17-4 PH SS",
-    ("binder_jetting", "SS316"): None,  # 316, not the registry's 316L
-    ("binder_jetting", "Sand"): None,
-    ("binder_jetting", "Bronze"): None,
+    ("binder_jetting", "Sand"): None,  # sand molds and cores, not a part material
 }
 
 
@@ -1020,10 +1149,18 @@ def _profile_to_payload(prof) -> dict:
     if prof.resolution_xy:
         caps["min_feature_mm"] = float(prof.resolution_xy)
     materials, not_prefilled = _catalog_materials(prof)
-    notes = (
-        f"Prefilled from catalog '{prof.name}' ({prof.manufacturer}). "
-        "EDIT to your machine's real specs before saving."
-    )
+    spec = prof.spec
+    notes = f"Prefilled from catalog '{prof.name}' ({prof.manufacturer})."
+    if spec is not None:
+        from_maker = [label for label, v in (("Workpiece weight", spec.max_workpiece_kg),
+                                             ("materials", materials)) if v]
+        if from_maker:
+            notes += (f" {' and '.join(from_maker).capitalize()} from the maker's spec;"
+                      " edit anything your machine differs on.")
+        if spec.max_workpiece_kg is None:
+            notes += f" {spec.kg_note}"
+    else:
+        notes += " EDIT to your machine's real specs before saving."
     if not_prefilled:
         notes += (
             " Not prefilled (no registry material): "
@@ -1034,11 +1171,13 @@ def _profile_to_payload(prof) -> dict:
         caps["motion_mode"] = "simultaneous_5"
     elif proc == ProcessType.CNC_3AXIS.value:
         caps["axes"] = 3
-    return {
+    if spec is not None:
+        caps[MAKER_SPEC_KEY] = {"catalog": prof.name}
+    payload = {
         "name": prof.name,
         "process": proc,
         "count": 1,
-        "max_workpiece_kg": None,
+        "max_workpiece_kg": spec.max_workpiece_kg if spec is not None else None,
         "hourly_rate_usd": None,
         "capital_frac": None,
         "capabilities": caps,
@@ -1048,6 +1187,16 @@ def _profile_to_payload(prof) -> dict:
         # Honesty: an unedited catalog prefill is a TEMPLATE, not a declaration.
         "provenance": "catalog_template",
     }
+    # The server's own label for the maker's values (the saved machine keeps it
+    # while they're unedited), and what the maker publishes, page included.
+    marker = maker_marker(caps.get(MAKER_SPEC_KEY), payload)
+    if marker:
+        caps[MAKER_SPEC_KEY] = marker
+    else:
+        caps.pop(MAKER_SPEC_KEY, None)
+    payload["field_provenance"] = field_provenance(payload)
+    payload["spec"] = _spec_view(prof)
+    return payload
 
 
 def catalog_options() -> list[dict]:
@@ -1075,6 +1224,14 @@ def machine_to_public(r: MachineInstance) -> dict:
         "material_thickness_map": r.material_thickness_map,
         "notes": r.notes,
         "provenance": "user",
+        # Values still exactly as the maker publishes them (from the catalog),
+        # labelled with the maker's page. Absent field = the shop's own value.
+        "field_provenance": field_provenance({
+            "process": r.process,
+            "max_workpiece_kg": r.max_workpiece_kg,
+            "materials": r.materials,
+            "capabilities": r.capabilities or {},
+        }),
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
     }
