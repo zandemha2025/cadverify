@@ -14,6 +14,7 @@ Design rules:
 from __future__ import annotations
 
 import logging
+import math
 from typing import Optional
 
 import numpy as np
@@ -124,8 +125,11 @@ def check_overhangs(
         return []
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
+    # Same quantity the threshold compares: degrees past vertical (90 = a flat ceiling).
+    steepest = float(ctx.angles_from_up_deg[oh_faces].max()) - 90.0
     return [Issue(
         code="OVERHANG",
+        measurement_unit="deg",
         severity=Severity.WARNING,
         message=(
             f"{len(oh_faces)} faces ({pct:.1f}%) exceed {max_angle_deg}° "
@@ -134,6 +138,8 @@ def check_overhangs(
         process=process,
         affected_faces=oh_faces.tolist(),
         region_center=region,
+        measured_value=steepest,
+        required_value=max_angle_deg,
         fix_suggestion=(
             f"Reorient part or redesign overhangs < {max_angle_deg}° "
             f"for {process.value}. {cite}"
@@ -370,6 +376,7 @@ def check_trapped_volumes(
             if main.is_watertight and main.contains([center])[0]:
                 issues.append(Issue(
                     code="TRAPPED_VOLUME",
+                    measurement_unit="mm",
                     severity=Severity.ERROR,
                     message=(
                         f"Internal cavity ({sub_volume:.0f}mm³) traps material "
@@ -377,6 +384,7 @@ def check_trapped_volumes(
                     ),
                     process=process,
                     region_center=tuple(float(v) for v in center),
+                    required_value=min_drain_mm,
                     fix_suggestion=(
                         f"Add drain holes >= {min_drain_mm}mm diameter. {cite}"
                     ),
@@ -509,8 +517,18 @@ def check_draft_angles(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    """Check sidewall faces for sufficient draft relative to Z pull."""
-    normals = ctx.normals
+    """Check sidewall faces for sufficient draft relative to Z pull.
+
+    ``measured_value`` is the smallest draft on the flagged faces, rounded to
+    0.1° (never rounded up to the limit it failed). The minimum, not an
+    area-weighted percentile, is the honest single number: draft is
+    ``|90° - angle from +Z|``, so tessellation noise on a straight wall or a
+    vertical bore can only push a face's reading above the true 0°. On the
+    bored block the bore's facets read 0–0.81° (median 0.37°) although the bore
+    is exactly vertical; a percentile would report that spread as draft. Where
+    the minimum errs (a noisy tessellated cone) it errs low, and it is always
+    the reading of a real face.
+    """
     areas = ctx.face_areas
     # Sidewalls: faces roughly perpendicular to Z (80–100° from Z-up)
     sidewall_mask = (ctx.angles_from_up_deg > 80) & (ctx.angles_from_up_deg < 100)
@@ -526,22 +544,105 @@ def check_draft_angles(
     no_draft_area = float(areas[no_draft_faces].sum())
     total_sidewall_area = float(areas[sidewall_faces].sum())
     pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
+    flagged_draft = draft[no_draft]
+    smallest = _shown_draft(float(flagged_draft.min()), min_draft_deg)
+    groups = _draft_groups(ctx, no_draft_faces, flagged_draft, min_draft_deg)
+    breakdown = (" (" + ", ".join(f"{name} {value:.1f}°" for name, value in groups) + ")") if groups else ""
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         measurement_unit="deg",
         severity=Severity.ERROR,
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-            f"below {min_draft_deg}° draft for {process.value}."
+            f"below {min_draft_deg}° draft for {process.value}. "
+            f"Smallest draft: {smallest:.1f}°{breakdown}."
         ),
         process=process,
         affected_faces=no_draft_faces.tolist(),
+        measured_value=smallest,
         required_value=min_draft_deg,
         fix_suggestion=(
             f"Add >= {min_draft_deg}° draft to all walls in pull direction. {cite}"
         ),
         citation=parse_citation(cite),
     )]
+
+
+def _shown_draft(value: float, limit: float) -> float:
+    """A draft reading at 0.1° that never rounds a failing face up to its limit."""
+    shown = round(value, 1)
+    if shown >= limit:
+        shown = math.floor(value * 10.0) / 10.0
+    return shown + 0.0  # no "-0.0"
+
+
+# A wall breakdown only names groups the feature pass measured: detected
+# cylindrical bores/bosses, and "outer walls" only when every remaining face
+# lies on a plane that bounds the whole part. Otherwise the message keeps the
+# single smallest value.
+_MAX_DRAFT_PLANES = 64
+
+
+def _draft_groups(
+    ctx: GeometryContext,
+    faces: np.ndarray,
+    draft: np.ndarray,
+    limit: float,
+) -> list[tuple[str, float]]:
+    if not ctx.features:
+        return []
+    count = len(ctx.normals)
+
+    def owner(kind: FeatureKind) -> np.ndarray:
+        out = np.full(count, -1, dtype=np.int64)
+        for index, feature in enumerate(ctx.features):
+            if feature.kind != kind:
+                continue
+            idx = np.asarray(feature.face_indices, dtype=np.int64)
+            out[idx[(idx >= 0) & (idx < count)]] = index
+        return out
+
+    hole_of = owner(FeatureKind.CYLINDER_HOLE)[faces]
+    boss_of = owner(FeatureKind.CYLINDER_BOSS)[faces]
+    in_hole = hole_of >= 0
+    in_boss = (boss_of >= 0) & ~in_hole
+    walls = ~(in_hole | in_boss)
+    groups: list[tuple[str, float]] = []
+    if walls.any():
+        name = "outer walls" if _on_bounding_planes(ctx, faces[walls]) else "side walls"
+        groups.append((name, _shown_draft(float(draft[walls].min()), limit)))
+    for mask, owners, one, many in ((in_hole, hole_of, "bore", "bores"), (in_boss, boss_of, "boss", "bosses")):
+        if mask.any():
+            n = len(np.unique(owners[mask]))
+            groups.append((one if n == 1 else f"{n} {many}", _shown_draft(float(draft[mask].min()), limit)))
+    return groups if len(groups) > 1 else []
+
+
+def _on_bounding_planes(ctx: GeometryContext, faces: np.ndarray) -> bool:
+    """True when every face lies on a detected plane with the whole part behind it."""
+    count = len(ctx.normals)
+    plane_of = np.full(count, -1, dtype=np.int64)
+    flats = [f for f in ctx.features if f.kind == FeatureKind.FLAT and f.axis is not None]
+    for index, feature in enumerate(flats):
+        idx = np.asarray(feature.face_indices, dtype=np.int64)
+        plane_of[idx[(idx >= 0) & (idx < count)]] = index
+    planes = plane_of[faces]
+    if len(planes) == 0 or np.any(planes < 0):
+        return False
+    used = np.unique(planes)
+    if len(used) > _MAX_DRAFT_PLANES:
+        return False
+    vertices = np.asarray(ctx.mesh.vertices, dtype=np.float64)
+    tol = max(ctx.scale_eps, 2.0 * float(ctx.mesh.metadata.get("coordinate_error", 0.0)))
+    for index in used:
+        feature = flats[int(index)]
+        axis = np.asarray(feature.axis, dtype=np.float64)
+        point = np.asarray(feature.centroid, dtype=np.float64)
+        if not (np.isfinite(axis).all() and np.isfinite(point).all()):
+            return False
+        if float(np.max((vertices - point) @ axis)) > tol:
+            return False
+    return True
 
 
 # ──────────────────────────────────────────────────────────────
@@ -750,9 +851,12 @@ def check_fixture_surfaces(
         return []
     return [Issue(
         code="NO_FIXTURE_SURFACES",
+        measurement_unit="percent",
         severity=Severity.WARNING,
         message=f"Only {flat_pct:.1f}% flat area — hard to fixture for {process.value}.",
         process=process,
+        measured_value=flat_pct,
+        required_value=min_flat_pct,
         fix_suggestion="Add flat datum surfaces or plan custom fixtures.",
     )]
 
@@ -818,6 +922,7 @@ def check_shrinkage_risk(
         ),
         process=process,
         measured_value=compactness,
+        required_value=max_compactness,
         fix_suggestion="Core out thick sections for even cooling.",
     )]
 
@@ -835,20 +940,24 @@ def check_residual_stress(
     if len(ctx.facet_groups) == 0:
         return []
     total = float(ctx.info.surface_area) or 1.0
+    max_share_pct = 15.0
     for fg in ctx.facet_groups:
         area = float(ctx.face_areas[fg].sum())
-        if area / total < 0.15:
+        if area / total < max_share_pct / 100:
             continue
         avg_normal = ctx.normals[fg].mean(axis=0)
         if abs(avg_normal[2]) > 0.95:  # nearly horizontal
             return [Issue(
                 code="RESIDUAL_STRESS_RISK",
+                measurement_unit="percent",
                 severity=Severity.WARNING,
                 message=(
                     f"Large horizontal surface ({area:.0f}mm², "
                     f"{area / total * 100:.0f}% of total) — curl risk in {process.value}."
                 ),
                 process=process,
+                measured_value=area / total * 100,
+                required_value=max_share_pct,
                 fix_suggestion=f"Add breakup features or reorient. HIP recommended. {cite}",
                 citation=parse_citation(cite),
             )]
@@ -1062,7 +1171,8 @@ def check_bends(
     """
     if len(ctx.dihedral_angles_rad) == 0:
         return []
-    knife = ctx.dihedral_angles_rad > np.radians(150)
+    max_divergence_deg = 150.0
+    knife = ctx.dihedral_angles_rad > np.radians(max_divergence_deg)
     count = int(np.sum(knife))
     if count == 0:
         return []
@@ -1071,12 +1181,13 @@ def check_bends(
         code="SHARP_BEND", severity=Severity.ERROR,
         measurement_unit="deg",
         message=(
-            f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, 150.0)}° "
+            f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, max_divergence_deg)}° "
             f"≈ included bend angle < 30°) — bend radius must be >= material "
             f"thickness. DIN 6935."
         ),
         process=process,
         measured_value=tightest_deg,
+        required_value=max_divergence_deg,
         fix_suggestion=f"Increase bend radius to >= 1x material thickness. {cite}",
         citation=parse_citation(cite),
     )]
@@ -1106,6 +1217,7 @@ def check_core_feasibility(
                 if dims[0] > 0 and dims[2] / dims[0] > 6:
                     issues.append(Issue(
                         code="FRAGILE_CORE", severity=Severity.WARNING,
+                        measurement_unit="ratio", measured_value=dims[2] / dims[0],
                         message=(
                             f"Core aspect ratio {dims[2] / dims[0]:.1f}:1 "
                             f"— may break during {process.value}."

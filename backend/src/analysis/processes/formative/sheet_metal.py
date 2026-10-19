@@ -41,7 +41,10 @@ class SheetMetalAnalyzer:
             if h.radius and h.radius * 2 < t - tolerance:
                 issues.append(Issue(
                     code="SMALL_HOLE_SHEET",
+                    measurement_unit="mm",
                     severity=Severity.WARNING,
+                    measured_value=h.radius * 2,
+                    required_value=t,
                     message=(
                         f"Hole Ø{h.radius * 2:.1f}mm < gauge {t:.1f}mm at "
                         f"({h.centroid[0]:.0f}, {h.centroid[1]:.0f}, {h.centroid[2]:.0f})."

@@ -62,7 +62,9 @@ class InjectionMoldingAnalyzer:
             if b.radius and b.radius < 1.5:
                 issues.append(Issue(
                     code="THIN_BOSS",
+                    measurement_unit="mm",
                     severity=Severity.WARNING,
+                    measured_value=b.radius * 2,
                     message=(
                         f"Boss at ({b.centroid[0]:.0f}, {b.centroid[1]:.0f}, "
                         f"{b.centroid[2]:.0f}) has {b.radius * 2:.1f}mm OD — "

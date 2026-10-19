@@ -45,11 +45,15 @@ class SLAAnalyzer:
             return []
         down_area = float(ctx.face_areas[down_faces].sum())
         total = float(ctx.info.surface_area) or 1.0
-        if down_area / total < 0.10:
+        max_share_pct = 10.0
+        if down_area / total < max_share_pct / 100:
             return []
         return [Issue(
             code="CUPPING_RISK",
+            measurement_unit="percent",
             severity=Severity.WARNING,
+            measured_value=down_area / total * 100,
+            required_value=max_share_pct,
             message=(
                 f"Large downward-facing area ({down_area:.0f}mm², "
                 f"{down_area / total * 100:.0f}%) — resin cupping / suction risk during peel."
