@@ -25,7 +25,7 @@ export function progressModel(s: CheckSession) {
   const stopped = s.status === "stopped";
   const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;
   const title = running ? (s.sample ? "Checking the sample" : "Checking") : stopped ? "Stopped at Measured" : "Checked";
-  const meta = running ? [s.file.name, s.sample ? "Uses 1 check" : "About 30 s"] : stopped ? [s.file.name, "Not watertight"] : [s.file.name, seconds(elapsed)];
+  const meta = running ? [s.file.name, s.sample ? "1 check, the first run only" : "About 30 s"] : stopped ? [s.file.name, "Not watertight"] : [s.file.name, seconds(elapsed)];
   const foot = running ? "Hiding this doesn’t stop the check." : stopped ? "Nothing after this step ran." : "Same file, same result, every time.";
   return { steps, running, stopped, title, meta, foot };
 }

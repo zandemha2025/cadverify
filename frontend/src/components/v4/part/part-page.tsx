@@ -102,7 +102,9 @@ export function PartPage({ partKey }: { partKey: string }) {
   );
 
   const mesh: MeshSource = React.useMemo(() => {
-    if (session && (session.preview.url || session.preview.status === "loading")) return liveMesh(session);
+    if (session?.preview.url) return liveMesh(session);
+    // A re-check of a part this browser already shows: keep that view while the check's own preview loads.
+    if (session && session.preview.status === "loading" && !cache) return liveMesh(session);
     if (drop) return { url: drop.url, faceHash: drop.faceHash, faceSpace: drop.faceSpace, kind: "glb", origin: drop.url ? "drop" : null, loading: drop.loading, error: drop.error };
     if (cache) return { url: cache.url, faceHash: cache.faceHash, faceSpace: cache.faceSpace, kind: "glb", origin: cache.origin, loading: false, error: null };
     return { url: null, faceHash: null, faceSpace: "preview", kind: "glb", origin: null, loading: cache === undefined, error: session?.preview.error ?? storedError };
