@@ -5,7 +5,7 @@
  * from the server's revision record; nothing here estimates geometry.
  */
 import type { Design, DesignInterpretation, DesignRevision, DesignRevisionComparison, RevisionDiffValue } from "../../../lib/designs-api";
-import type { DesignForm, TemplateKind } from "../../../lib/design-plan";
+import { MAX_DRAFT_DEG, supportsDraft, type DesignForm, type TemplateKind } from "../../../lib/design-plan.ts";
 
 export const TEMPLATES: { kind: TemplateKind; label: string; desc: string }[] = [
   { kind: "plate", label: "Mounting plate", desc: "Flat stock with optional corner holes" },
@@ -17,7 +17,7 @@ export function kindLabel(kind: string | null | undefined): string {
   return TEMPLATES.find((t) => t.kind === kind)?.label ?? "Design";
 }
 
-export type FieldKey = "width" | "depth" | "height" | "thickness" | "wallThickness";
+export type FieldKey = "width" | "depth" | "height" | "thickness" | "wallThickness" | "draftAngle";
 export interface FieldSpec {
   key: FieldKey;
   label: string;
@@ -25,6 +25,10 @@ export interface FieldSpec {
   max: number;
   step: number;
   lim: string;
+  /** "°" for an angle; millimetres otherwise. */
+  unit?: "°";
+  /** One line shown beside the field. */
+  note?: string;
 }
 
 /** The dimension fields each template takes, with the same limits the server validates. */
@@ -40,12 +44,29 @@ export function fieldsFor(kind: TemplateKind): FieldSpec[] {
   return [w, d, h, wall];
 }
 
+/** The draft setting, for the templates whose side walls release along +Z (plate, enclosure). */
+export function draftField(kind: TemplateKind): FieldSpec | null {
+  if (!supportsDraft(kind)) return null;
+  return {
+    key: "draftAngle",
+    label: "Draft, °",
+    min: 0,
+    max: MAX_DRAFT_DEG,
+    step: 0.5,
+    lim: `0 to ${MAX_DRAFT_DEG}`,
+    unit: "°",
+    note: "Tapers the side walls so the part releases from a mold.",
+  };
+}
+
 /** A field value outside its limits, as a sentence, or null. */
 export function fieldProblem(form: DesignForm): string | null {
-  for (const f of fieldsFor(form.kind)) {
+  const draft = draftField(form.kind);
+  for (const f of [...fieldsFor(form.kind), ...(draft ? [draft] : [])]) {
     const v = form[f.key];
-    if (!Number.isFinite(v)) return `${f.label.replace(", mm", "")} needs a number.`;
-    if (v < f.min || v > f.max) return `${f.label.replace(", mm", "")} must be ${f.lim} mm.`;
+    const name = f.label.replace(/, (mm|°)$/, "");
+    if (!Number.isFinite(v)) return `${name} needs a number.`;
+    if (v < f.min || v > f.max) return `${name} must be ${f.lim}${f.unit === "°" ? "°" : " mm"}.`;
   }
   if (form.kind === "plate" && form.fourCornerHoles) {
     if (!Number.isFinite(form.holeDiameter) || form.holeDiameter < 1 || form.holeDiameter > 100) return "Hole diameter must be 1 to 100 mm.";

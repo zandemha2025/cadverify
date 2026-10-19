@@ -53,6 +53,7 @@ import {
   defaultPair,
   designChip,
   diffRows,
+  draftField,
   envelopeText,
   fieldProblem,
   fieldsFor,
@@ -261,6 +262,7 @@ export function StudioScreen() {
           ...(r.prefill.height_mm !== undefined ? { height: r.prefill.height_mm } : {}),
           ...(r.prefill.thickness_mm !== undefined ? { thickness: r.prefill.thickness_mm } : {}),
           ...(r.prefill.wall_thickness_mm !== undefined ? { wallThickness: r.prefill.wall_thickness_mm } : {}),
+          ...(r.prefill.draft_angle_deg !== undefined ? { draftAngle: r.prefill.draft_angle_deg } : {}),
         }));
       setInterp(interpretView(r));
     } catch (e) {
@@ -411,6 +413,7 @@ export function StudioScreen() {
   const formTitle = editingDesign ? `Revision ${editingDesign.current_revision + 1}` : "New design";
   const formSub = editingDesign ? `From R${editingDesign.current_revision} · name locked` : "Starts revision 1";
   const fields = fieldsFor(form.kind);
+  const draft = draftField(form.kind);
   const sameRev = sameRevisionPair(from, to);
   const objLabel = selected
     ? `Revision ${viewNo} of ${selected.name}. Drag, or use the arrow keys, to turn it.`
@@ -799,6 +802,27 @@ export function StudioScreen() {
                     <span className="lim">{f.lim}</span>
                   </label>
                 ))}
+                {draft ? (
+                  <div className="full drow">
+                    <label className="field">
+                      {draft.label}
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={Number.isFinite(form.draftAngle) ? form.draftAngle : ""}
+                        min={draft.min}
+                        max={draft.max}
+                        step={draft.step}
+                        aria-describedby="mk-draft-note"
+                        onChange={(e) => update("draftAngle", e.target.value === "" ? Number.NaN : Number(e.target.value))}
+                      />
+                      <span className="lim">{draft.lim}</span>
+                    </label>
+                    <span className="lim" id="mk-draft-note">
+                      {draft.note}
+                    </span>
+                  </div>
+                ) : null}
                 {form.kind === "plate" ? (
                   <>
                     <label className="chk full">

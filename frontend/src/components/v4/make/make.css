@@ -76,6 +76,8 @@
 .ob .mk .pair .tt{height:180px;background:rgba(255,255,255,.6);border:1px solid var(--rule)}
 .ob .mk .frm{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 12px 8px}
 .ob .mk .frm .full{grid-column:1/-1}
+/* Draft: the field in the left column, its one-line note beside it. */
+.ob .mk .frm .drow{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
 .ob .mk .frm .field input,.ob .mk .frm .field textarea{width:100%;height:36px;padding:0 10px;border:1px solid rgba(20,24,31,.18);border-radius:9px;background:#fff;font-size:13.5px;color:var(--ink)}
 .ob .mk .frm .field textarea{height:60px;padding:8px 10px;resize:vertical;font-family:inherit}
 .ob .mk .frm .field input:disabled{background:#F3F4F6;color:#6B7078}

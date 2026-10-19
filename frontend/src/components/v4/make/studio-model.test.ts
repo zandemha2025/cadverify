@@ -15,6 +15,7 @@ import {
   designChip,
   diffRows,
   diffValue,
+  draftField,
   envelopeText,
   fieldProblem,
   fieldsFor,
@@ -123,4 +124,26 @@ test("compare defaults to the two newest ready revisions", () => {
 
 test("a revision opens in a check as ?design=<id>&revision=<n>", () => {
   assert.equal(checkHref("/app/check", "01JABCDEFGHJKMNPQRSTVWXYZ0", 2), "/app/check?design=01JABCDEFGHJKMNPQRSTVWXYZ0&revision=2");
+});
+
+test("the plate and the enclosure take a draft angle; the bracket doesn't", () => {
+  const d = draftField("enclosure");
+  assert.ok(d);
+  assert.deepEqual({ key: d.key, label: d.label, min: d.min, max: d.max, lim: d.lim, unit: d.unit }, { key: "draftAngle", label: "Draft, °", min: 0, max: 10, lim: "0 to 10", unit: "°" });
+  assert.equal(d.note, "Tapers the side walls so the part releases from a mold.");
+  assert.equal(draftField("plate")?.key, "draftAngle");
+  assert.equal(draftField("bracket"), null);
+  // The dimension fields themselves are unchanged.
+  assert.deepEqual(fieldsFor("enclosure").map((f) => f.key), ["width", "depth", "height", "wallThickness"]);
+});
+
+test("a draft outside 0 to 10° is named in degrees", () => {
+  const enc = { ...DEFAULT_DESIGN_FORM, kind: "enclosure" as const };
+  assert.equal(fieldProblem({ ...enc, draftAngle: 1.5 }), null);
+  assert.equal(fieldProblem({ ...enc, draftAngle: 12 }), "Draft must be 0 to 10°.");
+  assert.equal(fieldProblem({ ...enc, draftAngle: -1 }), "Draft must be 0 to 10°.");
+  assert.equal(fieldProblem({ ...enc, draftAngle: Number.NaN }), "Draft needs a number.");
+  // The bracket has no draft, so a leftover value from another template doesn't matter.
+  assert.equal(fieldProblem({ ...DEFAULT_DESIGN_FORM, kind: "bracket", draftAngle: Number.NaN }), null);
+  assert.equal(fieldProblem({ ...enc, wallThickness: 60 }), "Wall must be 0.5 to 50 mm.");
 });
