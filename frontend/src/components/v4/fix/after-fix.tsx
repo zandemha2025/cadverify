@@ -212,7 +212,7 @@ export function AfterFixView({ mesh }: { mesh: MeshSource }) {
   const li = LENSES.findIndex(([k]) => k === p.lens);
   const shell = (body: React.ReactNode, sheet: React.ReactNode, meta: string) => (
     <main className="world pv" aria-label={`${p.data.fileName}, before and after`}>
-      <section className="stage" aria-label="Before and after">
+      <section className="stage kstage3" aria-label="Before and after">
         <div className="floor" />
         <div className="hud">
           <button className="khud-back" type="button" onClick={back}>
