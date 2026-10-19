@@ -257,7 +257,7 @@ export function MachineSheet({
         </div>
 
         <div className="gh" style={{ marginTop: 6 }}>
-          <span>Records recommending {method}</span>
+          <span>Parts recommending {method}</span>
           <span className="num">{records ? matching.length : ""}</span>
         </div>
         {recordsError ? (
@@ -272,7 +272,7 @@ export function MachineSheet({
             Loading records…
           </p>
         ) : matching.length === 0 ? (
-          <p style={{ margin: "4px 12px", color: "var(--ink3)", fontSize: 13 }}>No saved records recommend {method} yet.</p>
+          <p style={{ margin: "4px 12px", color: "var(--ink3)", fontSize: 13 }}>No part&apos;s newest record recommends {method} yet.</p>
         ) : (
           <>
             {matching.slice(0, 10).map((r) => {
@@ -295,7 +295,7 @@ export function MachineSheet({
             {matching.length > 10 ? <p className="sh-note">Newest 10 of {matching.length}.</p> : null}
           </>
         )}
-        <p className="sh-note">A matching method doesn&apos;t mean the part fits this machine.</p>
+        <p className="sh-note">From each part&apos;s newest record. A matching method doesn&apos;t mean the part fits this machine.</p>
       </div>
     </>
   );

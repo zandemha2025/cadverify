@@ -20,7 +20,7 @@ import {
 import Link from "next/link";
 import { R, TABS } from "../routes";
 import { Content, Empty, Loading, PageHead, Panel, Sheet, cx } from "../ui";
-import { Banner, LaborFact, RateCardChip, ShopWorld, useLaborRate, useRateCard, useRecords, useToast } from "./common";
+import { Banner, LaborFact, RateCardChip, ShopWorld, useLaborRate, usePartRecords, useRateCard, useToast } from "./common";
 import { MachineDialog } from "./machine-dialog";
 import { MachineSheet } from "./machine-sheet";
 import { downloadText, getShopCapabilities, putShopCapabilities } from "./shop-api";
@@ -54,8 +54,10 @@ export function MachinesScreen() {
   const sheetRef = React.useRef<HTMLSpanElement>(null);
   const [toast, showToast] = useToast();
   const rc = useRateCard();
-  const recs = useRecords();
-  const labor = useLaborRate(rc, recs.data);
+  // One request per load (GET /cost-decisions/latest-per-part): the newest record of each
+  // part, with the details the labor rate reads; no per-record reads.
+  const recs = usePartRecords(6);
+  const labor = useLaborRate(rc, recs.data?.parts ?? null, recs.data?.details ?? null);
 
   const load = React.useCallback(async () => {
     setLoadError(null);
@@ -275,7 +277,7 @@ export function MachinesScreen() {
         {selected ? (
           <MachineSheet
             m={selected}
-            records={recs.data}
+            records={recs.data?.parts ?? null}
             recordsError={recs.error}
             onRetryRecords={recs.reload}
             rc={rc}
