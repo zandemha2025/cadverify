@@ -92,6 +92,34 @@ export function notListedKind(i: Pick<Issue, "code" | "severity">): NotListedKin
   return null;
 }
 
+/* ── what a required value means ───────────────────────────────────────── */
+
+/**
+ * For these findings the engine's `required_value` is a MAXIMUM (an overhang the
+ * method allows, a thickest section, a hole depth ratio…); for every other one it
+ * is a minimum (a wall, a draft, a fillet, a drain hole).
+ */
+const MAX_CODES = new Set([
+  "OVERHANG",
+  "SHRINKAGE_RISK",
+  "RESIDUAL_STRESS_RISK",
+  "CUPPING_RISK",
+  "SHARP_BEND",
+  "THICK_WALL",
+  "EXTREME_ASPECT_RATIO",
+  "DEEP_HOLE",
+  "HIGH_LD_RATIO",
+  "NON_UNIFORM_WALLS",
+  "HIGH_RIB_RATIO",
+  "TOO_THICK_SHEET",
+]);
+
+export type Direction = "min" | "max";
+
+export function directionOf(code: string): Direction {
+  return MAX_CODES.has(code.toUpperCase()) ? "max" : "min";
+}
+
 /* ── formatting ────────────────────────────────────────────────────────── */
 
 export function n0(v: number): string {
@@ -126,6 +154,8 @@ export function measure(v: number | null | undefined, unit: Issue["measurement_u
   if (v == null || !Number.isFinite(v)) return null;
   if (unit === "deg") return `${v.toFixed(1)}°`;
   if (unit === "mm") return `${v.toFixed(1)} mm`;
+  if (unit === "percent") return `${trimNum(v, 1)}%`;
+  if (unit === "ratio") return `${trimNum(v, 2)} : 1`;
   return `${trimNum(v, 2)}${unitText(unit)}`;
 }
 
@@ -144,6 +174,8 @@ export interface ProblemMethod {
   short: string;
   severity: Issue["severity"];
   issue: Issue;
+  /** "min": the method needs at least `need`; "max": it allows at most `need`. */
+  dir: Direction;
   need: number | null;
   measured: number | null;
   unit: Issue["measurement_unit"] | null;
@@ -263,6 +295,7 @@ export function buildProblems(input: { validation: ValidationResult | null; cost
       short: METHODS[process!]?.short ?? process!.toUpperCase(),
       severity: issue.severity,
       issue,
+      dir: directionOf(issue.code),
       need: issue.required_value ?? needFromMessage(fam.id, issue.message),
       measured: issue.measured_value ?? null,
       unit: issue.measurement_unit ?? (fam.id === "drain" ? "mm" : null),
@@ -414,18 +447,31 @@ export function measuredFig(p: Problem, m: ProblemMethod | null): ProblemFig {
   return { k: "Faces", v: p.faceCount != null ? n0(p.faceCount) : "—", s: p.where.split(" · ")[0].toLowerCase() };
 }
 
+/** "1°", "0.8 mm", "45°" for a required value in the engine's unit. */
+export function needText(m: Pick<ProblemMethod, "need" | "unit">): string | null {
+  if (m.need == null) return null;
+  return m.unit === "deg" ? `${trimNum(m.need, 1)}°` : measure(m.need, m.unit) ?? String(m.need);
+}
+
+/** How far the measurement is past the rule: short of a minimum, or over a maximum. */
+export function gap(m: Pick<ProblemMethod, "need" | "measured" | "dir">): number | null {
+  if (m.need == null || m.measured == null) return null;
+  return Math.max(0, m.dir === "max" ? m.measured - m.need : m.need - m.measured);
+}
+
 export function problemFigs(p: Problem, m: ProblemMethod | null, pricedOf: number): ProblemFig[] {
   if (p.id === "open") {
     return [measuredFig(p, m), { k: "Needs", v: "Closed solid", s: "every method" }, { k: "Priced", v: `0 of ${pricedOf}`, s: "needs a volume", tone: "bad" }];
   }
   const figs: ProblemFig[] = [measuredFig(p, m)];
-  if (m && m.need != null) figs.push({ k: "Needs", v: m.unit === "deg" ? `${trimNum(m.need, 1)}°` : measure(m.need, m.unit) ?? String(m.need), s: `for ${lower(m.name)}` });
+  const nt = m ? needText(m) : null;
+  if (m && nt) figs.push({ k: m.dir === "max" ? "Allows" : "Needs", v: m.dir === "max" ? `${nt} at most` : nt, s: `for ${lower(m.name)}` });
   else if (m) figs.push({ k: "For", v: m.name, s: m.severity === "error" ? "can’t as drawn" : "check first" });
-  if (m && m.need != null && m.measured != null && m.unit === "mm" && p.id !== "thick") {
-    const short = Math.max(0, m.need - m.measured);
-    figs.push({ k: "Short by", v: `${short.toFixed(1)} mm`, s: p.id === "thin" && p.where.startsWith("Every wall") ? "every wall" : "thinnest wall", tone: "bad" });
-  } else if (p.id === "draft" && m?.need != null && m.measured != null) {
-    figs.push({ k: "Short by", v: `${trimNum(Math.max(0, m.need - m.measured), 1)}°`, s: "smallest draft", tone: "bad" });
+  const g = m ? gap(m) : null;
+  if (m && g != null && (m.unit === "mm" || m.unit === "deg" || m.unit === "percent")) {
+    const v = m.unit === "mm" ? `${g.toFixed(1)} mm` : m.unit === "deg" ? `${trimNum(g, 1)}°` : `${trimNum(g, 1)}%`;
+    const s = p.id === "thin" ? (p.where.startsWith("Every wall") ? "every wall" : "thinnest wall") : p.id === "draft" ? "smallest draft" : m.dir === "max" ? "past the limit" : "below the minimum";
+    figs.push({ k: m.dir === "max" ? "Over by" : "Short by", v, s, tone: "bad" });
   } else if (p.faceCount != null && figs[0].k !== "Faces") {
     figs.push({ k: "Faces", v: n0(p.faceCount), s: p.id === "draft" ? "side-wall faces" : "flagged" });
   }
@@ -454,8 +500,8 @@ export function callout(p: Problem, m: ProblemMethod | null): { main: string; su
     return { main: e != null ? `${n0(e)} sharp edges` : "Sharp inside corners", sub: m?.need != null ? `${name} needs ${trimNum(m.need, 1)} mm fillets` : name };
   }
   const meas = measure(m?.measured ?? null, m?.unit ?? null);
-  const need = measure(m?.need ?? null, m?.unit ?? null);
-  return { main: meas ? `${meas} here` : p.title, sub: need ? `needs ${need} for ${name}` : m ? `for ${name}` : p.where };
+  const need = m ? needText(m) : null;
+  return { main: meas ? `${meas} here` : p.title, sub: need ? `${m!.dir === "max" ? `at most ${need}` : `needs ${need}`} for ${name}` : m ? `for ${name}` : p.where };
 }
 
 /** The reason in plain words, from the measured values. */
@@ -484,6 +530,11 @@ export function plainReason(p: Problem, m: ProblemMethod | null, pricedOf: numbe
     case "corners":
       if (m?.need != null) return `${tidy(firstSentence(m.issue.message))} ${name} needs a fillet of at least ${trimNum(m.need, 1)} mm there.`;
       break;
+  }
+  if (m && m.measured != null && m.need != null) {
+    const meas = measure(m.measured, m.unit);
+    const need = needText(m);
+    return `${tidy(firstSentence(m.issue.message))} ${name} ${m.dir === "max" ? `allows at most ${need}; this is ${meas}` : `needs at least ${need}; this is ${meas}`}, so ${verdict}.`;
   }
   return tidy(m?.issue.message ?? p.primary.message);
 }
@@ -544,13 +595,22 @@ export function pickMethod(p: Problem, asked: string | null | undefined, fallbac
   return p.methods.find((m) => m.code === asked) ?? p.methods.find((m) => m.code === fallback) ?? p.methods[0] ?? null;
 }
 
-/** "−0.3 mm", "under 1°": the per-method shortfall for the radio list. */
+/** "−0.3 mm", "under 1°", "+12°": how far each method's rule is missed, for the radio list. */
 export function shortText(p: Problem, m: ProblemMethod): string {
   if (m.need == null) return m.severity === "error" ? "blocks" : "check";
-  if (m.measured != null && m.unit === "mm") return `−${Math.max(0, m.need - m.measured).toFixed(1)} mm`;
-  if (m.measured != null && m.unit === "deg") return `−${trimNum(Math.max(0, m.need - m.measured), 1)}°`;
-  if (m.unit === "deg") return `under ${trimNum(m.need, 1)}°`;
+  const g = gap(m);
+  const sign = m.dir === "max" ? "+" : "−";
+  if (g != null && m.unit === "mm") return `${sign}${g.toFixed(1)} mm`;
+  if (g != null && m.unit === "deg") return `${sign}${trimNum(g, 1)}°`;
+  if (g != null && m.unit === "percent") return `${sign}${trimNum(g, 1)}%`;
+  if (g != null && m.unit === "ratio") return `${sign}${trimNum(g, 2)}`;
+  if (m.unit === "deg") return m.dir === "max" ? `over ${trimNum(m.need, 1)}°` : `under ${trimNum(m.need, 1)}°`;
   return m.severity === "error" ? "blocks" : "check";
+}
+
+/** The radio list's column head: needs and short by, or allows and over by. */
+export function methodHead(p: Problem): string {
+  return p.methods.some((m) => m.dir === "max") && p.methods.every((m) => m.dir === "max" || m.need == null) ? "allows at most · over by" : "needs · short by";
 }
 
 export function findProblem(set: ProblemSet, id: string | null | undefined): Problem | null {

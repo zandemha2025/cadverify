@@ -16,9 +16,11 @@ import { buildProblems, callout, findProblem, pickMethod, type Problem, type Pro
 import { placesOf, rankProblems, unlockOf, type Unlock } from "./rank";
 import type { FixOrigin } from "./capabilities";
 import { useStudioOrigin } from "./origin";
+import { serverFixesOf, useServerOptions } from "./server";
+import { useFixRun } from "./runs";
 
 export type FixView = { kind: "problem"; id: string; method: string | null } | { kind: "all"; sel: string | null; q: number | null; by: "rank" | "place" };
-export type AskVariant = "repair" | "studio" | "upload";
+export type AskVariant = "repair" | "studio" | "upload" | "server";
 
 export interface FixCtxValue {
   set: ProblemSet;
@@ -116,13 +118,20 @@ export function useFixController(args: {
   setXray: (on: boolean) => void;
   onOpen: () => void;
   toast: (t: { text: string; link?: { label: string; href: string } }) => void;
+  /** The org keeps this part's source (only then can the server fix it). */
+  sourceKept?: boolean | null;
 }): { value: FixCtxValue; highlight: ViewerHighlight | null; markers: ViewerMarker[]; onPin: (s: PinState) => void; onLit: (n: number) => void } {
-  const { data, methods, qs, q, selCode, has3d, faceAligned, controller, xray, setXray, onOpen, toast } = args;
+  const { data, methods, qs, q, selCode, has3d, faceAligned, controller, xray, setXray, onOpen, toast, sourceKept } = args;
   const set = React.useMemo(() => buildProblems({ validation: data.validation, cost: data.cost }), [data.validation, data.cost]);
   const studio = useStudioOrigin(data.key);
+  // Ask the server again once a fix it made has finished (its last attempt changes what it offers).
+  const run = useFixRun(data.key);
+  const serverTick = run?.kind === "server" && run.s !== "running" ? run.startedAt : 0;
+  const serverOpts = useServerOptions(sourceKept ? data.key : null, serverTick);
+  const server = React.useMemo(() => serverFixesOf(serverOpts), [serverOpts]);
   const origin = React.useMemo<FixOrigin>(
-    () => ({ fileType: data.fileType, open: data.validation?.geometry.is_watertight === false || set.problems.some((p) => p.id === "open"), studio, server: null }),
-    [data.fileType, data.validation, set, studio],
+    () => ({ fileType: data.fileType, open: data.validation?.geometry.is_watertight === false || set.problems.some((p) => p.id === "open"), studio, server }),
+    [data.fileType, data.validation, set, studio, server],
   );
   const [view, setViewState] = React.useState<FixView | null>(null);
   const [ask, setAsk] = React.useState<FixCtxValue["ask"]>(null);

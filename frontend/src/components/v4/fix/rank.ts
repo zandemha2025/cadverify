@@ -30,6 +30,8 @@ export interface Unlock {
   partial: { m: Method; others: Problem[] }[];
   /** Methods it stops that the part's service conditions rule out anyway. */
   excluded: Method[];
+  /** Every single-process method, for naming them unambiguously. */
+  all: Method[];
   /** The cheapest method you could order today at q. */
   today: Priced | null;
   best: Priced | null;
@@ -149,7 +151,7 @@ export function unlockOf(p: Problem, set: ProblemSet, methods: Method[], q: numb
     value = "No change";
     sub = "Nothing it stops or flags";
   }
-  return { problem: p, q, added, priced, partial, excluded, today, best, newLow, tier, key, value, sub };
+  return { problem: p, q, added, priced, partial, excluded, all: list, today, best, newLow, tier, key, value, sub };
 }
 
 /** Every problem, ranked at quantity q (board K4's rule). */
@@ -221,7 +223,7 @@ function band(m: Method, q: number): string | null {
 
 export function unlockRows(
   u: Unlock,
-  opts: { cost: CostReport | null; methodsTotal: number; picked: string | null; repairable: boolean; set?: ProblemSet },
+  opts: { cost: CostReport | null; methodsTotal: number; picked: string | null; repairable: boolean; fixHere?: string | null; set?: ProblemSet },
 ): { rows: UnlockRow[]; foot: string } {
   const p = u.problem;
   const rows: UnlockRow[] = [];
@@ -229,14 +231,15 @@ export function unlockRows(
     const priced = opts.cost?.estimates?.length ?? 0;
     rows.push({ k: "A verdict for each method", v: String(opts.methodsTotal), s: `Today all ${opts.methodsTotal} are blocked by the open shell`, ok: true });
     rows.push({ k: "A price for each one that can make it", v: "Priced", s: priced ? "Priced once the shape is closed" : "Today none: cost needs a watertight, positive volume", ok: true });
-    if (opts.repairable) rows.push({ k: "Repair here", v: "Pilot", s: "ScaleCAD can try a mesh repair on a copy and shows both shapes, with any change to the volume" });
+    if (opts.fixHere) rows.push({ k: "Fix it here", v: "Pilot", s: opts.fixHere });
+    else if (opts.repairable) rows.push({ k: "Repair here", v: "Pilot", s: "ScaleCAD can try a mesh repair on a copy and shows both shapes, with any change to the volume" });
     return { rows, foot: priced ? "Prices on an open shell aren’t reliable; the check prices the closed shape." : "Nothing on this file is priced yet, so no price change can be shown until a closed shape is checked." };
   }
   const q = u.q;
   for (const x of u.priced.slice(0, 2)) {
     const e = x.m.prices.get(q)!;
     rows.push({
-      k: x.m.name,
+      k: methodLabel(x.m, u.all),
       v: money(x.price),
       s: [e.material, `each at ${qtyWord(q)}`, band(x.m, q), x === u.priced[0] ? "today Can’t as drawn" : null].filter(Boolean).join(" · "),
       ok: true,
@@ -249,13 +252,13 @@ export function unlockRows(
     rows.push({
       k: "Against today’s cheapest",
       v: `${diff < 0 ? "−" : "+"}${money(Math.abs(diff))}`,
-      s: `${u.today.m.name} is ${money(u.today.price)} each at ${qtyWord(q)}.${cross}`,
+      s: `${methodLabel(u.today.m, u.all)} is ${money(u.today.price)} each at ${qtyWord(q)}.${cross}`,
       ok: diff < 0,
     });
   }
   if (u.partial.length) {
     const others = [...new Map(u.partial.flatMap((x) => x.others).map((o) => [o.id, o])).values()];
-    rows.push({ k: someWords(u.partial.map((x) => methodLabel(x.m, u.partial.map((y) => y.m)))), v: "Still blocked", s: `Also need: ${joinWords(others.map((o) => lower(o.title)))}` });
+    rows.push({ k: someWords(u.partial.map((x) => methodLabel(x.m, u.all))), v: "Still blocked", s: `Also need: ${joinWords(others.map((o) => lower(o.title)))}` });
   }
   if (u.best && opts.set) {
     // What the cheapest unlocked method still flags once this is fixed.

@@ -3,13 +3,15 @@
  *  - an open mesh: mesh repair on a copy (a pilot tool, POST /validate/repair);
  *  - a Design Studio part: a new revision with a changed template parameter
  *    (wall or thickness; draft on the plate and the open enclosure, not the bracket);
- *  - anything else on an uploaded CAD file is a change in the user's CAD tool.
- * `server` is the seam for a backend that fixes some problems in uploaded CAD
- * itself (it reports, per finding, whether it can); null until that exists.
+ *  - on an uploaded file's kept source, what the server reports it can do itself
+ *    (GET /parts/{hash}/fixes: drain holes, rounded inside corners, sewing faces
+ *    into a solid), each on a copy that is re-checked in the same request;
+ *  - anything else is a change in the user's CAD tool.
  *
  * Pure: no React, no fetch (runs under node --test).
  */
 import type { DesignPlan } from "@/lib/designs-api";
+import { MAX_DRAFT_DEG, draftAngleOf, supportsDraft } from "../../../lib/design-plan.ts";
 import type { Problem } from "./problems.ts";
 
 export interface StudioOrigin {
@@ -22,10 +24,28 @@ export interface StudioOrigin {
   volumeCm3: number | null;
 }
 
-/** What a server-side fixer reported it can do for this part (the seam; not built yet). */
+/** What the server can fix itself for one problem family on this file (GET /parts/{hash}/fixes). */
+export interface ServerFix {
+  can: boolean;
+  fix: string | null;
+  label: string;
+  method: string;
+  param: string | null;
+  unit: string | null;
+  bounds: [number, number] | null;
+  /** The parameter it would use, from the findings. */
+  value: number | null;
+  whyNot: string | null;
+  /** What the last attempt's re-check said, when there was one. */
+  lastAttempt: string | null;
+}
+
 export interface ServerFixes {
   /** Problem family ids it can fix on this file. */
   families: string[];
+  byFamily: Record<string, ServerFix>;
+  /** Fixes this server can run at all (for "what ScaleCAD fixes today"). */
+  available: { id: string; label: string }[];
 }
 
 export interface FixOrigin {
@@ -38,7 +58,7 @@ export interface FixOrigin {
 
 export type StudioParam = { key: string; label: string; value: number; unit: "mm" | "°" };
 
-export type FixRoute = { kind: "repair" } | { kind: "studio"; param: StudioParam } | { kind: "server" } | null;
+export type FixRoute = { kind: "repair" } | { kind: "studio"; param: StudioParam } | { kind: "server"; fix: ServerFix } | null;
 
 /** The template parameter that changes this problem, when the template has one. */
 export function studioParam(plan: DesignPlan, problemId: string): StudioParam | null {
@@ -46,21 +66,23 @@ export function studioParam(plan: DesignPlan, problemId: string): StudioParam | 
     if (plan.kind === "enclosure") return { key: "wall_thickness_mm", label: "Wall", value: plan.wall_thickness_mm, unit: "mm" };
     if (plan.kind === "bracket" || plan.kind === "plate") return { key: "thickness_mm", label: "Thickness", value: plan.thickness_mm, unit: "mm" };
   }
-  if (problemId === "draft" && (plan.kind === "plate" || plan.kind === "enclosure")) {
-    // draft_angle_deg (0–10°, release along +Z) is left out of a stored plan when it's 0.
-    const v = (plan as unknown as { draft_angle_deg?: number }).draft_angle_deg ?? 0;
-    return { key: "draft_angle_deg", label: "Draft", value: v, unit: "°" };
+  if (problemId === "draft" && supportsDraft(plan.kind)) {
+    // draft_angle_deg (0–10°, release along +Z); a stored plan leaves out a zero draft.
+    return { key: "draft_angle_deg", label: "Draft", value: draftAngleOf(plan) ?? 0, unit: "°" };
   }
   return null;
 }
 
 export function fixRoute(p: Problem, origin: FixOrigin): FixRoute {
-  if (p.id === "open" && origin.open) return { kind: "repair" };
   if (origin.studio) {
     const param = studioParam(origin.studio.plan, p.id);
     if (param) return { kind: "studio", param };
   }
-  if (origin.server?.families.includes(p.id)) return { kind: "server" };
+  // The server's own fix on a copy of the kept CAD (it keeps a STEP or IGES a solid model) …
+  const sf = origin.server?.byFamily[p.id];
+  if (sf?.can && sf.fix && origin.server!.families.includes(p.id)) return { kind: "server", fix: sf };
+  // … else mesh repair for an open shell.
+  if (p.id === "open" && origin.open) return { kind: "repair" };
   return null;
 }
 
@@ -77,7 +99,7 @@ export function canFixLine(p: Problem, origin: FixOrigin): string {
   const r = fixRoute(p, origin);
   if (r?.kind === "repair") return "Mesh repair is a pilot tool. It works on a copy; your file stays as it is.";
   if (r?.kind === "studio") return `Made in Design Studio, so ScaleCAD can make revision ${origin.studio!.currentRevision + 1} with a new ${r.param.label.toLowerCase()} and check it.`;
-  if (r?.kind === "server") return "ScaleCAD can change this on a copy of your file and check the copy. Your file stays as it is.";
+  if (r?.kind === "server") return `ScaleCAD can ${r.fix.label.charAt(0).toLowerCase()}${r.fix.label.slice(1)} on a copy of your file and check the copy, as a pilot tool. Your file stays as it is.`;
   if (origin.studio) return `Made in Design Studio, but ${p.title.toLowerCase()} isn’t a template parameter. Download the STEP and change it in your CAD tool.`;
   const ext = origin.fileType ? `this ${origin.fileType.toUpperCase()}` : "this file";
   return `ScaleCAD can’t edit ${ext}. It gives the steps, prices the result and checks the file you upload.`;
@@ -103,7 +125,8 @@ export function studioValueProblem(plan: DesignPlan, key: string, raw: string): 
     return null;
   }
   if (key === "draft_angle_deg") {
-    if (v < 0 || v > 10) return "Use 0° to 10°.";
+    if (!supportsDraft(plan.kind)) return "This template has no draft angle.";
+    if (v < 0 || v > MAX_DRAFT_DEG) return `Use 0° to ${MAX_DRAFT_DEG}°.`;
     return null;
   }
   return null;

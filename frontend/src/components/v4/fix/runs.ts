@@ -11,7 +11,8 @@ import { createDesignRevision, getDesign, type Design, type DesignPlan } from "@
 import { importDesignStep } from "@/lib/verify/design-import";
 import { runRepair, type RepairOutcome } from "../part/repair";
 import { startCheck } from "../part/store";
-import type { StudioOrigin, StudioParam } from "./capabilities";
+import type { ServerFix, StudioOrigin, StudioParam } from "./capabilities";
+import { applyServerFix, type ServerFixOutcome } from "./server";
 
 export type RepairRun = { kind: "repair"; problem: string; startedAt: number; sourceName: string } & ({ s: "running" } | RepairOutcome);
 
@@ -35,7 +36,10 @@ export interface StudioRun {
   error: string | null;
 }
 
-export type FixRun = RepairRun | StudioRun;
+/** A fix the server makes on a copy of the kept CAD (POST /parts/{hash}/fixes/{id}). */
+export type ServerRun = { kind: "server"; problem: string; startedAt: number; fix: ServerFix; value: number | null } & ({ s: "running" } | ServerFixOutcome);
+
+export type FixRun = RepairRun | StudioRun | ServerRun;
 
 const runs = new Map<string, FixRun>();
 const listeners = new Set<() => void>();
@@ -102,6 +106,18 @@ export function startRepair(key: string, problem: string, file: File) {
       return;
     }
     put(key, { kind: "repair", problem, startedAt, sourceName: file.name, ...out } as RepairRun);
+  });
+}
+
+/** Make the server's fix on a copy of this part's kept source; it re-checks and prices both in the same request. */
+export function startServerFix(key: string, problem: string, fix: ServerFix, value: number | null, opts: { qty?: number[]; materialClass?: string | null }) {
+  if (!fix.fix) return;
+  const startedAt = Date.now();
+  put(key, { kind: "server", problem, startedAt, fix, value, s: "running" });
+  void applyServerFix(key, fix.fix, { value, qty: opts.qty, materialClass: opts.materialClass }).then((out) => {
+    const cur = runs.get(key);
+    if (!cur || cur.kind !== "server" || cur.startedAt !== startedAt) return;
+    put(key, { kind: "server", problem, startedAt, fix, value, ...out } as ServerRun);
   });
 }
 

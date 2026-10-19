@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alternativeOf, buildProblems, callout, findProblem, fixText, notListedKind, pickMethod, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
+import { alternativeOf, buildProblems, callout, findProblem, fixText, methodHead, notListedKind, pickMethod, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
 import { canFixLine, fixRoute, studioParam, studioValueProblem, whoFixes, type FixOrigin } from "./capabilities.ts";
 import { enclosureCostOnly, shellCost, shellValidation } from "./fixtures.test-data.ts";
 
@@ -105,7 +105,10 @@ test("what ScaleCAD can fix: open meshes, Design Studio template parameters, not
   assert.equal(studioParam({ kind: "plate", width_mm: 80, depth_mm: 50, thickness_mm: 6, holes: [], draft_angle_deg: 1.5 } as never, "draft")?.value, 1.5);
   assert.equal(studioValueProblem({ kind: "plate", width_mm: 80, depth_mm: 50, thickness_mm: 6, holes: [] }, "draft_angle_deg", "12"), "Use 0° to 10°.");
   // The server-side fixer seam.
-  assert.deepEqual(fixRoute(findProblem(set, "drain")!, { ...upload, server: { families: ["drain"] } }), { kind: "server" });
+  const sf = { can: true, fix: "drain_holes", label: "Add drain holes", method: "", param: "diameter_mm", unit: "mm", bounds: [0.5, 50] as [number, number], value: 5, whyNot: null, lastAttempt: null };
+  assert.deepEqual(fixRoute(findProblem(set, "drain")!, { ...upload, server: { families: ["drain"], byFamily: { drain: sf }, available: [] } }), { kind: "server", fix: sf });
+  // A finding the server tried and couldn't clear is no longer offered.
+  assert.equal(fixRoute(findProblem(set, "drain")!, { ...upload, server: { families: [], byFamily: { drain: { ...sf, can: false } }, available: [] } }), null);
 });
 
 test("a new wall is checked against the generator's own bounds", () => {
@@ -138,4 +141,23 @@ test("CAD steps come from the verified data: the fix, then the tool's STEP expor
   const under = cadPath("nx", "undercut");
   assert.equal(under.noFix, true);
   assert.match(under.steps[0], /^File tab › Export/);
+});
+
+test("a maximum is read as a maximum: an overhang is over by, not short by", () => {
+  const v = shellValidation();
+  for (const ps of v.process_scores) for (const i of ps.issues) if (i.code === "OVERHANG") Object.assign(i, { measured_value: 90, required_value: ps.process === "sla" ? 19 : 45, measurement_unit: "deg" });
+  const set = buildProblems({ validation: v, cost: null });
+  const over = findProblem(set, "overhang")!;
+  const sla = pickMethod(over, "sla", null)!;
+  assert.equal(sla.dir, "max");
+  assert.equal(shortText(over, sla), "+71°");
+  assert.deepEqual(problemFigs(over, sla, 8).map((f) => [f.k, f.v]), [["Measured", "90.0°"], ["Allows", "19° at most"], ["Over by", "71°"]]);
+  assert.equal(callout(over, sla).sub, "at most 19° for resin printing");
+  assert.match(plainReason(over, sla, 8), /allows at most 19°; this is 90\.0°, so it’s flagged to check first\.$/);
+  assert.equal(methodHead(over), "allows at most · over by");
+  // A minimum stays a minimum.
+  assert.equal(methodHead(findProblem(set, "thin")!), "needs · short by");
+  // No required value: the measurement alone, no "needs".
+  const thick = { ...over, methods: [{ ...sla, need: null }] };
+  assert.equal(shortText(thick, thick.methods[0]), "check");
 });

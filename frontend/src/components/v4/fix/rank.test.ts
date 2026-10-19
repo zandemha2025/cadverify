@@ -73,7 +73,7 @@ test("K1's unlocks: at the engine's own if-redesigned quantity when the fix unlo
   assert.equal(unlockQty(thin, set, methods, cost, 10, cost.quantities), 10);
   const u = rankProblems(set, methods, 10).find((x) => x.problem.id === "thin")!;
   const { rows, foot } = unlockRows(u, { cost, methodsTotal: 12, picked: "cnc_3axis", repairable: false });
-  assert.deepEqual(rows.map((x) => [x.k, x.v]), [["3-axis milling", "$36.18"], ["5-axis milling", "$46.78"], ["Filament printing, Nylon powder printing, Lathe and 1 more", "Still blocked"]]);
+  assert.deepEqual(rows.map((x) => [x.k, x.v]), [["3-axis milling", "$36.18"], ["5-axis milling", "$46.78"], ["Filament printing, Nylon powder printing (SLS), Lathe and 1 more", "Still blocked"]]);
   assert.match(rows[2].s, /^Also need: sealed cavity, no drain holes, not a turned part and side walls need draft$/);
   assert.match(foot, /Thicker walls add material, so re-check after the change\.$/);
 });

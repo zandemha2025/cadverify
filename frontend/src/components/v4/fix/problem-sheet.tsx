@@ -10,7 +10,7 @@ import { usePart } from "../part/ctx";
 import { classLabel } from "../part/sheet-bits";
 import { qtyWord } from "../part/model";
 import { useFix } from "./ctx";
-import { alternativeOf, fixText, plainReason, problemFigs, ruleOf, shortText, type Problem } from "./problems";
+import { alternativeOf, fixText, methodHead, needText, plainReason, problemFigs, ruleOf, shortText, type Problem } from "./problems";
 import { unlockOf, unlockQty, unlockRows } from "./rank";
 import { canFixLine, fixRoute } from "./capabilities";
 import "./fix.css";
@@ -94,18 +94,20 @@ export function ProblemSheet() {
   const uq = unlockQty(P, fx.set, p.methods, p.data.cost, p.q, p.qs);
   const u = unlockOf(P, fx.set, p.methods, uq);
   const route = fixRoute(P, fx.origin);
-  const { rows, foot } = unlockRows(u, { cost: p.data.cost, methodsTotal: total, picked: m?.code ?? null, repairable: route?.kind === "repair", set: fx.set });
+  const { rows, foot } = unlockRows(u, { cost: p.data.cost, methodsTotal: total, picked: m?.code ?? null, repairable: route?.kind === "repair", fixHere: route?.kind === "server" ? `ScaleCAD can ${route.fix.label.toLowerCase()} on a copy of your file, checks the copy and shows both` : null, set: fx.set });
   const at = P.id === "open" ? `today: ${p.methods.filter((x) => x.prices.size > 0).length} of ${total} priced` : `at ${qtyWord(uq)} ${uq === 1 ? "part" : "parts"}, ${classLabel(p.data.cost?.material_class).toLowerCase()}`;
   const go =
     route?.kind === "repair"
       ? { label: "Repair it here", run: () => fx.openAsk(P.id, "repair") }
       : route?.kind === "studio"
         ? { label: "Fix it", run: () => fx.openAsk(P.id, "studio") }
-        : { label: "How to fix it", run: () => fx.openAsk(P.id, "upload") };
+        : route?.kind === "server"
+          ? { label: "Fix it here", run: () => fx.openAsk(P.id, "server") }
+          : { label: "How to fix it", run: () => fx.openAsk(P.id, "upload") };
   const alt =
     route?.kind === "repair"
       ? { label: "Fix it in CAD", run: () => fx.openAsk(P.id, "upload") }
-      : route?.kind === "studio"
+      : route?.kind === "studio" || route?.kind === "server"
         ? { label: "Steps for your CAD tool", run: () => fx.openAsk(P.id, "upload") }
         : { label: "Upload the fixed file", run: up.pick };
   const head = P.id === "thin" ? "Same wall, by method" : P.id === "draft" ? "Same walls, by method" : "Same problem, by method";
@@ -191,12 +193,12 @@ export function ProblemSheet() {
           <>
             <div className="gh" style={{ marginTop: 6 }}>
               <span>{head}</span>
-              <span>needs · short by</span>
+              <span>{methodHead(P)}</span>
             </div>
             <div role="radiogroup" aria-label={head}>
               {list.map((x, i) => {
                 const on = i === mi;
-                const need = x.need != null ? (x.unit === "deg" ? `${x.need}°` : x.unit === "mm" ? `${x.need.toFixed(1)} mm` : String(x.need)) : "—";
+                const need = needText(x) ?? "—";
                 return (
                   <button
                     key={x.code}

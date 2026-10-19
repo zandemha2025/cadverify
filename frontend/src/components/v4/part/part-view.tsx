@@ -152,7 +152,7 @@ export function PartView({
   }, []);
 
   // Find and fix: one problem on the part (K1), all of them (K4), asking (K2), before and after (K3).
-  const fx = useFixController({ data, methods, qs, q, selCode: sel?.code ?? null, has3d, faceAligned, controller, xray, setXray, onOpen: () => setLens("make"), toast });
+  const fx = useFixController({ data, methods, qs, q, selCode: sel?.code ?? null, has3d, faceAligned, controller, xray, setXray, onOpen: () => setLens("make"), toast, sourceKept });
   const fixOn = !!fx.value.view && !checking;
   const highlight = fixOn ? fx.highlight : lensHighlight;
   const pickLens = (l: Lens) => {

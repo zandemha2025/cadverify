@@ -24,10 +24,13 @@ import type { MeshSource } from "../part/part-view";
 import type { ViewerController, ViewerHighlight } from "../part/viewer";
 import { KIND_COLOR } from "../part/model";
 import { useFix } from "./ctx";
-import { buildProblems, callout, findProblem, pickMethod, type Problem } from "./problems";
-import { rankProblems } from "./rank";
+import { buildProblems, callout, familyOf, findProblem, pickMethod, tidy, type Problem } from "./problems";
+import { methodLabel, rankProblems } from "./rank";
 import { whoFixes, type FixOrigin } from "./capabilities";
-import { clearRun, useFixRun, type RepairRun, type StudioRun } from "./runs";
+import { clearRun, useFixRun, type RepairRun, type ServerRun, type StudioRun } from "./runs";
+import { fixedFileUrl } from "./server";
+import { loadPartMesh } from "../part/api";
+import { methodName } from "../part/model";
 import { forgetStudioOrigin } from "./origin";
 import { newCheckLine } from "./all-sheet";
 import { failureText } from "./ask-dialog";
@@ -115,8 +118,8 @@ function Changed({ colA, colB, right, rows, foot }: { colA: string; colB: string
           <span>{colA}</span>
           <span style={{ textAlign: "right" }}>{colB}</span>
         </div>
-        {rows.map(([k, b, a, cls]) => (
-          <div className="r" key={k}>
+        {rows.map(([k, b, a, cls], i) => (
+          <div className="r" key={`${i}:${k}`}>
             <span>{k}</span>
             <span className="b num">{b}</span>
             <span className={cx("a num", cls)}>{a}</span>
@@ -128,17 +131,17 @@ function Changed({ colA, colB, right, rows, foot }: { colA: string; colB: string
   );
 }
 
-function Left({ items, n }: { items: { k: string; s: string; who: string; tone: string }[]; n: string }) {
+function Left({ items, n, title = "Problems left" }: { items: { k: string; s: string; who: string; tone: string }[]; n: string; title?: string }) {
   return (
     <>
       <div className="gh">
-        <span>Problems left</span>
+        <span>{title}</span>
         <span>{n}</span>
       </div>
       <div className="kleft">
         {items.length ? (
           items.map((l) => (
-            <div className="lr" key={l.k}>
+            <div className="lr" key={`${l.who}:${l.k}`}>
               <b>{l.k}</b>
               <span className={cx("chip", l.tone)}>
                 <i />
@@ -256,6 +259,7 @@ export function AfterFixView({ mesh }: { mesh: MeshSource }) {
   );
   if (run?.kind === "repair" && run.s === "fixed") return <RepairAfter run={run} mesh={mesh} problem={problem} shell={shell} flash={flash} />;
   if (run?.kind === "studio" && run.s === "done") return <StudioAfter run={run} mesh={mesh} problem={problem} shell={shell} flash={flash} />;
+  if (run?.kind === "server" && run.s === "done" && run.r.applied && run.r.fixed) return <ServerAfter run={run} mesh={mesh} problem={problem} shell={shell} />;
   return shell(
     null,
     <div className="top">
@@ -314,7 +318,7 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
   const pct = d.volume_change_pct ?? null;
   const warnPct = d.warn_pct ?? 2;
   const changedShape = pct != null && Math.abs(pct) > warnPct;
-  const sign = (x: number) => `${x > 0 ? "+" : ""}${trimNum(x, 1)}%`;
+  const sign = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${trimNum(Math.abs(x), 1)}%`;
   const cheap = (q: number) => {
     const c = cheapestAt(mAfter, q);
     return c ? `${money(priceAt(c, q))} · ${c.name.toLowerCase()} (${c.short})` : null;
@@ -444,7 +448,7 @@ function StudioAfter({ run, mesh, problem, shell, flash }: { run: StudioRun; mes
   const nA = run.revision ?? run.from.revision + 1;
   const nB = run.from.revision;
   const total = mA.filter((m) => m.members.length === 1).length || mB.filter((m) => m.members.length === 1).length;
-  const q = [10, ...(aCost?.quantities ?? [])].find((x) => aCost?.quantities?.includes(x)) ?? 10;
+  const q = [10, 100, ...(aCost?.quantities ?? [])].find((x) => aCost?.quantities?.includes(x)) ?? 10;
   const cB = cheapestAt(mB, q);
   const cA = cheapestAt(mA, q);
   const pa = cA ? priceAt(cA, q) : null;
@@ -460,7 +464,7 @@ function StudioAfter({ run, mesh, problem, shell, flash }: { run: StudioRun; mes
     .filter((m) => m.members.length === 1 && m.prices.has(q) && mB.some((x) => x.code === m.code && x.prices.has(q)) && m.code !== cA?.code)
     .sort((a, b) => (priceAt(a, q) ?? 0) - (priceAt(b, q) ?? 0))
     .slice(0, 2);
-  for (const m of shared) rows.push([m.name, money(priceAt(mB.find((x) => x.code === m.code)!, q)), money(priceAt(m, q)), ""]);
+  for (const m of shared) rows.push([methodLabel(m, mA.filter((x) => x.members.length === 1)), money(priceAt(mB.find((x) => x.code === m.code)!, q)), money(priceAt(m, q)), ""]);
   const redA = aCost?.decision?.if_redesigned ?? {};
   const redQ = Object.entries(redA).filter(([, x]) => x).map(([k]) => Number(k)).sort((a, b) => b - a)[0];
   if (redQ && redA[String(redQ)]) {
@@ -580,4 +584,165 @@ function StudioAfter({ run, mesh, problem, shell, flash }: { run: StudioRun; mes
     </>
   );
   return shell(body, sheet, `Design Studio · revision ${nA} is current · revision ${nB} kept`);
+}
+
+/* ── after a fix the server made on a copy ────────────────────────────── */
+
+const OUTCOME: Record<string, { chip: string; tone: string; title: string }> = {
+  cleared: { chip: "Cleared", tone: "c-ok", title: "cleared" },
+  partly_cleared: { chip: "Partly cleared", tone: "c-warn", title: "partly cleared" },
+  not_cleared: { chip: "Still flagged", tone: "c-bad", title: "the re-check still shows it" },
+  nothing_to_clear: { chip: "Nothing to clear", tone: "c-unk", title: "nothing to clear" },
+};
+
+function ServerAfter({ run, mesh, problem, shell }: { run: Extract<ServerRun, { s: "done" }>; mesh: MeshSource; problem: Problem | null; shell: ShellFn }) {
+  const p = usePart();
+  const fx = useFix();
+  const router = useRouter();
+  const r = run.r;
+  const fixed = r.fixed!;
+  const [keep, setKeep] = React.useState(0);
+  const [after, setAfter] = React.useState<{ url: string | null; faceHash: string | null; aligned: boolean; validation: ValidationResult | null; cost: CostReport | null } | null>(null);
+  // The copy is a saved part now: its 3D view and its own saved check.
+  React.useEffect(() => {
+    let live = true;
+    let url: string | null = null;
+    void Promise.all([loadPartMesh(fixed.mesh_hash, fixed.filename ?? null), loadSavedPart(fixed.mesh_hash).catch(() => null)]).then(([m, s]) => {
+      if (!live) return;
+      url = m.mesh ? URL.createObjectURL(m.mesh.blob) : null;
+      const v = s?.validation ?? null;
+      setAfter({ url, faceHash: m.mesh?.faceHash ?? null, aligned: !!m.mesh && m.mesh.faceSpace === "analysis" && !!v?.analysis_mesh_hash && m.mesh.faceHash === v.analysis_mesh_hash, validation: v, cost: s?.latest?.result ?? null });
+    });
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [fixed.mesh_hash, fixed.filename]);
+  const o = OUTCOME[r.outcome] ?? OUTCOME.not_cleared;
+  const sign = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${trimNum(Math.abs(x), 1)}%`;
+  const pct = r.volume_change_pct;
+  const changed = pct != null && Math.abs(pct) > 2;
+  const priceRows: Row[] = [];
+  for (const q of r.prices?.quantities ?? []) {
+    const b = r.prices?.before?.find((x) => x.qty === q);
+    const a = r.prices?.after?.find((x) => x.qty === q);
+    if (!b && !a) continue;
+    if (q !== 10 && q !== 1000 && q !== 10000 && (r.prices?.quantities.length ?? 0) > 3) continue;
+    const t = (x: typeof a) => (x?.unit_cost_usd != null ? `${money(x.unit_cost_usd)} · ${methodName(x.process).toLowerCase()}` : "none");
+    priceRows.push([`Cheapest at ${qtyWord(q)}`, t(b), t(a), a?.unit_cost_usd != null && (b?.unit_cost_usd == null || a.unit_cost_usd < b.unit_cost_usd) ? "ok" : ""]);
+  }
+  const rows: Row[] = [
+    ["Methods that can make it", `${r.original.methods_can_make.count} of ${r.original.methods_can_make.of}`, `${fixed.methods_can_make.count} of ${fixed.methods_can_make.of}`, fixed.methods_can_make.count > r.original.methods_can_make.count ? "ok" : fixed.methods_can_make.count < r.original.methods_can_make.count ? "bad" : ""],
+    ["Faces", r.original.faces?.toLocaleString("en-US") ?? "—", fixed.faces?.toLocaleString("en-US") ?? "—", ""],
+    ["Volume", r.original.volume_mm3 != null ? `${Math.round(r.original.volume_mm3).toLocaleString("en-US")} mm³` : "—", fixed.volume_mm3 != null ? `${Math.round(fixed.volume_mm3).toLocaleString("en-US")} mm³${pct != null ? ` · ${sign(pct)}` : ""}` : "—", changed ? "warn" : ""],
+    ["Verdict", r.verification?.original_verdict ?? "—", r.verification?.fixed_verdict ?? "—", ""],
+    ...priceRows,
+  ];
+  const firstAfter = r.prices?.after?.find((x) => x.unit_cost_usd != null) ?? null;
+  const firstBefore = firstAfter ? r.prices?.before?.find((x) => x.qty === firstAfter.qty) ?? null : null;
+  const figs = [
+    { k: "Methods", v: `${fixed.methods_can_make.count} of ${fixed.methods_can_make.of}`, s: `was ${r.original.methods_can_make.count} of ${r.original.methods_can_make.of}`, tone: fixed.methods_can_make.count > r.original.methods_can_make.count ? "ok" : "" },
+    firstAfter
+      ? { k: `Cheapest at ${qtyWord(firstAfter.qty)}`, v: money(firstAfter.unit_cost_usd), s: firstBefore?.unit_cost_usd != null ? `was ${money(firstBefore.unit_cost_usd)}` : `was none · ${methodName(firstAfter.process).toLowerCase()}`, tone: "ok" }
+      : { k: "Prices", v: r.prices ? "None" : "Not priced", s: r.prices ? "nothing it doesn’t block" : "", tone: "" },
+    { k: "Volume", v: pct != null ? sign(pct) : "—", s: changed ? "more than 2%" : "the shape kept", tone: changed ? "warn" : "" },
+  ];
+  const cleared = r.targeted?.cleared ?? [];
+  const remaining = r.targeted?.remaining ?? [];
+  // One line per kind of finding (the re-check reports one per method).
+  const group = (list: typeof cleared, who: (f: (typeof cleared)[number]) => { who: string; tone: string }) => {
+    const by = new Map<string, typeof cleared>();
+    for (const f of list) {
+      const t = familyOf(f.code).title;
+      by.set(t, [...(by.get(t) ?? []), f]);
+    }
+    return [...by.entries()].map(([k, fs]) => {
+      const methods = [...new Set(fs.map((f) => (f.process ? methodName(f.process) : "every method")))];
+      return { k, s: `${methods.length > 3 ? `${methods.length} methods` : methods.join(", ")} · ${tidy(fs[0].message)}`, ...who(fs[0]) };
+    });
+  };
+  const lines: { k: string; s: string; who: string; tone: string }[] = [
+    ...group(r.findings_cleared.length ? r.findings_cleared : cleared, () => ({ who: "Cleared", tone: "c-ok" })),
+    ...group(remaining, () => ({ who: "Still there", tone: "c-bad" })),
+    ...group(r.findings_new, (f) => (f.severity === "error" ? { who: "New, blocks", tone: "c-bad" } : { who: "New", tone: "c-warn" })),
+  ];
+  const origin: FixOrigin = { fileType: fixed.format.toUpperCase(), open: fixed.is_watertight === false, studio: null, server: null };
+  const left = after?.validation ? leftItems(after.validation, after.cost, origin) : [];
+  const pB = problem;
+  const setA = after?.validation ? buildProblems({ validation: after.validation, cost: after.cost }) : null;
+  const pA = setA && pB ? findProblem(setA, pB.id) : null;
+  const alignedB = mesh.faceSpace === "analysis" && !!mesh.faceHash && mesh.faceHash === p.data.validation?.analysis_mesh_hash;
+  const done = () => {
+    if (keep === 0) {
+      if (p.data.key) clearRun(p.data.key);
+      router.push(R.part(fixed.mesh_hash));
+      return;
+    }
+    fx.setAfter(false);
+    p.toast({ text: `Keeping your file. The fixed copy stays in Parts as ${fixed.filename ?? "a new part"}.`, link: { label: "Open it", href: R.part(fixed.mesh_hash) } });
+  };
+  const body = (
+    <Pair
+      a={{ title: "Before", right: "your file", url: mesh.url, kind: mesh.kind, highlight: pinFor(pB, "1", alignedB), tagHead: "Your file", tagText: [r.original.faces != null ? `${r.original.faces.toLocaleString("en-US")} faces` : null, r.original.volume_mm3 != null ? `${Math.round(r.original.volume_mm3).toLocaleString("en-US")} mm³` : null, pB?.where].filter(Boolean).join(" · "), tagCls: "", aria: "Your file. Drag, or use the arrow keys, to turn both." }}
+      b={{ title: "After", right: "fixed copy", url: after?.url ?? null, kind: "glb", highlight: pA ? pinFor(pA, "1", !!after?.aligned) : null, tagHead: "Fixed copy", tagText: [fixed.faces != null ? `${fixed.faces.toLocaleString("en-US")} faces` : null, fixed.volume_mm3 != null ? `${Math.round(fixed.volume_mm3).toLocaleString("en-US")} mm³${pct != null ? `, ${sign(pct)}` : ""}` : null, o.chip.toLowerCase()].filter(Boolean).join(" · "), tagCls: r.outcome === "cleared" && !changed ? "ok" : "warn", aria: "The fixed copy. Drag, or use the arrow keys, to turn both." }}
+    />
+  );
+  const sheet = (
+    <>
+      <div className="top">
+        <span className={cx("chip", o.tone)} style={{ marginBottom: 10 }}>
+          <i />
+          {o.chip}
+        </span>
+        <h2 className="stitle">
+          {r.fix.label}: {o.title}
+        </h2>
+        <p className="smeta">{[r.fix.method, r.details.duration_ms != null ? `${(Number(r.details.duration_ms) / 1000).toFixed(1)} s` : null, r.verification?.reverified ? "checked like an upload" : null, r.verification ? (r.verification.checks_used === 0 ? "no check used" : `${r.verification.checks_used} check used`) : null].filter(Boolean).join(" · ")}</p>
+        <div className="figs" aria-live="polite">
+          {figs.map((g) => (
+            <div className="fig" key={g.k}>
+              <span>{g.k}</span>
+              <b className={cx("num", g.tone, !/^[$\d−+]/.test(g.v) && "t")}>{g.v}</b>
+              <small>{g.s}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="scroll">
+        {r.volume_warning ? (
+          <div className="kwarn" role="note" style={{ marginTop: 8 }}>
+            <b>The shape changed</b>
+            <span>{r.volume_warning}</span>
+          </div>
+        ) : null}
+        {r.notes.length ? (
+          <div className="kwarn" role="note" style={{ marginTop: 8, background: "rgba(20,24,31,.035)", color: "var(--ink2)" }}>
+            {r.notes.map((n) => (
+              <span key={n}>{n}</span>
+            ))}
+          </div>
+        ) : null}
+        <Changed colA="Your file" colB="Fixed copy" right={r.prices ? `${r.prices.material_class === "polymer" ? "plastic" : r.prices.material_class}` : ""} rows={rows} foot={r.prices?.note ?? "Model prices, not quotes."} />
+        <Left title="What the re-check says" items={lines} n={`${r.findings_cleared.length} findings cleared · ${r.findings_new.length} new`} />
+        {after?.validation ? <Left items={left} n={`${left.length} on the copy`} /> : null}
+        <Keep opts={[["Use the fixed copy", "It’s saved as a new part, linked to your file. Open it to price, decide and share it."], ["Keep using my file", "The fixed copy stays in Parts; nothing else changes."]]} keep={keep} setKeep={setKeep} />
+        <p className="khash">SHA-256 · your file {r.verification?.original_sha256.slice(0, 8) ?? r.original.sha256.slice(0, 8)}… · fixed copy {fixed.sha256.slice(0, 8)}…</p>
+      </div>
+      <div className="kact">
+        <button className="btn ink" type="button" onClick={done}>
+          {keep === 0 ? "Open the fixed copy" : "Back to my file"}
+        </button>
+        <a className="btn" href={fixedFileUrl(fixed.mesh_hash)} download={fixed.filename ?? undefined}>
+          Download the fixed {fixed.format.toUpperCase()}
+        </a>
+        <small>
+          Your file is unchanged. The copy was checked in the same request{r.verification?.checks_used === 0 ? " and didn’t use a check" : ""}.{" "}
+          <button className="btn sm ghost" type="button" style={{ height: 22, padding: "0 4px" }} onClick={() => (fx.setAfter(false), fx.openAsk(run.problem, "upload"))}>
+            Steps for your CAD tool
+          </button>
+        </small>
+      </div>
+    </>
+  );
+  return shell(body, sheet, `${r.fix.label} · the fixed copy is saved as a new part`);
 }

@@ -23,6 +23,8 @@ import {
   type Method,
 } from "./model";
 import { RunNotice, SheetTop, classLabel, envLine, type FigItem } from "./sheet-bits";
+import { useFix } from "../fix/ctx";
+import { problemForIssue } from "../fix/problems";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -152,6 +154,26 @@ function Identity() {
   );
 }
 
+/** Find and fix: every problem on the part, ranked by what fixing it unlocks (board K4). */
+function ProblemsEntry() {
+  const fx = useFix();
+  const n = fx.set.problems.length;
+  if (!n) return null;
+  const blocking = fx.set.problems.filter((x) => x.severity === "error").length;
+  return (
+    <div className="gh" style={{ marginTop: 6 }}>
+      <span>
+        {plural(n, "problem")} on this part{blocking ? ` · ${blocking} ${blocking === 1 ? "stops" : "stop"} methods` : ""}
+      </span>
+      <span>
+        <button className="btn sm ghost" type="button" onClick={() => fx.openAll()} style={{ height: 24 }}>
+          All problems
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function Fixes() {
   const p = usePart();
   const [open, setOpen] = React.useState(false);
@@ -269,6 +291,7 @@ export function MakeSheet() {
               })
             )}
             {p.data.cost && p.data.cost.material_class === "polymer" && p.rows.some((m) => m.members.length > 1) ? null : null}
+            {!p.checking ? <ProblemsEntry /> : null}
             <Fixes />
           </div>
         ) : null}
@@ -279,6 +302,9 @@ export function MakeSheet() {
 
 function Detail({ m, pricing }: { m: Method; pricing: boolean }) {
   const p = usePart();
+  const fx = useFix();
+  // The problem behind this method's finding, or the first one that stops it.
+  const problem = problemForIssue(fx.set, m.finding?.issue.code) ?? fx.set.problems.find((x) => m.members.some((c) => x.blocks.includes(c))) ?? null;
   const kind = m.finding?.kind ?? null;
   const lit = !!kind && (m.finding?.faces.length ?? 0) > 0;
   const price = !pricing && !p.costOff ? priceMeta(m, p.q) : null;
@@ -293,11 +319,18 @@ function Detail({ m, pricing }: { m: Method; pricing: boolean }) {
       </div>
       <span style={{ color: "var(--ink3)" }}>{meta}</span>
       {m.members.length > 1 ? <span style={{ color: "var(--ink3)" }}>{m.members.map(methodName).join(", ")}</span> : null}
-      {lit && p.canTurn ? (
-        <span>
-          <button className="btn sm" type="button" onClick={p.turnTo}>
-            Turn to it
-          </button>
+      {(lit && p.canTurn) || (problem && !p.checking) ? (
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {lit && p.canTurn ? (
+            <button className="btn sm" type="button" onClick={p.turnTo}>
+              Turn to it
+            </button>
+          ) : null}
+          {problem && !p.checking ? (
+            <button className="btn sm" type="button" onClick={() => fx.openProblem(problem.id, m.members.length === 1 ? m.code : null)}>
+              The problem and its fix
+            </button>
+          ) : null}
         </span>
       ) : null}
     </div>

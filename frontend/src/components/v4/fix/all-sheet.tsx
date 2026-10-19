@@ -8,7 +8,7 @@ import { usePart } from "../part/ctx";
 import { classLabel } from "../part/sheet-bits";
 import { cheapestAt, money, priceAt, qtyWord } from "../part/model";
 import { allQuantities, defaultMethod, useFix } from "./ctx";
-import { fixText, measuredFig, type Problem } from "./problems";
+import { fixText, measuredFig, needText, type Problem } from "./problems";
 import { placeName, placesOf, type Unlock } from "./rank";
 import { fixRoute, whoFixes } from "./capabilities";
 import { useUploadFixed } from "./problem-sheet";
@@ -24,7 +24,8 @@ export function newCheckLine(usage: { unlimited: boolean; remaining: number } | 
 function needsLine(p: Problem): string {
   const groups = new Map<string, string[]>();
   for (const m of p.methods) {
-    const k = m.need == null ? "" : m.unit === "deg" ? `${m.need}°` : m.unit === "mm" ? `${m.need.toFixed(1)} mm` : String(m.need);
+    const nt = needText(m);
+    const k = nt == null ? "" : m.dir === "max" ? `at most ${nt}` : nt;
     if (!k) continue;
     (groups.get(k) ?? groups.set(k, []).get(k)!).push(m.name.charAt(0).toLowerCase() + m.name.slice(1));
   }
@@ -57,7 +58,7 @@ export function AllProblemsSheet() {
   const figs = [
     today ? { k: "Cheapest today", v: money(priceAt(today, q)), s: today.name.toLowerCase(), tone: "" } : { k: "Cheapest today", v: p.data.cost ? "None" : "Not priced", s: p.data.cost ? "all blocked" : "analysis only", tone: p.data.cost ? "bad" : "" },
     first ? { k: "First fix", v: first.value.replace(/ each$/, ""), s: placeName(first.problem).toLowerCase(), tone: first.tier <= 1 ? "ok" : "" } : { k: "First fix", v: "None", s: "nothing to unlock", tone: "" },
-    { k: "ScaleCAD fixes", v: `${fixable.length} of ${n}`, s: fixable.length ? (firstFix?.kind === "repair" ? "mesh repair, on a copy" : firstFix?.kind === "studio" ? `as revision ${(fx.origin.studio?.currentRevision ?? 0) + 1}` : "on a copy") : "by itself", tone: "" },
+    { k: "ScaleCAD fixes", v: `${fixable.length} of ${n}`, s: fixable.length ? (firstFix?.kind === "repair" ? "mesh repair, on a copy" : firstFix?.kind === "studio" ? `as revision ${(fx.origin.studio?.currentRevision ?? 0) + 1}` : "on a copy, pilot") : "by itself", tone: "" },
   ];
   const row = (u: Unlock) => {
     const P = u.problem;
@@ -124,9 +125,9 @@ export function AllProblemsSheet() {
     ? fixable.length
       ? `${fixable.map((u) => u.problem.title.toLowerCase()).join(", ")}: as revision ${fx.origin.studio.currentRevision + 1}, then a check. The rest aren’t template parameters; download the STEP from Design Studio to change them in your CAD tool.`
       : "None of these is a template parameter. Download the STEP from Design Studio to change them in your CAD tool."
-    : fx.origin.open
-      ? "The open shell, with mesh repair on a copy (a pilot tool). Everything else is a change in your CAD tool; upload the new file and it’s checked again."
-      : `This is a closed ${ext}. Mesh repair only closes open shells, and ScaleCAD doesn’t edit CAD geometry. Each fix is a change in your CAD tool; upload the new file and it’s checked again.`;
+    : fixable.length
+      ? `${fixable.map((u) => { const r = fixRoute(u.problem, fx.origin); return `${u.problem.title.toLowerCase()} (${r?.kind === "repair" ? "mesh repair" : r?.kind === "server" ? r.fix.label.toLowerCase() : "a fix"})`; }).join(", ").replace(/^./, (c) => c.toUpperCase())}: on a copy of your file, checked again before you keep anything (a pilot tool). The rest are changes in your CAD tool; upload the new file and it’s checked again.`
+      : `ScaleCAD can’t fix any of these on this ${ext} itself. ${fx.origin.server?.available.length ? `On uploaded files it can ${fx.origin.server.available.map((a) => a.label.toLowerCase()).join(", ")}, where the check asks for it, and close open meshes. ` : "It closes open meshes (mesh repair). "}Each fix here is a change in your CAD tool; upload the new file and it’s checked again.`;
   return (
     <>
       <div className="top">
@@ -192,7 +193,7 @@ export function AllProblemsSheet() {
         <p>{faText}</p>
         <div className="row">
           {fixable.length && firstFix ? (
-            <button className="btn ink sm" type="button" onClick={() => fx.openAsk(fixable[0].problem.id, firstFix.kind === "repair" ? "repair" : firstFix.kind === "studio" ? "studio" : "upload")}>
+            <button className="btn ink sm" type="button" onClick={() => fx.openAsk(fixable[0].problem.id, firstFix.kind)}>
               Fix what ScaleCAD can
             </button>
           ) : null}

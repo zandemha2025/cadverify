@@ -22,7 +22,7 @@ import { blockersByMethod, unlockOf, unlockQty } from "./rank";
 import { fixRoute, studioValueProblem, type StudioParam } from "./capabilities";
 import { CAD_TOOLS, cadPath } from "./cad-tools";
 import type { CadToolId } from "./cad-steps";
-import { markStudioDone, startRepair, startStudioRevision, useFixRun, type RepairRun, type StudioRun } from "./runs";
+import { markStudioDone, startRepair, startServerFix, startStudioRevision, useFixRun, type RepairRun, type ServerRun, type StudioRun } from "./runs";
 import { newCheckLine } from "./all-sheet";
 import type { Failure } from "../part/store";
 
@@ -116,6 +116,8 @@ export function AskDialog({ file }: { file: File | null }) {
           <RepairBody P={P} file={file} close={close} />
         ) : ask.variant === "studio" ? (
           <StudioBody P={P} close={close} />
+        ) : ask.variant === "server" ? (
+          <ServerBody P={P} close={close} />
         ) : (
           <UploadBody P={P} close={close} />
         )}
@@ -189,7 +191,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           : [{ k: rr.s === "failed" ? "Repair didn’t close it" : rr.s === "plan" ? "Repair is a pilot tool" : "The repair didn’t run", s: "", c: "bad" }];
     return (
       <>
-        <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · Pilot" title={rr.s === "running" ? "Repairing a copy" : rr.s === "fixed" ? "Repaired copy ready" : "Not repaired"} text="Working on a copy. Your file stays as it is." close={close} />
+        <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · Pilot" title={rr.s === "running" ? "Repairing a copy" : rr.s === "fixed" ? "Repaired copy ready" : "Not repaired"} text={rr.s === "running" ? "Working on a copy. Your file stays as it is." : "Your file stays as it is."} close={close} />
         <div className="db" aria-live="polite">
           <div className="gh">
             <span>Progress</span>
@@ -215,12 +217,14 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
               <span>{rr.msg}</span>
             </div>
           ) : null}
-          <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 13 }}>You can use other pages meanwhile. Nothing is kept until you choose.</p>
+          <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 13 }}>{rr.s === "running" || done ? "You can use other pages meanwhile. Nothing is kept until you choose." : "Nothing was made or saved."}</p>
         </div>
         <div className="df">
-          <button className="btn ink" type="button" aria-disabled={!done} onClick={() => done && (fx.closeAsk(), fx.setAfter(true))} style={!done ? { opacity: 0.45, cursor: "default" } : undefined}>
-            See the result
-          </button>
+          {rr.s === "running" || done ? (
+            <button className="btn ink" type="button" aria-disabled={!done} onClick={() => done && (fx.closeAsk(), fx.setAfter(true))} style={!done ? { opacity: 0.45, cursor: "default" } : undefined}>
+              See the result
+            </button>
+          ) : null}
           {rr.s === "error" || rr.s === "failed" ? (
             <button className="btn" type="button" onClick={go} disabled={!src}>
               Try again
@@ -586,6 +590,217 @@ function templateSize(plan: StudioRun["from"]["plan"]): string {
   return `${plan.width_mm} × ${plan.depth_mm} × ${plan.height_mm} mm`;
 }
 
+/* ── a fix the server makes on a copy of the kept CAD ─────────────────── */
+
+const PARAM_LABEL: Record<string, string> = { diameter_mm: "Hole diameter", radius_mm: "Fillet radius", angle_deg: "Draft" };
+
+function ServerBody({ P, close }: { P: Problem; close: () => void }) {
+  const p = usePart();
+  const fx = useFix();
+  const key = p.data.key ?? "";
+  const run = useFixRun(key);
+  const sr = run?.kind === "server" ? (run as ServerRun) : null;
+  const route = fixRoute(P, fx.origin);
+  const fix = route?.kind === "server" ? route.fix : sr?.fix ?? null;
+  const [raw, setRaw] = React.useState(() => (fix?.value != null ? String(fix.value) : ""));
+  if (!fix) return null;
+  const label = fix.label;
+  const lowerLabel = label.charAt(0).toLowerCase() + label.slice(1);
+  const unit = fix.unit === "deg" ? "°" : fix.unit === "mm" ? " mm" : "";
+  const v = Number(raw.replace(",", "."));
+  const err = fix.param ? (!raw.trim() || !Number.isFinite(v) ? "Enter a number." : fix.bounds && (v < fix.bounds[0] || v > fix.bounds[1]) ? `Use ${fix.bounds[0]} to ${fix.bounds[1]}${unit}.` : null) : null;
+  const fmt = (x: number) => `${trimNum(x, 2)}${unit}`;
+  // What the check asks for, by method, against the value (drain holes: 3.0 mm filament … 5.0 mm nylon powder).
+  const groups = new Map<number, ProblemMethod[]>();
+  for (const m of P.methods) if (m.need != null) (groups.get(m.need) ?? groups.set(m.need, []).get(m.need)!).push(m);
+  const mins = fix.param ? [...groups.entries()].sort((a, b) => a[0] - b[0]) : [];
+  const qty = p.qs.length ? p.qs : undefined;
+  const go = () => {
+    if (err || !key) return;
+    startServerFix(key, P.id, fix, fix.param ? v : null, { qty, materialClass: p.data.cost?.material_class ?? null });
+  };
+  const alts = (
+    <>
+      {P.id === "open" && fx.origin.open ? (
+        <button className="btn ghost" type="button" onClick={() => fx.openAsk(P.id, "repair")}>
+          Try mesh repair instead
+        </button>
+      ) : null}
+      <button className="btn ghost sp" type="button" onClick={() => fx.openAsk(P.id, "upload")}>
+        Steps for your CAD tool
+      </button>
+    </>
+  );
+  if (sr) {
+    const done = sr.s === "done" && sr.r.applied;
+    const r = sr.s === "done" ? sr.r : null;
+    const outcome = r?.outcome;
+    const steps: Step[] =
+      sr.s === "running"
+        ? [
+            { k: `${label} on a copy`, s: `${fix.method} · isolated CAD process`, c: "now" },
+            { k: "Checking the copy", s: "the same check as an upload, then prices for both", c: "wait" },
+            { k: "Comparing both", s: "what it cleared, what’s new, the volume", c: "wait" },
+          ]
+        : r && r.applied
+          ? [
+              { k: `${label}: done`, s: `${r.fix.method}${r.details.duration_ms != null ? ` · ${(Number(r.details.duration_ms) / 1000).toFixed(1)} s` : ""}`, c: "done" },
+              { k: "Checked the copy", s: `verdict ${r.verification?.fixed_verdict ?? "—"}, was ${r.verification?.original_verdict ?? "—"}${r.verification ? ` · ${r.verification.checks_used === 0 ? "no check used" : `${r.verification.checks_used} check used`}` : ""}`, c: "done" },
+              { k: outcome === "cleared" ? "The re-check cleared it" : outcome === "partly_cleared" ? "The re-check cleared some of it" : outcome === "nothing_to_clear" ? "Nothing to clear" : "The re-check still shows it", s: "compare both before you use the copy", c: outcome === "cleared" || outcome === "partly_cleared" ? "done" : "bad" },
+            ]
+          : [{ k: sr.s === "plan" ? "Fixes here are a pilot tool" : "Not made", s: "", c: "bad" }];
+    return (
+      <>
+        <Head who={sr.s === "running" || done ? "ScaleCAD can fix this" : "ScaleCAD tried this"} whoTone={sr.s === "running" || done ? "c-ok" : "c-unk"} kind={`${label} · Pilot`} title={sr.s === "running" ? `${label}: working on a copy` : done ? "Fixed copy ready" : "Not fixed"} text="Your file stays as it is." close={close} />
+        <div className="db" aria-live="polite">
+          <div className="gh">
+            <span>Progress</span>
+            <span>{sr.value != null ? fmt(sr.value) : ""}</span>
+          </div>
+          <Steps steps={steps} />
+          {sr.s === "done" && !sr.r.applied ? (
+            <div className="kbad" role="alert">
+              <b>Nothing was made</b>
+              <span>{sr.r.reason ?? "The fix didn’t produce a file."}</span>
+            </div>
+          ) : sr.s === "plan" ? (
+            <div className="kbad" role="alert">
+              <b>Not on this plan</b>
+              <span>Fixes ScaleCAD makes itself come with a pilot or Enterprise plan. Nothing ran.</span>
+              <span>
+                <Link href={R.billing}>Plans</Link>
+              </span>
+            </div>
+          ) : sr.s === "error" ? (
+            <div className="kbad" role="alert">
+              <b>The fix didn’t run</b>
+              <span>{sr.msg}</span>
+            </div>
+          ) : null}
+          {r?.applied && (outcome === "not_cleared" || outcome === "partly_cleared") && r.notes.length ? <p style={{ margin: "10px 12px 0", color: "var(--ink2)", fontSize: 13 }}>{r.notes[0]}</p> : null}
+          <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 13 }}>{sr.s === "running" ? "This takes up to a minute or two: the edit, then a full check and prices for both files. You can use other pages meanwhile." : done ? "The copy is saved as a new part, linked to your file." : "Nothing was saved."}</p>
+        </div>
+        <div className="df">
+          {sr.s === "running" || done ? (
+            <button className="btn ink" type="button" aria-disabled={!done} onClick={() => done && (fx.closeAsk(), fx.setAfter(true))} style={!done ? { opacity: 0.45, cursor: "default" } : undefined}>
+              See the result
+            </button>
+          ) : null}
+          {sr.s === "error" ? (
+            <button className="btn" type="button" onClick={go}>
+              Try again
+            </button>
+          ) : null}
+          <button className="btn" type="button" onClick={() => fx.closeAsk()}>
+            Close
+          </button>
+          {sr.s !== "running" && !done ? alts : null}
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      <Head who="ScaleCAD can fix this" whoTone="c-ok" kind={`${label} · Pilot`} title={`${label} on a copy?`} text={`ScaleCAD can ${lowerLabel} on a copy of ${p.data.fileName}, then check the copy like an upload. Your file stays as it is.`} close={close} />
+      <div className="db">
+        <div className="gh">
+          <span>The change</span>
+          <span className="kcode">{P.codes.join(" · ")}</span>
+        </div>
+        {fix.param ? (
+          <div className="kptab">
+            <div className="r">
+              <span>Parameter</span>
+              <span>Check asks</span>
+              <span>This copy</span>
+            </div>
+            <div className="r">
+              <span>
+                <b style={{ fontWeight: 600 }}>{PARAM_LABEL[fix.param] ?? fix.param}</b>
+              </span>
+              <span className="num">{mins.length ? `${fmt(mins[0][0])}–${fmt(mins[mins.length - 1][0])}`.replace(/^(.+)–\1$/, "$1") : fix.value != null ? fmt(fix.value) : "—"}</span>
+              <label style={{ display: "block" }}>
+                <span className="sr">
+                  {PARAM_LABEL[fix.param] ?? fix.param}, {fix.unit === "deg" ? "degrees" : "mm"}
+                </span>
+                <input type="number" min={fix.bounds?.[0]} max={fix.bounds?.[1]} step={0.5} inputMode="decimal" value={raw} aria-invalid={!!err} aria-describedby={err ? "k2-err-srv" : undefined} onChange={(e) => setRaw(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        ) : (
+          <p className="kchange">
+            {label}: no setting. {fix.method}.
+          </p>
+        )}
+        {err ? (
+          <p className="kerr" id="k2-err-srv" role="alert">
+            {err}
+          </p>
+        ) : null}
+        {mins.length ? (
+          <>
+            <div className="gh" style={{ marginTop: 6 }}>
+              <span>Against the check’s minimums</span>
+              <span>{!err ? `${mins.filter(([need]) => v >= need - 1e-9).length} of ${mins.length} met` : ""}</span>
+            </div>
+            <div className="kclr" aria-live="polite">
+              {mins.map(([need, ms]) => {
+                const ok = !err && v >= need - 1e-9;
+                return (
+                  <div key={need} className={cx("c", ok ? "ok" : "no")}>
+                    <span className="m" aria-hidden="true">
+                      {ok ? "✓" : "✗"}
+                    </span>
+                    <span className="q">{fmt(need)}</span>
+                    <span>
+                      <span className="sr">{ok ? "Met: " : "Not met: "}</span>
+                      {[...new Set(ms.map((m) => m.name))].join(", ")}
+                      <small>{ok ? "met" : err ? "" : `short by ${fmt(need - v)}`}</small>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+        {fix.lastAttempt ? (
+          <p style={{ margin: "8px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>Last time on this part: {fix.lastAttempt}</p>
+        ) : null}
+        <div className="gh" style={{ marginTop: 6 }}>
+          <span>What happens</span>
+          <span>on a copy</span>
+        </div>
+        <Steps
+          steps={[
+            { k: `${label} on a copy`, s: `${fix.method}, in an isolated CAD process`, c: "" },
+            { k: "Checks the copy", s: "The same check as an upload, then prices for both files", c: "" },
+            { k: "Shows both side by side", s: "What it cleared, anything new, the change in volume", c: "" },
+          ]}
+        />
+        <div className="kwarn" role="note">
+          <b>Compare before you use it</b>
+          <span>The copy is a new part, linked to your file. If the volume changes by more than 2%, or the copy has a new problem, ScaleCAD says so.</span>
+        </div>
+        <div className="kv" style={{ marginTop: 6 }}>
+          <span>Plan</span>
+          <b>Pilot · doesn’t use a check</b>
+          <span>Your file</span>
+          <b>Unchanged · the fix works on a copy</b>
+        </div>
+      </div>
+      <div className="df">
+        <button className="btn ink" type="button" aria-disabled={!!err} onClick={go} style={err ? { opacity: 0.45, cursor: "default" } : undefined}>
+          Fix a copy
+        </button>
+        <button className="btn" type="button" onClick={close}>
+          Not now
+        </button>
+        {alts}
+      </div>
+    </>
+  );
+}
+
 /* ── uploaded CAD: steps in the user's own tool ───────────────────────── */
 
 const TOOL_KEY = "scalecad.fix.cad-tool";
@@ -752,14 +967,40 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
           {up.el}
           <span>{newCheckLine(shell.usage, "Checked like any upload and saved as a new part")}</span>
         </div>
-        <div className="kprop">
-          <span className="chip c-unk">
-            <i />
-            Not available yet
-          </span>
-          <b>{P.title}, fixed automatically</b>
-          <span>Changing CAD geometry needs a CAD editing kernel. Today ScaleCAD fixes only open meshes (mesh repair, on a copy) and Design Studio parts (a new revision).</span>
-        </div>
+        {(() => {
+          const r = fixRoute(P, fx.origin);
+          if (r && r.kind !== "studio")
+            return (
+              <div className="kprop">
+                <span className="chip c-ok">
+                  <i />
+                  ScaleCAD can do this itself
+                </span>
+                <b>{r.kind === "repair" ? "Mesh repair, on a copy" : `${r.fix.label}, on a copy`}</b>
+                <span>It makes the change on a copy, checks the copy and shows both. Your file stays as it is.</span>
+                <span>
+                  <button className="btn sm" type="button" onClick={() => fx.openAsk(P.id, r.kind === "repair" ? "repair" : "server")}>
+                    Fix it here
+                  </button>
+                </span>
+              </div>
+            );
+          const why = fx.origin.server?.byFamily[P.id]?.whyNot ?? null;
+          const can = fx.origin.server?.available.map((a) => a.label.toLowerCase()) ?? [];
+          return (
+            <div className="kprop">
+              <span className="chip c-unk">
+                <i />
+                Not available yet
+              </span>
+              <b>{P.title}, fixed automatically</b>
+              <span>
+                {why && !/OpenCASCADE|CAD_FIX/.test(why) ? `${why} ` : P.id === "draft" ? "ScaleCAD doesn’t add draft to an uploaded file yet. " : ""}
+                Today ScaleCAD fixes open meshes (mesh repair){can.length ? `; on uploaded files it can also ${can.join(", ")} where the check asks for it` : ""}; and Design Studio parts, as a new revision.
+              </span>
+            </div>
+          );
+        })()}
       </div>
       <div className="df">
         <button className="btn" type="button" onClick={close}>
