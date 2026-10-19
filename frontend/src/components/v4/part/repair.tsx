@@ -18,19 +18,49 @@ import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
 
-type Out =
-  | { s: "ready" }
-  | { s: "running" }
+/** What one repair request came back with (shared with the find-and-fix dialog). */
+export type RepairOutcome =
   | { s: "plan" }
   | { s: "error"; msg: string }
   | { s: "failed"; r: RepairResult }
   | { s: "fixed"; r: RepairResult; file: File; url: string };
+
+type Out = { s: "ready" } | { s: "running" } | RepairOutcome;
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+/** POST /validate/repair on a copy of the file: a pilot tool; it doesn't use a check. */
+export async function runRepair(file: File): Promise<RepairOutcome> {
+  const form = new FormData();
+  form.append("file", file);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/validate/repair`, { method: "POST", body: form });
+  } catch {
+    return { s: "error", msg: "The repair couldn't reach the server. Try again." };
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const code = (body as { code?: string; detail?: { code?: string } } | null)?.code ?? (body as { detail?: { code?: string } } | null)?.detail?.code;
+    if (res.status === 403 && code === "paid_access_required") return { s: "plan" };
+    return { s: "error", msg: apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "repair" }) };
+  }
+  const r = body as RepairResult;
+  if (!r.repair_applied || !r.repaired_file_b64) return { s: "failed", r };
+  const name = r.repair_verification?.download_filename ?? `${file.name.replace(/\.[^.]+$/, "")}-repaired.stl`;
+  const bytes = b64ToBytes(r.repaired_file_b64);
+  const fixed = new File([bytes.buffer as ArrayBuffer], name, { type: "model/stl" });
+  return { s: "fixed", r, file: fixed, url: URL.createObjectURL(fixed) };
+}
+
+/** Why a repair didn't close the shell, in the engine's words. */
+export function repairFailedReason(r: RepairResult): string {
+  return (r.repair_details as { reason?: string }).reason ?? r.repair_details.error ?? "Repair did not produce a watertight solid.";
 }
 
 export function RepairView({ session, onPick, onBack }: { session: CheckSession; onPick: (f: File) => void; onBack: () => void }) {
@@ -50,27 +80,7 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
 
   const run = async () => {
     setOut({ s: "running" });
-    const form = new FormData();
-    form.append("file", session.file);
-    let res: Response;
-    try {
-      res = await fetch(`${API_BASE}/validate/repair`, { method: "POST", body: form });
-    } catch {
-      setOut({ s: "error", msg: "The repair couldn't reach the server. Try again." });
-      return;
-    }
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      const code = (body as { code?: string; detail?: { code?: string } } | null)?.code ?? (body as { detail?: { code?: string } } | null)?.detail?.code;
-      if (res.status === 403 && code === "paid_access_required") return setOut({ s: "plan" });
-      return setOut({ s: "error", msg: apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "repair" }) });
-    }
-    const r = body as RepairResult;
-    if (!r.repair_applied || !r.repaired_file_b64) return setOut({ s: "failed", r });
-    const name = r.repair_verification?.download_filename ?? `${session.file.name.replace(/\.[^.]+$/, "")}-repaired.stl`;
-    const bytes = b64ToBytes(r.repaired_file_b64);
-    const file = new File([bytes.buffer as ArrayBuffer], name, { type: "model/stl" });
-    setOut({ s: "fixed", r, file, url: URL.createObjectURL(file) });
+    setOut(await runRepair(session.file));
   };
 
   const fixed = out.s === "fixed" ? out : null;
@@ -85,7 +95,7 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
         { k: "Open edges", v: edges != null ? edges.toLocaleString("en-US") : "—", s: "not a closed solid", tone: "bad" },
         { k: "Methods", v: `0 of ${v?.process_scores.length ?? 21}`, s: "need a closed solid" },
       ];
-  const failedReason = out.s === "failed" ? ((out.r.repair_details as { reason?: string }).reason ?? out.r.repair_details.error ?? "Repair did not produce a watertight solid.") : null;
+  const failedReason = out.s === "failed" ? repairFailedReason(out.r) : null;
   const rv = fixed?.r.repaired_analysis;
   return (
     <main className="world pv" aria-label="Repair">

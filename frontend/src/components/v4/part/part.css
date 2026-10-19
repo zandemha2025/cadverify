@@ -5,6 +5,9 @@
 
 .ob .pv .v4-pin{display:grid;place-items:center;width:26px;height:26px;border-radius:999px;background:#fff;border:2px solid currentColor;font:700 12px/1 var(--v4-sans);box-shadow:0 2px 8px rgba(20,24,31,.18);transition:opacity 140ms ease;pointer-events:none;user-select:none}
 .ob .pv .v4-pin.hid{opacity:0}
+/* The pin sits on its point; a callout (find and fix) hangs beside it. */
+.ob .pv .v4-anchor{position:relative;display:block;width:0;height:0}
+.ob .pv .v4-anchor .v4-pin{position:absolute;left:-13px;top:-13px}
 .ob .pv .obj{border:0;padding:0;background:transparent;color:inherit}
 .ob .pv .obj > canvas,.ob .pv .obj > div{border-radius:24px}
 .ob .pv .obj .hint{pointer-events:none}

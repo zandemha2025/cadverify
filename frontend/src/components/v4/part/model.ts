@@ -242,6 +242,9 @@ export function buildMethods(input: PartInputs): Method[] {
   const feasibility = new Map((cost?.engine_feasibility ?? []).map((f) => [f.process, f]));
   const codes = new Set<string>([...scores.keys(), ...estimates.map((e) => e.process), ...feasibility.keys()]);
   const best = [...scores.values()].reduce<number | null>((m, p) => (m == null || p.score > m ? p.score : m), null);
+  // A whole-file error (an open shell: "All manufacturing processes require a closed solid") stops every method,
+  // even where that method's own score passed.
+  const universalError = validation?.universal_issues?.find((i) => i.severity === "error") ?? null;
   const out: Method[] = [];
   for (const code of codes) {
     const info = METHODS[code] ?? { name: methodName(code), short: code.toUpperCase(), family: "form" as Family };
@@ -257,7 +260,7 @@ export function buildMethods(input: PartInputs): Method[] {
     const blocker = issues.find((i) => i.severity === "error")?.message ?? feas?.blockers?.[0] ?? null;
     let verdict: Verdict;
     if (excluded) verdict = "out";
-    else if (dfm === "fail" || fit?.verdict === "not_makeable") verdict = "bad";
+    else if (dfm === "fail" || fit?.verdict === "not_makeable" || universalError) verdict = "bad";
     else if (issues.some((i) => i.severity === "warning" && /_UNVERIFIED$/.test(i.code))) verdict = "warn";
     else if (dfm == null && prices.size === 0) verdict = "unk";
     else verdict = "ok";
@@ -278,7 +281,7 @@ export function buildMethods(input: PartInputs): Method[] {
       verdict,
       issues,
       finding: primaryFinding(issues),
-      blockedReason: verdict === "bad" ? dfmFailureReason(fit) ?? blocker : null,
+      blockedReason: verdict === "bad" ? universalError?.message ?? dfmFailureReason(fit) ?? blocker : null,
       excludedReason: excluded ? all.find((e) => e.environment_exclusion_reason)?.environment_exclusion_reason ?? "Ruled out by the declared service conditions." : null,
       prices,
       inHouse,

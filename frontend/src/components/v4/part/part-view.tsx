@@ -25,6 +25,12 @@ import { UseLayer, UseSheet } from "./lens-use";
 import { AskDock } from "./ask";
 import { PreviewFailed, RatesChip } from "../moments";
 import { useShell } from "../shell";
+import { FixProvider, useFixController } from "../fix/ctx";
+import { FixStage, fixHint } from "../fix/stage";
+import { ProblemSheet } from "../fix/problem-sheet";
+import { AllProblemsSheet } from "../fix/all-sheet";
+import { AskDialog } from "../fix/ask-dialog";
+import { AfterFixView } from "../fix/after-fix";
 import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
@@ -53,6 +59,7 @@ export function PartView({
   onRetryPreview,
   sourceKept = null,
   overlay,
+  file = null,
 }: {
   data: PartData;
   session: CheckSession | null;
@@ -70,6 +77,8 @@ export function PartView({
   sourceKept?: boolean | null;
   /** The progress panel or a dialog over the part. */
   overlay?: React.ReactNode;
+  /** The part's file in this browser, when there is one (a fix such as mesh repair needs the file itself). */
+  file?: File | null;
 }) {
   const [data, setData] = React.useState<PartData>(initial);
   React.useEffect(() => setData(initial), [initial]);
@@ -117,7 +126,7 @@ export function PartView({
   const has3d = !!mesh.url && viewer === "ready";
   const faceAligned = mesh.faceSpace === "analysis" && !!mesh.faceHash && mesh.faceHash === data.validation?.analysis_mesh_hash;
   const finding = sel?.finding ?? null;
-  const highlight: ViewerHighlight | null =
+  const lensHighlight: ViewerHighlight | null =
     lens === "make" && !interrupted && faceAligned && finding?.kind && finding.faces.length
       ? { faces: finding.faces, color: KIND_COLOR[finding.kind], region: finding.region, label: "1", kindClass: `k-${finding.kind}` }
       : null;
@@ -142,6 +151,20 @@ export function PartView({
     }
   }, []);
 
+  // Find and fix: one problem on the part (K1), all of them (K4), asking (K2), before and after (K3).
+  const fx = useFixController({ data, methods, qs, q, selCode: sel?.code ?? null, has3d, faceAligned, controller, xray, setXray, onOpen: () => setLens("make"), toast });
+  const fixOn = !!fx.value.view && !checking;
+  const highlight = fixOn ? fx.highlight : lensHighlight;
+  const pickLens = (l: Lens) => {
+    if (fx.value.view) fx.value.close();
+    setLens(l);
+  };
+  const openAllRef = React.useRef(fx.value.openAll);
+  React.useEffect(() => {
+    openAllRef.current = fx.value.openAll;
+  });
+  const problemCount = fx.value.set.problems.length;
+
   const value: PartCtxValue = {
     data,
     session,
@@ -154,7 +177,7 @@ export function PartView({
     oq,
     setOq,
     lens,
-    setLens,
+    setLens: pickLens,
     sel,
     setSel: setSelCode,
     costPick,
@@ -209,8 +232,9 @@ export function PartView({
     if (d?.tooling_process && d.crossover_qty) {
       items.push({ id: "crossover", group: "This part", label: `When does ${methodName(d.tooling_process).toLowerCase()} get cheaper?`, words: "crossover tooling mold molding payback", answer: { text: `From about ${qtyWord(Math.round(d.crossover_qty))} parts${d.tooling_dfm_ready ? "" : ", once the design passes its DFM"}.`, source: `cost model, ${src}` }, href: `${R.part(data.key)}?lens=cost` });
     }
+    if (problemCount) items.push({ id: "problems", group: "This part", label: "All problems on this part", sub: `${problemCount} ranked by what fixing each makes possible`, words: "problems findings fix issues dfm wrong", run: () => openAllRef.current() });
     return items;
-  }, [data.key, data.decisionId, data.cost, checking, methods, qs, views, q]);
+  }, [data.key, data.decisionId, data.cost, checking, methods, qs, views, q, problemCount]);
   useRegisterPaletteItems("part", paletteItems);
 
   // HUD facts
@@ -258,16 +282,31 @@ export function PartView({
     setOver(false);
     if (f && onDropFile) onDropFile(f);
   };
-  const objLabel = "The part. Drag, or use the arrow keys, to turn it.";
+  const objLabel = fixOn && fx.value.problem ? `The part, ${fx.value.problem.title.toLowerCase()}. Drag, or use the arrow keys, to turn it.` : "The part. Drag, or use the arrow keys, to turn it.";
+  if (fx.value.after)
+    return (
+      <PartProvider value={value}>
+        <FixProvider value={fx.value}>
+          <AfterFixView mesh={mesh} />
+        </FixProvider>
+      </PartProvider>
+    );
   return (
     <PartProvider value={value}>
+      <FixProvider value={fx.value}>
       <main className="world pv" aria-label={data.fileName}>
         <section className="stage" aria-label="The part">
           <div className="floor" />
           <div className="hud">
-            <Link href={R.parts} style={{ fontSize: 12.5, textDecoration: "none", marginBottom: 2 }}>
-              ‹ Parts
-            </Link>
+            {fixOn ? (
+              <button className="khud-back" type="button" onClick={fx.value.close}>
+                ‹ Ways to make it
+              </button>
+            ) : (
+              <Link href={R.parts} style={{ fontSize: 12.5, textDecoration: "none", marginBottom: 2 }}>
+                ‹ Parts
+              </Link>
+            )}
             <h1 title={data.fileName}>{data.fileName}</h1>
             <span className="num">{hudMeta}</span>
             <span>
@@ -332,9 +371,13 @@ export function PartView({
               }}
             >
               <span className="shade" />
-              {mesh.url ? <PartViewer url={mesh.url} kind={mesh.kind} highlight={highlight} xray={xray} controllerRef={controller} onState={setViewer} /> : null}
+              {mesh.url ? <PartViewer url={mesh.url} kind={mesh.kind} highlight={highlight} xray={xray} controllerRef={controller} onState={setViewer} markers={fixOn ? fx.markers : undefined} onPin={fx.onPin} onLit={fx.onLit} /> : null}
               {checking || mesh.loading ? <span className="scan" /> : null}
-              <span className={cx("hint", (!hint || lens !== "make" || checking || !has3d) && "gone")}>Drag to turn it</span>
+              {fixOn && fx.value.view?.kind === "problem" && has3d && fixHint(fx.value.pin, "problem", "1") ? (
+                <span className="hint">{fixHint(fx.value.pin, "problem", "1")}</span>
+              ) : (
+                <span className={cx("hint", (!hint || lens !== "make" || checking || !has3d || fixOn) && "gone")}>Drag to turn it</span>
+              )}
             </button>
           ) : (
             <div
@@ -396,6 +439,7 @@ export function PartView({
           />
 
           <DecideTicket />
+          {fixOn ? <FixStage has3d={has3d} /> : null}
 
           {toastState ? (
             <div className="toast ptoast" role="status">
@@ -410,21 +454,37 @@ export function PartView({
         </section>
 
         <aside className="sheet" aria-label="The answer">
-          {lens === "make" ? <MakeSheet /> : lens === "cost" ? <CostSheet /> : lens === "use" ? <UseSheet /> : lens === "shop" ? <ShopSheet /> : <DecideSheet />}
-          <AskDock />
+          {fixOn && fx.value.view?.kind === "problem" ? (
+            <ProblemSheet />
+          ) : fixOn && fx.value.view?.kind === "all" ? (
+            <AllProblemsSheet />
+          ) : lens === "make" ? (
+            <MakeSheet />
+          ) : lens === "cost" ? (
+            <CostSheet />
+          ) : lens === "use" ? (
+            <UseSheet />
+          ) : lens === "shop" ? (
+            <ShopSheet />
+          ) : (
+            <DecideSheet />
+          )}
+          {fixOn ? null : <AskDock />}
         </aside>
 
         <nav className="dial" aria-label="Questions about this part">
           <span className="ind" style={{ transform: `translateX(${li * 100}%)` }} aria-hidden="true" />
           {LENSES.map(([k, label, sub]) => (
-            <button key={k} type="button" className={cx(k === lens && "on")} aria-pressed={k === lens} onClick={() => setLens(k)}>
+            <button key={k} type="button" className={cx(k === lens && "on")} aria-pressed={k === lens} onClick={() => pickLens(k)}>
               {label}
               <small>{sub}</small>
             </button>
           ))}
         </nav>
         {overlay}
+        {fx.value.ask ? <AskDialog file={file} /> : null}
       </main>
+      </FixProvider>
     </PartProvider>
   );
 }

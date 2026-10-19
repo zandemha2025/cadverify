@@ -9,9 +9,14 @@
  * momentum and no zoom, arrow keys turn it a step, a numbered pin on the flagged
  * faces, "turn to it", and X-ray. The canvas sizes from layout (offsetSize), so
  * the lens dial can scale it with a CSS transform without a re-render.
+ *
+ * Find and fix adds: words next to the pin (a callout), a pin anchored on a real
+ * flagged face when the engine's region centre lies inside the part (a hollow
+ * part's centre), the mesh's own open edges drawn in red, numbered location
+ * markers, and two viewers that turn together (before and after a fix).
  */
 import * as React from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, Html, Lightformer, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -30,11 +35,35 @@ export interface ViewerHighlight {
   region: [number, number, number] | null;
   label: string;
   kindClass: string;
+  /** Words next to the pin, e.g. "0.5 mm here" / "needs 0.8 mm for 3-axis milling". */
+  callout?: { main: string; sub?: string } | null;
+  /** Draw the mesh's open (boundary) edges in red and pin the most visible one. */
+  edges?: boolean;
+  /**
+   * The engine sends at most a sample of a large finding's faces. For missing draft
+   * the rule is exact (side walls 80–100° from the file's +Z whose draft is under
+   * `deg`), so every flagged face is found again on this same mesh, and used only
+   * when the count equals the engine's own `count`.
+   */
+  draftRule?: { deg: number; count: number } | null;
 }
+
+/** A numbered place on the part (board K4), drawn dim beside the highlighted one. */
+export interface ViewerMarker {
+  key: string;
+  faces: number[];
+  region: [number, number, number] | null;
+  label: string;
+}
+
+/** Where the highlight's pin is: on view, turned away, inside the part (X-ray shows it), or nowhere. */
+export type PinState = "visible" | "hidden" | "inside" | "none";
 
 export interface ViewerApi {
   turnBy: (radians: number) => void;
   turnToHighlight: () => boolean;
+  /** Face the same way as another viewer (before and after turn together). */
+  setAngles: (azimuth: number, polar: number) => void;
 }
 
 /** A ref the viewer fills with its turn controls while it is mounted. */
@@ -119,43 +148,219 @@ function Part({
   );
 }
 
-/** The pin's position in normalised scene space: the engine's region, else the faces' centroid. */
-function pinPoint(loaded: Loaded, h: ViewerHighlight | null): THREE.Vector3 | null {
-  if (!h || !h.faces.length) return null;
-  let p: THREE.Vector3 | null = null;
-  if (h.region) p = new THREE.Vector3(...h.region).applyMatrix4(loaded.transform);
-  else {
-    const pos = loaded.geometry.getAttribute("position");
-    const acc = new THREE.Vector3();
-    let n = 0;
-    for (const f of h.faces.slice(0, 400)) {
-      for (let k = 0; k < 3; k++) {
-        const v = f * 3 + k;
-        if (v >= pos.count) continue;
-        acc.x += pos.getX(v);
-        acc.y += pos.getY(v);
-        acc.z += pos.getZ(v);
-        n++;
-      }
-    }
-    if (!n) return null;
-    p = acc.multiplyScalar(1 / n);
+const VIEW = new THREE.Vector3(0.62, 0.42, 0.66).normalize();
+
+interface Anchor {
+  point: THREE.Vector3;
+  /** The way to look from to see it: the face's normal, or out from the centre. */
+  dir: THREE.Vector3;
+  /** Inside the part (a cavity's centre): only X-ray shows it. */
+  inside: boolean;
+}
+
+function toScene(loaded: Loaded, v: THREE.Vector3): THREE.Vector3 {
+  return v.clone().sub(loaded.center).multiplyScalar(loaded.scale);
+}
+
+/**
+ * Where to pin a finding, in normalised scene space: the engine's region when it
+ * sits out on the part; else the flagged face that faces the default view and
+ * lies furthest out (a real face of the finding, not an average that can fall in
+ * mid-air); else the open edge most in view; else the region inside the part.
+ */
+function anchorOf(loaded: Loaded, faces: number[], region: [number, number, number] | null, edges: Float32Array | null): Anchor | null {
+  const radius = Math.max(1e-6, (loaded.geometry.boundingSphere?.radius ?? 1) * loaded.scale);
+  let inner: THREE.Vector3 | null = null;
+  if (region) {
+    const p = toScene(loaded, new THREE.Vector3(...region).applyMatrix4(loaded.transform));
+    if (p.length() > radius * 0.35) return { point: p.clone().multiplyScalar(1.04), dir: p.clone().normalize(), inside: false };
+    inner = p;
   }
-  const out = p.sub(loaded.center).multiplyScalar(loaded.scale);
-  // Sit just off the surface so the pin isn't hidden by the face it marks.
-  return out.length() > 1e-6 ? out.multiplyScalar(1.04) : out;
+  const pos = loaded.geometry.getAttribute("position");
+  if (faces.length && pos) {
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    let best: { score: number; point: THREE.Vector3; n: THREE.Vector3 } | null = null;
+    const step = Math.max(1, Math.floor(faces.length / 4000));
+    for (let i = 0; i < faces.length; i += step) {
+      const f = faces[i];
+      if (f * 3 + 2 >= pos.count) continue;
+      a.fromBufferAttribute(pos, f * 3);
+      b.fromBufferAttribute(pos, f * 3 + 1);
+      c.fromBufferAttribute(pos, f * 3 + 2);
+      const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+      if (n.lengthSq() < 1e-18) continue;
+      n.normalize();
+      const centroid = toScene(loaded, a.clone().add(b).add(c).multiplyScalar(1 / 3));
+      const score = n.dot(VIEW) + 0.6 * (centroid.length() / radius);
+      if (!best || score > best.score) best = { score, point: centroid, n };
+    }
+    if (best) return { point: best.point.clone().addScaledVector(best.n, 0.03), dir: best.n.clone().add(best.point.clone().normalize()).normalize(), inside: false };
+  }
+  if (edges && edges.length >= 6) {
+    let best: { score: number; p: THREE.Vector3 } | null = null;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < edges.length; i += 6) {
+      v.set((edges[i] + edges[i + 3]) / 2, (edges[i + 1] + edges[i + 4]) / 2, (edges[i + 2] + edges[i + 5]) / 2);
+      const score = v.clone().normalize().dot(VIEW) + 0.4 * (v.length() / radius);
+      if (!best || score > best.score) best = { score, p: v.clone() };
+    }
+    if (best) return { point: best.p.clone().multiplyScalar(1.04), dir: best.p.clone().normalize(), inside: false };
+  }
+  if (inner) return { point: inner, dir: VIEW.clone(), inside: true };
+  return null;
+}
+
+/** Every side-wall face under `deg` of draft along the file's +Z (the check's own rule, checks/check_draft_angles). */
+function draftFaces(loaded: Loaded, deg: number): number[] {
+  const pos = loaded.geometry.getAttribute("position");
+  if (!pos) return [];
+  const up = new THREE.Vector3(0, 0, 1).transformDirection(loaded.transform);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const e = new THREE.Vector3();
+  const out: number[] = [];
+  for (let f = 0; f * 3 + 2 < pos.count; f++) {
+    a.fromBufferAttribute(pos, f * 3);
+    b.fromBufferAttribute(pos, f * 3 + 1);
+    c.fromBufferAttribute(pos, f * 3 + 2);
+    n.subVectors(b, a).cross(e.subVectors(c, a));
+    const len = n.length();
+    if (len < 1e-18) continue;
+    const ang = (Math.acos(Math.max(-1, Math.min(1, n.dot(up) / len))) * 180) / Math.PI;
+    if (ang > 80 && ang < 100 && Math.abs(90 - ang) < deg) out.push(f);
+  }
+  return out;
+}
+
+/** The mesh's open edges (used by one triangle only), as line-segment positions in scene space. */
+function openEdgesOf(loaded: Loaded): Float32Array {
+  const pos = loaded.geometry.getAttribute("position");
+  if (!pos) return new Float32Array(0);
+  const ids = new Map<string, number>();
+  const pts: number[] = [];
+  const q = 1e4 / Math.max(1e-9, loaded.geometry.boundingSphere?.radius ?? 1);
+  const vid = (i: number) => {
+    const k = `${Math.round(pos.getX(i) * q)},${Math.round(pos.getY(i) * q)},${Math.round(pos.getZ(i) * q)}`;
+    let id = ids.get(k);
+    if (id == null) {
+      id = ids.size;
+      ids.set(k, id);
+      pts.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+    }
+    return id;
+  };
+  const tri = new Uint32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) tri[i] = vid(i);
+  const n = ids.size + 1;
+  const count = new Map<number, number>();
+  for (let t = 0; t + 2 < pos.count; t += 3) {
+    for (const [x, y] of [[tri[t], tri[t + 1]], [tri[t + 1], tri[t + 2]], [tri[t + 2], tri[t]]]) {
+      const key = x < y ? x * n + y : y * n + x;
+      count.set(key, (count.get(key) ?? 0) + 1);
+    }
+  }
+  const out: number[] = [];
+  const v = new THREE.Vector3();
+  for (const [key, c] of count) {
+    if (c !== 1) continue;
+    const x = Math.floor(key / n);
+    const y = key - x * n;
+    for (const id of [x, y]) {
+      v.set(pts[id * 3], pts[id * 3 + 1], pts[id * 3 + 2]).sub(loaded.center).multiplyScalar(loaded.scale);
+      out.push(v.x, v.y, v.z);
+    }
+  }
+  return new Float32Array(out);
+}
+
+function OpenEdges({ positions }: { positions: Float32Array }) {
+  const geo = React.useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    return g;
+  }, [positions]);
+  React.useEffect(() => () => geo.dispose(), [geo]);
+  return (
+    <lineSegments geometry={geo} renderOrder={2}>
+      <lineBasicMaterial color="#D92D20" />
+    </lineSegments>
+  );
+}
+
+/** The pin, with its callout on whichever side has room. */
+function Pin({
+  anchor,
+  label,
+  cls,
+  callout,
+  occluder,
+  xray,
+  onHidden,
+}: {
+  anchor: Anchor;
+  label: string;
+  cls: string;
+  callout?: { main: string; sub?: string } | null;
+  occluder: React.RefObject<THREE.Mesh | null>;
+  xray: boolean;
+  onHidden?: (hidden: boolean) => void;
+}) {
+  const { camera } = useThree();
+  const [hidden, setHidden] = React.useState(false);
+  const [side, setSide] = React.useState<"r" | "l">("r");
+  const sideRef = React.useRef<"r" | "l">("r");
+  useFrame(() => {
+    if (!callout) return;
+    const ndc = anchor.point.clone().project(camera);
+    const s = ndc.x > 0.2 ? "l" : "r";
+    if (s !== sideRef.current) {
+      sideRef.current = s;
+      setSide(s);
+    }
+  });
+  // Inside the part, only X-ray shows it; a raycast would always call it hidden.
+  const occlude = anchor.inside ? false : xray ? false : [occluder as React.RefObject<THREE.Object3D>];
+  const shown = anchor.inside ? xray : !hidden;
+  React.useEffect(() => {
+    onHidden?.(!shown);
+  }, [shown, onHidden]);
+  return (
+    <Html
+      position={anchor.point.toArray()}
+      zIndexRange={[3, 0]}
+      occlude={occlude}
+      onOcclude={(h) => setHidden(h)}
+      style={{ pointerEvents: "none" }}
+    >
+      <span className="v4-anchor" aria-hidden="true">
+        <span className={`v4-pin ${cls}${shown ? "" : " hid"}`}>{label}</span>
+        {callout ? (
+          <span className={`kco ${side}${shown ? "" : " hid"}`}>
+            <b>{callout.main}</b>
+            {callout.sub ? <small>{callout.sub}</small> : null}
+          </span>
+        ) : null}
+      </span>
+    </Html>
+  );
 }
 
 function Rig({
   controllerRef,
   controls,
-  pin,
+  anchor,
   reduce,
+  syncing,
 }: {
   controllerRef: ViewerController;
   controls: React.RefObject<OrbitControlsImpl | null>;
-  pin: THREE.Vector3 | null;
+  anchor: Anchor | null;
   reduce: boolean;
+  syncing: React.RefObject<boolean>;
 }) {
   const { camera, invalidate } = useThree();
   React.useEffect(() => {
@@ -168,10 +373,10 @@ function Rig({
     };
     const turnToHighlight = () => {
       const c = controls.current;
-      if (!c || !pin || pin.length() < 1e-6) return false;
+      if (!c || !anchor || anchor.dir.length() < 1e-6) return false;
       const dist = camera.position.length();
       const from = camera.position.clone().normalize();
-      const to = pin.clone().normalize();
+      const to = anchor.dir.clone().normalize();
       to.y = Math.max(-0.75, Math.min(0.85, to.y + 0.25));
       to.normalize();
       if (reduce) {
@@ -195,11 +400,21 @@ function Rig({
       requestAnimationFrame(step);
       return true;
     };
-    controllerRef.current = { turnBy, turnToHighlight };
+    const setAngles = (azimuth: number, polar: number) => {
+      const c = controls.current;
+      if (!c) return;
+      syncing.current = true;
+      c.setAzimuthalAngle(azimuth);
+      c.setPolarAngle(polar);
+      c.update();
+      syncing.current = false;
+      invalidate();
+    };
+    controllerRef.current = { turnBy, turnToHighlight, setAngles };
     return () => {
       controllerRef.current = null;
     };
-  }, [controllerRef, controls, pin, camera, invalidate, reduce]);
+  }, [controllerRef, controls, anchor, camera, invalidate, reduce, syncing]);
   return null;
 }
 
@@ -229,6 +444,10 @@ export default function PartViewer({
   controllerRef,
   onState,
   onPinHidden,
+  onPin,
+  markers,
+  onTurn,
+  onLit,
 }: {
   url: string | null;
   kind?: "glb" | "stl";
@@ -237,13 +456,21 @@ export default function PartViewer({
   controllerRef: ViewerController;
   onState: (s: ViewerState) => void;
   onPinHidden?: (hidden: boolean) => void;
+  /** Where the highlight's pin is, whenever that changes. */
+  onPin?: (state: PinState) => void;
+  /** Other numbered places on the part, drawn dim. */
+  markers?: ViewerMarker[];
+  /** The user turned it (to turn another viewer the same way). */
+  onTurn?: (azimuth: number, polar: number) => void;
+  /** How many faces are lit (the sample, or every flagged face when the rule found them all). */
+  onLit?: (count: number) => void;
 }) {
   const [loaded, setLoaded] = React.useState<Loaded | null>(null);
   const [webgl, setWebgl] = React.useState<boolean | null>(null);
   const [reduce, setReduce] = React.useState(false);
   const controls = React.useRef<OrbitControlsImpl | null>(null);
   const meshRef = React.useRef<THREE.Mesh | null>(null);
-  const [pinHidden, setPinHidden] = React.useState(false);
+  const syncing = React.useRef(false);
 
   React.useEffect(() => {
     const ok = probeWebGlSupport();
@@ -286,7 +513,44 @@ export default function PartViewer({
   }, [url, kind]);
 
   const current = loaded && loaded.url === url ? loaded : null;
-  const pin = React.useMemo(() => (current ? pinPoint(current, highlight) : null), [current, highlight]);
+  const rule = highlight?.draftRule ?? null;
+  const ruleFaces = React.useMemo(() => {
+    if (!current || !rule) return null;
+    const f = draftFaces(current, rule.deg);
+    return f.length === rule.count ? f : null;
+  }, [current, rule]);
+  const lit = React.useMemo<ViewerHighlight | null>(() => (highlight && ruleFaces ? { ...highlight, faces: ruleFaces } : highlight), [highlight, ruleFaces]);
+  React.useEffect(() => {
+    if (current) onLit?.(lit?.faces.length ?? 0);
+  }, [current, lit, onLit]);
+  const wantEdges = !!highlight?.edges;
+  const edges = React.useMemo(() => (current && wantEdges ? openEdgesOf(current) : null), [current, wantEdges]);
+  const anchor = React.useMemo(
+    () => (current && lit ? anchorOf(current, lit.faces, lit.region, edges) : null),
+    [current, lit, edges],
+  );
+  const marks = React.useMemo(
+    () => (current && markers?.length ? markers.map((m) => ({ m, a: anchorOf(current, m.faces, m.region, null) })).filter((x): x is { m: ViewerMarker; a: Anchor } => !!x.a) : []),
+    [current, markers],
+  );
+  const pinState = React.useRef<PinState | null>(null);
+  const report = React.useCallback(
+    (hidden: boolean) => {
+      const s: PinState = !anchor ? "none" : anchor.inside && !xray ? "inside" : hidden ? "hidden" : "visible";
+      onPinHidden?.(hidden);
+      if (s !== pinState.current) {
+        pinState.current = s;
+        onPin?.(s);
+      }
+    },
+    [anchor, xray, onPin, onPinHidden],
+  );
+  React.useEffect(() => {
+    if (current && !anchor && pinState.current !== "none") {
+      pinState.current = "none";
+      onPin?.("none");
+    }
+  }, [current, anchor, onPin]);
 
   if (webgl !== true || !current) return null;
   const halfY = ((current.geometry.boundingBox!.max.y - current.geometry.boundingBox!.min.y) * current.scale) / 2;
@@ -304,20 +568,18 @@ export default function PartViewer({
       <directionalLight position={[-6, 3, -5]} intensity={0.55} color="#9fb2c8" />
       <directionalLight position={[0, -4, 3]} intensity={0.25} color="#e8ecf1" />
       <React.Suspense fallback={null}>
-        <Part loaded={current} highlight={highlight} xray={xray} meshRef={meshRef} />
+        <Part loaded={current} highlight={lit} xray={xray} meshRef={meshRef} />
         <Environment resolution={128} frames={1}>
           <Lightformer form="rect" intensity={2.6} position={[0, 5, 1]} rotation={[-Math.PI / 2, 0, 0]} scale={[10, 6, 1]} color="#ffffff" />
           <Lightformer form="rect" intensity={1.1} position={[-5, 1.5, 3]} scale={[5, 6, 1]} color="#e6ebf1" />
           <Lightformer form="ring" intensity={1.1} position={[3, 4, 2]} scale={2.4} color="#ffffff" />
         </Environment>
         <ContactShadows position={[0, -halfY - 0.03, 0]} scale={TARGET * 3.2} far={TARGET * 2} blur={2.6} opacity={0.22} resolution={512} color="#14181f" frames={1} />
-        {pin && highlight ? (
-          <Html position={pin.toArray()} center zIndexRange={[3, 0]} occlude={[meshRef as React.RefObject<THREE.Object3D>]} onOcclude={(h) => { setPinHidden(h); onPinHidden?.(h); }}>
-            <span className={`v4-pin ${highlight.kindClass}${pinHidden ? " hid" : ""}`} aria-hidden="true">
-              {highlight.label}
-            </span>
-          </Html>
-        ) : null}
+        {edges && edges.length ? <OpenEdges positions={edges} /> : null}
+        {marks.map(({ m, a }) => (
+          <Pin key={m.key} anchor={a} label={m.label} cls="mark" occluder={meshRef} xray={xray} />
+        ))}
+        {anchor && highlight ? <Pin anchor={anchor} label={highlight.label} cls={highlight.kindClass} callout={highlight.callout} occluder={meshRef} xray={xray} onHidden={report} /> : null}
       </React.Suspense>
       <OrbitControls
         ref={controls}
@@ -330,9 +592,13 @@ export default function PartViewer({
         minPolarAngle={0.3}
         maxPolarAngle={Math.PI - 0.3}
         target={[0, 0, 0]}
+        onChange={() => {
+          const c = controls.current;
+          if (!syncing.current && c && onTurn) onTurn(c.getAzimuthalAngle(), c.getPolarAngle());
+        }}
       />
       <Frame loaded={current} />
-      <Rig controllerRef={controllerRef} controls={controls} pin={pin} reduce={reduce} />
+      <Rig controllerRef={controllerRef} controls={controls} anchor={anchor} reduce={reduce} syncing={syncing} />
     </Canvas>
   );
 }

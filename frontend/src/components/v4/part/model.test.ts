@@ -260,3 +260,24 @@ test("typed asks route to answers this part can give, or a refusal", () => {
   assert.deepEqual(routeAsk("why this verdict", methods), { kind: "why" });
   assert.deepEqual(routeAsk("supplier pricing pressure", methods), { kind: "refuse" });
 });
+
+test("a whole-file error (an open shell) stops every method, even one whose own score passed", () => {
+  const validation = {
+    filename: "open.iges",
+    file_type: "iges",
+    overall_verdict: "fail",
+    best_process: "dlp",
+    analysis_time_ms: 1,
+    geometry: { vertices: 3, faces: 1, volume_mm3: 0, surface_area_mm2: 1, bounding_box_mm: [20, 15, 10], is_watertight: false, is_manifold: false, center_of_mass: [0, 0, 0], units: "mm" },
+    segments: [],
+    universal_issues: [issue("NON_WATERTIGHT", "error", "Mesh is not watertight — has 945 boundary edges. All manufacturing processes require a closed solid.")],
+    process_scores: [
+      { process: "dlp", verdict: "issues", score: 1, issues: [], recommended_material: null, recommended_machine: null, estimated_cost_factor: 1 },
+      { process: "fdm", verdict: "pass", score: 1, issues: [], recommended_material: null, recommended_machine: null, estimated_cost_factor: 1 },
+    ],
+    priority_fixes: [],
+  };
+  const ms = buildMethods({ validation: validation as never, cost: null, machines: [] });
+  assert.deepEqual(ms.map((m) => m.verdict), ["bad", "bad"]);
+  assert.match(ms[0].blockedReason!, /boundary edges/);
+});

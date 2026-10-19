@@ -214,6 +214,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       onRetryPreview={session?.preview.status === "failed" ? () => retryPreview(session.id) : storedError ? () => setMeshTick((n) => n + 1) : undefined}
       sourceKept={kept}
       overlay={overlay}
+      file={file}
     />
   );
 }
