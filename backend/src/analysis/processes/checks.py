@@ -780,12 +780,27 @@ def check_undercuts_molding(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    mid_z = (ctx.info.bounding_box.min_z + ctx.info.bounding_box.max_z) / 2
-    upper = ctx.centroids[:, 2] > mid_z
-    lower = ~upper
-    uc_upper = upper & (ctx.normals[:, 2] < -0.3)
-    uc_lower = lower & (ctx.normals[:, 2] > 0.3)
-    uc_faces = np.where(uc_upper | uc_lower)[0]
+    """Faces a two-part mold opening along Z cannot release.
+
+    Uses ``ctx.z_release_blocked``: an upward face must see out along +Z and
+    a downward face along -Z. A floor inside an open cavity is reached by the
+    core through the opening and is not an undercut; a lip, side hole or
+    groove is. (Replaces a rule that assumed a parting plane at mid-height and
+    flagged every upward face in the lower half, including open floors.)
+    """
+    blocked = ctx.z_release_blocked
+    if blocked is None:
+        return [Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"Undercut check incomplete for {process.value}: release along Z "
+                "could not be traced for this mesh."
+            ),
+            process=process,
+            fix_suggestion="Verify mesh integrity via /validate/quick.",
+        )]
+    uc_faces = np.flatnonzero(blocked)
     if len(uc_faces) == 0:
         return []
     return [Issue(

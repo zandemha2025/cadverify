@@ -422,6 +422,55 @@ class GeometryContext:
                     return True
         return False
 
+    @cached_property
+    def z_release_blocked(self) -> np.ndarray | None:
+        """Faces a two-part mold opening along Z cannot release (bool per face).
+
+        A face tilted more than 10° from vertical is formed by the mold half on
+        the side it faces: an upward face by the half that lifts away along +Z,
+        a downward face by the half that drops along -Z. That half can only
+        leave if a vertical ray from the face in its direction clears the part.
+        A floor inside an open cavity sees out of the opening and passes; the
+        underside of an inward lip, the inside of a side hole and the walls of
+        a groove are shadowed and fail. Faces within 10° of vertical are side
+        walls, judged by the draft check (the same 80–100° band).
+
+        Rays are vertical, so they are cheap with the Embree backend. Without
+        it (pure-Python rays, ~0.4 ms each) a mesh with more than
+        ``RAYCAST_SAMPLE_THRESHOLD`` faces to cast in one direction is not
+        guessed from a sample, because a face's answer does not carry to its
+        neighbours (a hole's floor sits next to an open top). ``None`` then, and
+        when a ray batch fails, so callers never read "unknown" as a release.
+        """
+        count = len(self.normals)
+        blocked = np.zeros(count, dtype=bool)
+        if count == 0:
+            return blocked
+        mesh = self.mesh
+        points = _wall_sample_points(mesh)
+        eps = max(self.scale_eps, 2.0 * float(mesh.metadata.get("coordinate_error", 0.0)))
+        fast = "embree" in type(mesh.ray).__module__
+        for faces, pull in ((np.flatnonzero(self.angles_from_up_deg <= 80.0), 1.0),
+                            (np.flatnonzero(self.angles_from_up_deg >= 100.0), -1.0)):
+            if len(faces) == 0:
+                continue
+            if not fast and len(faces) > _raycast_sample_threshold():
+                logger.info("Z-release check skipped: %d rays without Embree", len(faces))
+                return None
+            hits = np.zeros(len(faces), dtype=bool)
+            batch = 65536 if fast else _wall_thickness_ray_batch()
+            for start in range(0, len(faces), batch):
+                chosen = faces[start:start + batch]
+                origins = points[chosen] + self.normals[chosen] * eps
+                directions = np.tile([0.0, 0.0, pull], (len(chosen), 1))
+                try:
+                    hits[start:start + batch] = mesh.ray.intersects_any(origins, directions)
+                except Exception:
+                    logger.warning("Z-release ray batch failed", exc_info=True)
+                    return None
+            blocked[faces] = hits
+        return blocked
+
     @property
     def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
         measured = self.flat_sheet_geometry
