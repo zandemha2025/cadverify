@@ -62,11 +62,14 @@ function useAnchors(step: TipStep, hostRef: React.RefObject<HTMLElement | null>)
 }
 
 export function Tips({
+  plan,
   step,
   onStep,
   onDone,
   teamMachines,
 }: {
+  /** the tips this part shows, fixed when they started */
+  plan: TipStep[];
   step: TipStep;
   onStep: (s: TipStep) => void;
   onDone: () => void;
@@ -84,8 +87,7 @@ export function Tips({
   }, [step, a, tipH]);
   const sel = p.sel;
   const finding = p.lens === "make" ? sel?.finding ?? null : null;
-  const hasProblem = !!finding?.kind && !!a.pin;
-  const num = tipNumber(step, hasProblem || step === "tip2");
+  const num = tipNumber(plan, step);
   const phone = typeof window !== "undefined" && window.matchMedia("(max-width:900px)").matches;
 
   // Turning the part finishes the first tip.
@@ -98,12 +100,12 @@ export function Tips({
     const move = (e: PointerEvent) => {
       if (start != null && Math.abs(e.clientX - start) > 30) {
         start = null;
-        onStep(nextTip("tip1", !!visiblePin(hostRef.current?.closest(".world") ?? null)));
+        onStep(nextTip(plan, "tip1"));
       }
     };
     const up = () => (start = null);
     const key = (e: KeyboardEvent) => {
-      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && (e.target as Element | null)?.closest?.(".obj")) onStep(nextTip("tip1", !!visiblePin(hostRef.current?.closest(".world") ?? null)));
+      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && (e.target as Element | null)?.closest?.(".obj")) onStep(nextTip(plan, "tip1"));
     };
     document.addEventListener("pointerdown", down, true);
     document.addEventListener("pointermove", move, true);
@@ -115,7 +117,7 @@ export function Tips({
       document.removeEventListener("pointerup", up, true);
       document.removeEventListener("keydown", key, true);
     };
-  }, [step, onStep]);
+  }, [step, onStep, plan]);
 
   // Esc skips the tips (when no dialog is open).
   React.useEffect(() => {
@@ -128,20 +130,10 @@ export function Tips({
     return () => window.removeEventListener("keydown", onKey);
   }, [step, onDone]);
 
-  // A problem tip with no pin on view goes on to the dial.
-  React.useEffect(() => {
-    if (step === "tip2" && !a.pin && a.host) {
-      const t = window.setTimeout(() => {
-        if (!visiblePin(hostRef.current?.closest(".world") ?? null)) onStep("tip3");
-      }, 1200);
-      return () => window.clearTimeout(t);
-    }
-  }, [step, a.pin, a.host, onStep]);
-
   if (step === "done") return <div ref={hostRef} hidden />;
 
   const faces = p.data.validation?.geometry.faces ?? p.data.cost?.geometry.face_count ?? null;
-  const next = () => onStep(nextTip(step, hasProblem));
+  const next = () => onStep(nextTip(plan, step));
   const W = 304;
   const clampX = (x: number) => (a.host ? Math.max(12, Math.min(x, a.host.w - W - 12)) : x);
 
@@ -177,10 +169,12 @@ export function Tips({
       text: `${kind ? `${KIND_WORD[kind]} marks ` : ""}${what}${n ? ` on ${n.toLocaleString("en-US")} faces` : ""}${sel ? `, for ${sel.name.toLowerCase()}` : ""}. Pick another way on the right to light its problems.`,
       live: `Tip ${num.n} of ${num.of}: problems are lit on the part.`,
     };
-    if (a.pin) {
-      const cx0 = a.pin.x + a.pin.w / 2;
-      const cy0 = a.pin.y + a.pin.h / 2;
-      ring = { left: cx0 - 22, top: cy0 - 22, width: 44, height: 44 };
+    // At the pin; without one on screen, at the part itself (its faces are lit).
+    const at = a.pin ?? (a.obj ? { x: a.obj.x + a.obj.w / 2 - 13, y: a.obj.y + a.obj.h / 2 - 13, w: 26, h: 26 } : null);
+    if (at) {
+      const cx0 = at.x + at.w / 2;
+      const cy0 = at.y + at.h / 2;
+      if (a.pin) ring = { left: cx0 - 22, top: cy0 - 22, width: 44, height: 44 };
       pos = { left: clampX(cx0 + 34), top: cy0 - 44 };
       dir = "left";
     }
@@ -209,7 +203,7 @@ export function Tips({
     }
   }
 
-  const last = step === "tip3";
+  const last = nextTip(plan, step) === "done";
   return (
     <div ref={hostRef} className="nb-tips">
       {ring && !phone ? <span className="nb-ring" aria-hidden="true" style={ring} /> : null}

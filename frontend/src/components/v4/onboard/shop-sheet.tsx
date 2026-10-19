@@ -94,6 +94,8 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
   const fileRef = React.useRef<HTMLInputElement>(null);
   const back = React.useRef<HTMLElement | null>(null);
   const keepRef = React.useRef<HTMLButtonElement>(null);
+  const chooseRef = React.useRef<HTMLButtonElement>(null);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     back.current = document.activeElement as HTMLElement | null;
@@ -106,6 +108,11 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
   React.useEffect(() => {
     if (ask) keepRef.current?.focus();
   }, [ask]);
+  React.useEffect(() => {
+    if (!needFile) return;
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    chooseRef.current?.focus();
+  }, [needFile]);
 
   const list = Array.isArray(cat) ? cat : [];
   const g = catalogGroups(list, q);
@@ -127,7 +134,8 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
 
   const close = () => {
     if (busy) return;
-    if (mine.length) setAsk(true);
+    if (needFile) onClose();
+    else if (mine.length) setAsk(true);
     else onSkip();
   };
 
@@ -232,17 +240,14 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
             </svg>
           </button>
         </div>
-        <div className="body">
+        <div className="body" ref={bodyRef}>
           {needFile ? (
             <div className="nb-need swap" role="status">
               <b>Saved: {needFile}</b>
               <span>This browser doesn’t hold {p.data.fileName} any more. Choose the same file to re-check it against your machines; re-checking the same file doesn’t use a check.</span>
               <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="btn ink sm" type="button" onClick={() => fileRef.current?.click()}>
+                <button ref={chooseRef} className="btn ink sm" type="button" onClick={() => fileRef.current?.click()}>
                   Choose {p.data.fileName}
-                </button>
-                <button className="btn sm" type="button" onClick={onClose}>
-                  Later
                 </button>
               </span>
               <input ref={fileRef} type="file" accept={CAD_ACCEPT} aria-label={`Choose ${p.data.fileName} to re-check`} tabIndex={-1} hidden onChange={(e) => {
@@ -253,127 +258,142 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
             </div>
           ) : null}
 
-          {mine.length ? (
-            <section className="mine" aria-labelledby="mine-t">
-              <div className="cg" style={{ paddingTop: 0 }}>
-                <span id="mine-t">Your machines · {mine.length}</span>
-                <span>Needed for a yes: what it cuts, heaviest part</span>
+          {needFile ? null : (
+            <>
+
+              {mine.length ? (
+                <section className="mine" aria-labelledby="mine-t">
+                  <div className="cg" style={{ paddingTop: 0 }}>
+                    <span id="mine-t">Your machines · {mine.length}</span>
+                    <span>Needed for a yes: what it cuts, heaviest part</span>
+                  </div>
+                  {mine.map((d) => (
+                    <MachineCard
+                      key={d.idx}
+                      t={list[d.idx]}
+                      d={d}
+                      partCls={partCls}
+                      partWord={partWord}
+                      fileName={p.data.fileName}
+                      rates={rates}
+                      typical={typicalRate(p.data.cost, list[d.idx].process)}
+                      onChange={(patch) => upd(d.idx, patch)}
+                      onRemove={() => toggle(d.idx)}
+                    />
+                  ))}
+                  {!rates ? (
+                    <div className="ratebar">
+                      <span>
+                        <b>Hourly rates · optional.</b> Typical rates are used until you add yours.
+                      </span>
+                      <button className="btn sm" type="button" aria-expanded="false" onClick={() => setRates(true)}>
+                        Add rates
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="fine swap">
+                      {share != null ? (
+                        <>
+                          Each machine here is priced as one you own: {Math.round(share * 100)}% of its hourly rate is treated as paid-off capital. Blank uses the typical rate
+                          {typicalEx != null ? ` ($${typicalEx}/h → $${ownedRate(typicalEx, share).toFixed(2)}/h in-house)` : ""}; a rate you enter replaces it (${exampleRate}/h → ${ownedRate(exampleRate, share).toFixed(2)}/h).
+                        </>
+                      ) : (
+                        "Each machine here is priced as one you own, without the paid-off capital share your rate card sets. Blank uses the typical rate; a rate you enter replaces it."
+                      )}
+                      {labor ? ` Labor stays ${labor.provenance === "DEFAULT" ? "typical" : "yours"} ($${labor.value}/h) until you set it in Rates.` : " Labor is set in Rates."}
+                    </p>
+                  )}
+                </section>
+              ) : null}
+
+              <div className="srch">
+                <label htmlFor="ys-q">{mine.length ? "Add another machine" : "Find your machines"}</label>
+                <span className="in">
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.7" />
+                    <path d="m14 14 3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                  </svg>
+                  <input ref={searchRef} id="ys-q" type="search" autoComplete="off" value={q} placeholder="Brand or model: Haas, Prusa, Form 4…" onChange={(e) => setQ(e.target.value)} aria-describedby="ys-cnt" />
+                </span>
+                <span className="cnt" id="ys-cnt" role="status">
+                  {cat === null ? "Loading the catalog…" : cat === "failed" ? "The catalog didn’t load." : q.trim() ? `${g.matched} of ${g.total} match “${q.trim()}”` : `${g.total} machines · machining ${g.byKind.cnc}, printers ${g.byKind.print}`}
+                </span>
               </div>
-              {mine.map((d) => (
-                <MachineCard
-                  key={d.idx}
-                  t={list[d.idx]}
-                  d={d}
-                  partCls={partCls}
-                  partWord={partWord}
-                  fileName={p.data.fileName}
-                  rates={rates}
-                  typical={typicalRate(p.data.cost, list[d.idx].process)}
-                  onChange={(patch) => upd(d.idx, patch)}
-                  onRemove={() => toggle(d.idx)}
-                />
-              ))}
-              {!rates ? (
-                <div className="ratebar">
-                  <span>
-                    <b>Hourly rates · optional.</b> Typical rates are used until you add yours.
+
+              {cat === "failed" ? (
+                <div className="empty">
+                  <b>The catalog didn’t load</b>
+                  <span>Nothing was saved. Try again, or add a machine by hand in Your shop.</span>
+                  <span style={{ display: "flex", gap: 8 }}>
+                    <button className="btn sm" type="button" onClick={retry}>
+                      Retry
+                    </button>
+                    <Link className="btn sm" href={`${R.shop}?add=1`}>
+                      Add by hand
+                    </Link>
                   </span>
-                  <button className="btn sm" type="button" aria-expanded="false" onClick={() => setRates(true)}>
-                    Add rates
-                  </button>
+                </div>
+              ) : cat === null ? (
+                <div className="cat" aria-busy="true">
+                  {[0, 1, 2, 3].map((i) => (
+                    <span key={i} className="nb-sk" />
+                  ))}
+                </div>
+              ) : g.matched === 0 ? (
+                <div className="empty">
+                  <b>No catalog match for “{q.trim()}”</b>
+                  <span>Add it by hand in Your shop: name, method, work area, materials.</span>
+                  <Link className="btn sm" href={`${R.shop}?add=1`}>
+                    Add by hand
+                  </Link>
                 </div>
               ) : (
-                <p className="fine swap">
-                  {share != null ? (
-                    <>
-                      Each machine here is priced as one you own: {Math.round(share * 100)}% of its hourly rate is treated as paid-off capital. Blank uses the typical rate
-                      {typicalEx != null ? ` ($${typicalEx}/h → $${ownedRate(typicalEx, share).toFixed(2)}/h in-house)` : ""}; a rate you enter replaces it (${exampleRate}/h → ${ownedRate(exampleRate, share).toFixed(2)}/h).
-                    </>
-                  ) : (
-                    "Each machine here is priced as one you own, without the paid-off capital share your rate card sets. Blank uses the typical rate; a rate you enter replaces it."
-                  )}
-                  {labor ? ` Labor stays ${labor.provenance === "DEFAULT" ? "typical" : "yours"} ($${labor.value}/h) until you set it in Rates.` : " Labor is set in Rates."}
-                </p>
-              )}
-            </section>
-          ) : null}
-
-          <div className="srch">
-            <label htmlFor="ys-q">{mine.length ? "Add another machine" : "Find your machines"}</label>
-            <span className="in">
-              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.7" />
-                <path d="m14 14 3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              </svg>
-              <input ref={searchRef} id="ys-q" type="search" autoComplete="off" value={q} placeholder="Brand or model: Haas, Prusa, Form 4…" onChange={(e) => setQ(e.target.value)} aria-describedby="ys-cnt" />
-            </span>
-            <span className="cnt" id="ys-cnt" role="status">
-              {cat === null ? "Loading the catalog…" : cat === "failed" ? "The catalog didn’t load." : q.trim() ? `${g.matched} of ${g.total} match “${q.trim()}”` : `${g.total} machines · machining ${g.byKind.cnc}, printers ${g.byKind.print}`}
-            </span>
-          </div>
-
-          {cat === "failed" ? (
-            <div className="empty">
-              <b>The catalog didn’t load</b>
-              <span>Nothing was saved. Try again, or add a machine by hand in Your shop.</span>
-              <span style={{ display: "flex", gap: 8 }}>
-                <button className="btn sm" type="button" onClick={retry}>
-                  Retry
-                </button>
-                <Link className="btn sm" href={`${R.shop}?add=1`}>
-                  Add by hand
-                </Link>
-              </span>
-            </div>
-          ) : cat === null ? (
-            <div className="cat" aria-busy="true">
-              {[0, 1, 2, 3].map((i) => (
-                <span key={i} className="nb-sk" />
-              ))}
-            </div>
-          ) : g.matched === 0 ? (
-            <div className="empty">
-              <b>No catalog match for “{q.trim()}”</b>
-              <span>Add it by hand in Your shop: name, method, work area, materials.</span>
-              <Link className="btn sm" href={`${R.shop}?add=1`}>
-                Add by hand
-              </Link>
-            </div>
-          ) : (
-            <div className="cat">
-              {g.groups.map((grp) => (
-                <React.Fragment key={grp.kind}>
-                  <div className="cg">
-                    <span>{grp.label}</span>
-                    <span>
-                      {grp.items.length}
-                      {q.trim() ? " match" : ""}
-                    </span>
-                  </div>
-                  {grp.items.map(({ t, idx }) => {
-                    const on = picked(idx);
-                    return (
-                      <button key={idx} type="button" className={cx("co", on && "on")} aria-pressed={on} onClick={() => toggle(idx)}>
-                        <span className="ic" aria-hidden="true">
-                          {grp.kind === "cnc" ? <MillIcon /> : <PrintIcon />}
-                        </span>
+                <div className="cat">
+                  {g.groups.map((grp) => (
+                    <React.Fragment key={grp.kind}>
+                      <div className="cg">
+                        <span>{grp.label}</span>
                         <span>
-                          <b>{t.name}</b>
-                          <small>{[catWhat(t.process), envText(t.capabilities)].filter(Boolean).join(" · ")}</small>
+                          {grp.items.length}
+                          {q.trim() ? " match" : ""}
                         </span>
-                        <span className="add">{on ? "✓ Added" : "+ Add"}</span>
-                      </button>
-                    );
-                  })}
-                  {grp.kind === "print" ? <p className="fine" style={{ padding: "2px 10px 6px" }}>Printer materials come from the catalog. Nozzle, layer height, enclosure and filament in stock: add them later in Your shop.</p> : null}
-                </React.Fragment>
-              ))}
-              {q.trim() ? <p className="fine" style={{ padding: "2px 10px 6px" }}>Not listed? <Link href={`${R.shop}?add=1`}>Add it by hand in Your shop</Link>: name, method, work area, materials.</p> : null}
-            </div>
+                      </div>
+                      {grp.items.map(({ t, idx }) => {
+                        const on = picked(idx);
+                        return (
+                          <button key={idx} type="button" className={cx("co", on && "on")} aria-pressed={on} onClick={() => toggle(idx)}>
+                            <span className="ic" aria-hidden="true">
+                              {grp.kind === "cnc" ? <MillIcon /> : <PrintIcon />}
+                            </span>
+                            <span>
+                              <b>{t.name}</b>
+                              <small>{[catWhat(t.process), envText(t.capabilities)].filter(Boolean).join(" · ")}</small>
+                            </span>
+                            <span className="add">{on ? "✓ Added" : "+ Add"}</span>
+                          </button>
+                        );
+                      })}
+                      {grp.kind === "print" ? <p className="fine" style={{ padding: "2px 10px 6px" }}>Printer materials come from the catalog. Nozzle, layer height, enclosure and filament in stock: add them later in Your shop.</p> : null}
+                    </React.Fragment>
+                  ))}
+                  {q.trim() ? <p className="fine" style={{ padding: "2px 10px 6px" }}>Not listed? <Link href={`${R.shop}?add=1`}>Add it by hand in Your shop</Link>: name, method, work area, materials.</p> : null}
+                </div>
+              )}
+            </>
           )}
         </div>
         <div className="ft">
-          {ask ? (
+          {needFile ? (
+            <>
+              <span className="m" aria-live="polite">
+                <b>Saved: {needFile}</b>
+                <span>{error ? <span className="nb-err" role="alert">{error}</span> : `Choose ${p.data.fileName} to re-check it against ${needFile.split(", ").length === 1 ? "it" : "them"}`}</span>
+              </span>
+              <button className="btn ghost" type="button" onClick={onClose}>
+                Later
+              </button>
+            </>
+          ) : ask ? (
             <div className="ask2" role="alertdialog" aria-label="Discard machines" aria-describedby="ys-discard">
               <span id="ys-discard" style={{ flex: 1 }}>
                 Close without saving {mine.length} {mine.length === 1 ? "machine" : "machines"}?
@@ -388,7 +408,7 @@ export function ShopSheet({ onClose, onSkip }: { onClose: () => void; onSkip: ()
           ) : (
             <>
               <span className="m" aria-live="polite">
-                <b>{busy ?? (mine.length ? `Re-check ${p.data.fileName} against ${mine.length} ${mine.length === 1 ? "machine" : "machines"}` : "Pick at least one machine, or skip")}</b>
+                <b>{busy ?? (mine.length ? `Re-check ${p.data.fileName} ${p.data.machines.length ? `with ${mine.length} more` : `against ${mine.length}`} ${mine.length === 1 ? "machine" : "machines"}` : "Pick at least one machine, or skip")}</b>
                 <span>
                   {error ? (
                     <span className="nb-err" role="alert">

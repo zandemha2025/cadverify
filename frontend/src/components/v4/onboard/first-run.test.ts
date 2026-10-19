@@ -19,6 +19,7 @@ import {
   resumeCard,
   shopCardDue,
   tipNumber,
+  tipPlan,
   tipsDue,
   typicalRate,
   weightNeeded,
@@ -54,12 +55,15 @@ test("tips show once: not after they're done, not on a later visit", () => {
   assert.equal(shopCardDue({ done: false, shownAt: now, shop: "open" }, now), null);
 });
 
-test("the problem tip is skipped when the part shows no problem", () => {
-  assert.equal(nextTip("tip1", true), "tip2");
-  assert.equal(nextTip("tip1", false), "tip3");
-  assert.equal(nextTip("tip3", true), "done");
-  assert.deepEqual(tipNumber("tip3", false), { n: 2, of: 2 });
-  assert.deepEqual(tipNumber("tip2", true), { n: 2, of: 3 });
+test("the tips this part shows are fixed when they start, and numbered by them", () => {
+  assert.deepEqual(tipPlan(true, true), ["tip1", "tip2", "tip3"]);
+  assert.deepEqual(tipPlan(true, false), ["tip1", "tip3"]);
+  assert.deepEqual(tipPlan(false, true), ["tip2", "tip3"]);
+  const plan = tipPlan(true, false);
+  assert.equal(nextTip(plan, "tip1"), "tip3");
+  assert.equal(nextTip(plan, "tip3"), "done");
+  assert.deepEqual(tipNumber(plan, "tip3"), { n: 2, of: 2 });
+  assert.deepEqual(tipNumber(tipPlan(true, true), "tip2"), { n: 2, of: 3 });
 });
 
 test("catalog search groups machining then printers and matches brand, model or kind", () => {

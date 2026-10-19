@@ -16,8 +16,10 @@ import * as React from "react";
 import { useAuth } from "@/components/ui/auth-provider";
 import { usePart } from "../part/ctx";
 import { useFix } from "../fix/ctx";
+import { useRegisterPaletteItems, type PaletteItem } from "../palette";
+import { useShell } from "../shell";
 import * as homeApi from "../home/data";
-import { shopCardDue, tipsDue, type TipStep, type TipsState } from "./first-run";
+import { shopCardDue, tipPlan, tipsDue, type TipStep, type TipsState } from "./first-run";
 import { Tips } from "./tips";
 import { ShopSheet } from "./shop-sheet";
 import { Aha } from "./aha";
@@ -57,6 +59,7 @@ export function FirstRun() {
   const p = usePart();
   const fx = useFix();
   const { user } = useAuth();
+  const { usage } = useShell();
   const uid = user?.id ?? null;
   const key = p.data.key;
   const rc = useRecheck(key);
@@ -66,14 +69,17 @@ export function FirstRun() {
   const tipsParam = useParam("tips");
   const [tips, setTips] = React.useState<TipsState | null>(null);
   const [step, setStep] = React.useState<TipStep>("tip1");
+  const [plan, setPlan] = React.useState<TipStep[] | null>(null);
   const [skipped, setSkipped] = React.useState(false);
   const [team, setTeam] = React.useState<string[] | null>(null);
   const now = React.useRef(Date.now()).current;
 
   // The person's tips state, once known; ?tips=1 starts them over.
+  const forced = React.useRef(false);
   React.useEffect(() => {
     if (uid == null) return;
     if (tipsParam === "1") {
+      forced.current = true;
       const fresh: TipsState = { done: false, shownAt: null, shop: "open" };
       writeTips(uid, fresh);
       setTips(fresh);
@@ -115,15 +121,28 @@ export function FirstRun() {
 
   const result = !p.checking && !!p.data.cost && !p.costOff && !p.interrupted;
   const quiet = !result || !!p.session?.sample || !!p.session?.panel || modal || !!fx.view || !!rc || sheetOpen;
-  const showTips = !!tips && tipsDue(tips, now) && !quiet;
+  // Remembered in this browser; on another device the server's count keeps them from
+  // coming back once the person has checked more than one file (pilot plans aren't counted).
+  const pastFirst = !!usage && !usage.unlimited && usage.used > 1;
+  const showTips = !!tips && tipsDue(tips, now) && !quiet && !(pastFirst && tips.shownAt == null && !forced.current);
 
-  // First shown: remember when, so a later visit doesn't show them again.
+  // The tips start once the 3D view is up (or plainly isn't coming), with the plan fixed then;
+  // first shown is remembered, so a later visit doesn't show them again.
+  const finding = p.lens === "make" ? p.sel?.finding ?? null : null;
+  const hasProblem = p.has3d && !!finding?.kind && finding.faces.length > 0;
+  const [waited, setWaited] = React.useState(false);
   React.useEffect(() => {
-    if (showTips && tips && tips.shownAt == null) {
-      save({ ...tips, shownAt: Date.now() });
-      setStep(p.has3d ? "tip1" : "tip2");
-    }
-  }, [showTips, tips, save, p.has3d]);
+    if (!showTips || plan || p.has3d) return;
+    const t = window.setTimeout(() => setWaited(true), 6000);
+    return () => window.clearTimeout(t);
+  }, [showTips, plan, p.has3d]);
+  React.useEffect(() => {
+    if (!showTips || !tips || plan || !(p.has3d || waited)) return;
+    const pl = tipPlan(p.has3d, hasProblem);
+    setPlan(pl);
+    setStep(pl[0]);
+    if (tips.shownAt == null) save({ ...tips, shownAt: Date.now() });
+  }, [showTips, tips, plan, p.has3d, waited, hasProblem, save]);
 
   const finish = React.useCallback(() => {
     if (!tips) return;
@@ -146,11 +165,23 @@ export function FirstRun() {
     return () => window.clearTimeout(t);
   }, [skipped]);
 
+  // Search › "Show the tips again", while a part is open.
+  const restart = React.useCallback(() => {
+    forced.current = true;
+    setPlan(null);
+    save({ done: false, shownAt: null, shop: nMachines ? "done" : "open" });
+  }, [save, nMachines]);
+  const palette = React.useMemo<PaletteItem[]>(
+    () => (key && uid != null ? [{ id: "tips-again", group: "This part", label: "Show the tips again", sub: "Three short tips on this part", words: "tips help tour guide first run how", run: restart }] : []),
+    [key, uid, restart],
+  );
+  useRegisterPaletteItems("first-run", palette);
+
   const card = tips && !quiet && !nMachines && !skipped ? shopCardDue(tips, now) : null;
 
   return (
     <>
-      {showTips ? <Tips step={step} onStep={onStep} onDone={finish} teamMachines={team} /> : null}
+      {showTips && plan ? <Tips plan={plan} step={step} onStep={onStep} onDone={finish} teamMachines={team} /> : null}
       {card === "card" ? (
         <aside className="nb-shopcard" aria-labelledby="nb-sc-t">
           <span className="h">

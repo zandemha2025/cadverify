@@ -95,17 +95,19 @@ export function shopCardDue(s: TipsState, now: number, windowMs = TIPS_WINDOW_MS
   return s.shop === "open" ? "card" : s.shop === "later" ? "chip" : null;
 }
 
-export function nextTip(step: TipStep, hasProblem: boolean): TipStep {
-  if (step === "tip1") return hasProblem ? "tip2" : "tip3";
-  if (step === "tip2") return "tip3";
-  return "done";
+/** The tips this part shows, fixed when they start: turning needs the 3D view, the problem tip a lit finding. */
+export function tipPlan(has3d: boolean, hasProblem: boolean): TipStep[] {
+  return [...(has3d ? (["tip1"] as TipStep[]) : []), ...(hasProblem ? (["tip2"] as TipStep[]) : []), "tip3"];
+}
+
+export function nextTip(plan: TipStep[], step: TipStep): TipStep {
+  const i = plan.indexOf(step);
+  return i >= 0 && i < plan.length - 1 ? plan[i + 1] : "done";
 }
 
 /** "Tip 2 of 3", counting only the tips this part shows. */
-export function tipNumber(step: TipStep, hasProblem: boolean): { n: number; of: number } {
-  const of = hasProblem ? 3 : 2;
-  const n = step === "tip1" ? 1 : step === "tip2" ? 2 : of;
-  return { n, of };
+export function tipNumber(plan: TipStep[], step: TipStep): { n: number; of: number } {
+  return { n: Math.max(1, plan.indexOf(step) + 1), of: plan.length };
 }
 
 /* ── N3: your shop from the catalog ────────────────────────────────────── */
