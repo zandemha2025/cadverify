@@ -58,7 +58,7 @@ export function AllProblemsSheet() {
   const figs = [
     today ? { k: "Cheapest today", v: money(priceAt(today, q)), s: today.name.toLowerCase(), tone: "" } : { k: "Cheapest today", v: p.data.cost ? "None" : "Not priced", s: p.data.cost ? "all blocked" : "analysis only", tone: p.data.cost ? "bad" : "" },
     first ? { k: "First fix", v: first.value.replace(/ each$/, ""), s: placeName(first.problem).toLowerCase(), tone: first.tier <= 1 ? "ok" : "" } : { k: "First fix", v: "None", s: "nothing to unlock", tone: "" },
-    { k: "ScaleCAD fixes", v: `${fixable.length} of ${n}`, s: fixable.length ? (firstFix?.kind === "repair" ? "mesh repair, on a copy" : firstFix?.kind === "studio" ? `as revision ${(fx.origin.studio?.currentRevision ?? 0) + 1}` : "on a copy, pilot") : "by itself", tone: "" },
+    { k: "ScaleCAD fixes", v: `${fixable.length} of ${n}`, s: "", tone: "" },
   ];
   const row = (u: Unlock) => {
     const P = u.problem;
@@ -121,13 +121,23 @@ export function AllProblemsSheet() {
     );
   };
   const ext = p.data.fileType ? p.data.fileType.toUpperCase() : "file";
-  const faText = fx.origin.studio
-    ? fixable.length
-      ? `${fixable.map((u) => u.problem.title.toLowerCase()).join(", ")}: as revision ${fx.origin.studio.currentRevision + 1}, then a check. The rest aren’t template parameters; download the STEP from Design Studio to change them in your CAD tool.`
-      : "None of these is a template parameter. Download the STEP from Design Studio to change them in your CAD tool."
-    : fixable.length
-      ? `${fixable.map((u) => { const r = fixRoute(u.problem, fx.origin); return `${u.problem.title.toLowerCase()} (${r?.kind === "repair" ? "mesh repair" : r?.kind === "server" ? r.fix.label.toLowerCase() : "a fix"})`; }).join(", ").replace(/^./, (c) => c.toUpperCase())}: on a copy of your file, checked again before you keep anything (a pilot tool). The rest are changes in your CAD tool; upload the new file and it’s checked again.`
+  // Say how each one is fixed: a new Design Studio revision, or a fix on a copy.
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  const byStudio = fixable.filter((u) => fixRoute(u.problem, fx.origin)?.kind === "studio").map((u) => u.problem.title.toLowerCase());
+  const onCopy = fixable
+    .map((u) => ({ u, r: fixRoute(u.problem, fx.origin) }))
+    .filter((x) => x.r && x.r.kind !== "studio")
+    .map(({ u, r }) => `${u.problem.title.toLowerCase()} (${r!.kind === "repair" ? "mesh repair" : r!.kind === "server" ? r!.fix.label.toLowerCase() : "a fix"})`);
+  const parts: string[] = [];
+  if (byStudio.length && fx.origin.studio) parts.push(`${cap(byStudio.join(" and "))}: as revision ${fx.origin.studio.currentRevision + 1}, then a check.`);
+  if (onCopy.length) parts.push(`${cap(onCopy.join(", "))}: on a copy of the file, checked again before you keep anything (a pilot tool).`);
+  const rest = fx.origin.studio ? "The rest aren’t template parameters; download the STEP from Design Studio to change them in your CAD tool." : "The rest are changes in your CAD tool; upload the new file and it’s checked again.";
+  const faText = fixable.length
+    ? `${parts.join(" ")} ${fixable.length < n ? rest : ""}`.trim()
+    : fx.origin.studio
+      ? "None of these is a template parameter. Download the STEP from Design Studio to change them in your CAD tool."
       : `ScaleCAD can’t fix any of these on this ${ext} itself. ${fx.origin.server?.available.length ? `On uploaded files it can ${fx.origin.server.available.map((a) => a.label.toLowerCase()).join(", ")}, where the check asks for it, and close open meshes. ` : "It closes open meshes (mesh repair). "}Each fix here is a change in your CAD tool; upload the new file and it’s checked again.`;
+  const fixSub = !fixable.length ? "by itself" : byStudio.length && onCopy.length ? "revision and copy" : byStudio.length ? `as revision ${(fx.origin.studio?.currentRevision ?? 0) + 1}` : firstFix?.kind === "repair" ? "mesh repair, on a copy" : "on a copy, pilot";
   return (
     <>
       <div className="top">
@@ -140,7 +150,7 @@ export function AllProblemsSheet() {
             <div className="fig" key={g.k}>
               <span>{g.k}</span>
               <b className={cx("num", g.tone, !/^[$\d−+]/.test(g.v) && "t")}>{g.v}</b>
-              <small>{g.s}</small>
+              <small>{g.k === "ScaleCAD fixes" ? fixSub : g.s}</small>
             </div>
           ))}
         </div>

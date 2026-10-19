@@ -123,9 +123,9 @@ export function useFixController(args: {
 }): { value: FixCtxValue; highlight: ViewerHighlight | null; markers: ViewerMarker[]; onPin: (s: PinState) => void; onLit: (n: number) => void } {
   const { data, methods, qs, q, selCode, has3d, faceAligned, controller, xray, setXray, onOpen, toast, sourceKept } = args;
   const set = React.useMemo(() => buildProblems({ validation: data.validation, cost: data.cost }), [data.validation, data.cost]);
-  const studio = useStudioOrigin(data.key);
   // Ask the server again once a fix it made has finished (its last attempt changes what it offers).
   const run = useFixRun(data.key);
+  const studio = useStudioOrigin(data.key, run?.kind === "studio" && run.revision ? run.startedAt : 0);
   const serverTick = run?.kind === "server" && run.s !== "running" ? run.startedAt : 0;
   const serverOpts = useServerOptions(sourceKept ? data.key : null, serverTick);
   const server = React.useMemo(() => serverFixesOf(serverOpts), [serverOpts]);

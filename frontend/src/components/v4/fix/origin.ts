@@ -38,17 +38,19 @@ export function forgetStudioOrigin(key: string) {
 }
 
 /** The Design Studio design and revision behind this part, or null (an upload, or not known yet). */
-export function useStudioOrigin(key: string | null): StudioOrigin | null {
+export function useStudioOrigin(key: string | null, tick = 0): StudioOrigin | null {
   const [origin, setOrigin] = React.useState<{ key: string; o: StudioOrigin | null } | null>(null);
   React.useEffect(() => {
     if (!key) return;
     let live = true;
+    // A new revision was made since the last look: the current revision number changed.
+    if (tick) forgetStudioOrigin(key);
     void studioOriginOf(key).then((o) => {
       if (live) setOrigin({ key, o });
     });
     return () => {
       live = false;
     };
-  }, [key]);
+  }, [key, tick]);
   return origin && origin.key === key ? origin.o : null;
 }
