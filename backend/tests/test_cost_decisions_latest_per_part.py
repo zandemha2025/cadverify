@@ -130,11 +130,17 @@ async def test_newest_decision_per_part_with_the_screens_fields_in_one_read():
             # The per-record read still works next to it.
             assert (await client.get(f"/api/v1/cost-decisions/{rows[2].ulid}")).status_code == 200
     finally:
+        # Leave no rows behind: other suites scan every user in the database.
         async with eng.get_session_factory()() as s:
             from sqlalchemy import text
             for o in (locals().get("oid"), locals().get("other_oid")):
                 if o:
                     await s.execute(text("DELETE FROM cost_decisions WHERE org_id = :o"), {"o": o})
+                    users = (await s.execute(text("SELECT user_id FROM memberships WHERE org_id = :o"), {"o": o})).scalars().all()
+                    await s.execute(text("DELETE FROM memberships WHERE org_id = :o"), {"o": o})
+                    for u in users:
+                        await s.execute(text("DELETE FROM users WHERE id = :u"), {"u": u})
+                    await s.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": o})
             await s.commit()
         await eng.dispose_engine()
 
