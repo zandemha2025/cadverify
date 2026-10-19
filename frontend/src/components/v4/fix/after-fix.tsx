@@ -618,7 +618,8 @@ function ServerAfter({ run, mesh, problem, shell }: { run: Extract<ServerRun, { 
       if (url) URL.revokeObjectURL(url);
     };
   }, [fixed.mesh_hash, fixed.filename]);
-  const o = OUTCOME[r.outcome] ?? OUTCOME.not_cleared;
+  // Checked on a simplified mesh: the fix can't be confirmed either way.
+  const o = r.verification && r.verification.comparable === false ? { chip: "Couldn’t confirm", tone: "c-warn", title: "couldn’t confirm: the copy had to be checked on a simplified mesh" } : OUTCOME[r.outcome] ?? OUTCOME.not_cleared;
   const sign = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${trimNum(Math.abs(x), 1)}%`;
   const pct = r.volume_change_pct;
   const changed = pct != null && Math.abs(pct) > 2;

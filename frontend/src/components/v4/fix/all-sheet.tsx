@@ -10,7 +10,7 @@ import { cheapestAt, money, priceAt, qtyWord } from "../part/model";
 import { allQuantities, defaultMethod, useFix } from "./ctx";
 import { fixText, measuredFig, needText, type Problem } from "./problems";
 import { placeName, placesOf, type Unlock } from "./rank";
-import { fixRoute, whoFixes } from "./capabilities";
+import { fixRoute, needsPilot, whoFixes } from "./capabilities";
 import { useUploadFixed } from "./problem-sheet";
 import "./fix.css";
 
@@ -198,13 +198,13 @@ export function AllProblemsSheet() {
       </div>
       <div className="kfa">
         <b>
-          ScaleCAD can fix {fixable.length} of {n} here
+          ScaleCAD can fix {fixable.length} of {n} {fixable.length && fixable.every((u) => needsPilot(fixRoute(u.problem, fx.origin), fx.origin)) ? "on the Pilot plan" : "here"}
         </b>
         <p>{faText}</p>
         <div className="row">
           {fixable.length && firstFix ? (
             <button className="btn ink sm" type="button" onClick={() => fx.openAsk(fixable[0].problem.id, firstFix.kind)}>
-              Fix what ScaleCAD can
+              {needsPilot(firstFix, fx.origin) ? "Fix what ScaleCAD can · Pilot" : "Fix what ScaleCAD can"}
             </button>
           ) : null}
           {sel ? (

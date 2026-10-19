@@ -54,6 +54,17 @@ export interface FixOrigin {
   open: boolean;
   studio: StudioOrigin | null;
   server: ServerFixes | null;
+  /**
+   * The account is on the Pilot plan (GET /api/auth/me/usage plan). Mesh repair and
+   * ScaleCAD's own fixes need it (backend require_paid_access); a new Design Studio
+   * revision doesn't. null when the plan isn't known yet.
+   */
+  pilot?: boolean | null;
+}
+
+/** A fix route that needs the Pilot plan, for an account that isn't on it. */
+export function needsPilot(route: FixRoute, origin: FixOrigin): boolean {
+  return !!route && route.kind !== "studio" && origin.pilot === false;
 }
 
 export type StudioParam = { key: string; label: string; value: number; unit: "mm" | "°" };
@@ -88,7 +99,8 @@ export function fixRoute(p: Problem, origin: FixOrigin): FixRoute {
 
 /** The chip on a problem row: who fixes it. */
 export function whoFixes(p: Problem, origin: FixOrigin, millingWorks: boolean): { label: string; tone: "c-ok" | "c-unk" } {
-  if (fixRoute(p, origin)) return { label: "ScaleCAD can fix", tone: "c-ok" };
+  const r = fixRoute(p, origin);
+  if (r) return needsPilot(r, origin) ? { label: "ScaleCAD can fix · Pilot", tone: "c-unk" } : { label: "ScaleCAD can fix", tone: "c-ok" };
   if (p.noChange === "shop") return { label: "At the shop", tone: "c-unk" };
   if (p.noChange === "method") return p.id === "round" && millingWorks ? { label: "Use milling", tone: "c-ok" } : { label: "Another method", tone: "c-unk" };
   return { label: "In your CAD", tone: "c-unk" };
@@ -97,6 +109,7 @@ export function whoFixes(p: Problem, origin: FixOrigin, millingWorks: boolean): 
 /** "ScaleCAD can’t edit this STL…": the honest line under the fix actions. */
 export function canFixLine(p: Problem, origin: FixOrigin): string {
   const r = fixRoute(p, origin);
+  if (r && needsPilot(r, origin)) return `On the Pilot plan ScaleCAD can ${r.kind === "repair" ? "try a mesh repair" : r.kind === "server" ? `${r.fix.label.charAt(0).toLowerCase()}${r.fix.label.slice(1)}` : "fix this"} on a copy of your file. Your plan covers checks, so this one is a change in your CAD tool.`;
   if (r?.kind === "repair") return "Mesh repair is a pilot tool. It works on a copy; your file stays as it is.";
   if (r?.kind === "studio") return `Made in Design Studio, so ScaleCAD can make revision ${origin.studio!.currentRevision + 1} with a new ${r.param.label.toLowerCase()} and check it.`;
   if (r?.kind === "server") return `ScaleCAD can ${r.fix.label.charAt(0).toLowerCase()}${r.fix.label.slice(1)} on a copy of your file and check the copy, as a pilot tool. Your file stays as it is.`;

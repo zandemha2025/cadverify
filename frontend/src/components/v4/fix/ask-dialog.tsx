@@ -64,6 +64,29 @@ function trapTab(e: React.KeyboardEvent<HTMLDivElement>) {
 
 type Step = { k: string; s: string; c: "" | "now" | "wait" | "done" | "bad" };
 
+/** Mesh repair and ScaleCAD's own fixes come with the Pilot plan (backend require_paid_access). */
+function PilotGate({ what }: { what: string }) {
+  return (
+    <div className="kprop" role="note" style={{ marginTop: 8 }}>
+      <b>{what} comes with the Pilot plan</b>
+      <span>Your plan covers checks. Nothing runs from here on it; the steps for your CAD tool work on any plan.</span>
+    </div>
+  );
+}
+
+function PilotLinks() {
+  return (
+    <>
+      <a className="btn ink" href="/contact">
+        Talk to us
+      </a>
+      <Link className="btn" href={R.billing}>
+        Plans
+      </Link>
+    </>
+  );
+}
+
 function Steps({ steps }: { steps: Step[] }) {
   return (
     <ol className="ksteps">
@@ -150,7 +173,6 @@ function Head({ who, whoTone, kind, title, text, close }: { who: string; whoTone
 function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: () => void }) {
   const p = usePart();
   const fx = useFix();
-  const shell = useShell();
   const key = p.data.key ?? "";
   const run = useFixRun(key);
   const rr = run?.kind === "repair" ? (run as RepairRun) : null;
@@ -243,10 +265,12 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
     );
   }
   const big = faces != null && faces > REPAIR_MAX_FACES;
+  const gated = fx.origin.pilot === false;
   return (
     <>
-      <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · Pilot" title="Repair this mesh?" text={`ScaleCAD can try to close the open shell on a copy of ${name}. Your file stays as it is.`} close={close} />
+      <Head who={gated ? "Pilot plan" : "ScaleCAD can try this"} whoTone={gated ? "c-unk" : "c-ok"} kind="Mesh repair · Pilot" title="Repair this mesh?" text={`ScaleCAD can try to close the open shell on a copy of ${name}. Your file stays as it is.`} close={close} />
       <div className="db">
+        {gated ? <PilotGate what="Mesh repair" /> : null}
         <div className="gh">
           <span>What happens</span>
           <span>on a copy</span>
@@ -262,7 +286,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <b>It can change the shape</b>
           <span>Repair fills every gap it finds, including holes, bores or pockets that belong to the design. If the volume changes by more than 2%, ScaleCAD warns you and shows by how much before you keep anything.</span>
         </div>
-        {!file ? (
+        {!file && !gated ? (
           <>
             <div className="gh" style={{ marginTop: 6 }}>
               <span>The file</span>
@@ -306,18 +330,24 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <span>Time limit</span>
           <b className="num">{REPAIR_TIMEOUT_S} s</b>
           <span>Plan</span>
-          <b>{shell.usage && !shell.usage.unlimited ? "Pilot tool · not on your plan" : "Pilot · doesn’t use a check"}</b>
+          <b>{gated ? "Pilot plan · not on your plan" : "Pilot · doesn’t use a check"}</b>
           <span>Your file</span>
           <b>Unchanged · repair works on a copy</b>
         </div>
       </div>
       <div className="df">
-        <button className="btn ink" type="button" aria-disabled={!src} onClick={go} style={!src ? { opacity: 0.45, cursor: "default" } : undefined}>
-          Repair a copy
-        </button>
-        <button className="btn" type="button" onClick={close}>
-          Not now
-        </button>
+        {gated ? (
+          <PilotLinks />
+        ) : (
+          <>
+            <button className="btn ink" type="button" aria-disabled={!src} onClick={go} style={!src ? { opacity: 0.45, cursor: "default" } : undefined}>
+              Repair a copy
+            </button>
+            <button className="btn" type="button" onClick={close}>
+              Not now
+            </button>
+          </>
+        )}
         <button className="btn ghost sp" type="button" onClick={() => fx.openAsk(P.id, "upload")}>
           Fix it in CAD instead
         </button>
@@ -615,6 +645,7 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
   for (const m of P.methods) if (m.need != null) (groups.get(m.need) ?? groups.set(m.need, []).get(m.need)!).push(m);
   const mins = fix.param ? [...groups.entries()].sort((a, b) => a[0] - b[0]) : [];
   const qty = p.qs.length ? p.qs : undefined;
+  const gated = fx.origin.pilot === false;
   const go = () => {
     if (err || !key) return;
     startServerFix(key, P.id, fix, fix.param ? v : null, { qty, materialClass: p.data.cost?.material_class ?? null });
@@ -646,7 +677,9 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
           ? [
               { k: `${label}: done`, s: `${r.fix.method}${r.details.duration_ms != null ? ` · ${(Number(r.details.duration_ms) / 1000).toFixed(1)} s` : ""}`, c: "done" },
               { k: "Checked the copy", s: `verdict ${r.verification?.fixed_verdict ?? "—"}, was ${r.verification?.original_verdict ?? "—"}${r.verification ? ` · ${r.verification.checks_used === 0 ? "no check used" : `${r.verification.checks_used} check used`}` : ""}`, c: "done" },
-              { k: outcome === "cleared" ? "The re-check cleared it" : outcome === "partly_cleared" ? "The re-check cleared some of it" : outcome === "nothing_to_clear" ? "Nothing to clear" : "The re-check still shows it", s: "compare both before you use the copy", c: outcome === "cleared" || outcome === "partly_cleared" ? "done" : "bad" },
+              r.verification?.comparable === false
+                ? { k: "Couldn’t confirm the fix", s: "the copy had to be checked on a simplified mesh", c: "bad" }
+                : { k: outcome === "cleared" ? "The re-check cleared it" : outcome === "partly_cleared" ? "The re-check cleared some of it" : outcome === "nothing_to_clear" ? "Nothing to clear" : "The re-check still shows it", s: r.new_error_count ? `and found ${r.new_error_count} new ${r.new_error_count === 1 ? "error" : "errors"}: compare both` : "compare both before you use the copy", c: outcome === "cleared" || outcome === "partly_cleared" ? "done" : "bad" },
             ]
           : [{ k: sr.s === "plan" ? "Fixes here are a pilot tool" : "Not made", s: "", c: "bad" }];
     return (
@@ -701,8 +734,9 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
   }
   return (
     <>
-      <Head who="ScaleCAD can fix this" whoTone="c-ok" kind={`${label} · Pilot`} title={`${label} on a copy?`} text={`ScaleCAD can ${lowerLabel} on a copy of ${p.data.fileName}, then check the copy like an upload. Your file stays as it is.`} close={close} />
+      <Head who={gated ? "Pilot plan" : "ScaleCAD can fix this"} whoTone={gated ? "c-unk" : "c-ok"} kind={`${label} · Pilot`} title={`${label} on a copy?`} text={`ScaleCAD can ${lowerLabel} on a copy of ${p.data.fileName}, then check the copy like an upload. Your file stays as it is.`} close={close} />
       <div className="db">
+        {gated ? <PilotGate what={label} /> : null}
         <div className="gh">
           <span>The change</span>
           <span className="kcode">{P.codes.join(" · ")}</span>
@@ -783,18 +817,24 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
         </div>
         <div className="kv" style={{ marginTop: 6 }}>
           <span>Plan</span>
-          <b>Pilot · doesn’t use a check</b>
+          <b>{gated ? "Pilot plan · not on your plan" : "Pilot · doesn’t use a check"}</b>
           <span>Your file</span>
           <b>Unchanged · the fix works on a copy</b>
         </div>
       </div>
       <div className="df">
-        <button className="btn ink" type="button" aria-disabled={!!err} onClick={go} style={err ? { opacity: 0.45, cursor: "default" } : undefined}>
-          Fix a copy
-        </button>
-        <button className="btn" type="button" onClick={close}>
-          Not now
-        </button>
+        {gated ? (
+          <PilotLinks />
+        ) : (
+          <>
+            <button className="btn ink" type="button" aria-disabled={!!err} onClick={go} style={err ? { opacity: 0.45, cursor: "default" } : undefined}>
+              Fix a copy
+            </button>
+            <button className="btn" type="button" onClick={close}>
+              Not now
+            </button>
+          </>
+        )}
         {alts}
       </div>
     </>
