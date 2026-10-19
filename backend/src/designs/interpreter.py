@@ -13,7 +13,7 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
-from src.designs.schema import validate_design_plan
+from src.designs.schema import DRAFT_TEMPLATES, validate_design_plan
 
 MAX_PROMPT_CHARS = 500
 _NUMBER = r"([+-]?(?:\d+(?:\.\d+)?|\.\d+))"
@@ -43,6 +43,22 @@ def _dimension_sequence(text: str) -> list[float]:
     if not match:
         return []
     return [float(value) for value in match.groups() if value is not None]
+
+
+_DEGREES = r"(?:°|º|deg(?:ree)?s?\b)"
+
+
+def _draft_angle(text: str) -> float | None:
+    """A stated draft in degrees: "1.5° draft", "2 degrees of draft", "draft 1.5"."""
+    patterns = (
+        rf"{_NUMBER}\s*{_DEGREES}\s*(?:of\s+)?draft",
+        rf"draft(?:\s+angle)?\s*(?:of|is|=|:)?\s*{_NUMBER}(?!\s*(?:mm|millimet))\s*{_DEGREES}?",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return float(match.group(1))
+    return None
 
 
 def _kind(text: str) -> str | None:
@@ -114,6 +130,7 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
     height = _number_after(text, ("height", "high"))
     thickness = _number_after(text, ("thickness", "thick"))
     wall = _number_after(text, ("wall thickness", "wall", "walls"))
+    draft = _draft_angle(text)
 
     if width is None and sequence:
         width = sequence[0]
@@ -141,6 +158,9 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
         }.items()
         if value is not None and math.isfinite(value)
     }
+    takes_draft = kind in DRAFT_TEMPLATES
+    if takes_draft and draft is not None and math.isfinite(draft):
+        prefill["draft_angle_deg"] = draft
     required = {
         "plate": ("width_mm", "depth_mm", "thickness_mm"),
         "bracket": ("width_mm", "depth_mm", "height_mm", "thickness_mm"),
@@ -164,6 +184,11 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
         }
 
     assumptions = ["All extracted dimensions are millimetres; review them before generation."]
+    if draft is not None and takes_draft and draft > 0:
+        drafted = "Walls drafted" if kind == "enclosure" else "Edges and holes drafted"
+        assumptions.append(f"{drafted} {draft:g}° so the part releases along +Z.")
+    elif draft is not None and not takes_draft:
+        assumptions.append("The L bracket has no draft setting, so the stated draft is not applied.")
     if kind == "plate":
         plate_width = cast(float, width)
         plate_depth = cast(float, depth)
@@ -192,6 +217,8 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
             "thickness_mm": plate_thickness,
             "holes": holes,
         }
+        if draft:
+            plan_value["draft_angle_deg"] = draft
         name = f"Plate {plate_width:g} × {plate_depth:g} × {plate_thickness:g} mm"
     elif kind == "bracket":
         bracket_width = cast(float, width)
@@ -218,6 +245,8 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
             "height_mm": enclosure_height,
             "wall_thickness_mm": enclosure_wall,
         }
+        if draft:
+            plan_value["draft_angle_deg"] = draft
         name = (
             f"Open enclosure {enclosure_width:g} × {enclosure_depth:g} × "
             f"{enclosure_height:g} mm"

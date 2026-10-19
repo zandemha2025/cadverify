@@ -14,7 +14,7 @@ from ulid import ULID
 from src.auth.org_context import caller_org_subquery, resolve_org
 from src.auth.require_api_key import AuthedUser
 from src.db.models import DesignProject, DesignRevision, Job
-from src.designs.schema import DesignPlan, validate_design_plan
+from src.designs.schema import DRAFT_TEMPLATES, DesignPlan, validate_design_plan
 from src.services.audit_service import emit_event
 
 DESIGN_BLOB_DIR = "/data/blobs/designs"
@@ -235,6 +235,19 @@ def _flatten_revision_values(value: object, prefix: str = "") -> dict[str, objec
     return {prefix: value}
 
 
+def _comparable_plan(plan: object) -> dict:
+    """A stored plan with its omitted defaults spelled out for comparison.
+
+    A zero draft is not stored (saved designs keep their exact JSON), so a
+    revision without the key and one with ``draft_angle_deg`` set compare as
+    0 -> the new angle rather than as an unknown value.
+    """
+    out = dict(plan) if isinstance(plan, dict) else {}
+    if out.get("kind") in DRAFT_TEMPLATES:
+        out.setdefault("draft_angle_deg", 0.0)
+    return out
+
+
 def _numeric_delta(before: object, after: object) -> float | None:
     if (
         isinstance(before, (int, float))
@@ -256,8 +269,8 @@ def build_revision_comparison(
     Only persisted operation-plan fields and generated geometry metadata are
     compared. This does not claim surface/feature correspondence between meshes.
     """
-    plan_before = _flatten_revision_values(before.operation_plan_json or {})
-    plan_after = _flatten_revision_values(after.operation_plan_json or {})
+    plan_before = _flatten_revision_values(_comparable_plan(before.operation_plan_json))
+    plan_after = _flatten_revision_values(_comparable_plan(after.operation_plan_json))
     plan_keys = sorted(set(plan_before) | set(plan_after))
     plan_changes = [
         {

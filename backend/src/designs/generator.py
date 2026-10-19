@@ -6,6 +6,7 @@ kernel is isolated from the API/worker and killed at the deadline.
 """
 from __future__ import annotations
 
+import math
 import multiprocessing
 import os
 import queue
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.designs.schema import validate_design_plan
+from src.designs.schema import draft_run, validate_design_plan
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
 MIN_ARTIFACT_BYTES = 128
@@ -43,7 +44,109 @@ def _fuse(gmsh: Any, entities: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return [(int(dim), int(tag)) for dim, tag in result if int(dim) == 3]
 
 
+def _tapered_block(
+    gmsh: Any,
+    lower: tuple[float, float, float],
+    upper: tuple[float, float, float],
+) -> list[tuple[int, int]]:
+    """A six-faced solid between two centred rectangles ``(half_x, half_y, z)``.
+
+    Every face is a true plane (exported as STEP ``PLANE``, not a lofted
+    B-spline): equal rectangles give a box, a smaller lower rectangle gives
+    side walls that lean in at one angle.
+    """
+    occ = gmsh.model.occ
+
+    def ring(half_x: float, half_y: float, z: float) -> list[int]:
+        return [
+            occ.addPoint(-half_x, -half_y, z),
+            occ.addPoint(half_x, -half_y, z),
+            occ.addPoint(half_x, half_y, z),
+            occ.addPoint(-half_x, half_y, z),
+        ]
+
+    low, high = ring(*lower), ring(*upper)
+    bottom = [occ.addLine(low[i], low[(i + 1) % 4]) for i in range(4)]
+    top = [occ.addLine(high[i], high[(i + 1) % 4]) for i in range(4)]
+    rise = [occ.addLine(low[i], high[i]) for i in range(4)]
+    faces = [
+        occ.addPlaneSurface([occ.addCurveLoop(bottom)]),
+        occ.addPlaneSurface([occ.addCurveLoop(top)]),
+    ]
+    for i in range(4):
+        loop = occ.addCurveLoop([bottom[i], rise[(i + 1) % 4], -top[i], -rise[i]])
+        faces.append(occ.addPlaneSurface([loop]))
+    volume = occ.addVolume([occ.addSurfaceLoop(faces)])
+    return [(3, int(volume))]
+
+
+def _cut(gmsh: Any, solids: list[tuple[int, int]], tools: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    cut, _ = gmsh.model.occ.cut(solids, tools, removeObject=True, removeTool=True)
+    return [(int(dim), int(tag)) for dim, tag in cut if int(dim) == 3]
+
+
+def _drafted_plate(gmsh: Any, plan: Any) -> list[tuple[int, int]]:
+    """Width, depth and hole diameters at the bottom face; the edges lean in and
+    the holes open up toward the top, all at ``draft_angle_deg``."""
+    tan = math.tan(math.radians(plan.draft_angle_deg))
+    run = draft_run(plan.thickness_mm, plan.draft_angle_deg)
+    half_x, half_y = plan.width_mm / 2.0, plan.depth_mm / 2.0
+    solids = _tapered_block(
+        gmsh,
+        (half_x, half_y, 0.0),
+        (half_x - run, half_y - run, plan.thickness_mm),
+    )
+    if not plan.holes:
+        return solids
+    margin = max(1.0, plan.thickness_mm * 0.1)
+    tools = []
+    for hole in plan.holes:
+        radius = hole.diameter_mm / 2.0
+        # The tool cone runs past both faces; below the bottom face it narrows,
+        # so keep that overrun short enough for its tip radius to stay positive.
+        below = min(margin, 0.5 * radius / tan)
+        tools.append((3, int(gmsh.model.occ.addCone(
+            hole.x_mm,
+            hole.y_mm,
+            -below,
+            0.0,
+            0.0,
+            plan.thickness_mm + below + margin,
+            radius - below * tan,
+            radius + (plan.thickness_mm + margin) * tan,
+        ))))
+    return _cut(gmsh, solids, tools)
+
+
+def _drafted_enclosure(gmsh: Any, plan: Any) -> list[tuple[int, int]]:
+    """Width and depth at the open rim; outside and inside walls lean in toward
+    the base by ``draft_angle_deg`` and stay ``wall_thickness_mm`` apart."""
+    tan = math.tan(math.radians(plan.draft_angle_deg))
+    wall = plan.wall_thickness_mm
+    height = plan.height_mm
+    half_x, half_y = plan.width_mm / 2.0, plan.depth_mm / 2.0
+    run = draft_run(height, plan.draft_angle_deg)
+    outer = _tapered_block(gmsh, (half_x - run, half_y - run, 0.0), (half_x, half_y, height))
+    # Parallel inside planes, one wall thickness square to the outside planes.
+    offset = wall / math.cos(math.radians(plan.draft_angle_deg))
+    top = height + max(1.0, wall)  # cut past the rim so it opens cleanly
+    floor_run = (height - wall) * tan
+    above_run = (top - height) * tan
+    inner = _tapered_block(
+        gmsh,
+        (half_x - floor_run - offset, half_y - floor_run - offset, wall),
+        (half_x + above_run - offset, half_y + above_run - offset, top),
+    )
+    return _cut(gmsh, outer, inner)
+
+
 def _build_shape(gmsh: Any, plan: Any) -> list[tuple[int, int]]:
+    draft = float(getattr(plan, "draft_angle_deg", 0.0) or 0.0)
+    if plan.kind == "plate" and draft > 0:
+        return _drafted_plate(gmsh, plan)
+    if plan.kind == "enclosure" and draft > 0:
+        return _drafted_enclosure(gmsh, plan)
+    # Draft 0 keeps the original construction exactly.
     if plan.kind == "plate":
         body = gmsh.model.occ.addBox(
             -plan.width_mm / 2.0,

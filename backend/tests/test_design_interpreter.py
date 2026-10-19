@@ -127,3 +127,40 @@ def test_unsupported_numeric_notation_requires_plain_decimal_dimensions(prompt):
     assert result["missing_fields"] == ["decimal_dimensions"]
     assert result["prefill"] == {}
     assert "plan" not in result
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "open enclosure 120 x 80 x 40 mm, 1 mm wall, 1.5° draft",
+        "enclosure 120 x 80 x 40 x 1 mm with 1.5 degrees of draft",
+        "open enclosure 120 x 80 x 40 x 1 mm, draft angle 1.5",
+    ],
+)
+def test_stated_draft_reaches_the_reviewable_plan(prompt):
+    result = interpret_design_prompt(prompt)
+    assert result["status"] == "ready"
+    assert result["plan"]["draft_angle_deg"] == 1.5
+    assert result["plan"]["wall_thickness_mm"] == 1.0
+    assert "Walls drafted 1.5° so the part releases along +Z." in result["assumptions"]
+
+
+def test_draft_is_omitted_unless_stated_and_never_read_from_millimetres():
+    plain = interpret_design_prompt("open enclosure 120 x 80 x 40 mm, 1 mm wall")
+    assert "draft_angle_deg" not in plain["plan"]
+    mm = interpret_design_prompt("open enclosure 120 x 80 x 40 mm, 1 mm wall, draft 2 mm")
+    assert "draft_angle_deg" not in mm["plan"]
+
+
+def test_bracket_says_its_draft_is_not_applied():
+    result = interpret_design_prompt("L bracket 70 x 35 x 55 x 5 mm with 2° draft")
+    assert result["status"] == "ready"
+    assert "draft_angle_deg" not in result["plan"]
+    assert "The L bracket has no draft setting, so the stated draft is not applied." in result["assumptions"]
+
+
+def test_out_of_range_draft_needs_input_with_its_prefill():
+    result = interpret_design_prompt("open enclosure 120 x 80 x 40 x 1 mm, 12° draft")
+    assert result["status"] == "needs_input"
+    assert result["prefill"]["draft_angle_deg"] == 12.0
+    assert "plan" not in result
