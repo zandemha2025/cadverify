@@ -136,7 +136,7 @@ FIXES: dict[str, FixSpec] = {
         "angle_deg", "deg", (0.25, 10.0), "OpenCASCADE draft angle (OCP)"),
     "heal_brep": FixSpec(
         "heal_brep", "Sew the faces into a solid",
-        frozenset({"NON_WATERTIGHT", "NOT_SOLID_VOLUME"}), BREP,
+        frozenset({"NON_WATERTIGHT", "NOT_SOLID_VOLUME", "MULTIPLE_BODIES"}), BREP,
         None, None, None, "OpenCASCADE shape healing (gmsh)"),
 }
 
@@ -195,6 +195,9 @@ def _fix_for(code: str, issue: dict, suffix: str, result: dict) -> tuple[str | N
         sealed = any(_is_sealed_cavity(i) for _p, i in _iter_findings(result) if i.get("code") == "TRAPPED_VOLUME")
         if sealed:
             return "drain_holes", None
+        open_shell = any(i.get("code") == "NON_WATERTIGHT" for _p, i in _iter_findings(result))
+        if open_shell and brep:
+            return "heal_brep", None  # loose, unsewn faces read as many bodies
         return None, "The bodies are separate parts, not a cavity. Split them or join them in your CAD tool."
     if code == "INSUFFICIENT_DRAFT":
         if not brep:
@@ -638,7 +641,7 @@ async def apply_fix(
 
     base = {
         "fix": {"id": spec.id, "label": spec.label, "method": spec.method, "params": params},
-        "original": _side(original, data, suffix, mesh_hash),
+        "original": {**_side(original, data, suffix, mesh_hash), "filename": original_name},
         "derived_from": lineage,
     }
 
@@ -750,7 +753,7 @@ async def apply_fix(
             f"The fixed copy tessellates to {(fixed.get('geometry') or {}).get('faces'):,} faces, over the "
             "engine's analysis budget, so it was checked on a simplified mesh. Wall, edge and draft "
             "findings can't be compared with your file's; this fix isn't shown as working.")
-    for k in targeted_before:
+    for k in targeted_before if comparable else []:
         req = _required(k[1], before_idx[k])
         if k not in after_idx and req is not None and _meets_rule(spec, params, before_idx[k], k[1]) is False:
             notes.append(
@@ -759,8 +762,17 @@ async def apply_fix(
                 "the radius, so this one isn't counted as cleared.")
 
     if new_errors:
-        codes = sorted({k[0] for k in new_errors})
-        notes.append(f"The fixed copy has new error findings: {', '.join(codes)}. Compare both before using it.")
+        codes = ", ".join(sorted({k[0] for k in new_errors}))
+        if (original.get("geometry") or {}).get("is_watertight") is False:
+            notes.append(f"Your file isn't a closed solid, so some checks couldn't measure it. On the fixed "
+                         f"copy they can, and they report: {codes}.")
+        else:
+            notes.append(f"The fixed copy has new error findings: {codes}. Compare both before using it.")
+    if _decimated(original):
+        notes.append(
+            f"Your file tessellates to {(original.get('geometry') or {}).get('faces'):,} faces, over the engine's "
+            "analysis budget, so it was checked on a simplified mesh; some differences between the two lists "
+            "come from that, not from the fix.")
 
     prices = None
     if with_cost:

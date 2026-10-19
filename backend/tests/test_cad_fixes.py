@@ -178,6 +178,12 @@ def test_heal_sews_loose_faces_into_a_solid_and_refuses_a_missing_face(tmp_path)
     assert out.details["solids_before"] == 0 and out.details["solids_after"] == 1
     assert out.details["brep_volume_after_mm3"] == pytest.approx(6000.0, rel=1e-4)
     assert ("NON_WATERTIGHT", "*") not in _findings(out.data, "unsewn-healed.step")
+    # Flags: the open shell and the loose faces it reads as are both the heal fix.
+    path = tmp_path / "unsewn.step"
+    path.write_bytes(raw)
+    by = {g["code"]: g for g in svc.fix_options(_analysis_dict(path), ".step")["findings"]}
+    assert by["NON_WATERTIGHT"]["fix"] == "heal_brep" and by["NON_WATERTIGHT"]["can_fix"]
+    assert by["MULTIPLE_BODIES"]["fix"] == "heal_brep" and by["MULTIPLE_BODIES"]["can_fix"]
     # open-bored-block is missing its top face: sewing can't invent one.
     open_block = (ASSETS / "open-bored-block-mm.iges").read_bytes()
     refused = bf.run_fix("heal_brep", open_block, ".iges", {})
