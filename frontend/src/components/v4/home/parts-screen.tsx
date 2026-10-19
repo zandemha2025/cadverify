@@ -16,6 +16,7 @@ import { Column, Frame, Head } from "./frame";
 import { InlineFailed, LoadMore, NoneYet, Skeleton } from "./states";
 import { PartGlyph } from "./thumb";
 import { LibraryPanel } from "./library";
+import { JoinedWelcome } from "../onboard/teammate";
 import * as api from "./data";
 import { buildQueue } from "./home-derive";
 import {
@@ -244,6 +245,7 @@ export function PartsScreen() {
       </Head>
 
       <Column head={headRef}>
+        <JoinedWelcome />
         {makeFailed ? (
           <section className="panel" aria-label="Machine verdicts didn't load">
             <InlineFailed what="machine verdicts" detail="Tiles say Not loaded until they do; prices and findings are complete." onRetry={retryMake} />

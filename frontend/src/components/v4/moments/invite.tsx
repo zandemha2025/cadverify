@@ -18,6 +18,8 @@ import { useSearchParams } from "next/navigation";
 import { apiProblemDetail } from "@/lib/api-recovery";
 import { AuthCard } from "./auth-card";
 import { V4_HOME } from "./landing";
+import { R } from "../routes";
+import { switchTo, teamInfo, useTeamSetup } from "../onboard/teammate";
 import "./moments.css";
 
 type Preview = {
@@ -36,7 +38,7 @@ type State =
   | { kind: "confirm"; preview: Preview | null }
   | { kind: "declined"; preview: Preview | null }
   | { kind: "login" }
-  | { kind: "joined"; role: string; org: string | null; created: boolean }
+  | { kind: "joined"; role: string; org: string | null; created: boolean; switched: boolean; switchError: string | null }
   | { kind: "failed"; message: string; retry: boolean; otherAccount: boolean };
 
 function role(r: string | null | undefined): string {
@@ -75,6 +77,8 @@ export function V4InviteAccept() {
   const [state, setState] = React.useState<State>(token ? { kind: "checking" } : { kind: "missing" });
   const [attempt, setAttempt] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
+  // N6: once joined (and switched to it), what the team already set up.
+  const team = useTeamSetup(state.kind === "joined" && state.switched);
 
   React.useEffect(() => {
     if (!token) return;
@@ -102,8 +106,17 @@ export function V4InviteAccept() {
     setBusy(false);
     if (!res) return setState({ kind: "failed", message: "Could not reach ScaleCAD.", retry: true, otherAccount: false });
     if (res.status >= 200 && res.status < 300) {
-      const d = res.data as { org_role?: unknown; created?: unknown };
-      return setState({ kind: "joined", role: String(d.org_role ?? "member"), org: preview?.org_name ?? null, created: Boolean(d.created) });
+      const d = res.data as { org_id?: unknown; org_role?: unknown; created?: unknown };
+      // Joining makes it the active organization, so its machines and rates apply right away (N6).
+      const sw = typeof d.org_id === "string" ? await switchTo(d.org_id) : null;
+      return setState({
+        kind: "joined",
+        role: String(d.org_role ?? "member"),
+        org: preview?.org_name ?? (sw?.ok ? sw.name : null),
+        created: Boolean(d.created),
+        switched: !!sw?.ok,
+        switchError: sw && !sw.ok ? sw.message : null,
+      });
     }
     setState(failure(res.status, res.data, "This invitation could not be accepted."));
   }
@@ -222,11 +235,17 @@ export function V4InviteAccept() {
           label="Joined"
           icon={{ tone: "ok", mark: "✓" }}
           title={`You joined ${state.org ?? "the organization"}`}
-          meta={[`Role: ${role(state.role)}`]}
+          meta={[`Role: ${role(state.role)}`, state.switched ? "Now your active organization" : "Not switched yet"]}
+          info={state.switched ? teamInfo(team, state.role) : undefined}
           actions={
-            <Link className="btn ink" href={V4_HOME}>
-              Open ScaleCAD
+            <Link className="btn ink" href={state.switched ? `${R.parts}?joined=1` : V4_HOME}>
+              {state.switched ? `Open ${state.org ?? "the organization"}` : "Open ScaleCAD"}
             </Link>
+          }
+          note={
+            state.switched
+              ? "No shop setup: every check you run uses your team’s machines and rates."
+              : `${state.switchError ? `${state.switchError} ` : ""}Switch to ${state.org ?? "it"} from the account menu to use its machines and rates.`
           }
         />
       ) : (
