@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,129 @@ _CURVATURE_PTS = 12.0        # min facets around a full circle
 _TARGET_DIAG_SEGMENTS = 200  # MeshSizeMax ~ bbox_diagonal / this
 _MIN_SIZE_MM = 0.05          # floor so tiny parts still tessellate
 _MAX_SIZE_MM = 50.0          # ceiling so huge parts don't vanish
+
+# ── Fitting the analysis budget ──────────────────────────────────────────
+# The engine decimates any mesh over MAX_ANALYSIS_FACES (vertex clustering),
+# which blurs the exact geometry the checks measure: small fillets read as
+# sharp again and wall thickness becomes unavailable. A B-rep can instead be
+# re-tessellated to fit. Only meshes over the budget are touched; every part
+# under it keeps its first-pass mesh byte for byte.
+#
+# Why they go over: gmsh grows planar-face triangles from the size of their
+# boundary edges (Mesh.MeshSizeExtendFromBoundary). A 0.5 mm fillet along a
+# 120 mm edge has ~0.26 mm boundary segments, so the whole adjoining wall is
+# meshed at that size: the 120 x 80 x 40 mm Design Studio enclosure goes from
+# 212,526 faces to 672,924 with 0.5 mm inside fillets, 98% of them on its flat
+# walls. Pass 2 stops that propagation and keeps everything else (curvature
+# sizing on curved faces, MeshSizeMax on flat ones): with 1 mm fillets the
+# enclosure meshes to 218,356 faces instead of 291,482, the same flat-wall
+# sampling as its unfilleted self (with 0.5 mm, 231,636 instead of 672,924 --
+# but that first pass alone takes ~25 s, past the time cap below, so that part
+# stays as it was).
+# Pass 2 runs only when flat faces really are inflated (_flat_inflation), so a
+# part that is simply big at the default size goes straight to coarsening:
+# MeshSizeMax grows (flat faces only; curved faces stay curvature-sized) by at
+# most _FIT_MAX_COARSEN in all; past that the engine's decimation applies as
+# before.
+_FIT_TARGET = 0.9            # coarsening target, as a fraction of the budget
+_FIT_MAX_COARSEN = 2.0       # MeshSizeMax may grow to at most 2x (diag / 100)
+_FIT_INFLATED = 1.2          # flat faces this much denser than asked: pass 2
+
+
+def _fit_budget_enabled() -> bool:
+    """STEP_MESH_FIT_ANALYSIS_BUDGET (default on). Off = first-pass mesh always."""
+    return os.getenv("STEP_MESH_FIT_ANALYSIS_BUDGET", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _analysis_face_budget() -> int:
+    from src.analysis.context import _max_analysis_faces
+
+    return _max_analysis_faces()
+
+
+def _triangle_count() -> int:
+    return int(sum(len(tags) for tags in gmsh.model.mesh.getElements(dim=2)[1]))
+
+
+def _flat_inflation(size_max: float) -> float:
+    """How much denser than ``size_max`` the current mesh is on flat faces.
+
+    1.0 means flat faces are meshed at the size asked for; the 120 x 80 x 40 mm
+    enclosure reads 1.01 with sharp corners, 1.38 with 1 mm fillets and 3.2 with
+    0.5 mm fillets (their small boundary segments spread over the walls).
+    """
+    expected = actual = 0.0
+    per_tri = 0.433 * size_max * size_max  # equilateral triangle of edge size_max
+    for _dim, tag in gmsh.model.getEntities(2):
+        if gmsh.model.getType(2, tag) != "Plane":
+            continue
+        expected += float(gmsh.model.occ.getMass(2, tag)) / per_tri
+        actual += sum(len(t) for t in gmsh.model.mesh.getElements(2, tag)[1])
+    return actual / expected if expected > 0 else 1.0
+
+
+def _fit_time_cap_sec() -> float:
+    """Wall-clock a refit may bring one tessellation to: 80% of the pool's rung-0
+    cap (the same cap the in-thread ladder is held to), so a refit never turns
+    a rung that finished in time into one the pool kills."""
+    from src.parsers.parse_pool import _budget_sec, _rung_caps
+
+    return 0.8 * _rung_caps(_budget_sec(), len(_MESH_RUNGS))[0]
+
+
+def _fit_to_budget(size_max: float, started: float, first_pass_sec: float) -> dict | None:
+    """Re-mesh the loaded model until it fits the analysis budget.
+
+    Called after the first ``generate(2)``. Returns None when the first pass
+    already fits (nothing changed), else a record of the passes for logging.
+    Pass 2 runs only when flat faces are inflated by their boundaries; the
+    coarsening passes then grow MeshSizeMax (at most ``_FIT_MAX_COARSEN`` in
+    all). The last pass has the fewest triangles and is the one kept. A pass
+    whose estimated time (the first pass's, scaled by triangle count) would
+    run past ``_fit_time_cap_sec`` is not started: the part then keeps its
+    first-pass mesh and the engine decimates it, as before.
+    """
+    budget = _analysis_face_budget()
+    count = _triangle_count()
+    if count <= budget or not _fit_budget_enabled():
+        return None
+    first = count
+    cap = _fit_time_cap_sec()
+
+    def affordable(expected_faces: float) -> bool:
+        estimate = first_pass_sec * expected_faces / max(first, 1)
+        return (time.perf_counter() - started) + estimate <= cap
+
+    inflation = _flat_inflation(size_max)
+    passes = [{"pass": 1, "faces": count, "size_max": size_max, "extend_from_boundary": 1,
+               "flat_inflation": round(inflation, 2), "seconds": round(first_pass_sec, 2)}]
+    record = {"budget": budget, "passes": passes, "fits": False}
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    if inflation > _FIT_INFLATED:
+        if not affordable(first / inflation):
+            record["stopped"] = "time"
+            return record
+        gmsh.model.mesh.clear()
+        gmsh.model.mesh.generate(2)
+        count = _triangle_count()
+        passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size_max,
+                       "extend_from_boundary": 0})
+    size = size_max
+    while count > budget and size < _FIT_MAX_COARSEN * size_max - 1e-12:
+        if not affordable(_FIT_TARGET * budget):
+            record["stopped"] = "time"
+            break
+        factor = max(1.05, (count / (_FIT_TARGET * budget)) ** 0.5)
+        size = min(size * factor, _FIT_MAX_COARSEN * size_max)
+        gmsh.option.setNumber("Mesh.MeshSizeMax", size)
+        gmsh.model.mesh.clear()
+        gmsh.model.mesh.generate(2)
+        count = _triangle_count()
+        passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
+                       "extend_from_boundary": 0})
+    record["fits"] = count <= budget
+    return record
+
 
 # ── Retry ladder ──────────────────────────────────────────────────────────
 # ~19% of real NIST STEP parts hit gmsh's "Impossible to mesh periodic surface N"
@@ -282,6 +406,7 @@ def _tessellate_once(
     # signal.signal() and only works on the MAIN thread. The route meshes in a
     # ThreadPoolExecutor (A.5), so the default would raise "signal only works in
     # main thread of the main interpreter".
+    started = time.perf_counter()
     gmsh.initialize(interruptible=False)
     try:
         gmsh.option.setNumber("General.Terminal", 0)          # no stdout spew
@@ -307,7 +432,12 @@ def _tessellate_once(
         if algorithm is not None:               # rung 0 keeps gmsh's default algo
             gmsh.option.setNumber("Mesh.Algorithm", algorithm)
 
+        first_pass = time.perf_counter()
         gmsh.model.mesh.generate(2)          # 2D surface mesh = triangulated shell
+        fit = _fit_to_budget(               # no-op unless over the analysis budget
+            size_max, started, time.perf_counter() - first_pass)
+        if fit is not None:
+            logger.info("STEP mesh refit to the analysis budget: %s", fit)
 
         node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
         if node_coords.size == 0:
