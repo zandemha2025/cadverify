@@ -236,7 +236,11 @@ def test_repair_refuses_non_watertight_engine_output(client, monkeypatch):
     assert body["repaired_analysis"] is None
     assert body["repaired_file_b64"] is None
     assert body["repair_verification"] is None
-    assert "watertight positive-volume" in body["repair_details"]["reason"]
+    # The refusal says what was open and that nothing was made, in one sentence.
+    assert body["outcome"] == "not_repaired"
+    assert body["repair_details"]["reason"] == body["summary"]
+    assert body["summary"].startswith("A face is missing (an opening 10 mm across)")
+    assert body["repair_details"]["openings"]["kind"] == "face"
 
 
 def test_repair_download_filename_is_safe(client):

@@ -548,7 +548,8 @@ async def latest_analysis(session, org_id: str, mesh_hash: str):
 def _fixed_filename(original_name: str, fix_id: str, suffix: str) -> str:
     stem = _SAFE.sub("-", Path(original_name or "part").stem).strip(".-") or "part"
     slug = {"fillet_inside_corners": "rounded", "drain_holes": "drained",
-            "add_draft": "drafted", "heal_brep": "healed"}.get(fix_id, "fixed")
+            "add_draft": "drafted", "heal_brep": "healed",
+            "mesh_repair": "repaired"}.get(fix_id, "fixed")
     return f"{stem}-{slug}{suffix}"
 
 

@@ -7,6 +7,9 @@
   stored source in an isolated CAD worker, re-checks the copy in the same
   request, and returns before/after evidence plus the fixed file. The original
   is never changed; the copy is a new part linked to its parent.
+* ``POST /parts/{mesh_hash}/repair`` is mesh repair (``POST /validate/repair``)
+  on a copy of the stored source, so a saved part never asks for its file again;
+  the repaired copy is a new part linked to its parent, like a fix.
 * ``GET  /parts/{mesh_hash}/fixed-file`` downloads a fixed copy. Only copies
   ScaleCAD made are downloadable here; original sources stay non-downloadable,
   as in ``part_preview``.
@@ -31,7 +34,7 @@ from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
 from src.auth.require_api_key import AuthedUser
-from src.auth.free_tool_limits import limit_free_fixes
+from src.auth.free_tool_limits import limit_free_fixes, limit_free_repair
 from src.db.engine import get_db_session
 from src.services import cad_fix_service as svc
 
@@ -133,6 +136,51 @@ async def apply_part_fix(
         )
     except svc.FixRequestError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.message)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post("/{mesh_hash}/repair", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
+async def repair_stored_part(
+    request: Request,
+    response: Response,
+    mesh_hash: str,
+    processes: Optional[str] = Query(None, description="Comma-separated processes for the re-check."),
+    rule_pack: Optional[str] = Query(None, description="Industry rule pack for the re-check."),
+    qty: Optional[str] = Query(None, description="Quantities to price the repaired copy at, e.g. 10,1000. "
+                                                 "Default: the part's last cost check, else the app's ladder."),
+    material_class: Optional[str] = Query(None, description="polymer|aluminum|steel|stainless|titanium"),
+    with_cost: bool = Query(True, description="Price the repaired copy (adds one engine pass)."),
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    _free_limit: None = Depends(limit_free_repair),
+    session: AsyncSession = Depends(get_db_session),
+    _admission: None = Depends(admit_analysis),
+):
+    """Mesh repair on a copy of the stored source: no upload, no check used.
+
+    The same repair, limits and re-check as ``POST /validate/repair``. A
+    repaired copy becomes a new part linked to this one and is downloadable from
+    ``GET /parts/{repaired}/fixed-file``. The response is the upload repair's
+    plus ``outcome`` (repaired | closed_changed | partly | not_repaired | not_needed),
+    ``summary``, ``source``, ``repaired``, ``download``, ``lineage`` and
+    ``prices`` (the repaired copy only: the open original isn't priced).
+    """
+    from src.api.routes import _MATERIAL_CLASSES
+    from src.analysis.rules import available_rule_packs, get_rule_pack
+    from src.services import repair_service
+
+    org_id, digest = _scope(ctx, mesh_hash)
+    if rule_pack and get_rule_pack(rule_pack) is None:
+        raise HTTPException(status_code=400, detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}")
+    if material_class is not None and material_class not in _MATERIAL_CLASSES:
+        raise HTTPException(status_code=400, detail=f"Unknown material_class '{material_class}'. Use one of {sorted(_MATERIAL_CLASSES)}")
+    result = await repair_service.repair_stored(
+        org_id=org_id, mesh_hash=digest, processes=processes, rule_pack=rule_pack,
+        quantities=_quantities(qty), material_class=material_class, with_cost=with_cost,
+        user=user, session=session,
+    )
     response.headers["Cache-Control"] = "no-store"
     return result
 

@@ -222,17 +222,24 @@ def test_volume_check_without_baseline_warns_instead_of_staying_silent():
 
 @pytest.mark.asyncio
 async def test_repair_mesh_warns_when_repair_fills_the_bore(open_bored_block, monkeypatch):
-    """End to end through repair_mesh: the shell closes, the bore is filled, warn."""
+    """End to end through repair_mesh: a repair that fills the bore is warned on.
+
+    Welded first, the real repair keeps this bore (tests/test_part_repair.py), so
+    stand in a repair that returns the block with its bore filled: 3000 mm3,
+    what hole filling produced before the weld step.
+    """
     from src.services import analysis_service, repair_service
 
     # The open_bored_block fixture warmed the parse cache, so repair_mesh's own
-    # _parse_mesh call is a cache hit rather than a second ~40 s tessellation.
+    # parse is a cache hit rather than a second ~40 s tessellation.
 
     monkeypatch.setattr(
         analysis_service,
         "run_analysis",
         AsyncMock(return_value={"overall_verdict": "fail"}),
     )
+    filled = trimesh.creation.box(extents=[20.0, 15.0, 10.0])
+    monkeypatch.setattr(repair_service, "_do_repair", lambda mesh: (filled, "pymeshfix", 0))
     result = await repair_service.repair_mesh(
         file_bytes=OPEN_BORED_BLOCK.read_bytes(),
         filename="open-bored-block-mm.iges",
@@ -243,6 +250,7 @@ async def test_repair_mesh_warns_when_repair_fills_the_bore(open_bored_block, mo
     )
 
     assert result["repair_applied"] is True
+    assert result["outcome"] == "closed_changed"
     details = result["repair_details"]
     assert details["tier"] == "pymeshfix"
     assert details["original_volume_mm3"] == pytest.approx(BORED_BLOCK_MM3, rel=1e-3)
@@ -250,6 +258,7 @@ async def test_repair_mesh_warns_when_repair_fills_the_bore(open_bored_block, mo
     assert details["volume_change_pct"] == pytest.approx(10.4, abs=0.1)
     assert "+10.4%" in details["volume_warning"]
     assert "bores" in details["volume_warning"]
+    assert "+10.4%" in result["summary"] and "bore, hole or pocket" in result["summary"]
 
 
 # ---------------------------------------------------------------------------
