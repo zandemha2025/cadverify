@@ -87,8 +87,8 @@ async def _deliver_reset(email: str) -> None:
                 json={
                     "from": os.environ["RESEND_FROM"],
                     "to": [email],
-                    "subject": "Reset your ScaleCad password",
-                    "text": f"Reset your ScaleCad password (expires in 15 minutes):\n\n{link}\n\nIf you did not request this, ignore this email. Your password has not changed.",
+                    "subject": "Reset your ScaleCAD password",
+                    "text": f"Reset your ScaleCAD password (expires in 15 minutes):\n\n{link}\n\nIf you did not request this, ignore this email. Your password has not changed.",
                 },
             )
             sent.raise_for_status()

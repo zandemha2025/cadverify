@@ -402,7 +402,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ScaleCad API",
+    title="ScaleCAD API",
     description="Manufacturing validation for STEP and STL files",
     version="0.2.0",
     lifespan=lifespan,

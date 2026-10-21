@@ -195,7 +195,7 @@ def service_provider_config() -> dict[str, Any]:
             {
                 "type": "oauthbearertoken",
                 "name": "Bearer API key",
-                "description": "Use an org-admin ScaleCad API key as the SCIM bearer token.",
+                "description": "Use an org-admin ScaleCAD API key as the SCIM bearer token.",
                 "primary": True,
             }
         ],

@@ -7,7 +7,7 @@
 type Fetcher = typeof fetch;
 
 export const PRO_SIGN_IN_HREF = "/login?next=%2Fpricing%3Fplan%3Dpro#magic-link";
-export const SALES_MAILTO = "mailto:nazeem@scalecad.ai?subject=ScaleCad%20Pro";
+export const SALES_MAILTO = "mailto:nazeem@scalecad.ai?subject=ScaleCAD%20Pro";
 
 export type BillingStatus = {
   checkout_available: boolean;

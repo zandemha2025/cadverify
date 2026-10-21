@@ -49,13 +49,13 @@ export async function generateMetadata({
         title: `${data.filename} - Should-cost decision`,
         description: "Manufacturing options by quantity · assumption-based estimate, not a validated quote",
         type: "article",
-        siteName: "ScaleCad",
+        siteName: "ScaleCAD",
       },
       twitter: { card: "summary" },
       robots: { index: false, follow: false },
     };
   } catch {
-    return { title: "Shared should-cost - ScaleCad", robots: { index: false, follow: false } };
+    return { title: "Shared should-cost - ScaleCAD", robots: { index: false, follow: false } };
   }
 }
 
@@ -69,7 +69,7 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
           <Calculator className="size-5 text-primary" />
-          <span className="font-semibold text-foreground">ScaleCad</span>
+          <span className="font-semibold text-foreground">ScaleCAD</span>
           <span className="ml-2 text-xs text-muted-foreground">
             Shared should-cost · read-only
           </span>
@@ -133,7 +133,7 @@ export default async function SharedCostDecisionPage({
               revoked by its owner.
             </p>
             <Button asChild className="mt-6">
-              <Link href="/">Go to ScaleCad</Link>
+              <Link href="/">Go to ScaleCAD</Link>
             </Button>
           </CardContent>
         </Card>
@@ -307,11 +307,11 @@ export default async function SharedCostDecisionPage({
       <Card>
         <CardContent className="text-center">
           <p className="text-sm text-muted-foreground">
-            This is a shared should-cost decision from ScaleCad — assumption-based, not a
+            This is a shared should-cost decision from ScaleCAD — assumption-based, not a
             validated quote.
           </p>
           <Button asChild className="mt-3">
-            <Link href="/">View on ScaleCad</Link>
+            <Link href="/">View on ScaleCAD</Link>
           </Button>
         </CardContent>
       </Card>

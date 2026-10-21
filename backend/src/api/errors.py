@@ -35,7 +35,7 @@ def cad_upload_diagnosis(message: str) -> dict[str, Any] | None:
     if "unsupported file type" in lower:
         return {
             "failure_class": "unsupported_type",
-            "plain_reason": "The file is not one of the CAD exchange formats ScaleCad can read.",
+            "plain_reason": "The file is not one of the CAD exchange formats ScaleCAD can read.",
             "location": None,
             "repairable": False,
             "next_action": "Export the original part as STL, STEP, STP, IGES, or IGS.",

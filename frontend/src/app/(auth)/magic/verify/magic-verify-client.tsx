@@ -83,7 +83,7 @@ export function MagicVerifyClient() {
               {error}
             </p>
           )}
-          <AuthSubmit loading={loading}>Continue to ScaleCad</AuthSubmit>
+          <AuthSubmit loading={loading}>Continue to ScaleCAD</AuthSubmit>
         </form>
       ) : (
         <p role="alert" style={{ margin: 0, color: "#f08f86", fontSize: 13 }}>

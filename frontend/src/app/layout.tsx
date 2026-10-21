@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "https://scalecad.ai"
   ),
-  title: "ScaleCad — Know which of your parts you should be making",
+  title: "ScaleCAD — Know which of your parts you should be making",
   description:
     "Check manufacturing options, review design findings, and trace the resources behind your next decision. Explore a recorded sample without an account.",
   alternates: { canonical: "/" },
@@ -45,17 +45,17 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "ScaleCad — Know which of your parts you should be making",
+    title: "ScaleCAD — Know which of your parts you should be making",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
-    siteName: "ScaleCad",
+    siteName: "ScaleCAD",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ScaleCad — Know which of your parts you should be making",
+    title: "ScaleCAD — Know which of your parts you should be making",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],
@@ -84,7 +84,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: ScaleCad is light-first. Dark remains an explicit
+        {/* No-flash theme: ScaleCAD is light-first. Dark remains an explicit
             user preference, but route changes never imply a theme change. */}
         <script
           nonce={nonce}

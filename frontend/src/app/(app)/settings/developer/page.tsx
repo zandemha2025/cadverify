@@ -42,7 +42,7 @@ export default async function DeveloperSettingsPage() {
 
       <PageHeader
         title="Developer"
-        subtitle="Create and manage API keys for programmatic access to the ScaleCad API."
+        subtitle="Create and manage API keys for programmatic access to the ScaleCAD API."
         actions={
           <KeyMutationButton operation="create">Create key</KeyMutationButton>
         }
@@ -69,7 +69,7 @@ export default async function DeveloperSettingsPage() {
         <EmptyState
           icon={KeyRound}
           title="No API keys yet"
-          description="Create a key to start using the ScaleCad API."
+          description="Create a key to start using the ScaleCAD API."
           action={
             <KeyMutationButton operation="create">Create key</KeyMutationButton>
           }

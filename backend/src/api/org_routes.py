@@ -125,7 +125,7 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
             {
                 "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a ScaleCad organization",
+                "subject": "You've been invited to a ScaleCAD organization",
                 "html": (
                     f'<p>You\'ve been invited{who}.</p>'
                     f'<p><a href="{link}">Accept the invitation</a> '

@@ -3,7 +3,7 @@ import { DocumentPage } from "@/components/site/document-page";
 import { PilotForm } from "../company/pilot-form";
 
 export const metadata: Metadata = {
-  title: "Pilot — ScaleCad",
+  title: "Pilot — ScaleCAD",
   description: "Qualify with 25 representative parts, then scope a $7,500, 4–6 week evaluation of up to 500 parts against your plant’s equipment and actuals.",
   alternates: { canonical: "/pilot" },
 };

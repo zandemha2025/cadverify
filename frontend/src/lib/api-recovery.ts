@@ -46,7 +46,7 @@ export function apiQuotaMessage(payload: unknown): string | null {
   const sentence = detail ? `${detail.replace(/[.!?]+$/, "")}. ` : "";
   const retry = rolling || code === "org_quota_exceeded" ? "Retry after the rolling allowance becomes available. " : "";
   // A person's own allowance names its plan and next step in the detail itself.
-  const contact = code === "user_validation_cap_exceeded" ? "" : "Contact your workspace administrator or the ScaleCad team to review your allowance.";
+  const contact = code === "user_validation_cap_exceeded" ? "" : "Contact your workspace administrator or the ScaleCAD team to review your allowance.";
   return `Verification allowance used up${resets ? " for now" : ""}. ${sentence}${retry}${contact}`.trim();
 }
 

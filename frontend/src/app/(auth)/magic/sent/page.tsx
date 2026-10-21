@@ -5,7 +5,7 @@ import { UI_V4 } from "@/lib/ui-v4-flag";
 import { V4MagicSent } from "@/components/v4/moments/magic";
 
 export const metadata: Metadata = {
-  title: "Magic link sent - ScaleCad",
+  title: "Magic link sent - ScaleCAD",
   robots: { index: false, follow: false },
 };
 

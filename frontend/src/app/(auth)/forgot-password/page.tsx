@@ -5,7 +5,7 @@ import { UI_V4 } from "@/lib/ui-v4-flag";
 import { V4ForgotPassword } from "@/components/v4/moments/password-reset";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Forgot password — ScaleCad" };
+export const metadata: Metadata = { title: "Forgot password — ScaleCAD" };
 
 export default async function ForgotPasswordPage() {
   const authMode = (process.env.AUTH_MODE || "password").trim().toLowerCase();

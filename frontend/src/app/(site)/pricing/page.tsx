@@ -8,8 +8,8 @@ import { SESSION_COOKIE } from "@/lib/session";
 import { SIGNUP_HREF } from "@/lib/site/navigation";
 
 export const metadata: Metadata = {
-  title: "Pricing — ScaleCad",
-  description: "Try ScaleCad free on your own parts. Go monthly with Pro once it's useful. A $7,500 pilot covers one factory: up to 500 parts over 4–6 weeks.",
+  title: "Pricing — ScaleCAD",
+  description: "Try ScaleCAD free on your own parts. Go monthly with Pro once it's useful. A $7,500 pilot covers one factory: up to 500 parts over 4–6 weeks.",
   alternates: { canonical: "/pricing" },
 };
 
@@ -24,7 +24,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       title: "Free · $0",
       body: `${work} free checks with a work email, ${personal} with a personal one. No credit card.`,
       href: signedIn ? "/verify" : SIGNUP_HREF,
-      link: signedIn ? "Open ScaleCad" : "Try ScaleCad free",
+      link: signedIn ? "Open ScaleCAD" : "Try ScaleCAD free",
     },
     {
       id: "pro",

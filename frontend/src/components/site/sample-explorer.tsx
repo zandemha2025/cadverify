@@ -27,7 +27,7 @@ export function SampleExplorer({ initialView = "process", standalone = false }: 
         <Link className="cv-text-link" href={standalone ? UPLOAD_HREF : `/sample?view=${view}`}>{standalone ? "Continue with your own part" : "Inspect the full example"}<ArrowRight size={17} aria-hidden="true" /></Link>
       </div>
     </div>
-    {standalone && <div className="cv-source-details"><h2>Follow the evidence back to its source.</h2><p>The cost view is the recorded MJF alternative; the geometry-led recommendation is CNC turning. These are different processes, with different assumptions.</p>{ESTIMATE.drivers.map(driver => <details key={driver.name}><summary>{driver.name.replaceAll("_", " ")}<span>{driver.provenance}</span></summary><p>{driver.source}</p></details>)}<p className="cv-caption">Source: ScaleCad’s recorded object.stl example. Sample controls change the view; they do not call the engine. Values are not shop-validated.</p></div>}
+    {standalone && <div className="cv-source-details"><h2>Follow the evidence back to its source.</h2><p>The cost view is the recorded MJF alternative; the geometry-led recommendation is CNC turning. These are different processes, with different assumptions.</p>{ESTIMATE.drivers.map(driver => <details key={driver.name}><summary>{driver.name.replaceAll("_", " ")}<span>{driver.provenance}</span></summary><p>{driver.source}</p></details>)}<p className="cv-caption">Source: ScaleCAD’s recorded object.stl example. Sample controls change the view; they do not call the engine. Values are not shop-validated.</p></div>}
   </div>;
 }
 
