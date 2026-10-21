@@ -138,6 +138,9 @@ def test_buy_outside_names_the_process_none_of_your_machines_do():
     r = _row(d)
     assert r["bucket"] == "outside" and r["route"]["owned"] is False
     assert r["reason"].startswith("No machine of yours does ")
+    dlp = _row(_decision("makeable_outsource_only", estimates=[_est("dlp", 10, 5.0)], make_now="dlp"))
+    assert "DLP" in dlp["reason"] or "resin" in dlp["reason"].lower()
+    assert cr._lower("DLP 3D printing") == "DLP 3D printing" and cr._lower("Filament printing") == "filament printing"
     assert r["unit_cost_usd"] == 12.5 and r["marginal"] is False
 
 

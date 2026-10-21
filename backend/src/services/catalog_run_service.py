@@ -331,6 +331,11 @@ def process_words(process: Optional[str]) -> str:
     return process_label(process) if process else "No route"
 
 
+def _lower(words: str) -> str:
+    """Lower-case a name for mid-sentence use, keeping acronyms ("DLP 3D printing" stays)."""
+    return words[0].lower() + words[1:] if len(words) > 1 and words[1].islower() else words
+
+
 def _machines_of(machines: list[dict], process: Optional[str]) -> list[str]:
     return [m["name"] for m in machines if m.get("process") == process]
 
@@ -339,7 +344,7 @@ def _who(machines: list[dict], process: Optional[str]) -> str:
     names = _machines_of(machines, process)
     if len(names) == 1:
         return names[0]
-    return f"Your {process_words(process).lower()} machines" if names else f"A {process_words(process).lower()} machine"
+    return f"Your {_lower(process_words(process))} machines" if names else f"A {_lower(process_words(process))} machine"
 
 
 def derive_part_row(
@@ -478,7 +483,7 @@ def derive_part_row(
         row["reason"] = f"On your {row['route']['machine'] or process_words(process)}" + (f" · {mat}" if mat else "")
     elif bucket == "outside":
         names = ", ".join(sorted({m.get('process') for m in machines if m.get('process')}))
-        row["reason"] = (f"No machine of yours does {process_words(process).lower()}" if process
+        row["reason"] = (f"No machine of yours does {_lower(process_words(process))}" if process
                          else "No route on your machines")
         if not names:
             row["reason"] = "No machines declared to compare against"
