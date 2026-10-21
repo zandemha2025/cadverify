@@ -18,7 +18,6 @@ import type { FixOrigin } from "./capabilities";
 import { useStudioOrigin } from "./origin";
 import { serverFixesOf, useServerOptions } from "./server";
 import { useFixRun } from "./runs";
-import { useShell } from "../shell";
 
 export type FixView = { kind: "problem"; id: string; method: string | null } | { kind: "all"; sel: string | null; q: number | null; by: "rank" | "place" };
 export type AskVariant = "repair" | "studio" | "upload" | "server";
@@ -130,11 +129,9 @@ export function useFixController(args: {
   const serverTick = run?.kind === "server" && run.s !== "running" ? run.startedAt : 0;
   const serverOpts = useServerOptions(sourceKept ? data.key : null, serverTick);
   const server = React.useMemo(() => serverFixesOf(serverOpts), [serverOpts]);
-  const plan = useShell().usage?.plan ?? null;
-  const pilot = plan == null ? null : plan === "pilot";
   const origin = React.useMemo<FixOrigin>(
-    () => ({ fileType: data.fileType, open: data.validation?.geometry.is_watertight === false || set.problems.some((p) => p.id === "open"), studio, server, pilot }),
-    [data.fileType, data.validation, set, studio, server, pilot],
+    () => ({ fileType: data.fileType, open: data.validation?.geometry.is_watertight === false || set.problems.some((p) => p.id === "open"), studio, server }),
+    [data.fileType, data.validation, set, studio, server],
   );
   const [view, setViewState] = React.useState<FixView | null>(null);
   const [ask, setAsk] = React.useState<FixCtxValue["ask"]>(null);

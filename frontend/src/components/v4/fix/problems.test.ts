@@ -162,19 +162,20 @@ test("a maximum is read as a maximum: an overhang is over by, not short by", () 
   assert.equal(shortText(thick, thick.methods[0]), "check");
 });
 
-test("mesh repair and ScaleCAD's own fixes are shown as Pilot-plan tools to an account without it", async () => {
-  const { needsPilot } = await import("./capabilities.ts");
+test("mesh repair and ScaleCAD's own fixes are offered on every plan, the free trial included", async () => {
+  const capabilities = await import("./capabilities.ts");
+  assert.equal("needsPilot" in capabilities, false);
   const set = shell();
   const drain = findProblem(set, "drain")!;
   const sf = { can: true, fix: "drain_holes", label: "Add drain holes", method: "", param: "diameter_mm", unit: "mm", bounds: [0.5, 50] as [number, number], value: 5, whyNot: null, lastAttempt: null };
   const base: FixOrigin = { fileType: "STL", open: false, studio: null, server: { families: ["drain"], byFamily: { drain: sf }, available: [] } };
-  const r = fixRoute(drain, base);
-  assert.equal(needsPilot(r, { ...base, pilot: true }), false);
-  assert.equal(needsPilot(r, { ...base, pilot: null }), false);
-  assert.equal(needsPilot(r, { ...base, pilot: false }), true);
-  assert.deepEqual(whoFixes(drain, { ...base, pilot: false }, true), { label: "ScaleCAD can fix · Pilot", tone: "c-unk" });
-  assert.match(canFixLine(drain, { ...base, pilot: false }), /^On the Pilot plan ScaleCAD can add drain holes on a copy of your file\./);
-  // A Design Studio revision isn't a Pilot tool.
-  const studio: FixOrigin = { ...base, pilot: false, studio: { designId: "d", designName: "E", revision: 1, currentRevision: 1, plan: { kind: "enclosure", width_mm: 120, depth_mm: 80, height_mm: 40, wall_thickness_mm: 0.6 }, volumeCm3: null } };
-  assert.equal(needsPilot(fixRoute(findProblem(set, "thin")!, studio), studio), false);
+  assert.equal(fixRoute(drain, base)?.kind, "server");
+  assert.deepEqual(whoFixes(drain, base, true), { label: "ScaleCAD can fix", tone: "c-ok" });
+  assert.equal(canFixLine(drain, base), "ScaleCAD can add drain holes on a copy of your file and check the copy. Your file stays as it is.");
+  const open = findProblem(set, "open");
+  if (open) {
+    const shellOrigin: FixOrigin = { ...base, open: true, server: null };
+    assert.equal(fixRoute(open, shellOrigin)?.kind, "repair");
+    assert.doesNotMatch(canFixLine(open, shellOrigin), /pilot|plan/i);
+  }
 });

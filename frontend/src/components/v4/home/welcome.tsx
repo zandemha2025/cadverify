@@ -3,9 +3,8 @@
 /**
  * Get started (board X9): the overlay on Home, opened by `?welcome=1`, by
  * "Start here", and once for a new organization. Options: check a CAD file,
- * run the sample (it runs the real engine, so it uses a check), make a simple
- * part, set up your shop. When no checks are left the sample isn't run and
- * "Sample not run" says why.
+ * run the sample (it runs the real engine and never uses a check: the server
+ * knows its exact bytes), make a simple part, set up your shop.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -14,8 +13,6 @@ import { R } from "../routes";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { useShell } from "../shell";
 import { cx } from "../ui";
-import { sampleBracketFile } from "@/lib/verify/sample-cad";
-import { checkedBefore } from "../onboard/checked";
 import "./home.css";
 
 /** Same key today's guide uses, so a person who closed it there isn't shown it again. */
@@ -38,10 +35,6 @@ export function welcomeSeen(): boolean {
 }
 
 type Usage = ReturnType<typeof useShell>["usage"];
-
-export function outOfChecks(u: Usage): boolean {
-  return Boolean(u && !u.unlimited && u.remaining <= 0);
-}
 
 /** The allowance facts for the dialog header: "15 free checks left · Each part uses 1". */
 function allowance(u: Usage): React.ReactNode[] {
@@ -167,7 +160,7 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
             </span>
             <span>
               <b>Run the sample</b>
-              <small>A 50 × 40 × 6 mm bracket · uses 1 check the first time</small>
+              <small>A 50 × 40 × 6 mm bracket · no check used</small>
             </span>
             <span aria-hidden="true">→</span>
           </button>
@@ -198,52 +191,6 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
   );
 }
 
-/** "Sample not run": the allowance is used up. Nothing ran, nothing was charged. */
-export function SampleQuota({ onClose, onBack }: { onClose: () => void; onBack: () => void }) {
-  const { usage } = useShell();
-  return (
-    <Modal labelledBy="sq-title" onClose={onClose} small>
-      <div className="h-hd">
-        <div>
-          <h1 className="ptitle" id="sq-title">
-            Sample not run
-          </h1>
-          <p className="pmeta" style={{ marginTop: 6 }}>
-            {usage ? (
-              <span>
-                <b>
-                  {usage.used} of {usage.cap}
-                </b>{" "}
-                {usage.plan === "pro" ? "Pro checks used this month" : "free checks used"}
-              </span>
-            ) : null}
-            <span>Your files and saved results are unchanged</span>
-          </p>
-        </div>
-        <CloseX onClose={onClose} />
-      </div>
-      <div className="h-rbody">
-        <p className="h-fine">The sample runs on the real engine, so its first run uses a check like any part.</p>
-      </div>
-      <div className="h-dfoot">
-        <span className="h-r l">
-          <button className="btn ghost sm" type="button" onClick={onBack} data-autofocus>
-            Back to start
-          </button>
-          <Link className="btn ghost sm" href={R.billing}>
-            Review usage
-          </Link>
-        </span>
-        <span className="h-r">
-          <Link className="btn ink sm" href={R.billing}>
-            Upgrade
-          </Link>
-        </span>
-      </div>
-    </Modal>
-  );
-}
-
 /**
  * The overlay state for a page that hosts Get started. `?welcome=1` opens it
  * (and is removed from the address); `autoOpen` opens it once for someone who
@@ -251,8 +198,7 @@ export function SampleQuota({ onClose, onBack }: { onClose: () => void; onBack: 
  */
 export function useGetStarted(autoOpen: boolean) {
   const router = useRouter();
-  const { usage } = useShell();
-  const [open, setOpen] = React.useState<"closed" | "welcome" | "quota">("closed");
+  const [open, setOpen] = React.useState<"closed" | "welcome">("closed");
 
   // `?welcome=1` stays in the address while the guide is open (a reload keeps it
   // open) and is removed when it closes.
@@ -282,23 +228,14 @@ export function useGetStarted(autoOpen: boolean) {
     setOpen("closed");
   }, []);
 
-  /** Run the sample on the check page, or say why it can't run (a sample that ran before reuses its check). */
-  const runSample = React.useCallback(async () => {
-    if (outOfChecks(usage) && !(await checkedBefore(sampleBracketFile()))) {
-      setOpen("quota");
-      return;
-    }
+  /** Run the sample on the check page. It never uses a check, so it runs with none left. */
+  const runSample = React.useCallback(() => {
     rememberWelcomeSeen();
     setOpen("closed");
     router.push(`${R.check}?sample=1`);
-  }, [usage, router]);
+  }, [router]);
 
-  const overlay =
-    open === "welcome" ? (
-      <GetStarted onClose={close} onSample={runSample} />
-    ) : open === "quota" ? (
-      <SampleQuota onClose={close} onBack={() => setOpen("welcome")} />
-    ) : null;
+  const overlay = open === "welcome" ? <GetStarted onClose={close} onSample={runSample} /> : null;
 
   return { overlay, openGuide: () => setOpen("welcome"), runSample, isOpen: open !== "closed" };
 }

@@ -10,7 +10,7 @@ import { cheapestAt, money, priceAt, qtyWord } from "../part/model";
 import { allQuantities, defaultMethod, useFix } from "./ctx";
 import { fixText, measuredFig, needText, type Problem } from "./problems";
 import { placeName, placesOf, type Unlock } from "./rank";
-import { fixRoute, needsPilot, whoFixes } from "./capabilities";
+import { fixRoute, whoFixes } from "./capabilities";
 import { useUploadFixed } from "./problem-sheet";
 import "./fix.css";
 
@@ -130,14 +130,14 @@ export function AllProblemsSheet() {
     .map(({ u, r }) => `${u.problem.title.toLowerCase()} (${r!.kind === "repair" ? "mesh repair" : r!.kind === "server" ? r!.fix.label.toLowerCase() : "a fix"})`);
   const parts: string[] = [];
   if (byStudio.length && fx.origin.studio) parts.push(`${cap(byStudio.join(" and "))}: as revision ${fx.origin.studio.currentRevision + 1}, then a check.`);
-  if (onCopy.length) parts.push(`${cap(onCopy.join(", "))}: on a copy of the file, checked again before you keep anything (a pilot tool).`);
+  if (onCopy.length) parts.push(`${cap(onCopy.join(", "))}: on a copy of the file, checked again before you keep anything.`);
   const rest = fx.origin.studio ? "The rest aren’t template parameters; download the STEP from Design Studio to change them in your CAD tool." : "The rest are changes in your CAD tool; upload the new file and it’s checked again.";
   const faText = fixable.length
     ? `${parts.join(" ")} ${fixable.length < n ? rest : ""}`.trim()
     : fx.origin.studio
       ? "None of these is a template parameter. Download the STEP from Design Studio to change them in your CAD tool."
       : `ScaleCAD can’t fix any of these on this ${ext} itself. ${fx.origin.server?.available.length ? `On uploaded files it can ${fx.origin.server.available.map((a) => a.label.toLowerCase()).join(", ")}, where the check asks for it, and close open meshes. ` : "It closes open meshes (mesh repair). "}Each fix here is a change in your CAD tool; upload the new file and it’s checked again.`;
-  const fixSub = !fixable.length ? "by itself" : byStudio.length && onCopy.length ? "revision and copy" : byStudio.length ? `as revision ${(fx.origin.studio?.currentRevision ?? 0) + 1}` : firstFix?.kind === "repair" ? "mesh repair, on a copy" : "on a copy, pilot";
+  const fixSub = !fixable.length ? "by itself" : byStudio.length && onCopy.length ? "revision and copy" : byStudio.length ? `as revision ${(fx.origin.studio?.currentRevision ?? 0) + 1}` : firstFix?.kind === "repair" ? "mesh repair, on a copy" : "on a copy";
   return (
     <>
       <div className="top">
@@ -198,13 +198,13 @@ export function AllProblemsSheet() {
       </div>
       <div className="kfa">
         <b>
-          ScaleCAD can fix {fixable.length} of {n} {fixable.length && fixable.every((u) => needsPilot(fixRoute(u.problem, fx.origin), fx.origin)) ? "on the Pilot plan" : "here"}
+          ScaleCAD can fix {fixable.length} of {n} here
         </b>
         <p>{faText}</p>
         <div className="row">
           {fixable.length && firstFix ? (
             <button className="btn ink sm" type="button" onClick={() => fx.openAsk(fixable[0].problem.id, firstFix.kind)}>
-              {needsPilot(firstFix, fx.origin) ? "Fix what ScaleCAD can · Pilot" : "Fix what ScaleCAD can"}
+              Fix what ScaleCAD can
             </button>
           ) : null}
           {sel ? (

@@ -169,7 +169,7 @@ export function HomeScreen() {
             <div className="h-alt">
               <button type="button" onClick={guide.runSample}>
                 <span>
-                  Run an example<small>Sample bracket, real engine · uses 1 check the first time</small>
+                  Run an example<small>Sample bracket, real engine · no check used</small>
                 </span>
                 <i aria-hidden="true">→</i>
               </button>

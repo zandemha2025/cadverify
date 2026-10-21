@@ -12,7 +12,7 @@ import { qtyWord } from "../part/model";
 import { useFix } from "./ctx";
 import { alternativeOf, fixText, methodHead, needText, plainReason, problemFigs, ruleOf, shortText, type Problem } from "./problems";
 import { unlockOf, unlockQty, unlockRows } from "./rank";
-import { canFixLine, fixRoute, needsPilot } from "./capabilities";
+import { canFixLine, fixRoute } from "./capabilities";
 import "./fix.css";
 
 export function blocksChip(p: Problem, total: number): { text: string; tone: string } {
@@ -96,23 +96,18 @@ export function ProblemSheet() {
   const route = fixRoute(P, fx.origin);
   const { rows, foot } = unlockRows(u, { cost: p.data.cost, methodsTotal: total, picked: m?.code ?? null, repairable: route?.kind === "repair", fixHere: route?.kind === "server" ? `ScaleCAD can ${route.fix.label.toLowerCase()} on a copy of your file, checks the copy and shows both` : null, set: fx.set });
   const at = P.id === "open" ? `today: ${p.methods.filter((x) => x.prices.size > 0).length} of ${total} priced` : `at ${qtyWord(uq)} ${uq === 1 ? "part" : "parts"}, ${classLabel(p.data.cost?.material_class).toLowerCase()}`;
-  const gated = needsPilot(route, fx.origin);
-  const go = gated
-    ? { label: "How to fix it", run: () => fx.openAsk(P.id, "upload") }
-    : route?.kind === "repair"
-      ? { label: "Repair it here", run: () => fx.openAsk(P.id, "repair") }
-      : route?.kind === "studio"
-        ? { label: "Fix it", run: () => fx.openAsk(P.id, "studio") }
-        : route?.kind === "server"
-          ? { label: "Fix it here", run: () => fx.openAsk(P.id, "server") }
-          : { label: "How to fix it", run: () => fx.openAsk(P.id, "upload") };
-  const alt = gated
-    ? { label: `${route?.kind === "repair" ? "Repair it here" : "Fix it here"} · Pilot`, run: () => fx.openAsk(P.id, route?.kind === "repair" ? "repair" : "server") }
-    : route?.kind === "repair"
-      ? { label: "Fix it in CAD", run: () => fx.openAsk(P.id, "upload") }
-      : route?.kind === "studio" || route?.kind === "server"
-        ? { label: "Steps for your CAD tool", run: () => fx.openAsk(P.id, "upload") }
-        : { label: "Upload the fixed file", run: up.pick };
+  const go = route?.kind === "repair"
+    ? { label: "Repair it here", run: () => fx.openAsk(P.id, "repair") }
+    : route?.kind === "studio"
+      ? { label: "Fix it", run: () => fx.openAsk(P.id, "studio") }
+      : route?.kind === "server"
+        ? { label: "Fix it here", run: () => fx.openAsk(P.id, "server") }
+        : { label: "How to fix it", run: () => fx.openAsk(P.id, "upload") };
+  const alt = route?.kind === "repair"
+    ? { label: "Fix it in CAD", run: () => fx.openAsk(P.id, "upload") }
+    : route?.kind === "studio" || route?.kind === "server"
+      ? { label: "Steps for your CAD tool", run: () => fx.openAsk(P.id, "upload") }
+      : { label: "Upload the fixed file", run: up.pick };
   const head = P.id === "thin" ? "Same wall, by method" : P.id === "draft" ? "Same walls, by method" : "Same problem, by method";
   const list = P.universal ? [] : P.methods;
   const mi = Math.max(0, list.findIndex((x) => x.code === m?.code));

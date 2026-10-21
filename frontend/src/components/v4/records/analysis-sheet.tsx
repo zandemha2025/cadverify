@@ -16,7 +16,6 @@ import RepairComparison from "@/components/RepairComparison";
 import type { Issue, ProcessScore, RepairResult, ValidationResult } from "@/lib/api";
 import { R } from "../routes";
 import { setPendingFile } from "../pending-file";
-import { useShell } from "../shell";
 import { Chip, cx } from "../ui";
 import { analysisPdf, errorText, repairFile, repairedFile, saveBlob, shareAnalysis, unshareAnalysis, useAnalysis, usePartKeyForAnalysis, useRecordList } from "./api";
 import { Dialog, Glyph, NotFound, PublicLink, RecSheet, Skeleton } from "./common";
@@ -68,7 +67,6 @@ export function sortWays(ps: ProcessScore[]): ProcessScore[] {
 function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void }) {
   const router = useRouter();
   const { user } = useAuth();
-  const { usage } = useShell();
   const canEdit = canMutateWorkspace(user?.role);
   const r = detail.result;
   const ways = sortWays(r?.process_scores ?? []);
@@ -87,7 +85,6 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
   const whole = r?.universal_issues ?? [];
   const meshIssues = whole.filter((i) => REPAIRABLE.has(i.code));
   const otherWhole = whole.filter((i) => !REPAIRABLE.has(i.code));
-  const pilot = usage ? usage.plan === "pilot" : null;
   const feats = React.useMemo(() => {
     const m = new Map<string, number>();
     for (const f of r?.features ?? []) m.set(f.kind, (m.get(f.kind) ?? 0) + 1);
@@ -187,15 +184,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
                 <>
                   <b>{meshIssues[0].message}</b>
                   <span>A repair joins bodies and closes gaps in a copy. The saved check doesn&apos;t change.</span>
-                  {pilot === false ? (
-                    <span className="r">
-                      <span className="pilot">Pilot</span>
-                      <span>Repair is part of a pilot plan. Your plan covers single-part checks.</span>
-                      <Link className="btn sm" href={R.billing}>
-                        Plan and billing
-                      </Link>
-                    </span>
-                  ) : canEdit ? (
+                  {canEdit ? (
                     <span className="r">
                       <label className={cx("btn sm ink fileb", busy === "repair" && "off")}>
                         {busy === "repair" ? "Repairing…" : "Choose file to repair"}
@@ -211,7 +200,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
                           }}
                         />
                       </label>
-                      <span className="pilot">Pilot</span>
+                      <span className="pilot">No check used</span>
                       <span>Pick the same file you checked.</span>
                     </span>
                   ) : (

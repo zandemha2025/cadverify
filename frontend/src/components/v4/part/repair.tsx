@@ -20,7 +20,6 @@ const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
 
 /** What one repair request came back with (shared with the find-and-fix dialog). */
 export type RepairOutcome =
-  | { s: "plan" }
   | { s: "error"; msg: string }
   | { s: "failed"; r: RepairResult }
   | { s: "fixed"; r: RepairResult; file: File; url: string };
@@ -34,7 +33,7 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-/** POST /validate/repair on a copy of the file: a pilot tool; it doesn't use a check. */
+/** POST /validate/repair on a copy of the file: on every plan; it doesn't use a check. */
 export async function runRepair(file: File): Promise<RepairOutcome> {
   const form = new FormData();
   form.append("file", file);
@@ -46,8 +45,6 @@ export async function runRepair(file: File): Promise<RepairOutcome> {
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    const code = (body as { code?: string; detail?: { code?: string } } | null)?.code ?? (body as { detail?: { code?: string } } | null)?.detail?.code;
-    if (res.status === 403 && code === "paid_access_required") return { s: "plan" };
     return { s: "error", msg: apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "repair" }) };
   }
   const r = body as RepairResult;
@@ -148,7 +145,7 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
             <div className="swap">
               <div className="gh">
                 <span>
-                  Repair it here <small style={{ fontWeight: 500, border: "1px solid var(--rule2)", borderRadius: 999, padding: "0 6px", marginLeft: 4 }}>Pilot</small>
+                  Repair it here <small style={{ fontWeight: 500, border: "1px solid var(--rule2)", borderRadius: 999, padding: "0 6px", marginLeft: 4 }}>No check used</small>
                 </span>
                 <span />
               </div>
@@ -161,20 +158,6 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
                 </span>
                 {out.s === "error" ? <span role="alert" style={{ color: "var(--bad)", fontSize: 13 }}>{out.msg}</span> : null}
               </div>
-            </div>
-          ) : null}
-          {out.s === "plan" ? (
-            <div className="note swap" role="alert">
-              <b>Repair is a pilot tool</b>
-              <span>This plan covers single-part checks. Repair comes with a pilot or Enterprise plan.</span>
-              <span style={{ display: "flex", gap: 8 }}>
-                <a className="btn ink sm" href="/contact">
-                  Talk to us
-                </a>
-                <Link className="btn sm" href={R.billing}>
-                  Plans
-                </Link>
-              </span>
             </div>
           ) : null}
           {out.s === "failed" ? (

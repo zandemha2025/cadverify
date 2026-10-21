@@ -1,6 +1,6 @@
 /**
  * What ScaleCAD can fix itself, today, and what it can't. Stated exactly:
- *  - an open mesh: mesh repair on a copy (a pilot tool, POST /validate/repair);
+ *  - an open mesh: mesh repair on a copy (POST /validate/repair);
  *  - a Design Studio part: a new revision with a changed template parameter
  *    (wall or thickness; draft on the plate and the open enclosure, not the bracket);
  *  - on an uploaded file's kept source, what the server reports it can do itself
@@ -54,17 +54,6 @@ export interface FixOrigin {
   open: boolean;
   studio: StudioOrigin | null;
   server: ServerFixes | null;
-  /**
-   * The account is on the Pilot plan (GET /api/auth/me/usage plan). Mesh repair and
-   * ScaleCAD's own fixes need it (backend require_paid_access); a new Design Studio
-   * revision doesn't. null when the plan isn't known yet.
-   */
-  pilot?: boolean | null;
-}
-
-/** A fix route that needs the Pilot plan, for an account that isn't on it. */
-export function needsPilot(route: FixRoute, origin: FixOrigin): boolean {
-  return !!route && route.kind !== "studio" && origin.pilot === false;
 }
 
 export type StudioParam = { key: string; label: string; value: number; unit: "mm" | "°" };
@@ -100,7 +89,7 @@ export function fixRoute(p: Problem, origin: FixOrigin): FixRoute {
 /** The chip on a problem row: who fixes it. */
 export function whoFixes(p: Problem, origin: FixOrigin, millingWorks: boolean): { label: string; tone: "c-ok" | "c-unk" } {
   const r = fixRoute(p, origin);
-  if (r) return needsPilot(r, origin) ? { label: "ScaleCAD can fix · Pilot", tone: "c-unk" } : { label: "ScaleCAD can fix", tone: "c-ok" };
+  if (r) return { label: "ScaleCAD can fix", tone: "c-ok" };
   if (p.noChange === "shop") return { label: "At the shop", tone: "c-unk" };
   if (p.noChange === "method") return p.id === "round" && millingWorks ? { label: "Use milling", tone: "c-ok" } : { label: "Another method", tone: "c-unk" };
   return { label: "In your CAD", tone: "c-unk" };
@@ -109,10 +98,9 @@ export function whoFixes(p: Problem, origin: FixOrigin, millingWorks: boolean): 
 /** "ScaleCAD can’t edit this STL…": the honest line under the fix actions. */
 export function canFixLine(p: Problem, origin: FixOrigin): string {
   const r = fixRoute(p, origin);
-  if (r && needsPilot(r, origin)) return `On the Pilot plan ScaleCAD can ${r.kind === "repair" ? "try a mesh repair" : r.kind === "server" ? `${r.fix.label.charAt(0).toLowerCase()}${r.fix.label.slice(1)}` : "fix this"} on a copy of your file. Your plan covers checks, so this one is a change in your CAD tool.`;
-  if (r?.kind === "repair") return "Mesh repair is a pilot tool. It works on a copy; your file stays as it is.";
+  if (r?.kind === "repair") return "ScaleCAD can try a mesh repair on a copy. Your file stays as it is, and the repair doesn’t use a check.";
   if (r?.kind === "studio") return `Made in Design Studio, so ScaleCAD can make revision ${origin.studio!.currentRevision + 1} with a new ${r.param.label.toLowerCase()} and check it.`;
-  if (r?.kind === "server") return `ScaleCAD can ${r.fix.label.charAt(0).toLowerCase()}${r.fix.label.slice(1)} on a copy of your file and check the copy, as a pilot tool. Your file stays as it is.`;
+  if (r?.kind === "server") return `ScaleCAD can ${r.fix.label.charAt(0).toLowerCase()}${r.fix.label.slice(1)} on a copy of your file and check the copy. Your file stays as it is.`;
   if (origin.studio) return `Made in Design Studio, but ${p.title.toLowerCase()} isn’t a template parameter. Download the STEP and change it in your CAD tool.`;
   const ext = origin.fileType ? `this ${origin.fileType.toUpperCase()}` : "this file";
   return `ScaleCAD can’t edit ${ext}. It gives the steps, prices the result and checks the file you upload.`;

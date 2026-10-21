@@ -23,24 +23,10 @@ import { CantReadView } from "./cant-read";
 import { RepairView } from "./repair";
 import { AssemblyView } from "./assembly";
 import { SampleFlow } from "../home/sample-result";
-import { checkedBefore } from "../onboard/checked";
 import "./part.css";
 
 export function liveMesh(s: CheckSession): MeshSource {
   return { url: s.preview.url, faceHash: s.preview.faceHash, faceSpace: s.preview.faceSpace, kind: "glb", origin: s.preview.url ? "live" : null, loading: s.preview.status === "loading", error: s.preview.error };
-}
-
-/** The allowance as the account menu reads it; null when it can't be read (the server still enforces it). */
-async function readUsage(): Promise<{ unlimited: boolean; remaining: number } | null> {
-  try {
-    const r = await fetch("/api/auth/me/usage", { cache: "no-store" });
-    if (!r.ok) return null;
-    const u = (await r.json()) as { unlimited?: unknown; remaining?: unknown } | null;
-    if (!u || typeof u.remaining !== "number") return null;
-    return { unlimited: u.unlimited === true, remaining: u.remaining };
-  } catch {
-    return null;
-  }
 }
 
 export function CheckPage() {
@@ -52,29 +38,19 @@ export function CheckPage() {
   const data = React.useMemo(() => (session ? liveData(session, null) : null), [session]);
   const mesh = React.useMemo(() => (session ? liveMesh(session) : null), [session]);
   const started = React.useRef(false);
-  // Out of checks before the sample ran (X3): the sample uses a check like any part.
-  const [noChecks, setNoChecks] = React.useState<string | null>(null);
   // Design Studio's "Verify revision n" (?design=<id>&revision=<n>): the exact STEP revision, checked like an upload.
   const [design, setDesign] = React.useState<{ state: "loading" | "done" | "error"; name?: string; revision: number | null; detail?: string } | null>(null);
 
   const begin = React.useCallback((f: File, opts: { sample?: boolean } = {}) => {
     setPicked(null);
-    setNoChecks(null);
     setDesign(null);
     setView("progress");
     setSid(startCheck(f, opts));
   }, []);
 
-  const beginSample = React.useCallback(async () => {
-    const usage = await readUsage();
-    const file = sampleBracketFile();
-    // A sample that ran before reuses its check, so the server takes it even with none left.
-    if (usage && !usage.unlimited && usage.remaining <= 0 && !(await checkedBefore(file))) {
-      setSid(null);
-      setNoChecks("You have no checks left. The sample uses one like any part the first time, so it didn't run.");
-      return;
-    }
-    begin(file, { sample: true });
+  // The sample never uses a check: the server knows its exact bytes, so it runs with none left.
+  const beginSample = React.useCallback(() => {
+    begin(sampleBracketFile(), { sample: true });
   }, [begin]);
 
   React.useEffect(() => {
@@ -102,7 +78,7 @@ export function CheckPage() {
     }
     if (new URLSearchParams(search).get("sample") === "1") {
       window.history.replaceState(window.history.state, "", R.check);
-      void beginSample();
+      beginSample();
     }
   }, [begin, beginSample]);
 
@@ -131,19 +107,14 @@ export function CheckPage() {
 
   const designBanner = design ? <DesignImportBanner state={design.state} name={design.name} revision={design.revision} detail={design.detail} onDismiss={design.state === "done" ? () => setDesign(null) : undefined} /> : null;
   if (!session) {
-    return (
-      <>
-        <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={() => void beginSample()} notice={designBanner} />
-        {noChecks ? <OutOfChecks message={noChecks} onClose={() => setNoChecks(null)} /> : null}
-      </>
-    );
+    return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} notice={designBanner} />;
   }
   const f = session.failure;
   if (session.status === "assembly" && session.assembly) return <AssemblyView session={session} onPick={(file) => begin(file)} />;
   if (f?.kind === "quota")
     return (
       <>
-        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={() => void beginSample()} />
+        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} />
         <OutOfChecks message={f.message} />
       </>
     );
@@ -194,7 +165,7 @@ export function CheckPage() {
             <ProgressPanel session={session} open={session.panel} onOpenChange={(o) => setPanel(session.id, o)} />
           </>
         ) : session.sample ? (
-          <SampleFlow status={session.status} result={session.result} onRetry={() => void beginSample()} />
+          <SampleFlow status={session.status} result={session.result} onRetry={beginSample} />
         ) : null
       }
     />

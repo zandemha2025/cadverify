@@ -231,8 +231,8 @@ export function unlockRows(
     const priced = opts.cost?.estimates?.length ?? 0;
     rows.push({ k: "A verdict for each method", v: String(opts.methodsTotal), s: `Today all ${opts.methodsTotal} are blocked by the open shell`, ok: true });
     rows.push({ k: "A price for each one that can make it", v: "Priced", s: priced ? "Priced once the shape is closed" : "Today none: cost needs a watertight, positive volume", ok: true });
-    if (opts.fixHere) rows.push({ k: "Fix it here", v: "Pilot", s: opts.fixHere });
-    else if (opts.repairable) rows.push({ k: "Repair here", v: "Pilot", s: "ScaleCAD can try a mesh repair on a copy and shows both shapes, with any change to the volume" });
+    if (opts.fixHere) rows.push({ k: "Fix it here", v: "On a copy", s: opts.fixHere });
+    else if (opts.repairable) rows.push({ k: "Repair here", v: "On a copy", s: "ScaleCAD can try a mesh repair on a copy and shows both shapes, with any change to the volume" });
     return { rows, foot: priced ? "Prices on an open shell aren’t reliable; the check prices the closed shape." : "Nothing on this file is priced yet, so no price change can be shown until a closed shape is checked." };
   }
   const q = u.q;

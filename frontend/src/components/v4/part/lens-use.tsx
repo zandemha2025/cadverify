@@ -189,7 +189,7 @@ export function UseSheet() {
                 </button>
               </span>
               <Link className="btn sm" href={R.fit}>
-                Add the parts around it <small style={{ color: "var(--ink3)" }}>Pilot</small>
+                Add the parts around it
               </Link>
             </div>
             {parsed.errors.length ? (

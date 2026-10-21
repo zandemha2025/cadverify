@@ -18,7 +18,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchCostDecision, type CostDecisionDetail } from "@/lib/api";
 import { useAuth } from "@/components/ui/auth-provider";
-import { sampleBracketFile } from "@/lib/verify/sample-cad";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { R } from "../routes";
 import { useShell } from "../shell";
@@ -30,7 +29,6 @@ import { refusal } from "../home/drop";
 import { recentRows, yoursOf, type HomeInput } from "../home/home-derive";
 import * as api from "../home/data";
 import { firstSteps, homeMode, materialWord, ranOnMachines, resumeCard, type FirstStep, type HomeMode } from "./first-run";
-import { checkedBefore } from "./checked";
 import { readSetupDismissed, writeSetupDismissed } from "./state";
 import "../home/home.css";
 import "./onboard.css";
@@ -52,10 +50,10 @@ export function useFirstHomeMode(input: HomeInput): { mode: HomeMode; dismiss?: 
   return { mode, dismiss: uid != null ? dismiss : undefined };
 }
 
-type Extra = { org: string | null; members: number | null; inProgram: number | null; latest: CostDecisionDetail | null; latestFailed: boolean; sampleRun: boolean | null };
+type Extra = { org: string | null; members: number | null; inProgram: number | null; latest: CostDecisionDetail | null; latestFailed: boolean };
 
 function useExtra(input: HomeInput, mode: HomeMode) {
-  const [x, setX] = React.useState<Extra>({ org: null, members: null, inProgram: null, latest: null, latestFailed: false, sampleRun: null });
+  const [x, setX] = React.useState<Extra>({ org: null, members: null, inProgram: null, latest: null, latestFailed: false });
   const [membersFailed, setMembersFailed] = React.useState(false);
   const newest = input.records?.[0]?.id ?? null;
   React.useEffect(() => {
@@ -67,7 +65,6 @@ function useExtra(input: HomeInput, mode: HomeMode) {
     );
     // Same cached read as Home's programs line: parts in a program.
     api.portfolio().then((p) => live && setX((c) => ({ ...c, inProgram: api.programFacts(p).inProgram })), () => undefined);
-    void checkedBefore(sampleBracketFile()).then((v) => live && setX((c) => ({ ...c, sampleRun: v })));
     return () => {
       live = false;
     };
@@ -153,7 +150,8 @@ export function FirstHome({
   const missing = [...failed].filter((s) => ["records", "parts", "machines", "rates"].includes(s));
   const foot = mode === "first" ? "All optional. Without them, answers use typical machines and rates and say so." : nMachines ? "Picks up here each visit until every step is done or dismissed." : "Skipped steps wait here. Nothing re-checks until you ask.";
   const recent = recentRows(input.records, new Date(), 3);
-  const sampleSmall = x.sampleRun ? "Run before · runs again without a new check" : usesOne;
+  // The server knows the sample's exact bytes and never counts it.
+  const sampleSmall = "No check used";
 
   return (
     <Frame label="Home">

@@ -6,8 +6,9 @@
  *  - GET  /parts/{hash}/fixes            per finding: can ScaleCAD fix it, with which fix and parameter;
  *  - POST /parts/{hash}/fixes/{fix_id}   the fix on a copy, re-checked and priced in the same request;
  *  - GET  /parts/{hash}/fixed-file       the fixed copy (only copies ScaleCAD made).
- * Pilot-only like mesh repair; the copy is saved as a new part linked to the
- * original, and no part check is used (the response says so: checks_used).
+ * On every plan like mesh repair; the copy is saved as a new part linked to the
+ * original, and no part check is used (the response says so: checks_used). A
+ * free account over its hourly or daily ceiling gets the server's message (429).
  */
 import * as React from "react";
 import { API_BASE } from "@/lib/api-base";
@@ -106,7 +107,7 @@ export interface ServerFixResult {
 }
 
 /** What one fix request came back with. */
-export type ServerFixOutcome = { s: "plan" } | { s: "error"; msg: string } | { s: "done"; r: ServerFixResult };
+export type ServerFixOutcome = { s: "error"; msg: string } | { s: "done"; r: ServerFixResult };
 
 const cache = new Map<string, Promise<ServerOptions | null>>();
 
@@ -180,8 +181,6 @@ export async function applyServerFix(key: string, fixId: string, opts: { value?:
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    const code = (body as { code?: string; detail?: { code?: string } } | null)?.code ?? (body as { detail?: { code?: string } } | null)?.detail?.code;
-    if (res.status === 403 && code === "paid_access_required") return { s: "plan" };
     return { s: "error", msg: apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "fix" }) };
   }
   cache.delete(key);

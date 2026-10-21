@@ -3,7 +3,7 @@
 /**
  * K2: asking before ScaleCAD tries a fix. A dialog over the part (role=dialog,
  * aria-modal; Esc and the scrim close it; focus moves in and goes back).
- *  - repair: mesh repair on a copy of an open shell (POST /validate/repair, pilot);
+ *  - repair: mesh repair on a copy of an open shell (POST /validate/repair, any plan, no check);
  *  - studio: a new Design Studio revision with one parameter changed, then a check;
  *  - upload: the change in the user's CAD tool, the price after it, upload the fixed file.
  */
@@ -63,29 +63,6 @@ function trapTab(e: React.KeyboardEvent<HTMLDivElement>) {
 }
 
 type Step = { k: string; s: string; c: "" | "now" | "wait" | "done" | "bad" };
-
-/** Mesh repair and ScaleCAD's own fixes come with the Pilot plan (backend require_paid_access). */
-function PilotGate({ what }: { what: string }) {
-  return (
-    <div className="kprop" role="note" style={{ marginTop: 8 }}>
-      <b>{what} comes with the Pilot plan</b>
-      <span>Your plan covers checks. Nothing runs from here on it; the steps for your CAD tool work on any plan.</span>
-    </div>
-  );
-}
-
-function PilotLinks() {
-  return (
-    <>
-      <a className="btn ink" href="/contact">
-        Talk to us
-      </a>
-      <Link className="btn" href={R.billing}>
-        Plans
-      </Link>
-    </>
-  );
-}
 
 function Steps({ steps }: { steps: Step[] }) {
   return (
@@ -210,10 +187,10 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
               { k: "Checked the repaired copy", s: `verdict ${rr.r.repair_verification?.repaired_verdict ?? "—"}, was ${rr.r.repair_verification?.original_verdict ?? "—"}`, c: "done" },
               { k: "Both shapes ready to compare", s: "faces, volume and verdict", c: "done" },
             ]
-          : [{ k: rr.s === "failed" ? "Repair didn’t close it" : rr.s === "plan" ? "Repair is a pilot tool" : "The repair didn’t run", s: "", c: "bad" }];
+          : [{ k: rr.s === "failed" ? "Repair didn’t close it" : "The repair didn’t run", s: "", c: "bad" }];
     return (
       <>
-        <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · Pilot" title={rr.s === "running" ? "Repairing a copy" : rr.s === "fixed" ? "Repaired copy ready" : "Not repaired"} text={rr.s === "running" ? "Working on a copy. Your file stays as it is." : "Your file stays as it is."} close={close} />
+        <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · on a copy" title={rr.s === "running" ? "Repairing a copy" : rr.s === "fixed" ? "Repaired copy ready" : "Not repaired"} text={rr.s === "running" ? "Working on a copy. Your file stays as it is." : "Your file stays as it is."} close={close} />
         <div className="db" aria-live="polite">
           <div className="gh">
             <span>Progress</span>
@@ -224,14 +201,6 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
             <div className="kbad" role="alert">
               <b>Still open</b>
               <span>{(rr.r.repair_details as { reason?: string }).reason ?? rr.r.repair_details.error ?? "Repair did not produce a watertight solid."}</span>
-            </div>
-          ) : rr.s === "plan" ? (
-            <div className="kbad" role="alert">
-              <b>Not on this plan</b>
-              <span>Repair comes with a pilot or Enterprise plan. Nothing ran and nothing was charged.</span>
-              <span>
-                <Link href={R.billing}>Plans</Link>
-              </span>
             </div>
           ) : rr.s === "error" ? (
             <div className="kbad" role="alert">
@@ -255,7 +224,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <button className="btn" type="button" onClick={() => fx.closeAsk()}>
             Close
           </button>
-          {rr.s === "failed" || rr.s === "plan" ? (
+          {rr.s === "failed" ? (
             <button className="btn ghost sp" type="button" onClick={() => fx.openAsk(P.id, "upload")}>
               Fix it in CAD instead
             </button>
@@ -265,12 +234,10 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
     );
   }
   const big = faces != null && faces > REPAIR_MAX_FACES;
-  const gated = fx.origin.pilot === false;
   return (
     <>
-      <Head who={gated ? "Pilot plan" : "ScaleCAD can try this"} whoTone={gated ? "c-unk" : "c-ok"} kind="Mesh repair · Pilot" title="Repair this mesh?" text={`ScaleCAD can try to close the open shell on a copy of ${name}. Your file stays as it is.`} close={close} />
+      <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · on a copy" title="Repair this mesh?" text={`ScaleCAD can try to close the open shell on a copy of ${name}. Your file stays as it is.`} close={close} />
       <div className="db">
-        {gated ? <PilotGate what="Mesh repair" /> : null}
         <div className="gh">
           <span>What happens</span>
           <span>on a copy</span>
@@ -286,7 +253,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <b>It can change the shape</b>
           <span>Repair fills every gap it finds, including holes, bores or pockets that belong to the design. If the volume changes by more than 2%, ScaleCAD warns you and shows by how much before you keep anything.</span>
         </div>
-        {!file && !gated ? (
+        {!file ? (
           <>
             <div className="gh" style={{ marginTop: 6 }}>
               <span>The file</span>
@@ -329,25 +296,19 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           </b>
           <span>Time limit</span>
           <b className="num">{REPAIR_TIMEOUT_S} s</b>
-          <span>Plan</span>
-          <b>{gated ? "Pilot plan · not on your plan" : "Pilot · doesn’t use a check"}</b>
+          <span>Checks</span>
+          <b>Doesn’t use one</b>
           <span>Your file</span>
           <b>Unchanged · repair works on a copy</b>
         </div>
       </div>
       <div className="df">
-        {gated ? (
-          <PilotLinks />
-        ) : (
-          <>
-            <button className="btn ink" type="button" aria-disabled={!src} onClick={go} style={!src ? { opacity: 0.45, cursor: "default" } : undefined}>
-              Repair a copy
-            </button>
-            <button className="btn" type="button" onClick={close}>
-              Not now
-            </button>
-          </>
-        )}
+        <button className="btn ink" type="button" aria-disabled={!src} onClick={go} style={!src ? { opacity: 0.45, cursor: "default" } : undefined}>
+          Repair a copy
+        </button>
+        <button className="btn" type="button" onClick={close}>
+          Not now
+        </button>
         <button className="btn ghost sp" type="button" onClick={() => fx.openAsk(P.id, "upload")}>
           Fix it in CAD instead
         </button>
@@ -645,7 +606,6 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
   for (const m of P.methods) if (m.need != null) (groups.get(m.need) ?? groups.set(m.need, []).get(m.need)!).push(m);
   const mins = fix.param ? [...groups.entries()].sort((a, b) => a[0] - b[0]) : [];
   const qty = p.qs.length ? p.qs : undefined;
-  const gated = fx.origin.pilot === false;
   const go = () => {
     if (err || !key) return;
     startServerFix(key, P.id, fix, fix.param ? v : null, { qty, materialClass: p.data.cost?.material_class ?? null });
@@ -681,10 +641,10 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
                 ? { k: "Couldn’t confirm the fix", s: "the copy had to be checked on a simplified mesh", c: "bad" }
                 : { k: outcome === "cleared" ? "The re-check cleared it" : outcome === "partly_cleared" ? "The re-check cleared some of it" : outcome === "nothing_to_clear" ? "Nothing to clear" : "The re-check still shows it", s: r.new_error_count ? `and found ${r.new_error_count} new ${r.new_error_count === 1 ? "error" : "errors"}: compare both` : "compare both before you use the copy", c: outcome === "cleared" || outcome === "partly_cleared" ? "done" : "bad" },
             ]
-          : [{ k: sr.s === "plan" ? "Fixes here are a pilot tool" : "Not made", s: "", c: "bad" }];
+          : [{ k: "Not made", s: "", c: "bad" }];
     return (
       <>
-        <Head who={sr.s === "running" || done ? "ScaleCAD can fix this" : "ScaleCAD tried this"} whoTone={sr.s === "running" || done ? "c-ok" : "c-unk"} kind={`${label} · Pilot`} title={sr.s === "running" ? `${label}: working on a copy` : done ? "Fixed copy ready" : "Not fixed"} text="Your file stays as it is." close={close} />
+        <Head who={sr.s === "running" || done ? "ScaleCAD can fix this" : "ScaleCAD tried this"} whoTone={sr.s === "running" || done ? "c-ok" : "c-unk"} kind={`${label} · on a copy`} title={sr.s === "running" ? `${label}: working on a copy` : done ? "Fixed copy ready" : "Not fixed"} text="Your file stays as it is." close={close} />
         <div className="db" aria-live="polite">
           <div className="gh">
             <span>Progress</span>
@@ -695,14 +655,6 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
             <div className="kbad" role="alert">
               <b>Nothing was made</b>
               <span>{sr.r.reason ?? "The fix didn’t produce a file."}</span>
-            </div>
-          ) : sr.s === "plan" ? (
-            <div className="kbad" role="alert">
-              <b>Not on this plan</b>
-              <span>Fixes ScaleCAD makes itself come with a pilot or Enterprise plan. Nothing ran.</span>
-              <span>
-                <Link href={R.billing}>Plans</Link>
-              </span>
             </div>
           ) : sr.s === "error" ? (
             <div className="kbad" role="alert">
@@ -734,9 +686,8 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
   }
   return (
     <>
-      <Head who={gated ? "Pilot plan" : "ScaleCAD can fix this"} whoTone={gated ? "c-unk" : "c-ok"} kind={`${label} · Pilot`} title={`${label} on a copy?`} text={`ScaleCAD can ${lowerLabel} on a copy of ${p.data.fileName}, then check the copy like an upload. Your file stays as it is.`} close={close} />
+      <Head who="ScaleCAD can fix this" whoTone="c-ok" kind={`${label} · on a copy`} title={`${label} on a copy?`} text={`ScaleCAD can ${lowerLabel} on a copy of ${p.data.fileName}, then check the copy like an upload. Your file stays as it is.`} close={close} />
       <div className="db">
-        {gated ? <PilotGate what={label} /> : null}
         <div className="gh">
           <span>The change</span>
           <span className="kcode">{P.codes.join(" · ")}</span>
@@ -816,25 +767,19 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
           <span>The copy is a new part, linked to your file. If the volume changes by more than 2%, or the copy has a new problem, ScaleCAD says so.</span>
         </div>
         <div className="kv" style={{ marginTop: 6 }}>
-          <span>Plan</span>
-          <b>{gated ? "Pilot plan · not on your plan" : "Pilot · doesn’t use a check"}</b>
+          <span>Checks</span>
+          <b>Doesn’t use one</b>
           <span>Your file</span>
           <b>Unchanged · the fix works on a copy</b>
         </div>
       </div>
       <div className="df">
-        {gated ? (
-          <PilotLinks />
-        ) : (
-          <>
-            <button className="btn ink" type="button" aria-disabled={!!err} onClick={go} style={err ? { opacity: 0.45, cursor: "default" } : undefined}>
-              Fix a copy
-            </button>
-            <button className="btn" type="button" onClick={close}>
-              Not now
-            </button>
-          </>
-        )}
+        <button className="btn ink" type="button" aria-disabled={!!err} onClick={go} style={err ? { opacity: 0.45, cursor: "default" } : undefined}>
+          Fix a copy
+        </button>
+        <button className="btn" type="button" onClick={close}>
+          Not now
+        </button>
         {alts}
       </div>
     </>

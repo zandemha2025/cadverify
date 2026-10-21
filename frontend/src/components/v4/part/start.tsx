@@ -10,7 +10,6 @@ import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { useShell } from "../shell";
-import { sampleBracketFile } from "@/lib/verify/sample-cad";
 import { checkedBefore } from "../onboard/checked";
 
 function mb(n: number): string {
@@ -47,9 +46,8 @@ export function StartScreen({
   const [checked, setChecked] = React.useState<number | null>(null);
   const [rates, setRates] = React.useState<string | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
-  // A file checked before doesn't use another check (a check means a part), nor does a sample that ran before.
+  // A file checked before doesn't use another check (a check means a part). The sample never uses one.
   const [seen, setSeen] = React.useState<{ file: File; checked: boolean | null } | null>(null);
-  const [sampleRan, setSampleRan] = React.useState<boolean | null>(null);
   React.useEffect(() => {
     if (!file) return;
     let live = true;
@@ -58,13 +56,6 @@ export function StartScreen({
       live = false;
     };
   }, [file]);
-  React.useEffect(() => {
-    let live = true;
-    void checkedBefore(sampleBracketFile()).then((v) => live && setSampleRan(v));
-    return () => {
-      live = false;
-    };
-  }, []);
   React.useEffect(() => {
     listMachines().then((p) => setMachines(p.machines.length)).catch(() => setMachines(null));
     fetchCostDecisions({ limit: 1 }).then((p) => setChecked(p.cost_decisions.length)).catch(() => setChecked(null));
@@ -147,7 +138,7 @@ export function StartScreen({
                   Try a sample part
                 </button>
               </span>
-              <span>{sampleRan ? "The sample has run before, so it doesn’t use another check." : "The sample uses 1 check the first time."}</span>
+              <span>The sample doesn’t use a check.</span>
             </>
           )}
           <input

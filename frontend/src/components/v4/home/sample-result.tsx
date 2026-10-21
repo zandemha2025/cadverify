@@ -29,7 +29,7 @@ export function SampleResultDialog({ s, onClose, onBack, onCheckMine }: { s: Sam
           <p className="pmeta" style={{ marginTop: 6 }}>
             <span>{s.file}</span>
             {s.saved ? <span>Saved to Records</span> : null}
-            <span>1 check, the first run only</span>
+            <span>No check used</span>
           </p>
           <Figs>
             {s.figs.map((f) => (
