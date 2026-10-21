@@ -33,7 +33,7 @@ from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role
 from src.costing.units import mesh_source_units, scale_mesh_to_mm
-from src.services.source_artifact_service import read_source_artifact
+from src.services.source_artifact_service import find_source_artifact_suffix, read_source_artifact
 from src.storage import ObjectNotFoundError
 
 logger = logging.getLogger("cadverify.part_orientation")
@@ -83,6 +83,10 @@ async def part_orientations(
     picked = _down(down)
     key = (org_id, digest, units, tuple(picked) if picked else None)
     hit = _cache.get(key)
+    # Served from cache only while the stored source exists (a deleted part is a 404).
+    if hit is not None and await find_source_artifact_suffix(org_id, digest) is None:
+        _cache.pop(key, None)
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
     if hit is None:
         try:
             data, suffix = await read_source_artifact(org_id, digest)

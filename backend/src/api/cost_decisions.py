@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -45,6 +45,8 @@ from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import CostDecision
 from src.services import cost_decision_service as svc
+from src.services import share_links
+from src.services.share_links import ShareOptions
 from src.services import cost_pdf_service
 
 logger = logging.getLogger("cadverify.cost_decisions")
@@ -200,8 +202,7 @@ async def get_cost_decision(
         "make_now_process": d.make_now_process,
         "crossover_qty": d.crossover_qty,
         "quantities": d.quantities or [],
-        "is_public": d.is_public,
-        "share_url": f"/s/cost/{d.share_short_id}" if d.share_short_id else None,
+        **share_links.fields(d),
         **svc.governance_fields(d),
         "result": d.result_json,
     }
@@ -345,11 +346,17 @@ async def create_cost_share(
     decision_id: str,
     request: Request,
     response: Response,
+    body: Optional[ShareOptions] = None,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Share a cost decision — generates a public short URL (/s/cost/...)."""
-    return await svc.create_share(decision_id, user.user_id, session)
+    """Share a cost decision — a public short URL (/s/cost/...) that ends.
+
+    Body (optional): ``{"expires_in_days": 30 | 90 | 365 | null}``; omitted is
+    30 days, ``null`` is the explicit "no end date" choice.
+    """
+    days = (body or ShareOptions()).expires_in_days
+    return await svc.create_share(decision_id, user.user_id, session, days)
 
 
 @router.delete("/{decision_id}/share")
@@ -361,7 +368,7 @@ async def revoke_cost_share(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Revoke sharing — the public link 404s immediately."""
+    """Switch the link off now (its maker or an org admin). It then says so (410)."""
     await svc.revoke_share(decision_id, user.user_id, session)
     return {"message": "Share revoked"}
 

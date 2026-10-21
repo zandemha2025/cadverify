@@ -146,6 +146,19 @@ def put(k: tuple, entry: AnalysedPart) -> bool:
     return True
 
 
+def forget_hashes(hashes) -> int:
+    """Drop every entry for these file SHA-256s (a deleted part). Returns the count."""
+    global _hot
+    wanted = set(hashes)
+    with _lock:
+        gone = [k for k in _entries if len(k) > 1 and k[1] in wanted]
+        for k in gone:
+            del _entries[k]
+        if _hot in gone:
+            _hot = None
+    return len(gone)
+
+
 def clear() -> None:
     global _hot
     with _lock:

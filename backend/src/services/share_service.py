@@ -2,8 +2,8 @@
 
 Provides:
   - generate_short_id()          — 12-char cryptographically random base62 string
-  - create_share()               — toggle analysis to public, assign short ID
-  - revoke_share()               — toggle analysis to private, null short ID
+  - create_share()               — make a public link that ends (share_links)
+  - revoke_share()               — switch the link off (maker or org admin)
   - get_shared_analysis()        — fetch public analysis by short ID
   - sanitize_analysis_for_share() — strip PII, return allow-listed fields only
 """
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import caller_org_subquery
 from src.db.models import Analysis
+from src.services import share_links
 
 logger = logging.getLogger("cadverify.share_service")
 
@@ -31,37 +32,51 @@ def generate_short_id(length: int = 12) -> str:
     return "".join(BASE62_CHARS[b % 62] for b in raw)
 
 
-async def create_share(
-    analysis_ulid: str, user_id: int, session: AsyncSession
-) -> dict:
-    """Toggle an analysis to public and assign a share short ID.
+async def _owned(analysis_ulid: str, user_id: int, session: AsyncSession) -> Analysis:
+    """The caller-org analysis, locked for the share update, or the plain 404.
 
-    Returns the share URL and short ID. If already shared, returns the
-    existing share URL without generating a new ID.
-
-    W1 step 3: org-scoped — only an analysis in the caller's org can be shared;
-    another org's analysis is invisible (404), never 403.
+    W1 step 3: org-scoped — another org's analysis is invisible (404), never 403.
     """
-    stmt = select(Analysis).where(
-        Analysis.ulid == analysis_ulid,
-        Analysis.org_id == caller_org_subquery(user_id),
+    stmt = (
+        select(Analysis)
+        .where(
+            Analysis.ulid == analysis_ulid,
+            Analysis.org_id == caller_org_subquery(user_id),
+        )
+        .with_for_update()
     )
-    result = await session.execute(stmt)
-    analysis = result.scalar_one_or_none()
-
+    analysis = (await session.execute(stmt)).scalar_one_or_none()
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")
+    return analysis
 
-    # Already shared — return existing URL
-    if analysis.share_short_id is not None:
-        return {
-            "share_url": f"/s/{analysis.share_short_id}",
-            "share_short_id": analysis.share_short_id,
-        }
+
+def _link(analysis: Analysis) -> dict:
+    return {
+        "share_url": f"/s/{analysis.share_short_id}",
+        "share_short_id": analysis.share_short_id,
+        **share_links.fields(analysis),
+    }
+
+
+async def create_share(
+    analysis_ulid: str,
+    user_id: int,
+    session: AsyncSession,
+    expires_in_days: int | None = share_links.DEFAULT_DAYS,
+) -> dict:
+    """Make a public link to an analysis that ends after ``expires_in_days``.
+
+    ``None`` is the sharer's explicit "no end date". A link that is already on
+    is returned unchanged (idempotent). A link that ended or was switched off
+    is replaced by a new short id; the old one stops resolving.
+    """
+    analysis = await _owned(analysis_ulid, user_id, session)
+    if share_links.status(analysis) == "active":
+        return _link(analysis)
 
     short_id = generate_short_id()
-    analysis.share_short_id = short_id
-    analysis.is_public = True
+    share_links.open_link(analysis, user_id, expires_in_days, short_id)
     from src.services.audit_service import emit_event
 
     await emit_event(
@@ -70,7 +85,10 @@ async def create_share(
         action="share.created",
         resource_type="share",
         resource_id=short_id,
-        detail={"analysis_ulid": analysis_ulid},
+        detail={
+            "analysis_ulid": analysis_ulid,
+            "expires_at": analysis.share_expires_at.isoformat() if analysis.share_expires_at else None,
+        },
         org_id=analysis.org_id,
     )
     await session.commit()
@@ -81,30 +99,24 @@ async def create_share(
         short_id,
         user_id,
     )
-
-    return {"share_url": f"/s/{short_id}", "share_short_id": short_id}
+    return _link(analysis)
 
 
 async def revoke_share(
     analysis_ulid: str, user_id: int, session: AsyncSession
 ) -> None:
-    """Revoke sharing — null the short ID and set is_public=false.
+    """Switch the link off now. Only its maker or an org admin may.
 
-    W1 step 3: org-scoped lookup (see ``create_share``).
+    The short id stays on the row so the public page says "switched off".
+    Idempotent: switching off a link that is already off (or never existed)
+    changes nothing.
     """
-    stmt = select(Analysis).where(
-        Analysis.ulid == analysis_ulid,
-        Analysis.org_id == caller_org_subquery(user_id),
-    )
-    result = await session.execute(stmt)
-    analysis = result.scalar_one_or_none()
+    analysis = await _owned(analysis_ulid, user_id, session)
+    if share_links.status(analysis) != "active":
+        return
+    await share_links.require_can_switch_off(session, analysis, user_id)
 
-    if analysis is None:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-
-    old_short_id = analysis.share_short_id
-    analysis.share_short_id = None
-    analysis.is_public = False
+    share_links.close_link(analysis)
     from src.services.audit_service import emit_event
 
     await emit_event(
@@ -112,7 +124,7 @@ async def revoke_share(
         actor_id=user_id,
         action="share.revoked",
         resource_type="share",
-        resource_id=old_short_id,
+        resource_id=analysis.share_short_id,
         detail={"analysis_ulid": analysis_ulid},
         org_id=analysis.org_id,
     )
@@ -126,19 +138,15 @@ async def get_shared_analysis(
 ) -> dict | None:
     """Fetch a public analysis by its share short ID.
 
-    Returns a sanitized dict or None if not found / not public.
+    Returns a sanitized dict, or None for an unknown id. A link that ended or
+    was switched off raises 410 with no record data (``share_links``).
     """
-    stmt = select(Analysis).where(
-        Analysis.share_short_id == short_id,
-        Analysis.is_public.is_(True),
-    )
-    result = await session.execute(stmt)
-    analysis = result.scalar_one_or_none()
-
+    stmt = select(Analysis).where(Analysis.share_short_id == short_id)
+    analysis = (await session.execute(stmt)).scalar_one_or_none()
     if analysis is None:
         return None
-
-    return sanitize_analysis_for_share(analysis)
+    share_links.public_or_raise(analysis, "Shared analysis not found")
+    return {**sanitize_analysis_for_share(analysis), **share_links.public_meta(analysis)}
 
 
 def sanitize_analysis_for_share(analysis: Analysis) -> dict:

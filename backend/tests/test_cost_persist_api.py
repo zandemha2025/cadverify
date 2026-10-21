@@ -1101,10 +1101,21 @@ def test_share_create_and_revoke(client, real_result_json):
     assert body["share_short_id"]
     assert dec.is_public is True
 
+    # 30 days unless the sharer picks longer (2026-10-21 product decision).
+    assert body["share_status"] == "active" and body["share_expires_at"]
+    assert dec.share_created_by == 42
+
     r2 = cl.delete("/api/v1/cost-decisions/01SHARE00000000000000000A/share")
     assert r2.status_code == 200
     assert dec.is_public is False
-    assert dec.share_short_id is None
+    # Switched off, not forgotten: the short id stays so the public page says so.
+    assert dec.share_revoked_at is not None
+    assert dec.share_short_id == body["share_short_id"]
+    gone = cl.get(body["share_url"])
+    assert gone.status_code == 410
+    # The app's error handler serves a coded detail as the body itself.
+    assert gone.json()["code"] == "share_switched_off"
+    assert set(gone.json()) == {"code", "message", "ended_at"}
 
 
 def test_public_share_sanitized_no_owner_leak(client, real_result_json):

@@ -32,6 +32,7 @@ from ulid import ULID
 from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
 from src.db.models import CostDecision, UsageEvent
+from src.services import share_links
 from src.services.share_service import generate_short_id
 
 logger = logging.getLogger("cadverify.cost_decision_service")
@@ -354,8 +355,7 @@ def _list_item(d: CostDecision) -> dict:
         "crossover_qty": d.crossover_qty,
         "quantities": d.quantities or [],
         "created_at": d.created_at.isoformat(),
-        "is_public": d.is_public,
-        "share_url": f"/s/cost/{d.share_short_id}" if d.share_short_id else None,
+        **share_links.fields(d),
         **governance_fields(d),
     }
 
@@ -898,67 +898,108 @@ def build_estimates_csv(
 # ---------------------------------------------------------------------------
 
 
-async def create_share(
-    ulid: str, user_id: int, session: AsyncSession
-) -> dict:
-    """Toggle a cost decision public and assign a share short id (idempotent).
+async def _owned_for_share(ulid: str, user_id: int, session: AsyncSession) -> CostDecision:
+    """The caller-org decision, locked for the share update, or the plain 404.
 
-    W1 step 3: org-scoped lookup — only a decision in the caller's org can be
-    shared; another org's decision is invisible (404).
+    W1 step 3: org-scoped lookup — another org's decision is invisible (404).
     """
-    stmt = select(CostDecision).where(
-        CostDecision.ulid == ulid,
-        CostDecision.org_id == caller_org_subquery(user_id),
+    stmt = (
+        select(CostDecision)
+        .where(
+            CostDecision.ulid == ulid,
+            CostDecision.org_id == caller_org_subquery(user_id),
+        )
+        .with_for_update()
     )
     d = (await session.execute(stmt)).scalar_one_or_none()
     if d is None:
         raise HTTPException(status_code=404, detail="Cost decision not found")
+    return d
 
-    if d.share_short_id is not None:
-        return {
-            "share_url": f"/s/cost/{d.share_short_id}",
-            "share_short_id": d.share_short_id,
-        }
+
+def _share_link(d: CostDecision) -> dict:
+    return {
+        "share_url": f"/s/cost/{d.share_short_id}",
+        "share_short_id": d.share_short_id,
+        **share_links.fields(d),
+    }
+
+
+async def create_share(
+    ulid: str,
+    user_id: int,
+    session: AsyncSession,
+    expires_in_days: Optional[int] = 30,
+) -> dict:
+    """Make a public link to a cost decision that ends after ``expires_in_days``.
+
+    ``None`` is the sharer's explicit "no end date". A link that is on is
+    returned unchanged (idempotent); one that ended or was switched off is
+    replaced by a new short id (the old one stops resolving).
+    """
+    from src.services.audit_service import emit_event
+
+    d = await _owned_for_share(ulid, user_id, session)
+    if share_links.status(d) == "active":
+        return _share_link(d)
 
     short_id = generate_short_id()
-    d.share_short_id = short_id
-    d.is_public = True
+    share_links.open_link(d, user_id, expires_in_days, short_id)
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="share.created",
+        resource_type="share",
+        resource_id=short_id,
+        detail={
+            "cost_decision_ulid": ulid,
+            "expires_at": d.share_expires_at.isoformat() if d.share_expires_at else None,
+        },
+        org_id=d.org_id,
+    )
     await session.commit()
     logger.info("Cost decision %s shared as /s/cost/%s by user %d", ulid, short_id, user_id)
-    return {"share_url": f"/s/cost/{short_id}", "share_short_id": short_id}
+    return _share_link(d)
 
 
 async def revoke_share(
     ulid: str, user_id: int, session: AsyncSession
 ) -> None:
-    """Revoke sharing — the public link 404s immediately.
+    """Switch the link off now. Only its maker or an org admin may.
 
-    W1 step 3: org-scoped lookup (see ``create_share``).
+    The short id stays so the public page says "switched off". Idempotent.
     """
-    stmt = select(CostDecision).where(
-        CostDecision.ulid == ulid,
-        CostDecision.org_id == caller_org_subquery(user_id),
-    )
-    d = (await session.execute(stmt)).scalar_one_or_none()
-    if d is None:
-        raise HTTPException(status_code=404, detail="Cost decision not found")
+    from src.services.audit_service import emit_event
 
-    d.share_short_id = None
-    d.is_public = False
+    d = await _owned_for_share(ulid, user_id, session)
+    if share_links.status(d) != "active":
+        return
+    await share_links.require_can_switch_off(session, d, user_id)
+    share_links.close_link(d)
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="share.revoked",
+        resource_type="share",
+        resource_id=d.share_short_id,
+        detail={"cost_decision_ulid": ulid},
+        org_id=d.org_id,
+    )
     await session.commit()
     logger.info("Cost decision %s unshared by user %d", ulid, user_id)
 
 
 async def get_shared(short_id: str, session: AsyncSession) -> Optional[dict]:
-    """Fetch a public cost decision by share short id -> sanitized dict / None."""
-    stmt = select(CostDecision).where(
-        CostDecision.share_short_id == short_id,
-        CostDecision.is_public.is_(True),
-    )
+    """Public cost decision by short id -> sanitized dict; None when unknown.
+
+    A link that ended or was switched off raises 410 with no record data.
+    """
+    stmt = select(CostDecision).where(CostDecision.share_short_id == short_id)
     d = (await session.execute(stmt)).scalar_one_or_none()
     if d is None:
         return None
-    return sanitize_for_share(d)
+    share_links.public_or_raise(d, "Shared cost decision not found")
+    return {**sanitize_for_share(d), **share_links.public_meta(d)}
 
 
 # USER/SHOP-tagged inputs are the sharer's own: their machines and declared

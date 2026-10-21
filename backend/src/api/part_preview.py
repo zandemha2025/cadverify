@@ -15,7 +15,9 @@ required; another org's hash, a malformed hash and a missing artifact are all th
 same 404, so existence never leaks across tenants. There is no public or share
 access. Neither route returns the raw CAD bytes, and neither counts as a check
 (no validation-cap or org-limit dependency). Nothing new is written: the GLB is
-held only in a small in-process cache keyed by org, hash and units.
+held only in a small in-process cache keyed by org, hash and units, and a cache
+hit is served only while the stored source still exists (a deleted part is the
+same 404 everywhere, whichever process deleted it).
 """
 from __future__ import annotations
 
@@ -111,6 +113,11 @@ async def stored_preview_glb(
     org_id, digest = _scope(ctx, mesh_hash)
     key = (org_id, digest, units)
     hit = _cache_get(key)
+    # A part deleted through another API process leaves this process's copy
+    # behind: a hit still needs the stored source (metadata only, no bytes).
+    if hit is not None and await find_source_artifact_suffix(org_id, digest) is None:
+        _cache.pop(key, None)
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
     if hit is None:
         try:
             data, suffix = await read_source_artifact(org_id, digest)

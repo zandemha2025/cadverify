@@ -25,6 +25,7 @@ from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
 from src.jobs.arq_backend import reconcile_queued_jobs
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.design_tasks import run_design_generation_job
+from src.jobs.data_deletion_tasks import run_data_deletion, sweep_data_deletions
 from src.jobs.tasks import run_sam3d_job
 from src.config.production import assert_production_operations
 from src.services.customer_sync import sync_customer_accounts
@@ -129,6 +130,7 @@ class WorkerSettings:
         dispatch_webhook,
         run_reconstruction_job,
         run_design_generation_job,
+        run_data_deletion,
     ]
     # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
     # Runs every 5 minutes and once at worker startup as a backstop.
@@ -157,6 +159,13 @@ class WorkerSettings:
         # incomplete-upload lifecycle rule, so database expiry owns cleanup.
         cron(
             sweep_expired_direct_uploads,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
+        # Finish removing stored files of deletions the API couldn't finish,
+        # and give each deleted organization's prefixes their final pass.
+        cron(
+            sweep_data_deletions,
             minute=set(range(0, 60, 5)),
             run_at_startup=True,
         ),

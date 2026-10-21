@@ -1,13 +1,15 @@
 """Share API — share/unshare endpoints + public share view.
 
 Routes:
-  POST   /analyses/{analysis_id}/share   — create share link (authenticated)
-  DELETE /analyses/{analysis_id}/share   — revoke share link (authenticated)
-  GET    /s/{short_id}                   — public share view (unauthenticated, IP rate limited)
+  POST   /analyses/{analysis_id}/share   — create a share link that ends (authenticated)
+  DELETE /analyses/{analysis_id}/share   — switch the link off (its maker or an org admin)
+  GET    /s/{short_id}                   — public share view (unauthenticated, IP rate limited);
+                                           410 once the link ended or was switched off
 """
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,7 @@ from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import share_service
+from src.services.share_links import ShareOptions
 
 logger = logging.getLogger("cadverify.share")
 
@@ -33,12 +36,17 @@ async def create_share(
     analysis_id: str,
     request: Request,
     response: Response,
+    body: Optional[ShareOptions] = None,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Share an analysis — generates a public short URL."""
-    result = await share_service.create_share(analysis_id, user.user_id, session)
-    return result
+    """Share an analysis — a public short URL that ends.
+
+    Body (optional): ``{"expires_in_days": 30 | 90 | 365 | null}``; omitted is
+    30 days, ``null`` is the explicit "no end date" choice.
+    """
+    days = (body or ShareOptions()).expires_in_days
+    return await share_service.create_share(analysis_id, user.user_id, session, days)
 
 
 @share_router.delete("/{analysis_id}/share")
@@ -50,7 +58,7 @@ async def revoke_share(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Revoke sharing — the public link will 404 immediately."""
+    """Switch the link off now (its maker or an org admin). It then says so (410)."""
     await share_service.revoke_share(analysis_id, user.user_id, session)
     return {"message": "Share revoked"}
 

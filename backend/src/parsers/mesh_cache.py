@@ -127,6 +127,16 @@ class MeshParseCache:
             old_key, _ = self._store.popitem(last=False)
             self._total_bytes -= self._bytes.pop(old_key, 0)
 
+    def forget_hashes(self, hashes) -> int:
+        """Drop the parsed meshes of these file SHA-256s (a deleted part)."""
+        wanted = set(hashes)
+        with self._lock:
+            gone = [k for k in self._store if k[0] in wanted]
+            for k in gone:
+                del self._store[k]
+                self._total_bytes -= self._bytes.pop(k, 0)
+        return len(gone)
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
@@ -155,3 +165,8 @@ _CACHE = MeshParseCache()
 def get_cache() -> MeshParseCache:
     """The process-wide singleton cache."""
     return _CACHE
+
+
+def forget_hashes(hashes) -> int:
+    """Drop the process-wide cache's parsed meshes of these file SHA-256s."""
+    return _CACHE.forget_hashes(hashes)

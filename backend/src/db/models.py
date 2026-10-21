@@ -319,7 +319,9 @@ class User(Base):
 
     # relationships
     api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
-    analyses: Mapped[List[Analysis]] = relationship(back_populates="user", lazy="selectin")
+    analyses: Mapped[List[Analysis]] = relationship(
+        back_populates="user", lazy="selectin", foreign_keys="Analysis.user_id"
+    )
     batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="selectin")
     cost_decisions: Mapped[List[CostDecision]] = relationship(
         back_populates="user",
@@ -562,12 +564,27 @@ class Analysis(Base):
     share_short_id: Mapped[Optional[str]] = mapped_column(
         Text, unique=False, nullable=True
     )
+    # Share-link lifecycle (migration 0053, ``src.services.share_links``). The
+    # short id stays after a link is switched off or ends, so the public page can
+    # say which; ``share_created_at`` NULL marks a link made before end dates.
+    share_created_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    share_created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    share_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    share_revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
 
     # relationships
-    user: Mapped[User] = relationship(back_populates="analyses")
+    user: Mapped[User] = relationship(back_populates="analyses", foreign_keys=[user_id])
     jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="selectin")
 
 
@@ -666,6 +683,21 @@ class CostDecision(Base):
     )
     share_short_id: Mapped[Optional[str]] = mapped_column(
         Text, unique=False, nullable=True
+    )
+    # Share-link lifecycle (migration 0053, ``src.services.share_links``). The
+    # short id stays after a link is switched off or ends, so the public page can
+    # say which; ``share_created_at`` NULL marks a link made before end dates.
+    share_created_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    share_created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    share_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    share_revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
@@ -2429,3 +2461,66 @@ class DesignRevision(Base):
     )
 
     project: Mapped[DesignProject] = relationship(back_populates="revisions")
+
+
+# ---------------------------------------------------------------------------
+# Data control (migration 0053): one receipt per part or organization deletion
+# ---------------------------------------------------------------------------
+
+
+class DataDeletion(Base):
+    """What one deletion removed, and the stored files still being removed.
+
+    The database rows go in one transaction; the object store is emptied after
+    it commits (``steps_json`` lists the prefixes/keys, ``steps_done`` counts the
+    finished ones) and retried until done. ``org_id`` is plain text with no FK on
+    purpose: the receipt outlives the organization it describes. It holds the
+    deleted part's SHA-256 (``target``) and row counts, never a file name.
+    """
+
+    __tablename__ = "data_deletions"
+    __table_args__ = (
+        CheckConstraint("scope IN ('part', 'organization')", name="ck_data_deletions_scope"),
+        CheckConstraint(
+            "status IN ('removing_files', 'done', 'failed')", name="ck_data_deletions_status"
+        ),
+        Index("ix_data_deletions_org_scope_target", "org_id", "scope", "target"),
+        Index("ix_data_deletions_status_updated", "status", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    org_id: Mapped[str] = mapped_column(Text, nullable=False)
+    target: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="removing_files"
+    )
+    removed_json: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    steps_json: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    steps_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    steps_done: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    files_removed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    final_sweep_due_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
