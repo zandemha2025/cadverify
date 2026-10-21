@@ -81,7 +81,21 @@ def _parse_origins(raw: str) -> list[str]:
 # allows localhost/127.0.0.1 origins so the /label viewer can stream STLs from
 # the local backend (CAD stays on localhost). An explicit CORS_ORIGIN_REGEX env
 # always wins.
-LABELING_ENABLED = os.getenv("LABELING_ENABLED") == "1"
+def _labeling_enabled() -> bool:
+    """LABELING_ENABLED=1, honoured only outside a released build.
+
+    The labeling tool's corpus routes have no authentication (they are meant
+    for one operator on localhost), so a released process never mounts them or
+    widens CORS for them, whatever the environment says.
+    """
+    if os.getenv("LABELING_ENABLED") != "1":
+        return False
+    from src.config.production import is_production
+
+    return not is_production()
+
+
+LABELING_ENABLED = _labeling_enabled()
 
 
 def _default_cors_regex() -> str:
@@ -606,13 +620,28 @@ app.include_router(health_router)
 app.include_router(metrics_router)
 
 # Cycle 4 local labeling tool (dev-gated, prod-safe). Mounted ONLY under
-# LABELING_ENABLED=1 so the corpus/label surface never ships to production and
-# no CAD egresses. Routes are localhost-only (no API key/role — see corpus_router).
-if LABELING_ENABLED:
+# LABELING_ENABLED=1 outside a released build (RELEASE names a deployment), so
+# the corpus/label surface never ships to production and no CAD egresses.
+# Routes are localhost-only (no API key/role — see corpus_router).
+def _mount_labeling_tool(target: FastAPI) -> bool:
+    """Mount the corpus routes when the local labeling tool is on; never in a release."""
+    if os.getenv("LABELING_ENABLED") == "1" and not _labeling_enabled():
+        logger.warning(
+            "LABELING_ENABLED=1 ignored in a production build (RELEASE=%r): "
+            "the unauthenticated corpus routes are not mounted.",
+            os.getenv("RELEASE"),
+        )
+        return False
+    if not _labeling_enabled():
+        return False
     from src.api.corpus_router import router as corpus_router
 
-    app.include_router(corpus_router)
+    target.include_router(corpus_router)
     logger.info("Labeling tool ENABLED — corpus routes mounted at /api/v1/corpus")
+    return True
+
+
+_mount_labeling_tool(app)
 
 
 # Scalar API docs — serves interactive documentation alongside /docs and /redoc
