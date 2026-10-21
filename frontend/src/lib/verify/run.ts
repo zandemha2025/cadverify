@@ -45,6 +45,10 @@ export interface VerifyInput {
    *  when the record holds none; stored conditions always win and are never
    *  overwritten by a run. */
   declare?: ServiceEnvironment | null;
+  /** Turn the part before the check ("rotation:…", see components/v4/orient/orient.ts):
+   *  its +Z is the build direction for printing and the opening direction for
+   *  molding. Unset/null: the file's own axes. Same file, so no extra check. */
+  orientation?: string | null;
 }
 
 /** What happened to `VerifyInput.declare`: "saved" (the record had none),
@@ -164,6 +168,7 @@ async function postCost(
   form.append("cavities", "1");
   form.append("complexity", "moderate");
   form.append("material_class", input.materialClass);
+  if (input.orientation) form.append("orientation", input.orientation);
   if (ownedProcesses.length > 0) {
     form.append("owned_processes", ownedProcesses.join(","));
   }
@@ -236,6 +241,32 @@ export async function retryVerificationCost(
   };
 }
 
+/** POST /validate?orientation=… for a turned re-check, with the same refusals as
+ *  validateFile (which carries no orientation). */
+async function validateOriented(file: File, orientation: string, partCheckId?: string): Promise<ValidationResult> {
+  const form = new FormData();
+  form.append("file", file);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/validate?orientation=${encodeURIComponent(orientation)}`, {
+      method: "POST",
+      body: form,
+      headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined,
+    });
+  } catch {
+    throw new Error("The check couldn't reach the server. Check the connection and try again.");
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(
+      apiQuotaMessage(body) || apiProblemDetail(body) ||
+        apiRecoveryMessage({ status: res.status, payload: body, resource: "verification", retryAfter: res.headers.get("retry-after") }),
+    );
+  }
+  if (!body) throw new Error("Unexpected server response");
+  return body as ValidationResult;
+}
+
 /** Run the full verification for one dropped part. Lightweight independent work
  *  runs in parallel. Costing starts only after routing + DFM returns, so a service
  *  interruption cannot be misrepresented as a manufacturing verdict. */
@@ -246,8 +277,10 @@ export async function runVerification(
   // Start the first useful answer immediately. Floor/context work is lightweight
   // and runs beside it; the second geometry-heavy call (cost) still waits until
   // validation has released its worker memory.
-  const validationPromise = validateFile(input.file, undefined, undefined, undefined, undefined,
-    partCheckHeaders(input.file)["x-part-check-id"]).then(
+  const checkId = partCheckHeaders(input.file)["x-part-check-id"];
+  const validationPromise = (input.orientation
+    ? validateOriented(input.file, input.orientation, checkId)
+    : validateFile(input.file, undefined, undefined, undefined, undefined, checkId)).then(
     (v) => ({ v, err: null as string | null }),
     (e) => ({
       v: null as ValidationResult | null,

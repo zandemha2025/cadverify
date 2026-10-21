@@ -18,6 +18,8 @@ import { OutOfChecks } from "./blocked";
 import { liveMesh } from "./check-page";
 import { SampleFlow } from "../home/sample-result";
 import { FirstRun } from "../onboard/first-run-overlay";
+import { OrientPanel } from "../orient/panel";
+import { matOf, orientationParam, recordOf } from "../orient/orient";
 import type { Lens } from "./ctx";
 import { R } from "../routes";
 import { Empty, Failed, Loading } from "../ui";
@@ -123,13 +125,19 @@ export function PartPage({ partKey }: { partKey: string }) {
   );
 
   const file = session?.file ?? dropped;
+  // A re-check keeps the orientation of the check on screen unless it asks for another.
+  const shownOrientation = session ? session.orientation : orientationParam(matOf(recordOf(data?.validation) ?? recordOf(data?.cost)));
   const recheck = React.useCallback(
-    (opts?: { materialClass?: string }) => {
+    (opts?: { materialClass?: string; orientation?: string | null }) => {
       if (!file) return;
       setQuotaClosed(false);
-      startCheck(file, { materialClass: opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer", sample: session?.sample });
+      startCheck(file, {
+        materialClass: opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer",
+        sample: session?.sample,
+        orientation: opts?.orientation !== undefined ? opts.orientation : shownOrientation,
+      });
     },
-    [file, session?.materialClass, session?.sample, data?.cost?.material_class],
+    [file, session?.materialClass, session?.sample, data?.cost?.material_class, shownOrientation],
   );
 
   if (!lens) return null;
@@ -201,6 +209,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       ) : null}
       {quotaMessage ? <OutOfChecks message={quotaMessage} onClose={() => setQuotaClosed(true)} /> : null}
       <FirstRun />
+      <OrientPanel recheck={(orientation) => recheck({ orientation })} canRecheck={!!file} />
     </>
   );
   return (

@@ -14,6 +14,11 @@
  * flagged face when the engine's region centre lies inside the part (a hollow
  * part's centre), the mesh's own open edges drawn in red, numbered location
  * markers, and two viewers that turn together (before and after a fix).
+ *
+ * Orientation (components/v4/orient) adds: the part turned the way a check will
+ * place it, with the placed +Z drawn up and the part resting on the floor
+ * (animated between orientations), the faces the check's rule marks in that
+ * orientation coloured, and a click on a face to lay the part on it.
  */
 import * as React from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -24,6 +29,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { computeLayeredHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
+import { shadeFaces, type Shade } from "../orient/orient";
 
 const TARGET = 2;
 const BASE = new THREE.Color("#c3c8cf");
@@ -64,6 +70,13 @@ export interface ViewerApi {
   turnToHighlight: () => boolean;
   /** Face the same way as another viewer (before and after turn together). */
   setAngles: (azimuth: number, polar: number) => void;
+}
+
+/** The part as a check will place it: `rotation` (file → placed, row-major 9) with the placed +Z drawn up. */
+export interface ViewerOrient {
+  rotation: number[];
+  /** Colour the faces the check's rule marks in this orientation (support, or walls without draft). */
+  shade: (Shade & { color: string }) | null;
 }
 
 /** A ref the viewer fills with its turn controls while it is mounted. */
@@ -108,11 +121,14 @@ function Part({
   highlight,
   xray,
   meshRef,
+  onPick,
 }: {
   loaded: Loaded;
   highlight: ViewerHighlight | null;
   xray: boolean;
   meshRef: React.RefObject<THREE.Mesh | null>;
+  /** A click (not a drag) on a face: its normal in the file's coordinates. */
+  onPick?: (normal: [number, number, number]) => void;
 }) {
   const matRef = React.useRef<THREE.MeshStandardMaterial>(null);
   const { invalidate } = useThree();
@@ -131,7 +147,23 @@ function Part({
     invalidate();
   }, [loaded, lit, highlight, invalidate]);
   return (
-    <mesh ref={meshRef} geometry={loaded.geometry} scale={loaded.scale} position={loaded.center.clone().multiplyScalar(-loaded.scale)}>
+    <mesh
+      ref={meshRef}
+      geometry={loaded.geometry}
+      scale={loaded.scale}
+      position={loaded.center.clone().multiplyScalar(-loaded.scale)}
+      onClick={
+        onPick
+          ? (e) => {
+              if (e.delta > 4 || !e.face) return;
+              e.stopPropagation();
+              // Geometry space is the GLB's world space; undo its node transform for the file's own axes.
+              const n = e.face.normal.clone().transformDirection(loaded.transform.clone().invert());
+              onPick([n.x, n.y, n.z]);
+            }
+          : undefined
+      }
+    >
       <meshStandardMaterial
         ref={matRef}
         color={lit ? "#ffffff" : "#c6ccd4"}
@@ -149,6 +181,72 @@ function Part({
 }
 
 const VIEW = new THREE.Vector3(0.62, 0.42, 0.66).normalize();
+
+/** Placed (+Z up) to the scene's +Y up. */
+const Z_UP = new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
+
+interface Pose {
+  q: THREE.Quaternion;
+  /** Offset that centres the turned part on the origin. */
+  offset: THREE.Vector3;
+  /** Half its height on screen (the floor sits just below). */
+  halfY: number;
+}
+
+/** Where the turned part sits: its rotation in the scene, centred, resting on the floor. */
+function poseOf(loaded: Loaded, rotation: number[] | null): Pose {
+  const m = new THREE.Matrix4();
+  if (rotation && rotation.length === 9) {
+    const r = rotation;
+    m.copy(Z_UP).multiply(new THREE.Matrix4().set(r[0], r[1], r[2], 0, r[3], r[4], r[5], 0, r[6], r[7], r[8], 0, 0, 0, 0, 1));
+  }
+  const q = new THREE.Quaternion().setFromRotationMatrix(m);
+  const pos = loaded.geometry.getAttribute("position");
+  const lo = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  const v = new THREE.Vector3();
+  if (pos) {
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).sub(loaded.center).multiplyScalar(loaded.scale).applyQuaternion(q);
+      lo.min(v);
+      hi.max(v);
+    }
+  }
+  if (!Number.isFinite(lo.x)) return { q, offset: new THREE.Vector3(), halfY: 1 };
+  const mid = lo.clone().add(hi).multiplyScalar(0.5);
+  return { q, offset: mid.negate(), halfY: (hi.y - lo.y) / 2 };
+}
+
+/** Turns its children to the pose, smoothly unless reduced motion is asked for. */
+function Turned({ pose, reduce, children }: { pose: Pose; reduce: boolean; children: React.ReactNode }) {
+  const ref = React.useRef<THREE.Group>(null);
+  const anim = React.useRef<{ q0: THREE.Quaternion; p0: THREE.Vector3; t0: number } | null>(null);
+  const { invalidate } = useThree();
+  React.useEffect(() => {
+    const g = ref.current;
+    if (!g) return;
+    if (reduce || (g.quaternion.equals(pose.q) && g.position.equals(pose.offset))) {
+      g.quaternion.copy(pose.q);
+      g.position.copy(pose.offset);
+      anim.current = null;
+    } else {
+      anim.current = { q0: g.quaternion.clone(), p0: g.position.clone(), t0: performance.now() };
+    }
+    invalidate();
+  }, [pose, reduce, invalidate]);
+  useFrame(() => {
+    const g = ref.current;
+    const a = anim.current;
+    if (!g || !a) return;
+    const t = Math.min(1, (performance.now() - a.t0) / 460);
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    g.quaternion.copy(a.q0).slerp(pose.q, e);
+    g.position.copy(a.p0).lerp(pose.offset, e);
+    if (t >= 1) anim.current = null;
+    invalidate();
+  });
+  return <group ref={ref}>{children}</group>;
+}
 
 interface Anchor {
   point: THREE.Vector3;
@@ -418,6 +516,22 @@ function Rig({
   return null;
 }
 
+/** The floor shadow, baked once the part has settled in its pose. */
+function Shadow({ y, delay }: { y: number; delay: number }) {
+  const [ready, setReady] = React.useState(delay === 0);
+  const { invalidate } = useThree();
+  React.useEffect(() => {
+    if (ready) return;
+    const t = window.setTimeout(() => {
+      setReady(true);
+      invalidate();
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [ready, delay, invalidate]);
+  if (!ready) return null;
+  return <ContactShadows position={[0, y, 0]} scale={TARGET * 3.2} far={TARGET * 2} blur={2.6} opacity={0.22} resolution={512} color="#14181f" frames={1} />;
+}
+
 function Frame({ loaded }: { loaded: Loaded }) {
   const { camera, size, invalidate } = useThree();
   React.useEffect(() => {
@@ -448,6 +562,8 @@ export default function PartViewer({
   markers,
   onTurn,
   onLit,
+  orient,
+  onFacePick,
 }: {
   url: string | null;
   kind?: "glb" | "stl";
@@ -464,6 +580,10 @@ export default function PartViewer({
   onTurn?: (azimuth: number, polar: number) => void;
   /** How many faces are lit (the sample, or every flagged face when the rule found them all). */
   onLit?: (count: number) => void;
+  /** Show the part as a check will place it (components/v4/orient); null keeps the file's own view. */
+  orient?: ViewerOrient | null;
+  /** In orientation mode, a click on a face: its normal in the file's coordinates. */
+  onFacePick?: (normal: [number, number, number]) => void;
 }) {
   const [loaded, setLoaded] = React.useState<Loaded | null>(null);
   const [webgl, setWebgl] = React.useState<boolean | null>(null);
@@ -519,15 +639,34 @@ export default function PartViewer({
     const f = draftFaces(current, rule.deg);
     return f.length === rule.count ? f : null;
   }, [current, rule]);
-  const lit = React.useMemo<ViewerHighlight | null>(() => (highlight && ruleFaces ? { ...highlight, faces: ruleFaces } : highlight), [highlight, ruleFaces]);
+  const shade = orient?.shade ?? null;
+  const orientRot = orient?.rotation ?? null;
+  const shadeKey = orient && shade ? `${orientRot?.join(",")}|${shade.kind}|${shade.deg}|${shade.color}` : null;
+  const shaded = React.useMemo<ViewerHighlight | null>(() => {
+    if (!current || !orientRot || !shade) return null;
+    const pos = current.geometry.getAttribute("position");
+    if (!pos) return null;
+    return { faces: shadeFaces(pos.array, orientRot, shade), color: shade.color, region: null, label: "", kindClass: "" };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, shadeKey]);
+  const lit = React.useMemo<ViewerHighlight | null>(
+    () => (orient ? shaded : highlight && ruleFaces ? { ...highlight, faces: ruleFaces } : highlight),
+    [orient, shaded, highlight, ruleFaces],
+  );
+  const poseKey = orientRot ? orientRot.join(",") : "file";
+  const pose = React.useMemo(
+    () => (current ? poseOf(current, orientRot) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current, poseKey],
+  );
   React.useEffect(() => {
     if (current) onLit?.(lit?.faces.length ?? 0);
   }, [current, lit, onLit]);
   const wantEdges = !!highlight?.edges;
   const edges = React.useMemo(() => (current && wantEdges ? openEdgesOf(current) : null), [current, wantEdges]);
   const anchor = React.useMemo(
-    () => (current && lit ? anchorOf(current, lit.faces, lit.region, edges) : null),
-    [current, lit, edges],
+    () => (current && lit && !orient ? anchorOf(current, lit.faces, lit.region, edges) : null),
+    [current, lit, edges, orient],
   );
   const marks = React.useMemo(
     () => (current && markers?.length ? markers.map((m) => ({ m, a: anchorOf(current, m.faces, m.region, null) })).filter((x): x is { m: ViewerMarker; a: Anchor } => !!x.a) : []),
@@ -552,8 +691,8 @@ export default function PartViewer({
     }
   }, [current, anchor, onPin]);
 
-  if (webgl !== true || !current) return null;
-  const halfY = ((current.geometry.boundingBox!.max.y - current.geometry.boundingBox!.min.y) * current.scale) / 2;
+  if (webgl !== true || !current || !pose) return null;
+  const halfY = pose.halfY;
   return (
     <Canvas
       frameloop="demand"
@@ -568,18 +707,20 @@ export default function PartViewer({
       <directionalLight position={[-6, 3, -5]} intensity={0.55} color="#9fb2c8" />
       <directionalLight position={[0, -4, 3]} intensity={0.25} color="#e8ecf1" />
       <React.Suspense fallback={null}>
-        <Part loaded={current} highlight={lit} xray={xray} meshRef={meshRef} />
+        <Turned pose={pose} reduce={reduce}>
+          <Part loaded={current} highlight={lit} xray={xray} meshRef={meshRef} onPick={orient && onFacePick ? onFacePick : undefined} />
+          {edges && edges.length ? <OpenEdges positions={edges} /> : null}
+          {marks.map(({ m, a }) => (
+            <Pin key={m.key} anchor={a} label={m.label} cls="mark" occluder={meshRef} xray={xray} />
+          ))}
+          {anchor && highlight ? <Pin anchor={anchor} label={highlight.label} cls={highlight.kindClass} callout={highlight.callout} occluder={meshRef} xray={xray} onHidden={report} /> : null}
+        </Turned>
         <Environment resolution={128} frames={1}>
           <Lightformer form="rect" intensity={2.6} position={[0, 5, 1]} rotation={[-Math.PI / 2, 0, 0]} scale={[10, 6, 1]} color="#ffffff" />
           <Lightformer form="rect" intensity={1.1} position={[-5, 1.5, 3]} scale={[5, 6, 1]} color="#e6ebf1" />
           <Lightformer form="ring" intensity={1.1} position={[3, 4, 2]} scale={2.4} color="#ffffff" />
         </Environment>
-        <ContactShadows position={[0, -halfY - 0.03, 0]} scale={TARGET * 3.2} far={TARGET * 2} blur={2.6} opacity={0.22} resolution={512} color="#14181f" frames={1} />
-        {edges && edges.length ? <OpenEdges positions={edges} /> : null}
-        {marks.map(({ m, a }) => (
-          <Pin key={m.key} anchor={a} label={m.label} cls="mark" occluder={meshRef} xray={xray} />
-        ))}
-        {anchor && highlight ? <Pin anchor={anchor} label={highlight.label} cls={highlight.kindClass} callout={highlight.callout} occluder={meshRef} xray={xray} onHidden={report} /> : null}
+        <Shadow key={poseKey} y={-halfY - 0.03} delay={orient && !reduce ? 480 : 0} />
       </React.Suspense>
       <OrbitControls
         ref={controls}
