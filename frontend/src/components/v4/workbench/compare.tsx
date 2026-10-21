@@ -237,7 +237,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
                 <small className="num">{bandPct(cellEst) != null ? `±${bandPct(cellEst)}%` : ""}</small>
               </div>
               <div className="fig">
-                <span>Grounded</span>
+                <span>From your data</span>
                 <b className="num">
                   {governance(cellEst.drivers).grounded} of {cellEst.drivers.length}
                 </b>

@@ -116,7 +116,7 @@ export function NoticesPage() {
           <div className="col">
             <h2>During and after a check</h2>
             {spec("Check stopped before any result · in the sheet", <CheckInterruptedBanner onRetry={example("retry")} />)}
-            {spec("Cost failed after routing · in the sheet", <CostFailedBanner onRetryCost={example("retry")} onRerun={example("rerun")} />)}
+            {spec("Cost failed after the process checks · in the sheet", <CostFailedBanner onRetryCost={example("retry")} onRerun={example("rerun")} />)}
             {spec("Cost blocked by the check allowance · in the sheet", <CostBlockedBanner onUpgrade={() => setX3(true)} pro={usage?.plan === "pro"} />)}
             {gone.pro ? null : spec("Back from checkout", <ProBanner monthlyChecks={usage?.plan === "pro" ? usage.cap : null} email={user?.email} onDismiss={hide("pro")} />)}
             {spec("Part preview failed · on the stage, where the part would be", <PreviewFailed onRetry={example("retry")} onChooseFile={pickFile} />)}

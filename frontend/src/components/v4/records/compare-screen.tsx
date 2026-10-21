@@ -172,7 +172,7 @@ export function CompareScreen() {
         { c: "#146C43", t: "On your machines", s: `A: ${mineText(sa, fa)}. B: ${mineText(sb, fb)}.` },
         { c: "#8C5200", t: "Lead time", s: `A: ${lead(sa)}. B: ${lead(sb)}.` },
         { c: "#B42318", t: "Materials ruled out by conditions", s: `A: ${fa.ruledOut.length}${fa.ruledOut.length ? ` (${fa.ruledOut.join(", ")})` : ""}. B: ${fb.ruledOut.length}${fb.ruledOut.length ? ` (${fb.ruledOut.join(", ")})` : ""}.` },
-        { c: "#3E434A", t: "Ways that can make it", s: `A: ${ways(ra)}. B: ${ways(rb)}.` },
+        { c: "#3E434A", t: "Processes that can make it", s: `A: ${ways(ra)}. B: ${ways(rb)}.` },
         ...(A.detail!.engine_version !== B.detail!.engine_version ? [{ c: "#5F656E", t: "Engine", s: `A: ${A.detail!.engine_version ?? "not recorded"}. B: ${B.detail!.engine_version ?? "not recorded"}.` }] : []),
       ]
     : [];
@@ -251,17 +251,17 @@ export function CompareScreen() {
           })}
         </div>
 
-        <section className="panel" aria-label="Each way, A and B">
+        <section className="panel" aria-label="Each process, A and B">
           <div className="ph">
-            <h2>Each way at {qw}</h2>
-            <span>Cheapest workable material per way · range in small type</span>
+            <h2>Each process at {qw}</h2>
+            <span>Cheapest workable material per process · range in small type</span>
           </div>
           {!ready ? (
             <Skeleton rows={4} label="Loading the ways" />
           ) : (
-            <div className="tbl" role="region" aria-label="Cost of each way for A and B" tabIndex={0}>
+            <div className="tbl" role="region" aria-label="Cost of each process for A and B" tabIndex={0}>
               <div className="tr th">
-                <span>Way</span>
+                <span>Process</span>
                 <span>A</span>
                 <span>B</span>
                 <span>B vs A</span>
@@ -524,7 +524,7 @@ function ToolingPanel({
                 At <b className="num">{parts(qAt)}</b>: make now <b className="num">{mk != null ? `${money(mk)} (${wayLower(chart.makeWay[i])})` : "—"}</b> · with tooling <b className="num">{tl != null ? money(tl) : "—"}</b>
               </span>
               <span>
-                <b>{mk == null || tl == null ? "One way has no price here" : mk <= tl ? "Make now is cheaper" : `Tooling is cheaper${chart.toolNeedsRedesign ? ", after a redesign" : ""}`}</b>
+                <b>{mk == null || tl == null ? "One process has no price here" : mk <= tl ? "Make now is cheaper" : `Tooling is cheaper${chart.toolNeedsRedesign ? ", after a redesign" : ""}`}</b>
               </span>
             </div>
             <p style={{ margin: "6px 0 0", color: "var(--ink3)", fontSize: 12.5 }}>Stops only at priced quantities.</p>
@@ -533,7 +533,7 @@ function ToolingPanel({
       ) : (
         <div className="empty" style={{ padding: "18px 24px" }}>
           <b>No tooling route</b>
-          <span>{!anyPrice ? "No way without tooling is priced: its conditions rule every way out." : "The engine found no tooling way for this record."}</span>
+          <span>{!anyPrice ? "No process without tooling is priced: its conditions rule every process out." : "The engine found no tooling process for this record."}</span>
         </div>
       )}
     </section>

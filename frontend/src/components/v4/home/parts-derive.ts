@@ -82,7 +82,7 @@ export function tidyReason(reason: string | null | undefined): string {
 
 function routeLine(row: PartRow): string {
   const r = row.recommended_route;
-  if (!r) return "No way found yet";
+  if (!r) return "No process found yet";
   return [wayName(r.process), r.material].filter(Boolean).join(" · ");
 }
 
@@ -117,7 +117,7 @@ export function verdictOf(row: PartRow, make: Makeability | null | undefined): V
     return { key: "out", label: "Ruled out", tone: "bad", where: "Service conditions rule out every material", stale };
   }
   if (v === "not_makeable") {
-    return { key: "out", label: "Ruled out", tone: "bad", where: "No way clears the checks as drawn", stale };
+    return { key: "out", label: "Ruled out", tone: "bad", where: "No process clears the checks as drawn", stale };
   }
   return { key: "unknown", label: "Not checked", tone: "unk", where: routeLine(row), stale };
 }
@@ -235,7 +235,7 @@ export function peekFigs(row: PartRow, v: Verdict, d: DecisionLite | null): Peek
   const route = row.recommended_route?.process ?? null;
   const fit = route ? d?.result?.verification?.per_route?.[route] : undefined;
   const maker = fit && (fit.verdict === "makeable_in_house" || fit.verdict === "makeable_with_secondary_op") && fit.best_machine ? `${fit.best_machine}, yours` : fit ? "Outside" : route ? wayName(route) : "";
-  if (uc?.withheld) figs.push({ k: "Price", v: "Withheld", c: "warn", s: "Way needs a design change" });
+  if (uc?.withheld) figs.push({ k: "Price", v: "Withheld", c: "warn", s: "Process needs a design change" });
   else if (uc && uc.usd != null) figs.push({ k: uc.qty != null ? `Each, at ${uc.qty.toLocaleString("en-US")}` : "Each", v: money(uc.usd), s: maker });
   else figs.push({ k: "Price", v: "Not priced", s: row.lifecycle_state === "Drafted" ? "Checked, not costed" : "No price for this way" });
   if (uc && !uc.withheld && uc.usd != null && route && d?.result?.estimates) {

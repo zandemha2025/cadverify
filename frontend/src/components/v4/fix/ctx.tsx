@@ -168,6 +168,19 @@ export function useFixController(args: {
   const ranked = React.useMemo(() => rankProblems(set, methods, allQty), [set, methods, allQty]);
   const [only, setOnly] = useProblemFilter(data.key, set.processes);
   const listed = React.useMemo(() => (only ? ranked.filter((u) => appliesTo(u.problem, only)) : ranked), [ranked, only]);
+  // A link can choose the process (?for=fdm); it's then remembered like a choice made here.
+  React.useEffect(() => {
+    try {
+      const u = new URL(window.location.href);
+      const f = u.searchParams.get("for");
+      if (!f) return;
+      if (set.processes.includes(f)) setOnly(f);
+      u.searchParams.delete("for");
+      window.history.replaceState(window.history.state, "", u.toString());
+    } catch {
+      /* no URL state */
+    }
+  }, [set.processes, setOnly]);
   const problem = view?.kind === "problem" ? findProblem(set, view.id) : null;
   const method = problem ? defaultMethod(problem, set, methods, q, view?.kind === "problem" ? view.method : null, selCode) : null;
   const picked = view?.kind === "all" ? findProblem(set, view.sel) : null;

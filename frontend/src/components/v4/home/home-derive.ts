@@ -150,14 +150,17 @@ export function buildQueue(input: HomeInput): QueueItem[] {
       tone: "bad",
       n: String(blocked.length),
       title: one ? `${one.filename} needs a design change` : `${blocked.length} parts need a design change`,
-      short: tidyReason(blocked[0].unit_cost?.withheld_reason) || "The way it's made is blocked as drawn",
+      short: tidyReason(blocked[0].unit_cost?.withheld_reason) || "The process is blocked as drawn",
       name: one ? one.filename : "Design changes",
       meta: "Price withheld until the design changes",
-      figs: blocked.slice(0, 3).map((p) => ({ k: p.filename, v: "Withheld", s: p.recommended_route ? wayName(p.recommended_route.process) : "No way found", c: "bad" as const })),
+      figs: blocked.slice(0, 3).map((p) => ({ k: p.filename, v: "Withheld", s: p.recommended_route ? wayName(p.recommended_route.process) : "No process found", c: "bad" as const })),
       partsLabel: one ? "Part" : "Parts",
       parts: partsByFile(blocked),
       kv: [],
-      act: one ? { label: "Open part", href: R.part(one.part_key) } : { label: `Show ${blocked.length} parts`, href: `${R.parts}?machines=design` },
+      // One part: its problems, for the process that's blocked, one click away.
+      act: one
+        ? { label: "See why, on the part", href: `${R.part(one.part_key)}?problems=all${one.recommended_route?.process ? `&for=${encodeURIComponent(one.recommended_route.process)}` : ""}` }
+        : { label: `Show ${blocked.length} parts`, href: `${R.parts}?machines=design` },
     });
   }
 
@@ -190,9 +193,9 @@ export function buildQueue(input: HomeInput): QueueItem[] {
       tone: "bad",
       n: String(n),
       title: n === 1 ? "1 part ruled out" : `${n} parts ruled out`,
-      short: "Service conditions or the shape rule out every way",
+      short: "Service conditions or the shape rule out every process",
       name: "Ruled out",
-      meta: "No way clears the service conditions or the checks",
+      meta: "No process clears the service conditions or the checks",
       figs: [{ k: "Parts", v: String(n), s: "ruled out", c: "bad" }],
       partsLabel: n === 1 ? "Part" : "Parts",
       parts: [],

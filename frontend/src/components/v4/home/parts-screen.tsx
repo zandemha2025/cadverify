@@ -394,7 +394,7 @@ function Peek({ row, v, onClose }: { row: PartRow; v: Verdict; onClose: () => vo
   const f = row.findings;
   const size = sizeText(d?.result?.geometry?.bbox_mm);
   const kv: [string, string][] = [];
-  if (route) kv.push(["Way", [wayName(route.process), route.material].filter(Boolean).join(" · ")]);
+  if (route) kv.push(["Process", [wayName(route.process), route.material].filter(Boolean).join(" · ")]);
   if (post && post.total) kv.push(["Cost inputs yours", `${post.shop + post.user} of ${post.total}`]);
   if (row.unit_cost?.qty != null) kv.push(["Shown at", `${row.unit_cost.qty.toLocaleString("en-US")} ${row.unit_cost.qty === 1 ? "part" : "parts"}`]);
   if (size) kv.push(["Size", size]);
@@ -419,7 +419,7 @@ function Peek({ row, v, onClose }: { row: PartRow; v: Verdict; onClose: () => vo
       <div className="scroll swap">
         <div className="gh">
           <span>Engine pick</span>
-          <span>{route ? (route.source === "costed" ? "Costed record" : "Shape suggestion, not costed") : "No way found"}</span>
+          <span>{route ? (route.source === "costed" ? "Costed record" : "Shape suggestion, not costed") : "No process found"}</span>
         </div>
         {kv.length ? (
           <div className="kv">
@@ -533,7 +533,7 @@ function SheetHome({
             {i.key === "capability" ? <Link href={R.triage}>What machine would fit</Link> : null}
           </div>
         ))}
-        {items.length === 0 && make ? <p className="h-foot" style={{ margin: "8px 12px" }}>Every part&apos;s way is current and priced.</p> : null}
+        {items.length === 0 && make ? <p className="h-foot" style={{ margin: "8px 12px" }}>Every part&apos;s process is current and priced.</p> : null}
         <div className="gh">
           <span>Decided</span>
           <span className="num">{records ? decided.length : ""}</span>

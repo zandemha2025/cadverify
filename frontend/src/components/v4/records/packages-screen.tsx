@@ -458,7 +458,7 @@ function Builder({
         ) : null}
         <div className="pk-warn">
           <i aria-hidden="true">!</i>
-          <span>Should-cost evidence, not a quote.</span>
+          <span>A cost estimate, not a quote.</span>
         </div>
         {err ? (
           <p className="err2" role="alert">
@@ -591,7 +591,7 @@ function PackageSheet({ id, toast }: { id: string; toast: (m: string) => void })
               <span style={{ minWidth: 0 }}>
                 {i.decision.filename}
                 <small style={{ display: "block" }}>
-                  {i.decision.make_now_process ? `ScaleCAD’s pick: ${wayLower(i.decision.make_now_process)}` : "No way priced"} · {i.decision.approval_status === "approved" ? "approved" : "not approved"}
+                  {i.decision.make_now_process ? `ScaleCAD’s pick: ${wayLower(i.decision.make_now_process)}` : "No process priced"} · {i.decision.approval_status === "approved" ? "approved" : "not approved"}
                   {i.decision.is_stale ? " · out of date" : ""} · #{short(i.decision.id)}
                 </small>
               </span>

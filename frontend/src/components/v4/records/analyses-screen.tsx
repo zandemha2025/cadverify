@@ -118,7 +118,7 @@ export function AnalysesScreen() {
                       </>,
                     ]
                   : []),
-                ...(ways.size === 1 ? [`${[...ways][0]} ways each`] : []),
+                ...(ways.size === 1 ? [`${[...ways][0]} processes each`] : []),
               ]
             : [list.error ? "Analyses didn't load" : "Loading analyses"]),
           ...(plan ? [<Link key="plan" href={R.billing}>{plan}</Link>] : []),

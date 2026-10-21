@@ -130,7 +130,7 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
 
   const actions: PaletteItem[] = [
     { id: "a-check", group: "Actions", label: "Check a part", sub: "Open a STEP, STL or IGES file", run: onPickFile, words: "upload verify cad file" },
-    { id: "a-sample", group: "Actions", label: "Run the sample", sub: "Routing bracket · real engine output · no check used", href: `${R.check}?sample=1`, words: "example demo bracket" },
+    { id: "a-sample", group: "Actions", label: "Run the sample", sub: "Sample bracket · real engine output · no check used", href: `${R.check}?sample=1`, words: "example demo bracket" },
     { id: "a-setup", group: "Actions", label: "Set up your organization", sub: "Machines, rates, conditions, programs, team", href: R.setup, words: "guide checklist onboarding start here" },
     { id: "a-machine", group: "Actions", label: "Add a machine", sub: "Opens the add form", href: `${R.shop}?add=1`, words: "printer import floor" },
     { id: "a-program", group: "Actions", label: "Assign a program", sub: "Program and yearly volume for a part", href: R.programs, words: "volume lineage" },

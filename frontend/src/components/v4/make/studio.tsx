@@ -350,7 +350,7 @@ export function StudioScreen() {
       setSelectedId(null);
       if (editingId === selected.id) cancelRevision();
       setAsking(false);
-      toast("Archived. Audit evidence kept.");
+      toast("Archived. Its history is kept.");
     } catch (e) {
       setAsking(false);
       setErr(errorText(e, "The design wasn’t archived."));
@@ -397,7 +397,7 @@ export function StudioScreen() {
     overlay = (
       <span className="gen bad">
         <b>This revision wasn’t generated</b>
-        <span>{viewed?.error?.message ?? "Generation failed without an artifact."}</span>
+        <span>{viewed?.error?.message ?? "Generation failed; no file was made."}</span>
       </span>
     );
   else if (previewState === "failed")
@@ -543,7 +543,7 @@ export function StudioScreen() {
             <Loading rows={2} label="Loading designs" />
           ) : designs.length === 0 ? (
             listErr ? null : (
-              <Empty title="No designs yet">{writable ? "The form on the right starts one. Each generate makes a new, immutable revision." : "No designs in this organization yet."}</Empty>
+              <Empty title="No designs yet">{writable ? "The form on the right starts one. Each generate makes a new revision; earlier ones never change." : "No designs in this organization yet."}</Empty>
             )
           ) : (
             <div className="list" role="list" aria-label="Your designs" style={{ padding: "0 8px 8px" }}>
@@ -744,7 +744,7 @@ export function StudioScreen() {
               }}
             >
               <b>Archive “{selected.name}”?</b>
-              <span id="mk-arch-d">It leaves Your designs. Its audit evidence is kept.</span>
+              <span id="mk-arch-d">It leaves Your designs. Its history is kept.</span>
               <span className="row-btns">
                 <button className="btn danger sm" type="button" onClick={() => void archive()} disabled={archiving}>
                   {archiving ? "Archiving…" : "Archive"}

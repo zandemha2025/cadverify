@@ -86,7 +86,7 @@ test("queue order and content come from real signals", () => {
   const design = q.find((i) => i.key === "design")!;
   assert.equal(design.title, "shell.stl needs a design change");
   assert.equal(design.short, "24 faces below 1.5 mm min wall · thinnest 0.5 mm");
-  assert.equal(design.act.label, "Open part");
+  assert.equal(design.act.label, "See why, on the part");
   const review = q.find((i) => i.key === "review")!;
   assert.equal(review.title, "1 records not reviewed");
   assert.equal(review.short, "1 approved");

@@ -447,12 +447,12 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
             </button>
           </div>
         ) : (
-          <p className="ro-note">{q == null ? "This record has no priced quantity." : `No cost inputs at ${num(q)} on this route.`}</p>
+          <p className="ro-note">{q == null ? "This record has no priced quantity." : `No cost inputs at ${num(q)} for this process.`}</p>
         )}
 
-        {/* Evidence */}
+        {/* What the record rests on */}
         <div className="gh">
-          <span>Evidence</span>
+          <span>What it rests on</span>
           <span />
         </div>
         <div className="kv ev">

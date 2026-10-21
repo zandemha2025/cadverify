@@ -44,10 +44,10 @@ export function SharedCost({ data }: { data: SharedCostDecision }) {
             {ways.length ? (
               <>
                 <div className="gh">
-                  <span>Every way priced, at {qty?.toLocaleString("en-US")}</span>
+                  <span>Every process priced, at {qty?.toLocaleString("en-US")}</span>
                   <span>each</span>
                 </div>
-                <div role="list" aria-label={`Every way priced, at ${qty}`}>
+                <div role="list" aria-label={`Every process priced, at ${qty}`}>
                   {ways.map((w) => (
                     <div className="h-way" role="listitem" key={w.key}>
                       <span>

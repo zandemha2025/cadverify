@@ -231,7 +231,7 @@ export function CheckInterruptedBanner({ onRetry, detail }: { onRetry: () => voi
       tone="bad"
       name="check-interrupted"
       title="Check interrupted"
-      meta={detail ?? "No result. Routing, checks and cost didn’t start. The file doesn’t need re-exporting."}
+      meta={detail ?? "No result. The process checks and cost didn’t start. The file doesn’t need re-exporting."}
       actions={
         <button className="btn ink sm" type="button" onClick={onRetry}>
           Retry check
@@ -248,7 +248,7 @@ export function CostFailedBanner({ onRetryCost, onRerun, detail }: { onRetryCost
       tone="warn"
       name="cost-failed"
       title="Cost didn’t finish"
-      meta={detail ?? "Routing and process checks are ready."}
+      meta={detail ?? "The process checks are ready."}
       actions={
         <>
           <button className="btn ink sm" type="button" onClick={onRetryCost}>
@@ -270,7 +270,7 @@ export function CostBlockedBanner({ onUpgrade, checkoutAvailable, pro }: { onUpg
       tone="warn"
       name="cost-blocked"
       title="Cost not run"
-      meta={`${pro ? "This month’s Pro checks used" : "Free checks used"}. Routing and process checks are ready.`}
+      meta={`${pro ? "This month’s Pro checks used" : "Free checks used"}. The process checks are ready.`}
       actions={
         <>
           {pro ? null : onUpgrade ? (

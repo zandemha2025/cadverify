@@ -208,7 +208,7 @@ export function summaryLines(r: CostDecisionSummary): { what: string; answer: st
     ? `${r.user_disposition_label}${basis ? ` · ${wayLower(basis.process)} at ${num(basis.quantity)}` : ""}`
     : r.make_now_process
       ? `ScaleCAD’s pick: ${wayLower(r.make_now_process)}`
-      : "No way priced";
+      : "No process priced";
   const cross = r.crossover_qty != null ? ` · tooling pays off near ${num(Math.round(r.crossover_qty))}` : "";
   return { what, answer: `${qText}${cross} · #${r.id.slice(-6)}` };
 }

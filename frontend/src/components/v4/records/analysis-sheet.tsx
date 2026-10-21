@@ -21,6 +21,7 @@ import { analysisPdf, errorText, repairFile, repairedFile, saveBlob, shareAnalys
 import { Dialog, Glyph, NotFound, PublicLink, RecSheet, Skeleton } from "./common";
 import { summaryLines } from "./facts";
 import { REPAIRABLE, finding, num, plural, rowTime, seconds, short, sizeText, stampUtc, volumeText, way, wayLower, type Tone } from "./words";
+import { familyOf } from "../fix/problems";
 
 export function AnalysisSheet({ id, toast }: { id: string; toast: (m: string) => void }) {
   const { detail, error, notFound, loading, retry } = useAnalysis(id);
@@ -137,7 +138,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           <div className="fig">
             <span>Time</span>
             <b className="num">{seconds(ms)}</b>
-            <small>{plural(ways.length, "way")} checked</small>
+            <small>{plural(ways.length, "process", "processes")} checked</small>
           </div>
           <div className="fig">
             <span>Faces</span>
@@ -146,8 +147,8 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           </div>
           <div className="fig">
             <span>Best fit for the shape</span>
-            <b className="t">{best ? way(best).replace(/, (SLA|DLP|DMLS|SLM)$/, "") : "None"}</b>
-            <small>{best ? (/, (SLA|DLP|DMLS|SLM)$/.exec(way(best))?.[1] ?? "By shape") : "No way passes"}</small>
+            <b className="t">{best ? way(best).replace(/ \(([^)]+)\)$/, "") : "None"}</b>
+            <small>{best ? (/ \(([^)]+)\)$/.exec(way(best))?.[1] ?? "By shape") : "No process passes"}</small>
           </div>
         </div>
       </div>
@@ -265,7 +266,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
         ) : null}
 
         <div className="gh">
-          <span>Ways</span>
+          <span>Processes</span>
           <span>
             {can} can · {ways.length - can} can’t as drawn
           </span>
@@ -285,6 +286,11 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
                   <span className="n num">{plural(p.issues.length, "finding")}</span>
                   <Chip tone={v.tone}>{v.label}</Chip>
                 </button>
+                {partKey && v.tone === "bad" && first ? (
+                  <Link className="waywhy" href={`${R.part(partKey)}?problem=${encodeURIComponent(familyOf(first.code).id)}&method=${encodeURIComponent(p.process)}`}>
+                    Why it can’t, on the part ›
+                  </Link>
+                ) : null}
                 {isOpen ? <Issues issues={p.issues} extra={p.recommended_material ? `Material checked: ${p.recommended_material}${p.recommended_machine ? ` · machine: ${p.recommended_machine}` : ""}` : null} /> : null}
               </div>
             );
@@ -293,7 +299,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
         {ways.length > 3 ? (
           <div style={{ padding: "6px 12px 0" }}>
             <button type="button" className="btn sm ghost" aria-expanded={allWays} onClick={() => setAllWays((x) => !x)}>
-              {allWays ? "Show 3 ways" : `Show all ${ways.length} ways`}
+              {allWays ? "Show 3 processes" : `Show all ${ways.length} processes`}
             </button>
           </div>
         ) : null}
@@ -336,7 +342,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
               return (
                 <Link key={x.id} className="mr2" href={R.record(x.id)}>
                   <span style={{ minWidth: 0 }}>
-                    {row ? summaryLines(row).what : x.make_now_process ? `ScaleCAD’s pick: ${wayLower(x.make_now_process)}` : "No way priced"} <small>· #{short(x.id)}</small>
+                    {row ? summaryLines(row).what : x.make_now_process ? `ScaleCAD’s pick: ${wayLower(x.make_now_process)}` : "No process priced"} <small>· #{short(x.id)}</small>
                   </span>
                   <span className="t">{rowTime(x.created_at)} · Open</span>
                 </Link>
@@ -408,7 +414,7 @@ function BeforeAfter({ before, after }: { before: ValidationResult; after: Valid
     ["Watertight", before.geometry.is_watertight ? "Yes" : "No", after ? (after.geometry.is_watertight ? "Yes" : "No") : "—"],
     ["Faces", num(before.geometry.faces), after ? num(after.geometry.faces) : "—"],
     ["Mesh issues", num(before.universal_issues.filter((i) => REPAIRABLE.has(i.code)).length), after ? num(after.universal_issues.filter((i) => REPAIRABLE.has(i.code)).length) : "—"],
-    ["Ways that can make it", `${canMake(before)} of ${before.process_scores.length}`, after ? `${canMake(after)} of ${after.process_scores.length}` : "—"],
+    ["Processes that can make it", `${canMake(before)} of ${before.process_scores.length}`, after ? `${canMake(after)} of ${after.process_scores.length}` : "—"],
   ];
   return (
     <div className="ba" role="group" aria-label="Before and after the repair">

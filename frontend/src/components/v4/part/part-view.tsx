@@ -27,6 +27,8 @@ import { AskDock } from "./ask";
 import { PreviewFailed, RatesChip } from "../moments";
 import { useShell } from "../shell";
 import { FixProvider, useFixController } from "../fix/ctx";
+import { problemForIssue } from "../fix/problems";
+import { wbHref } from "../workbench/chrome";
 import { FixStage, fixHint } from "../fix/stage";
 import { ProblemSheet } from "../fix/problem-sheet";
 import { AllProblemsSheet } from "../fix/all-sheet";
@@ -175,6 +177,7 @@ export function PartView({
     openAllRef.current = fx.value.openAll;
   });
   const problemCount = fx.value.set.problems.length;
+  const fixSet = fx.value.set;
 
   const value: PartCtxValue = {
     data,
@@ -229,7 +232,9 @@ export function PartView({
     const src = `this part's check${data.decisionId ? `, record ${shortId(data.decisionId)}` : ""}`;
     const items: PaletteItem[] = [];
     for (const m of methods.filter((x) => x.verdict === "bad" && x.blockedReason)) {
-      items.push({ id: `why-${m.code}`, group: "This part", label: `Why can't ${m.name.toLowerCase()} make it?`, sub: m.short, words: `${m.code} ${m.name} blocked can't cannot`, answer: { text: m.blockedReason!, source: `DFM, ${src}` }, href: `${R.part(data.key)}?lens=make` });
+      // The answer opens that problem on the part, for this process (K1).
+      const pr = problemForIssue(fixSet, m.finding?.issue.code) ?? fixSet.problems.find((x) => x.blocks.includes(m.code)) ?? null;
+      items.push({ id: `why-${m.code}`, group: "This part", label: `Why can't ${m.name.toLowerCase()} make it?`, sub: m.short, words: `${m.code} ${m.name} ${m.short} blocked can't cannot dfm`, answer: { text: m.blockedReason!, source: `DFM, ${src}` }, href: pr ? `${R.part(data.key)}?problem=${encodeURIComponent(pr.id)}&method=${encodeURIComponent(m.code)}` : `${R.part(data.key)}?lens=make` });
     }
     for (const qq of qs) {
       const c = cheapestAt(methods, qq);
@@ -243,9 +248,10 @@ export function PartView({
     if (d?.tooling_process && d.crossover_qty) {
       items.push({ id: "crossover", group: "This part", label: `When does ${methodName(d.tooling_process).toLowerCase()} get cheaper?`, words: "crossover tooling mold molding payback", answer: { text: `From about ${qtyWord(Math.round(d.crossover_qty))} parts${d.tooling_dfm_ready ? "" : ", once the design passes its DFM"}.`, source: `cost model, ${src}` }, href: `${R.part(data.key)}?lens=cost` });
     }
-    if (problemCount) items.push({ id: "problems", group: "This part", label: "All problems on this part", sub: `${problemCount} ranked by what fixing each makes possible`, words: "problems findings fix issues dfm wrong", run: () => openAllRef.current() });
+    if (problemCount) items.push({ id: "problems", group: "This part", label: "All problems on this part", sub: `${problemCount} ranked by what fixing each makes possible, for every process or one`, words: "problems findings fix issues dfm wrong filter process fdm fff", run: () => openAllRef.current() });
+    if (data.decisionId) items.push({ id: "breakdown", group: "This part", label: "Cost breakdown", sub: "Every line of the price, its source and rate", words: "workbench glass box should-cost drivers rates lines", href: wbHref("glass", data.key, { decision: data.decisionId }) });
     return items;
-  }, [data.key, data.decisionId, data.cost, checking, methods, qs, views, q, problemCount]);
+  }, [data.key, data.decisionId, data.cost, checking, methods, qs, views, q, problemCount, fixSet]);
   useRegisterPaletteItems("part", paletteItems);
 
   // HUD facts
@@ -258,7 +264,7 @@ export function PartView({
   const watertight = g?.is_watertight ?? data.cost?.geometry.watertight ?? null;
   const hudMeta = interrupted
     ? "Not checked yet · 3D preview drawn from the file"
-    : [dims, volume != null ? `${trimNum(volume, 2)} cm³` : null, watertight == null ? null : watertight ? "watertight" : "not watertight", has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured envelope, 3D view unavailable" : null]
+    : [dims, volume != null ? `${trimNum(volume, 2)} cm³` : null, watertight == null ? null : watertight ? "watertight" : "not watertight", has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
         .filter(Boolean)
         .join(" · ") || (checking ? "Measuring…" : "");
   const ctx = data.context;
@@ -335,11 +341,11 @@ export function PartView({
                   className="src s-file"
                   title={
                     sourceKept
-                      ? `The exact file you uploaded is kept with the record, in your organization only. Evidence fingerprint: SHA-256 ${data.key}.`
-                      : `Evidence fingerprint: SHA-256 of the uploaded file, ${data.key}.`
+                      ? `The exact file you uploaded is kept with the record, in your organization only. File fingerprint (SHA-256): ${data.key}.`
+                      : `File fingerprint (SHA-256 of the uploaded file): ${data.key}.`
                   }
                 >
-                  {sourceKept ? "Source file kept with the record" : "Fingerprint"} <span className="fp" style={{ marginLeft: 4 }}>{data.key.slice(0, 8)}</span>
+                  {sourceKept ? "Source file kept with the record" : "File fingerprint"} <span className="fp" style={{ marginLeft: 4 }}>{data.key.slice(0, 8)}</span>
                 </span>
               ) : null}
               <RatesChip />
@@ -418,7 +424,7 @@ export function PartView({
               </svg>
               <b>{viewer === "nowebgl" ? "No 3D view on this device" : mesh.origin === null && !mesh.error ? "No 3D view of this part here" : "No 3D view on this device"}</b>
               <span>Every answer <span className="on-desk">on the right</span><span className="on-phone">below</span> still holds; they come from the file, not the picture.</span>
-              {dims ? <span className="num">Measured envelope {dims}</span> : null}
+              {dims ? <span className="num">Measured size {dims}</span> : null}
               {mesh.error ? <span className="err" role="alert">{mesh.error}</span> : null}
               {failedLive && onRetryPreview ? (
                 <PreviewFailed onRetry={onRetryPreview} onChooseFile={shell.pickFile} />

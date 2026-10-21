@@ -126,7 +126,7 @@ export function priceFigs(d: SharedCostLite): { k: string; v: string; s: string 
     .map(({ q, r }) => ({ k: `At ${q.toLocaleString("en-US")}`, v: money(r!.unit_cost_usd), s: wayName(r!.process) }));
 }
 
-/** The quantity the "every way" list is priced at: 10 when quoted, else the first quantity. */
+/** The quantity the "every process" list is priced at: 10 when quoted, else the first quantity. */
 export function listQty(d: SharedCostLite): number | null {
   if (d.quantities.includes(10)) return 10;
   return d.quantities[0] ?? null;

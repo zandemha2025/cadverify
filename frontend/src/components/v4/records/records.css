@@ -146,6 +146,7 @@
 .ob .way{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;width:100%;padding:7px 12px;border-top:1px solid rgba(20,24,31,.07);font-size:13.5px;cursor:pointer;border-radius:8px;transition:background-color 150ms ease}
 .ob .way:focus-visible{outline:2px solid var(--file);outline-offset:-2px}
 .ob .ways>div:first-child .way{border-top:0}
+.ob .waywhy{display:inline-block;margin:0 12px 6px;font-size:12.5px}
 .ob .way small{display:block;color:var(--ink3);font-size:12.5px}
 .ob .way .n{color:var(--ink3);font-size:12.5px;white-space:nowrap}
 @media (hover:hover) and (pointer:fine){.ob .way:hover{background:rgba(255,255,255,.75)}}
