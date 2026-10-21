@@ -1333,6 +1333,158 @@ async def _run_cost_item(session, batch, item) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Catalog-run items: the same two steps as a single-part check
+# ---------------------------------------------------------------------------
+
+
+class CatalogOrgChanged(RuntimeError):
+    """The run's owner switched organization after the run started."""
+
+
+def _catalog_owned_processes(processes) -> str:
+    """The org's machine processes the cost route accepts as owned (others are left out)."""
+    from src.costing.rates import _resolve_process_token
+
+    return ",".join(sorted({p for p in processes if p and _resolve_process_token(p) is not None}))
+
+
+async def _run_catalog_item(session, batch, item) -> dict:
+    """Check one catalog part: the DFM analysis, then the cost decision with the org's machines.
+
+    Both steps are the live single-check code paths (``run_analysis`` and the
+    POST /validate/cost body ``routes._run_cost_decision``), so a part on the
+    board carries exactly the numbers its own check would: the org's machines,
+    materials, rates and calibration bound, its own quantity ladder and
+    material. The analysis keeps the source file for the part's page; the
+    analysed geometry is reused by the cost step, as in a single check.
+
+    Invalid geometry is a result, not a failure: the item completes with the
+    engine's reason (no decision is saved, as the route saves none). A free run
+    keeps the part's allowance slot once the item completes, in the same
+    transaction (``catalog_allowance.count_completed_part``).
+    """
+    import io
+    import time
+
+    from fastapi import HTTPException
+    from starlette.datastructures import Headers, UploadFile
+
+    from src.api.routes import _run_cost_decision
+    from src.auth.catalog_allowance import count_completed_part, file_identity
+    from src.auth.org_context import resolve_org
+    from src.db.models import CostDecision, MachineInstance
+    from src.services import analysis_service, batch_service
+    from src.services.catalog_run_service import GEOMETRY_INVALID_PREFIX, run_meta
+
+    start = time.time()
+    batch_id = batch.id
+    batch_ulid = batch.ulid
+    batch_user_id = batch.user_id
+    batch_org_id = batch.org_id
+    batch_api_key_id = batch.api_key_id or 0
+    free_run = bool(run_meta(batch).get("free"))
+    item_id = item.id
+    item_ulid = item.ulid
+    item_filename = item.filename
+    item_quantities = item.quantities or ""
+    item_material_class = item.material_class
+
+    try:
+        file_bytes = await asyncio.to_thread(batch_service.read_batch_blob, batch_ulid, item_filename)
+    except Exception as exc:
+        raise BatchStorageReadError("batch artifact could not be read from durable storage") from exc
+
+    # The cost route resolves the caller's ACTIVE organization. A run belongs to
+    # the organization it started in; if the owner switched since, stop rather
+    # than save this part's records into another organization.
+    if await resolve_org(session, batch_user_id) != batch_org_id:
+        raise CatalogOrgChanged(
+            "Your active organization changed after this run started. Switch back to start it again."
+        )
+
+    user = AuthedUser(user_id=batch_user_id, api_key_id=batch_api_key_id, key_prefix="batch")
+    analysis_run = await analysis_service.run_analysis(
+        file_bytes=file_bytes,
+        filename=item_filename,
+        processes=None,
+        rule_pack=None,
+        user=user,
+        session=session,
+        org_id=batch_org_id,
+        return_persisted_id=True,
+    )
+    if not isinstance(analysis_run, analysis_service.AnalysisRun) or analysis_run.analysis_id is None:
+        raise RuntimeError("Analysis completed without a durable persisted record")
+    analysis_id = analysis_run.analysis_id
+
+    owned = _catalog_owned_processes((await session.execute(
+        select(MachineInstance.process).where(MachineInstance.org_id == batch_org_id)
+    )).scalars().all())
+    upload = UploadFile(
+        file=io.BytesIO(file_bytes),
+        filename=item_filename,
+        headers=Headers({"content-type": "application/octet-stream"}),
+    )
+    qty = ",".join(t for t in item_quantities.split(";") if t.strip()) or "1,100,1000,2000,5000,10000"
+    geometry_invalid: str | None = None
+    decision_id = None
+    try:
+        report = await _run_cost_decision(
+            file=upload,
+            qty=qty,
+            region=None,
+            cavities=1,
+            complexity="moderate",
+            material_class=item_material_class or "polymer",
+            owned_processes=owned or None,
+            user=user,
+            session=session,
+        )
+        saved = (report or {}).get("saved") or {}
+        if saved.get("id"):
+            decision_id = (await session.execute(
+                select(CostDecision.id).where(CostDecision.ulid == saved["id"])
+            )).scalar_one_or_none()
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if exc.status_code == 400 and detail.get("code") == "GEOMETRY_INVALID":
+            geometry_invalid = str(detail.get("message") or "the geometry needs repair")
+        else:
+            message = detail.get("message") if detail else exc.detail
+            raise RuntimeError(f"Pricing didn't finish: {message}") from exc
+    duration_ms = round((time.time() - start) * 1000, 1)
+
+    # The analysis or a deduplicated decision may have rolled the session back.
+    await session.refresh(item)
+    await session.refresh(batch)
+    if item.status != "processing":
+        logger.info("BatchItem %s finished its catalog check after becoming %s; result not linked", item_ulid, item.status)
+        return {}
+
+    item.status = "completed"
+    item.analysis_id = analysis_id
+    item.cost_decision_id = decision_id
+    item.error_message = (GEOMETRY_INVALID_PREFIX + geometry_invalid)[:500] if geometry_invalid else None
+    item.duration_ms = duration_ms
+    item.completed_at = datetime.now(timezone.utc)
+    item.lease_started_at = None
+    await batch_service.update_batch_counters(session, batch_id, "completed_items")
+    batch_service.touch_batch_heartbeat(batch)
+    if free_run:
+        from src.auth.validation_caps import SAMPLE_PART_SHA256
+        import hashlib
+
+        if hashlib.sha256(file_bytes).hexdigest() not in SAMPLE_PART_SHA256:
+            await count_completed_part(session, batch_user_id, batch_id, item_id, file_identity(item_filename, file_bytes))
+    await session.commit()
+    logger.info(
+        "BatchItem %s catalog check completed: analysis_id=%s decision=%s duration=%.1fms",
+        item_ulid, analysis_id, decision_id, duration_ms,
+    )
+    return {}
+
+
+# ---------------------------------------------------------------------------
 # Item processor task
 # ---------------------------------------------------------------------------
 
@@ -1508,6 +1660,10 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 # W3: should-cost this item (mirror POST /validate/cost). The
                 # coordinator/DFM paths are untouched.
                 webhook_extra = await _run_cost_item(session, batch, item)
+            elif batch_job_type == "catalog":
+                # A catalog part: its DFM analysis and its cost decision with
+                # the org's machines, exactly as a single-part check.
+                webhook_extra = await _run_catalog_item(session, batch, item) or None
             else:
                 import time
 

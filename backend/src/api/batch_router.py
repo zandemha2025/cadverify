@@ -5,6 +5,10 @@ GET  /api/v1/batch/{id}     -- batch progress
 GET  /api/v1/batch/{id}/items    -- paginated items
 GET  /api/v1/batch/{id}/results/csv -- CSV export
 POST /api/v1/batch/{id}/cancel   -- cancel batch
+POST /api/v1/catalog-runs        -- catalog run (ZIP + optional parts list),
+                                    free for work-email accounts within their allowance
+GET  /api/v1/batch/{id}/catalog      -- a catalog run's sorted board
+GET  /api/v1/batch/{id}/catalog.csv  -- the board as CSV
 """
 from __future__ import annotations
 
@@ -28,17 +32,29 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from dataclasses import dataclass
+
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.catalog_allowance import (
+    CatalogAccess,
+    file_identity,
+    free_catalog_concurrency,
+    free_catalog_max_zip_bytes,
+    require_catalog_access,
+    reserve_catalog_parts,
+)
+from src.auth.free_tool_limits import limit_free_catalog_runs
+from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import caller_org_subquery
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Analysis, Batch, BatchItem, DirectUpload
-from src.services import batch_service, direct_upload_service
+from src.services import batch_service, catalog_run_service, direct_upload_service
 from src.services.batch_service import (
     BATCH_MAX_ZIP_BYTES,
     MAX_BATCH_CONCURRENCY,
@@ -63,6 +79,100 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 def _flag(name: str, default: str) -> bool:
     return os.getenv(name, default).strip().lower() in _TRUTHY
+
+
+# ---------------------------------------------------------------------------
+# Catalog runs (shared with POST /batch through request.state)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CatalogRunOptions:
+    access: CatalogAccess
+    material_class: str | None  # the run's material for parts the list doesn't name
+    quantity: int  # the run's quantity for parts the list doesn't give one
+    max_zip_bytes: int
+
+
+def _decode_text(data: bytes) -> str:
+    """A parts list as text: UTF-8 (with or without BOM), else Windows-1252 (Excel exports)."""
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
+def _apply_catalog_meta(
+    batch: Batch,
+    items_data: list[dict],
+    run: CatalogRunOptions,
+    parts_list: list[dict] | None,
+    list_name: str | None,
+) -> None:
+    """Give each part its quantity ladder and material, and keep the run's facts.
+
+    The parts list wins per file; a file it doesn't name takes the run's
+    quantity and material. Rows naming no file in the ZIP are kept (first 200)
+    so the board can list them honestly.
+    """
+    names = [it["filename"] for it in items_data if it.get("status") not in {"skipped", "failed"}]
+    by_file, unmatched = catalog_run_service.match_parts_list(parts_list or [], names)
+    per_file: dict[str, dict] = {}
+    for it in items_data:
+        if it.get("status") in {"skipped", "failed"}:
+            continue
+        row = by_file.get(it["filename"])
+        qty = (row or {}).get("quantity") or run.quantity
+        cls = (row or {}).get("material_class") or run.material_class
+        it["quantities"] = ";".join(str(q) for q in catalog_run_service.quantity_ladder(qty))
+        it["material_class"] = cls
+        if row is not None:
+            per_file[it["filename"]] = {
+                k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class", "material_note", "row")
+            }
+    manifest_json = dict(batch.manifest_json or {})
+    manifest_json["catalog"] = {
+        "free": run.access.free,
+        "material_class": run.material_class,
+        "quantity": run.quantity,
+        "parts_list": (
+            {"name": list_name, "rows": len(parts_list), "matched": len(by_file), "unmatched": len(unmatched)}
+            if parts_list is not None else None
+        ),
+        "unmatched": [
+            {k: r.get(k) for k in ("row", "file", "part_number", "quantity", "material")} for r in unmatched[:200]
+        ],
+        "items": per_file,
+    }
+    batch.manifest_json = manifest_json
+
+
+async def _reserve_catalog_run(session: AsyncSession, user_id: int, batch: Batch, run: CatalogRunOptions):
+    """Count the run's new parts against the free allowance, atomically with the batch."""
+    if not run.access.free:
+        return None
+    from src.auth.validation_caps import SAMPLE_PART_SHA256
+    import hashlib
+
+    items = (await session.execute(
+        select(BatchItem.id, BatchItem.filename).where(
+            BatchItem.batch_id == batch.id, BatchItem.status == "pending"
+        ).order_by(BatchItem.id)
+    )).all()
+
+    def _identities() -> list[tuple[int, str]]:
+        out = []
+        for item_id, filename in items:
+            data = batch_service.read_batch_blob(batch.ulid, filename)
+            if hashlib.sha256(data).hexdigest() in SAMPLE_PART_SHA256:
+                continue  # the app's sample part never counts
+            out.append((item_id, file_identity(filename, data)))
+        return out
+
+    identities = await asyncio.to_thread(_identities)
+    return await reserve_catalog_parts(
+        session, user_id, batch.id, identities, access=run.access, exclude_batch_id=batch.id
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +215,16 @@ async def create_batch(
     Returns 202 with batch_id and status URL.
     """
     release_test_fault = requested_release_fault(request, BATCH_FAULT_MODES)
+    # A catalog run arrives through POST /catalog-runs, which checked who may
+    # run it and set its options; POST /batch itself never accepts one.
+    catalog_run: CatalogRunOptions | None = getattr(request.state, "catalog_run", None)
+    max_zip_bytes = catalog_run.max_zip_bytes if catalog_run is not None else BATCH_MAX_ZIP_BYTES
 
     # W3: validate the job type. Invalid -> 422 structured (mirrors FastAPI's
     # own validation status for an out-of-domain field value).
     job_type = (job_type or "dfm").strip().lower()
-    if job_type not in VALID_JOB_TYPES:
+    valid_job_types = VALID_JOB_TYPES | ({"catalog"} if catalog_run is not None else set())
+    if job_type not in valid_job_types:
         raise HTTPException(
             status_code=422,
             detail={
@@ -117,6 +232,7 @@ async def create_batch(
                 "message": (
                     f"job_type must be one of {sorted(VALID_JOB_TYPES)}; "
                     f"got {job_type!r}."
+                    + (" Start a catalog run with POST /api/v1/catalog-runs." if job_type == "catalog" else "")
                 ),
                 "doc_url": error_doc_url("INVALID_JOB_TYPE"),
             },
@@ -239,6 +355,18 @@ async def create_batch(
                 },
             ) from exc
 
+    # A catalog run's parts list: files with a quantity and a material each.
+    # Parsed before anything is stored, so a list it can't read is a clean 400.
+    parts_list: list[dict] | None = None
+    if catalog_run is not None and manifest_bytes is not None:
+        try:
+            parts_list = catalog_run_service.parse_parts_list(_decode_text(manifest_bytes))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_PARTS_LIST", "message": str(exc)},
+            ) from exc
+
     # For a ZIP upload, stream to a temp file with early size rejection BEFORE
     # creating the batch row -- so an oversized/invalid upload never leaves an
     # orphaned 'pending' batch behind (F-ARCH-9 + F-ARCH-1).
@@ -255,17 +383,17 @@ async def create_batch(
                 declared_len = int(declared)
             except ValueError:
                 declared_len = None
-            if declared_len is not None and declared_len > BATCH_MAX_ZIP_BYTES:
+            if declared_len is not None and declared_len > max_zip_bytes:
                 raise HTTPException(
                     status_code=413,
                     detail=(
                         f"Upload Content-Length {declared_len} exceeds maximum "
-                        f"ZIP size of {BATCH_MAX_ZIP_BYTES} bytes"
+                        f"ZIP size of {max_zip_bytes} bytes"
                     ),
                 )
         try:
             zip_tmp_path = await batch_service.stream_upload_to_tempfile(
-                file, BATCH_MAX_ZIP_BYTES
+                file, max_zip_bytes
             )
         except ZipTooLargeError as exc:
             raise HTTPException(status_code=413, detail=str(exc))
@@ -294,6 +422,7 @@ async def create_batch(
     batch: Batch | None = None
     direct_upload: DirectUpload | None = None
     recovered_attachment = False
+    catalog_reservation = None
     try:
         if input_mode == "direct_upload":
             direct_upload, batch = await direct_upload_service.lock_for_batch_attachment(
@@ -348,8 +477,11 @@ async def create_batch(
                 message = str(exc) or "Uploaded file is not a valid ZIP archive"
                 raise HTTPException(status_code=400, detail=message)
 
+            if catalog_run is not None:
+                _apply_catalog_meta(batch, items_data, catalog_run, parts_list,
+                                    getattr(manifest, "filename", None))
             # Parse manifest CSV if provided
-            if manifest_bytes is not None:
+            elif manifest_bytes is not None:
                 if job_type == "cost":
                     # Cost manifests additionally carry quantities/region/
                     # material_class/shop; an invalid value is a per-row 400
@@ -397,6 +529,10 @@ async def create_batch(
                 for item in items_data
                 if item.get("status") in {"failed", "skipped"}
             )
+            if catalog_run is not None:
+                catalog_reservation = await _reserve_catalog_run(
+                    session, user.user_id, batch, catalog_run
+                )
         if release_test_fault and not recovered_attachment:
             manifest_json = dict(batch.manifest_json or {})
             manifest_json["release_test_fault"] = release_test_fault
@@ -529,11 +665,157 @@ async def create_batch(
         )
 
     # Never return webhook_secret (T-09-03)
-    return {
+    response = {
         "batch_id": batch.ulid,
         "status": batch.status,
         "status_url": f"/api/v1/batch/{batch.ulid}",
     }
+    if catalog_run is not None:
+        response["job_type"] = "catalog"
+        response["board_url"] = f"/api/v1/batch/{batch.ulid}/catalog"
+        response["parts"] = batch.total_items - (batch.failed_items or 0)
+        if catalog_reservation is not None:
+            response["catalog"] = {
+                "free": True,
+                "new": catalog_reservation.new,
+                "reruns": catalog_reservation.reruns,
+                "cap": catalog_reservation.cap,
+                "remaining": catalog_reservation.remaining,
+            }
+        else:
+            response["catalog"] = {"free": False}
+    return response
+
+
+# ---------------------------------------------------------------------------
+# POST /catalog-runs -- a catalog run (free for work-email accounts)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/catalog-runs", status_code=202, dependencies=[Depends(require_kill_switch_open)])
+async def create_catalog_run(
+    request: Request,
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
+    file: UploadFile = File(..., description="ZIP of CAD files (STL, STEP, IGES). The app zips many files or a folder."),
+    manifest: Optional[UploadFile] = File(
+        None, description="Optional parts list (CSV or a BOM export): file or part number, quantity, material."
+    ),
+    material_class: Optional[str] = Form(
+        None, description="Material for parts the list doesn't name: polymer|aluminum|steel|stainless|titanium."
+    ),
+    quantity: Optional[int] = Form(None, description="Quantity for parts the list doesn't give one (default 100)."),
+    concurrency_limit: Optional[int] = Form(None, description="Parts checked at a time (free runs: at most 4)."),
+    access: CatalogAccess = Depends(require_catalog_access),
+    _org_limit: None = Depends(enforce_org_limits),
+    _free_ceiling: None = Depends(limit_free_catalog_runs),
+):
+    """Check every part of a catalog against the org's machines, then sort them.
+
+    Each part gets the DFM analysis and the cost decision with the org's
+    machines bound, the same two steps as a single-part check, in the worker.
+    The result is a board (GET /batch/{id}/catalog): make in-house, buy
+    outside, needs a new machine, can't be made as drawn.
+
+    Pilot: unlimited. Work-email accounts: their first FREE_CATALOG_PARTS
+    distinct parts free (403 ``catalog_allowance_exceeded`` past that; a part
+    run or checked before is free again). Personal email: 403
+    ``catalog_run_work_email``. Free runs take a ZIP up to
+    FREE_CATALOG_MAX_ZIP_BYTES, check at most FREE_CATALOG_CONCURRENCY parts at
+    a time, carry no webhook, and one runs at a time per account.
+    """
+    cls = (material_class or "").strip().lower() or None
+    if cls is not None and cls not in catalog_run_service.MATERIAL_CLASSES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_MATERIAL_CLASS",
+                "message": f"material_class must be one of {list(catalog_run_service.MATERIAL_CLASSES)}.",
+            },
+        )
+    if quantity is not None and not (1 <= quantity <= catalog_run_service.MAX_QUANTITY):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_QUANTITY",
+                "message": f"quantity must be a whole number from 1 to {catalog_run_service.MAX_QUANTITY:,}.",
+            },
+        )
+    if access.free:
+        concurrency_limit = min(concurrency_limit or free_catalog_concurrency(), free_catalog_concurrency())
+        max_zip = min(free_catalog_max_zip_bytes(), BATCH_MAX_ZIP_BYTES)
+    else:
+        max_zip = BATCH_MAX_ZIP_BYTES
+    request.state.catalog_run = CatalogRunOptions(
+        access=access,
+        material_class=cls,
+        quantity=quantity or catalog_run_service.DEFAULT_RUN_QUANTITY,
+        max_zip_bytes=max_zip,
+    )
+    return await create_batch(
+        request=request,
+        user=user,
+        session=session,
+        file=file,
+        direct_upload_id=None,
+        webhook_url=None,
+        webhook_secret=None,
+        concurrency_limit=concurrency_limit,
+        job_type="catalog",
+        s3_bucket=None,
+        s3_prefix=None,
+        manifest_url=None,
+        manifest=manifest,
+        _org_limit=None,
+        _paid_access=None,
+    )
+
+
+async def _catalog_batch(session: AsyncSession, batch_id: str, user_id: int) -> Batch:
+    batch = (
+        await session.execute(
+            select(Batch).where(
+                Batch.ulid == batch_id,
+                Batch.org_id == caller_org_subquery(user_id),
+                Batch.job_type == "catalog",
+            )
+        )
+    ).scalars().first()
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Catalog run not found")
+    return batch
+
+
+@router.get("/batch/{batch_id}/catalog")
+async def get_catalog_board(
+    batch_id: str,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The run's sorted board: every part's bucket, reason, resources and price.
+
+    Org-scoped like every batch read: another organization's run is a 404.
+    Rows appear part by part while the run goes; ``totals`` sums each bucket.
+    """
+    batch = await _catalog_batch(session, batch_id, user.user_id)
+    return await catalog_run_service.build_board(session, batch)
+
+
+@router.get("/batch/{batch_id}/catalog.csv")
+async def get_catalog_board_csv(
+    batch_id: str,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The board as CSV, one row per part (a run still going exports what's done)."""
+    batch = await _catalog_batch(session, batch_id, user.user_id)
+    board = await catalog_run_service.build_board(session, batch)
+    body = "".join(catalog_run_service.board_csv_rows(board))
+    return StreamingResponse(
+        iter([body]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=catalog_run_{batch_id}.csv"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +855,7 @@ async def list_batches(
             {
                 "batch_ulid": b.ulid,
                 "status": b.status,
+                "job_type": b.job_type,
                 "total_items": b.total_items,
                 "completed_items": status_counts.get(b.id, {}).get("completed", 0),
                 "failed_items": status_counts.get(b.id, {}).get("failed", 0),

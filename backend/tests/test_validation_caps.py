@@ -40,6 +40,14 @@ async def ledger(monkeypatch):
             await connection.execute(text('CREATE TABLE evidence (user_id bigint REFERENCES users(id) DEFERRABLE INITIALLY DEFERRED)'))
             await connection.run_sync(TrialCheck.__table__.create)
             await connection.run_sync(BillingAccount.__table__.create)
+            # The free catalog run's ledger (src.auth.catalog_allowance): a part
+            # counted there never takes a check, so check accounting reads it.
+            await connection.execute(text('CREATE TABLE batch_items (id bigserial PRIMARY KEY, status text NOT NULL)'))
+            await connection.execute(text(
+                'CREATE TABLE catalog_parts (user_id bigint, file_hash text, batch_id bigint, batch_item_id bigint, '
+                'state text NOT NULL, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), '
+                'PRIMARY KEY (user_id, file_hash))'
+            ))
             # Users 1-3 predate email tiers and keep the grandfathered 10-check grant.
             await connection.execute(text(
                 "INSERT INTO users VALUES (1, 'trial', 'one@gmail.com', 10, NULL), "

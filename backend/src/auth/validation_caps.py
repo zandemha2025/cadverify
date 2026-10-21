@@ -16,6 +16,9 @@ Allowance by plan:
 - pro: PRO_MONTHLY_CHECKS per Stripe billing period.
 - pilot: unlimited (operator approved).
 
+A work-email account also has a free catalog run, its own allowance of parts
+(src.auth.catalog_allowance). A part counted there never takes a check here.
+
 The app's own sample part (SAMPLE_PART_SHA256) never uses a check. Neither do
 ScaleCAD's fixes, mesh repair, Fit in context or Design Studio: they are on
 every plan, with per-user ceilings for free accounts (src.auth.free_tool_limits).
@@ -36,6 +39,7 @@ from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import UploadFile
 
+from src.auth.catalog_allowance import catalog_usage, counted_catalog_hashes
 from src.auth.email_tiers import email_tier, tier_checks
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_session_factory
@@ -157,8 +161,12 @@ async def _counts(session, user_id: int, now: datetime, since: datetime | None =
     file checked earlier never counts again. ``reserved`` counts the files with
     live unfinished work that have never completed.
     """
+    # A part the account ran in its free catalog run is already counted there
+    # (src.auth.catalog_allowance); checking it on its own never counts again.
+    catalog_counted = counted_catalog_hashes(user_id)
     completed_files = select(TrialCheck.file_hash).where(
         TrialCheck.user_id == user_id, TrialCheck.completed.is_(True),
+        TrialCheck.file_hash.not_in(catalog_counted),
     ).group_by(TrialCheck.file_hash)
     if since is not None:
         completed_files = completed_files.having(func.min(TrialCheck.created_at) >= since)
@@ -171,13 +179,15 @@ async def _counts(session, user_id: int, now: datetime, since: datetime | None =
             TrialCheck.user_id == user_id,
             _live_reservation(now),
             TrialCheck.file_hash.not_in(ever_completed),
+            TrialCheck.file_hash.not_in(catalog_counted),
         )
     )).scalar_one()
     return int(used or 0), int(reserved or 0)
 
 
 async def _file_counted(session, user_id: int, file_hash: str, now: datetime) -> bool:
-    """Whether this file already holds a check: completed at any time, or live work."""
+    """Whether this file already holds a check: completed at any time, live work,
+    or a part the account ran in its free catalog run."""
     row = (await session.execute(
         select(TrialCheck.check_id).where(
             TrialCheck.user_id == user_id,
@@ -185,7 +195,9 @@ async def _file_counted(session, user_id: int, file_hash: str, now: datetime) ->
             or_(TrialCheck.completed.is_(True), _live_reservation(now)),
         ).limit(1)
     )).first()
-    return row is not None
+    if row is not None:
+        return True
+    return (await session.execute(counted_catalog_hashes(user_id, [file_hash]).limit(1))).first() is not None
 
 
 async def user_trial_usage(user_id: int) -> dict:
@@ -198,6 +210,8 @@ async def user_trial_usage(user_id: int) -> dict:
                 "resets_at": allowance.resets_at.isoformat() if allowance.resets_at else None,
                 "phone_verification_required": allowance.phone_required,
             }
+            # The free catalog run's own allowance (separate from checks).
+            base["catalog"] = await catalog_usage(user_id, session)
             if allowance.cap is None:
                 return {**base, "unlimited": True, "used": None, "cap": None, "remaining": None}
             used, reserved = await _counts(session, user_id, datetime.now(timezone.utc), allowance.since)
@@ -222,9 +236,12 @@ async def effective_plan(user_id: int) -> str:
 async def require_paid_access(user: AuthedUser = Depends(require_api_key)) -> None:
     """Manual operator approval, using the existing pilot entitlement.
 
-    Still guards batch runs, assembly ingest and analysis, direct uploads,
-    photo reconstruction and recalibration. ScaleCAD's fixes, mesh repair,
-    Fit in context and Design Studio are on every plan (src.auth.free_tool_limits).
+    Still guards DFM and cost batch runs (POST /batch), assembly ingest and
+    analysis, direct uploads, photo reconstruction and recalibration. The
+    catalog run (POST /catalog-runs) is open to work-email accounts within
+    their free allowance (src.auth.catalog_allowance). ScaleCAD's fixes, mesh
+    repair, Fit in context and Design Studio are on every plan
+    (src.auth.free_tool_limits).
     """
     try:
         async with get_session_factory()() as session:

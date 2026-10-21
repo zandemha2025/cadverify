@@ -717,6 +717,7 @@ async def get_batch_progress(
     return {
         "batch_ulid": batch.ulid,
         "status": batch.status,
+        "job_type": batch.job_type,
         "input_mode": batch.input_mode,
         "total_items": batch.total_items,
         "completed_items": completed_items,
