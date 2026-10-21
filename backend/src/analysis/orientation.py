@@ -16,11 +16,15 @@ The engine reads the analysed mesh's +Z as up. What depends on it:
 * The work-area note ``BUILD_REORIENTATION_REQUIRED`` compares the file's own
   axes with a machine's.
 
-What does not depend on it: work-area fit (the envelope checks and the machine
-fit try the ways the part can sit), and every price. The cost model prices a
-print at the lowest build height an enclosing box can take in the machine and
-does not price support material; CNC stock, molds and castings are sized from
-an enclosing box that doesn't depend on the file's axes.
+What does not depend on it: work-area fit in the checks (the envelope checks
+and the machine fit try the ways the part can sit), and every price. The cost
+model prices a print at the lowest build height an enclosing box can take in
+the machine and doesn't price support material (metal powder beds carry a flat
+support allowance); CNC stock, molds and castings are sized from an enclosing
+box that doesn't depend on the file's axes. So prices are the same in every
+orientation. Pricing support and print height needs real quotes to tune it,
+and the overhang rule doesn't yet know that short spans bridge without
+support (see ``support_estimate``).
 
 A chosen orientation is a proper rotation ``R`` applied to the mesh before
 analysis (``placed = R · file``; row 3 of ``R`` is the file direction that ends
@@ -50,6 +54,20 @@ OVERHANG_LIMIT_DEG: dict[str, float] = {
 DRAFT_MIN_DEG: dict[str, float] = {
     "injection_molding": 1.0, "die_casting": 1.0, "sand_casting": 3.0, "forging": 5.0,
 }
+# The work areas the analyzers check (check_build_volume), for "fits standing
+# this way". A test runs every analyzer and checks these are the ones it uses.
+BUILD_VOLUME_MM: dict[str, tuple[float, float, float]] = {
+    "fdm": (300, 300, 350), "sla": (200, 125, 210), "dlp": (218, 123, 250),
+    "sls": (340, 340, 600), "mjf": (380, 284, 380), "dmls": (400, 400, 400),
+    "slm": (500, 280, 365), "ebm": (350, 380, 380), "binder_jetting": (800, 500, 400),
+    "ded": (1500, 1500, 1500), "waam": (5000, 3000, 3000),
+}
+# A typical layer, only to count layers for the height (not a check rule).
+LAYER_MM: dict[str, float] = {
+    "fdm": 0.2, "sla": 0.05, "dlp": 0.05, "sls": 0.1, "mjf": 0.08, "dmls": 0.04,
+    "slm": 0.03, "ebm": 0.05, "binder_jetting": 0.1, "ded": 1.0, "waam": 1.5,
+}
+_PREFER_FLAT = 0.95  # |mean facet normal z| for "parallel to the plate" (check_residual_stress)
 
 _SNAP = 1e-9
 _ORTHO_TOL = 1e-6
@@ -386,8 +404,98 @@ def placed_measures(placed: trimesh.Trimesh) -> dict[str, np.ndarray | float]:
     }
 
 
+# Rays cast without a fast ray backend (Embree), per estimate; more faces are sampled.
+SUPPORT_RAY_CAP = 4000
+
+
+def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = None) -> dict[str, dict[str, float]]:
+    """The space under the faces the check's overhang rule marks, per process.
+
+    For each marked face (``check_overhangs``' rule, the mesh as placed: +Z up)
+    the support column is its footprint on the plate (area × |n_z|) times the
+    drop to the first surface below it: the part, found by a ray cast straight
+    down, or the plate (the mesh's lowest point). ``volume_mm3`` is that solid
+    envelope, an estimate of the space support fills, not the material a
+    slicer prints (sparse, branched or tilted supports use a fraction of it).
+    Like the overhang rule it doesn't know bridging: a short horizontal span
+    between two walls prints without support but is counted here (a frame of
+    horizontal rods can read several times its own volume). With Embree every
+    marked face gets a ray; without it at most ``SUPPORT_RAY_CAP`` faces are
+    cast, by a fixed stride, and their area-weighted mean drop stands for the
+    rest (``sampled``). Deterministic for a given mesh and ray backend.
+    """
+    from src.analysis.processes.checks import overhang_faces
+
+    limits = dict(limits or OVERHANG_LIMIT_DEG)
+    out = {p: {"faces": 0, "area_mm2": 0.0, "volume_mm3": 0.0, "sampled": False} for p in limits}
+    if not limits or len(mesh.faces) == 0:
+        return out
+    m = placed_measures(mesh)
+    angles, centroids, areas, normals = m["angles"], m["centroids"], m["areas"], m["normals"]
+    diag = float(m["bbox_diag"])
+    widest = overhang_faces(angles, centroids, diag, min(limits.values()))
+    if len(widest) == 0:
+        return out
+    plate = float(mesh.bounds[0][2])
+    drop = np.maximum(centroids[widest, 2] - plate, 0.0)
+    footprint = areas[widest] * np.abs(normals[widest, 2])
+    fast = "embree" in type(mesh.ray).__module__
+    cast = np.arange(len(widest))
+    if not fast and len(cast) > SUPPORT_RAY_CAP:
+        cast = cast[np.linspace(0, len(cast) - 1, SUPPORT_RAY_CAP).astype(int)]
+    eps = max(1e-4, min(diag * 1e-4, 0.1))
+    hit = np.zeros(len(widest), dtype=bool)
+    batch = 65536 if fast else 256
+    for start in range(0, len(cast), batch):
+        sel = cast[start:start + batch]
+        f = widest[sel]
+        origins = centroids[f] + normals[f] * eps
+        try:
+            locations, rays, _ = mesh.ray.intersects_location(
+                origins, np.tile([0.0, 0.0, -1.0], (len(f), 1)), multiple_hits=False)
+        except Exception:
+            continue  # the plate stays the bound for these faces
+        if len(rays):
+            below = np.maximum(origins[rays, 2] - locations[:, 2], 0.0)
+            drop[sel[rays]] = np.minimum(drop[sel[rays]], below + eps)
+            hit[sel[rays]] = True
+    sampled = len(cast) < len(widest)
+    in_cast = np.zeros(len(widest), dtype=bool)
+    in_cast[cast] = True
+    for proc, limit in limits.items():
+        faces = overhang_faces(angles, centroids, diag, limit)
+        if len(faces) == 0:
+            continue
+        mask = np.isin(widest, faces)
+        fp, dr = footprint[mask], drop[mask]
+        if sampled:
+            seen = in_cast[mask]
+            weight = float(fp[seen].sum())
+            volume = float((fp[seen] * dr[seen]).sum()) * (float(fp.sum()) / weight) if weight > 0 else float((fp * dr).sum())
+        else:
+            volume = float((fp * dr).sum())
+        out[proc] = {"faces": int(len(faces)), "area_mm2": float(areas[faces].sum()),
+                     "volume_mm3": volume, "sampled": bool(sampled)}
+    return out
+
+
+def _facet_info(mesh: trimesh.Trimesh) -> tuple[list[np.ndarray], np.ndarray]:
+    """Coplanar face groups (the context's facet_groups) and their mean normals, in the file's frame.
+
+    Facets don't change under a rotation and a mean normal turns with it, so they
+    are found once and reused for every way the part is laid down.
+    """
+    try:
+        groups = [np.asarray(f, dtype=int) for f in mesh.facets]
+    except Exception:
+        return [], np.empty((0, 3))
+    normals = np.asarray(mesh.face_normals, dtype=np.float64)
+    means = np.array([normals[g].mean(axis=0) for g in groups]) if groups else np.empty((0, 3))
+    return groups, means
+
+
 def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total_area: float,
-               extra: dict | None = None) -> dict:
+               extra: dict | None = None, facets: tuple[list[np.ndarray], np.ndarray] | None = None) -> dict:
     from src.analysis.processes.checks import draft_sidewalls, overhang_faces
 
     o = Orientation.of(R)
@@ -403,12 +511,36 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
     for proc, limit in OVERHANG_LIMIT_DEG.items():
         faces = overhang_faces(angles, centroids, float(m["bbox_diag"]), limit)
         support[proc] = {"faces": int(len(faces)), "area_mm2": round(float(areas[faces].sum()), 2)}
+    for proc, est in support_estimate(placed, OVERHANG_LIMIT_DEG).items():
+        support[proc]["volume_cm3"] = round(est["volume_mm3"] / 1000.0, 3)
     sidewalls, draft = draft_sidewalls(angles)
     drafts = {}
     for proc, need in DRAFT_MIN_DEG.items():
         flagged = sidewalls[draft < need]
         drafts[proc] = {"faces": int(len(flagged)), "area_mm2": round(float(areas[flagged].sum()), 2)}
     down_area = float(areas[normals[:, 2] < -0.8].sum()) if len(normals) else 0.0
+    # The same rules the analyzers use for the findings that read the build direction.
+    surface = float(placed.area) or 1.0
+    cupping = down_area / surface >= 0.10  # sla._check_cupping
+    # check_residual_stress: a facet >= 15% of the surface, parallel to the plate
+    groups, means = facets if facets is not None else _facet_info(mesh)
+    curl = False
+    for g, mean in zip(groups, means):
+        if float(areas[g].sum()) / surface >= 0.15 and abs(float(o.R[2] @ mean)) > _PREFER_FLAT:
+            curl = True
+            break
+    flags: dict[str, list[str]] = {}
+    for proc in OVERHANG_LIMIT_DEG:
+        codes = ["OVERHANG"] if support[proc]["faces"] else []
+        if proc == "sla" and cupping:
+            codes.append("CUPPING_RISK")
+        if proc in ("dmls", "slm") and curl:
+            codes.append("RESIDUAL_STRESS_RISK")
+        flags[proc] = codes
+    for proc in DRAFT_MIN_DEG:
+        flags[proc] = ["INSUFFICIENT_DRAFT"] if drafts[proc]["faces"] else []
+    fits = {proc: _fits_standing(placed, env) for proc, env in BUILD_VOLUME_MM.items()}
+    layers = {proc: int(math.ceil(round(float(ext[2]) / t, 6))) for proc, t in LAYER_MM.items()}
     out = {
         "id": cid,
         "basis": basis,
@@ -425,10 +557,35 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
         "draft": drafts,
         "downward_area_mm2": round(down_area, 2),
         "downward_share_pct": round(down_area / total_area * 100.0, 2) if total_area > 0 else None,
+        "layers": layers,
+        "fits": fits,
+        "flags": flags,
     }
     if extra:
         out.update(extra)
     return out
+
+
+def _fits_standing(placed: trimesh.Trimesh, envelope) -> bool:
+    """Whether the part fits the work area standing as placed (height fixed, any turn on the plate)."""
+    from scipy.spatial import ConvexHull
+
+    from src.analysis.context import sheet_envelope_dimensions
+
+    X, Y, Z = envelope
+    lo, hi = placed.bounds
+    if float(hi[2] - lo[2]) > Z + 1e-9:
+        return False
+    a, b = sorted((float(hi[0] - lo[0]), float(hi[1] - lo[1])))
+    if a <= min(X, Y) + 1e-9 and b <= max(X, Y) + 1e-9:
+        return True
+    try:
+        xy = np.asarray(placed.vertices)[:, :2]
+        outline = xy[ConvexHull(xy).vertices]
+        short, long = sheet_envelope_dimensions(outline, (X, Y))
+    except Exception:
+        return False
+    return short <= min(X, Y) + 1e-9 and long <= max(X, Y) + 1e-9
 
 
 def _flat_faces(mesh: trimesh.Trimesh, limit: int = 2) -> list[tuple[np.ndarray, float]]:
@@ -476,13 +633,14 @@ def orientation_options(mesh: trimesh.Trimesh, *, down: list[float] | None = Non
 
     bounded, decimation = _maybe_decimate(mesh)
     total_area = float(np.asarray(bounded.area_faces, dtype=np.float64).sum())
-    cands = [_candidate(cid, "side", rotation_down(d), bounded, total_area) for cid, d in _SIDES]
+    facets = _facet_info(bounded)
+    cands = [_candidate(cid, "side", rotation_down(d), bounded, total_area, facets=facets) for cid, d in _SIDES]
     for i, (n, a) in enumerate(_flat_faces(bounded), start=1):
         cands.append(_candidate(f"face-{i}", "flat_face", rotation_down(n), bounded, total_area,
-                                {"face_area_mm2": round(a, 2)}))
+                                {"face_area_mm2": round(a, 2)}, facets=facets))
     if down is not None:
         d = _unit(down)
-        cands.append(_candidate("picked", "picked", rotation_down(d), bounded, total_area))
+        cands.append(_candidate("picked", "picked", rotation_down(d), bounded, total_area, facets=facets))
 
     order = {c["id"]: i for i, c in enumerate(cands)}
     best: dict[str, str] = {}
@@ -509,11 +667,14 @@ def orientation_options(mesh: trimesh.Trimesh, *, down: list[float] | None = Non
             "printing": "Least area needing support, then the lowest height, then the most area on the plate.",
             "molding": "Least wall area without the draft the process needs.",
         },
+        "work_areas_mm": {p: list(v) for p, v in BUILD_VOLUME_MM.items()},
+        "layer_mm": dict(LAYER_MM),
         "limits": [
-            "Prices are the same in every orientation: the cost model prices a print at the lowest "
-            "build height the part can take and doesn't price support material.",
-            "Undercuts depend on the opening direction too; they are found by re-checking in that orientation, "
-            "not compared here.",
-            "Support area is the area of the faces the check's overhang rule marks, not the volume of support material.",
+            "Prices don't yet include support material or print height, so they're the same in every orientation.",
+            "Support volume is an estimate: the space under the faces needing support, down to the part or the "
+            "plate. Printed supports fill a fraction of it, and short spans that bridge without support are "
+            "still counted.",
+            "Layers are counted at a typical layer for each process, not your machine's setting. Undercuts "
+            "depend on the opening direction too; a re-check in that orientation finds them.",
         ],
     }

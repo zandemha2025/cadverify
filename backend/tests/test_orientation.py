@@ -185,23 +185,107 @@ def test_the_suggestion_is_deterministic():
 
 
 def test_prices_do_not_change_with_orientation():
+    """The cost model picks the build placement itself and prices no support material,
+    so every price is the same in every orientation (the UI says so in one line)."""
     from src.api.routes import _run_cost_engine_ctx
     from src.costing import EstimateOptions, estimate_decision, report_to_dict
 
     mesh = _gamma()
 
-    def prices(o):
+    def prices(spec):
+        o = parse_orientation(spec)
         m = o.apply(mesh) if o is not None else mesh
         result, mm, ctx = _run_cost_engine_ctx(m, "gamma.stl", orientation=o)
         rep = report_to_dict(estimate_decision(result, mm, ctx.features, EstimateOptions(quantities=[1, 100])))
         return {(e["process"], e["quantity"], e["material"]): e["unit_cost_usd"] for e in rep["estimates"]}, result
 
     base, base_result = prices(None)
-    turned, turned_result = prices(parse_orientation("down:0,-1,0"))
-    assert base and turned == base
+    for spec in ("down:0,-1,0", "turns:z90", "down:1,0,0", "turns:x180"):
+        turned, _ = prices(spec)
+        assert base and turned == base, spec
+    lying, lying_result = prices("down:0,-1,0")
     # ...while the findings that read the build direction do change.
-    codes = lambda r, p: {i.code for ps in r.process_scores if ps.process.value == p for i in ps.issues}
-    assert "OVERHANG" in codes(base_result, "fdm") and "OVERHANG" not in codes(turned_result, "fdm")
+    codes = lambda r, p: {i.code for ps in r.process_scores if ps.process.value == p for i in ps.issues}  # noqa: E731
+    assert "OVERHANG" in codes(base_result, "fdm") and "OVERHANG" not in codes(lying_result, "fdm")
+
+
+READS_UP = {"OVERHANG", "CUPPING_RISK", "RESIDUAL_STRESS_RISK", "INSUFFICIENT_DRAFT"}
+
+
+def test_the_comparison_says_which_findings_each_way_raises():
+    """Per way and process, the findings that read the build direction are the analyzers' own."""
+    mesh = _gamma()
+    opts = orientation_options(mesh)
+    for c in opts["candidates"]:
+        placed = Orientation.of(c["rotation"]).apply(mesh)
+        for proc in ("fdm", "sla", "dmls", "slm", "injection_molding", "forging"):
+            found = {i.code for i in _issues(placed, proc)} & READS_UP
+            assert set(c["flags"][proc]) == found, (c["id"], proc, c["flags"][proc], found)
+
+
+def test_work_areas_and_layers():
+    """Fit standing as placed uses the analyzers' own work areas; layers count the height."""
+    from src.analysis.orientation import BUILD_VOLUME_MM, LAYER_MM
+    from src.analysis.processes import checks as checks_module
+
+    seen = {}
+    mesh = _gamma()
+    geometry = analyze_geometry(mesh)
+    ctx = GeometryContext.build(mesh, geometry)
+    ctx.features = detect_all(ctx.mesh)
+    import sys
+
+    for proc in _REGISTRY:
+        analyzer = get_analyzer(proc)
+        module = sys.modules[type(analyzer).__module__]
+        if not hasattr(module, "check_build_volume"):
+            continue
+        original = module.check_build_volume
+
+        def spy(c, dims, process, *a, _orig=original, **k):
+            seen[process.value] = tuple(float(d) for d in dims)
+            return _orig(c, dims, process, *a, **k)
+
+        module.check_build_volume = spy
+        try:
+            analyzer.analyze(ctx)
+        finally:
+            module.check_build_volume = original
+    assert checks_module.check_build_volume  # the shared check still exists
+    for proc, env in BUILD_VOLUME_MM.items():
+        assert seen[proc] == tuple(float(d) for d in env), proc
+    # A 360 mm bar is too tall for FDM's 350 mm work area standing up; lying down it fits.
+    bar = trimesh.creation.box((20, 30, 360))
+    bar.apply_translation((10, 15, 180))
+    opts = orientation_options(bar)
+    side = {c["id"]: c for c in opts["candidates"]}
+    assert side["down-z"]["fits"]["fdm"] is False and side["down-x"]["fits"]["fdm"] is True
+    assert side["down-z"]["layers"]["fdm"] == 1800 and side["down-x"]["layers"]["fdm"] == 100
+    assert opts["layer_mm"] == LAYER_MM
+    assert opts["limits"][0] == "Prices don't yet include support material or print height, so they're the same in every orientation."
+    # A diagonal fit on the plate counts: 380 mm long fits FDM's 300 × 300 bed only turned.
+    diag = trimesh.creation.box((380, 20, 10))
+    assert orientation_options(diag)["candidates"][0]["fits"]["fdm"] is True
+
+
+def test_support_drops_to_the_part_below_not_only_the_plate():
+    from src.analysis.orientation import support_estimate
+
+    # A C bracket: a 10 mm floor, a back wall and a 10 mm top arm 20 mm above the floor.
+    parts = []
+    for size, centre in (((40, 20, 10), (20, 10, 5)), ((10, 20, 40), (5, 10, 20)), ((40, 20, 10), (20, 10, 35))):
+        b = trimesh.creation.box(size)
+        b.apply_translation(centre)
+        parts.append(b)
+    c = trimesh.boolean.union(parts)
+    est = support_estimate(c, {"fdm": 45.0})["fdm"]
+    assert est["area_mm2"] == pytest.approx(600.0)
+    assert est["volume_mm3"] == pytest.approx(600.0 * 20.0, rel=1e-6)  # to the floor, not the plate
+    g = support_estimate(_gamma(), {"fdm": 45.0})["fdm"]
+    assert g["volume_mm3"] == pytest.approx(600.0 * 30.0, rel=1e-6)  # nothing below: to the plate
+    # No overhang, no support space; more faces for a lower limit.
+    lying = Orientation.of(rotation_down([0, -1, 0])).apply(_gamma())
+    assert support_estimate(lying, {"fdm": 45.0})["fdm"]["volume_mm3"] == 0.0
 
 
 def test_region_centres_come_back_in_file_coordinates():
