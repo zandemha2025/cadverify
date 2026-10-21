@@ -15,6 +15,16 @@ import { NAV, R, GO_KEYS, sectionOf } from "./routes";
 import { CAD_ACCEPT, setPendingFile } from "./pending-file";
 import { Palette, PaletteProvider, usePalette } from "./palette";
 import { cx } from "./ui";
+import { WorkBar } from "./work/work-bar";
+
+/** The Pilot tag on a nav section; Many parts says what a work-email account gets free instead. */
+function navTag(key: string, usage: Usage | null): string {
+  const c = (usage as { catalog?: { eligible?: boolean; unlimited?: boolean; remaining?: number | null } } | null)?.catalog;
+  if (key !== "many" || !c) return "Pilot";
+  if (c.unlimited || usage?.plan === "pilot") return "Pilot";
+  if (c.eligible && typeof c.remaining === "number" && c.remaining > 0) return `${c.remaining} free`;
+  return "Pilot";
+}
 
 type Usage = { plan: string; tier?: string; unlimited: boolean; used: number; cap: number; remaining: number };
 type Org = { org_id: string; name: string; org_role: string; is_active: boolean };
@@ -128,7 +138,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             {NAV.map((n) => (
               <Link key={n.key} className={cx("pl", section === n.key && "on")} href={n.href} aria-current={section === n.key ? "page" : undefined}>
                 {n.label}
-                {n.pilot ? <small>Pilot</small> : null}
+                {n.pilot ? <small>{navTag(n.key, usage)}</small> : null}
               </Link>
             ))}
           </nav>
@@ -171,6 +181,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           </div>
         ) : null}
         {children}
+        <WorkBar />
         <Palette onPickFile={pickFile} onShortcuts={() => setShortcuts(true)} />
         {shortcuts ? <Shortcuts onClose={() => setShortcuts(false)} /> : null}
       </div>
