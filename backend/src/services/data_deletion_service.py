@@ -349,7 +349,7 @@ def _deletable_by(rows: PartRows, user_id: int, org_role: Optional[str]) -> tupl
         return False, "Viewers can't delete parts."
     others = _uploaders(rows) - {user_id}
     if others:
-        return False, "Someone else in your organization checked or costed this part too. An admin can delete it."
+        return False, "Members can delete only parts no one else checked or costed. An admin can delete this one."
     return True, None
 
 
@@ -715,8 +715,15 @@ async def _org_counts(session: AsyncSession, org_id: str) -> dict[str, int]:
         "designs": await n(DesignProject),
         "actual_costs": await n(GroundTruthRecordRow),
         "members": await n(Membership),
-        "pending_invites": await n(OrgInvite),
-        "api_keys": await n(ApiKey),
+        "pending_invites": int((await session.execute(
+            select(func.count()).select_from(OrgInvite).where(
+                OrgInvite.org_id == org_id, OrgInvite.accepted_at.is_(None),
+                OrgInvite.revoked_at.is_(None), OrgInvite.expires_at > func.now(),
+            )
+        )).scalar_one()),
+        "api_keys": int((await session.execute(
+            select(func.count()).select_from(ApiKey).where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))
+        )).scalar_one()),
         "active_share_links": active,
     }
 
