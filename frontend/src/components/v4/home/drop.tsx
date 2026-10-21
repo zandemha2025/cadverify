@@ -9,6 +9,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { R } from "../routes";
+import { FileTrustLine } from "../trust/file-line";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { cx } from "../ui";
 
@@ -71,6 +72,7 @@ export function DropZone() {
     >
       <b>{title}</b>
       <span>STEP, STL or IGES · one file</span>
+      <FileTrustLine />
       {msg ? (
         <span className={drop?.kind === "ok" ? "h-ok" : "h-msg"} role="status">
           {msg}

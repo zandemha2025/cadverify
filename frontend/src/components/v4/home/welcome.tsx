@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { R } from "../routes";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { useShell } from "../shell";
+import { FileTrustLine } from "../trust/file-line";
 import { cx } from "../ui";
 import "./home.css";
 
@@ -179,6 +180,7 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
           </Link>
         </div>
       </div>
+      <FileTrustLine style={{ margin: "0 24px 12px", maxWidth: "none", textAlign: "left" }} />
       <div className="h-dfoot">
         <span>Costs use typical rates until you add your machines and rates.</span>
         <span className="h-r">

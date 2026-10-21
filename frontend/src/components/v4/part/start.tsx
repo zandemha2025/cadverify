@@ -11,6 +11,7 @@ import { R } from "../routes";
 import { cx } from "../ui";
 import { useShell } from "../shell";
 import { checkedBefore } from "../onboard/checked";
+import { FileTrustLine } from "../trust/file-line";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`;
@@ -118,7 +119,7 @@ export function StartScreen({
             </svg>
           </span>
           <b aria-live="polite">{file ? file.name : over ? "Drop to check it" : "Drop a STEP, STL or IGES file"}</b>
-          <span>{file ? `${mb(file.size)} · ready to check${uses}` : "Up to 200 MB · visible to your team only"}</span>
+          <span>{file ? `${mb(file.size)} · ready to check${uses}` : "Up to 200 MB"}</span>
           {file ? (
             <span className="swap" style={{ display: "flex", gap: 8, marginTop: 6 }}>
               <button className="btn go" type="button" onClick={onCheck}>
@@ -141,6 +142,7 @@ export function StartScreen({
               <span>The sample doesn’t use a check.</span>
             </>
           )}
+          <FileTrustLine />
           <input
             ref={input}
             type="file"

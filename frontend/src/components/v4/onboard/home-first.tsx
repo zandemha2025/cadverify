@@ -20,6 +20,7 @@ import { fetchCostDecision, type CostDecisionDetail } from "@/lib/api";
 import { useAuth } from "@/components/ui/auth-provider";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { R } from "../routes";
+import { FileTrustLine } from "../trust/file-line";
 import { useShell } from "../shell";
 import { cx } from "../ui";
 import { Frame, Column, Head } from "../home/frame";
@@ -432,7 +433,8 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
       </div>
       <h2 id="nb-w1">Your own part</h2>
       <p>STEP, STL or IGES · up to 200 MB · one file</p>
-      <small>Visible to your team only · {usesOne.charAt(0).toLowerCase() + usesOne.slice(1)}</small>
+      <small>{usesOne}</small>
+      <FileTrustLine style={{ margin: "4px 0 0", textAlign: "inherit" }} />
       <span className="acts">
         <label className="btn ink nb-file">
           Choose file
