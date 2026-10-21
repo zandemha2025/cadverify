@@ -299,6 +299,31 @@ def _first_sentence(s: Optional[str]) -> Optional[str]:
     return (t[:i] if i > 0 else t).rstrip(".")
 
 
+_FAILURE_WORDS: tuple[tuple[re.Pattern, str], ...] = (
+    (re.compile(r"could not (tessellate|mesh)|all \d+ mesh strategies failed", re.I),
+     "The CAD kernel couldn't make a solid from this file (open, wire-only or damaged geometry)"),
+    (re.compile(r"parsing exceeded|exceeded \d+s timeout|timed out", re.I),
+     "Reading the file ran past the time limit; check it on its own"),
+    (re.compile(r"not a valid stl|could not (parse|read|load)|unable to (parse|read|load)|no geometry|empty mesh", re.I),
+     "The file couldn't be read as STEP, STL or IGES"),
+    (re.compile(r"unsupported (native cad|drawing)", re.I), "A native CAD file or drawing: export it as STEP"),
+    (re.compile(r"exceeds limit|exceeds the upload size|too large", re.I), "The file is over the 100 MB limit"),
+    (re.compile(r"active organization changed", re.I), "Your active organization changed during the run"),
+    (re.compile(r"batch cancelled|cancelled", re.I), "Skipped: the run was cancelled"),
+)
+
+
+def failure_words(error: Optional[str]) -> Optional[str]:
+    """Why a part couldn't be checked, in plain words (the raw error stays in ``error``)."""
+    if not error:
+        return None
+    for pattern, words in _FAILURE_WORDS:
+        if pattern.search(error):
+            return words
+    text = re.sub(r"^\s*\d{3}:\s*", "", error)
+    return _first_sentence(text)
+
+
 def process_words(process: Optional[str]) -> str:
     from src.services.catalog_service import process_label
 
@@ -384,7 +409,7 @@ def derive_part_row(
         return row
     if status in ("failed", "skipped"):
         row["bucket"] = "not_checked"
-        row["reason"] = _first_sentence(error) or ("Skipped" if status == "skipped" else "Couldn't be checked")
+        row["reason"] = failure_words(error) or ("Skipped" if status == "skipped" else "Couldn't be checked")
         row["error"] = error
         return row
 

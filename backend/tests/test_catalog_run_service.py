@@ -194,7 +194,14 @@ def test_no_machines_declared_reads_not_sorted():
 def test_failed_skipped_and_running_items():
     assert _row(None, item={**ITEM, "status": "processing"})["bucket"] == "checking"
     failed = _row(None, item={**ITEM, "status": "failed", "error_message": "Could not read the file. It may be corrupt."})
-    assert (failed["bucket"], failed["reason"]) == ("not_checked", "Could not read the file")
+    assert (failed["bucket"], failed["reason"]) == ("not_checked", "The file couldn't be read as STEP, STL or IGES")
+    assert failed["error"] == "Could not read the file. It may be corrupt."
+    mesh = _row(None, item={**ITEM, "status": "failed", "error_message": "400: Could not tessellate this part: gmsh could not mesh the geometry [rung 2 exceeded 15s cap] (all 3 mesh strategies failed)."})
+    assert mesh["reason"].startswith("The CAD kernel couldn't make a solid")
+    slow = _row(None, item={**ITEM, "status": "failed", "error_message": "504: File parsing exceeded 60s timeout."})
+    assert slow["reason"] == "Reading the file ran past the time limit; check it on its own"
+    other = _row(None, item={**ITEM, "status": "failed", "error_message": "500: Something new. More detail."})
+    assert other["reason"] == "Something new"
     assert _row(None, item={**ITEM, "status": "skipped", "error_message": None})["reason"] == "Skipped"
 
 

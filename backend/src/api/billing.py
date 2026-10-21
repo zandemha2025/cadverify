@@ -21,6 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.auth.catalog_allowance import free_catalog_parts
 from src.auth.email_tiers import personal_checks, work_checks
 from src.auth.rate_limit import limiter
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -114,7 +115,8 @@ async def public_plans() -> dict:
     """Public plan facts for the pricing and sign-up pages."""
     enabled = billing_enabled()
     return {
-        "free": {"work_checks": work_checks(), "personal_checks": personal_checks()},
+        "free": {"work_checks": work_checks(), "personal_checks": personal_checks(),
+                 "catalog_parts": free_catalog_parts()},
         "pro": {
             "checkout_available": enabled,
             "monthly_checks": pro_monthly_checks(),

@@ -312,7 +312,7 @@ async def test_public_plans_report_the_stripe_price_and_tier_sizes(db, monkeypat
         await client.get("/billing/plans")
         monkeypatch.delenv("STRIPE_SECRET_KEY")
         off = (await client.get("/billing/plans")).json()
-    assert first == {"free": {"work_checks": 15, "personal_checks": 3}, "pro": {
+    assert first == {"free": {"work_checks": 15, "personal_checks": 3, "catalog_parts": 50}, "pro": {
         "checkout_available": True, "monthly_checks": 50,
         "price": {"unit_amount": 14900, "currency": "usd", "interval": "month"}}}
     assert price.call_count == 1  # cached

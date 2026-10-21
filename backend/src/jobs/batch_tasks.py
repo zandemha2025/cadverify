@@ -1341,6 +1341,25 @@ class CatalogOrgChanged(RuntimeError):
     """The run's owner switched organization after the run started."""
 
 
+def _catalog_slots() -> "asyncio.Semaphore":
+    """Catalog parts checked at once in this worker process: the parse pool's size.
+
+    A part's analysis budget (ANALYSIS_TIMEOUT_SEC) includes any wait for a
+    parse-ladder slot. Parts of several runs (or one run's 4 at a time) queued
+    behind a slow STEP would time out while merely waiting; holding a slot here
+    first means the clock starts when the part is actually being read. The arq
+    job timeout still bounds the wait. Loop-local, like the parse pool's own.
+    """
+    from src.parsers import parse_pool
+
+    loop = asyncio.get_event_loop()
+    sem = getattr(loop, "_cadverify_catalog_sem", None)
+    if sem is None:
+        sem = asyncio.Semaphore(max(1, parse_pool.worker_count()))
+        setattr(loop, "_cadverify_catalog_sem", sem)
+    return sem
+
+
 def _catalog_owned_processes(processes) -> str:
     """The org's machine processes the cost route accepts as owned (others are left out)."""
     from src.costing.rates import _resolve_process_token
@@ -1363,20 +1382,10 @@ async def _run_catalog_item(session, batch, item) -> dict:
     keeps the part's allowance slot once the item completes, in the same
     transaction (``catalog_allowance.count_completed_part``).
     """
-    import io
-    import time
-
-    from fastapi import HTTPException
-    from starlette.datastructures import Headers, UploadFile
-
-    from src.api.routes import _run_cost_decision
-    from src.auth.catalog_allowance import count_completed_part, file_identity
     from src.auth.org_context import resolve_org
-    from src.db.models import CostDecision, MachineInstance
-    from src.services import analysis_service, batch_service
-    from src.services.catalog_run_service import GEOMETRY_INVALID_PREFIX, run_meta
+    from src.services import batch_service
+    from src.services.catalog_run_service import run_meta
 
-    start = time.time()
     batch_id = batch.id
     batch_ulid = batch.ulid
     batch_user_id = batch.user_id
@@ -1403,6 +1412,35 @@ async def _run_catalog_item(session, batch, item) -> dict:
         )
 
     user = AuthedUser(user_id=batch_user_id, api_key_id=batch_api_key_id, key_prefix="batch")
+    async with _catalog_slots():
+        return await _check_catalog_part(
+            session, batch, item, file_bytes, user,
+            batch_id=batch_id, batch_org_id=batch_org_id, batch_user_id=batch_user_id,
+            free_run=free_run, item_id=item_id, item_ulid=item_ulid, item_filename=item_filename,
+            item_quantities=item_quantities, item_material_class=item_material_class,
+        )
+
+
+async def _check_catalog_part(
+    session, batch, item, file_bytes: bytes, user, *, batch_id: int, batch_org_id: str,
+    batch_user_id: int, free_run: bool, item_id: int, item_ulid: str, item_filename: str,
+    item_quantities: str, item_material_class,
+) -> dict:
+    """The two steps of one catalog part, holding a parse slot (see _run_catalog_item)."""
+    import io
+    import time
+
+    from fastapi import HTTPException
+    from starlette.datastructures import Headers, UploadFile
+
+    from src.api.routes import _run_cost_decision
+    from src.auth.catalog_allowance import count_completed_part, file_identity
+    from src.db.models import CostDecision, MachineInstance
+    from src.services import analysis_service, batch_service
+    from src.services.catalog_run_service import GEOMETRY_INVALID_PREFIX
+
+    # The part's own time: from when it holds a parse slot, not while it waited.
+    start = time.time()
     analysis_run = await analysis_service.run_analysis(
         file_bytes=file_bytes,
         filename=item_filename,
