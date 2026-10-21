@@ -705,7 +705,7 @@ function MachineFormModal({
       await onSaved();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Save failed";
-      setSaveError(`${message}. Your entries are still here; correct them and retry.`);
+      setSaveError(`${message.replace(/\.\s*$/, "")}. Your entries are still here; correct them and retry.`);
       toast.error(message);
       setBusy(false);
     }
