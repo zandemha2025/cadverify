@@ -222,7 +222,6 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
   const sp = useSearchParams();
   const toast = useToast();
   const { need, choose } = useNeedFile();
-  const shopName = useShopName();
   const report = s.report;
   const be = React.useMemo(() => (report ? deriveBreakeven(report) : null), [report]);
   const max = scaleMax(be);
@@ -265,7 +264,8 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
     });
   };
 
-  const meta = [...baseMeta(s), report ? `Quantities ${qtyListText(report.quantities)}` : "", rateMeta(s, shopName)];
+  // The rates in use show on the Rates button beside the tabs, so the facts line doesn't repeat them.
+  const meta = [...baseMeta(s), report ? `Quantities ${qtyListText(report.quantities)}` : ""];
   const head = <WbHead tab="decision" part={part} meta={meta} />;
   const turntable = (
     <Turntable

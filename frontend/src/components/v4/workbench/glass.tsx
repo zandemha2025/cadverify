@@ -32,7 +32,7 @@ import {
 } from "./derive";
 import { addScenario, recost, useWb } from "./session";
 import { WbHead, useNeedFile, useToast, useWbNav, wbHref } from "./chrome";
-import { baseMeta, rateMeta, useShopName } from "./decision";
+import { baseMeta, useShopName } from "./decision";
 import { assumptionName, assumptionValue, driverName, money, qtyListText, qtyText } from "./words";
 import type { TabProps } from "./workbench";
 
@@ -169,7 +169,7 @@ export function GlassTab({ part, qty }: TabProps) {
     setEdit({ row: `drv:${d.name}`, key, vname: key, label: label[0].toUpperCase() + label.slice(1), unit, draft: curV == null ? "" : String(curV), err: "" });
   };
 
-  const meta = [...baseMeta(s), report ? `Quantities ${qtyListText(report.quantities)}` : "", rateMeta(s, shopName)];
+  const meta = [...baseMeta(s), report ? `Quantities ${qtyListText(report.quantities)}` : ""];
   const head = <WbHead tab="glass" part={part} meta={meta} wide={!insp} />;
 
   if (!report || !exact || !proc || q == null) {
