@@ -18,6 +18,8 @@ Ceilings (env-tunable, slowapi syntax, e.g. "10/hour;40/day"):
   repair  FREE_REPAIR_LIMIT  10/hour;40/day  two analyses around a mesh repair
   fit     FREE_FIT_LIMIT     10/hour;40/day  two meshes parsed, seated and measured
   design  FREE_DESIGN_LIMIT  20/hour;60/day  one OpenCASCADE generation per design or revision
+  catalog FREE_CATALOG_LIMIT 6/hour;20/day   one free catalog run started (src.auth.catalog_allowance)
+  recheck FREE_RECHECK_LIMIT 30/hour;150/day one re-check of a part already checked
 
 The counters share the rate limiter's storage (Redis in released processes)
 and are off whenever the rate limiter is (RATE_LIMIT_DISABLED in dev/test).
@@ -43,6 +45,8 @@ TOOLS: dict[str, tuple[str, str, str, str]] = {
     "repair": ("FREE_REPAIR_LIMIT", "10/hour;40/day", "mesh repair", "mesh repairs"),
     "fit": ("FREE_FIT_LIMIT", "10/hour;40/day", "fit measurement", "fit measurements"),
     "design": ("FREE_DESIGN_LIMIT", "20/hour;60/day", "design or revision", "designs or revisions"),
+    "catalog": ("FREE_CATALOG_LIMIT", "6/hour;20/day", "catalog run", "catalog runs"),
+    "recheck": ("FREE_RECHECK_LIMIT", "30/hour;150/day", "re-check", "re-checks"),
 }
 
 _WINDOW_WORDS = {"second": "a second", "minute": "a minute", "hour": "an hour", "day": "a day", "month": "a month", "year": "a year"}
@@ -134,4 +138,12 @@ async def limit_free_designs(user: AuthedUser = Depends(require_api_key)) -> Non
     await _enforce("design", user)
 
 
-ALL = (limit_free_fixes, limit_free_repair, limit_free_fit, limit_free_designs)
+async def limit_free_catalog_runs(user: AuthedUser = Depends(require_api_key)) -> None:
+    await _enforce("catalog", user)
+
+
+async def limit_free_recheck(user: AuthedUser = Depends(require_api_key)) -> None:
+    await _enforce("recheck", user)
+
+
+ALL = (limit_free_fixes, limit_free_repair, limit_free_fit, limit_free_designs, limit_free_catalog_runs, limit_free_recheck)

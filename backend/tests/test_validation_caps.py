@@ -552,6 +552,9 @@ def test_free_ceiling_wording_and_a_bad_setting_falls_back(monkeypatch):
     assert ftl.describe('repair') == '10 mesh repairs an hour and 40 a day'
     assert ftl.describe('fit') == '10 fit measurements an hour and 40 a day'
     assert ftl.describe('design') == '20 designs or revisions an hour and 60 a day'
+    assert ftl.describe('catalog') == '6 catalog runs an hour and 20 a day'
+    assert ftl.describe('recheck') == '30 re-checks an hour and 150 a day'
+    assert ftl.limit_free_catalog_runs in ftl.ALL and ftl.limit_free_recheck in ftl.ALL
     monkeypatch.setenv('FREE_FIX_LIMIT', 'lots')
     assert ftl.describe('fix') == '10 fixes an hour and 40 a day'
     monkeypatch.setenv('FREE_FIX_LIMIT', '1/hour')
