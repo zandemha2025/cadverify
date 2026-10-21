@@ -591,7 +591,7 @@ function PackageSheet({ id, toast }: { id: string; toast: (m: string) => void })
               <span style={{ minWidth: 0 }}>
                 {i.decision.filename}
                 <small style={{ display: "block" }}>
-                  {i.decision.make_now_process ? `Cheapest: ${wayLower(i.decision.make_now_process)}` : "No way priced"} · {i.decision.approval_status === "approved" ? "approved" : "not approved"}
+                  {i.decision.make_now_process ? `ScaleCAD’s pick: ${wayLower(i.decision.make_now_process)}` : "No way priced"} · {i.decision.approval_status === "approved" ? "approved" : "not approved"}
                   {i.decision.is_stale ? " · out of date" : ""} · #{short(i.decision.id)}
                 </small>
               </span>

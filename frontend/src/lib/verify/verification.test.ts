@@ -16,6 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ownedAlternativeSub,
   verdictBannerModel,
   fitMark,
   gapText,
@@ -260,4 +261,12 @@ test("a DFM-blocked route reads not makeable with its design blocker, never an a
     hasCostedRoute: true, process: "cnc_3axis", dfmReady: false, dfmVerdict: "fail",
   });
   assert.equal(record.text, "Not makeable as modeled.");
+});
+
+test("outside pick while a machine you own can make it: the banner says so instead of 'you own nothing'", () => {
+  const v = { verdict: "makeable_in_house", best_machine: "Bambu Lab X1C", per_route: {} } as never;
+  const sub = ownedAlternativeSub("makeable_outsource_only", v, "outside_sooner", "$15.58");
+  assert.match(sub ?? "", /^Your Bambu Lab X1C can make it at \$15\.58\/unit; the outside route is cheaper and arrives sooner/);
+  assert.equal(ownedAlternativeSub("makeable_in_house", v, null, null), null);
+  assert.equal(ownedAlternativeSub("makeable_outsource_only", { verdict: "makeable_outsource_only", per_route: {} } as never, null, null), null);
 });

@@ -970,7 +970,7 @@ _PART_DECLARATIONS = {"material_class", "tolerance_class", "source_units", "n_ca
 _PRIVATE_NUMBERS = ("value", "n_machines", "machine_hours_per_day")
 _HIDDEN_SOURCE = "Set by the sharer's shop. Not shown on shared links."
 _SHOP_TAG = re.compile(r"\s*\[shop: [^\]]*\]")
-_MACHINE_NAME = re.compile(r"\b(fitted machine|machine) '[^']*'")
+_MACHINE_NAME = re.compile(r"\b(fitted machine|machine|envelope of) '[^']*'")
 
 
 def _redact_private_inputs(node: Any) -> Any:
@@ -987,6 +987,10 @@ def _redact_private_inputs(node: Any) -> Any:
     # Whether the sharer owns a machine for this route is their shop's fact too.
     if "owned_in_house" in out and not isinstance(out.get("owned_in_house"), dict):
         out["owned_in_house"] = None
+    # An in-house lead time names the machine it runs on.
+    if out.get("in_house") is True and "machine_hours_per_day" in out:
+        out.pop("in_house", None)
+        out.pop("machine", None)
     if out.get("provenance") in _PRIVATE_PROVENANCE and out.get("name") not in _PART_DECLARATIONS:
         for key in ("source", "basis"):
             if key in out:
@@ -1000,6 +1004,28 @@ def _redact_private_inputs(node: Any) -> Any:
     return out
 
 
+def _redact_owned_choice(decision: Any) -> Any:
+    """Drop what says the sharer owns a machine that can make the part: the
+    in-house / outside comparison, its rule, the per-quantity in-house flags and
+    the note's owned-machine clause. The picks and their prices stay."""
+    from src.costing.decision import OWNED_CLAUSE_PREFIX
+
+    if not isinstance(decision, dict):
+        return decision
+    out = {k: v for k, v in decision.items() if k not in ("options", "rule")}
+    note = out.get("note")
+    if isinstance(note, str) and OWNED_CLAUSE_PREFIX in note:
+        out["note"] = note.split(" " + OWNED_CLAUSE_PREFIX, 1)[0].split(OWNED_CLAUSE_PREFIX, 1)[0]
+    rec = out.get("recommendation")
+    if isinstance(rec, dict):
+        out["recommendation"] = {
+            q: ({k: v for k, v in r.items() if k not in ("in_house", "basis", "machine")}
+                if isinstance(r, dict) else r)
+            for q, r in rec.items()
+        }
+    return out
+
+
 def sanitize_for_share(d: CostDecision) -> dict:
     """Allow-listed public payload — ZERO owner/user PII.
 
@@ -1009,7 +1035,11 @@ def sanitize_for_share(d: CostDecision) -> dict:
     except the sharer's own shop inputs (``_redact_private_inputs``): machine
     names, declared rates, markup and capacity are hidden on a public link.
     """
+    from src.costing.estimate import OWNED_PICK_NOTE_PREFIX
+
     result_json = _redact_private_inputs(d.result_json or {})
+    notes = [n for n in result_json.get("notes", [])
+             if not (isinstance(n, str) and n.startswith(OWNED_PICK_NOTE_PREFIX))]
     return {
         "filename": d.filename,
         "file_type": d.file_type,
@@ -1023,10 +1053,10 @@ def sanitize_for_share(d: CostDecision) -> dict:
         "material_class": result_json.get("material_class"),
         "routing": result_json.get("routing"),
         "estimates": result_json.get("estimates", []),
-        "decision": result_json.get("decision"),
+        "decision": _redact_owned_choice(result_json.get("decision")),
         "assumptions": result_json.get("assumptions", []),
         "engine_feasibility": result_json.get("engine_feasibility", []),
-        "notes": result_json.get("notes", []),
+        "notes": notes,
         "status": result_json.get("status"),
     }
 

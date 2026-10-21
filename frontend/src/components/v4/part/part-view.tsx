@@ -16,6 +16,7 @@ import { useRegisterPaletteItems, usePalette, type PaletteItem } from "../palett
 import { LENSES, PartProvider, initialPick, useMethods, type Lens, type PartCtxValue, type PartData, type Toast } from "./ctx";
 import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId, trimNum } from "./model";
 import type { ViewerController, ViewerHighlight, ViewerState } from "./viewer";
+import { followed, recordedChoice } from "./choice";
 import type { CheckSession } from "./store";
 import { MakeSheet } from "./lens-make";
 import { CostLayer, CostSheet } from "./lens-cost";
@@ -31,6 +32,8 @@ import { ProblemSheet } from "../fix/problem-sheet";
 import { AllProblemsSheet } from "../fix/all-sheet";
 import { AskDialog } from "../fix/ask-dialog";
 import { AfterFixView } from "../fix/after-fix";
+import { OrientChip, OrientTool } from "../orient/panel";
+import { useOrientView } from "../orient/state";
 import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
@@ -119,7 +122,14 @@ export function PartView({
   const controller = React.useRef(null) as ViewerController;
   const toastTimer = React.useRef<number | null>(null);
 
-  const sel = methods.find((m) => m.code === selCode) ?? rows.find((m) => m.code === selCode) ?? methods.find((m) => m.code === initialPick(methods, q)) ?? null;
+  // Opens on your choice for the part, else ScaleCAD's pick at this quantity, else the cheapest.
+  const follow = followed(data.cost, q, recordedChoice(data.decision))?.process ?? null;
+  const sel =
+    methods.find((m) => m.code === selCode) ??
+    rows.find((m) => m.code === selCode) ??
+    methods.find((m) => m.code === follow && m.prices.has(q)) ??
+    methods.find((m) => m.code === initialPick(methods, q)) ??
+    null;
   const checking = session?.status === "running";
   const interrupted = !checking && !data.validation && !data.cost && session?.failure?.kind === "interrupted";
   const costOff = !checking && !!data.validation && !data.cost && !!data.costError;
@@ -154,6 +164,7 @@ export function PartView({
   // Find and fix: one problem on the part (K1), all of them (K4), asking (K2), before and after (K3).
   const fx = useFixController({ data, methods, qs, q, selCode: sel?.code ?? null, has3d, faceAligned, controller, xray, setXray, onOpen: () => setLens("make"), toast, sourceKept });
   const fixOn = !!fx.value.view && !checking;
+  const ov = useOrientView(data.key);
   const highlight = fixOn ? fx.highlight : lensHighlight;
   const pickLens = (l: Lens) => {
     if (fx.value.view) fx.value.close();
@@ -332,6 +343,7 @@ export function PartView({
                 </span>
               ) : null}
               <RatesChip />
+              <OrientChip />
               {mesh.origin === "cache" && has3d ? <span className="src s-typ">3D from this browser&apos;s copy</span> : null}
               {mesh.origin === "stored" && has3d ? <span className="src s-typ">3D from the kept source file</span> : null}
             </span>
@@ -341,6 +353,7 @@ export function PartView({
             <button className={cx("btn sm", xray && "ink")} type="button" aria-pressed={xray} aria-disabled={!has3d} title={has3d ? "See through the part" : "X-ray needs the 3D view"} onClick={() => has3d && setXray((x) => !x)} style={!has3d ? { opacity: 0.45, cursor: "default" } : undefined}>
               X-ray
             </button>
+            <OrientTool />
             <Link className="btn sm" href={R.fit} title="Load the assembly around this part to measure interference and clearance">
               Fit in assembly
             </Link>
@@ -371,7 +384,7 @@ export function PartView({
               }}
             >
               <span className="shade" />
-              {mesh.url ? <PartViewer url={mesh.url} kind={mesh.kind} highlight={highlight} xray={xray} controllerRef={controller} onState={setViewer} markers={fixOn ? fx.markers : undefined} onPin={fx.onPin} onLit={fx.onLit} /> : null}
+              {mesh.url ? <PartViewer url={mesh.url} kind={mesh.kind} highlight={highlight} xray={xray} controllerRef={controller} onState={setViewer} markers={fixOn ? fx.markers : undefined} onPin={fx.onPin} onLit={fx.onLit} orient={ov.orient} onFacePick={ov.onFacePick} /> : null}
               {checking || mesh.loading ? <span className="scan" /> : null}
               {fixOn && fx.value.view?.kind === "problem" && has3d && fixHint(fx.value.pin, "problem", "1") ? (
                 <span className="hint">{fixHint(fx.value.pin, "problem", "1")}</span>

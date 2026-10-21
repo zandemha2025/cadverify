@@ -166,6 +166,33 @@ export function verificationForRoute(
   };
 }
 
+/**
+ * The banner's second line when the displayed route is made outside although a
+ * machine you own clears another route (the engine's in-house rule picked
+ * outside at this quantity). The static outsource line ("You own nothing of the
+ * recommended process family") would be false then, so say what is true.
+ * `basis` is the engine's decision.options[q].basis; `inHousePrice` its
+ * in-house unit cost. Null when the static line holds.
+ */
+export function ownedAlternativeSub(
+  routeVerdict: MakeabilityLattice,
+  verification: VerificationBlock | null,
+  basis: string | null | undefined,
+  inHousePrice: string | null,
+): string | null {
+  if (routeVerdict !== "makeable_outsource_only" || !verification) return null;
+  if (verification.verdict !== "makeable_in_house" && verification.verdict !== "makeable_with_secondary_op") return null;
+  const machine = verification.best_machine;
+  if (!machine) return null;
+  const why =
+    basis === "outside_sooner"
+      ? "the outside route is cheaper and arrives sooner than your machine could finish the run"
+      : basis === "outside_cheaper"
+        ? "the outside route costs less than the low end of the in-house estimate"
+        : "the outside route is the pick at this quantity";
+  return `Your ${machine} can make it${inHousePrice ? ` at ${inHousePrice}/unit` : ""}; ${why}. Both are priced below.`;
+}
+
 export interface RecordVerdictModel {
   text: string;
   kicker: string;

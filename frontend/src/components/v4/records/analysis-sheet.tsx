@@ -336,7 +336,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
               return (
                 <Link key={x.id} className="mr2" href={R.record(x.id)}>
                   <span style={{ minWidth: 0 }}>
-                    {row ? summaryLines(row).what : x.make_now_process ? `Cheapest: ${wayLower(x.make_now_process)}` : "No way priced"} <small>· #{short(x.id)}</small>
+                    {row ? summaryLines(row).what : x.make_now_process ? `ScaleCAD’s pick: ${wayLower(x.make_now_process)}` : "No way priced"} <small>· #{short(x.id)}</small>
                   </span>
                   <span className="t">{rowTime(x.created_at)} · Open</span>
                 </Link>

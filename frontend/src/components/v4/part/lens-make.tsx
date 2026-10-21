@@ -9,6 +9,7 @@ import { usePart } from "./ctx";
 import {
   VERDICT_LABEL,
   cheapestAt,
+  days,
   dfmMeta,
   fixesOf,
   makeRows,
@@ -25,6 +26,8 @@ import {
 import { RunNotice, SheetTop, classLabel, envLine, type FigItem } from "./sheet-bits";
 import { useFix } from "../fix/ctx";
 import { problemForIssue } from "../fix/problems";
+import { pairAt, pickWhy, recordedChoice, enginePick } from "./choice";
+import { useChoice } from "./choose";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -236,18 +239,52 @@ export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: s
   const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn").length;
   const env = envLine(p.data.runEnvironment);
   const figs: FigItem[] = [{ k: "Can make", v: `${can} of ${singles.length}`, s: "methods", tone: can ? "ok" : "bad" }];
+  const meta = `${classLabel(cls)} · ${env ?? "no service conditions set"}`;
   const c = cheapestAt(p.methods, p.q);
+  // Your choice, else ScaleCAD's pick, next to the other side when a machine of yours can make it.
+  const choice = recordedChoice(p.data.decision);
+  const chosen = choice ? p.methods.find((m) => m.code === choice.process) ?? null : null;
+  const pair = pairAt(p.data.cost, p.q);
+  const pick = enginePick(p.data.cost, p.q);
+  if (!p.costOff && chosen && chosen.prices.has(p.q)) {
+    const e = chosen.prices.get(p.q)!;
+    figs.push({ k: `Your choice at ${qtyWord(p.q)}`, v: money(e.unit_cost_usd), s: `${chosen.name}${chosen.inHouse ? ` · your ${chosen.inHouse}` : " · outside"} · ${days(e.lead_time?.low_days, e.lead_time?.high_days)}` });
+    if (c && c.code !== chosen.code) figs.push({ k: `Cheapest at ${qtyWord(p.q)}`, v: money(priceAt(c, p.q)), s: `${c.name} · ${c.short}` });
+    else figs.push({ k: "Fixes", v: String(v?.priority_fixes?.length ?? 0), s: `overall: ${v?.overall_verdict ?? "unknown"}` });
+    return { title: "Ways to make it", meta, figs };
+  }
+  if (!p.costOff && pair && pick) {
+    const mine = pair.in_house;
+    const out = pair.outside;
+    if (pair.pick === "in_house") {
+      figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(mine.unit_cost_usd), s: `ScaleCAD’s pick · ${mine.machine ?? methodName(mine.process)} · ${days(mine.lead_low_days, mine.lead_high_days)}`, tone: "ok" });
+      if (out) figs.push({ k: "Cheapest outside", v: money(out.unit_cost_usd), s: `${methodName(out.process)} · ${days(out.lead_low_days, out.lead_high_days)}` });
+    } else {
+      if (out) figs.push({ k: `Outside at ${qtyWord(p.q)}`, v: money(out.unit_cost_usd), s: `ScaleCAD’s pick · ${methodName(out.process)} · ${days(out.lead_low_days, out.lead_high_days)}` });
+      figs.push({ k: `On your ${mine.machine ?? "machine"}`, v: money(mine.unit_cost_usd), s: `in-house · ${days(mine.lead_low_days, mine.lead_high_days)}` });
+    }
+    return { title: "Ways to make it", meta, figs };
+  }
   if (p.costOff) figs.push({ k: "Prices", v: "Didn’t finish", s: "methods are ready", tone: "warn" });
   else if (c) figs.push({ k: `Cheapest at ${qtyWord(p.q)}`, v: money(priceAt(c, p.q)), s: `${c.name} · ${c.short}` });
   else if (!p.data.cost) figs.push({ k: "Prices", v: "Not priced yet", s: "this part has an analysis only" });
   const ih = p.methods.find((m) => m.inHouse && m.prices.has(p.q));
   if (ih && !p.costOff) figs.push({ k: ih.inHouse!, v: money(priceAt(ih, p.q)), s: `in-house · ${ih.short} ${ih.prices.get(p.q)!.material}` });
   else figs.push({ k: "Fixes", v: String(v?.priority_fixes?.length ?? 0), s: `overall: ${v?.overall_verdict ?? "unknown"}` });
-  return { title: "Ways to make it", meta: `${classLabel(cls)} · ${env ?? "no service conditions set"}`, figs };
+  return { title: "Ways to make it", meta, figs };
+}
+
+/** "your choice" / "ScaleCAD's pick" after a row's sub line. */
+function rowTag(m: Method, ch: ReturnType<typeof useChoice>): string {
+  if (m.members.length !== 1) return "";
+  if (ch.choice?.process === m.code) return " · your choice";
+  if (!ch.choice && ch.pick?.process === m.code) return " · ScaleCAD’s pick";
+  return "";
 }
 
 export function MakeSheet() {
   const p = usePart();
+  const ch = useChoice();
   const top = makeTop(p);
   const pricing = p.checking && !p.data.cost;
   const rows = makeRows(p.rows, p.q);
@@ -259,6 +296,7 @@ export function MakeSheet() {
         {!p.interrupted ? (
           <div className="swap">
             {!p.checking ? <Identity /> : null}
+            {!p.checking && !p.costOff ? <PickNote ch={ch} /> : null}
             {!p.data.validation && !p.data.cost ? (
               <Loading rows={6} label="Checking the ways to make it" />
             ) : (
@@ -277,7 +315,10 @@ export function MakeSheet() {
                     <button type="button" className={cx("mr", on && "on", m.verdict === "out" && "out")} onClick={() => p.setSel(m.code)} aria-pressed={on}>
                       <span>
                         <b>{m.name}</b>
-                        <small>{methodSub(m)}</small>
+                        <small>
+                          {methodSub(m)}
+                          {rowTag(m, ch)}
+                        </small>
                       </span>
                       <span className={cx("chip", chipTone(m))}>
                         <i />
@@ -285,7 +326,7 @@ export function MakeSheet() {
                       </span>
                       <span className="c num">{costCell(m, p.q, { pricing, costOff: p.costOff })}</span>
                     </button>
-                    {on ? <Detail m={m} pricing={pricing} /> : null}
+                    {on ? <Detail m={m} pricing={pricing} ch={ch} /> : null}
                   </React.Fragment>
                 );
               })
@@ -300,7 +341,7 @@ export function MakeSheet() {
   );
 }
 
-function Detail({ m, pricing }: { m: Method; pricing: boolean }) {
+function Detail({ m, pricing, ch }: { m: Method; pricing: boolean; ch: ReturnType<typeof useChoice> }) {
   const p = usePart();
   const fx = useFix();
   // The problem behind this method's finding, or the first one that stops it.
@@ -319,6 +360,7 @@ function Detail({ m, pricing }: { m: Method; pricing: boolean }) {
       </div>
       <span style={{ color: "var(--ink3)" }}>{meta}</span>
       {m.members.length > 1 ? <span style={{ color: "var(--ink3)" }}>{m.members.map(methodName).join(", ")}</span> : null}
+      {!p.checking ? <ChooseRow m={m} ch={ch} /> : null}
       {(lit && p.canTurn) || (problem && !p.checking) ? (
         <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {lit && p.canTurn ? (
@@ -333,6 +375,61 @@ function Detail({ m, pricing }: { m: Method; pricing: boolean }) {
           ) : null}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/** Make it this way, or say it's your choice with the way back to ScaleCAD's pick. */
+function ChooseRow({ m, ch }: { m: Method; ch: ReturnType<typeof useChoice> }) {
+  const p = usePart();
+  const mine = ch.choice?.process === m.code;
+  if (!mine && !ch.canChoose(m)) return null;
+  const where = m.inHouse ? `on your ${m.inHouse}` : "outside";
+  return (
+    <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      {mine ? (
+        <>
+          <span style={{ color: "var(--ok)", fontWeight: 600, fontSize: 13 }}>✓ Your choice, {where}</span>
+          <button className="btn sm ghost" type="button" disabled={!!ch.busy} onClick={() => void ch.backToPick()}>
+            {ch.busy === "back" ? "Going back…" : "Back to ScaleCAD’s pick"}
+          </button>
+        </>
+      ) : (
+        <button className="btn sm ink" type="button" disabled={!!ch.busy} onClick={() => void ch.makeThisWay(m)} title={`Save ${m.name.toLowerCase()} ${where} as the way to make this part. Prices, lead time and next steps follow it.`}>
+          {ch.busy === m.code ? "Saving…" : `Make it this way, ${where}`}
+        </button>
+      )}
+      {!mine && ch.pick?.process === m.code ? <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>ScaleCAD’s pick at {qtyWord(p.q)}</span> : null}
+      {ch.err ? (
+        <span role="alert" style={{ color: "var(--bad)", fontSize: 12.5, flexBasis: "100%" }}>
+          {ch.err}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** When a machine of yours can make it: what ScaleCAD picked at this quantity and why, in its own numbers. */
+export function PickNote({ ch }: { ch: ReturnType<typeof useChoice> }) {
+  const p = usePart();
+  const [rule, setRule] = React.useState(false);
+  const pair = ch.pair;
+  if (!pair || ch.choice) return null;
+  const inHouse = pair.pick === "in_house";
+  const title = inHouse
+    ? `ScaleCAD’s pick at ${qtyWord(p.q)}: ${methodName(pair.in_house.process).toLowerCase()} on your ${pair.in_house.machine ?? "machine"}`
+    : `ScaleCAD’s pick at ${qtyWord(p.q)}: ${methodName(pair.outside?.process).toLowerCase()} outside`;
+  return (
+    <div className="note" style={{ margin: "6px 12px 6px" }}>
+      <b>{title}</b>
+      <span>{pickWhy(pair, p.q)}</span>
+      <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button className="btn sm ghost" type="button" aria-expanded={rule} onClick={() => setRule((r) => !r)} style={{ height: 24 }}>
+          {rule ? "Hide the rule" : "How ScaleCAD picks"}
+        </button>
+        <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Open any process below to make it that way instead.</span>
+      </span>
+      {rule && p.data.cost?.decision?.rule ? <span className="swap" style={{ color: "var(--ink2)", fontSize: 12.5 }}>{p.data.cost.decision.rule}</span> : null}
     </div>
   );
 }

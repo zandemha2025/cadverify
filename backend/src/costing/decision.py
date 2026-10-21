@@ -15,6 +15,13 @@ Coherent semantics (resolves weaknesses #6, #7):
 The headline make process is drawn ONLY from DFM-ready make candidates, so it is
 never a process the part currently fails. The tooling route may be DFM-fail; if
 so it is presented conditionally ("if redesigned for molding"), never asserted.
+
+Owned machines (``in_house``): when a machine the shop owns clears every fit
+gate for a DFM-ready make route, the recommendation at each quantity compares
+the cheapest such in-house route with the cheapest outside route and applies
+``IN_HOUSE_RULE`` (below). Both sides are kept in ``Decision.options`` so the
+answer can show them next to each other. No owned machine fits => no options,
+the recommendation is the cheapest route exactly as before.
 """
 
 from __future__ import annotations
@@ -33,6 +40,19 @@ MAKE_NOW_FAMILIES = (
 )
 TOOLING_FAMILIES = ("formative", "casting", "forging")
 
+# Why the owned machine is preferred inside the estimate's own range: two
+# should-cost estimates whose difference is smaller than their stated
+# uncertainty can't be told apart by this model, and making it on a machine
+# the shop owns keeps the schedule, the shipping and the file in-house.
+IN_HOUSE_RULE = (
+    "A machine you own that clears every check is recommended unless an outside "
+    "route is cheaper and either costs less than the low end of the in-house "
+    "estimate's range or arrives sooner beyond doubt (its slowest lead time is "
+    "quicker than the in-house quickest). Inside that range the model can't tell "
+    "the two prices apart, and your own machine keeps the schedule and the file "
+    "in-house."
+)
+
 
 @dataclass
 class Decision:
@@ -44,6 +64,12 @@ class Decision:
     recommendation: dict = field(default_factory=dict)   # q -> tier-1 make-as-is pick
     if_redesigned: dict = field(default_factory=dict)    # q -> tier-2 cheaper-if-redesigned | None
     note: str = ""
+    # q -> {"in_house": {...}, "outside": {...} | None, "pick", "basis"}: the
+    # cheapest route on a machine the shop owns next to the cheapest outside
+    # route. Empty when no owned machine clears a DFM-ready make route (then
+    # report_to_dict drops it and ``rule`` so the output is byte-identical).
+    options: dict = field(default_factory=dict)
+    rule: str = ""
 
 
 def crossover(fixed_a: float, var_a: float, fixed_b: float, var_b: float) -> Optional[float]:
@@ -124,8 +150,51 @@ def _caveat(est) -> str:
     return ""
 
 
+def _side(est, lt, rng) -> dict:
+    """One side of the in-house / outside comparison, from engine numbers only."""
+    lo, hi = rng if rng else (None, None)
+    if lo is None:
+        band = float(est.est_error_band_pct or 0) / 100.0
+        lo, hi = est.unit_cost_usd * (1 - band), est.unit_cost_usd * (1 + band)
+    return {
+        "process": est.process,
+        "material": est.material,
+        "unit_cost_usd": round(est.unit_cost_usd, 2),
+        "low_usd": round(lo, 2),
+        "high_usd": round(hi, 2),
+        "lead_low_days": lt.low_days if lt else None,
+        "lead_high_days": lt.high_days if lt else None,
+        "dfm_verdict": est.dfm_verdict,
+    }
+
+
+def prefer_in_house(inside: dict, outside: Optional[dict]) -> tuple[str, str]:
+    """Apply ``IN_HOUSE_RULE`` to the two sides; returns ``(pick, basis)``.
+
+    pick: "in_house" | "outside". basis:
+      in_house_only          no outside route is priced
+      in_house_cheapest      the owned machine is the cheapest way outright
+      in_house_within_range  outside is cheaper, but inside the in-house range
+                             and not sooner beyond doubt
+      outside_cheaper        outside costs less than the in-house range's low end
+      outside_sooner         outside is cheaper and its slowest lead time beats
+                             the in-house quickest
+    """
+    if outside is None:
+        return "in_house", "in_house_only"
+    if inside["unit_cost_usd"] <= outside["unit_cost_usd"]:
+        return "in_house", "in_house_cheapest"
+    o_hi, i_lo = outside.get("lead_high_days"), inside.get("lead_low_days")
+    if o_hi is not None and i_lo is not None and o_hi < i_lo:
+        return "outside", "outside_sooner"
+    if outside["unit_cost_usd"] < inside["low_usd"]:
+        return "outside", "outside_cheaper"
+    return "in_house", "in_house_within_range"
+
+
 def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
-                unit_cost_fn=None, excluded_pv=None, env_note=None) -> Optional[Decision]:
+                unit_cost_fn=None, excluded_pv=None, env_note=None,
+                in_house=None, range_by_key=None) -> Optional[Decision]:
     """estimates_by_pq: {(process_value, qty): CostEstimate} for every eligible
     (process, qty). Decision ranks by REAL per-qty unit cost (not a fixed/var
     reconstruction), so the headline make process and the low-qty recommendation
@@ -147,6 +216,14 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     env_note (optional): a pre-built human clause naming the environment
     constraint; appended to ``note`` ONLY when the exclusion actually changed the
     make-as-is headline (see below).
+    in_house (optional): ``{process_value: {"machine": name, "count": n}}`` for
+    every route a machine the shop owns clears (the §0 per-route in-house
+    verdicts). When one of them is a DFM-ready make route at a quantity, that
+    quantity's recommendation follows ``prefer_in_house`` and both sides land in
+    ``options``. None / empty => the cheapest route, byte-identical.
+    range_by_key (optional): ``{(process_value, qty): (low_usd, high_usd)}``, the
+    estimate's served confidence range, so the rule reads the same range the
+    answer shows. Absent => the estimate's assumption band.
     """
     if not estimates_by_pq:
         return None
@@ -182,7 +259,31 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         # Aligns with the absent-decision shape (report_to_dict serializes None,
         # exactly as it does for GEOMETRY_INVALID / no-estimates).
         return None
-    make_now = ready_lo[0]
+    cheapest_lo = ready_lo[0]
+    in_house = dict(in_house or {})
+    range_by_key = range_by_key or {}
+
+    def pick_at(q):
+        """(tier-1 pick, cheapest, options entry | None) at one quantity."""
+        ranked = make_ready_ranked(q) or make_any_ranked(q)
+        cheapest = ranked[0]
+        inside = [e for e in make_ready_ranked(q) if e.process in in_house]
+        if not inside:
+            return cheapest, cheapest, None
+        i_est = inside[0]
+        outs = [e for e in make_ready_ranked(q) if e.process not in in_house]
+        o_est = outs[0] if outs else None
+        i_side = _side(i_est, leadtimes_by_key.get((i_est.process, q)),
+                       range_by_key.get((i_est.process, q)))
+        i_side["machine"] = in_house[i_est.process].get("machine")
+        i_side["machine_count"] = in_house[i_est.process].get("count")
+        o_side = (_side(o_est, leadtimes_by_key.get((o_est.process, q)),
+                        range_by_key.get((o_est.process, q))) if o_est else None)
+        pick, basis = prefer_in_house(i_side, o_side)
+        entry = {"in_house": i_side, "outside": o_side, "pick": pick, "basis": basis}
+        return (i_est if pick == "in_house" else o_est), cheapest, entry
+
+    make_now = pick_at(q_lo)[0]
 
     tools_hi = tool_ranked(q_hi)
     tool_champion = tools_hi[0] if tools_hi else None
@@ -208,9 +309,9 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     # ---- per-qty tiers --------------------------------------------------
     recommendation: dict = {}
     if_redesigned: dict = {}
+    options: dict = {}
     for q in quantities:
-        tier1_ranked = make_ready_ranked(q) or make_any_ranked(q)
-        tier1 = tier1_ranked[0]
+        tier1, _cheapest, entry = pick_at(q)
         lt = leadtimes_by_key.get((tier1.process, q))
         recommendation[q] = {
             "process": tier1.process,
@@ -221,6 +322,12 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
             "lead_low_days": lt.low_days if lt else None,
             "lead_high_days": lt.high_days if lt else None,
         }
+        if entry is not None:
+            options[q] = entry
+            recommendation[q]["in_house"] = entry["pick"] == "in_house"
+            recommendation[q]["basis"] = entry["basis"]
+            if entry["pick"] == "in_house":
+                recommendation[q]["machine"] = entry["in_house"]["machine"]
         # tier-2: cheapest estimate that beats tier-1 but is DFM-fail OR tooling
         cheaper = [
             est_at(pv, q) for pv in proc_values
@@ -238,8 +345,8 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         else:
             if_redesigned[q] = None
 
-    note = _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
-                       round(make_now.unit_cost_usd, 2),
+    note = _build_note(cheapest_lo, tool_champion, q_star, q_lo, q_hi,
+                       round(cheapest_lo.unit_cost_usd, 2),
                        round(tool_champion.unit_cost_usd, 2) if tool_champion else None,
                        recommendation)
 
@@ -250,8 +357,12 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     if excluded_pv and env_note:
         full_ready_lo = (make_ready_ranked(q_lo, pvs=all_pv)
                          or make_any_ranked(q_lo, pvs=all_pv))
-        if full_ready_lo and full_ready_lo[0].process != make_now.process:
+        if full_ready_lo and full_ready_lo[0].process != cheapest_lo.process:
             note = note + " " + env_note
+
+    # Last, so a public share can cut it off whole (it names the sharer's machines).
+    if options:
+        note = note + " " + _in_house_clause(options)
 
     return Decision(
         make_now_process=make_now.process,
@@ -262,7 +373,35 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         recommendation=recommendation,
         if_redesigned=if_redesigned,
         note=note,
+        options=options,
+        rule=IN_HOUSE_RULE if options else "",
     )
+
+
+_BASIS_TEXT = {
+    "in_house_only": "no outside route is priced",
+    "in_house_cheapest": "it is the cheapest route",
+    "in_house_within_range": "the outside route is cheaper but inside the in-house estimate's range",
+    "outside_cheaper": "the outside route costs less than the low end of the in-house range",
+    "outside_sooner": "the outside route is cheaper and arrives sooner beyond doubt",
+}
+
+
+def _in_house_clause(options: dict) -> str:
+    """One sentence per quantity: the in-house side, the outside side, the pick."""
+    bits = []
+    for q, o in sorted(options.items()):
+        i, out = o["in_house"], o["outside"]
+        side = (f"qty {q}: in-house {i['process']} on {i['machine']} ${i['unit_cost_usd']}/unit"
+                + (f" vs outside {out['process']} ${out['unit_cost_usd']}/unit" if out else ""))
+        pick = (f"{i['process']} in-house" if o["pick"] == "in_house"
+                else f"{out['process']} outside")
+        bits.append(f"{side} -> {pick} ({_BASIS_TEXT[o['basis']]})")
+    return OWNED_CLAUSE_PREFIX + "; ".join(bits) + "."
+
+
+# The decision note's owned-machine clause starts with this and ends the note.
+OWNED_CLAUSE_PREFIX = "Owned machines: "
 
 
 def _build_note(make_now, tool_champion, q_star, q_lo, q_hi,

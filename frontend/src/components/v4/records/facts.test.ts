@@ -215,7 +215,7 @@ test("list rows: summary lines, status, filters and grouping by part", () => {
     is_public: false,
     share_url: null,
   } as CostDecisionSummary;
-  assert.deepEqual(summaryLines(s), { what: "Cheapest: Wire EDM", answer: "priced at 1 to 10,000 · tooling pays off near 4,018 · #AEQ1".replace("#AEQ1", "#KZAEQ1") });
+  assert.deepEqual(summaryLines(s), { what: "ScaleCAD’s pick: Wire EDM", answer: "priced at 1 to 10,000 · tooling pays off near 4,018 · #AEQ1".replace("#AEQ1", "#KZAEQ1") });
   const decided = { ...s, user_disposition: "inhouse" as const, user_disposition_label: "Make in-house", disposition_basis: { process: "cnc_3axis", material: "API 13Cr", quantity: 10 } };
   assert.equal(summaryLines(decided).what, "Make in-house · 3-axis milling at 10");
   assert.deepEqual(statusOf(decided), { label: "Decided", tone: "ok" });

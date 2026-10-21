@@ -10,6 +10,7 @@ import { usePart } from "./ctx";
 import { dimsText, machineViews, money, priceMeta, qtyWord, trimNum, type MachineView } from "./model";
 import { CostLines } from "./lens-cost";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
+import { useChoice } from "./choose";
 
 function bboxOf(p: ReturnType<typeof usePart>): [number, number, number] | null {
   const b = p.data.validation?.geometry.bounding_box_mm ?? p.data.cost?.geometry.bbox_mm ?? null;
@@ -118,6 +119,8 @@ export function ShopSheet() {
   else if (warn.length) figs.push({ k: "Not set up", v: warn.map((v) => v.name).join(", "), tone: "warn" });
   const dims = dimsText(bboxOf(p));
   const est = m && m.tone === "ok" && !p.costOff ? m.method?.prices.get(p.q) ?? null : null;
+  const ch = useChoice();
+  const mine = !!m?.method && ch.choice?.process === m.method.code;
   return (
     <>
       <SheetTop title="Your machines" meta={`${views.length} machine${views.length === 1 ? "" : "s"} · fit by size, weight and material`} figs={figs} />
@@ -168,6 +171,30 @@ export function ShopSheet() {
                     <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Drop the file on the part to re-check it.</span>
                   )}
                 </span>
+              </div>
+            ) : null}
+            {est && m?.method && (mine || ch.canChoose(m.method)) ? (
+              <div className="note">
+                <b>{mine ? `Your choice: ${m.name}` : `${m.name}: ${money(est.unit_cost_usd)} each at ${qtyWord(p.q)}`}</b>
+                <span>
+                  {mine ? "Prices, lead time and next steps on this part follow it." : `In-house, ${priceMeta(m.method, p.q)?.replace(/^Could be /, "could be ") ?? ""}.`}
+                </span>
+                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {mine ? (
+                    <button className="btn sm ghost" type="button" disabled={!!ch.busy} onClick={() => void ch.backToPick()}>
+                      {ch.busy === "back" ? "Going back…" : "Back to ScaleCAD’s pick"}
+                    </button>
+                  ) : (
+                    <button className="btn sm ink" type="button" disabled={!!ch.busy} onClick={() => void ch.makeThisWay(m.method!)}>
+                      {ch.busy === m.method.code ? "Saving…" : `Make it this way, on your ${m.name}`}
+                    </button>
+                  )}
+                </span>
+                {ch.err ? (
+                  <span role="alert" style={{ color: "var(--bad)", fontSize: 12.5 }}>
+                    {ch.err}
+                  </span>
+                ) : null}
               </div>
             ) : null}
             {est ? (

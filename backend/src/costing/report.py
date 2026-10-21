@@ -29,7 +29,7 @@ def report_to_dict(report) -> dict:
              "provenance": a.provenance.value, "source": a.source}
             for a in report.assumptions
         ],
-        "decision": asdict(report.decision) if report.decision else None,
+        "decision": _decision_dict(report.decision),
     }
     # Machine-inventory verification block (Phase C). Added ONLY when the org
     # actually declared machines or a service environment (report.verification is
@@ -48,6 +48,19 @@ def report_to_dict(report) -> dict:
     unit_warnings = getattr(report, "unit_warnings", None)
     if unit_warnings:
         d["unit_warnings"] = unit_warnings
+    return d
+
+
+def _decision_dict(decision):
+    """The decision as JSON. ``options`` and ``rule`` exist only when a machine
+    the shop owns clears a route; otherwise they are left out so the output is
+    byte-identical to the shape before owned-machine options."""
+    if not decision:
+        return None
+    d = asdict(decision)
+    if not d.get("options"):
+        d.pop("options", None)
+        d.pop("rule", None)
     return d
 
 

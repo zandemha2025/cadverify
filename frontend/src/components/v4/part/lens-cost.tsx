@@ -23,11 +23,15 @@ import {
   type Method,
 } from "./model";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
+import { followed, recordedChoice } from "./choice";
 
+/** The process the chart and its lines show: one you picked here, else your choice for the part, else ScaleCAD's pick, else the cheapest. */
 export function useChartSel(): Method | null {
   const p = usePart();
   const picked = p.costPick ? p.methods.find((m) => m.code === p.costPick && isPriced(m)) ?? null : null;
-  return picked ?? cheapestAt(p.methods, p.q) ?? p.methods.find((m) => isPriced(m) && m.prices.has(p.q)) ?? null;
+  const f = followed(p.data.cost, p.q, recordedChoice(p.data.decision));
+  const follows = f ? p.methods.find((m) => m.code === f.process && isPriced(m) && m.prices.has(p.q)) ?? null : null;
+  return picked ?? follows ?? cheapestAt(p.methods, p.q) ?? p.methods.find((m) => isPriced(m) && m.prices.has(p.q)) ?? null;
 }
 
 export function CostLayer() {
@@ -206,8 +210,11 @@ export function costTop(p: ReturnType<typeof usePart>, sel: Method | null): { ti
     const hi = e.confidence?.high_usd;
     if (lo != null && hi != null) figs.push({ k: "Range", v: `${money(lo)}–${money(hi)}`, s: `±${trimNum(e.confidence!.half_width_pct, 0)}%, ${e.confidence!.validated ? "checked against your jobs" : "typical values"}` });
   }
+  const choice = recordedChoice(p.data.decision);
+  const mine = choice ? p.methods.find((m) => m.code === choice.process && m.prices.has(p.q)) ?? null : null;
   const ih = p.methods.find((m) => m.inHouse && m.prices.has(p.q));
-  if (ih) figs.push({ k: ih.inHouse!, v: money(priceAt(ih, p.q)), s: "in-house" });
+  if (mine && mine.code !== c?.code) figs.push({ k: "Your choice", v: money(priceAt(mine, p.q)), s: `${mine.name}${mine.inHouse ? ` · your ${mine.inHouse}` : " · outside"}` });
+  else if (ih) figs.push({ k: ih.inHouse!, v: money(priceAt(ih, p.q)), s: `in-house · ${days(ih.prices.get(p.q)!.lead_time?.low_days, ih.prices.get(p.q)!.lead_time?.high_days)}` });
   void sel;
   return { title: "Cost per part", meta: "Drag the chart, pick a quantity or type one · model prices, not quotes", figs };
 }
@@ -326,7 +333,9 @@ export function CostSheet() {
               ))}
             </div>
             <p style={{ margin: "6px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
-              {cheapest ? `${days(cheapest.prices.get(p.q)!.lead_time?.low_days, cheapest.prices.get(p.q)!.lead_time?.high_days)} for the cheapest. ` : ""}Lead times are a queue model, not your schedule. Model prices, not quotes.
+              {cheapest ? `${days(cheapest.prices.get(p.q)!.lead_time?.low_days, cheapest.prices.get(p.q)!.lead_time?.high_days)} for the cheapest. ` : ""}
+              {p.methods.some((m) => m.inHouse && m.prices.has(p.q)) ? "In-house lead time is print time on the machines you declared, with no shipping; your own queue isn’t included. " : ""}
+              Outside lead times are a queue model, not a quote. Model prices, not quotes.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0,1fr)", gap: 10, alignItems: "end", padding: "10px 12px 0" }}>
               <label className="field">

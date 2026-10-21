@@ -351,6 +351,11 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             in {"makeable_in_house", "makeable_with_secondary_op"}
         ))
 
+    # Routes a machine the shop owns clears (§0 per-route in-house verdicts):
+    # their lead time runs on the shop's own machines and the decision weighs
+    # them against the cheapest outside route. Empty without inventory.
+    in_house_by_pv = _in_house_routes(verification, options.inventory)
+
     estimates_serialized = []
     estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
     leadtimes_by_key = {}
@@ -379,7 +384,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             elig_by_pv[process.value] = item
             # cycle_hr from the estimate keeps lead time consistent with cost
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
-            lt = lead_time(process, cycle_hr, q, rates)
+            lt = lead_time(process, cycle_hr, q, rates,
+                           in_house=in_house_by_pv.get(process.value))
             leadtimes_by_key[(process.value, q)] = lt
             estimates_by_pq[(process.value, q)] = est
             estimates_serialized.append(
@@ -446,10 +452,19 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                                  item["process"].value))
         return est.unit_cost_usd
 
+    range_by_key = {
+        (e["process"], e["quantity"]): (e["confidence"].get("low_usd"),
+                                        e["confidence"].get("high_usd"))
+        for e in estimates_serialized
+        if isinstance(e.get("confidence"), dict)
+        and e["confidence"].get("low_usd") is not None
+    } if in_house_by_pv else None
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
                            unit_cost_fn=_unit_cost_fn,
                            excluded_pv=env_excluded.get("excluded_pv"),
-                           env_note=env_excluded.get("note"))
+                           env_note=env_excluded.get("note"),
+                           in_house=in_house_by_pv,
+                           range_by_key=range_by_key)
 
     notes = list(cost_exclusions.values())
     if shop is not None:
@@ -479,7 +494,14 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             f"{rec.process}. {rec.reasoning}")
     if rec is not None and decision is not None and decision.make_now_process != rec.process:
         in_shortlist = any(e["process"] == rec.process for e in estimates_serialized)
-        if in_shortlist:
+        lo_pick = (decision.recommendation.get(min(options.quantities)) or {}) if options.quantities else {}
+        if in_shortlist and lo_pick.get("in_house"):
+            notes.append(
+                f"{OWNED_PICK_NOTE_PREFIX}{decision.make_now_process} on "
+                f"machine '{lo_pick.get('machine')}', but the geometry-recommended "
+                f"process is {rec.process} — both are costed above; pick on intent, "
+                f"not just the marginal $.")
+        elif in_shortlist:
             notes.append(
                 f"Note: the cost-cheapest make-as-is pick at low qty is "
                 f"{decision.make_now_process}, but the geometry-recommended process is "
@@ -519,6 +541,30 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         verification=verification,
         unit_warnings=_unit_plausibility_warnings(g, options),
     )
+
+
+_IN_HOUSE_VERDICTS = ("makeable_in_house", "makeable_with_secondary_op")
+# A note that names the shop's own machine starts with this (public shares drop it).
+OWNED_PICK_NOTE_PREFIX = "Note: on a machine you own, the make-as-is pick at low qty is "
+
+
+def _in_house_routes(verification, inventory) -> dict:
+    """``{process_value: {"machine", "count"}}`` for each route a machine the
+    shop owns clears, read off the serialized §0 verdict. ``count`` is the
+    fitted machine's declared count (1 when undeclared)."""
+    if not verification or not inventory:
+        return {}
+    out = {}
+    for pv, info in (verification.get("per_route") or {}).items():
+        if info.get("verdict") not in _IN_HOUSE_VERDICTS:
+            continue
+        name = info.get("best_machine")
+        cap = next((m for m in inventory
+                    if getattr(m.process, "value", m.process) == pv and m.name == name), None)
+        count = getattr(cap, "count", None)
+        out[pv] = {"machine": name or pv,
+                   "count": count if isinstance(count, int) and count > 0 else 1}
+    return out
 
 
 def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,

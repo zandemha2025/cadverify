@@ -818,7 +818,7 @@ export interface CostLeadTime {
   mid_days: number;
   components: Record<string, number>;
   capacity:
-    | { n_machines?: number; machine_hours_per_day?: number; provenance?: string }
+    | { n_machines?: number; machine_hours_per_day?: number; provenance?: string; basis?: string; in_house?: boolean; machine?: string }
     | Record<string, never>;
 }
 
@@ -859,6 +859,35 @@ export interface CostRecommendation {
   dfm_verdict: string;
   lead_low_days: number | null;
   lead_high_days: number | null;
+  /** Present when a machine you own clears a route at this quantity: whether the pick is in-house, why, and on which machine. */
+  in_house?: boolean;
+  basis?: CostPickBasis;
+  machine?: string;
+}
+
+/** Why the engine picked in-house or outside when a machine you own clears a route (decision.IN_HOUSE_RULE). */
+export type CostPickBasis = "in_house_only" | "in_house_cheapest" | "in_house_within_range" | "outside_cheaper" | "outside_sooner";
+
+/** One side of the in-house / outside comparison: the engine's own estimate, its range and lead time. */
+export interface CostOptionSide {
+  process: string;
+  material: string;
+  unit_cost_usd: number;
+  low_usd: number;
+  high_usd: number;
+  lead_low_days: number | null;
+  lead_high_days: number | null;
+  dfm_verdict?: string;
+  /** In-house side only: the machine of yours that clears every check, and how many you declared. */
+  machine?: string | null;
+  machine_count?: number | null;
+}
+
+export interface CostOptionPair {
+  in_house: CostOptionSide;
+  outside: CostOptionSide | null;
+  pick: "in_house" | "outside";
+  basis: CostPickBasis;
 }
 
 export interface CostRedesigned {
@@ -877,6 +906,10 @@ export interface CostDecision {
   recommendation: Record<string, CostRecommendation>;
   if_redesigned: Record<string, CostRedesigned | null>;
   note: string;
+  /** Per quantity: the cheapest route on a machine you own next to the cheapest outside route. Absent when none of your machines clears a route. */
+  options?: Record<string, CostOptionPair>;
+  /** The rule the engine used to pick between them, in words. */
+  rule?: string;
 }
 
 export interface CostAssumption {

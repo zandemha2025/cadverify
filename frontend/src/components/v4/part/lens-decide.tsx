@@ -8,23 +8,56 @@ import { createRfqPackage, downloadRfqPackage, shareCostDecision } from "@/lib/a
 import { R } from "../routes";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
-import { decideOptions, methodName, money, qtyWord, shortId, type DecideOption } from "./model";
+import { days, decideOptions, methodName, money, qtyWord, shortId, type DecideOption } from "./model";
 import { putDisposition, reloadDecision } from "./api";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { useMachineViews } from "./lens-shop";
+import { enginePick, pairAt, pickWhy } from "./choice";
 
 const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
 
 function useOptions() {
   const p = usePart();
-  return React.useMemo(() => decideOptions(p.methods, p.data.cost, p.q, p.data.machines.length), [p.methods, p.data.cost, p.q, p.data.machines.length]);
+  const bp = p.data.decision?.disposition_basis?.process ?? null;
+  const kind = p.data.decision?.user_disposition ?? null;
+  return React.useMemo(() => {
+    const opts = decideOptions(p.methods, p.data.cost, p.q, p.data.machines.length);
+    // A process chosen in Make ("Make it this way") that isn't one of the listed outcomes: list it too, so the saved one shows.
+    if ((kind === "inhouse" || kind === "outside") && bp && !opts.some((o) => o.kind === kind && o.route?.process === bp)) {
+      const m = p.methods.find((x) => x.code === bp);
+      const e = m?.prices.get(p.q);
+      if (m && e) {
+        const where = kind === "inhouse" ? `${m.inHouse ?? "your machine"} · ` : `${m.name} · `;
+        const at = opts.findIndex((o) => o.kind === "acquire");
+        opts.splice(at < 0 ? opts.length : at, 0, {
+          id: `chosen-${m.code}`,
+          kind,
+          label: kind === "inhouse" ? "Make in-house" : "Make outside",
+          sub: `${where}${m.short} ${e.material} · ${days(e.lead_time?.low_days, e.lead_time?.high_days)}`,
+          cost: e.unit_cost_usd,
+          off: false,
+          route: { process: e.process, material: e.material, quantity: e.quantity },
+        });
+      }
+    }
+    return opts;
+  }, [p.methods, p.data.cost, p.q, p.data.machines.length, kind, bp]);
 }
 
 /** The option the record's saved outcome points at, if it's on the list. */
 function savedOption(opts: DecideOption[], disposition: string | null | undefined, basis: { process: string } | null | undefined): DecideOption | null {
   if (!disposition) return null;
   const same = opts.filter((o) => o.kind === disposition);
-  return same.find((o) => o.route && basis && o.route.process === basis.process) ?? same[0] ?? null;
+  const exact = same.find((o) => o.route && basis && o.route.process === basis.process);
+  if (exact) return exact;
+  // A recorded route that isn't priced at this quantity: don't stand another route in for it.
+  return basis?.process && (disposition === "inhouse" || disposition === "outside") ? null : same[0] ?? null;
+}
+
+/** The option ScaleCAD's pick at this quantity lands on (in-house when its rule keeps your machine). */
+function pickOption(opts: DecideOption[], pick: ReturnType<typeof enginePick>): DecideOption | null {
+  if (!pick) return null;
+  return opts.find((o) => !o.off && o.route?.process === pick.process && (o.kind === "inhouse") === pick.inHouse) ?? opts.find((o) => !o.off && o.route?.process === pick.process) ?? null;
 }
 
 export function useDecideState() {
@@ -32,19 +65,22 @@ export function useDecideState() {
   const opts = useOptions();
   const gov = p.data.decision;
   const saved = savedOption(opts, gov?.user_disposition, gov?.disposition_basis ?? null);
-  const chosen = opts.find((o) => o.id === p.decidePick) ?? saved ?? null;
-  return { opts, gov, saved, chosen, setPick: p.setDecidePick };
+  const picked = pickOption(opts, enginePick(p.data.cost, p.q));
+  // Nothing recorded yet: ScaleCAD's pick is preselected, one click to record or another to change.
+  const chosen = opts.find((o) => o.id === p.decidePick) ?? saved ?? (gov?.user_disposition ? null : picked) ?? null;
+  return { opts, gov, saved, chosen, picked, setPick: p.setDecidePick };
 }
 
 export function DecideTicket() {
   const p = usePart();
-  const { chosen, gov } = useDecideState();
+  const { chosen, gov, picked } = useDecideState();
   if (p.lens !== "decide" || p.interrupted) return null;
   const isSaved = !!gov?.user_disposition && !!chosen && chosen.kind === gov.user_disposition;
   const env = p.data.runEnvironment;
+  const lead = !isSaved && chosen && chosen.id === picked?.id && !p.decidePick ? "ScaleCAD’s pick · " : "";
   return (
     <div className="ticket">
-      <span style={{ color: "var(--ink3)", fontSize: 13 }}>{chosen ? `${chosen.label} · ${chosen.sub.split(" · ").slice(0, 2).join(" · ")}` : "Nothing chosen yet"}</span>
+      <span style={{ color: "var(--ink3)", fontSize: 13 }}>{chosen ? `${lead}${chosen.label} · ${chosen.sub.split(" · ").slice(0, 2).join(" · ")}` : "Nothing chosen yet"}</span>
       <span className="big num">{chosen?.cost != null ? `${money(chosen.cost)} each` : "—"}</span>
       <span style={{ color: "var(--ink2)", fontSize: 13.5 }}>
         {p.q === 1 ? "1 part" : `${qtyWord(p.q)} parts`}{env && (env.sour_service || env.corrosive || env.max_temp_c != null) ? " · for the declared service conditions" : ""}
@@ -57,7 +93,7 @@ export function DecideTicket() {
 export function DecideSheet() {
   const p = usePart();
   const { user } = useAuth();
-  const { opts, gov, chosen, setPick } = useDecideState();
+  const { opts, gov, chosen, picked, setPick } = useDecideState();
   const views = useMachineViews();
   const [note, setNote] = React.useState<string>(gov?.disposition_note ?? "");
   const [noteDirty, setNoteDirty] = React.useState(false);
@@ -149,10 +185,18 @@ export function DecideSheet() {
 
   const ih = views.find((v) => v.tone === "ok" && v.cost != null);
   const out = opts.find((o) => o.kind === "outside" && !o.off);
+  const pair = pairAt(p.data.cost, p.q);
   const figs: FigItem[] = [];
-  if (ih) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(ih.cost), s: ih.name });
-  else figs.push({ k: "In-house", v: "None", s: p.data.machines.length ? "nothing of yours can make it" : "no machines declared", tone: "bad" });
-  if (out?.cost != null) figs.push({ k: "Cheapest outside", v: money(out.cost), s: out.sub.split(" · ")[0] });
+  if (pair && !p.costOff) {
+    // The engine's own comparison: the cheapest route on a machine of yours next to the cheapest outside one.
+    const mine = pair.in_house;
+    figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(mine.unit_cost_usd), s: `${mine.machine ?? methodName(mine.process)} · ${days(mine.lead_low_days, mine.lead_high_days)}${pair.pick === "in_house" ? " · ScaleCAD’s pick" : ""}`, tone: "ok" });
+    if (pair.outside) figs.push({ k: "Cheapest outside", v: money(pair.outside.unit_cost_usd), s: `${methodName(pair.outside.process)} · ${days(pair.outside.lead_low_days, pair.outside.lead_high_days)}${pair.pick === "outside" ? " · ScaleCAD’s pick" : ""}` });
+  } else {
+    if (ih) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(ih.cost), s: ih.name });
+    else figs.push({ k: "In-house", v: "None", s: p.data.machines.length ? "nothing of yours can make it" : "no machines declared", tone: "bad" });
+    if (out?.cost != null) figs.push({ k: "Cheapest outside", v: money(out.cost), s: out.sub.split(" · ")[0] });
+  }
   const owner = user?.email ?? "you";
   const crossover = p.data.cost?.decision?.crossover_qty;
   const enabled = opts.filter((o) => !o.off && !offAt);
@@ -166,6 +210,18 @@ export function DecideSheet() {
     requestAnimationFrame(() => groupRef.current?.querySelector<HTMLButtonElement>(`[data-opt="${next.id}"]`)?.focus());
   };
   const focusId = chosen && !chosen.off ? chosen.id : enabled[0]?.id;
+  // What follows from the outcome shown (recorded, or about to be).
+  const inHouseName = chosen?.kind === "inhouse" ? chosen.sub.split(" · ")[0] : null;
+  const next: { text: string; link?: string; href?: string } | null =
+    !chosen || chosen.off || offAt
+      ? null
+      : chosen.kind === "inhouse"
+        ? { text: `make it on your ${inHouseName}, then log the hours and cost so the estimate is checked against the job.`, link: "Log a finished job", href: R.actuals }
+        : chosen.kind === "outside"
+          ? { text: "download the supplier package below and send it for quotes. ScaleCAD doesn’t send it." }
+          : chosen.kind === "acquire"
+            ? { text: "weigh the machine against your other parts.", link: "Parts it would unlock", href: R.triage }
+            : { text: "fix what blocks it (see Make), then check the revised file." };
   const basis = gov?.disposition_basis;
   const recText = gov?.user_disposition
     ? `${LABEL[gov.user_disposition] ?? gov.user_disposition}${basis ? `, ${methodName(basis.process).toLowerCase()}` : ""} · ${gov.disposition_updated_at ? new Date(gov.disposition_updated_at).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : ""} · ${basis ? `${qtyWord(basis.quantity)} parts · ` : ""}${shortId(id)}`
@@ -181,6 +237,11 @@ export function DecideSheet() {
               <span>Outcome</span>
               <span>each at {qtyWord(p.q)}</span>
             </div>
+            {pair && !p.costOff ? (
+              <p style={{ margin: "0 12px 6px", color: "var(--ink2)", fontSize: 13 }}>
+                <b style={{ fontWeight: 600 }}>ScaleCAD’s pick:</b> {pickWhy(pair, p.q)}
+              </p>
+            ) : null}
             <div role="radiogroup" aria-label="Outcome" ref={groupRef}>
               {opts.map((o) => {
                 const on = chosen?.id === o.id;
@@ -206,7 +267,10 @@ export function DecideSheet() {
                   >
                     <span>
                       <b>{o.label}</b>
-                      <small>{o.sub}</small>
+                      <small>
+                        {o.sub}
+                        {picked?.id === o.id && !offAt ? " · ScaleCAD’s pick" : ""}
+                      </small>
                     </span>
                     <span />
                     <span className="c num">{p.costOff || o.cost == null ? "" : money(o.cost)}</span>
@@ -279,6 +343,12 @@ export function DecideSheet() {
               {err ? (
                 <p role="alert" style={{ margin: 0, color: "var(--bad)", fontSize: 13 }}>
                   {err}
+                </p>
+              ) : null}
+              {next ? (
+                <p style={{ margin: 0, fontSize: 13, color: "var(--ink2)" }}>
+                  <b style={{ fontWeight: 600 }}>Next:</b> {next.text}{" "}
+                  {next.href ? <Link href={next.href}>{next.link}</Link> : null}
                 </p>
               ) : null}
               <span style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>

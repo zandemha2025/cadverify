@@ -74,6 +74,7 @@ import { interpUnitCost, scrubSelection, type InterpPoint } from "@/lib/verify/s
 import {
   verdictBannerModel,
   verificationForRoute,
+  ownedAlternativeSub,
   perRouteRows,
   envStrikes,
   marginalRate,
@@ -1488,13 +1489,15 @@ function VerdictBanner({
   if (routeVerification) {
     const m = verdictBannerModel(routeVerification.verdict);
     const color = toneColor(m.tone);
+    const pair = selection ? cost?.decision?.options?.[String(selection.computedQuantity)] ?? null : null;
+    const ownedSub = ownedAlternativeSub(routeVerification.verdict, verification, pair?.basis, pair ? USD(pair.in_house.unit_cost_usd) : null);
     return (
       <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
         <Kicker color={color}>{m.kicker}</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
           {m.title}
         </p>
-        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>{m.sub}</p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>{ownedSub ?? m.sub}</p>
         {proc && unit != null && (
           <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50, lineHeight: 1.6 }}>
             should-cost {USD(unit)}/unit on {procLabel(proc)}
