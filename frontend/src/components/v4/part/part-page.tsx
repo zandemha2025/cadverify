@@ -4,12 +4,16 @@
  * /app/part/[key]: the part by its mesh hash. A check that just ran is shown from
  * memory (and keeps updating while it runs); otherwise the latest saved record,
  * its analysis and the part's context are loaded. 3D comes from the check, from
- * this browser's own copy, or from dropping the same file again.
+ * this browser's own copy, from the file the organization kept, or from dropping
+ * the same file again. With no file in this browser, a re-check (another
+ * material, your machines, your conditions) runs on the kept file
+ * (POST /parts/{hash}/recheck): nothing to pick, no check used.
  */
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loadPartMesh, loadSavedPart, type SavedPart } from "./api";
+import { loadPartMesh, loadSavedPart, recheckStored, RecheckError, type SavedPart } from "./api";
+import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
 import { PartView, type MeshSource } from "./part-view";
@@ -27,6 +31,7 @@ import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import "./part.css";
 
 const LENS_KEYS: Lens[] = ["make", "cost", "use", "shop", "decide"];
+const MATERIAL_WORD: Record<string, string> = { polymer: "plastic", aluminum: "aluminum", steel: "steel", stainless: "stainless steel", titanium: "titanium" };
 
 export function PartPage({ partKey }: { partKey: string }) {
   const router = useRouter();
@@ -44,6 +49,8 @@ export function PartPage({ partKey }: { partKey: string }) {
   const [askedQty, setAskedQty] = React.useState<number | null>(null);
   const [quotaClosed, setQuotaClosed] = React.useState(false);
   const [reload, setReload] = React.useState(0);
+  // A re-check of a saved part from the file its organization kept (no file here, no check used).
+  const [stored, setStored] = React.useState<{ s: "running"; what: string } | { s: "done"; what: string } | { s: "error"; msg: string; limit: boolean } | null>(null);
   const sessionDone = session?.status === "done";
 
   // ?lens= opens a lens; ?qty=N (from a program's "Price at N") opens Cost at that quantity.
@@ -127,18 +134,38 @@ export function PartPage({ partKey }: { partKey: string }) {
   const file = session?.file ?? dropped;
   // A re-check keeps the orientation of the check on screen unless it asks for another.
   const shownOrientation = session ? session.orientation : orientationParam(matOf(recordOf(data?.validation) ?? recordOf(data?.cost)));
+  const storedRunning = stored?.s === "running";
   const recheck = React.useCallback(
     (opts?: { materialClass?: string; orientation?: string | null }) => {
-      if (!file) return;
-      setQuotaClosed(false);
-      startCheck(file, {
-        materialClass: opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer",
-        sample: session?.sample,
-        orientation: opts?.orientation !== undefined ? opts.orientation : shownOrientation,
-      });
+      const materialClass = opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer";
+      if (file) {
+        setQuotaClosed(false);
+        startCheck(file, {
+          materialClass,
+          sample: session?.sample,
+          orientation: opts?.orientation !== undefined ? opts.orientation : shownOrientation,
+        });
+        return;
+      }
+      // No file in this browser: price it again from the kept file. The decision is saved like an
+      // upload's, so reloading the part shows it.
+      if (kept !== true || storedRunning) return;
+      const what = materialClass !== (data?.cost?.material_class ?? "polymer") ? `in ${MATERIAL_WORD[materialClass] ?? materialClass}` : "with your machines and conditions";
+      setStored({ s: "running", what });
+      void recheckStored(partKey, { materialClass, qty: data?.cost?.quantities, owned: ownedProcessesFrom(saved?.machines ?? []), orientation: shownOrientation })
+        .then(() => {
+          setStored({ s: "done", what });
+          setReload((n) => n + 1);
+        })
+        .catch((e: unknown) => setStored({ s: "error", msg: e instanceof Error ? e.message : "The re-check didn’t finish.", limit: e instanceof RecheckError && e.limit }));
     },
-    [file, session?.materialClass, session?.sample, data?.cost?.material_class, shownOrientation],
+    [file, kept, storedRunning, partKey, saved?.machines, session?.materialClass, session?.sample, data?.cost?.material_class, data?.cost?.quantities, shownOrientation],
   );
+  React.useEffect(() => {
+    if (stored?.s !== "done") return;
+    const t = window.setTimeout(() => setStored(null), 4200);
+    return () => window.clearTimeout(t);
+  }, [stored]);
 
   if (!lens) return null;
   if (!data) {
@@ -210,6 +237,25 @@ export function PartPage({ partKey }: { partKey: string }) {
       {quotaMessage ? <OutOfChecks message={quotaMessage} onClose={() => setQuotaClosed(true)} /> : null}
       <FirstRun />
       <OrientPanel recheck={(orientation) => recheck({ orientation })} canRecheck={!!file} />
+      {stored ? (
+        <div className="toast ptoast" role={stored.s === "error" ? "alert" : "status"} aria-live="polite">
+          <span>
+            {stored.s === "running"
+              ? `Re-checking ${data.fileName} ${stored.what}, from the file kept with this part · no check used`
+              : stored.s === "done"
+                ? `Re-checked ${stored.what} · saved as a new record · no check used`
+                : stored.msg}
+          </span>
+          {stored.s === "error" ? (
+            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8 }}>
+              {stored.limit ? <Link href={R.billing}>Plans</Link> : null}
+              <button className="btn sm ghost" type="button" onClick={() => setStored(null)}>
+                Close
+              </button>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </>
   );
   return (
@@ -220,7 +266,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       mesh={mesh}
       initialLens={lens}
       initialQty={askedQty}
-      canRecheck={!!file}
+      canRecheck={!!file || kept === true}
       onRecheck={recheck}
       onRetryPrices={() => session && void retryPrices(session.id)}
       onDropFile={session ? undefined : (f) => void onDropFile(f)}

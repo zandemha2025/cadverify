@@ -14,12 +14,14 @@ import {
   type CostDecisionDetail,
   type CostDecisionSummary,
   type CostDispositionResult,
+  type CostReport,
   type ValidationResult,
 } from "@/lib/api";
 import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, type OwnedMachine } from "@/lib/verify/machine-api";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
 import { partCheckHeaders } from "@/lib/verify/check-id";
+import { KNOWN_ENGINE_PROCESSES } from "@/lib/verify/run";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
 import type { Disposition } from "./model";
 import { getCachedMesh, putCachedMesh } from "./mesh-cache";
@@ -92,6 +94,52 @@ export async function putDisposition(
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(apiProblemDetail(data) ?? apiRecoveryMessage({ status: res.status, payload: data, resource: "decision" }));
   return data as CostDispositionResult;
+}
+
+/* ── re-check from the kept source ──────────────────────────────────────── */
+
+export interface StoredRecheck {
+  cost: CostReport;
+  /** What the server re-checked: the kept file and the inputs it used. */
+  recheck: { filename: string; qty: string; material_class: string; checks_used: number; basis: Record<string, string> };
+}
+
+/** A re-check the server refused, with whether it was the free-account ceiling. */
+export class RecheckError extends Error {
+  constructor(message: string, readonly status: number, readonly limit: boolean) {
+    super(message);
+  }
+}
+
+/**
+ * POST /parts/{hash}/recheck: the same price as an upload, from the file the
+ * organization kept (no upload, no check). Saved like an upload, so reloading
+ * the part shows it. `owned`: the org's machines' processes (unknown ones are
+ * dropped, as a fresh check does).
+ */
+export async function recheckStored(key: string, opts: { materialClass?: string | null; qty?: number[]; owned?: string[]; orientation?: string | null }): Promise<StoredRecheck> {
+  const q = new URLSearchParams();
+  if (opts.materialClass) q.set("material_class", opts.materialClass);
+  if (opts.qty?.length) q.set("qty", opts.qty.join(","));
+  const owned = (opts.owned ?? []).filter((p) => KNOWN_ENGINE_PROCESSES.has(p));
+  if (owned.length) q.set("owned_processes", owned.join(","));
+  if (opts.orientation) q.set("orientation", opts.orientation);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/parts/${encodeURIComponent(key)}/recheck${q.toString() ? `?${q}` : ""}`, { method: "POST" });
+  } catch {
+    throw new RecheckError("The re-check couldn’t reach the server. Try again.", 0, false);
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const d = (body as { detail?: { code?: string; message?: string } } | null)?.detail;
+    if (res.status === 429 && d?.code === "free_tool_limit" && d.message) throw new RecheckError(`${d.message} Pro and Pilot plans don’t have this limit.`, 429, true);
+    if (res.status === 404) throw new RecheckError("This part’s file isn’t kept with the record. Drop the file on the part to re-check it.", 404, false);
+    throw new RecheckError(apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "re-check" }), res.status, false);
+  }
+  const b = body as (CostReport & { recheck: StoredRecheck["recheck"] }) | null;
+  if (!b) throw new RecheckError("The re-check answered with nothing readable. Try again.", res.status, false);
+  return { cost: b, recheck: b.recheck };
 }
 
 /* ── the part's kept source, in 3D ──────────────────────────────────────── */

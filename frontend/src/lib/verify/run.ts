@@ -76,7 +76,7 @@ export interface RunVerificationOptions {
 /** Engine process ids the cost endpoint accepts in `owned_processes` — passing an
  *  id it doesn't know 400s the WHOLE cost call, so we only forward known ids
  *  (an unknown owned machine just falls back to fully-loaded costing, still honest). */
-const KNOWN_ENGINE_PROCESSES = new Set([
+export const KNOWN_ENGINE_PROCESSES = new Set([
   "fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting",
   "ded", "waam", "cnc_3axis", "cnc_5axis", "cnc_turning", "wire_edm",
   "injection_molding", "die_casting", "investment_casting", "sand_casting",

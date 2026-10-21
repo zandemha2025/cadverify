@@ -304,7 +304,18 @@ export function CostSheet() {
           </p>
         ) : null}
         {p.interrupted || p.costOff ? null : !cost ? (
-          <Empty title={p.checking ? "Pricing…" : "Not priced yet"}>{p.checking ? "Prices arrive with the record." : "This part has an analysis but no priced record. Drop the file on the part to price it."}</Empty>
+          <Empty
+            title={p.checking ? "Pricing…" : "Not priced yet"}
+            actions={
+              !p.checking && p.canRecheck ? (
+                <button className="btn ink sm" type="button" onClick={() => p.recheck()}>
+                  Price it
+                </button>
+              ) : undefined
+            }
+          >
+            {p.checking ? "Prices arrive with the record." : p.canRecheck ? "This part has an analysis but no priced record. Pricing it uses the file kept with the part, in your machines and conditions · no check used." : "This part has an analysis but no priced record. Drop the file on the part to price it."}
+          </Empty>
         ) : (
           <div className="swap">
             <div className="gh">

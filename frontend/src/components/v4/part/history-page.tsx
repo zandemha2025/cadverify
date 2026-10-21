@@ -24,7 +24,8 @@ import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { ConfirmButton, Empty, Failed, Loading, cx } from "../ui";
 import { startCheck } from "./store";
-import { loadPartMesh } from "./api";
+import { loadPartMesh, recheckStored } from "./api";
+import { listMachines, ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { MATERIAL_CLASS_LABEL, costLines, days, dimsText, methodName, money, qtyWord, shortId, trimNum } from "./model";
 import type { ViewerController } from "./viewer";
 import "./part.css";
@@ -108,6 +109,7 @@ export function HistoryPage({ partKey }: { partKey: string }) {
   const [, setVs] = React.useState("");
   const picker = React.useRef<HTMLInputElement>(null);
   const [recheckErr, setRecheckErr] = React.useState<string | null>(null);
+  const [rechecking, setRechecking] = React.useState(false);
 
   React.useEffect(() => {
     let live = true;
@@ -170,6 +172,19 @@ export function HistoryPage({ partKey }: { partKey: string }) {
   const g = validation?.geometry;
   const cg = latest?.result.geometry;
   const st = standingOf(latest, row);
+  // The kept file: re-check from it, nothing to pick and no check used (POST /parts/{hash}/recheck).
+  const recheckKept = async () => {
+    setRecheckErr(null);
+    setRechecking(true);
+    try {
+      const machines = await listMachines().then((x) => x.machines).catch(() => []);
+      await recheckStored(partKey, { materialClass: latest?.result.material_class ?? null, qty: latest?.result.quantities, owned: ownedProcessesFrom(machines) });
+      router.push(R.part(partKey));
+    } catch (e) {
+      setRecheckErr(e instanceof Error ? e.message : "The re-check didn’t finish.");
+      setRechecking(false);
+    }
+  };
   const recheck = async (f: File) => {
     setRecheckErr(null);
     const h = await computeMeshHash(f).catch(() => null);
@@ -240,8 +255,8 @@ export function HistoryPage({ partKey }: { partKey: string }) {
                     <Link className="btn ink sm" href={R.part(partKey)}>
                       Open the part
                     </Link>
-                    <button className="btn sm" type="button" onClick={() => picker.current?.click()}>
-                      Re-check this part
+                    <button className="btn sm" type="button" disabled={rechecking} onClick={() => (kept ? void recheckKept() : picker.current?.click())}>
+                      {rechecking ? "Re-checking…" : "Re-check this part"}
                     </button>
                     <input
                       ref={picker}
@@ -262,7 +277,11 @@ export function HistoryPage({ partKey }: { partKey: string }) {
                       </Link>
                     ) : null}
                   </span>
-                  <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Re-check runs this part again with today&apos;s machines and rates · choose its file · the same file doesn&apos;t use another check</span>
+                  <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>
+                    {kept
+                      ? "Re-check prices this part again with today’s machines and rates, from the file kept with the record · nothing to pick · no check used"
+                      : "Re-check runs this part again with today’s machines and rates · choose its file · the same file doesn’t use another check"}
+                  </span>
                   {recheckErr ? (
                     <span role="alert" style={{ color: "var(--bad)", fontSize: 12.5 }}>
                       {recheckErr}
