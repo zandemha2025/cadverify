@@ -1,0 +1,146 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  allowanceText,
+  capabilityGroups,
+  catalogAccess,
+  filterRows,
+  fitNote,
+  hoursText,
+  massText,
+  partLine,
+  planFiles,
+  sortRows,
+  totalsText,
+  zipEntryName,
+  type BoardRow,
+} from "./catalog-model.ts";
+
+const row = (o: Partial<BoardRow>): BoardRow => ({
+  item_id: "i",
+  filename: "part.step",
+  part_number: null,
+  status: "completed",
+  part_key: "k",
+  analysis_id: "a",
+  cost_decision_id: "d",
+  quantity: 10,
+  quantity_source: "run",
+  verdict: "makeable_in_house",
+  bucket: "in_house",
+  reason: "On your Haas VF-2 · 6061-T6 Aluminum",
+  route: { process: "cnc_3axis", machine: "Haas VF-2", owned: true },
+  material: { declared: null, class: null, note: null, name: "6061-T6 Aluminum", mass_kg_each: 0.27, mass_basis: "x" },
+  hours_each: 0.25,
+  hours_total: 2.5,
+  mass_kg_total: 2.7,
+  unit_cost_usd: 30,
+  total_cost_usd: 300,
+  price_withheld: null,
+  machine_rate_usd: 48.75,
+  marginal: true,
+  capability: null,
+  cheaper_outside: null,
+  duration_ms: 1000,
+  error: null,
+  ...o,
+});
+
+test("numbers read as an ops owner reads them, and a missing one stays missing", () => {
+  assert.deepEqual([hoursText(0.004), hoursText(0.25), hoursText(1.31), hoursText(41.2), hoursText(1204), hoursText(null)], ["<1 min", "15 min", "1.3 h", "41 h", "1,204 h", "—"]);
+  assert.deepEqual([massText(0.0089), massText(0.27), massText(1.274), massText(31.5), massText(312.4), massText(undefined)], ["9 g", "270 g", "1.27 kg", "31.5 kg", "312 kg", "—"]);
+});
+
+test("a part's line leads with machine time, material and ownership, then the price", () => {
+  const line = partLine(row({ quantity: 25, hours_total: 6.25, total_cost_usd: 750 }));
+  assert.deepEqual(line, {
+    time: "15 min each · 6.3 h for 25",
+    material: "6061-T6 Aluminum · 270 g each",
+    ownership: "Your Haas VF-2 · marginal $48.75/h",
+    price: "$30.00 each · $750 for 25",
+  });
+  const outside = partLine(row({ bucket: "outside", route: { process: "fdm", machine: null, owned: false }, marginal: false }));
+  assert.equal(outside.ownership, "Not owned · a filament printer would be an acquisition");
+  const fit = partLine(row({ bucket: "new_machine", route: { process: "wire_edm", machine: null, owned: false }, capability: { process: "wire_edm", gate: "envelope", human: "x" } }));
+  assert.equal(fit.ownership, "You own a wire EDM; none fits");
+  const withheld = partLine(row({ unit_cost_usd: null, total_cost_usd: null, price_withheld: "Walls under 0.8 mm" }));
+  assert.equal(withheld.price, "Withheld: Walls under 0.8 mm");
+  const none = partLine(row({ bucket: "cant_make", hours_each: null, hours_total: null, unit_cost_usd: null, total_cost_usd: null, route: null, material: { declared: "304 SS", class: "stainless", note: null, name: null, mass_kg_each: null, mass_basis: null } }));
+  assert.deepEqual(none, { time: "—", material: "304 SS", ownership: "—", price: "—" });
+});
+
+test("sorting by bucket keeps the four in order; by hours, cost or mass the biggest first and missing last", () => {
+  const rows = [
+    row({ filename: "c.stl", bucket: "cant_make", hours_total: null }),
+    row({ filename: "a.stl", bucket: "in_house", hours_total: 1 }),
+    row({ filename: "b.stl", bucket: "in_house", hours_total: 9 }),
+    row({ filename: "n.stl", bucket: "new_machine", hours_total: 20 }),
+    row({ filename: "o.stl", bucket: "outside", hours_total: null }),
+  ];
+  assert.deepEqual(sortRows(rows, "bucket").map((r) => r.filename), ["b.stl", "a.stl", "o.stl", "n.stl", "c.stl"]);
+  assert.deepEqual(sortRows(rows, "hours").map((r) => r.filename), ["n.stl", "b.stl", "a.stl", "c.stl", "o.stl"]);
+  assert.deepEqual(sortRows(rows, "name").map((r) => r.filename), ["a.stl", "b.stl", "c.stl", "n.stl", "o.stl"]);
+});
+
+test("filters by bucket and by words in the name, part number, reason or machine", () => {
+  const rows = [row({ filename: "bracket.step", part_number: "BRK-1" }), row({ filename: "housing.stl", bucket: "outside", reason: "No machine of yours does resin printing", route: null })];
+  assert.equal(filterRows(rows, "outside", "").length, 1);
+  assert.equal(filterRows(rows, "all", "brk").length, 1);
+  assert.equal(filterRows(rows, "all", "resin").length, 1);
+  assert.equal(filterRows(rows, "all", "vf-2").length, 1);
+  assert.equal(filterRows(rows, "in_house", "resin").length, 0);
+});
+
+test("parts needing a new machine group by the capability they lack", () => {
+  const cap = (need: string) => ({ process: "cnc_3axis", gate: "material", need, human: `not qualified for ${need}` });
+  const groups = capabilityGroups([
+    row({ bucket: "new_machine", capability: cap("304 Stainless") }),
+    row({ bucket: "new_machine", capability: cap("304 Stainless") }),
+    row({ bucket: "new_machine", capability: { process: "fdm", gate: "envelope", human: "needs 300 mm" } }),
+    row({ bucket: "in_house" }),
+  ]);
+  assert.deepEqual(groups.map((g) => [g.text, g.rows.length]), [["3-axis mill qualified for 304 Stainless", 2], ["Filament printer with a larger work area", 1]]);
+});
+
+test("bucket totals say how many parts each sum covers", () => {
+  assert.equal(totalsText({ parts: 3, quantity: 30, hours: 41.2, hours_parts: 3, mass_kg: 12.4, mass_parts: 2, cost_usd: 3420, cost_parts: 3 }), "41 h · 12.4 kg (2 of 3) · $3,420");
+  assert.equal(totalsText({ parts: 0, quantity: 0, hours: null, hours_parts: 0, mass_kg: null, mass_parts: 0, cost_usd: null, cost_parts: 0 }), "");
+});
+
+test("who may run one: pilot, a work email's free parts, or personal email", () => {
+  assert.equal(catalogAccess({ plan: "pilot" }).kind, "pilot");
+  assert.equal(catalogAccess({ plan: "trial", catalog: { eligible: false, unlimited: false, cap: 0 } }).kind, "personal");
+  assert.equal(catalogAccess(null).kind, "unknown");
+  const free = catalogAccess({ plan: "trial", phone_verification_required: true, catalog: { eligible: true, unlimited: false, cap: 50, used: 12, reserved: 0, remaining: 38 } });
+  assert.equal(free.kind, "free");
+  assert.equal(free.kind === "free" && free.phoneNeeded, true);
+  assert.equal(allowanceText(free), "38 of 50 free catalog parts left");
+  assert.equal(allowanceText(catalogAccess({ plan: "trial", catalog: { eligible: true, cap: 50, used: 0, reserved: 0, remaining: 50 } })), "50 free catalog parts");
+  assert.equal(allowanceText(catalogAccess({ plan: "trial", catalog: { eligible: true, cap: 50, used: 50, reserved: 0, remaining: 0 } })), "All 50 free catalog parts used");
+  assert.match(fitNote(52, free) ?? "", /^52 files and 38 free parts left/);
+  assert.equal(fitNote(10, free), null);
+});
+
+test("picked files: CAD in, one ZIP alone, a CSV is the parts list, the rest named and left out", () => {
+  const f = (name: string, size = 1000, path = name) => ({ name, size, path });
+  const plan = planFiles([f("a.step"), f("b.STL"), f("c.igs", 0), f("d.sldprt"), f("notes.pdf"), f("parts.csv"), f(".DS_Store"), f("big.stp", 200 * 1024 * 1024), f("a.step", 1000, "a.step")]);
+  assert.deepEqual(plan.cad.map((x) => x.name), ["a.step", "b.STL"]);
+  assert.equal(plan.list?.name, "parts.csv");
+  assert.deepEqual(plan.skipped, [
+    { name: "c.igs", why: "empty file" },
+    { name: "d.sldprt", why: "native CAD or drawing: export STEP" },
+    { name: "notes.pdf", why: "not a CAD file" },
+    { name: "big.stp", why: "over 100 MB" },
+  ]);
+  assert.equal(plan.problem, null);
+  assert.equal(planFiles([f("set.zip"), f("a.step")]).problem, "Choose one ZIP, or loose files and folders, not both.");
+  assert.equal(planFiles([f("notes.pdf")]).problem, "None of these is a STEP, STL or IGES file.");
+  assert.match(planFiles([f("a.step", 5000)], { maxZipBytes: 1024 }).problem ?? "", /Split them into two runs/);
+  assert.equal(planFiles([f("set.zip", 5000)]).zip?.name, "set.zip");
+});
+
+test("ZIP entry names keep the folder, never climb out of it", () => {
+  assert.equal(zipEntryName({ name: "a.step", path: "catalog/brackets/a.step", size: 1 }), "catalog/brackets/a.step");
+  assert.equal(zipEntryName({ name: "a.step", path: "../../etc/a.step", size: 1 }), "etc/a.step");
+  assert.equal(zipEntryName({ name: "a.step", path: "", size: 1 }), "a.step");
+});

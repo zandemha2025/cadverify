@@ -25,6 +25,7 @@ import { MachineDialog } from "./machine-dialog";
 import { MachineSheet } from "./machine-sheet";
 import { downloadText, getShopCapabilities, putShopCapabilities } from "./shop-api";
 import { SHOP_OPS, envelopeOf, isoBox, machineName, machineStatus, opOn, tileSub, toggleOp } from "./shop-derive";
+import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
 
 type DialogState = { mode: "add"; process?: string } | { mode: "edit"; machine: OwnedMachine } | null;
 type BannerState =
@@ -259,7 +260,8 @@ export function MachinesScreen() {
         ) : machines.length === 0 ? (
           <section className="panel">
             <Empty title="No machines" actions={actions}>
-              Parts are checked against typical machines until you add yours.
+              Parts are checked against typical machines until you add yours. Add them before a batch of parts: the run sorts every part by the machines here, and
+              a machine from the catalog, added as the maker specifies it, can already say yes.
             </Empty>
           </section>
         ) : (
@@ -270,6 +272,7 @@ export function MachinesScreen() {
             <AddTile onPick={() => setDialog({ mode: "add", process: "fdm" })} />
           </div>
         )}
+        {machines && machines.length > 0 ? <BatchOnMachines n={total ?? machines.length} /> : null}
         <ShopOps onSaved={() => recs.reload()} />
       </Content>
       <Sheet label="Machine details" style={{ bottom: 20 }}>
@@ -443,5 +446,27 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
         {note ? note.text : "A part that needs one of these fits in-house only when it's on."}
       </p>
     </Panel>
+  );
+}
+
+/** With machines declared: check a batch of parts against them (the catalog run). */
+function BatchOnMachines({ n }: { n: number }) {
+  const a = useBatchAccess();
+  if (a.kind === "personal" || a.kind === "loading") return null;
+  return (
+    <section className="panel" aria-label="Check a batch on these machines">
+      <div className="ph">
+        <h2>
+          Check a batch of parts on {n === 1 ? "this machine" : `these ${n} machines`}
+        </h2>
+        <span>{batchEntryNote(a)}</span>
+      </div>
+      <p style={{ margin: "0 16px 6px", color: "var(--ink2)", fontSize: 13.5 }}>
+        Each part is sorted: make in-house here, buy outside, needs a new machine, or can’t be made as drawn, with machine time and material for each.
+      </p>
+      <div style={{ display: "flex", gap: 8, padding: "6px 16px 14px", flexWrap: "wrap" }}>
+        <BatchEntryButton className="btn ink sm" />
+      </div>
+    </section>
   );
 }

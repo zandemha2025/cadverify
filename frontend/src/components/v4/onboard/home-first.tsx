@@ -22,6 +22,7 @@ import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { R } from "../routes";
 import { FileTrustLine } from "../trust/file-line";
 import { useShell } from "../shell";
+import { BatchEntryButton, BatchEntryRow, batchEntryNote, useBatchAccess, useHandOffBatch } from "../many/catalog-entry";
 import { cx } from "../ui";
 import { Frame, Column, Head } from "../home/frame";
 import { PartialAlert, Skeleton } from "../home/states";
@@ -298,6 +299,7 @@ export function FirstHome({
                   </span>
                   <i aria-hidden="true">→</i>
                 </Link>
+                <BatchEntryRow />
               </div>
             </section>
           </div>
@@ -378,10 +380,16 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
   const router = useRouter();
   const [drag, setDrag] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "bad" | "many" | "ok"; text: string } | null>(null);
+  const [many, setMany] = React.useState<File[]>([]);
+  const handOff = useHandOffBatch();
+  const batch = useBatchAccess();
   const take = (files: FileList | null | undefined) => {
     setDrag(false);
     if (!files || !files.length) return;
-    if (files.length > 1) return setMsg({ kind: "many", text: `${files.length} files dropped. This takes one; Many parts takes a batch.` });
+    if (files.length > 1) {
+      setMany(Array.from(files));
+      return setMsg({ kind: "many", text: `${files.length} files dropped. Check them together as a batch.` });
+    }
     const f = files[0];
     if (!OK.test(f.name)) return setMsg({ kind: "bad", text: refusal(f.name) });
     setMsg({ kind: "ok", text: `${f.name} · checking now` });
@@ -424,7 +432,9 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
               {msg.kind === "many" ? (
                 <>
                   {" "}
-                  <Link href={R.many}>Check many</Link>
+                  <button className="h-link" type="button" onClick={() => handOff(many)}>
+                    Check {many.length} as a batch
+                  </button>
                 </>
               ) : null}
             </span>
@@ -448,7 +458,9 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
             }}
           />
         </label>
+        <BatchEntryButton />
       </span>
+      <small className="nb-batch">Batch: {batchEntryNote(batch)}</small>
     </section>
   );
 }

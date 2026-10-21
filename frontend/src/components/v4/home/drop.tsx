@@ -2,7 +2,8 @@
 
 /**
  * Home's drop target (board P1 "Start"): one CAD file goes to the check page;
- * several files point to Many parts; anything else is named and refused.
+ * several files go to a new catalog run, already picked; anything else is
+ * named and refused.
  * Drag-over shows "Drop to check it". The file is handed over in memory only.
  */
 import * as React from "react";
@@ -12,10 +13,11 @@ import { R } from "../routes";
 import { FileTrustLine } from "../trust/file-line";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { cx } from "../ui";
+import { useHandOffBatch } from "../many/catalog-entry";
 
 const OK = /\.(step|stp|stl|iges|igs)$/i;
 
-type Dropped = { kind: "ok"; name: string } | { kind: "bad"; name: string } | { kind: "many"; n: number };
+type Dropped = { kind: "ok"; name: string } | { kind: "bad"; name: string } | { kind: "many"; files: File[] };
 
 export function refusal(name: string): string {
   const dot = name.lastIndexOf(".");
@@ -27,12 +29,13 @@ export function DropZone() {
   const router = useRouter();
   const [drag, setDrag] = React.useState(false);
   const [drop, setDrop] = React.useState<Dropped | null>(null);
+  const handOff = useHandOffBatch();
 
   const take = (files: FileList | null | undefined) => {
     setDrag(false);
     if (!files || !files.length) return;
     if (files.length > 1) {
-      setDrop({ kind: "many", n: files.length });
+      setDrop({ kind: "many", files: Array.from(files) });
       return;
     }
     const f = files[0];
@@ -52,7 +55,7 @@ export function DropZone() {
   };
 
   const title = drag ? "Drop to check it" : drop?.kind === "ok" ? drop.name : "Drop a part to check it";
-  const msg = !drop ? null : drop.kind === "ok" ? "Checking now" : drop.kind === "many" ? `${drop.n} files dropped. This takes one; Many parts takes a batch.` : refusal(drop.name);
+  const msg = !drop ? null : drop.kind === "ok" ? "Checking now" : drop.kind === "many" ? `${drop.files.length} files dropped. Check them together as a batch.` : refusal(drop.name);
 
   return (
     <div
@@ -98,9 +101,9 @@ export function DropZone() {
           </Link>
         ) : null}
         {drop?.kind === "many" ? (
-          <Link className="btn sm" href={R.many}>
-            Check many
-          </Link>
+          <button className="btn sm" type="button" onClick={() => handOff(drop.files)}>
+            Check {drop.files.length} as a batch
+          </button>
         ) : null}
       </span>
     </div>

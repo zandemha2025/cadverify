@@ -20,6 +20,7 @@ import { buildQueue, homeFacts, recentRows, setupSteps, STEP_CHIP, type HomeInpu
 import { verdictOf } from "./parts-derive";
 import type { MakeRow } from "./model";
 import { FirstHome, useFirstHomeMode } from "../onboard/home-first";
+import { BatchEntryRow } from "../many/catalog-entry";
 import "./home.css";
 
 type Source = "records" | "parts" | "make" | "machines" | "changes" | "actuals" | "portfolio" | "rates";
@@ -179,12 +180,7 @@ export function HomeScreen() {
                 </span>
                 <i aria-hidden="true">→</i>
               </Link>
-              <Link href={R.triage}>
-                <span>
-                  Sort a parts list<small>Pilot · makeable, outside, new capability</small>
-                </span>
-                <i aria-hidden="true">→</i>
-              </Link>
+              <BatchEntryRow />
             </div>
           </div>
         </Panel>

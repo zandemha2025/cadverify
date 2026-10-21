@@ -9,7 +9,7 @@ import { SIGNUP_HREF } from "@/lib/site/navigation";
 
 export const metadata: Metadata = {
   title: "Pricing — ScaleCAD",
-  description: "Try ScaleCAD free on your own parts. Go monthly with Pro once it's useful. A $7,500 pilot covers one factory: up to 500 parts over 4–6 weeks.",
+  description: "Try ScaleCAD free on your own parts, up to 50 at once with a work email. Go monthly with Pro once it's useful. A $7,500 pilot covers one factory: up to 500 parts over 4–6 weeks.",
   alternates: { canonical: "/pricing" },
 };
 
@@ -17,12 +17,12 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const [plans, params, jar] = await Promise.all([getPlans(), searchParams, cookies()]);
   const signedIn = Boolean(jar.get(SESSION_COOKIE)?.value);
   const price = formatProPrice(plans.pro.price);
-  const { work_checks: work, personal_checks: personal } = plans.free;
+  const { work_checks: work, personal_checks: personal, catalog_parts: catalog } = plans.free;
   return <DocumentPage label="Pricing" title="Free to start." intro="Try it free on your own parts. Pay monthly once it's useful. Call us when you want it across a factory." sections={[
     {
       id: "free",
       title: "Free · $0",
-      body: `${work} free checks with a work email, ${personal} with a personal one. No credit card.`,
+      body: `${work} free checks with a work email, ${personal} with a personal one. A work email also runs its first ${catalog} catalog parts free. No credit card.`,
       href: signedIn ? "/verify" : SIGNUP_HREF,
       link: signedIn ? "Open ScaleCAD" : "Try ScaleCAD free",
     },
@@ -47,10 +47,10 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
     },
     {
       id: "qualification",
-      title: "Not sure yet? Free 25-part review",
-      body: "Send up to 25 representative parts from one plant. We check data readiness, supported processes and whether a pilot can answer your question.",
-      href: "/pilot",
-      link: "Request a review",
+      title: `Not sure yet? Run ${catalog} parts free`,
+      body: `With a work email, check up to ${catalog} of your own parts at once: a folder, a ZIP or a parts list with quantities and materials. Each part is sorted against the machines you declare (make in-house, buy outside, needs a new machine, or can't be made as drawn) with machine hours, material and a model price. Prefer to work through it with us? The pilot page offers a free, team-assisted 25-part qualification.`,
+      href: signedIn ? "/app/many?new=1" : SIGNUP_HREF,
+      link: signedIn ? "Start a catalog run" : `Run ${catalog} parts free`,
     },
     {
       id: "annual",

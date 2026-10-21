@@ -55,8 +55,8 @@ test("Pro price reads like a price tag", () => {
 });
 
 test("plan facts fall back to documented defaults when the API is partial", () => {
-  assert.deepEqual(parsePlans({ free: { work_checks: 20 }, pro: { checkout_available: true, monthly_checks: 60, price: { unit_amount: 14900, currency: "usd", interval: "month" } } }), {
-    free: { work_checks: 20, personal_checks: 3 },
+  assert.deepEqual(parsePlans({ free: { work_checks: 20, catalog_parts: 40 }, pro: { checkout_available: true, monthly_checks: 60, price: { unit_amount: 14900, currency: "usd", interval: "month" } } }), {
+    free: { work_checks: 20, personal_checks: 3, catalog_parts: 40 },
     pro: { checkout_available: true, monthly_checks: 60, price: { unit_amount: 14900, currency: "usd", interval: "month" } },
   });
   assert.deepEqual(parsePlans(null), FALLBACK_PLANS);

@@ -19,7 +19,8 @@ import {
 import { allAwaitingGeometry, coverageHeadline, partMetaBits, type ManifestCoverage, type ManifestPart } from "@/lib/verify/manifest";
 import { R, TABS } from "../routes";
 import { Content, Empty, Loading, Panel, cx } from "../ui";
-import { ManyWorld, PilotGate, Thumb, errorText, unchanged, isPaidAccessError, useManyTabs, usePilotAccess, useToast } from "./common";
+import { ManyWorld, PilotGate, Thumb, errorText, unchanged, isPaidAccessError, useManyTabs, useToast } from "./common";
+import { useCatalogAccess } from "./catalog-access";
 import { CapabilitySheet, type Ranking } from "./capability-sheet";
 import { ToolingSheet } from "./tooling-sheet";
 import { fetchBucket, fetchMachines, fetchRollup, type Rollup } from "./many-api";
@@ -38,7 +39,12 @@ export const TRIAGE_GATE = {
 };
 
 export function TriageScreen() {
-  const [access, gate] = usePilotAccess();
+  // Make or buy is the catalog run's result: open to pilot and to work-email
+  // accounts on their free run; personal email keeps single checks.
+  const catalog = useCatalogAccess();
+  const [refused, setRefused] = React.useState(false);
+  const gate = React.useCallback(() => setRefused(true), []);
+  const access = refused || catalog.kind === "personal" ? "gated" : "open";
   const tabs = useManyTabs();
   const [toastNode, toast] = useToast();
   const [roll, setRoll] = React.useState<Rollup | null>(null);

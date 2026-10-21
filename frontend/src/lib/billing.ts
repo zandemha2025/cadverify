@@ -115,12 +115,13 @@ export function formatProPrice(price: ProPrice | null | undefined): string | nul
 
 /** Public plan facts from GET /billing/plans. */
 export type Plans = {
-  free: { work_checks: number; personal_checks: number };
+  /** catalog_parts: a work-email account's free catalog-run parts (separate from its checks). */
+  free: { work_checks: number; personal_checks: number; catalog_parts: number };
   pro: { checkout_available: boolean; monthly_checks: number; price: ProPrice | null };
 };
 
 export const FALLBACK_PLANS: Plans = {
-  free: { work_checks: 15, personal_checks: 3 },
+  free: { work_checks: 15, personal_checks: 3, catalog_parts: 50 },
   pro: { checkout_available: false, monthly_checks: 50, price: null },
 };
 
@@ -135,6 +136,7 @@ export function parsePlans(raw: unknown): Plans {
     free: {
       work_checks: count(body.free?.work_checks, FALLBACK_PLANS.free.work_checks),
       personal_checks: count(body.free?.personal_checks, FALLBACK_PLANS.free.personal_checks),
+      catalog_parts: count(body.free?.catalog_parts, FALLBACK_PLANS.free.catalog_parts),
     },
     pro: {
       checkout_available: body.pro?.checkout_available === true,
