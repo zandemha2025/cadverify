@@ -13,9 +13,10 @@
 
 Boundaries match ``part_preview``: the caller's active org only; another org's
 hash, a malformed hash and a missing artifact are the same 404. Making a fix
-needs an org member (it adds a part) and the pilot entitlement, like mesh repair
-(``POST /validate/repair``); like repair it never reserves or consumes a part
-check (no validation-cap or org-limit dependency).
+needs an org member (it adds a part) and is on every plan, the free trial
+included, like mesh repair (``POST /validate/repair``); like repair it never
+reserves or consumes a part check (no validation-cap or org-limit dependency).
+Free accounts get a per-user ceiling on fixes (``src.auth.free_tool_limits``).
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
 from src.auth.require_api_key import AuthedUser
-from src.auth.validation_caps import require_paid_access
+from src.auth.free_tool_limits import limit_free_fixes
 from src.db.engine import get_db_session
 from src.services import cad_fix_service as svc
 
@@ -111,7 +112,7 @@ async def apply_part_fix(
     with_cost: bool = Query(True, description="Price both files (adds one engine pass each)."),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    _paid: None = Depends(require_paid_access),
+    _free_limit: None = Depends(limit_free_fixes),
     session: AsyncSession = Depends(get_db_session),
     _admission: None = Depends(admit_analysis),
 ):

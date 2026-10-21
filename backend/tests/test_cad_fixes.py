@@ -1,9 +1,8 @@
 """Fixes ScaleCAD makes itself on a copy of a stored part (round 6).
 
 Each fix runs on real repo parts and is re-checked with the real engine; the
-endpoint is org-scoped like the stored-source routes, needs the pilot
-entitlement like mesh repair, never counts a check, and never changes the
-original bytes.
+endpoint is org-scoped like the stored-source routes, is on every plan like
+mesh repair, never counts a check, and never changes the original bytes.
 """
 from __future__ import annotations
 
@@ -308,11 +307,11 @@ def _fake_session():
     return session
 
 
-def _app(user_id: int | None, *, pilot: bool = True) -> FastAPI:
+def _app(user_id: int | None) -> FastAPI:
     from src.api.part_fixes import router
+    from src.auth import free_tool_limits
     from src.auth.rate_limit import limiter
     from src.auth.require_api_key import AuthedUser, require_api_key
-    from src.auth.validation_caps import paid_access_required, require_paid_access
     from src.db.engine import get_db_session
 
     app = FastAPI()
@@ -322,11 +321,9 @@ def _app(user_id: int | None, *, pilot: bool = True) -> FastAPI:
         app.dependency_overrides[require_api_key] = lambda: AuthedUser(
             user_id=user_id, api_key_id=0, key_prefix="session", role="analyst")
 
-    def _paid():
-        if not pilot:
-            raise paid_access_required()
-
-    app.dependency_overrides[require_paid_access] = _paid
+    # Free-account ceilings have their own tests (test_validation_caps).
+    for dependency in free_tool_limits.ALL:
+        app.dependency_overrides[dependency] = lambda: None
 
     async def _session():
         yield _fake_session()
@@ -422,9 +419,6 @@ def test_auth_and_org_scoping(store):
     viewer = TestClient(_app(3))
     assert viewer.get(f"/api/v1/parts/{digest}/fixes").status_code == 200
     assert viewer.post(f"/api/v1/parts/{digest}/fixes/drain_holes").status_code == 403
-    # A member without the pilot entitlement gets the repair tool's 403.
-    r = TestClient(_app(1, pilot=False)).post(f"/api/v1/parts/{digest}/fixes/drain_holes")
-    assert r.status_code == 403 and r.json()["detail"]["code"] == "paid_access_required"
     assert TestClient(_app(1)).get("/api/v1/parts/not-a-hash/fixes").status_code == 404
 
 
@@ -489,8 +483,10 @@ def test_the_isolated_worker_really_runs_and_is_bounded():
         asyncio.run(svc.run_fix_isolated("drain_holes", raw, ".stl", {"diameter_mm": 5.0}, 0.01))
 
 
-def test_fixing_never_counts_a_check_and_needs_the_pilot_entitlement():
+def test_fixing_never_counts_a_check_and_is_on_every_plan():
+    """No plan gate on any plan, the free trial included; free accounts get a ceiling."""
     from src.api.part_fixes import router
+    from src.auth.free_tool_limits import limit_free_fixes, limit_free_repair
     from src.auth.org_limits import enforce_org_limits
     from src.auth.validation_caps import enforce_validation_caps, require_paid_access
 
@@ -503,8 +499,9 @@ def test_fixing_never_counts_a_check_and_needs_the_pilot_entitlement():
         found = set(calls(route.dependant))
         assert enforce_validation_caps not in found, route.path
         assert enforce_org_limits not in found, route.path
+        assert require_paid_access not in found, route.path
         if "POST" in route.methods:
-            assert require_paid_access in found
+            assert {limit_free_fixes, limit_free_repair} & found, route.path
 
 
 def test_a_fix_that_does_not_reimport_is_not_offered(store, monkeypatch):

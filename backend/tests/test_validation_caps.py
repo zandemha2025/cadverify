@@ -212,6 +212,87 @@ async def test_http_bundle_success_failure_replay_and_fail_closed(ledger, monkey
         assert len(calls) == 6
 
 
+def _sample_bracket_stl() -> bytes:
+    """Python twin of sampleBracketFile() (frontend/src/lib/verify/sample-cad.ts)."""
+    outline = [(0, 0), (50, 0), (50, 12), (14, 12), (14, 40), (0, 40)]
+    bottom = [(x, y, 0) for x, y in outline]
+    top = [(x, y, 6) for x, y in outline]
+    triangles = [
+        (bottom[0], bottom[2], bottom[1]), (bottom[0], bottom[3], bottom[2]),
+        (bottom[0], bottom[5], bottom[3]), (bottom[3], bottom[5], bottom[4]),
+        (top[0], top[1], top[2]), (top[0], top[2], top[3]),
+        (top[0], top[3], top[5]), (top[3], top[4], top[5]),
+    ]
+    for i in range(len(outline)):
+        n = (i + 1) % len(outline)
+        triangles += [(bottom[i], bottom[n], top[n]), (bottom[i], top[n], top[i])]
+
+    def vertex(p):
+        return '      vertex ' + ' '.join(str(v) for v in p)
+
+    facets = '\n'.join(
+        f'  facet normal 0 0 0\n    outer loop\n{vertex(a)}\n{vertex(b)}\n{vertex(c)}\n    endloop\n  endfacet'
+        for a, b, c in triangles
+    )
+    return f'solid scalecad_routing_bracket\n{facets}\nendsolid scalecad_routing_bracket\n'.encode()
+
+
+def test_the_sample_hash_is_the_app_sample_bracket():
+    import hashlib
+
+    sample = _sample_bracket_stl()
+    assert len(sample) == 2463
+    assert hashlib.sha256(sample).hexdigest() in vc.SAMPLE_PART_SHA256
+
+
+@pytest.mark.asyncio
+async def test_the_sample_part_never_uses_a_check_and_a_changed_one_counts(ledger):
+    app = FastAPI()
+    router = APIRouter(route_class=vc.MeteredRoute)
+    calls = []
+
+    @router.post('/validate')
+    @router.post('/validate/cost')
+    @router.post('/validate/preview-mesh')
+    async def compute(request: Request, _: None = Depends(vc.enforce_validation_caps)):
+        calls.append(getattr(request.state, 'sample_part', False))
+        return {'result': 'computed'}
+
+    app.include_router(router)
+    await _add_user(ledger, 11, 'trial', 'sampler@gmail.com')  # personal tier: 3
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=11, api_key_id=0, key_prefix='session')
+    sample = _sample_bracket_stl()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        async def run(data, name='sample-routing-bracket.stl', check=None):
+            for path in ('/validate/preview-mesh', '/validate', '/validate/cost'):
+                response = await client.post(path, headers={'x-part-check-id': check or str(uuid4())},
+                                             files={'file': (name, data)})
+                assert response.status_code == 200, (path, response.text)
+
+        before = await vc.user_trial_usage(11)
+        # The whole sample run, repeated, with and without a run id, renamed.
+        await run(sample)
+        await run(sample)
+        await run(sample, name='my-bracket.stl')
+        after = await vc.user_trial_usage(11)
+        assert (after['used'], after['reserved'], after['remaining']) == (before['used'], before['reserved'], before['remaining']) == (0, 0, 3)
+        assert calls == [True] * 9
+        async with ledger() as session:
+            assert (await session.execute(text('SELECT count(*) FROM trial_checks WHERE user_id = 11'))).scalar_one() == 0
+        # One byte changed is an ordinary upload, and counts like one.
+        await run(sample + b'\n')
+        assert (await vc.user_trial_usage(11))['used'] == 1
+        assert calls[-1] is False
+        # With the allowance spent, the sample still runs and a new file doesn't.
+        await _complete(11, 2)
+        assert (await vc.user_trial_usage(11))['remaining'] == 0
+        await run(sample)
+        denied = await client.post('/validate', headers={'x-part-check-id': str(uuid4())},
+                                   files={'file': ('other.stl', sample.replace(b'50 12', b'51 12'))})
+        assert denied.status_code == 403
+        assert denied.json()['detail']['code'] == 'user_validation_cap_exceeded'
+
+
 @pytest.mark.asyncio
 async def test_headerless_api_calls_count_one_check_per_part(ledger):
     # API clients that never send x-part-check-id: analysis and cost of the
@@ -247,7 +328,7 @@ async def test_headerless_api_calls_count_one_check_per_part(ledger):
 
 
 @pytest.mark.asyncio
-async def test_paid_tools_require_operator_approval_and_stale_previews_expire(ledger):
+async def test_remaining_paid_tools_require_operator_approval_and_stale_previews_expire(ledger):
     user = AuthedUser(user_id=1, api_key_id=0, key_prefix='session')
     with pytest.raises(vc.HTTPException) as denied:
         await vc.require_paid_access(user)
@@ -267,7 +348,7 @@ async def test_paid_tools_require_operator_approval_and_stale_previews_expire(le
 
 
 @pytest.mark.asyncio
-async def test_real_paid_routes_reject_trial_before_handlers(ledger):
+async def test_remaining_paid_routes_reject_trial_before_handlers(ledger):
     from unittest.mock import AsyncMock
     from src.api import routes, batch_router, designs, reconstruct_router, uploads, bom, groundtruth
     from src.db.engine import get_db_session
@@ -285,15 +366,196 @@ async def test_real_paid_routes_reject_trial_before_handlers(ledger):
     app.dependency_overrides[designs.require_design_mutation] = lambda: user
     app.dependency_overrides[get_db_session] = lambda: AsyncMock()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
-        for path in ('/validate/fit', '/validate/repair', '/validate/assembly?format=analysis',
-                     '/validate?segmentation=sam3d', '/batch', '/designs', '/designs/interpret',
-                     '/designs/example/revisions', '/reconstruct', '/uploads/multipart',
+        # ScaleCAD's fixes, mesh repair, Fit in context and Design Studio are
+        # on every plan (test_tools_on_every_plan_admit_a_trial_account_without_a_check).
+        for path in ('/validate/assembly?format=analysis',
+                     '/validate?segmentation=sam3d', '/batch',
+                     '/reconstruct', '/uploads/multipart',
                      '/uploads/example/parts', '/uploads/example/complete',
                      '/bom/ingest-assembly', '/ground-truth/recalibrate'):
             response = await client.post('/api/v1' + path, files={'file': ('part.stp', b'CAD')})
             assert response.status_code == 403, (path, response.text)
             assert response.json()['detail']['code'] == 'paid_access_required', (path, response.text)
     assert (await vc.user_trial_usage(1))['used'] == 0
+
+
+def _fresh_free_limiter(monkeypatch):
+    """An enabled, in-memory limiter for the free-account ceilings only."""
+    from slowapi import Limiter
+    from src.auth import free_tool_limits
+
+    fresh = Limiter(key_func=lambda: "test", storage_uri="memory://", enabled=True)
+    monkeypatch.setattr(free_tool_limits, "limiter", fresh)
+    return fresh
+
+
+def _tools_app(monkeypatch, user_id: int):
+    """The real routes of the four tools, with only their heavy work stubbed."""
+    from unittest.mock import AsyncMock
+    from src.api import designs, part_fixes, routes
+    from src.db.engine import get_db_session
+    from src.services import cad_fix_service, design_service, repair_service
+    from tests.test_designs_api import _rows
+
+    user = AuthedUser(user_id=user_id, api_key_id=0, key_prefix='session', role='analyst')
+    app = FastAPI()
+    app.include_router(routes.router, prefix='/api/v1')
+    app.include_router(designs.router, prefix='/api/v1/designs')
+    app.include_router(part_fixes.router, prefix='/api/v1/parts')
+    app.dependency_overrides[require_api_key] = lambda: user
+    app.dependency_overrides[designs.require_design_mutation] = lambda: user
+    app.dependency_overrides[get_db_session] = lambda: AsyncMock()
+
+    async def member(user_id):
+        return ('01JORGAAAAAAAAAAAAAAAAAAAA', 'member')
+
+    async def fixed(**kwargs):
+        return {'applied': True}
+
+    async def repaired(**kwargs):
+        return {'repair_applied': True}
+
+    async def generated(*args, **kwargs):
+        return _rows()
+
+    monkeypatch.setattr('src.auth.rbac.lookup_org_membership', member)
+    monkeypatch.setattr(cad_fix_service, 'apply_fix', fixed)
+    monkeypatch.setattr(repair_service, 'repair_mesh', repaired)
+    monkeypatch.setattr(design_service, 'create_design', generated)
+    monkeypatch.setattr(design_service, 'create_revision', generated)
+    monkeypatch.setenv('CONTEXT_FIT_ENABLED', '1')
+    monkeypatch.setenv('ADMISSION_DISABLED', '1')
+    return app
+
+
+def _cube_stl() -> bytes:
+    import trimesh
+    return trimesh.creation.box(extents=[10.0, 10.0, 10.0]).export(file_type='stl')
+
+
+async def _run_each_tool(client) -> dict[str, int]:
+    plan = {'kind': 'plate', 'width_mm': 80.0, 'depth_mm': 50.0, 'thickness_mm': 6.0, 'holes': []}
+    cube = _cube_stl()
+    responses = {
+        'fix': await client.post('/api/v1/parts/' + 'a' * 64 + '/fixes/drain_holes?with_cost=false'),
+        'repair': await client.post('/api/v1/validate/repair', files={'file': ('part.stl', cube)}),
+        'fit': await client.post('/api/v1/validate/fit', files={'part_a': ('a.stl', cube), 'part_b': ('b.stl', cube)}),
+        'design': await client.post('/api/v1/designs', json={'name': 'Plate', 'plan': plan}),
+        'revision': await client.post('/api/v1/designs/example/revisions', json={'plan': plan}),
+        'interpret': await client.post('/api/v1/designs/interpret', json={'prompt': 'plate 80 x 50 x 6'}),
+    }
+    return {name: r.status_code for name, r in responses.items()} | {
+        name + ':body': r.text for name, r in responses.items() if r.status_code >= 300
+    }
+
+
+@pytest.mark.asyncio
+async def test_tools_on_every_plan_admit_a_trial_account_without_a_check(ledger, monkeypatch):
+    """User 1 is on the free trial: each tool runs, and none of them uses a check."""
+    _fresh_free_limiter(monkeypatch)
+    app = _tools_app(monkeypatch, 1)
+    before = await vc.user_trial_usage(1)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        codes = await _run_each_tool(client)
+    assert {k: v for k, v in codes.items() if ':' not in k} == {
+        'fix': 200, 'repair': 200, 'fit': 200, 'design': 202, 'revision': 202, 'interpret': 200,
+    }, codes
+    after = await vc.user_trial_usage(1)
+    assert (after['used'], after['reserved'], after['remaining']) == (before['used'], before['reserved'], before['remaining']) == (0, 0, 10)
+    async with ledger() as session:
+        assert (await session.execute(text('SELECT count(*) FROM trial_checks'))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_free_accounts_have_a_per_user_ceiling_on_each_tool(ledger, monkeypatch):
+    from src.auth import free_tool_limits as ftl
+
+    _fresh_free_limiter(monkeypatch)
+    for env in ('FREE_FIX_LIMIT', 'FREE_REPAIR_LIMIT', 'FREE_FIT_LIMIT', 'FREE_DESIGN_LIMIT'):
+        monkeypatch.setenv(env, '2/hour;3/day')
+    async with ledger() as session, session.begin():
+        await session.execute(text("INSERT INTO users VALUES (4, 'pro', 'pro@acme-aero.com', NULL, NULL)"))
+        session.add(BillingAccount(user_id=4, stripe_customer_id='cus_free_tool_test', status='active',
+                                   current_period_start=datetime.now(timezone.utc) - timedelta(days=3),
+                                   current_period_end=datetime.now(timezone.utc) + timedelta(days=27)))
+    trial = AuthedUser(user_id=1, api_key_id=0, key_prefix='session')
+    for _ in range(2):
+        await ftl.limit_free_fixes(trial)
+    with pytest.raises(vc.HTTPException) as limited:
+        await ftl.limit_free_fixes(trial)
+    assert limited.value.status_code == 429
+    detail = limited.value.detail
+    assert detail['code'] == 'free_tool_limit' and detail['tool'] == 'fix' and detail['plan'] == 'trial'
+    assert detail['message'].startswith('Free accounts can run 2 fixes an hour and 3 a day. You can run the next one in ')
+    assert 0 < detail['retry_after_s'] <= 3600
+    assert limited.value.headers['Retry-After'] == str(detail['retry_after_s'])
+    # Each tool has its own ceiling, and each account its own count.
+    await ftl.limit_free_repair(trial)
+    await ftl.limit_free_fit(trial)
+    await ftl.limit_free_designs(trial)
+    await ftl.limit_free_fixes(AuthedUser(user_id=2, api_key_id=0, key_prefix='session'))
+    # Another API key of the same account shares the account's count.
+    with pytest.raises(vc.HTTPException):
+        await ftl.limit_free_fixes(AuthedUser(user_id=1, api_key_id=77, key_prefix='cv_live'))
+    # Pilot and active Pro accounts keep only the route limits.
+    for paid in (3, 4):
+        for _ in range(5):
+            await ftl.limit_free_fixes(AuthedUser(user_id=paid, api_key_id=0, key_prefix='session'))
+    assert (await vc.user_trial_usage(1))['used'] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_ceiling_is_on_the_real_routes_and_a_limit_is_not_a_check(ledger, monkeypatch):
+    _fresh_free_limiter(monkeypatch)
+    for env in ('FREE_FIX_LIMIT', 'FREE_REPAIR_LIMIT', 'FREE_FIT_LIMIT', 'FREE_DESIGN_LIMIT'):
+        monkeypatch.setenv(env, '1/hour')
+    app = _tools_app(monkeypatch, 1)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        first = await _run_each_tool(client)
+        second = await _run_each_tool(client)
+    assert first['fix'] == first['repair'] == first['fit'] == 200 and first['design'] == 202, first
+    # One generation an hour covers a design and a revision together.
+    assert first['revision'] == 429 and second['design'] == 429, (first, second)
+    for tool in ('fix', 'repair', 'fit'):
+        assert second[tool] == 429, second
+        assert '"code":"free_tool_limit"' in second[tool + ':body'], second
+    # Reading a prompt is a local parse: only its route limit applies.
+    assert first['interpret'] == second['interpret'] == 200
+    assert (await vc.user_trial_usage(1))['used'] == 0
+    # The pilot account (user 3) isn't held to the free ceiling.
+    app = _tools_app(monkeypatch, 3)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        for _ in range(2):
+            codes = await _run_each_tool(client)
+            assert codes['fix'] == codes['repair'] == codes['fit'] == 200 and codes['design'] == 202, codes
+
+
+@pytest.mark.asyncio
+async def test_free_ceilings_are_off_with_the_rate_limiter_and_never_read_the_plan_then(monkeypatch):
+    from slowapi import Limiter
+    from src.auth import free_tool_limits as ftl
+
+    monkeypatch.setattr(ftl, 'limiter', Limiter(key_func=lambda: 'x', storage_uri='memory://', enabled=False))
+
+    async def must_not_read(user_id):
+        raise AssertionError('read the plan with the limiter off')
+
+    monkeypatch.setattr(vc, 'effective_plan', must_not_read)
+    for _ in range(3):
+        await ftl.limit_free_fixes(AuthedUser(user_id=1, api_key_id=0, key_prefix='session'))
+
+
+def test_free_ceiling_wording_and_a_bad_setting_falls_back(monkeypatch):
+    from src.auth import free_tool_limits as ftl
+
+    assert ftl.describe('fix') == '10 fixes an hour and 40 a day'
+    assert ftl.describe('repair') == '10 mesh repairs an hour and 40 a day'
+    assert ftl.describe('fit') == '10 fit measurements an hour and 40 a day'
+    assert ftl.describe('design') == '20 designs or revisions an hour and 60 a day'
+    monkeypatch.setenv('FREE_FIX_LIMIT', 'lots')
+    assert ftl.describe('fix') == '10 fixes an hour and 40 a day'
+    monkeypatch.setenv('FREE_FIX_LIMIT', '1/hour')
+    assert ftl.describe('fix') == '1 fix an hour'
 
 
 @pytest.mark.asyncio

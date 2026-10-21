@@ -15,6 +15,10 @@ Allowance by plan:
   grant when it is larger.
 - pro: PRO_MONTHLY_CHECKS per Stripe billing period.
 - pilot: unlimited (operator approved).
+
+The app's own sample part (SAMPLE_PART_SHA256) never uses a check. Neither do
+ScaleCAD's fixes, mesh repair, Fit in context or Design Studio: they are on
+every plan, with per-user ceilings for free accounts (src.auth.free_tool_limits).
 """
 from __future__ import annotations
 
@@ -39,6 +43,15 @@ from src.db.models import BillingAccount, TrialCheck, User
 
 # Grant recorded for accounts created before email tiers (migration 0051).
 FREE_CHECKS = 10
+# The app's own sample part, by the sha256 of its exact bytes: the routing
+# bracket STL that "Run the sample" checks (frontend/src/lib/verify/sample-cad.ts,
+# 2463 bytes). It never uses a check, on any plan. The server recognises it from
+# the bytes alone, never from a client flag; a file changed by one byte is an
+# ordinary upload and counts like one. tests/test_validation_caps.py and
+# frontend/src/lib/verify/sample-cad.test.ts pin this hash to the generator.
+SAMPLE_PART_SHA256 = frozenset({
+    "d36d3e945b5f12779dc6d930663ccced8ad90b68579b2380b21f919c0fbee17a",
+})
 DEFAULT_PRO_MONTHLY_CHECKS = 50
 # Stripe keeps retrying a past-due invoice; access continues until it gives up.
 PRO_ACTIVE_STATUSES = frozenset({"active", "trialing", "past_due"})
@@ -194,8 +207,25 @@ async def user_trial_usage(user_id: int) -> dict:
         raise _unavailable() from exc
 
 
+async def effective_plan(user_id: int) -> str:
+    """The plan the account's allowance runs on: trial, pro or pilot.
+
+    A lapsed Pro subscription reads as trial, as it does for checks.
+    """
+    try:
+        async with get_session_factory()() as session:
+            return (await _allowance(session, user_id)).plan
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
+
+
 async def require_paid_access(user: AuthedUser = Depends(require_api_key)) -> None:
-    """Manual operator approval, using the existing pilot entitlement."""
+    """Manual operator approval, using the existing pilot entitlement.
+
+    Still guards batch runs, assembly ingest and analysis, direct uploads,
+    photo reconstruction and recalibration. ScaleCAD's fixes, mesh repair,
+    Fit in context and Design Studio are on every plan (src.auth.free_tool_limits).
+    """
     try:
         async with get_session_factory()() as session:
             plan = (await session.execute(select(User.plan).where(User.id == user.user_id))).scalar_one()
@@ -301,8 +331,12 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
     from src.api.routes import _max_upload_bytes
 
     path = request.url.path
-    if (path.endswith(("/fit", "/repair"))
-            or (path.endswith("/assembly") and request.query_params.get("format", "json").lower() != "json")
+    if path.endswith(("/fit", "/repair")):
+        # Fit in context and mesh repair are on every plan and never use a
+        # check: neither checks a part. Their per-user ceilings are
+        # src.auth.free_tool_limits plus the route limits.
+        return
+    if ((path.endswith("/assembly") and request.query_params.get("format", "json").lower() != "json")
             or request.query_params.get("segmentation") == "sam3d"):
         await require_paid_access(user)
         return
@@ -318,6 +352,7 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
     # fields must not change the identity, or make ambiguous multipart hashes.
     filename = (file.filename or "").encode()
     digest = hashlib.sha256(len(filename).to_bytes(8, "big") + filename)
+    content = hashlib.sha256()
     size = 0
     try:
         while chunk := await file.read(1024 * 1024):
@@ -325,6 +360,7 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
             if size > _max_upload_bytes():
                 raise _problem(413, "file_too_large", "The CAD file exceeds the upload size limit.")
             digest.update(chunk)
+            content.update(chunk)
     finally:
         await file.seek(0)
     if not size:
@@ -342,6 +378,11 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
         operation = 'analysis'
     else:
         operation = path.rsplit('/', 1)[-1]
+    if content.hexdigest() in SAMPLE_PART_SHA256:
+        # The sample part: every step runs on the real engine and none of
+        # them takes, reserves or records a check (whatever its file name).
+        request.state.sample_part = True
+        return
     reserved = await reserve_check(user.user_id, check_id, digest.hexdigest(), operation)
     if reserved:
         request.state.trial_check = (user.user_id, reserved, operation)

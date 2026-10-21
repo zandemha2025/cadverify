@@ -42,6 +42,7 @@ from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_limits import enforce_org_limits
 from src.auth.validation_caps import MeteredRoute, enforce_validation_caps, paid_access_required
+from src.auth.free_tool_limits import limit_free_fit, limit_free_repair
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -917,23 +918,15 @@ async def _parse_fit_mesh_async(data: bytes, filename: str):
 async def validate_fit_capability(user: AuthedUser = Depends(require_role(Role.viewer))):
     """Whether Fit in context can run for this caller, asked before any file moves.
 
-    Reads the caller's plan, role and the server setting only: no upload, no
-    preview mesh, no check is reserved. POST /validate/fit still enforces all of
-    it; this lets the browser show the pilot gate or the off state up front
-    instead of spending two preview meshes on a pair it can't measure.
+    Reads the caller's role and the server setting only: no upload, no preview
+    mesh, no check is reserved. POST /validate/fit still enforces both; this
+    lets the browser show the viewer or the off state up front instead of
+    spending two preview meshes on a pair it can't measure. Fit in context is
+    on every plan, so ``paid_access`` is always true (kept for older clients).
     """
-    from src.auth import validation_caps
     from src.services.fit_service import context_fit_enabled
 
-    try:
-        await validation_caps.require_paid_access(user)
-        paid_access = True
-    except HTTPException as exc:
-        # Only the pilot-plan refusal means "no"; an unreadable plan stays an error.
-        detail = exc.detail if isinstance(exc.detail, dict) else {}
-        if exc.status_code != 403 or detail.get("code") != "paid_access_required":
-            raise
-        paid_access = False
+    paid_access = True
     try:
         can_submit = Role(user.role).rank >= Role.analyst.rank
     except ValueError:
@@ -963,9 +956,14 @@ async def validate_fit(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
+    _free_limit: None = Depends(limit_free_fit),
     _admission: None = Depends(admit_analysis),
 ):
-    """Measure real collision and sampled clearance for two submitted meshes."""
+    """Measure real collision and sampled clearance for two submitted meshes.
+
+    On every plan and never a check; free accounts have a per-user ceiling
+    (src.auth.free_tool_limits).
+    """
     from src.services.fit_service import FitGeometryError, analyze_fit, context_fit_enabled
 
     if not context_fit_enabled():
@@ -2389,9 +2387,14 @@ async def validate_repair(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _validation_cap: None = Depends(enforce_validation_caps),
+    _free_limit: None = Depends(limit_free_repair),
     _admission: None = Depends(admit_analysis),
 ):
-    """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis."""
+    """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis.
+
+    On every plan and never a check; free accounts have a per-user ceiling
+    (src.auth.free_tool_limits).
+    """
     if rule_pack:
         pack = get_rule_pack(rule_pack)
         if pack is None:

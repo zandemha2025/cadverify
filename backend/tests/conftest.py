@@ -193,12 +193,15 @@ def _apply_auth_bypass(app) -> None:
         session.flush = _fake_flush
         yield session
 
+    from src.auth import free_tool_limits
     from src.auth.validation_caps import enforce_validation_caps, require_paid_access
 
     # Engine unit tests use mocked persistence. Real quota tests use an isolated
     # app/PostgreSQL and never install this override.
     app.dependency_overrides[enforce_validation_caps] = lambda: None
     app.dependency_overrides[require_paid_access] = lambda: None
+    for dependency in free_tool_limits.ALL:
+        app.dependency_overrides[dependency] = lambda: None
     app.dependency_overrides[require_api_key] = _fake_user
     app.dependency_overrides[get_db_session] = _fake_db_session
 
@@ -247,6 +250,10 @@ def _bypass_api_key_auth(monkeypatch):
 
             sys.modules["main"].app.dependency_overrides.pop(enforce_validation_caps, None)
             sys.modules["main"].app.dependency_overrides.pop(require_paid_access, None)
+            from src.auth import free_tool_limits
+
+            for dependency in free_tool_limits.ALL:
+                sys.modules["main"].app.dependency_overrides.pop(dependency, None)
 
             sys.modules["main"].app.dependency_overrides.pop(
                 require_api_key, None
