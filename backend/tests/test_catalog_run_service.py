@@ -196,7 +196,9 @@ def test_failed_skipped_and_running_items():
     failed = _row(None, item={**ITEM, "status": "failed", "error_message": "Could not read the file. It may be corrupt."})
     assert (failed["bucket"], failed["reason"]) == ("not_checked", "The file couldn't be read as STEP, STL or IGES")
     assert failed["error"] == "Could not read the file. It may be corrupt."
-    mesh = _row(None, item={**ITEM, "status": "failed", "error_message": "400: Could not tessellate this part: gmsh could not mesh the geometry [rung 2 exceeded 15s cap] (all 3 mesh strategies failed)."})
+    capped = _row(None, item={**ITEM, "status": "failed", "error_message": "400: Could not tessellate this part: gmsh could not mesh the geometry [rung 2 exceeded 15s cap] (all 3 mesh strategies failed)."})
+    assert capped["reason"] == "Reading the file ran past the time limit; check it on its own"
+    mesh = _row(None, item={**ITEM, "status": "failed", "error_message": "400: Could not tessellate this part: gmsh could not mesh the geometry (all 3 mesh strategies failed)."})
     assert mesh["reason"].startswith("The CAD kernel couldn't make a solid")
     slow = _row(None, item={**ITEM, "status": "failed", "error_message": "504: File parsing exceeded 60s timeout."})
     assert slow["reason"] == "Reading the file ran past the time limit; check it on its own"

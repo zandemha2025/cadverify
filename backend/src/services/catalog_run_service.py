@@ -300,10 +300,11 @@ def _first_sentence(s: Optional[str]) -> Optional[str]:
 
 
 _FAILURE_WORDS: tuple[tuple[re.Pattern, str], ...] = (
+    # A time cap first: a mesh strategy stopped at its cap says nothing about the geometry.
+    (re.compile(r"parsing exceeded|exceeded \d+(\.\d+)?s (timeout|cap)|timed out", re.I),
+     "Reading the file ran past the time limit; check it on its own"),
     (re.compile(r"could not (tessellate|mesh)|all \d+ mesh strategies failed", re.I),
      "The CAD kernel couldn't make a solid from this file (open, wire-only or damaged geometry)"),
-    (re.compile(r"parsing exceeded|exceeded \d+s timeout|timed out", re.I),
-     "Reading the file ran past the time limit; check it on its own"),
     (re.compile(r"not a valid stl|could not (parse|read|load)|unable to (parse|read|load)|no geometry|empty mesh", re.I),
      "The file couldn't be read as STEP, STL or IGES"),
     (re.compile(r"unsupported (native cad|drawing)", re.I), "A native CAD file or drawing: export it as STEP"),
