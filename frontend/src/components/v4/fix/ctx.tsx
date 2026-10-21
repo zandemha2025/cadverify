@@ -12,7 +12,8 @@ import type { Method } from "../part/model";
 import { KIND_COLOR } from "../part/model";
 import type { PartData } from "../part/ctx";
 import type { PinState, ViewerController, ViewerHighlight, ViewerMarker } from "../part/viewer";
-import { buildProblems, callout, findProblem, pickMethod, type Problem, type ProblemMethod, type ProblemSet } from "./problems";
+import { appliesTo, buildProblems, callout, findProblem, pickMethod, type Problem, type ProblemMethod, type ProblemSet } from "./problems";
+import { useProblemFilter } from "./filter";
 import { placesOf, rankProblems, unlockOf, type Unlock } from "./rank";
 import type { FixOrigin } from "./capabilities";
 import { useStudioOrigin } from "./origin";
@@ -36,6 +37,11 @@ export interface FixCtxValue {
   setAll: (p: Partial<Extract<FixView, { kind: "all" }>>) => void;
   /** K4's ranking at its quantity. */
   ranked: Unlock[];
+  /** "Show problems for": one process (remembered per part), or null for all. */
+  only: string | null;
+  setOnly: (code: string | null) => void;
+  /** The ranking for that process: what K4 lists and K1 steps through. */
+  shown: Unlock[];
   allQty: number;
   ask: { problem: string; variant: AskVariant } | null;
   openAsk: (problem: string, variant: AskVariant) => void;
@@ -160,13 +166,16 @@ export function useFixController(args: {
   const qAll = allQuantities(qs);
   const allQty = view?.kind === "all" && view.q != null && qAll.includes(view.q) ? view.q : qAll.includes(q) ? q : qAll[0] ?? q;
   const ranked = React.useMemo(() => rankProblems(set, methods, allQty), [set, methods, allQty]);
+  const [only, setOnly] = useProblemFilter(data.key, set.processes);
+  const listed = React.useMemo(() => (only ? ranked.filter((u) => appliesTo(u.problem, only)) : ranked), [ranked, only]);
   const problem = view?.kind === "problem" ? findProblem(set, view.id) : null;
   const method = problem ? defaultMethod(problem, set, methods, q, view?.kind === "problem" ? view.method : null, selCode) : null;
-  const allSel = view?.kind === "all" ? findProblem(set, view.sel) ?? ranked[0]?.problem ?? null : null;
+  const picked = view?.kind === "all" ? findProblem(set, view.sel) : null;
+  const allSel = view?.kind === "all" ? (picked && appliesTo(picked, only) ? picked : listed[0]?.problem ?? null) : null;
 
   const lit = has3d && faceAligned;
   const shown = problem ?? allSel;
-  const places = React.useMemo(() => placesOf(ranked), [ranked]);
+  const places = React.useMemo(() => placesOf(listed), [listed]);
   const highlight = React.useMemo<ViewerHighlight | null>(() => {
     if (!shown || !has3d) return null;
     const m = shown === problem ? method : defaultMethod(shown, set, methods, allQty, null, selCode);
@@ -217,6 +226,9 @@ export function useFixController(args: {
       if (view?.kind === "all") setView({ ...view, ...p });
     },
     ranked,
+    only,
+    setOnly,
+    shown: listed,
     allQty,
     ask,
     openAsk: (problemId, variant) => setAsk({ problem: problemId, variant }),

@@ -50,7 +50,7 @@ test("a method that's cheaper than today's best is a new lowest price; a dearer 
   const methods = buildMethods({ validation: null, cost, machines: [] });
   const at10 = rankProblems(set, methods, 10)[0];
   assert.equal(at10.tier, 1);
-  assert.equal(at10.value, "+1 method");
+  assert.equal(at10.value, "+1 process");
   assert.equal(at10.sub, "Injection molding · Injection molding $1,501.85 each at 10, against filament printing $24.03");
   const at1000 = rankProblems(set, methods, 1000)[0];
   assert.equal(at1000.tier, 0);

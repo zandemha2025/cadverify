@@ -1,6 +1,6 @@
 "use client";
 
-/** Make: every way to make it, grouped and ranked, the picked one opened with its finding on the part. */
+/** Process (DFM): every way to make it, grouped and ranked, the picked one opened with its finding on the part. */
 import * as React from "react";
 import { closestUnconfirmedModel, identityCardModel } from "@/lib/verify/identity";
 import { confirmIdentity } from "@/lib/verify/identity-api";
@@ -17,6 +17,7 @@ import {
   methodSub,
   methodWhy,
   money,
+  overallWords,
   plural,
   priceAt,
   priceMeta,
@@ -25,8 +26,9 @@ import {
 } from "./model";
 import { RunNotice, SheetTop, classLabel, envLine, type FigItem } from "./sheet-bits";
 import { useFix } from "../fix/ctx";
-import { problemForIssue } from "../fix/problems";
+import { notListedKind, problemForIssue } from "../fix/problems";
 import { pairAt, pickWhy, recordedChoice, enginePick } from "./choice";
+import { featureCells } from "../workbench/derive";
 import { useChoice } from "./choose";
 
 function chipTone(m: Method): string {
@@ -166,7 +168,7 @@ function ProblemsEntry() {
   return (
     <div className="gh" style={{ marginTop: 6 }}>
       <span>
-        {plural(n, "problem")} on this part{blocking ? ` · ${blocking} ${blocking === 1 ? "stops" : "stop"} methods` : ""}
+        {plural(n, "problem")} on this part{blocking ? ` · ${blocking} ${blocking === 1 ? "stops" : "stop"} processes` : ""}
       </span>
       <span>
         <button className="btn sm ghost" type="button" onClick={() => fx.openAll()} style={{ height: 24 }}>
@@ -186,7 +188,7 @@ function Fixes() {
     <>
       <div className="gh" style={{ marginTop: 6 }}>
         <span>
-          {plural(fixes.length, "fix", "fixes")} across methods, most important first · overall: {p.data.validation?.overall_verdict ?? "unknown"}
+          {plural(fixes.length, "suggested fix", "suggested fixes")} across processes, most important first
         </span>
         <span>
           <button className="btn sm ghost" type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ height: 24 }}>
@@ -220,25 +222,26 @@ function Fixes() {
 export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: string; figs: FigItem[] } {
   const v = p.data.validation;
   const cls = p.data.cost?.material_class ?? null;
-  if (p.interrupted) return { title: "Check interrupted", meta: "Nothing computed · the file is kept", figs: [{ k: "Methods", v: "Not checked", tone: "warn" }, { k: "File", v: "Kept", s: "no re-export needed" }] };
+  if (p.interrupted) return { title: "Check interrupted", meta: "Nothing computed · the file is kept", figs: [{ k: "Processes", v: "Not checked", tone: "warn" }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   const singles = p.methods;
   if (p.checking) {
     const gp = singles.find((m) => m.geometryPick);
     return {
       title: "Checking",
-      meta: `Shape and walls, then ${v ? v.process_scores.length : 21} methods, then prices · about 30 s`,
+      meta: `Shape and walls, then ${v ? v.process_scores.length : 21} processes, then prices · about 30 s`,
       figs: [
         v && gp
-          ? { k: "First pick", v: gp.name, s: `${gp.short} · DFM ${gp.dfm ?? "—"} · analysis ${(v.analysis_time_ms / 1000).toFixed(1)} s` }
-          : { k: "First pick", v: "Measuring…" },
-        { k: "Methods checked", v: v ? `${v.process_scores.length} of ${v.process_scores.length}` : "Waiting" },
+          ? { k: "Best fit for the shape", v: gp.name, s: `${gp.short} · DFM ${gp.dfm ?? "—"} · analysis ${(v.analysis_time_ms / 1000).toFixed(1)} s` }
+          : { k: "Best fit for the shape", v: "Measuring…" },
+        { k: "Processes checked", v: v ? `${v.process_scores.length} of ${v.process_scores.length}` : "Waiting" },
         { k: "Priced", v: "Pricing…", s: "arrives with the record" },
       ],
     };
   }
   const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn").length;
   const env = envLine(p.data.runEnvironment);
-  const figs: FigItem[] = [{ k: "Can make", v: `${can} of ${singles.length}`, s: "methods", tone: can ? "ok" : "bad" }];
+  const figs: FigItem[] = [{ k: "Can make", v: `${can} of ${singles.length}`, s: "processes", tone: can ? "ok" : "bad" }];
+  const fixesFig: FigItem = { k: "Suggested fixes", v: String(v?.priority_fixes?.length ?? 0), s: overallWords(v?.overall_verdict) };
   const meta = `${classLabel(cls)} · ${env ?? "no service conditions set"}`;
   const c = cheapestAt(p.methods, p.q);
   // Your choice, else ScaleCAD's pick, next to the other side when a machine of yours can make it.
@@ -250,7 +253,7 @@ export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: s
     const e = chosen.prices.get(p.q)!;
     figs.push({ k: `Your choice at ${qtyWord(p.q)}`, v: money(e.unit_cost_usd), s: `${chosen.name}${chosen.inHouse ? ` · your ${chosen.inHouse}` : " · outside"} · ${days(e.lead_time?.low_days, e.lead_time?.high_days)}` });
     if (c && c.code !== chosen.code) figs.push({ k: `Cheapest at ${qtyWord(p.q)}`, v: money(priceAt(c, p.q)), s: `${c.name} · ${c.short}` });
-    else figs.push({ k: "Fixes", v: String(v?.priority_fixes?.length ?? 0), s: `overall: ${v?.overall_verdict ?? "unknown"}` });
+    else figs.push(fixesFig);
     return { title: "Ways to make it", meta, figs };
   }
   if (!p.costOff && pair && pick) {
@@ -265,12 +268,12 @@ export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: s
     }
     return { title: "Ways to make it", meta, figs };
   }
-  if (p.costOff) figs.push({ k: "Prices", v: "Didn’t finish", s: "methods are ready", tone: "warn" });
+  if (p.costOff) figs.push({ k: "Prices", v: "Didn’t finish", s: "processes are ready", tone: "warn" });
   else if (c) figs.push({ k: `Cheapest at ${qtyWord(p.q)}`, v: money(priceAt(c, p.q)), s: `${c.name} · ${c.short}` });
   else if (!p.data.cost) figs.push({ k: "Prices", v: "Not priced yet", s: "this part has an analysis only" });
   const ih = p.methods.find((m) => m.inHouse && m.prices.has(p.q));
   if (ih && !p.costOff) figs.push({ k: ih.inHouse!, v: money(priceAt(ih, p.q)), s: `in-house · ${ih.short} ${ih.prices.get(p.q)!.material}` });
-  else figs.push({ k: "Fixes", v: String(v?.priority_fixes?.length ?? 0), s: `overall: ${v?.overall_verdict ?? "unknown"}` });
+  else figs.push(fixesFig);
   return { title: "Ways to make it", meta, figs };
 }
 
@@ -282,15 +285,65 @@ function rowTag(m: Method, ch: ReturnType<typeof useChoice>): string {
   return "";
 }
 
+/** The problem a process's row stands for: its own finding, else the first one that stops it. */
+function problemOfMethod(fx: ReturnType<typeof useFix>, m: Method) {
+  return problemForIssue(fx.set, m.finding?.issue.code) ?? fx.set.problems.find((x) => m.members.some((c) => x.blocks.includes(c))) ?? null;
+}
+
+/** How the process was chosen (it was the cost breakdown's DFM tab): the route, its reasons, rules and detected features. */
+function HowJudged() {
+  const p = usePart();
+  const [open, setOpen] = React.useState(false);
+  const r = p.data.cost?.routing ?? null;
+  const v = p.data.validation;
+  const cells = featureCells(v?.features);
+  if (!r && !v) return null;
+  const drv = r?.drivers ?? {};
+  const rows: [string, string][] = [];
+  if (r) rows.push(["Recommended process", `${methodName(r.recommended_process)} · confidence ${r.confidence.toFixed(1)}`]);
+  if (r?.alternatives?.length) rows.push(["Alternatives", r.alternatives.map(methodName).join(", ")]);
+  if (typeof drv.nominal_wall_mm === "number") rows.push(["Nominal wall", `${(drv.nominal_wall_mm as number).toFixed(1)} mm`]);
+  if (typeof drv.rotational === "boolean") rows.push(["Round", drv.rotational ? "Yes" : "No"]);
+  if (typeof drv.sheet_like === "boolean") rows.push(["Sheet-like", drv.sheet_like ? "Yes" : "No"]);
+  rows.push(["Design rules", v?.rule_pack ? `Rule pack ${v.rule_pack.name} ${v.rule_pack.version}` : "Typical limits per process, cited on each problem"]);
+  return (
+    <>
+      <div className="gh" style={{ marginTop: 6 }}>
+        <span>How the process was chosen</span>
+        <span>
+          <button className="btn sm ghost" type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ height: 24 }}>
+            {open ? "Hide" : "Show"}
+          </button>
+        </span>
+      </div>
+      {open ? (
+        <div className="swap" style={{ margin: "0 12px", display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--ink2)" }}>
+          {r?.reasoning ? <p style={{ margin: 0 }}>{r.reasoning}</p> : null}
+          <div className="kv" style={{ padding: 0 }}>
+            {rows.map(([k, val]) => (
+              <React.Fragment key={k}>
+                <span>{k}</span>
+                <b className="num">{val}</b>
+              </React.Fragment>
+            ))}
+          </div>
+          {cells.length ? <span style={{ color: "var(--ink3)" }}>Detected features: {cells.map((c) => `${c.n} ${c.label.toLowerCase()}`).join(" · ")}</span> : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function MakeSheet() {
   const p = usePart();
+  const fx = useFix();
   const ch = useChoice();
   const top = makeTop(p);
   const pricing = p.checking && !p.data.cost;
   const rows = makeRows(p.rows, p.q);
   return (
     <>
-      <SheetTop {...top} />
+      <SheetTop {...top} sure="make" />
       <div className="scroll">
         <RunNotice />
         {!p.interrupted ? (
@@ -312,7 +365,18 @@ export function MakeSheet() {
                 const on = p.sel?.code === m.code;
                 return (
                   <React.Fragment key={m.code}>
-                    <button type="button" className={cx("mr", on && "on", m.verdict === "out" && "out")} onClick={() => p.setSel(m.code)} aria-pressed={on}>
+                    <button
+                      type="button"
+                      className={cx("mr", on && "on", m.verdict === "out" && "out")}
+                      onClick={() => {
+                        p.setSel(m.code);
+                        // A process that can't make it as drawn opens why, on the part, in one click.
+                        const why = m.verdict === "bad" && !p.checking ? problemOfMethod(fx, m) : null;
+                        if (why) fx.openProblem(why.id, m.members.length === 1 ? m.code : null);
+                      }}
+                      aria-pressed={on}
+                      title={m.verdict === "bad" && !p.checking && problemOfMethod(fx, m) ? "Opens why, on the part" : undefined}
+                    >
                       <span>
                         <b>{m.name}</b>
                         <small>
@@ -334,6 +398,7 @@ export function MakeSheet() {
             {p.data.cost && p.data.cost.material_class === "polymer" && p.rows.some((m) => m.members.length > 1) ? null : null}
             {!p.checking ? <ProblemsEntry /> : null}
             <Fixes />
+            {!p.checking ? <HowJudged /> : null}
           </div>
         ) : null}
       </div>
@@ -344,8 +409,11 @@ export function MakeSheet() {
 function Detail({ m, pricing, ch }: { m: Method; pricing: boolean; ch: ReturnType<typeof useChoice> }) {
   const p = usePart();
   const fx = useFix();
-  // The problem behind this method's finding, or the first one that stops it.
-  const problem = problemForIssue(fx.set, m.finding?.issue.code) ?? fx.set.problems.find((x) => m.members.some((c) => x.blocks.includes(c))) ?? null;
+  // The problem behind this process's finding, or the first one that stops it.
+  const problem = problemOfMethod(fx, m);
+  // A setup, precision or paperwork note on a process that can make it isn't a design problem: one quiet line, the text a click away.
+  const noteOnly = m.verdict === "ok" && !!m.finding && notListedKind(m.finding.issue) != null;
+  const [noteOpen, setNoteOpen] = React.useState(false);
   const kind = m.finding?.kind ?? null;
   const lit = !!kind && (m.finding?.faces.length ?? 0) > 0;
   const price = !pricing && !p.costOff ? priceMeta(m, p.q) : null;
@@ -356,21 +424,29 @@ function Detail({ m, pricing, ch }: { m: Method; pricing: boolean; ch: ReturnTyp
         <i className={`k-${lit ? kind : "none"}`} aria-hidden="true">
           {lit ? "1" : "i"}
         </i>
-        <span>{methodWhy(m, p.data.cost?.material_class ?? null)}</span>
+        <span>{noteOnly ? "Nothing stops it as drawn." : methodWhy(m, p.data.cost?.material_class ?? null)}</span>
       </div>
+      {noteOnly ? (
+        <span>
+          <button className="btn sm ghost" type="button" aria-expanded={noteOpen} onClick={() => setNoteOpen((o) => !o)} style={{ height: 24, padding: "0 6px" }}>
+            {noteOpen ? "Hide the note" : "1 note, not a design problem"}
+          </button>
+          {noteOpen ? <span className="swap" style={{ display: "block", marginTop: 4, color: "var(--ink3)" }}>{methodWhy(m, p.data.cost?.material_class ?? null)}</span> : null}
+        </span>
+      ) : null}
       <span style={{ color: "var(--ink3)" }}>{meta}</span>
       {m.members.length > 1 ? <span style={{ color: "var(--ink3)" }}>{m.members.map(methodName).join(", ")}</span> : null}
       {!p.checking ? <ChooseRow m={m} ch={ch} /> : null}
-      {(lit && p.canTurn) || (problem && !p.checking) ? (
+      {(lit && p.canTurn) || (problem && !p.checking && !noteOnly) ? (
         <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {lit && p.canTurn ? (
             <button className="btn sm" type="button" onClick={p.turnTo}>
               Turn to it
             </button>
           ) : null}
-          {problem && !p.checking ? (
-            <button className="btn sm" type="button" onClick={() => fx.openProblem(problem.id, m.members.length === 1 ? m.code : null)}>
-              The problem and its fix
+          {problem && !p.checking && !noteOnly ? (
+            <button className="btn sm fwhy" type="button" onClick={() => fx.openProblem(problem.id, m.members.length === 1 ? m.code : null)}>
+              {m.verdict === "bad" ? "Why it can’t, on the part" : m.verdict === "warn" ? "The warning, on the part" : "See it on the part"}
             </button>
           ) : null}
         </span>

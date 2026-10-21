@@ -1,17 +1,22 @@
 "use client";
 
-/** K4: every problem on the part, ranked by what fixing it makes possible, or grouped by where it is. */
+/**
+ * K4: every problem on the part, ranked by what fixing it makes possible, or
+ * grouped by where it is, for every process or one ("Show problems for").
+ * A row opens that problem on the part (K1), for the chosen process.
+ */
 import * as React from "react";
 import { cx } from "../ui";
 import { useShell } from "../shell";
 import { usePart } from "../part/ctx";
 import { classLabel } from "../part/sheet-bits";
 import { cheapestAt, money, priceAt, qtyWord } from "../part/model";
-import { allQuantities, defaultMethod, useFix } from "./ctx";
-import { fixText, measuredFig, needText, type Problem } from "./problems";
+import { allQuantities, useFix } from "./ctx";
+import { appliesTo, forProcessLine } from "./problems";
 import { placeName, placesOf, type Unlock } from "./rank";
 import { fixRoute, whoFixes } from "./capabilities";
 import { useUploadFixed } from "./problem-sheet";
+import { METHODS, processLabel } from "../part/model";
 import "./fix.css";
 
 /** "Checked like any upload · uses 1 of your 12 checks left", from what the usage API reports. */
@@ -21,18 +26,10 @@ export function newCheckLine(usage: { unlimited: boolean; remaining: number } | 
   return `${lead} · uses 1 of your ${usage.remaining} ${usage.remaining === 1 ? "check" : "checks"} left`;
 }
 
-function needsLine(p: Problem): string {
-  const groups = new Map<string, string[]>();
-  for (const m of p.methods) {
-    const nt = needText(m);
-    const k = nt == null ? "" : m.dir === "max" ? `at most ${nt}` : nt;
-    if (!k) continue;
-    (groups.get(k) ?? groups.set(k, []).get(k)!).push(m.name.charAt(0).toLowerCase() + m.name.slice(1));
-  }
-  const parts = [...groups.entries()].slice(0, 4).map(([k, names]) => `${k}: ${[...new Set(names)].join(", ")}`);
-  if (parts.length) return parts.join(" · ");
-  if (p.id === "open") return "A closed solid, for every method";
-  return p.noChange === "shop" ? "Nothing in the design" : p.methods.length ? `Reported by ${p.methods.length} ${p.methods.length === 1 ? "method" : "methods"}` : "Every method";
+/** Processes in the order the part page lists them, for the filter. */
+function processOrder(codes: string[]): string[] {
+  const order = Object.keys(METHODS);
+  return [...codes].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
 }
 
 export function AllProblemsSheet() {
@@ -41,12 +38,16 @@ export function AllProblemsSheet() {
   const shell = useShell();
   const up = useUploadFixed();
   const v = fx.view?.kind === "all" ? fx.view : null;
-  const [openId, setOpenId] = React.useState<string | null>(null);
+  const processes = React.useMemo(() => processOrder(fx.set.processes), [fx.set.processes]);
+  const { only, setOnly } = fx;
   if (!v) return null;
   const q = fx.allQty;
   const qs = allQuantities(p.qs);
-  const ranked = fx.ranked;
+  const all = fx.ranked;
+  const ranked = fx.shown;
   const places = placesOf(ranked);
+  const onlyLabel = only ? processLabel(only) : null;
+  const perProcess = new Map(processes.map((c) => [c, all.filter((u) => appliesTo(u.problem, c)).length]));
   const sel = ranked.find((u) => u.problem.id === v.sel)?.problem ?? ranked[0]?.problem ?? null;
   const n = ranked.length;
   const singles = p.methods.filter((m) => m.members.length === 1);
@@ -64,22 +65,19 @@ export function AllProblemsSheet() {
     const P = u.problem;
     const rank = ranked.indexOf(u) + 1;
     const on = sel?.id === P.id;
-    const expanded = on && openId === P.id;
     const place = places.find((pl) => pl.ids.includes(P.id));
     const who = whoFixes(P, fx.origin, millingWorks);
-    const m0 = defaultMethod(P, fx.set, p.methods, q, null, null);
-    const meas = measuredFig(P, m0);
+    const why = only && onlyLabel ? forProcessLine(P, only, onlyLabel) : null;
+    const method = only && P.methods.some((m) => m.code === only) ? only : null;
     return (
       <React.Fragment key={P.id}>
         <button
           type="button"
           className={cx("kpr", on && "on")}
-          aria-pressed={on}
-          aria-expanded={expanded}
-          onClick={() => {
-            fx.setAll({ sel: P.id });
-            setOpenId(expanded ? null : P.id);
-          }}
+          aria-label={`${P.title}: ${why ?? u.sub}. Open it on the part${onlyLabel ? `, for ${onlyLabel.toLowerCase()}` : ""}.`}
+          onClick={() => fx.openProblem(P.id, method)}
+          onFocus={() => !on && fx.setAll({ sel: P.id })}
+          onPointerEnter={() => !on && fx.setAll({ sel: P.id })}
         >
           <span className="rk">{rank}</span>
           <span>
@@ -90,6 +88,7 @@ export function AllProblemsSheet() {
                 {P.where}
               </span>
             </small>
+            {why ? <small className="kfor">{why}</small> : null}
             <small>{u.sub}</small>
           </span>
           <span className="vv">
@@ -100,23 +99,6 @@ export function AllProblemsSheet() {
             </span>
           </span>
         </button>
-        {expanded ? (
-          <div className="kpd swap">
-            <span>Measured</span>
-            <span>
-              {meas.v} · {meas.s}
-            </span>
-            <span>Needs</span>
-            <span>{needsLine(P)}</span>
-            <span>Fix</span>
-            <span>{fixText(P, m0, null).fix}</span>
-            <span>Check</span>
-            <span className="kcode">{P.codes.join(" · ")}</span>
-            <button className="btn sm kshow" type="button" onClick={() => fx.openProblem(P.id)}>
-              Show it on the part
-            </button>
-          </div>
-        ) : null}
       </React.Fragment>
     );
   };
@@ -141,10 +123,30 @@ export function AllProblemsSheet() {
   return (
     <>
       <div className="top">
-        <h2 className="stitle">{n ? `${n} ${n === 1 ? "problem" : "problems"} on this part` : "No problems on this part"}</h2>
+        <h2 className="stitle">
+          {onlyLabel
+            ? n
+              ? `${n} ${n === 1 ? "problem" : "problems"} for ${onlyLabel.charAt(0).toLowerCase()}${onlyLabel.slice(1)}`
+              : `Nothing stops or flags ${onlyLabel.charAt(0).toLowerCase()}${onlyLabel.slice(1)}`
+            : n
+              ? `${n} ${n === 1 ? "problem" : "problems"} on this part`
+              : "No problems on this part"}
+        </h2>
         <p className="smeta">
+          {onlyLabel ? `${all.length} on the part in all · ` : ""}
           {v.by === "place" ? "Grouped by where they are on the part" : "Ranked by what fixing each makes possible"} · at {qtyWord(q)} · {classLabel(p.data.cost?.material_class).toLowerCase()}
         </p>
+        <label className="field kfor-pick">
+          Show problems for
+          <select value={only ?? ""} onChange={(e) => setOnly(e.target.value || null)}>
+            <option value="">All processes · {all.length}</option>
+            {processes.map((c) => (
+              <option key={c} value={c}>
+                {processLabel(c)} · {perProcess.get(c) ?? 0}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="figs">
           {figs.map((g) => (
             <div className="fig" key={g.k}>
@@ -177,10 +179,22 @@ export function AllProblemsSheet() {
             </span>
           ) : null}
         </div>
-        <p className="krule2">New lowest price first, then methods added, then warnings cleared · prices if redesigned</p>
+        <p className="krule2">New lowest price first, then processes added, then warnings cleared · prices if redesigned · a row opens the problem on the part</p>
       </div>
       <div className="scroll">
-        {!n ? <p className="kplain">The check reported nothing that stops or flags a method, beyond the notes below.</p> : null}
+        {!n ? (
+          <p className="kplain">
+            {onlyLabel ? `The check reported nothing that stops or flags ${onlyLabel.charAt(0).toLowerCase()}${onlyLabel.slice(1)}, beyond the notes below.` : "The check reported nothing that stops or flags a process, beyond the notes below."}
+            {onlyLabel && all.length ? (
+              <>
+                {" "}
+                <button className="btn sm" type="button" onClick={() => setOnly(null)}>
+                  Show all {all.length}
+                </button>
+              </>
+            ) : null}
+          </p>
+        ) : null}
         {v.by === "place"
           ? places.map((pl) => (
               <React.Fragment key={pl.name}>
@@ -196,33 +210,35 @@ export function AllProblemsSheet() {
           : ranked.map(row)}
         {fx.set.notListed ? <p className="knl">{fx.set.notListed}</p> : null}
       </div>
-      <div className="kfa">
-        <b>
-          ScaleCAD can fix {fixable.length} of {n} here
-        </b>
-        <p>{faText}</p>
-        <div className="row">
-          {fixable.length && firstFix ? (
-            <button className="btn ink sm" type="button" onClick={() => fx.openAsk(fixable[0].problem.id, firstFix.kind)}>
-              Fix what ScaleCAD can
-            </button>
-          ) : null}
-          {sel ? (
-            <button className="btn sm" type="button" onClick={() => fx.openAsk(sel.id, "upload")}>
-              Steps for your CAD tool
-            </button>
-          ) : null}
-          {!fx.origin.studio ? (
-            <button className="btn sm" type="button" onClick={up.pick}>
-              Upload the fixed file
-            </button>
-          ) : null}
-          {up.el}
+      {n > 0 || !only ? (
+        <div className="kfa">
+          <b>
+            ScaleCAD can fix {fixable.length} of {n} here
+          </b>
+          <p>{faText}</p>
+          <div className="row">
+            {fixable.length && firstFix ? (
+              <button className="btn ink sm" type="button" onClick={() => fx.openAsk(fixable[0].problem.id, firstFix.kind)}>
+                Fix what ScaleCAD can
+              </button>
+            ) : null}
+            {sel ? (
+              <button className="btn sm" type="button" onClick={() => fx.openAsk(sel.id, "upload")}>
+                Steps for your CAD tool
+              </button>
+            ) : null}
+            {!fx.origin.studio ? (
+              <button className="btn sm" type="button" onClick={up.pick}>
+                Upload the fixed file
+              </button>
+            ) : null}
+            {up.el}
+          </div>
+          <div className="row">
+            <span>{newCheckLine(shell.usage)}</span>
+          </div>
         </div>
-        <div className="row">
-          <span>{newCheckLine(shell.usage)}</span>
-        </div>
-      </div>
+      ) : null}
     </>
   );
 }

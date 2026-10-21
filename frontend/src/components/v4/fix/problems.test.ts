@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alternativeOf, buildProblems, callout, findProblem, fixText, methodHead, notListedKind, pickMethod, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
+import { alternativeOf, appliesTo, buildProblems, callout, findProblem, fixText, forProcessLine, methodHead, notListedKind, pickMethod, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
 import { canFixLine, fixRoute, studioParam, studioValueProblem, whoFixes, type FixOrigin } from "./capabilities.ts";
 import { enclosureCostOnly, shellCost, shellValidation } from "./fixtures.test-data.ts";
 
@@ -179,3 +179,19 @@ test("mesh repair and ScaleCAD's own fixes are offered on every plan, the free t
     assert.doesNotMatch(canFixLine(open, shellOrigin), /pilot|plan/i);
   }
 });
+
+test("Show problems for one process: only what it reported, whole-file problems too, and why in its own numbers", () => {
+  const set = shell();
+  const fdm = set.problems.filter((p) => appliesTo(p, "fdm")).map((p) => p.id);
+  assert.ok(fdm.includes("thin"), "thin walls stop filament printing");
+  assert.ok(!fdm.includes("draft"), "draft is a molding and casting problem, not a printing one");
+  assert.deepEqual(set.problems.filter((p) => appliesTo(p, null)).length, set.problems.length, "no process: every problem");
+  const thin = findProblem(set, "thin")!;
+  const line = forProcessLine(thin, "fdm", "Filament printing (FDM/FFF)")!;
+  assert.match(line, /^Stops filament printing \(FDM\/FFF\): needs at least [0-9.]+ mm, measured [0-9.]+ mm$/);
+  // A process the problem doesn't name has no line unless the problem covers the whole file.
+  assert.equal(forProcessLine(findProblem(set, "draft")!, "fdm", "Filament printing (FDM/FFF)"), null);
+  const bodies = findProblem(set, "bodies")!;
+  if (bodies.universal) assert.match(forProcessLine(bodies, "fdm", "Filament printing (FDM/FFF)")!, /every process, filament printing \(FDM\/FFF\) too$/);
+});
+

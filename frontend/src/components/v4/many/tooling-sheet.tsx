@@ -4,7 +4,7 @@
  * The tooling sheet (board M2, replaces today's acquisition modal): for the part
  * you clicked, from that part's own saved check, make-now against the tooled
  * route across quantity, where tooling pays back, and the org's capability
- * changes. A sheet, not a modal: Esc, "Back to Triage" and "Not now" return to
+ * changes. A sheet, not a modal: Esc, "Back to Make or buy" and "Not now" return to
  * Triage, and focus goes back to the row's Tooling button.
  */
 import * as React from "react";
@@ -87,7 +87,7 @@ export function ToolingSheet({
     <Sheet label="Tooling alternative">
         <div className="top swap" key={row.part_key}>
           <button ref={backRef} className="btn sm" type="button" onClick={onBack} style={{ marginBottom: 10 }}>
-            ‹ Back to Triage
+            ‹ Back to Make or buy
           </button>
           <h2 className="stitle">{v?.toolProc ? `Tooling: ${toolName}` : saved ? "No tooling alternative" : "Tooling alternative"}</h2>
           <p className="smeta">{metaBits.join(" · ")}</p>
@@ -120,7 +120,7 @@ export function ToolingSheet({
               title="No tooling alternative"
               actions={
                 <button className="btn sm" type="button" onClick={onBack}>
-                  Back to Triage
+                  Back to Make or buy
                 </button>
               }
             >

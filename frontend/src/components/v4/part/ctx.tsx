@@ -13,7 +13,7 @@ import type { CheckSession } from "./store";
 /** The five views of one part. Ids stay as they are in links (?lens=make); the names are what engineers call them. */
 export type Lens = "make" | "cost" | "use" | "shop" | "decide";
 export const LENSES: [Lens, string, string][] = [
-  ["make", "Process", "DFM, can it be made"],
+  ["make", "Process", "can it be made"],
   ["cost", "Cost", "by quantity"],
   ["use", "Conditions", "where it’s used"],
   ["shop", "In-house", "your machines"],

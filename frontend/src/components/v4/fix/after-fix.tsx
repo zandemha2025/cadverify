@@ -153,7 +153,7 @@ function Left({ items, n, title = "Problems left" }: { items: { k: string; s: st
         ) : (
           <div className="lr">
             <b>None reported</b>
-            <small>The check found nothing that stops or flags a method.</small>
+            <small>The check found nothing that stops or flags a process.</small>
           </div>
         )}
       </div>
@@ -330,7 +330,7 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
     ["Faces", d.original_faces?.toLocaleString("en-US") ?? "—", d.repaired_faces?.toLocaleString("en-US") ?? "—", ""],
     ["Volume", d.original_volume_mm3 != null ? `${Math.round(d.original_volume_mm3).toLocaleString("en-US")} mm³` : "—", d.repaired_volume_mm3 != null ? `${Math.round(d.repaired_volume_mm3).toLocaleString("en-US")} mm³${pct != null ? ` · ${sign(pct)}` : ""}` : "—", changedShape ? "warn" : ""],
     ["Verdict", v?.original_verdict ?? "—", v?.repaired_verdict ?? "—", v?.repaired_verdict === "fail" ? "bad" : "ok"],
-    ["Methods that can make it", `${canMake(mBefore.map((m) => ({ ...m, verdict: before?.geometry.is_watertight === false ? "bad" : m.verdict })))} of ${total}`, `${canMake(mAfter)} of ${total}`, "ok"],
+    ["Processes that can make it", `${canMake(mBefore.map((m) => ({ ...m, verdict: before?.geometry.is_watertight === false ? "bad" : m.verdict })))} of ${total}`, `${canMake(mAfter)} of ${total}`, "ok"],
   ];
   for (const q of [10, 100]) if (cost?.quantities?.includes(q)) rows.push([`Cheapest at ${qtyWord(q)}`, "not priced", cheap(q) ?? "none", cheap(q) ? "ok" : "bad"]);
   if (redQ && red[String(redQ)]) rows.push([`${red[String(redQ)]!.process === "injection_molding" ? "Molding" : red[String(redQ)]!.process} at ${qtyWord(redQ)}, if redesigned`, "—", money(red[String(redQ)]!.unit_cost_usd), ""]);
@@ -339,7 +339,7 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
   if (changedShape && pct != null) items.unshift({ k: `Volume ${sign(pct)} from the repair`, s: "The repair’s own change. Fix the open shell in your CAD tool to keep the original shape.", who: "In your CAD", tone: "c-unk" });
   const c10 = cheap(10);
   const figs = [
-    { k: "Methods", v: `${canMake(mAfter)} of ${total}`, s: `was ${before?.geometry.is_watertight === false ? 0 : canMake(mBefore)} of ${total}`, tone: "ok" },
+    { k: "Processes", v: `${canMake(mAfter)} of ${total}`, s: `was ${before?.geometry.is_watertight === false ? 0 : canMake(mBefore)} of ${total}`, tone: "ok" },
     cost ? { k: "Cheapest at 10", v: c10 ? c10.split(" · ")[0] : "None", s: c10 ? c10.split(" · ")[1] : "nothing priced", tone: "" } : { k: "Prices", v: "When saved", s: "saving checks and prices it", tone: "" },
     pct != null ? { k: "Volume", v: sign(pct), s: changedShape ? "more than closing gaps" : "closing gaps only", tone: changedShape ? "warn" : "" } : { k: "Faces", v: d.repaired_faces?.toLocaleString("en-US") ?? "—", s: "after repair", tone: "" },
   ];
@@ -457,7 +457,7 @@ function StudioAfter({ run, mesh, problem, shell, flash }: { run: StudioRun; mes
   const rows: Row[] = [
     ...changes.map((c): Row => [c.param.label, fmtC(c, c.param.value), fmtC(c, c.value), ""]),
     [`Methods flagged for ${changes.length > 1 ? "these" : problem?.title.toLowerCase() ?? "it"}`, String(flaggedB), String(flaggedA), flaggedA < flaggedB ? "ok" : ""],
-    ["Methods that can make it", `${canMake(mB)} of ${total}`, `${canMake(mA)} of ${total}`, canMake(mA) >= canMake(mB) ? "ok" : "bad"],
+    ["Processes that can make it", `${canMake(mB)} of ${total}`, `${canMake(mA)} of ${total}`, canMake(mA) >= canMake(mB) ? "ok" : "bad"],
   ];
   if (cA || cB) rows.push([`Cheapest at ${qtyWord(q)}`, cB && pb != null ? `${money(pb)} · ${cB.short}` : "none", cA && pa != null ? `${money(pa)} · ${cA.short}${delta ? ` · ${delta > 0 ? "+" : "−"}${money(Math.abs(delta))}` : ""}` : "none", delta != null && delta > 0 ? "warn" : "ok"]);
   const shared = mA
@@ -516,7 +516,7 @@ function StudioAfter({ run, mesh, problem, shell, flash }: { run: StudioRun; mes
           <i />
           Revision {nA} checked
         </span>
-        <h2 className="stitle">{`${changeWords.join(" and ").replace(/^a /, "").replace(/^./, (c) => c.toUpperCase())}: ${cleared > 0 ? `${cleared} ${cleared === 1 ? "method" : "methods"} cleared` : "no methods cleared"}`}</h2>
+        <h2 className="stitle">{`${changeWords.join(" and ").replace(/^a /, "").replace(/^./, (c) => c.toUpperCase())}: ${cleared > 0 ? `${cleared} ${cleared === 1 ? "process" : "processes"} cleared` : "no processes cleared"}`}</h2>
         <p className="smeta">
           Same template, {fromText} → {toText}
         </p>
@@ -633,7 +633,7 @@ function ServerAfter({ run, mesh, problem, shell }: { run: Extract<ServerRun, { 
     priceRows.push([`Cheapest at ${qtyWord(q)}`, t(b), t(a), a?.unit_cost_usd != null && (b?.unit_cost_usd == null || a.unit_cost_usd < b.unit_cost_usd) ? "ok" : ""]);
   }
   const rows: Row[] = [
-    ["Methods that can make it", `${r.original.methods_can_make.count} of ${r.original.methods_can_make.of}`, `${fixed.methods_can_make.count} of ${fixed.methods_can_make.of}`, fixed.methods_can_make.count > r.original.methods_can_make.count ? "ok" : fixed.methods_can_make.count < r.original.methods_can_make.count ? "bad" : ""],
+    ["Processes that can make it", `${r.original.methods_can_make.count} of ${r.original.methods_can_make.of}`, `${fixed.methods_can_make.count} of ${fixed.methods_can_make.of}`, fixed.methods_can_make.count > r.original.methods_can_make.count ? "ok" : fixed.methods_can_make.count < r.original.methods_can_make.count ? "bad" : ""],
     ["Faces", r.original.faces?.toLocaleString("en-US") ?? "—", fixed.faces?.toLocaleString("en-US") ?? "—", ""],
     ["Volume", r.original.volume_mm3 != null ? `${Math.round(r.original.volume_mm3).toLocaleString("en-US")} mm³` : "—", fixed.volume_mm3 != null ? `${Math.round(fixed.volume_mm3).toLocaleString("en-US")} mm³${pct != null ? ` · ${sign(pct)}` : ""}` : "—", changed ? "warn" : ""],
     ["Verdict", r.verification?.original_verdict ?? "—", r.verification?.fixed_verdict ?? "—", ""],
@@ -642,7 +642,7 @@ function ServerAfter({ run, mesh, problem, shell }: { run: Extract<ServerRun, { 
   const firstAfter = r.prices?.after?.find((x) => x.unit_cost_usd != null) ?? null;
   const firstBefore = firstAfter ? r.prices?.before?.find((x) => x.qty === firstAfter.qty) ?? null : null;
   const figs = [
-    { k: "Methods", v: `${fixed.methods_can_make.count} of ${fixed.methods_can_make.of}`, s: `was ${r.original.methods_can_make.count} of ${r.original.methods_can_make.of}`, tone: fixed.methods_can_make.count > r.original.methods_can_make.count ? "ok" : "" },
+    { k: "Processes", v: `${fixed.methods_can_make.count} of ${fixed.methods_can_make.of}`, s: `was ${r.original.methods_can_make.count} of ${r.original.methods_can_make.of}`, tone: fixed.methods_can_make.count > r.original.methods_can_make.count ? "ok" : "" },
     firstAfter
       ? { k: `Cheapest at ${qtyWord(firstAfter.qty)}`, v: money(firstAfter.unit_cost_usd), s: firstBefore?.unit_cost_usd != null ? `was ${money(firstBefore.unit_cost_usd)}` : `was none · ${methodName(firstAfter.process).toLowerCase()}`, tone: "ok" }
       : { k: "Prices", v: r.prices ? "None" : "Not priced", s: r.prices ? "nothing it doesn’t block" : "", tone: "" },
@@ -658,8 +658,8 @@ function ServerAfter({ run, mesh, problem, shell }: { run: Extract<ServerRun, { 
       by.set(t, [...(by.get(t) ?? []), f]);
     }
     return [...by.entries()].map(([k, fs]) => {
-      const methods = [...new Set(fs.map((f) => (f.process ? methodName(f.process) : "every method")))];
-      return { k, s: `${methods.length > 3 ? `${methods.length} methods` : methods.join(", ")} · ${tidy(fs[0].message)}`, ...who(fs[0]) };
+      const methods = [...new Set(fs.map((f) => (f.process ? methodName(f.process) : "every process")))];
+      return { k, s: `${methods.length > 3 ? `${methods.length} processes` : methods.join(", ")} · ${tidy(fs[0].message)}`, ...who(fs[0]) };
     });
   };
   const lines: { k: string; s: string; who: string; tone: string }[] = [

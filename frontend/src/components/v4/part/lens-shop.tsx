@@ -123,7 +123,7 @@ export function ShopSheet() {
   const mine = !!m?.method && ch.choice?.process === m.method.code;
   return (
     <>
-      <SheetTop title="Your machines" meta={`${views.length} machine${views.length === 1 ? "" : "s"} · fit by size, weight and material`} figs={figs} />
+      <SheetTop title="Your machines" meta={`${views.length} machine${views.length === 1 ? "" : "s"} · fit by size, weight and material`} figs={figs} sure="shop" />
       <div className="scroll">
         <RunNotice />
         {p.interrupted ? null : (

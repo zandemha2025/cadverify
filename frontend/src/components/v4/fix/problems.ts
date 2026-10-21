@@ -461,7 +461,7 @@ export function gap(m: Pick<ProblemMethod, "need" | "measured" | "dir">): number
 
 export function problemFigs(p: Problem, m: ProblemMethod | null, pricedOf: number): ProblemFig[] {
   if (p.id === "open") {
-    return [measuredFig(p, m), { k: "Needs", v: "Closed solid", s: "every method" }, { k: "Priced", v: `0 of ${pricedOf}`, s: "needs a volume", tone: "bad" }];
+    return [measuredFig(p, m), { k: "Needs", v: "Closed solid", s: "every process" }, { k: "Priced", v: `0 of ${pricedOf}`, s: "needs a volume", tone: "bad" }];
   }
   const figs: ProblemFig[] = [measuredFig(p, m)];
   const nt = m ? needText(m) : null;
@@ -481,10 +481,10 @@ export function problemFigs(p: Problem, m: ProblemMethod | null, pricedOf: numbe
 /** The words on the part next to the pin. */
 export function callout(p: Problem, m: ProblemMethod | null): { main: string; sub: string } {
   const msg = p.primary.message ?? "";
-  const name = m ? lower(m.name) : "every method";
+  const name = m ? lower(m.name) : "every process";
   if (p.id === "open") {
     const e = numIn(msg, /has\s+(\d[\d,]*)\s+boundary edges/);
-    return { main: e != null ? `${n0(e)} open edges` : "Open shell", sub: "every method needs a closed solid" };
+    return { main: e != null ? `${n0(e)} open edges` : "Open shell", sub: "every process needs a closed solid" };
   }
   if (p.id === "draft") {
     const need = m?.need ?? 1;
@@ -507,12 +507,12 @@ export function callout(p: Problem, m: ProblemMethod | null): { main: string; su
 /** The reason in plain words, from the measured values. */
 export function plainReason(p: Problem, m: ProblemMethod | null, pricedOf: number): string {
   const msg = p.primary.message ?? "";
-  const name = m?.name ?? "Every method";
+  const name = m?.name ?? "Every process";
   const verdict = (m?.severity ?? p.severity) === "error" ? "it can’t make this part as drawn" : "it’s flagged to check first";
   switch (p.id) {
     case "open": {
       const e = numIn(msg, /has\s+(\d[\d,]*)\s+boundary edges/);
-      return `The file doesn’t enclose a volume${e != null ? `: ${n0(e)} edges are open` : ""}. Every method needs a closed solid, and without a volume nothing can be priced${pricedOf ? ` (0 of ${pricedOf} methods have a price)` : ""}.`;
+      return `The file doesn’t enclose a volume${e != null ? `: ${n0(e)} edges are open` : ""}. Every process needs a closed solid, and without a volume nothing can be priced${pricedOf ? ` (0 of ${pricedOf} processes have a price)` : ""}.`;
     }
     case "thin":
       if (m?.measured != null && m.need != null) return `The thinnest wall measures ${m.measured.toFixed(1)} mm. ${name} needs at least ${m.need.toFixed(1)} mm, so ${verdict}.`;
@@ -622,4 +622,21 @@ export function problemForIssue(set: ProblemSet, code: string | null | undefined
   if (!code) return null;
   const fam = familyOf(code);
   return set.problems.find((p) => p.id === fam.id) ?? null;
+}
+
+/** Whether a problem applies to a process (null: every process): it reported it, or it applies to the whole file. */
+export function appliesTo(p: Pick<Problem, "universal" | "methods" | "blocks" | "warns">, code: string | null): boolean {
+  if (!code) return true;
+  return p.universal || p.blocks.includes(code) || p.warns.includes(code) || p.methods.some((m) => m.code === code);
+}
+
+/** "Stops filament printing (FDM/FFF): needs at least 0.8 mm, measured 0.5 mm", for one process in the list. */
+export function forProcessLine(p: Problem, code: string, label: string): string | null {
+  const m = p.methods.find((x) => x.code === code);
+  if (!m) return p.universal ? `${p.severity === "error" ? "Stops" : "Flags"} every process, ${lower(label)} too` : null;
+  const verb = m.severity === "error" ? "Stops" : "Flags";
+  const nt = needText(m);
+  const meas = m.measured != null ? measure(m.measured, m.unit) : null;
+  const need = nt == null ? null : m.dir === "max" ? `allows at most ${nt}` : `needs at least ${nt}`;
+  return `${verb} ${lower(label)}${need ? `: ${need}${meas ? `, measured ${meas}` : ""}` : ""}`;
 }

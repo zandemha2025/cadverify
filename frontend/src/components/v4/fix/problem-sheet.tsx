@@ -13,16 +13,17 @@ import { useFix } from "./ctx";
 import { alternativeOf, fixText, methodHead, needText, plainReason, problemFigs, ruleOf, shortText, type Problem } from "./problems";
 import { unlockOf, unlockQty, unlockRows } from "./rank";
 import { canFixLine, fixRoute } from "./capabilities";
+import { processLabel } from "../part/model";
 import "./fix.css";
 
 export function blocksChip(p: Problem, total: number): { text: string; tone: string } {
   if (p.severity === "error") {
-    if (p.universal || (total > 0 && p.blocks.length >= total)) return { text: "Blocks every method", tone: "c-bad" };
-    return { text: `Blocks ${p.blocks.length} ${p.blocks.length === 1 ? "method" : "methods"}`, tone: "c-bad" };
+    if (p.universal || (total > 0 && p.blocks.length >= total)) return { text: "Blocks every process", tone: "c-bad" };
+    return { text: `Blocks ${p.blocks.length} ${p.blocks.length === 1 ? "process" : "processes"}`, tone: "c-bad" };
   }
   const n = p.warns.length;
-  if (p.universal && !n) return { text: "Flags every method", tone: "c-warn" };
-  return { text: `Flags ${n} ${n === 1 ? "method" : "methods"}`, tone: "c-warn" };
+  if (p.universal && !n) return { text: "Flags every process", tone: "c-warn" };
+  return { text: `Flags ${n} ${n === 1 ? "process" : "processes"}`, tone: "c-warn" };
 }
 
 /** The roving radio list: arrows move and pick, Home and End jump. */
@@ -108,10 +109,20 @@ export function ProblemSheet() {
     : route?.kind === "studio" || route?.kind === "server"
       ? { label: "Steps for your CAD tool", run: () => fx.openAsk(P.id, "upload") }
       : { label: "Upload the fixed file", run: up.pick };
-  const head = P.id === "thin" ? "Same wall, by method" : P.id === "draft" ? "Same walls, by method" : "Same problem, by method";
+  const head = P.id === "thin" ? "Same wall, by process" : P.id === "draft" ? "Same walls, by process" : "Same problem, by process";
   const list = P.universal ? [] : P.methods;
   const mi = Math.max(0, list.findIndex((x) => x.code === m?.code));
   const count = fx.set.problems.length;
+  // Step through the same list K4 shows (ranked, and for the chosen process when one is chosen).
+  const only = fx.only;
+  const steps = fx.shown.some((u) => u.problem.id === P.id) ? fx.shown : fx.ranked;
+  const at0 = steps.findIndex((u) => u.problem.id === P.id);
+  const step = (d: number) => {
+    if (steps.length < 2) return;
+    const next = steps[((at0 < 0 ? 0 : at0) + d + steps.length) % steps.length].problem;
+    const keep = m && next.methods.some((x) => x.code === m.code) ? m.code : only && next.methods.some((x) => x.code === only) ? only : null;
+    fx.openProblem(next.id, keep);
+  };
   return (
     <>
       <div className="top">
@@ -124,6 +135,16 @@ export function ProblemSheet() {
             <button className="btn sm" type="button" onClick={fx.turn} disabled={!fx.canTurn} title={fx.canTurn ? (fx.pin === "inside" ? "Turn on X-ray to see inside the part" : "Turn the part to face it") : "Needs the 3D view"}>
               Turn to it
             </button>
+            {steps.length > 1 ? (
+              <>
+                <button className="btn sm" type="button" aria-label="Previous problem" title={`Previous problem${only ? ` for ${processLabel(only).toLowerCase()}` : ""}`} onClick={() => step(-1)} style={{ width: 32, padding: 0 }}>
+                  ‹
+                </button>
+                <button className="btn sm" type="button" aria-label="Next problem" title={`Next problem${only ? ` for ${processLabel(only).toLowerCase()}` : ""}`} onClick={() => step(1)} style={{ width: 32, padding: 0 }}>
+                  ›
+                </button>
+              </>
+            ) : null}
             <button className="btn sm ghost" type="button" onClick={() => fx.openAll(P.id)}>
               <span className="on-desk">All {count} problems</span>
               <span className="on-phone">All {count}</span>
@@ -185,7 +206,7 @@ export function ProblemSheet() {
             <p className="kfoot">{foot}</p>
           </>
         ) : (
-          <p className="kfoot">This part has an analysis only, so there are no prices to compare. Checking it again prices every method.</p>
+          <p className="kfoot">This part has an analysis only, so there are no prices to compare. Checking it again prices every process.</p>
         )}
         {list.length > 1 ? (
           <>

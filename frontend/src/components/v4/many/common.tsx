@@ -127,7 +127,7 @@ export function PilotGate({
   slot: string;
   features: { title: string; text: string; tone: string }[];
   inputs: string[];
-  /** Which Many parts tab is current (0 Batches, 1 Triage, 2 Imports). */
+  /** Which Many parts tab is current (0 Batches, 1 Make or buy, 2 Imports). */
   tab?: number;
 }) {
   return (
@@ -185,7 +185,7 @@ export function PilotGate({
         </div>
         <div className="inc">
           <span>Batch runs</span>
-          <span>Triage and capability changes</span>
+          <span>Make or buy and capability changes</span>
           <span>Imports and BOM preview</span>
           <span>Fit in assembly</span>
           <span>Assemblies and file repair</span>

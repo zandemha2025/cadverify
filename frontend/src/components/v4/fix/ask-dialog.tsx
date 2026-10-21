@@ -178,7 +178,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
       rr.s === "running"
         ? [
             { k: edges ? `Closing the ${edges} open edges` : "Closing the open shell", s: "trimesh, then MeshFix", c: "now" },
-            { k: "Checking the repaired copy", s: "the same methods as an upload", c: "wait" },
+            { k: "Checking the repaired copy", s: "the same processes as an upload", c: "wait" },
             { k: "Comparing both shapes", s: "faces, volume and verdict", c: "wait" },
           ]
         : rr.s === "fixed"
@@ -245,7 +245,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
         <Steps
           steps={[
             { k: edges ? `Closes the ${edges} open edges` : "Closes the open shell", s: "trimesh first; MeshFix if that isn’t enough", c: "" },
-            { k: "Checks the repaired copy", s: "The same methods as an upload", c: "" },
+            { k: "Checks the repaired copy", s: "The same processes as an upload", c: "" },
             { k: "Shows both shapes side by side", s: "Faces, volume and verdict before and after", c: "" },
           ]}
         />
@@ -394,7 +394,7 @@ function StudioBody({ P, close }: { P: Problem; close: () => void }) {
     const steps: Step[] = [
       { k: `Generating revision ${sr.revision ?? next}`, s: "isolated CAD process", c: status === "generating" ? "now" : status === "failed" && !sr.sessionId ? "bad" : "done" },
       { k: `Checking revision ${sr.revision ?? next}`, s: session?.status === "failed" ? failureText(session.failure) : "the same check and prices as an upload", c: checkState },
-      { k: `Comparing revisions ${sr.from.revision} and ${sr.revision ?? next}`, s: "methods, prices, problems left", c: ready ? "done" : "wait" },
+      { k: `Comparing revisions ${sr.from.revision} and ${sr.revision ?? next}`, s: "processes, prices, problems left", c: ready ? "done" : "wait" },
     ];
     return (
       <>
@@ -531,7 +531,7 @@ function StudioBody({ P, close }: { P: Problem; close: () => void }) {
             <b>Not in this change: {others.map((b) => b.title.toLowerCase()).join(", ")}</b>
             <span>
               {others.some((b) => b.id === "draft") && origin.plan.kind === "bracket" ? "The bracket template has no draft parameter, so " : "These aren’t template parameters, so "}
-              the methods they stop stay blocked in revision {next}. Download the STEP to change them in your CAD tool.
+              the processes they stop stay blocked in revision {next}. Download the STEP to change them in your CAD tool.
             </span>
           </div>
         ) : null}
@@ -543,7 +543,7 @@ function StudioBody({ P, close }: { P: Problem; close: () => void }) {
           steps={[
             { k: `Generates revision ${next}`, s: `Real CAD from the same template, in an isolated CAD process. Revision ${origin.revision} stays downloadable and verifiable.`, c: "" },
             { k: `Checks revision ${next}`, s: newCheckLine(shell.usage, "The same check and prices as an upload"), c: "" },
-            { k: "Shows both revisions", s: "What changed: methods, prices and problems left", c: "" },
+            { k: "Shows both revisions", s: "What changed: processes, prices and problems left", c: "" },
           ]}
         />
       </div>
@@ -924,7 +924,7 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
               ) : null}
             </div>
             <small>
-              {red && red.process === best.m.code ? `From the cost engine’s price if redesigned (“${red.caveat}”). ` : "The cost engine’s price for this method on today’s shape. "}
+              {red && red.process === best.m.code ? `From the cost engine’s price if redesigned (“${red.caveat}”). ` : "The cost engine’s price for this process on today’s shape. "}
               {u.today ? `Today’s cheapest at ${qtyWord(uq)} is ${u.today.m.name.toLowerCase()}, ${money(u.today.price)}.` : `Nothing can be ordered today at ${qtyWord(uq)}.`}
             </small>
           </div>
@@ -934,7 +934,7 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
               {u.excluded.length && !u.partial.length
                 ? `${u.excluded.map((m) => m.name).join(", ")} ${u.excluded.length === 1 ? "is" : "are"} ruled out by this part’s service conditions, so this fix adds no price: ${u.excluded[0].excludedReason}`
                 : u.partial.length
-                ? `No new price from this fix alone: each method it stops also needs ${[...new Set(u.partial.flatMap((x) => x.others.map((o) => o.title.toLowerCase())))].join(", ")}.`
+                ? `No new price from this fix alone: each process it stops also needs ${[...new Set(u.partial.flatMap((x) => x.others.map((o) => o.title.toLowerCase())))].join(", ")}.`
                 : p.data.cost
                   ? "Nothing it stops has a price at this quantity."
                   : "This part has an analysis only; the check on the fixed file prices it."}

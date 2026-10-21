@@ -133,7 +133,7 @@ export function UseSheet() {
   };
   return (
     <>
-      <SheetTop title="Service conditions" meta={hasServiceConditions(stored) ? "Saved with this part" : "Not set · nothing ruled out"} figs={figs} />
+      <SheetTop title="Service conditions" meta={hasServiceConditions(stored) ? "Saved with this part" : "Not set · nothing ruled out"} figs={figs} sure="use" />
       <div className="scroll">
         <RunNotice />
         {p.interrupted ? null : (

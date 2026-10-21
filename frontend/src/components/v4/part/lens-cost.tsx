@@ -1,6 +1,6 @@
 "use client";
 
-/** Cost: price by quantity. A chart you can drag, cheapest first, where the money goes, and tooling. */
+/** Cost: price by quantity. A chart you can drag, cheapest first, where the money goes, tooling, and the way into the cost breakdown. */
 import * as React from "react";
 import Link from "next/link";
 import { R } from "../routes";
@@ -23,6 +23,9 @@ import {
   type Method,
 } from "./model";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
+import { useFix } from "../fix/ctx";
+import { problemForIssue } from "../fix/problems";
+import { wbHref } from "../workbench/chrome";
 import { followed, recordedChoice } from "./choice";
 
 /** The process the chart and its lines show: one you picked here, else your choice for the part, else ScaleCAD's pick, else the cheapest. */
@@ -161,7 +164,7 @@ export function CostLines({ estimate, where, max = 12 }: { estimate: NonNullable
           Where the {money(estimate.unit_cost_usd)} comes from, at {qtyWord(estimate.quantity)}
         </span>
         <span>
-          {g.grounded} of {g.total} from your data
+          {g.grounded} of {g.total} from your file or shop
         </span>
       </div>
       <div className="lines">
@@ -219,7 +222,7 @@ export function costTop(p: ReturnType<typeof usePart>, sel: Method | null): { ti
   return { title: "Cost per part", meta: "Drag the chart, pick a quantity or type one · model prices, not quotes", figs };
 }
 
-function insightOf(p: ReturnType<typeof usePart>) {
+function insightOf(p: ReturnType<typeof usePart>, fx: ReturnType<typeof useFix>) {
   const d = p.data.cost?.decision ?? null;
   const qs = p.qs;
   const qMax = qs[qs.length - 1];
@@ -229,11 +232,14 @@ function insightOf(p: ReturnType<typeof usePart>) {
     const blocked = tooling.verdict === "bad";
     return {
       title: `${tooling.name} is cheaper from about ${qtyWord(Math.round(d.crossover_qty))} parts`,
-      text: `${atMax != null ? `${money(atMax)} each at ${qtyWord(qMax)} by ${tooling.name.toLowerCase()}` : tooling.name}${blocked ? `, once what blocks it is fixed (${tooling.blockedReason ?? "see Make"})` : ""}. Below that the tooling doesn’t pay back.`,
-      btn: blocked ? "Show what blocks it" : "See it in Make",
+      text: `${atMax != null ? `${money(atMax)} each at ${qtyWord(qMax)} by ${tooling.name.toLowerCase()}` : tooling.name}${blocked ? `, once what blocks it is fixed (${tooling.blockedReason ?? "see Process"})` : ""}. Below that the tooling doesn’t pay back.`,
+      btn: blocked ? "Show what blocks it" : "See it in Process",
       go: () => {
         p.setSel(tooling.code);
-        p.setLens("make");
+        // What blocks the tooling process opens on the part, for that process.
+        const why = blocked ? problemForIssue(fx.set, tooling.finding?.issue.code) ?? fx.set.problems.find((x) => x.blocks.includes(tooling.code)) ?? null : null;
+        if (why) fx.openProblem(why.id, tooling.code);
+        else p.setLens("make");
       },
     };
   }
@@ -249,7 +255,7 @@ function insightOf(p: ReturnType<typeof usePart>) {
     return {
       title: `${steady.name} stays cheapest from ${qtyWord(qs[1])} parts up`,
       text: parts.join(" "),
-      btn: ih ? `Compare with your ${ih.inHouse}` : "See the methods",
+      btn: ih ? `Compare with your ${ih.inHouse}` : "See the processes",
       go: () => p.setLens(ih ? "shop" : "make"),
     };
   }
@@ -257,8 +263,8 @@ function insightOf(p: ReturnType<typeof usePart>) {
   if (!c) return null;
   return {
     title: `${c.name} is cheapest at ${qtyWord(p.q)}`,
-    text: `The cheapest route changes with quantity: ${qs.map((qq) => `${qtyWord(qq)}: ${cheapestAt(p.methods, qq)?.name.toLowerCase() ?? "none"}`).join("; ")}.`,
-    btn: "See the methods",
+    text: `The cheapest process changes with quantity: ${qs.map((qq) => `${qtyWord(qq)}: ${cheapestAt(p.methods, qq)?.name.toLowerCase() ?? "none"}`).join("; ")}.`,
+    btn: "See the processes",
     go: () => p.setLens("make"),
   };
 }
@@ -275,7 +281,8 @@ export function CostSheet() {
   const order = new Map(ranked.map((m, i) => [m.code, i]));
   const stable = [...priced].sort((a, b) => a.code.localeCompare(b.code));
   const oq = otherQtyNote(p.methods, p.qs, p.oq);
-  const insight = cost ? insightOf(p) : null;
+  const fx = useFix();
+  const insight = cost ? insightOf(p, fx) : null;
   const d = cost?.decision ?? null;
   const tooling = d?.tooling_process ? p.methods.find((m) => m.code === d.tooling_process) ?? null : null;
   const qMax = p.qs[p.qs.length - 1];
@@ -286,7 +293,7 @@ export function CostSheet() {
   const selEst = sel?.prices.get(p.q) ?? null;
   return (
     <>
-      <SheetTop {...top} />
+      <SheetTop {...top} sure="cost" />
       <div className="scroll">
         <RunNotice />
         {p.askedQty != null && cost ? (
@@ -379,7 +386,18 @@ export function CostSheet() {
                 ) : null}
               </div>
             ) : null}
-            {selEst ? <CostLines estimate={selEst} where={sel?.inHouse ? "in-house" : "route's"} /> : null}
+            {selEst ? <CostLines estimate={selEst} where={sel?.inHouse ? "in-house" : "process’s"} /> : null}
+            {p.data.key && p.data.decisionId ? (
+              <div className="note">
+                <b>Cost breakdown</b>
+                <span>Every line of this price, its source and rate; change a rate, compare processes and quantities, save scenarios.</span>
+                <span>
+                  <Link className="btn sm" href={wbHref("glass", p.data.key, { decision: p.data.decisionId, proc: sel?.code, q: p.q })}>
+                    Open the cost breakdown
+                  </Link>
+                </span>
+              </div>
+            ) : null}
             <div className="gh" style={{ marginTop: 4 }}>
               <span>Yearly volume</span>
               <span>{p.data.key ? <Link href={R.partHistory(p.data.key)}>Declare</Link> : null}</span>
@@ -394,7 +412,7 @@ export function CostSheet() {
             {d?.note ? (
               <>
                 <div className="gh" style={{ marginTop: 4 }}>
-                  <span>Engine note</span>
+                  <span>Note from the cost model</span>
                   <span>
                     <button className="btn sm ghost" type="button" aria-expanded={engOpen} onClick={() => setEngOpen((o) => !o)} style={{ height: 24 }}>
                       {engOpen ? "Hide" : "Show"}

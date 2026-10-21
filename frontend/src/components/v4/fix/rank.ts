@@ -130,7 +130,7 @@ export function unlockOf(p: Problem, set: ProblemSet, methods: Method[], q: numb
   } else if (added.length) {
     tier = 1;
     key = -added.length;
-    value = `+${added.length} ${added.length === 1 ? "method" : "methods"}`;
+    value = `+${added.length} ${added.length === 1 ? "process" : "processes"}`;
     const names = someWords(added.map((m) => methodLabel(m, list)));
     const at = best ? `${methodLabel(best.m, list)} ${money(best.price)} each at ${qtyWord(q)}${today ? `, against ${lower(methodLabel(today.m, list))} ${money(today.price)}` : ""}` : null;
     sub = [names, at].filter(Boolean).join(" · ");
@@ -140,10 +140,10 @@ export function unlockOf(p: Problem, set: ProblemSet, methods: Method[], q: numb
     if (p.warnCount > 0) {
       value = `${p.warnCount} ${p.warnCount === 1 ? "warning" : "warnings"}`;
       const who = [...p.warns, ...p.blocks].map((c) => list.find((m) => m.code === c)).map((m, i) => (m ? methodLabel(m, list) : [...p.warns, ...p.blocks][i]));
-      sub = p.universal && !p.warns.length && !p.blocks.length ? "Every method" : `Clears it for ${someWords(who.map((w, i) => (i ? lower(w) : w)))}`;
+      sub = p.universal && !p.warns.length && !p.blocks.length ? "Every process" : `Clears it for ${someWords(who.map((w, i) => (i ? lower(w) : w)))}`;
     } else {
       value = "Still blocked";
-      sub = `Each method it stops has another problem too: ${someWords([...new Set(partial.flatMap((x) => x.others.map((o) => lower(o.title))))])}`;
+      sub = `Each process it stops has another problem too: ${someWords([...new Set(partial.flatMap((x) => x.others.map((o) => lower(o.title))))])}`;
     }
   } else {
     tier = 3;
@@ -229,7 +229,7 @@ export function unlockRows(
   const rows: UnlockRow[] = [];
   if (p.id === "open") {
     const priced = opts.cost?.estimates?.length ?? 0;
-    rows.push({ k: "A verdict for each method", v: String(opts.methodsTotal), s: `Today all ${opts.methodsTotal} are blocked by the open shell`, ok: true });
+    rows.push({ k: "A verdict for each process", v: String(opts.methodsTotal), s: `Today all ${opts.methodsTotal} are blocked by the open shell`, ok: true });
     rows.push({ k: "A price for each one that can make it", v: "Priced", s: priced ? "Priced once the shape is closed" : "Today none: cost needs a watertight, positive volume", ok: true });
     if (opts.fixHere) rows.push({ k: "Fix it here", v: "On a copy", s: opts.fixHere });
     else if (opts.repairable) rows.push({ k: "Repair here", v: "On a copy", s: "ScaleCAD can try a mesh repair on a copy and shows both shapes, with any change to the volume" });
@@ -272,7 +272,7 @@ export function unlockRows(
     const names = joinWords(unpriced.map((m) => m.name));
     rows.push(
       unpriced.length > 2
-        ? { k: `${unpriced.length} more methods`, v: "Possible", s: `${names}${metal ? ": they need a metal, so they aren’t priced in plastic" : `: not priced at ${qtyWord(q)}`}`, ok: true }
+        ? { k: `${unpriced.length} more processes`, v: "Possible", s: `${names}${metal ? ": they need a metal, so they aren’t priced in plastic" : `: not priced at ${qtyWord(q)}`}`, ok: true }
         : { k: names, v: "Possible", s: metal ? "Need a metal, so they aren’t priced in plastic" : `Not priced at ${qtyWord(q)}`, ok: true },
     );
   }

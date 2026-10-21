@@ -26,7 +26,7 @@ import { fetchBucket, fetchMachines, fetchRollup, type Rollup } from "./many-api
 import { bucketDef, costLabel, countOf, isStale, orderedBuckets, reasonOf, wallTooThin, type Machine, type MakeRow } from "./makeability";
 
 export const TRIAGE_GATE = {
-  title: "Triage",
+  title: "Make or buy",
   slot: "Your whole inventory",
   tab: 1,
   features: [
@@ -68,7 +68,7 @@ export function TriageScreen() {
       setRoll(await fetchRollup());
     } catch (e) {
       if (isPaidAccessError(e)) gate();
-      setRollErr(errorText(e, "Triage didn’t load."));
+      setRollErr(errorText(e, "Make or buy didn’t load."));
     }
   }, [gate]);
 
@@ -210,9 +210,9 @@ export function TriageScreen() {
   const importLabel = importing ? "Importing…" : "Import BOM CSV";
 
   return (
-    <ManyWorld label="Triage">
+    <ManyWorld label="Make or buy">
       <div className="pagehead">
-        <h1 className="ptitle">Triage</h1>
+        <h1 className="ptitle">Make or buy</h1>
         <p className="pmeta" style={{ marginTop: 6 }}>
           {roll ? (
             <>
@@ -275,7 +275,7 @@ export function TriageScreen() {
         {rollErr && !roll ? (
           <Panel>
             <Empty
-              title="Triage didn’t load"
+              title="Make or buy didn’t load"
               actions={
                 <button className="btn sm" type="button" onClick={() => void loadRoll()}>
                   Try again

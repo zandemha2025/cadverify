@@ -91,7 +91,7 @@ export function whoFixes(p: Problem, origin: FixOrigin, millingWorks: boolean): 
   const r = fixRoute(p, origin);
   if (r) return { label: "ScaleCAD can fix", tone: "c-ok" };
   if (p.noChange === "shop") return { label: "At the shop", tone: "c-unk" };
-  if (p.noChange === "method") return p.id === "round" && millingWorks ? { label: "Use milling", tone: "c-ok" } : { label: "Another method", tone: "c-unk" };
+  if (p.noChange === "method") return p.id === "round" && millingWorks ? { label: "Use milling", tone: "c-ok" } : { label: "Another process", tone: "c-unk" };
   return { label: "In your CAD", tone: "c-unk" };
 }
 

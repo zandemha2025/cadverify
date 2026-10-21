@@ -228,7 +228,7 @@ export function DecideSheet() {
     : "";
   return (
     <>
-      <SheetTop title="Decision" meta={`Owner ${owner} · recorded on this part’s record`} figs={figs} />
+      <SheetTop title="Decision" meta={`Owner ${owner} · recorded on this part’s record`} figs={figs} sure="decide" />
       <div className="scroll">
         <RunNotice />
         {p.interrupted ? null : (

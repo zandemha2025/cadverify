@@ -178,6 +178,9 @@
 .ob .pv .kpr .where{display:inline-flex;align-items:center;gap:5px}
 .ob .pv .kpr .where i{width:16px;height:16px;border-radius:999px;border:1.5px solid currentColor;font-style:normal;font-size:9.5px;font-weight:700;display:inline-grid;place-items:center;flex:none}
 @media (hover:hover) and (pointer:fine){.ob .pv .kpr:hover{background:rgba(255,255,255,.75)}.ob .pv .kpr.on:hover{background:#fff}}
+.ob .pv .kfor-pick{margin-top:12px}
+.ob .pv .kfor-pick select{max-width:100%}
+.ob .pv .kpr small.kfor{color:var(--ink2)}
 .ob .pv .kpd{margin:0 12px 6px 48px;padding:10px 12px;border-radius:12px;background:rgba(20,24,31,.035);display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px;color:var(--ink2)}
 .ob .pv .kpd span:nth-child(odd){color:var(--ink3)}
 .ob .pv .kpd .kshow{grid-column:1 / -1;justify-self:start;margin-top:2px}

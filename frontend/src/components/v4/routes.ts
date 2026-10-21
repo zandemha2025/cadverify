@@ -39,17 +39,23 @@ export const R = {
   billing: "/app/account/billing",
   notifications: "/app/account/notifications",
   activity: "/app/account/activity",
+  data: "/app/account/data",
 } as const;
 
 export type NavSection = "home" | "parts" | "many" | "make" | "shop" | "account";
 
-/** Top-bar sections. `pilot` marks pilot-plan tools (shown, labelled, gated on use). */
+/**
+ * Top-bar sections, in the order of the ops owner's job: your parts, which of
+ * them to make on your own machines (make or buy across parts, with batches and
+ * imports beside it), your shop, then the design tools. `pilot` marks a
+ * pilot-plan section (shown, labelled, gated on use); none is labelled today.
+ */
 export const NAV: { key: NavSection; label: string; href: string; pilot?: boolean }[] = [
   { key: "home", label: "Home", href: R.home },
   { key: "parts", label: "Parts", href: R.parts },
-  { key: "many", label: "Many parts", href: R.many, pilot: true },
-  { key: "make", label: "Design tools", href: R.studio },
+  { key: "many", label: "Make or buy", href: R.triage },
   { key: "shop", label: "Your shop", href: R.shop },
+  { key: "make", label: "Design tools", href: R.studio },
 ];
 
 /** Sibling tabs per section (the `.subnav` row under a page title). */
@@ -86,6 +92,7 @@ export const TABS: Record<Exclude<NavSection, "home">, { label: string; href: st
     { label: "Plan and billing", href: R.billing },
     { label: "Notifications", href: R.notifications },
     { label: "Activity", href: R.activity },
+    { label: "Files and data", href: R.data },
   ],
 };
 
