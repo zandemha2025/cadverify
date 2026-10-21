@@ -728,6 +728,29 @@ class TrialCheck(Base):
     operations: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class CatalogPart(Base):
+    """One distinct part a free account ran in a catalog run (migration 0052).
+
+    ``file_hash`` is the same file identity as a check (filename and bytes).
+    ``reserved`` while its batch item runs, ``counted`` once it completes; a part
+    that fails or is skipped deletes its row so the slot comes back. Deleting the
+    batch or the part keeps the row: the slot stays used.
+    """
+    __tablename__ = "catalog_parts"
+    __table_args__ = (
+        Index("ix_catalog_parts_batch_item", "batch_item_id"),
+        CheckConstraint("state IN ('reserved', 'counted')", name="ck_catalog_parts_state"),
+    )
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    file_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    batch_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("batches.id", ondelete="SET NULL"), nullable=True)
+    batch_item_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("batch_items.id", ondelete="SET NULL"), nullable=True)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+
 class BillingAccount(Base):
     """Stripe customer/subscription for a self-serve Pro account."""
     __tablename__ = "billing_accounts"
