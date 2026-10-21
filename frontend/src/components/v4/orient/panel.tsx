@@ -205,7 +205,7 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
           </button>
         </div>
         <p className="smeta">
-          This check: {isIdentity(shown) ? "as in the file" : label(shown).toLowerCase().replace(/^file/, "the file's")}. Up is the build direction for printing and the direction the tool opens for molding and casting.
+          This check: {isIdentity(shown) ? "as in the file" : `the file's ${upWord(shown)} up`}. Up is the build direction for printing and the direction the tool opens for molding and casting.
         </p>
       </div>
       <div className="scroll">
@@ -386,7 +386,7 @@ function Rechecked({ rc, running, failed, onBack, canRecheck, options }: { rc: O
           </button>
         </div>
         <h2 className="stitle" style={{ marginTop: 10 }}>
-          Re-checked: {label(nowRot).replace(/^File/, "the file's").replace(/^As in the file$/, "as in the file")}
+          Re-checked: {isIdentity(nowRot) ? "as in the file" : `the file's ${upWord(nowRot)} up`}
         </h2>
         <p className="smeta">Same file, no new check · the 3D view shows {showing === "before" ? "how it was checked before" : "how it is checked now"}</p>
       </div>

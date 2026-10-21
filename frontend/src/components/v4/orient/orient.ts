@@ -508,7 +508,8 @@ export function compare(before: Side, now: Side, q: number, process: string | nu
   for (const m of mn) {
     const o = mb.find((x) => x.code === m.code);
     if (!o) continue;
-    if ([...m.prices.keys()].some((qq) => priceAt(o, qq) !== priceAt(m, qq))) pricesChanged.push(m.code);
+    // Only quantities both checks priced (an earlier record may have priced other ones).
+    if ([...m.prices.keys()].some((qq) => o.prices.has(qq) && priceAt(o, qq) !== priceAt(m, qq))) pricesChanged.push(m.code);
   }
   const pricesSame = pricesChanged.length === 0;
   void q;

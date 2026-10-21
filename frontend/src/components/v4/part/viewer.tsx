@@ -691,6 +691,37 @@ export default function PartViewer({
     }
   }, [current, anchor, onPin]);
 
+  // Orientation: support faces always face down, so look from just under the part's
+  // centre while they are coloured; otherwise the usual view from above.
+  const lookUnder = !!orient && shade?.kind === "overhang" && (shaded?.faces.length ?? 0) > 0;
+  React.useEffect(() => {
+    if (!orient) return;
+    const to = lookUnder ? 1.75 : 1.137;
+    let frame = 0;
+    let tries = 0;
+    let anim: { from: number; t0: number } | null = null;
+    const step = () => {
+      const c = controls.current;
+      if (!c) {
+        // The canvas mounts its controls a frame or two after the part loads.
+        if (tries++ < 120) frame = requestAnimationFrame(step);
+        return;
+      }
+      if (!anim) {
+        anim = { from: c.getPolarAngle(), t0: performance.now() };
+        if (Math.abs(anim.from - to) < 1e-3) return;
+      }
+      const t = reduce ? 1 : Math.min(1, (performance.now() - anim.t0) / 520);
+      const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      c.setPolarAngle(anim.from + (to - anim.from) * e);
+      c.update();
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookUnder, poseKey, !!orient, current]);
+
   if (webgl !== true || !current || !pose) return null;
   const halfY = pose.halfY;
   return (

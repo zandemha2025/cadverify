@@ -212,6 +212,11 @@ test("before and after a re-check: findings, methods and prices from the two res
   (dearer.cost.estimates[1] as { unit_cost_usd: number }).unit_cost_usd = 28.94;
   const c2 = compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: dearer.validation as never, cost: dearer.cost as never, rotation: matOf(rec) }, 100, "fdm");
   assert.deepEqual(c2.pricesChanged, ["fdm"]);
+  // A quantity only one of the two checks priced is not a change.
+  const more = side([60, 45, 40], [], rec);
+  more.cost.estimates.push(est("fdm", 2000, 19.1));
+  const c4 = compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: more.validation as never, cost: more.cost as never, rotation: matOf(rec) }, 100, "fdm");
+  assert.deepEqual(c4.pricesChanged, []);
   assert.equal(c2.rows.find((r) => /\$/.test(r.now)), undefined);
   assert.equal(row("Filament printing at 100"), undefined); // no price rows: prices don't depend on it
   // With the comparison's figures: layers, work area and the space under the support faces.
