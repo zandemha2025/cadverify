@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * F9 · New part: drop one CAD file with the costing options beside it. The
- * Workbench runs its own cost (POST /validate/cost) and DFM check
- * (POST /validate) with those options; "Open decision" lands on the lens's tab.
+ * F9 · Cost a new file: drop one CAD file with the costing options beside it.
+ * The cost breakdown runs its own cost (POST /validate/cost) and DFM check
+ * (POST /validate) with those options; the result is saved like any check, so
+ * the part page shows it too. "Open the cost breakdown" lands on the tab you
+ * used last; an issue link opens that problem on the part page.
  */
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
@@ -12,12 +14,14 @@ import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import { fileExt, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { clientStlIntegrityError } from "@/lib/stl-validation";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
-import { R, TABS } from "../routes";
+import Link from "next/link";
+import { R } from "../routes";
+import { familyOf } from "../fix/problems";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
-import { Failed, Loading, SubNav, cx } from "../ui";
+import { Failed, Loading, cx } from "../ui";
 import { DEFAULT_FORM, formProblem, formToOptions, cavProblem, qtyParts, qtyProblem, type FormDraft } from "./derive";
 import { beginPart, getWb, retryBegin, useWb } from "./session";
-import { WbLink, lensDef, takeNewPartFile, useLens, wbHref, useWbNav } from "./chrome";
+import { WbLink, lastTab, takeNewPartFile, wbHref, useWbNav } from "./chrome";
 import { COMPLEXITY_OPTIONS, MATERIAL_OPTIONS, REGION_OPTIONS, methodName, money, qtyListText, qtyText, whenText } from "./words";
 
 type ErrKind = "timeout" | "qty" | "type" | "geom" | "quota" | "unreadable";
@@ -133,10 +137,10 @@ function Recent() {
   return (
     <section className="panel rec" aria-labelledby="rec-h">
       <div className="ph">
-        <h2 id="rec-h">Recent</h2>
+        <h2 id="rec-h">Recent parts</h2>
         <span>
-          <a className="lk" href={R.records} style={{ fontSize: 12.5 }}>
-            All records
+          <a className="lk" href={R.parts} style={{ fontSize: 12.5 }}>
+            All parts
           </a>
         </span>
       </div>
@@ -176,11 +180,9 @@ function Recent() {
 
 export function NewPart() {
   const s = useWb();
-  const lens = useLens();
   const nav = useWbNav();
   const sp = useSearchParams();
   const issue = sp.get("issue");
-  const issueEvidence = sp.get("issue_evidence");
   const [form, setFormState] = React.useState<FormDraft>(draftMem);
   const setForm = (f: FormDraft) => {
     draftMem = f;
@@ -255,23 +257,22 @@ export function NewPart() {
     await retryBegin();
     settle();
   };
-  const landing = lensDef(lens).tab;
-  const openHref = s.key
-    ? issue
-      ? wbHref("routing", s.key, { issue, issue_evidence: issueEvidence })
-      : wbHref(landing, s.key, lens === "buyer" ? { trust: 1 } : undefined)
-    : R.workbench;
+  // An issue link opens that problem where every problem lives: on the part page.
+  const issueCode = issue ? issue.split("|")[0] : null;
+  const openHref = s.key ? wbHref(lastTab(), s.key) : R.workbench;
+  const problemHref = s.key && issueCode ? `${R.part(s.key)}?problem=${encodeURIComponent(familyOf(issueCode).id)}` : null;
 
   return (
     <>
       <div className="pagehead">
-        <h1 className="ptitle">Workbench</h1>
+        <h1 className="ptitle">Cost breakdown</h1>
         <p className="pmeta">
-          <span>No part loaded</span>
-          <span>STL, STEP, STP, IGES, IGS</span>
-          <span>Uploaded CAD kept as evidence for your organization</span>
+          <span>
+            <Link href={R.parts}>‹ Parts</Link>
+          </span>
+          <span>Open a part below, or cost a new file with your own options</span>
+          <span>Your uploaded file is kept for your organization</span>
         </p>
-        <SubNav tabs={TABS.make} label="Make and fit" />
       </div>
       <div className="wb-main">
         <div
@@ -294,12 +295,12 @@ export function NewPart() {
         >
           {phase === "idle" ? (
             <>
-              <b>No part loaded</b>
-              <span>Drop one CAD file to cost it and check it.</span>
+              <b>Cost a new file</b>
+              <span>Drop one CAD file to cost it with the options on the right. It’s checked like any part and saved to Parts.</span>
               <button className="btn ink" type="button" onClick={choose}>
                 Choose file
               </button>
-              <small>STL, STEP, STP, IGES or IGS · options on the right apply</small>
+              <small>STL, STEP, STP, IGES or IGS · uses a check, like Check a part</small>
             </>
           ) : phase === "up" ? (
             <>
@@ -323,9 +324,21 @@ export function NewPart() {
                 {name}
               </b>
               <span role="status">{s.dfm.phase === "running" ? "Costed · still checking DFM" : "Costed and checked"}</span>
-              <WbLink className="btn ink" href={openHref}>
-                Open decision
-              </WbLink>
+              <span style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                {problemHref ? (
+                  <Link className="btn ink" href={problemHref}>
+                    Open the problem on the part
+                  </Link>
+                ) : null}
+                <WbLink className={cx("btn", !problemHref && "ink")} href={openHref}>
+                  Open the cost breakdown
+                </WbLink>
+                {s.key ? (
+                  <Link className="btn" href={R.part(s.key)}>
+                    Open the part
+                  </Link>
+                ) : null}
+              </span>
             </>
           )}
           <input
@@ -345,7 +358,7 @@ export function NewPart() {
         {issue && phase === "idle" ? (
           <div className="iss" role="note">
             <b>Issue link · {issue.split("|")[0]}</b>
-            <span>Drop the same file to open that finding. The link doesn’t contain the file.</span>
+            <span>Drop the same file to open that problem on its part page. The link doesn’t contain the file.</span>
           </div>
         ) : null}
         {phase === "err" && err ? (
@@ -387,7 +400,7 @@ export function NewPart() {
       <aside className="sheet" aria-label="Costing options">
         <div className="top">
           <h2 className="stitle">Costing options</h2>
-          <p className="smeta">Applied to the next file · change later in Decision</p>
+          <p className="smeta">Applied to the next file · change later in Summary</p>
         </div>
         <div className="scroll">
           <div className="wb-frm">

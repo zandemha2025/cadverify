@@ -8,6 +8,7 @@
  * read off the app's breakeven curves and labelled "About".
  */
 import * as React from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   createRfqPackage,
@@ -39,7 +40,8 @@ import {
   type FormDraft,
 } from "./derive";
 import { findPackage, markShared, recost, retryCost, setPackage, useShops, useWb, type WbState } from "./session";
-import { Dialog, WbHead, WbLink, useLens, useNeedFile, useToast, wbHref } from "./chrome";
+import { Dialog, WbHead, WbLink, useNeedFile, useToast, wbHref } from "./chrome";
+import { familyOf } from "../fix/problems";
 import { OptionsForm } from "./new-part";
 import { Turntable } from "./turntable";
 import { daysRange, materialName, money, qtyListText, qtyText } from "./words";
@@ -88,7 +90,7 @@ function SavedCard({ filename }: { filename: string }) {
     return (
       <div className="saved">
         <div className="row1">
-          <span>Not saved to Records</span>
+          <span>Not saved to Cost records</span>
         </div>
         <p style={{ margin: 0, color: "var(--ink3)", fontSize: 12.5 }}>This run wasn’t kept, so it can’t be exported or shared. Re-cost to save it.</p>
       </div>
@@ -148,7 +150,7 @@ function SavedCard({ filename }: { filename: string }) {
     <div className="saved">
       <div className="row1">
         <span>
-          <b>✓ Saved to Records</b> · decision {id.slice(0, 8)}
+          <b>✓ Saved to Cost records</b> · record {id.slice(0, 8)}
         </span>
         <a className="lk" href={R.record(id)}>
           Open
@@ -218,7 +220,6 @@ function SavedCard({ filename }: { filename: string }) {
 export function DecisionTab({ part, qty, setQty }: TabProps) {
   const s = useWb();
   const sp = useSearchParams();
-  const lens = useLens();
   const toast = useToast();
   const { need, choose } = useNeedFile();
   const shopName = useShopName();
@@ -240,7 +241,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
   const chart = be ? chartModel(be, q, at?.curve.process ?? null, max, chartW) : null;
   const red = report ? redesignNote(report) : null;
   const trustParam = sp.get("trust") === "1";
-  const [trust, setTrust] = React.useState(trustParam || lens === "buyer");
+  const [trust, setTrust] = React.useState(trustParam);
   React.useEffect(() => {
     if (trustParam) setTrust(true);
   }, [trustParam]);
@@ -465,15 +466,15 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
             <div className="red" role="note">
               <b>{red.title}</b>
               <span>{red.text}</span>
-              <WbLink className="lk" href={wbHref("routing", part)}>
-                See routing and DFM
-              </WbLink>
+              <Link className="lk" href={`${R.part(part)}?${red.code ? `problem=${encodeURIComponent(familyOf(red.code).id)}&method=${encodeURIComponent(red.process)}` : "problems=all"}`}>
+                Why, on the part
+              </Link>
             </div>
           ) : null}
           <div style={{ padding: "8px 2px 0" }}>
             <WbLink className="dis" href={wbHref("glass", part)}>
               <span>
-                Glass box <small>· every line, its source, its rate</small>
+                Line by line <small>· every cost, its source, its rate</small>
               </span>
               <span className="car" aria-hidden="true">
                 ›
@@ -482,7 +483,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
           </div>
           <button type="button" className="dis" aria-expanded={trust} onClick={() => setTrust(!trust)}>
             <span>
-              Why trust this <small>· method and range</small>
+              How sure is this? <small>· method and range</small>
             </span>
             <span className="car" aria-hidden="true">
               ▾
@@ -510,7 +511,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
                   </div>
                 </>
               ) : null}
-              <p>Uploaded CAD and analysis evidence are kept for your organization.</p>
+              <p>Your uploaded file and its analysis are kept for your organization.</p>
             </div>
           ) : trust ? (
             <div className="dbody">

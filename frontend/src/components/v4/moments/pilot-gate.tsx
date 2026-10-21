@@ -7,7 +7,7 @@
  * `paid_access_required`); this only says so up front.
  *
  * Props:
- * - `title`     the tool's name, used as the page title ("Fit in context").
+ * - `title`     the tool's name, used as the page title ("Fit in assembly").
  * - `slot`      label inside the locked preview box ("Part + assembly").
  * - `features`  three panels: `{ title, text, tone? }` (tone is a CSS colour for the swatch).
  * - `inputs`    facts under the panels (["Inputs: part + assembly", "STEP, STL, OBJ, 3MF"]).
@@ -29,7 +29,7 @@ export type PilotFeature = { title: string; text: string; tone?: string };
 export const PILOT_PLAN_FACTS = "$7,500 · 4–6 weeks · up to 500 parts · one factory";
 
 export const PILOT_INCLUDES = [
-  "Fit in context",
+  "Fit in assembly",
   "Batch runs",
   "Assemblies",
   "File repair",

@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Pieces shared by the Make and fit screens (boards F1, F2, F4, X5): the world
+ * Pieces shared by the Design tools screens (boards F1, F2, F4, X5): the world
  * these screens render in (scoped as `.mk` so their board-local classes can't
- * meet another area's), the page head with the Make and fit tabs (Fit in context
+ * meet another area's), the page head with the Make and fit tabs (Fit in assembly
  * carries its Pilot tag, and a tools slot sits beside the tabs), one toast line,
  * the account's plan, and the pilot gate.
  */
@@ -24,7 +24,7 @@ export function MakeWorld({ label, children }: { label: string; children: React.
   );
 }
 
-/** Title, facts, the Make and fit tabs, and optional tools on the tabs row. */
+/** Title, facts, the Design tools tabs, and optional tools on the tabs row. */
 export function MakeHead({ title, meta, tools }: { title: string; meta?: React.ReactNode[]; tools?: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const current = TABS.make
@@ -41,7 +41,7 @@ export function MakeHead({ title, meta, tools }: { title: string; meta?: React.R
         </p>
       ) : null}
       <div className="hrow">
-        <nav className="subnav" aria-label="Make and fit">
+        <nav className="subnav" aria-label="Design tools">
           {TABS.make.map((t) => (
             <Link key={t.href} href={t.href} className={cx(t === current && "on")} aria-current={t === current ? "page" : undefined}>
               {t.label}
@@ -140,4 +140,4 @@ export function PilotPlanCard({ includes, note = "Pro adds checks only. Pilot to
   );
 }
 
-export const PILOT_INCLUDES = ["Fit in context", "Batch runs", "Assemblies", "File repair", "Design Studio", "Recalibration from real costs"];
+export const PILOT_INCLUDES = ["Fit in assembly", "Batch runs", "Assemblies", "File repair", "Design Studio", "Recalibration from real costs"];

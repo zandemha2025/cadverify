@@ -163,7 +163,7 @@ export function OutOfChecks({
             )}
             <p>{monthly != null ? `${monthly} checks a month` : "Monthly checks"} · your machines and prices · cancel anytime</p>
             {checkout === false ? <p className="honest">Checkout is unavailable right now. Email us for more checks.</p> : null}
-            <p className="honest">Checks only. Batch runs, Fit in context and other pilot tools aren&apos;t included.</p>
+            <p className="honest">Checks only. Batch runs, Fit in assembly and other pilot tools aren&apos;t included.</p>
           </div>
         ) : null}
         <div className="opt">

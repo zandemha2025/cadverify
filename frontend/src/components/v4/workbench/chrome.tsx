@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * Workbench chrome shared by every tab: the header (title, facts, the
- * Workbench tabs, the lens menu, the rates pill, New part), dialogs, the toast,
- * and "choose the file again" for a part opened from its records.
+ * Cost breakdown chrome shared by every tab: the header (the part it belongs to,
+ * title, facts, tabs, the rates pill, Cost another file), dialogs, the toast, and
+ * "choose the file again" for a part opened from its records. This page is the
+ * detail behind a part's Cost view; problems and processes live on the part page.
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CostOptions, ShopProfileInfo } from "@/lib/api";
 import { parseCalibration } from "@/lib/cost-views";
@@ -19,24 +21,33 @@ import { shortSource } from "./words";
 
 /* ---- tabs and links ------------------------------------------------ */
 
+/** Internal tab ids. "routing" is the old DFM tab: it now opens the part page's problem list. */
 export type WbTab = "decision" | "routing" | "glass" | "compare" | "history";
 
 export const WB_TABS: { tab: WbTab; label: string }[] = [
-  { tab: "decision", label: "Decision" },
-  { tab: "routing", label: "Routing and DFM" },
-  { tab: "glass", label: "Glass box" },
+  { tab: "decision", label: "Summary" },
+  { tab: "glass", label: "Line by line" },
   { tab: "compare", label: "Compare" },
   { tab: "history", label: "History" },
 ];
 
-export function isTab(v: string | null): v is WbTab {
-  return !!v && WB_TABS.some((t) => t.tab === v);
+/** What a tab is called in the address bar. Older names (decision, glass, routing) still open the same view. */
+const URL_NAME: Record<WbTab, string> = { decision: "summary", routing: "dfm", glass: "lines", compare: "compare", history: "history" };
+const FROM_URL: Record<string, WbTab> = { summary: "decision", decision: "decision", lines: "glass", glass: "glass", dfm: "routing", routing: "routing", compare: "compare", history: "history" };
+
+/** The tab a `?tab=` value names (current or older spelling), or null. */
+export function tabOf(v: string | null): WbTab | null {
+  return v ? FROM_URL[v] ?? null : null;
 }
 
-/** A Workbench URL. Extra params (proc, q, decision) ride along for deep links. */
+export function isTab(v: string | null): boolean {
+  return tabOf(v) != null;
+}
+
+/** A cost breakdown URL. Extra params (proc, q, decision) ride along for deep links. */
 export function wbHref(tab: WbTab | null, part: string | null, extra?: Record<string, string | number | null | undefined>): string {
   const p = new URLSearchParams();
-  if (tab) p.set("tab", tab);
+  if (tab) p.set("tab", URL_NAME[tab]);
   if (part) p.set("part", part);
   for (const [k, v] of Object.entries(extra ?? {})) if (v != null && v !== "") p.set(k, String(v));
   const qs = p.toString();
@@ -79,56 +90,31 @@ export function WbLink({ href, className, children, onNavigate, ...rest }: React
   );
 }
 
-/* ---- lens (per viewer, remembered) --------------------------------- */
+/* ---- the tab you used last (per browser) --------------------------- */
 
-export type LensId = "design" | "cost" | "sourcing" | "mfg" | "buyer";
+const TAB_KEY = "v4.workbench.tab";
+let tabMem: WbTab | null = null;
 
-export const LENSES: { id: LensId; label: string; sub: string; tab: WbTab }[] = [
-  { id: "design", label: "Design eng", sub: "Tweak · lands on Decision", tab: "decision" },
-  { id: "cost", label: "Cost eng", sub: "Override and audit · lands on Glass box", tab: "glass" },
-  { id: "sourcing", label: "Sourcing", sub: "Compare and decide · lands on Compare", tab: "compare" },
-  { id: "mfg", label: "Mfg eng", sub: "Verify routing · lands on Routing and DFM", tab: "routing" },
-  { id: "buyer", label: "Buyer", sub: "Trust and approve · lands on Decision, Why trust this open", tab: "decision" },
-];
-
-const LENS_KEY = "v4.workbench.lens";
-const lensListeners = new Set<() => void>();
-let lensMem: LensId | null = null;
-
-function readLens(): LensId {
-  if (lensMem) return lensMem;
+/** The tab a part opens on: the one you used last, else Summary. */
+export function lastTab(): WbTab {
+  if (tabMem) return tabMem;
   try {
-    const v = window.localStorage.getItem(LENS_KEY) as LensId | null;
-    if (v && LENSES.some((l) => l.id === v)) lensMem = v;
+    const v = tabOf(window.localStorage.getItem(TAB_KEY));
+    if (v && v !== "routing") tabMem = v;
   } catch {
-    /* storage blocked: keep the default */
+    /* storage blocked: Summary */
   }
-  return lensMem ?? "design";
+  return tabMem ?? "decision";
 }
 
-export function setLens(id: LensId): void {
-  lensMem = id;
+export function rememberTab(tab: WbTab): void {
+  if (tab === "routing") return;
+  tabMem = tab;
   try {
-    window.localStorage.setItem(LENS_KEY, id);
+    window.localStorage.setItem(TAB_KEY, URL_NAME[tab]);
   } catch {
     /* storage blocked: remembered for this tab only */
   }
-  for (const l of lensListeners) l();
-}
-
-export function useLens(): LensId {
-  return React.useSyncExternalStore(
-    (l) => {
-      lensListeners.add(l);
-      return () => lensListeners.delete(l);
-    },
-    readLens,
-    () => "design" as LensId,
-  );
-}
-
-export function lensDef(id: LensId) {
-  return LENSES.find((l) => l.id === id) ?? LENSES[0];
 }
 
 /* ---- portal into the v4 scope -------------------------------------- */
@@ -278,7 +264,7 @@ function NeedFileHost({ children }: { children: React.ReactNode }) {
           </div>
           <div className="db">
             <p id="nf-d">
-              To {ask.reason}, the Workbench needs the CAD file. It isn’t kept in this browser, so choose it again. Saved decisions don’t change.
+              To {ask.reason}, the cost breakdown needs the CAD file. It isn’t kept in this browser, so choose it again. Saved decisions don’t change.
             </p>
             {ask.msg ? (
               <p role="alert" style={{ color: "var(--bad)" }}>
@@ -363,67 +349,6 @@ function usePopover() {
   return { open, setOpen, wrap, trigger, close };
 }
 
-function LensMenu({ part }: { part: string | null }) {
-  const lens = useLens();
-  const cur = lensDef(lens);
-  const { open, setOpen, wrap, trigger, close } = usePopover();
-  const menu = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (open) menu.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
-  }, [open]);
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-      return;
-    }
-    if (e.key === "Tab") {
-      close(false);
-      return;
-    }
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const items = [...(menu.current?.querySelectorAll<HTMLElement>(".mi") ?? [])];
-    const i = items.indexOf(document.activeElement as HTMLElement);
-    items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
-  };
-  return (
-    <span className="wrap" ref={wrap}>
-      <button ref={trigger} className="btn sm" type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Lens: {cur.label} <span aria-hidden="true">▾</span>
-      </button>
-      {open ? (
-        <div className="pop" role="menu" aria-label="Lens" ref={menu} onKeyDown={onKey}>
-          <div className="ph2">
-            <span>Lens · sets where you land</span>
-          </div>
-          {LENSES.map((l) => (
-            <WbLink
-              key={l.id}
-              className="mi"
-              role="menuitemradio"
-              aria-checked={l.id === lens}
-              href={wbHref(l.tab, part, l.id === "buyer" ? { trust: 1 } : undefined)}
-              onNavigate={() => {
-                setLens(l.id);
-                close();
-              }}
-            >
-              <span className="ck" aria-hidden="true">
-                {l.id === lens ? "✓" : ""}
-              </span>
-              <span>
-                <b>{l.label}</b>
-                <small>{l.sub}</small>
-              </span>
-            </WbLink>
-          ))}
-        </div>
-      ) : null}
-    </span>
-  );
-}
-
 function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
   const s = useWb();
   const toast = useToast();
@@ -445,7 +370,7 @@ function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
       toast(r ? (id ? `Re-costed with ${nm} rates.` : "Shop cleared. Re-costed on typical rates.") : "Re-cost didn’t finish. The last good numbers stay.");
     });
   };
-  const label = busy ? "Re-costing…" : name ? `Calibrated to ${name}` : "Not calibrated";
+  const label = busy ? "Re-costing…" : name ? `Rates: ${name}` : "Rates: typical";
   return (
     <span className="wrap" ref={wrap}>
       <button
@@ -472,10 +397,10 @@ function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
           }}
         >
           <div className="ph2">
-            <span>Bind a shop · re-costs</span>
+            <span>Use a shop’s rates · re-costs</span>
             <span>{name ?? "Typical rates"}</span>
           </div>
-          {[{ id: null as string | null, name: "Generic defaults", sub: "No shop · every rate typical" }, ...shops.map((x) => ({ id: x.id as string | null, name: x.name, sub: [x.region, shortSource(x.source)].filter(Boolean).join(" · ") }))].map((r) => (
+          {[{ id: null as string | null, name: "Typical rates", sub: "No shop · every rate typical" }, ...shops.map((x) => ({ id: x.id as string | null, name: x.name, sub: [x.region, shortSource(x.source)].filter(Boolean).join(" · ") }))].map((r) => (
             <button key={r.id ?? "none"} className="mi" type="button" aria-pressed={r.id === shopId} onClick={() => pick(r.id)} disabled={busy}>
               <span className="ck" aria-hidden="true">
                 {r.id === shopId ? "✓" : ""}
@@ -528,12 +453,12 @@ function NewPartButton() {
   return (
     <>
       <button className="btn sm" type="button" onClick={() => setOpen(true)}>
-        New part
+        Cost another file
       </button>
       {open ? (
         <Dialog role="alertdialog" labelledBy="np-t" describedBy="np-d" onClose={() => setOpen(false)} scrimLabel="Keep working" initialFocus={keep}>
           <div className="dh">
-            <h2 id="np-t">Start a new part?</h2>
+            <h2 id="np-t">Cost another file?</h2>
           </div>
           <div className="db">
             <p id="np-d">{newPartText(nOv, s.scenarios.length)}</p>
@@ -551,7 +476,7 @@ function NewPartButton() {
                 nav(R.workbench);
               }}
             >
-              New part
+              Cost another file
             </button>
           </div>
         </Dialog>
@@ -562,16 +487,28 @@ function NewPartButton() {
 
 export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string | null; meta: React.ReactNode[]; wide?: boolean }) {
   const { shops } = useShops();
+  const s = useWb();
+  const name = s.key === part ? s.filename : null;
   return (
     <div className={cx("pagehead", wide && "wide")}>
-      <h1 className="ptitle">Workbench</h1>
+      <h1 className="ptitle">Cost breakdown</h1>
       <p className="pmeta">
-        {meta.filter(Boolean).map((m, i) => (
-          <span key={i}>{m}</span>
-        ))}
+        {part ? (
+          <span>
+            <Link href={R.part(part)} title="Back to the part: problems, processes, conditions, your machines and the decision">
+              ‹ {name ?? "The part"}
+            </Link>
+          </span>
+        ) : null}
+        {meta
+          .filter(Boolean)
+          .filter((m) => !(part && name && m === name))
+          .map((m, i) => (
+            <span key={i}>{m}</span>
+          ))}
       </p>
       <div className="wbrow">
-        <nav className="subnav" aria-label="Workbench">
+        <nav className="subnav" aria-label="Cost breakdown">
           {WB_TABS.map((t) => (
             <WbLink key={t.tab} href={wbHref(t.tab, part)} className={cx(t.tab === tab && "on")} aria-current={t.tab === tab ? "page" : undefined}>
               {t.label}
@@ -579,7 +516,6 @@ export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string | n
           ))}
         </nav>
         <div className="wbt">
-          <LensMenu part={part} />
           <RatesPill shops={shops} />
           <NewPartButton />
         </div>

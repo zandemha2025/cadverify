@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Fit in context (board F2): your part and the assembly it goes into, seated in
+ * Fit in assembly (board F2): your part and the assembly it goes into, seated in
  * their shared CAD frame or automatically, nudged in X/Y/Z, then measured on the
  * server: the exact collision volume and the closest sampled gap, with the
  * assembly as a see-through ghost and the measured overlap drawn in 3D.
@@ -251,9 +251,9 @@ function FitTool({
     );
 
   return (
-    <MakeWorld label="Fit in context">
+    <MakeWorld label="Fit in assembly">
       <MakeHead
-        title="Fit in context"
+        title="Fit in assembly"
         meta={[partName && ctxName ? `${partName} in ${ctxName}` : "Your part in its assembly", seatMeta(seating), "Pilot plan"]}
         tools={
           <button className="btn sm" type="button" aria-pressed={hide} onClick={() => setHide((h) => !h)} disabled={!usable}>
@@ -266,7 +266,7 @@ function FitTool({
         {access === "loading" ? (
           <div className="panel" role="status" style={{ flex: 1, display: "grid", placeItems: "center" }}>
             <span className="spin" aria-hidden="true" />
-            <span className="sr">Checking Fit in context availability</span>
+            <span className="sr">Checking Fit in assembly availability</span>
           </div>
         ) : access === "error" ? (
           <div className="panel">
@@ -282,7 +282,7 @@ function FitTool({
           <div className="panel">
             <div className="offc">
               <Chip tone="unk">Not available on this server</Chip>
-              <b>Fit in context is switched off on this server</b>
+              <b>Fit in assembly is switched off on this server</b>
               <span>An administrator turns it on in the server settings. Until then nothing can be measured here.</span>
               <Link className="btn ink" href={R.check}>
                 Check a part
@@ -427,7 +427,7 @@ function FitTool({
             ) : null}
             <div style={{ display: "flex", gap: 8, padding: "10px 12px", flexWrap: "wrap", alignItems: "center" }}>
               <button className="btn ink" type="button" aria-disabled={!both || nudgeBad || running} onClick={() => void check()}>
-                {running ? "Measuring this pair…" : "Check fit in context"}
+                {running ? "Measuring this pair…" : "Check fit"}
               </button>
               <span className="fine" style={{ margin: 0 }}>
                 {usable ? goHint({ measured: !!result, running, hasFiles: both, nudgeBad, changed }) : access === "off" ? "Off on this server" : access === "viewer" ? "Read only for your role" : ""}
@@ -443,7 +443,7 @@ function FitTool({
           {result ? <FitResults result={result} view={view} setView={setView} painted={paint} /> : (
             <div className="empty" style={{ padding: 24 }}>
               <b>Results withheld</b>
-              <span>{running ? "Measuring the overlap and the closest gap." : usable ? "Check the pair to measure it with these settings." : "Nothing is measured until Fit in context is available."}</span>
+              <span>{running ? "Measuring the overlap and the closest gap." : usable ? "Check the pair to measure it with these settings." : "Nothing is measured until Fit in assembly is available."}</span>
             </div>
           )}
         </div>
@@ -567,11 +567,11 @@ const GATE_FEATURES = [
   { title: "Seating", text: "Shared CAD frame or automatic, then nudge in X, Y, Z", tone: "#ECEEF1" },
 ];
 
-/** Board X5: what Fit in context does, locked, and how to get the pilot plan. No file is read. */
+/** Board X5: what Fit in assembly does, locked, and how to get the pilot plan. No file is read. */
 function FitPilotGate() {
   return (
-    <MakeWorld label="Fit in context">
-      <MakeHead title="Fit in context" meta={[<b key="p">Pilot plan</b>, "Your plan: single-part checks"]} />
+    <MakeWorld label="Fit in assembly">
+      <MakeHead title="Fit in assembly" meta={[<b key="p">Pilot plan</b>, "Your plan: single-part checks"]} />
       <Content>
         <div className="slot">
           <span className="lab">Part + assembly</span>

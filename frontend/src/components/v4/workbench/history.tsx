@@ -84,11 +84,11 @@ export function HistoryTab({ part, qty }: TabProps) {
               title="No scenarios yet"
               actions={
                 <WbLink className="btn sm" href={wbHref("glass", part)}>
-                  Open glass box
+                  Open line by line
                 </WbLink>
               }
             >
-              Bind a shop or override a rate in the glass box, then save it.
+              Use a shop’s rates or override a rate line by line, then save it.
             </Empty>
           )}
         </section>

@@ -4,7 +4,7 @@
  * F7 · Compare: every priced method side by side, either at the first and
  * last costed quantity, or at one quantity under each rate set (typical and
  * each shop, one real engine run each). Each cell opens in the sheet with its
- * lines and tagged drivers, and can be edited in the glass box.
+ * lines and tagged drivers, and can be edited line by line.
  */
 import * as React from "react";
 import { cx } from "../ui";
@@ -137,7 +137,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
             <div className="empty" style={{ padding: "22px 24px" }}>
               <b>Each rate set is a fresh engine run</b>
               <span>
-                {missing.length === 1 ? "1 more run" : `${missing.length} more runs`}, one after another, each saved to Records.{s.file ? "" : " Needs the CAD file."}
+                {missing.length === 1 ? "1 more run" : `${missing.length} more runs`}, one after another, each saved to Cost records.{s.file ? "" : " Needs the CAD file."}
               </span>
               <button className="btn sm ink" type="button" onClick={startRuns}>
                 Price with each rate set
@@ -223,7 +223,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
           </section>
         ) : null}
       </div>
-      <aside className="sheet" aria-label="Cell in the glass box">
+      <aside className="sheet" aria-label="This cell, line by line">
         <div className="top">
           <h2 className="stitle">{pick ? `${name} at ${qtyText(pick.qty)}` : "Pick a cell"}</h2>
           <p className="smeta">
@@ -286,7 +286,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
               <div style={{ padding: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {pick && pick.run === curRun ? (
                   <WbLink className="btn ink sm" href={wbHref("glass", part, { proc: pick.process, q: pick.qty })}>
-                    Edit in glass box
+                    Edit line by line
                   </WbLink>
                 ) : pick ? (
                   <button
@@ -300,7 +300,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
                       })
                     }
                   >
-                    Edit in glass box
+                    Edit line by line
                   </button>
                 ) : null}
                 {pick ? (

@@ -187,7 +187,7 @@ export function PilotGate({
           <span>Batch runs</span>
           <span>Triage and capability changes</span>
           <span>Imports and BOM preview</span>
-          <span>Fit in context</span>
+          <span>Fit in assembly</span>
           <span>Assemblies and file repair</span>
           <span>Recalibration from real costs</span>
         </div>

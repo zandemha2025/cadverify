@@ -1,23 +1,25 @@
 "use client";
 
 /**
- * The Workbench (boards F3, F5 to F9): one part, five tabs onto the same
- * engine report. `?tab=` picks the tab (decision | routing | glass | compare |
- * history), `?part=<mesh hash>` the part; without a part it's the F9 cold start.
- * Tab moves use the history API, so the session (file, results, overrides,
- * scenarios) stays mounted.
+ * Cost breakdown (boards F3, F5, F7 to F9): the detail behind a part's Cost
+ * view, four tabs onto the same engine report. `?tab=` picks the tab (summary |
+ * lines | compare | history; the older decision and glass still work),
+ * `?part=<mesh hash>` the part; without a part it's the F9 cold start. The old
+ * DFM tab (`?tab=routing` or `dfm`) opens the part page's problem list, so a
+ * part's problems live in one place. Tab moves use the history API, so the
+ * session (file, results, overrides, scenarios) stays mounted.
  */
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { R } from "../routes";
 import { usePalette, useRegisterPaletteItems } from "../palette";
 import { Failed, Loading } from "../ui";
 import { defaultQty } from "./derive";
 import { getWb, loadSaved, useWb } from "./session";
-import { WbHead, WbProviders, isTab, lensDef, useLens, useWbNav, wbHref, WB_TABS, type WbTab } from "./chrome";
+import { WbHead, WbProviders, lastTab, rememberTab, tabOf, useWbNav, wbHref, WB_TABS, type WbTab } from "./chrome";
+import { familyOf } from "../fix/problems";
 import { NewPart } from "./new-part";
 import { DecisionTab } from "./decision";
-import { RoutingTab } from "./routing";
 import { GlassTab } from "./glass";
 import { CompareTab } from "./compare";
 import { HistoryTab } from "./history";
@@ -45,14 +47,23 @@ function Inner() {
   const decisionId = sp.get("decision");
   const qParam = sp.get("q");
   const s = useWb();
-  const lens = useLens();
   const nav = useWbNav();
+  const router = useRouter();
   const palette = usePalette();
+  const asked = tabOf(tabParam);
 
-  // Coming back to the Workbench with a part open resumes it.
+  // The old DFM tab: the part's problems and processes are on its part page.
+  const toPart = part && asked === "routing";
+  React.useEffect(() => {
+    if (!toPart || !part) return;
+    const issue = sp.get("issue")?.split("|")[0] ?? null;
+    router.replace(`${R.part(part)}?${issue ? `problem=${encodeURIComponent(familyOf(issue).id)}` : "problems=all"}`);
+  }, [toPart, part, sp, router]);
+
+  // Coming back to the cost breakdown with a part open resumes it.
   const resume = React.useRef(!part && getWb().key && getWb().report ? getWb().key : null);
   React.useEffect(() => {
-    if (resume.current) nav(wbHref(isTab(tabParam) ? tabParam : lensDef(lens).tab, resume.current), true);
+    if (resume.current) nav(wbHref(asked && asked !== "routing" ? asked : lastTab(), resume.current), true);
     resume.current = null;
     // Only on arrival.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,16 +73,19 @@ function Inner() {
     if (part) void loadSaved(part, decisionId);
   }, [part, decisionId]);
 
-  // A part without a tab lands on the lens's tab.
+  // A part without a tab opens on the tab you used last.
   React.useEffect(() => {
-    if (part && !isTab(tabParam)) {
+    if (part && !asked) {
       const extra: Record<string, string> = {};
       sp.forEach((v, k) => {
         if (k !== "tab" && k !== "part") extra[k] = v;
       });
-      nav(wbHref(lensDef(lens).tab, part, { ...extra, ...(lens === "buyer" ? { trust: "1" } : {}) }), true);
+      nav(wbHref(lastTab(), part, extra), true);
     }
-  }, [part, tabParam, lens, nav, sp]);
+  }, [part, asked, nav, sp]);
+  React.useEffect(() => {
+    if (asked) rememberTab(asked);
+  }, [asked]);
 
   // The order quantity is shared by Decision, Routing, Compare and History.
   const [qty, setQtyState] = React.useState<{ report: unknown; q: number } | null>(null);
@@ -87,7 +101,7 @@ function Inner() {
   useRegisterPaletteItems(
     "workbench",
     part
-      ? WB_TABS.map((t) => ({ id: `wb-${t.tab}`, group: "This part", label: `Workbench · ${t.label}`, sub: s.filename ?? undefined, href: wbHref(t.tab, part) }))
+      ? WB_TABS.map((t) => ({ id: `wb-${t.tab}`, group: "This part", label: `Cost breakdown · ${t.label}`, sub: s.filename ?? undefined, href: wbHref(t.tab, part) }))
       : [],
   );
 
@@ -98,11 +112,22 @@ function Inner() {
       </Frame>
     );
   }
-  const tab: WbTab = isTab(tabParam) ? tabParam : lensDef(lens).tab;
+  if (toPart) {
+    return (
+      <Frame label="Problems and processes">
+        <div className="wb-main full">
+          <div className="panel">
+            <Loading rows={2} label="Opening the part’s problems" />
+          </div>
+        </div>
+      </Frame>
+    );
+  }
+  const tab: WbTab = asked ?? lastTab();
   const ready = s.key === part && (s.source === "session" || s.load.phase === "done");
   if (!ready) {
     return (
-      <Frame label="Workbench">
+      <Frame label="Cost breakdown">
         <WbHead tab={tab} part={part} meta={[s.load.phase === "error" ? "Part not loaded" : "Loading the part"]} />
         <div className="wb-main full">
           {s.load.phase === "error" && s.key === part ? (
@@ -112,8 +137,8 @@ function Inner() {
                 detail={s.load.error}
                 onRetry={() => void loadSaved(part, decisionId)}
                 extra={
-                  <a className="btn sm" href={R.workbench}>
-                    New part
+                  <a className="btn sm" href={R.part(part)}>
+                    Open the part
                   </a>
                 }
               />
@@ -128,11 +153,10 @@ function Inner() {
     );
   }
   const props: TabProps = { part, qty: q, setQty };
-  const label = WB_TABS.find((t) => t.tab === tab)?.label ?? "Workbench";
+  const label = WB_TABS.find((t) => t.tab === tab)?.label ?? "Cost breakdown";
   return (
     <Frame label={label}>
       {tab === "decision" ? <DecisionTab {...props} /> : null}
-      {tab === "routing" ? <RoutingTab {...props} /> : null}
       {tab === "glass" ? <GlassTab {...props} /> : null}
       {tab === "compare" ? <CompareTab {...props} /> : null}
       {tab === "history" ? <HistoryTab {...props} /> : null}

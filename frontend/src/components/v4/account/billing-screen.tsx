@@ -223,7 +223,7 @@ export function BillingScreen({ plans }: { plans: Plans }) {
                 <i aria-hidden="true">✓</i>Up to 500 parts, 4–6 weeks
               </li>
               <li>
-                <i aria-hidden="true">✓</i>Batches, assemblies, Fit in context
+                <i aria-hidden="true">✓</i>Batches, assemblies, Fit in assembly
               </li>
               <li>
                 <i aria-hidden="true">✓</i>Design Studio, repair, recalibration from real jobs
@@ -246,7 +246,7 @@ export function BillingScreen({ plans }: { plans: Plans }) {
               <span>Pro adds</span>
               <b style={{ textAlign: "left" }}>Monthly checks only</b>
               <span>Pilot only</span>
-              <b style={{ textAlign: "left" }}>Batches, assemblies, Fit in context, Design Studio, repair, recalibration</b>
+              <b style={{ textAlign: "left" }}>Batches, assemblies, Fit in assembly, Design Studio, repair, recalibration</b>
             </div>
           </section>
           <section className="panel" aria-label="Payment and invoices">

@@ -48,7 +48,7 @@ export const NAV: { key: NavSection; label: string; href: string; pilot?: boolea
   { key: "home", label: "Home", href: R.home },
   { key: "parts", label: "Parts", href: R.parts },
   { key: "many", label: "Many parts", href: R.many, pilot: true },
-  { key: "make", label: "Make and fit", href: R.studio },
+  { key: "make", label: "Design tools", href: R.studio },
   { key: "shop", label: "Your shop", href: R.shop },
 ];
 
@@ -56,27 +56,26 @@ export const NAV: { key: NavSection; label: string; href: string; pilot?: boolea
 export const TABS: Record<Exclude<NavSection, "home">, { label: string; href: string }[]> = {
   parts: [
     { label: "Parts", href: R.parts },
-    { label: "Records", href: R.records },
-    { label: "Analyses", href: R.analyses },
+    { label: "Cost records", href: R.records },
+    { label: "DFM checks", href: R.analyses },
     { label: "Compare", href: R.compare },
-    { label: "Supplier packages", href: R.packages },
+    { label: "RFQ packages", href: R.packages },
     { label: "Programs", href: R.programs },
   ],
   many: [
     { label: "Batches", href: R.many },
-    { label: "Triage", href: R.triage },
+    { label: "Make or buy", href: R.triage },
     { label: "Imports", href: R.imports },
   ],
   make: [
     { label: "Design Studio", href: R.studio },
-    { label: "Fit in context", href: R.fit },
-    { label: "Workbench", href: R.workbench },
+    { label: "Fit in assembly", href: R.fit },
     { label: "Photo to 3D", href: R.photo },
   ],
   shop: [
     { label: "Machines and printers", href: R.shop },
     { label: "Rates", href: R.rates },
-    { label: "Real costs", href: R.actuals },
+    { label: "Actual costs", href: R.actuals },
     { label: "Changes to review", href: R.changes },
   ],
   account: [
@@ -90,9 +89,9 @@ export const TABS: Record<Exclude<NavSection, "home">, { label: string; href: st
   ],
 };
 
-/** Which top-bar section a pathname belongs to. */
+/** Which top-bar section a pathname belongs to. A part's cost breakdown belongs with the part, under Parts. */
 export function sectionOf(pathname: string): NavSection {
-  if (pathname.startsWith("/app/parts") || pathname.startsWith("/app/part/") || pathname.startsWith("/app/check")) return "parts";
+  if (pathname.startsWith("/app/parts") || pathname.startsWith("/app/part/") || pathname.startsWith("/app/check") || pathname.startsWith(R.workbench)) return "parts";
   if (pathname.startsWith("/app/many")) return "many";
   if (pathname.startsWith("/app/make")) return "make";
   if (pathname.startsWith("/app/shop")) return "shop";

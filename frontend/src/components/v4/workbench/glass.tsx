@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * F3 · Glass box: one method at one costed quantity, every cost driver with
+ * F3 · Line by line: one method at one costed quantity, every cost driver with
  * its source and tag, the lines that sum to the unit cost, the confidence
  * band, the assumptions, and overrides that re-cost for real (POST
  * /validate/cost with the override; the engine tags touched lines Yours).
- * The Inspector traces the same estimate as lineage, governance, sources and
+ * The Details sheet traces the same estimate: how it adds up, how sure it is, sources and
  * the session's overrides.
  */
 import * as React from "react";
@@ -38,7 +38,7 @@ import type { TabProps } from "./workbench";
 
 type Edit = { row: string; key: string; vname: string; label: string; unit: string; draft: string; err: string };
 
-// The Inspector's open state and tab are remembered for this tab's session.
+// The Details sheet's open state and tab are remembered for this tab's session.
 const inspMem: { open: boolean; tab: "lin" | "gov" | "src" | "aud" } = { open: true, tab: "src" };
 function remember(patch: Partial<typeof inspMem>) {
   Object.assign(inspMem, patch);
@@ -188,7 +188,7 @@ export function GlassTab({ part, qty }: TabProps) {
                 ) : undefined
               }
             >
-              {report ? "No method is priced for this part, so there are no drivers to open." : "The glass box opens once the part is costed."}
+              {report ? "No method is priced for this part, so there are no drivers to open." : "The lines open once the part is costed."}
             </Empty>
           </div>
         </div>
@@ -267,7 +267,7 @@ export function GlassTab({ part, qty }: TabProps) {
               </span>
             ) : null}
             <span className={cx("src", delta != null && Math.abs(delta) >= 0.005 ? "s-yours" : "s-typ")}>
-              {delta == null || Math.abs(delta) < 0.005 ? (ovKeys.length ? "Same as without overrides" : "Engine result") : `${delta > 0 ? "+" : "−"}${money(Math.abs(delta))} vs without overrides`}
+              {delta == null || Math.abs(delta) < 0.005 ? (ovKeys.length ? "Same as without overrides" : "ScaleCAD’s estimate") : `${delta > 0 ? "+" : "−"}${money(Math.abs(delta))} vs without overrides`}
             </span>
           </div>
           <div className="gh">
@@ -470,16 +470,16 @@ export function GlassTab({ part, qty }: TabProps) {
               ))}
             </div>
           ) : (
-            <p style={{ margin: "0 16px 14px", color: "var(--ink3)", fontSize: 12.5 }}>None yet. Bind a shop or override a rate, then save. Lost on refresh.</p>
+            <p style={{ margin: "0 16px 14px", color: "var(--ink3)", fontSize: 12.5 }}>None yet. Use a shop’s rates or override a rate, then save. Lost on refresh.</p>
           )}
         </section>
       </div>
       {insp ? (
-        <aside className="sheet" aria-label="Inspector">
+        <aside className="sheet" aria-label="Details">
           <div className="top">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div>
-                <h2 className="stitle">Inspector</h2>
+                <h2 className="stitle">Details</h2>
                 <p className="smeta">
                   {procLabel} · {qLabel} parts · {unit} each
                 </p>
@@ -488,20 +488,20 @@ export function GlassTab({ part, qty }: TabProps) {
                 ref={collapseRef}
                 className="btn sm"
                 type="button"
-                aria-label="Collapse Inspector"
+                aria-label="Hide details"
                 onClick={() => {
                   setInsp(false);
                   window.setTimeout(() => railRef.current?.focus(), 0);
                 }}
               >
-                Collapse
+                Hide
               </button>
             </div>
             <div style={{ marginTop: 12 }}>
               <span
                 className="tabs4"
                 role="tablist"
-                aria-label="Inspector"
+                aria-label="Details"
                 onKeyDown={(e) => {
                   if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
                   const order = ["lin", "gov", "src", "aud"] as const;
@@ -513,10 +513,10 @@ export function GlassTab({ part, qty }: TabProps) {
               >
                 {(
                   [
-                    ["lin", "Lineage"],
-                    ["gov", "Governance"],
+                    ["lin", "How it adds up"],
+                    ["gov", "How sure"],
                     ["src", "Sources"],
-                    ["aud", "Audit"],
+                    ["aud", "Your changes"],
                   ] as const
                 ).map(([k, label]) => (
                   <button
@@ -586,7 +586,7 @@ export function GlassTab({ part, qty }: TabProps) {
               <div className="swap" key="gov">
                 <div className="gnum">
                   <b className="num">{gov.grounded}</b>
-                  <span>of {gov.total} drivers grounded</span>
+                  <span>of {gov.total} cost inputs from your file, a shop or you</span>
                 </div>
                 <div className="gbar" role="img" aria-label={gov.aria}>
                   {gov.segs.map((g) => (
@@ -612,8 +612,8 @@ export function GlassTab({ part, qty }: TabProps) {
                   {conf ? `${conf.validated ? "Validated" : "Assumption-based, not validated"} · ${conf.n_samples} real job${conf.n_samples === 1 ? "" : "s"} behind it` : "No confidence band on this estimate"}
                 </p>
                 <div className="note">
-                  <b>CAD evidence</b>
-                  <span>Uploaded CAD and analysis evidence are kept for your organization.</span>
+                  <b>Your file</b>
+                  <span>Your uploaded file and its analysis are kept for your organization.</span>
                 </div>
               </div>
             ) : null}
@@ -664,7 +664,7 @@ export function GlassTab({ part, qty }: TabProps) {
                     ))}
                   </div>
                 ) : (
-                  <p style={{ margin: "4px 12px", color: "var(--ink2)", fontSize: 13.5 }}>No overrides. Every number is the engine’s.</p>
+                  <p style={{ margin: "4px 12px", color: "var(--ink2)", fontSize: 13.5 }}>No overrides. Every number is ScaleCAD’s estimate.</p>
                 )}
                 <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>PDF, JSON and CSV exports keep overrides with their tags.</p>
               </div>
@@ -676,13 +676,13 @@ export function GlassTab({ part, qty }: TabProps) {
           ref={railRef}
           className="irail"
           type="button"
-          aria-label="Open Inspector"
+          aria-label="Show details"
           onClick={() => {
             setInsp(true);
             window.setTimeout(() => collapseRef.current?.focus(), 0);
           }}
         >
-          <span>Inspector</span>
+          <span>Details</span>
         </button>
       )}
       <span className="sr" aria-live="polite">

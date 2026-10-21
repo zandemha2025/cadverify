@@ -23,6 +23,8 @@ export type PaletteItem = {
   key?: string;
   /** Extra words that should match the search. */
   words?: string;
+  /** Other names typed for this item (older names); an exact one selects it like its label. */
+  alias?: string[];
   /** Shown under the row when it's selected (an answer). */
   answer?: { text: string; source: string };
 };
@@ -70,18 +72,20 @@ export function useRegisterPaletteItems(owner: string, items: PaletteItem[]) {
 type Rec = { id: string; filename: string; created_at: string; approval_status?: string };
 type Mach = { id: string; name: string; process?: string };
 
-const GO: [string, string, string, string?][] = [
+/** Go-to rows: label, detail, where, shortcut key, older names people may type. */
+const GO: [string, string, string, string?, string[]?][] = [
   ["Home", "Needs you, recent parts, setup", R.home, "H"],
   ["Parts", "Every checked part", R.parts, "P"],
-  ["Records", "Saved decisions and their evidence", R.records, "R"],
+  ["Cost records", "Saved costs and decisions, with their sources", R.records, "R", ["records"]],
+  ["DFM checks", "Every manufacturability check, newest first", R.analyses, undefined, ["analyses"]],
   ["Programs", "Parts by program and yearly volume", R.programs, "G"],
   ["Machines and printers", "Your shop", R.shop, "M"],
-  ["Triage", "Make, buy or invest, across parts", R.triage, "T"],
-  ["Rates and real costs", "Rates in effect, logged jobs, changes to review", R.rates, "C"],
-  ["Supplier packages", "Files and findings for quotes", R.packages],
+  ["Make or buy", "In-house, outside or invest, across parts", R.triage, "T", ["triage"]],
+  ["Rates and actual costs", "Rates in effect, logged jobs, changes to review", R.rates, "C", ["real costs"]],
+  ["RFQ packages", "Files and findings for supplier quotes", R.packages, undefined, ["supplier packages"]],
   ["Batch runs", "Many parts at once · Pilot", R.many],
   ["Imports", "SAP, Windchill or CSV, read only", R.imports],
-  ["Workbench", "Every cost driver, editable", R.workbench],
+  ["Cost breakdown", "Every cost line of a part, its source and rate, editable", R.workbench, undefined, ["workbench", "glass box", "should-cost"]],
   ["Organization", "Members and sign-in", R.org],
   ["API and keys", "For your own tools", R.api],
   ["Plan and billing", "Free checks, Pro, pilot", R.billing],
@@ -126,23 +130,23 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
 
   const actions: PaletteItem[] = [
     { id: "a-check", group: "Actions", label: "Check a part", sub: "Open a STEP, STL or IGES file", run: onPickFile, words: "upload verify cad file" },
-    { id: "a-sample", group: "Actions", label: "Run the sample", sub: "Routing bracket · real engine output · uses 1 check", href: `${R.check}?sample=1`, words: "example demo bracket" },
+    { id: "a-sample", group: "Actions", label: "Run the sample", sub: "Routing bracket · real engine output · no check used", href: `${R.check}?sample=1`, words: "example demo bracket" },
     { id: "a-setup", group: "Actions", label: "Set up your organization", sub: "Machines, rates, conditions, programs, team", href: R.setup, words: "guide checklist onboarding start here" },
     { id: "a-machine", group: "Actions", label: "Add a machine", sub: "Opens the add form", href: `${R.shop}?add=1`, words: "printer import floor" },
     { id: "a-program", group: "Actions", label: "Assign a program", sub: "Program and yearly volume for a part", href: R.programs, words: "volume lineage" },
-    { id: "a-compare", group: "Actions", label: "Compare records", sub: "Two saved decisions side by side", href: R.compare, words: "diff a/b" },
+    { id: "a-compare", group: "Actions", label: "Compare records", sub: "Two saved cost records side by side", href: R.compare, words: "diff a/b" },
     { id: "a-equip", group: "Actions", label: "Plan equipment", sub: "What to buy for parts you can't make in-house", href: R.triage, words: "capability acquisition invest" },
     { id: "a-studio", group: "Actions", label: "Open Design Studio", sub: "Plate, bracket or enclosure as real CAD", href: R.studio, words: "design create revision" },
-    { id: "a-fit", group: "Actions", label: "Fit in context", sub: "Part in its assembly · Pilot", href: R.fit, key: "F", words: "assembly collision gap" },
+    { id: "a-fit", group: "Actions", label: "Fit in assembly", sub: "Interference and clearance with the parts around it", href: R.fit, key: "F", words: "assembly collision gap interference clearance fit in context" },
     { id: "a-keys", group: "Actions", label: "Keyboard shortcuts", sub: "Every key", run: onShortcuts, key: "?", words: "hotkeys help" },
     { id: "a-out", group: "Actions", label: "Sign out", sub: "Signs you out on every device", run: () => void signOut(), words: "log out logout leave" },
   ];
   const go: PaletteItem[] = [
     ...(currentPart ? [{ id: "g-part", group: "Go to", label: "Part", sub: `${currentPart.label}, the part you have open`, href: currentPart.href, key: "V" }] : []),
-    ...GO.map(([label, sub, href, key]) => ({ id: `g-${href}`, group: "Go to", label, sub, href, key })),
+    ...GO.map(([label, sub, href, key, alias]) => ({ id: `g-${href}`, group: "Go to", label, sub, href, key, alias, words: alias?.join(" ") })),
   ];
   const recItems: PaletteItem[] = q
-    ? (recs ?? []).filter((r) => hit(r.filename, r.id)).slice(0, 4).map((r) => ({ id: `r-${r.id}`, group: "Records", label: r.filename, sub: `Record ${r.id.slice(0, 8)} · ${new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}${r.approval_status === "approved" ? " · approved" : " · not reviewed"}`, href: R.record(r.id) }))
+    ? (recs ?? []).filter((r) => hit(r.filename, r.id)).slice(0, 4).map((r) => ({ id: `r-${r.id}`, group: "Cost records", label: r.filename, sub: `Cost record ${r.id.slice(0, 8)} · ${new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}${r.approval_status === "approved" ? " · approved" : " · not reviewed"}`, href: R.record(r.id) }))
     : [];
   const machItems: PaletteItem[] = q
     ? (machines ?? []).filter((m) => hit(m.name, m.process)).slice(0, 3).map((m) => ({ id: `m-${m.id}`, group: "Your machines", label: m.name, sub: m.process ?? "", href: `${R.shop}?machine=${encodeURIComponent(m.id)}` }))
@@ -152,9 +156,9 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
   const extraGroups = Array.from(new Set(extra.map((e) => e.group)));
   for (const g of extraGroups) groups.push([g, extra.filter((e) => e.group === g && hit(e.label, e.sub, e.words, e.answer?.text)), q ? 3 : 2]);
   groups.push(["Actions", actions.filter((a) => hit(a.label, a.sub, a.words)), q ? 4 : 5]);
-  groups.push(["Records", recItems, 4]);
+  groups.push(["Cost records", recItems, 4]);
   groups.push(["Your machines", machItems, 3]);
-  groups.push(["Go to", go.filter((g) => hit(g.label, g.sub)), q ? 5 : 8]);
+  groups.push(["Go to", go.filter((g) => hit(g.label, g.sub, g.words)), q ? 5 : 8]);
 
   const flat: PaletteItem[] = [];
   const rendered = groups
@@ -165,8 +169,8 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
       flat.push(...shown);
       return { name, items: shown, start };
     });
-  // Until the user moves the selection, an exact name match is selected (so "Records" ↵ opens Records).
-  const exact = q ? flat.findIndex((f) => f.label.toLowerCase() === q) : -1;
+  // Until the user moves the selection, an exact name match is selected (so "Parts" ↵ opens Parts; an older name such as "records" works too).
+  const exact = q ? flat.findIndex((f) => f.label.toLowerCase() === q || !!f.alias?.includes(q)) : -1;
   const cur = Math.min(sel < 0 ? Math.max(exact, 0) : sel, Math.max(0, flat.length - 1));
 
   const activate = (it: PaletteItem | undefined) => {
@@ -245,7 +249,7 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
                       style={{ minHeight: 44 }}
                     >
                       <span style={{ width: 28, height: 28, borderRadius: 8, background: "#F1F2F4", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink2)", flex: "none" }} aria-hidden="true">
-                        {it.answer ? "?" : it.group === "Go to" ? "→" : it.group === "Records" ? "R" : it.group === "Your machines" ? "M" : "+"}
+                        {it.answer ? "?" : it.group === "Go to" ? "→" : it.group === "Cost records" ? "R" : it.group === "Your machines" ? "M" : "+"}
                       </span>
                       <span style={{ minWidth: 0 }}>
                         <b style={{ fontSize: 14 }}>{it.label}</b>

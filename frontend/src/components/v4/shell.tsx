@@ -353,7 +353,7 @@ function AccountMenu({ usage, onShortcuts }: { usage: Usage | null; onShortcuts:
                 <span style={{ display: "block", width: `${pct}%`, height: "100%", background: "#141414", borderRadius: 999 }} />
               </span>
               <span style={{ display: "flex", justifyContent: "space-between", color: "var(--ink3)", fontSize: 12.5 }}>
-                <span>{pro ? "Resets monthly" : usage.tier === "work" ? "Work email · the sample uses 1 too" : "Personal email · the sample uses 1 too"}</span>
+                <span>{pro ? "Resets monthly" : usage.tier === "work" ? "Work email · the sample is free" : "Personal email · the sample is free"}</span>
                 <Link href={R.billing} onClick={() => setOpen(false)}>
                   {pro ? "Manage" : "Upgrade"}
                 </Link>
@@ -444,12 +444,12 @@ const KEYS: [string, string[]][] = [
   ["Home", ["H"]],
   ["The part you have open", ["V"]],
   ["Parts", ["P"]],
-  ["Records", ["R"]],
+  ["Cost records", ["R"]],
   ["Programs", ["G"]],
   ["Machines and printers", ["M"]],
-  ["Triage", ["T"]],
-  ["Rates and real costs", ["C"]],
-  ["Fit in context", ["F"]],
+  ["Make or buy, across parts", ["T"]],
+  ["Rates and actual costs", ["C"]],
+  ["Fit in assembly", ["F"]],
 ];
 
 function Shortcuts({ onClose }: { onClose: () => void }) {

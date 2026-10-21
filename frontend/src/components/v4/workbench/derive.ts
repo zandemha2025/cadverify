@@ -284,7 +284,7 @@ export function blockerSentence(text: string | null | undefined): string {
   return `${share} is under ${Number(m[3])}° draft (${Number(m[1]).toLocaleString("en-US")} faces).`;
 }
 
-export function redesignNote(report: CostReport): { process: string; title: string; text: string } | null {
+export function redesignNote(report: CostReport): { process: string; title: string; text: string; code: string | null } | null {
   const dec = report.decision;
   if (!dec?.tooling_process || dec.tooling_dfm_ready !== false) return null;
   const est = report.estimates.find((e) => e.process === dec.tooling_process && !e.environment_excluded && e.dfm_blockers?.length);
@@ -293,6 +293,7 @@ export function redesignNote(report: CostReport): { process: string; title: stri
     process: dec.tooling_process,
     title: `${methodName(dec.tooling_process)} needs a design change first`,
     text: `${blocker ? blockerSentence(blocker) + " " : ""}Its cost is for a redesigned part, not a quote.`,
+    code: est?.dfm_blocker_details?.[0]?.code ?? null,
   };
 }
 
@@ -854,12 +855,12 @@ export function decisionSummary(report: CostReport | null, v: ValidationResult |
 /* ------------------------------------------------------------------ */
 
 export function newPartText(overrides: number, scenarios: number): string {
-  if (!overrides && !scenarios) return "This part’s saved decision stays in Records.";
+  if (!overrides && !scenarios) return "This part’s saved cost record stays in Cost records.";
   const bits = [
     overrides ? `${overrides} override${overrides === 1 ? "" : "s"}` : "",
     scenarios ? `${scenarios} saved scenario${scenarios === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
-  return `Drops this session’s ${bits.join(" and ")}. The saved decision stays in Records.`;
+  return `Drops this session’s ${bits.join(" and ")}. The saved cost record stays in Cost records.`;
 }
 
 export function scenarioLabel(shopName: string | null, overrides: Record<string, number> | undefined): string {
