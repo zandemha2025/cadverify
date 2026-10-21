@@ -11,6 +11,8 @@ import { dimsText, machineViews, money, priceMeta, qtyWord, trimNum, type Machin
 import { CostLines } from "./lens-cost";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { useChoice } from "./choose";
+import { useFix } from "../fix/ctx";
+import { problemForIssue } from "../fix/problems";
 
 function bboxOf(p: ReturnType<typeof usePart>): [number, number, number] | null {
   const b = p.data.validation?.geometry.bounding_box_mm ?? p.data.cost?.geometry.bbox_mm ?? null;
@@ -120,7 +122,10 @@ export function ShopSheet() {
   const dims = dimsText(bboxOf(p));
   const est = m && m.tone === "ok" && !p.costOff ? m.method?.prices.get(p.q) ?? null : null;
   const ch = useChoice();
+  const fx = useFix();
   const mine = !!m?.method && ch.choice?.process === m.method.code;
+  // A machine whose process can't make the part as drawn: why, on the part, for that process.
+  const blockedBy = m?.method && m.method.verdict === "bad" && !p.checking ? problemForIssue(fx.set, m.method.finding?.issue.code) ?? fx.set.problems.find((x) => x.blocks.includes(m.method!.code)) ?? null : null;
   return (
     <>
       <SheetTop title="Your machines" meta={`${views.length} machine${views.length === 1 ? "" : "s"} · fit by size, weight and material`} figs={figs} sure="shop" />
@@ -206,6 +211,13 @@ export function ShopSheet() {
                 </b>
                 <span>{m.why}</span>
                 {m.checks ? <span className="num" style={{ color: "var(--ink3)", fontSize: 12.5 }}>{m.checks}</span> : null}
+                {blockedBy && m.method ? (
+                  <span>
+                    <button className="btn sm fwhy" type="button" onClick={() => fx.openProblem(blockedBy.id, m.method!.members.length === 1 ? m.method!.code : null)}>
+                      Why it can’t, on the part
+                    </button>
+                  </span>
+                ) : null}
               </div>
             ) : null}
           </div>
