@@ -3,13 +3,14 @@
 /**
  * Fixes in flight, kept in memory per part (like the check store), so the dialog
  * can close and the page can change while a repair or a new Design Studio revision
- * runs, and the result is still there to compare. Nothing here is saved: a repaired
- * copy is kept only when the user saves it, which checks it like an upload.
+ * runs, and the result is still there to compare. A repair of the kept file and a
+ * server fix save their copy as a new part, linked to this one; a repair of the
+ * file in this browser is kept only when the user saves it.
  */
 import * as React from "react";
 import { createDesignRevision, getDesign, type Design, type DesignPlan } from "@/lib/designs-api";
 import { importDesignStep } from "@/lib/verify/design-import";
-import { runRepair, type RepairOutcome } from "../part/repair";
+import { repairPart, type RepairOutcome } from "../part/repair";
 import { startCheck } from "../part/store";
 import type { ServerFix, StudioOrigin, StudioParam } from "./capabilities";
 import { applyServerFix, type ServerFixOutcome } from "./server";
@@ -84,28 +85,37 @@ export function useRunsVersion(): number {
   );
 }
 
+function revoke(url: string) {
+  if (url) URL.revokeObjectURL(url);
+}
+
 /** Forget a run (discard the repaired copy, or leave the comparison). */
 export function clearRun(key: string) {
   const r = runs.get(key);
-  if (r?.kind === "repair" && r.s === "fixed") URL.revokeObjectURL(r.url);
+  if (r?.kind === "repair" && r.s === "fixed") revoke(r.url);
   runs.delete(key);
   emit();
 }
 
-/** Repair a copy of the file (POST /validate/repair). */
-export function startRepair(key: string, problem: string, file: File) {
+/**
+ * Repair a copy: the organization's kept file first (POST /parts/{key}/repair:
+ * nothing uploaded, the copy saved as a linked part), else `file`, the copy in
+ * this browser (POST /validate/repair). Neither uses a check.
+ */
+export function startRepair(key: string, problem: string, file: File | null, opts: { name: string; qty?: number[]; materialClass?: string | null }) {
   const prev = runs.get(key);
-  if (prev?.kind === "repair" && prev.s === "fixed") URL.revokeObjectURL(prev.url);
+  if (prev?.kind === "repair" && prev.s === "fixed") revoke(prev.url);
   const startedAt = Date.now();
-  put(key, { kind: "repair", problem, startedAt, sourceName: file.name, s: "running" });
-  void runRepair(file).then((out) => {
+  const sourceName = file?.name ?? opts.name;
+  put(key, { kind: "repair", problem, startedAt, sourceName, s: "running" });
+  void repairPart(key, file, { qty: opts.qty, materialClass: opts.materialClass }).then((out) => {
     const cur = runs.get(key);
     // Discarded, or a newer repair started meanwhile: drop this answer.
     if (!cur || cur.kind !== "repair" || cur.startedAt !== startedAt) {
-      if (out.s === "fixed") URL.revokeObjectURL(out.url);
+      if (out.s === "fixed") revoke(out.url);
       return;
     }
-    put(key, { kind: "repair", problem, startedAt, sourceName: file.name, ...out } as RepairRun);
+    put(key, { kind: "repair", problem, startedAt, sourceName, ...out } as RepairRun);
   });
 }
 

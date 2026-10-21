@@ -3,7 +3,8 @@
 /**
  * K2: asking before ScaleCAD tries a fix. A dialog over the part (role=dialog,
  * aria-modal; Esc and the scrim close it; focus moves in and goes back).
- *  - repair: mesh repair on a copy of an open shell (POST /validate/repair, any plan, no check);
+ *  - repair: mesh repair on a copy of an open shell, from the kept file (POST /parts/{hash}/repair)
+ *    or the file in this browser (POST /validate/repair); any plan, no check;
  *  - studio: a new Design Studio revision with one parameter changed, then a check;
  *  - upload: the change in the user's CAD tool, the price after it, upload the fixed file.
  */
@@ -31,6 +32,8 @@ export function failureText(f: Failure | null | undefined): string {
   return "message" in f ? f.message : `${f.title}. ${f.detail}`;
 }
 import { useUploadFixed } from "./problem-sheet";
+import { repairFailedReason } from "../part/repair";
+import { nextSteps, openingsNote, outcomeOf, repairHead, type NextStep } from "./repair-outcome";
 import "./fix.css";
 
 const REPAIR_MAX_FACES = 500_000;
@@ -150,6 +153,7 @@ function Head({ who, whoTone, kind, title, text, close }: { who: string; whoTone
 function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: () => void }) {
   const p = usePart();
   const fx = useFix();
+  const up = useUploadFixed();
   const key = p.data.key ?? "";
   const run = useFixRun(key);
   const rr = run?.kind === "repair" ? (run as RepairRun) : null;
@@ -157,12 +161,20 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
   const [pickErr, setPickErr] = React.useState<string | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
   const src = file ?? picked;
+  // The kept file is tried first (POST /parts/{hash}/repair). Only when the server says
+  // it isn't kept does the dialog ask for the file.
+  const needFile = !file && !picked && rr?.s === "error" && !!rr.notKept;
+  const kept = fx.origin.server != null;
+  const canGo = !!key && !needFile;
   const faces = p.data.validation?.geometry.faces ?? p.data.cost?.geometry.face_count ?? null;
   const edges = P.where.match(/^([\d,]+) open edges/)?.[1] ?? null;
   const name = p.data.fileName;
+  const brep = /^(step|stp|iges|igs)$/i.test(p.data.fileType) || /\.(step|stp|iges|igs)$/i.test(name);
+  const heal = fx.origin.server?.byFamily[P.id];
+  const canHeal = !!heal?.can && heal.fix === "heal_brep";
   const go = () => {
-    if (!src || !key) return;
-    startRepair(key, P.id, src);
+    if (!canGo) return;
+    startRepair(key, P.id, src, { name, qty: p.qs.length ? p.qs : undefined, materialClass: p.data.cost?.material_class ?? null });
   };
   const choose = async (f: File) => {
     setPickErr(null);
@@ -171,44 +183,127 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
     if (h !== key) return setPickErr("That’s a different file from this part (its fingerprint doesn’t match).");
     setPicked(f);
   };
-  const started = !!rr;
-  const done = rr?.s === "fixed";
-  if (started && rr) {
+  if (rr) {
+    const result = rr.s === "fixed" || rr.s === "failed" ? rr.r : null;
+    const kind = result ? outcomeOf(result) : null;
+    const head = kind ? repairHead(kind, result?.repair_details.volume_change_pct) : null;
+    const opened = kind ? openingsNote(kind, result?.repair_details.openings) : null;
+    const done = rr.s === "fixed";
+    const next = kind ? nextSteps(kind, result?.repair_details.openings, { brep, canHeal }) : [];
+    const d = result?.repair_details;
+    const how = [d?.welded_edges ? `welded ${d.welded_edges.toLocaleString("en-US")} edges` : null, d?.tier ? `mesh repair, ${d.tier}` : "mesh repair", d?.duration_ms != null ? `${(d.duration_ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(" · ");
     const steps: Step[] =
       rr.s === "running"
         ? [
-            { k: edges ? `Closing the ${edges} open edges` : "Closing the open shell", s: "trimesh, then MeshFix", c: "now" },
+            { k: edges ? `Closing the ${edges} open edges` : "Closing the open shell", s: "joins faces that touch, then trimesh, then MeshFix", c: "now" },
             { k: "Checking the repaired copy", s: "the same processes as an upload", c: "wait" },
             { k: "Comparing both shapes", s: "faces, volume and verdict", c: "wait" },
           ]
         : rr.s === "fixed"
           ? [
-              { k: "Closed", s: `${rr.r.repair_details.tier ? `mesh repair, ${rr.r.repair_details.tier}` : "mesh repair"}${rr.r.repair_details.duration_ms != null ? ` · ${(rr.r.repair_details.duration_ms / 1000).toFixed(1)} s` : ""}`, c: "done" },
-              { k: "Checked the repaired copy", s: `verdict ${rr.r.repair_verification?.repaired_verdict ?? "—"}, was ${rr.r.repair_verification?.original_verdict ?? "—"}`, c: "done" },
-              { k: "Both shapes ready to compare", s: "faces, volume and verdict", c: "done" },
+              { k: kind === "closed_changed" ? "Closed, with a change in shape" : "Closed", s: how, c: kind === "closed_changed" ? "bad" : "done" },
+              { k: "Checked the repaired copy", s: `verdict ${rr.r.repair_verification?.repaired_verdict ?? "—"}, was ${rr.r.repair_verification?.original_verdict ?? "—"} · no check used`, c: "done" },
+              { k: rr.saved ? "Saved as a new part" : "Both shapes ready to compare", s: rr.saved ? `${rr.saved.filename}, linked to your file` : "faces, volume and verdict", c: "done" },
             ]
-          : [{ k: rr.s === "failed" ? "Repair didn’t close it" : "The repair didn’t run", s: "", c: "bad" }];
+          : rr.s === "failed"
+            ? [{ k: head?.title ?? "Not repaired", s: how, c: "bad" }]
+            : [{ k: "The repair didn’t run", s: "", c: "bad" }];
+    const nextBtn = (n: NextStep) =>
+      n.kind === "heal" ? (
+        <button className="btn sm ink" type="button" onClick={() => fx.openAsk(P.id, "server")}>
+          {n.label}
+        </button>
+      ) : n.kind === "cad" ? (
+        <button className="btn sm" type="button" onClick={() => fx.openAsk(P.id, "upload")}>
+          {n.label}
+        </button>
+      ) : (
+        <button className="btn sm" type="button" onClick={up.pick}>
+          {n.label}
+        </button>
+      );
     return (
       <>
-        <Head who="ScaleCAD can try this" whoTone="c-ok" kind="Mesh repair · on a copy" title={rr.s === "running" ? "Repairing a copy" : rr.s === "fixed" ? "Repaired copy ready" : "Not repaired"} text={rr.s === "running" ? "Working on a copy. Your file stays as it is." : "Your file stays as it is."} close={close} />
+        <Head
+          who={head?.chip ?? "ScaleCAD can try this"}
+          whoTone={head?.tone ?? "c-ok"}
+          kind="Mesh repair · on a copy"
+          title={rr.s === "running" ? "Repairing a copy" : head?.title ?? "The repair didn’t run"}
+          text={rr.s === "running" ? `Working on a copy of ${kept ? "the file kept with this part" : rr.sourceName}. Your file stays as it is.` : "Your file stays as it is."}
+          close={close}
+        />
         <div className="db" aria-live="polite">
           <div className="gh">
             <span>Progress</span>
             <span>up to {REPAIR_TIMEOUT_S} s</span>
           </div>
           <Steps steps={steps} />
-          {rr.s === "failed" ? (
-            <div className="kbad" role="alert">
-              <b>Still open</b>
-              <span>{(rr.r.repair_details as { reason?: string }).reason ?? rr.r.repair_details.error ?? "Repair did not produce a watertight solid."}</span>
+          {result && head ? (
+            <div className={done && kind === "repaired" ? "kprop" : done ? "kwarn" : "kbad"} role={done ? "status" : "alert"}>
+              <b>{head.chip}</b>
+              <span>{repairFailedReason(result)}</span>
+              {opened ? <span>What was open: {opened}</span> : null}
             </div>
           ) : rr.s === "error" ? (
             <div className="kbad" role="alert">
-              <b>The repair didn’t run</b>
+              <b>{rr.limit ? "Not now" : rr.notKept ? "The file isn’t kept with this part" : "The repair didn’t run"}</b>
               <span>{rr.msg}</span>
+              {rr.limit ? (
+                <span>
+                  <Link href={R.billing}>Plans</Link>
+                </span>
+              ) : null}
             </div>
           ) : null}
-          <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 13 }}>{rr.s === "running" || done ? "You can use other pages meanwhile. Nothing is kept until you choose." : "Nothing was made or saved."}</p>
+          {rr.s === "error" && rr.notKept && !file ? (
+            <>
+              <div className="kup">
+                <button className={cx("btn sm", !picked && "ink")} type="button" onClick={() => input.current?.click()}>
+                  {picked ? "Choose another" : `Choose ${name}`}
+                </button>
+                <input
+                  ref={input}
+                  type="file"
+                  accept=".stl,.step,.stp,.iges,.igs"
+                  aria-label={`Choose ${name}`}
+                  tabIndex={-1}
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) void choose(f);
+                  }}
+                />
+                <span>{picked ? `${picked.name} · same fingerprint, ready` : "It must be the same file."}</span>
+              </div>
+              {pickErr ? (
+                <p className="kerr" role="alert">
+                  {pickErr}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          {next.length ? (
+            <>
+              <div className="gh" style={{ marginTop: 6 }}>
+                <span>{kind === "closed_changed" ? "To keep the design’s shape" : "What you can do next"}</span>
+                <span />
+              </div>
+              <div className="kleft">
+                {next.map((n) => (
+                  <div className="lr" key={n.kind}>
+                    <b>{n.label}</b>
+                    {nextBtn(n)}
+                    <small>{n.why}</small>
+                  </div>
+                ))}
+              </div>
+              {up.el}
+            </>
+          ) : null}
+          <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 13 }}>
+            {rr.s === "running" ? "You can use other pages meanwhile." : rr.s === "fixed" && rr.saved ? "The repaired copy is in Parts, linked to your file. No check was used." : done ? "Nothing is kept until you choose." : "Nothing was made or saved."}
+          </p>
         </div>
         <div className="df">
           {rr.s === "running" || done ? (
@@ -216,19 +311,14 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
               See the result
             </button>
           ) : null}
-          {rr.s === "error" || rr.s === "failed" ? (
-            <button className="btn" type="button" onClick={go} disabled={!src}>
-              Try again
+          {rr.s === "error" && !rr.limit && (!rr.notKept || src) ? (
+            <button className={cx("btn", rr.notKept && "ink")} type="button" onClick={go} disabled={!canGo}>
+              {rr.notKept ? "Repair this file" : "Try again"}
             </button>
           ) : null}
           <button className="btn" type="button" onClick={() => fx.closeAsk()}>
             Close
           </button>
-          {rr.s === "failed" ? (
-            <button className="btn ghost sp" type="button" onClick={() => fx.openAsk(P.id, "upload")}>
-              Fix it in CAD instead
-            </button>
-          ) : null}
         </div>
       </>
     );
@@ -244,47 +334,15 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
         </div>
         <Steps
           steps={[
-            { k: edges ? `Closes the ${edges} open edges` : "Closes the open shell", s: "trimesh first; MeshFix if that isn’t enough", c: "" },
+            { k: edges ? `Closes the ${edges} open edges` : "Closes the open shell", s: "Joins faces that touch but aren’t joined, then caps each opening (trimesh first; MeshFix if that isn’t enough)", c: "" },
             { k: "Checks the repaired copy", s: "The same processes as an upload", c: "" },
-            { k: "Shows both shapes side by side", s: "Faces, volume and verdict before and after", c: "" },
+            { k: "Says how it ended", s: "Repaired, closed with a change in shape, partly closed, or not repaired and why", c: "" },
           ]}
         />
         <div className="kwarn" role="note">
           <b>It can change the shape</b>
-          <span>Repair fills every gap it finds, including holes, bores or pockets that belong to the design. If the volume changes by more than 2%, ScaleCAD warns you and shows by how much before you keep anything.</span>
+          <span>A cap can fill a hole, bore or pocket that belongs to the design, and a missing face is capped flat. If the volume changes by more than 2%, ScaleCAD says so and by how much before you use the copy.</span>
         </div>
-        {!file ? (
-          <>
-            <div className="gh" style={{ marginTop: 6 }}>
-              <span>The file</span>
-              <span />
-            </div>
-            <div className="kup">
-              <button className={cx("btn sm", !picked && "ink")} type="button" onClick={() => input.current?.click()}>
-                {picked ? "Choose another" : `Choose ${name}`}
-              </button>
-              <input
-                ref={input}
-                type="file"
-                accept=".stl,.step,.stp,.iges,.igs"
-                aria-label={`Choose ${name}`}
-                tabIndex={-1}
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = "";
-                  if (f) void choose(f);
-                }}
-              />
-              <span>{picked ? `${picked.name} · same fingerprint, ready` : "Repair needs the file itself; this page has its 3D view only. It must be the same file."}</span>
-            </div>
-            {pickErr ? (
-              <p className="kerr" role="alert">
-                {pickErr}
-              </p>
-            ) : null}
-          </>
-        ) : null}
         <div className="gh" style={{ marginTop: 6 }}>
           <span>Limits</span>
           <span />
@@ -298,12 +356,14 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <b className="num">{REPAIR_TIMEOUT_S} s</b>
           <span>Checks</span>
           <b>Doesn’t use one</b>
+          <span>From</span>
+          <b>{kept || !file ? "The file kept with this part · nothing to upload" : "The file in this browser"}</b>
           <span>Your file</span>
-          <b>Unchanged · repair works on a copy</b>
+          <b>Unchanged · repair works on a copy{kept || !file ? ", saved as a new part" : ""}</b>
         </div>
       </div>
       <div className="df">
-        <button className="btn ink" type="button" aria-disabled={!src} onClick={go} style={!src ? { opacity: 0.45, cursor: "default" } : undefined}>
+        <button className="btn ink" type="button" aria-disabled={!canGo} onClick={go} style={!canGo ? { opacity: 0.45, cursor: "default" } : undefined}>
           Repair a copy
         </button>
         <button className="btn" type="button" onClick={close}>

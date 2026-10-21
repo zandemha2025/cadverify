@@ -273,7 +273,36 @@ export interface RepairDetails {
   reason?: string;
   /** Raw engine error (exception path only; empty on timeout). */
   error?: string;
+  /** Open edges closed by welding vertices closer than 0.001 mm before the repair. */
+  welded_edges?: number;
+  /** The threshold volume_warning uses, in percent. */
+  warn_pct?: number;
+  /** What was open in the file as read. */
+  openings?: RepairOpenings;
+  /** A refused repair that closed some openings: what is still open. */
+  openings_after?: { faces: number; open_edges: number; loops: number; largest_mm: number | null } | null;
+  /** The one-sentence outcome (also the top-level `summary`). */
+  summary?: string;
 }
+
+/**
+ * Where a file is open, as the repair read it (backend repair_service.describe_openings).
+ * kind: a missing face, small gaps, faces that touch but aren't joined (seams),
+ * a surface with no thickness, or nothing open.
+ */
+export interface RepairOpenings {
+  kind: "none" | "seams" | "surface" | "face" | "gaps";
+  open_edges: number;
+  welded_edges: number;
+  open_edges_after_weld: number;
+  loops: number;
+  largest_mm: number | null;
+  sizes_mm: number[];
+  part_mm: number;
+}
+
+/** How one repair ended. Older responses carry no outcome; derive it from repair_applied. */
+export type RepairOutcomeKind = "repaired" | "closed_changed" | "partly" | "not_repaired" | "not_needed";
 
 export interface RepairResult {
   original_analysis: ValidationResult;
@@ -290,6 +319,41 @@ export interface RepairResult {
     repaired_sha256: string;
     download_media_type: "model/stl";
     download_filename: string;
+    checks_used?: number;
+  } | null;
+  outcome?: RepairOutcomeKind;
+  summary?: string;
+}
+
+/**
+ * POST /parts/{mesh_hash}/repair: the same repair on the organization's kept
+ * source. The repaired copy is a saved part linked to this one; it downloads
+ * from `download.url`, and `repaired_file_b64` is null when it's large.
+ */
+export interface StoredRepairResult extends RepairResult {
+  source: { mesh_hash: string; filename: string; format: string; bytes: number };
+  repaired: {
+    mesh_hash: string;
+    sha256: string;
+    format: string;
+    bytes: number;
+    verdict: string | null;
+    faces: number | null;
+    volume_mm3: number | null;
+    is_watertight: boolean | null;
+    methods_can_make: { count: number; of: number; processes: string[] };
+    decimated_for_analysis: boolean;
+    filename: string;
+  } | null;
+  download: { url: string; filename: string; media_type: string; bytes: number } | null;
+  lineage: { parent_mesh_hash: string; parent_filename: string; fix: string; created_at: string } | null;
+  prices: {
+    quantities: number[];
+    material_class: string;
+    basis: string;
+    before: null;
+    after: { qty: number; process: string | null; material: string | null; unit_cost_usd: number | null }[] | null;
+    note: string;
   } | null;
 }
 

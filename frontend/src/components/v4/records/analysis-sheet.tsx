@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/ui/auth-provider";
 import { canMutateWorkspace } from "@/lib/role-capabilities";
 import RepairComparison from "@/components/RepairComparison";
+import { repairFailedReason } from "../part/repair";
 import type { Issue, ProcessScore, RepairResult, ValidationResult } from "@/lib/api";
 import { R } from "../routes";
 import { setPendingFile } from "../pending-file";
@@ -184,8 +185,16 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
               {!repair ? (
                 <>
                   <b>{meshIssues[0].message}</b>
-                  <span>A repair joins bodies and closes gaps in a copy. The saved check doesn&apos;t change.</span>
-                  {canEdit ? (
+                  <span>A repair joins faces that touch and closes gaps in a copy. The saved check doesn&apos;t change.</span>
+                  {canEdit && partKey ? (
+                    <span className="r">
+                      <Link className="btn sm ink" href={`${R.part(partKey)}?problem=${encodeURIComponent(familyOf((meshIssues.find((i) => i.code === "NON_WATERTIGHT") ?? meshIssues[0]).code).id)}`}>
+                        Repair a copy
+                      </Link>
+                      <span className="pilot">No check used</span>
+                      <span>From the file kept with the part; nothing to upload.</span>
+                    </span>
+                  ) : canEdit ? (
                     <span className="r">
                       <label className={cx("btn sm ink fileb", busy === "repair" && "off")}>
                         {busy === "repair" ? "Repairing…" : "Choose file to repair"}
@@ -253,7 +262,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
               ) : (
                 <>
                   <b>Repair not possible</b>
-                  <span>{repair.repair_details?.error ?? "The repair couldn't fix this mesh."}</span>
+                  <span>{repairFailedReason(repair)}</span>
                   <span className="r">
                     <button type="button" className="btn sm" onClick={() => setRepair(null)}>
                       Try another file

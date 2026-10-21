@@ -10,7 +10,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { CostReport, ValidationResult } from "@/lib/api";
+import type { CostReport, StoredRepairResult, ValidationResult } from "@/lib/api";
 import { createDesignRevision } from "@/lib/designs-api";
 import { cx } from "../ui";
 import { R } from "../routes";
@@ -35,6 +35,8 @@ import { forgetStudioOrigin } from "./origin";
 import { newCheckLine } from "./all-sheet";
 import { failureText } from "./ask-dialog";
 import { roving } from "./problem-sheet";
+import { outcomeOf, repairHead, signedPct } from "./repair-outcome";
+import { repairFailedReason } from "../part/repair";
 import "./fix.css";
 
 const PartViewer = dynamic(() => import("../part/viewer"), { ssr: false });
@@ -285,14 +287,16 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
   const sh = useShell();
   const router = useRouter();
   const r = run.r;
-  const d = r.repair_details as typeof r.repair_details & { volume_change_pct?: number; original_volume_mm3?: number; repaired_volume_mm3?: number; volume_warning?: string | null; warn_pct?: number };
+  const d = r.repair_details;
   const v = r.repair_verification;
-  const hash = v?.repaired_sha256 ?? null;
+  const hash = run.saved?.hash ?? v?.repaired_sha256 ?? null;
+  // The kept-file repair saved the copy as a part already and priced it in the same request.
+  const stored = run.saved ? (r as StoredRepairResult) : null;
   const [keep, setKeep] = React.useState(0);
   const [saved, setSaved] = React.useState<{ cost: CostReport | null; name: string | null } | null | undefined>(undefined);
   const [sid, setSid] = React.useState<number | null>(null);
   const session = useSession(sid);
-  // Is this exact repaired file already a part (same SHA-256)? Then its saved prices are real and no check is needed.
+  // Is this exact repaired file already a priced part (same SHA-256)? Then its saved prices are real and no check is needed.
   React.useEffect(() => {
     if (!hash) return setSaved(null);
     let live = true;
@@ -316,36 +320,58 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
   const mAfter = buildMethods({ validation: after, cost, machines: [] });
   const total = mAfter.filter((m) => m.members.length === 1).length || mBefore.length;
   const pct = d.volume_change_pct ?? null;
-  const warnPct = d.warn_pct ?? 2;
-  const changedShape = pct != null && Math.abs(pct) > warnPct;
-  const sign = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${trimNum(Math.abs(x), 1)}%`;
+  const kind = outcomeOf(r);
+  const head = repairHead(kind, pct);
+  const changedShape = kind === "closed_changed";
   const cheap = (q: number) => {
     const c = cheapestAt(mAfter, q);
     return c ? `${money(priceAt(c, q))} · ${c.name.toLowerCase()} (${c.short})` : null;
   };
+  // Prices of the copy: its own saved record, else what the kept-file repair priced.
+  const storedPrice = (q: number) => {
+    const x = stored?.prices?.after?.find((y) => y.qty === q);
+    return x?.unit_cost_usd != null ? `${money(x.unit_cost_usd)} · ${methodName(x.process).toLowerCase()}` : null;
+  };
+  const priceOf = (q: number) => (cost ? cheap(q) : storedPrice(q));
+  const priced = cost ? cost.quantities ?? [] : stored?.prices?.quantities ?? [];
   const red = cost?.decision?.if_redesigned ?? {};
   const redQ = Object.entries(red).filter(([, x]) => x).map(([k]) => Number(k)).sort((a, b) => b - a)[0];
   const rows: Row[] = [
     ["Closed solid", before?.geometry.is_watertight ? "yes" : "no", after?.geometry.is_watertight ? "yes" : "no", after?.geometry.is_watertight ? "ok" : "bad"],
+    ...(d.openings ? [["Open edges", d.openings.open_edges.toLocaleString("en-US"), "0", "ok"] as Row] : []),
     ["Faces", d.original_faces?.toLocaleString("en-US") ?? "—", d.repaired_faces?.toLocaleString("en-US") ?? "—", ""],
-    ["Volume", d.original_volume_mm3 != null ? `${Math.round(d.original_volume_mm3).toLocaleString("en-US")} mm³` : "—", d.repaired_volume_mm3 != null ? `${Math.round(d.repaired_volume_mm3).toLocaleString("en-US")} mm³${pct != null ? ` · ${sign(pct)}` : ""}` : "—", changedShape ? "warn" : ""],
+    ["Volume", d.original_volume_mm3 != null ? `${Math.round(d.original_volume_mm3).toLocaleString("en-US")} mm³` : "unknown", d.repaired_volume_mm3 != null ? `${Math.round(d.repaired_volume_mm3).toLocaleString("en-US")} mm³${pct != null ? ` · ${signedPct(pct)}` : ""}` : "—", changedShape ? "warn" : ""],
     ["Verdict", v?.original_verdict ?? "—", v?.repaired_verdict ?? "—", v?.repaired_verdict === "fail" ? "bad" : "ok"],
     ["Processes that can make it", `${canMake(mBefore.map((m) => ({ ...m, verdict: before?.geometry.is_watertight === false ? "bad" : m.verdict })))} of ${total}`, `${canMake(mAfter)} of ${total}`, "ok"],
   ];
-  for (const q of [10, 100]) if (cost?.quantities?.includes(q)) rows.push([`Cheapest at ${qtyWord(q)}`, "not priced", cheap(q) ?? "none", cheap(q) ? "ok" : "bad"]);
+  for (const q of [10, 100, 1000]) if (priced.includes(q)) rows.push([`Cheapest at ${qtyWord(q)}`, "not priced", priceOf(q) ?? "none", priceOf(q) ? "ok" : "bad"]);
   if (redQ && red[String(redQ)]) rows.push([`${red[String(redQ)]!.process === "injection_molding" ? "Molding" : red[String(redQ)]!.process} at ${qtyWord(redQ)}, if redesigned`, "—", money(red[String(redQ)]!.unit_cost_usd), ""]);
   const origin: FixOrigin = { fileType: "STL", open: !after?.geometry.is_watertight, studio: null, server: null };
   const items = after ? leftItems(after, cost, origin) : [];
-  if (changedShape && pct != null) items.unshift({ k: `Volume ${sign(pct)} from the repair`, s: "The repair’s own change. Fix the open shell in your CAD tool to keep the original shape.", who: "In your CAD", tone: "c-unk" });
-  const c10 = cheap(10);
+  if (changedShape) items.unshift({ k: pct != null ? `Volume ${signedPct(pct)} from the repair` : "A change in shape from the repair", s: "The repair’s own change. Close the opening in your CAD tool to keep the design’s shape.", who: "In your CAD", tone: "c-unk" });
+  const firstQ = [10, 100, 1, ...priced].find((q) => priced.includes(q) && priceOf(q)) ?? null;
+  const firstPrice = firstQ != null ? priceOf(firstQ) : null;
   const figs = [
     { k: "Processes", v: `${canMake(mAfter)} of ${total}`, s: `was ${before?.geometry.is_watertight === false ? 0 : canMake(mBefore)} of ${total}`, tone: "ok" },
-    cost ? { k: "Cheapest at 10", v: c10 ? c10.split(" · ")[0] : "None", s: c10 ? c10.split(" · ")[1] : "nothing priced", tone: "" } : { k: "Prices", v: "When saved", s: "saving checks and prices it", tone: "" },
-    pct != null ? { k: "Volume", v: sign(pct), s: changedShape ? "more than closing gaps" : "closing gaps only", tone: changedShape ? "warn" : "" } : { k: "Faces", v: d.repaired_faces?.toLocaleString("en-US") ?? "—", s: "after repair", tone: "" },
+    firstPrice && firstQ != null
+      ? { k: `Cheapest at ${qtyWord(firstQ)}`, v: firstPrice.split(" · ")[0], s: firstPrice.split(" · ")[1], tone: "" }
+      : { k: "Prices", v: run.saved ? "None" : "When saved", s: run.saved ? "nothing priced" : "saving checks and prices it", tone: "" },
+    { k: "Volume", v: pct != null ? signedPct(pct) : "unknown", s: changedShape ? (pct != null ? "more than closing gaps" : "couldn’t measure before") : "closing gaps only", tone: changedShape ? "warn" : "" },
   ];
   const savedAlready = !!saved && !!hash;
   const saving = session?.status === "running";
+  const downloadUrl = run.url || (run.saved ? fixedFileUrl(run.saved.hash) : "");
   const doSave = () => {
+    if (run.saved) {
+      if (keep === 0) {
+        if (p.data.key) clearRun(p.data.key);
+        router.push(R.part(run.saved.hash));
+        return;
+      }
+      fx.setAfter(false);
+      p.toast({ text: `Keeping your file. The repaired copy stays in Parts as ${run.saved.filename}.`, link: { label: "Open it", href: R.part(run.saved.hash) } });
+      return;
+    }
     if (keep === 1) {
       if (p.data.key) clearRun(p.data.key);
       fx.setAfter(false);
@@ -359,22 +385,45 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
     if (saving) return;
     setSid(startCheck(run.file, { materialClass: p.data.cost?.material_class ?? "polymer" }));
   };
-  const label = keep === 1 ? "Discard the copy" : savedAlready ? "Open the saved copy" : saving ? "Saving: checking it…" : session && session.status !== "running" && session.key ? "Saved" : "Save the repaired copy";
+  const label = run.saved
+    ? keep === 0
+      ? "Open the repaired copy"
+      : "Back to my file"
+    : keep === 1
+      ? "Discard the copy"
+      : savedAlready
+        ? "Open the saved copy"
+        : saving
+          ? "Saving: checking it…"
+          : session && session.status !== "running" && session.key
+            ? "Saved"
+            : "Save the repaired copy";
+  const keepOpts: [string, string][] = run.saved
+    ? [
+        ["Use the repaired copy", `It’s saved as a new part, ${run.saved.filename}, linked to your file. Open it to price, decide and share it.`],
+        ["Keep using my file", "The repaired copy stays in Parts; nothing else changes."],
+      ]
+    : [
+        ["Keep both", "Save the repaired copy as a new part next to this file. Your file and its record stay as they are."],
+        ["Keep only my file", "Discard the repaired copy. Nothing is saved."],
+      ];
   const body = (
     <Pair
-      a={{ title: "Before", right: "your file", url: mesh.url, kind: mesh.kind, highlight: pinFor(problem, "1", mesh.faceSpace === "analysis" && !!mesh.faceHash && mesh.faceHash === p.data.validation?.analysis_mesh_hash), tagHead: "Your file", tagText: [problem?.where, `${(d.original_faces ?? before?.geometry.faces ?? 0).toLocaleString("en-US")} faces`, d.original_volume_mm3 != null ? `${Math.round(d.original_volume_mm3).toLocaleString("en-US")} mm³ with its holes capped flat` : null].filter(Boolean).join(" · "), tagCls: "", aria: `Your file, ${problem?.where ?? "open shell"}. Drag, or use the arrow keys, to turn both.` }}
-      b={{ title: "After", right: "repaired copy", url: run.url, kind: "stl", highlight: null, tagHead: "Repaired copy", tagText: [after?.geometry.is_watertight ? "Closed" : "Still open", `${(d.repaired_faces ?? 0).toLocaleString("en-US")} faces`, d.repaired_volume_mm3 != null ? `${Math.round(d.repaired_volume_mm3).toLocaleString("en-US")} mm³${pct != null ? `, ${sign(pct)}` : ""}` : null].filter(Boolean).join(" · "), tagCls: changedShape ? "warn" : "ok", aria: "The repaired copy. Drag, or use the arrow keys, to turn both." }}
+      a={{ title: "Before", right: "your file", url: mesh.url, kind: mesh.kind, highlight: pinFor(problem, "1", mesh.faceSpace === "analysis" && !!mesh.faceHash && mesh.faceHash === p.data.validation?.analysis_mesh_hash), tagHead: "Your file", tagText: [problem?.where, `${(d.original_faces ?? before?.geometry.faces ?? 0).toLocaleString("en-US")} faces`, d.original_volume_mm3 != null ? `${Math.round(d.original_volume_mm3).toLocaleString("en-US")} mm³ with its openings capped flat` : null].filter(Boolean).join(" · "), tagCls: "", aria: `Your file, ${problem?.where ?? "open shell"}. Drag, or use the arrow keys, to turn both.` }}
+      b={{ title: "After", right: "repaired copy", url: run.url || null, kind: "stl", highlight: null, tagHead: "Repaired copy", tagText: [after?.geometry.is_watertight ? "Closed" : "Still open", `${(d.repaired_faces ?? 0).toLocaleString("en-US")} faces`, d.repaired_volume_mm3 != null ? `${Math.round(d.repaired_volume_mm3).toLocaleString("en-US")} mm³${pct != null ? `, ${signedPct(pct)}` : ""}` : null].filter(Boolean).join(" · "), tagCls: changedShape ? "warn" : "ok", aria: "The repaired copy. Drag, or use the arrow keys, to turn both." }}
     />
   );
   const sheet = (
     <>
       <div className="top">
-        <span className={cx("chip", changedShape ? "c-warn" : "c-ok")} style={{ marginBottom: 10 }}>
+        <span className={cx("chip", head.tone)} style={{ marginBottom: 10 }}>
           <i />
-          {pct != null ? `Volume ${sign(pct)}` : "Closed"}
+          {head.chip}
         </span>
-        <h2 className="stitle">{after?.geometry.is_watertight ? (changedShape ? `Closed, but the volume changed ${sign(pct!)}` : "Closed: a solid now") : "Repaired, still open"}</h2>
-        <p className="smeta">{[d.tier ? `Mesh repair, ${d.tier}` : "Mesh repair", d.duration_ms != null ? `${(d.duration_ms / 1000).toFixed(1)} s` : null, v?.reverified ? "checked like an upload" : null].filter(Boolean).join(" · ")}</p>
+        <h2 className="stitle">{head.title}</h2>
+        <p className="smeta">
+          {[d.welded_edges ? `welded ${d.welded_edges.toLocaleString("en-US")} edges` : null, d.tier ? `mesh repair, ${d.tier}` : "mesh repair", d.duration_ms != null ? `${(d.duration_ms / 1000).toFixed(1)} s` : null, v?.reverified ? "checked like an upload" : null, "no check used"].filter(Boolean).join(" · ")}
+        </p>
         <div className="figs" aria-live="polite">
           {figs.map((g) => (
             <div className="fig" key={g.k}>
@@ -386,26 +435,31 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
         </div>
       </div>
       <div className="scroll">
-        {changedShape && d.volume_warning ? (
-          <div className="kwarn" role="note" style={{ marginTop: 8 }}>
-            <b>The shape changed</b>
-            <span>{d.volume_warning}</span>
-          </div>
-        ) : null}
-        <Changed colA="Your file" colB="Repaired copy" right={cost ? `at ${qtyWord(10)} parts, ${(cost.material_class === "polymer" ? "plastic" : cost.material_class)}` : "prices when saved"} rows={rows} foot={cost ? `Model prices, not quotes${savedAlready && !session ? `, from the saved record of this exact file${saved?.name ? ` (${saved.name})` : ""}` : ""}.` : "Saving the copy checks it like an upload and prices it."} />
+        <div className={changedShape ? "kwarn" : "kprop"} role="note" style={{ marginTop: 8 }}>
+          <b>{changedShape ? "The shape changed" : "What the repair did"}</b>
+          <span>{repairFailedReason(r)}</span>
+          {changedShape && d.volume_warning ? <span>{d.volume_warning}</span> : null}
+        </div>
+        <Changed colA="Your file" colB="Repaired copy" right={cost ? `at ${qtyWord(10)} parts, ${cost.material_class === "polymer" ? "plastic" : cost.material_class}` : stored?.prices ? `${stored.prices.material_class === "polymer" ? "plastic" : stored.prices.material_class}` : "prices when saved"} rows={rows} foot={cost ? `Model prices, not quotes${savedAlready && !session ? `, from the saved record of this exact file${saved?.name ? ` (${saved.name})` : ""}` : ""}.` : stored?.prices ? stored.prices.note : "Saving the copy checks it like an upload and prices it."} />
         <Left items={items} n={after ? `${items.length} on the repaired copy` : ""} />
-        <Keep opts={[["Keep both", "Save the repaired copy as a new part next to this file. Your file and its record stay as they are."], ["Keep only my file", "Discard the repaired copy. Nothing is saved."]]} keep={keep} setKeep={setKeep} />
+        <Keep opts={keepOpts} keep={keep} setKeep={setKeep} />
         <p className="khash">SHA-256 · your file {v?.original_sha256.slice(0, 8) ?? "—"}… · repaired copy {hash?.slice(0, 8) ?? "—"}…</p>
       </div>
       <div className="kact">
         <button className="btn ink" type="button" onClick={doSave} aria-disabled={saving} style={saving ? { opacity: 0.6 } : undefined}>
           {label}
         </button>
-        <a className="btn" href={run.url} download={run.file.name}>
-          Download repaired STL
-        </a>
+        {downloadUrl ? (
+          <a className="btn" href={downloadUrl} download={run.file.name}>
+            Download the repaired STL
+          </a>
+        ) : null}
         <small>
-          {savedAlready ? `This exact repaired file is already a part${saved?.name ? `: ${saved.name}` : ""}. Opening it doesn’t use a check.` : `The repaired copy was checked during the repair. Keeping it saves it as a new part, separate from your file. ${newCheckLine(sh.usage, "Saving checks it like an upload")}.`}{" "}
+          {run.saved
+            ? `The repaired copy is in Parts, linked to your file. Opening it doesn’t use a check.`
+            : savedAlready
+              ? `This exact repaired file is already a part${saved?.name ? `: ${saved.name}` : ""}. Opening it doesn’t use a check.`
+              : `The repaired copy was checked during the repair. Keeping it saves it as a new part, separate from your file. ${newCheckLine(sh.usage, "Saving checks it like an upload")}.`}{" "}
           <button className="btn sm ghost" type="button" style={{ height: 22, padding: "0 4px" }} onClick={() => (fx.setAfter(false), fx.openAsk(run.problem, "upload"))}>
             Fix it in CAD instead
           </button>
@@ -413,7 +467,7 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
       </div>
     </>
   );
-  return shell(body, sheet, savedAlready ? "Mesh repair · this repaired copy is already a part" : "Mesh repair · repaired copy not saved yet");
+  return shell(body, sheet, run.saved ? `Mesh repair · saved as ${run.saved.filename}` : savedAlready ? "Mesh repair · this repaired copy is already a part" : "Mesh repair · repaired copy not saved yet");
 }
 
 /* ── after a new Design Studio revision ───────────────────────────────── */
