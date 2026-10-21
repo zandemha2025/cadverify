@@ -6,7 +6,9 @@
  * board P8 states (loading, couldn't load, none yet, not found, load more).
  */
 import * as React from "react";
+import Link from "next/link";
 import { World } from "../ui";
+import { EXPIRY_CHOICES, choiceFromKey, choiceKey, endDateAddedNote, linkEndText, type ExpiryChoice, type LinkStatus } from "../datacontrol/words";
 import "./records.css";
 
 /** The page frame, marked so this area's phone rules (wrapping panel heads) apply only here. */
@@ -139,6 +141,24 @@ export function Confirm({
 
 /* ── public link ────────────────────────────────────────────────────────── */
 
+export interface LinkState {
+  status?: LinkStatus | null;
+  expiresAt?: string | null;
+  endedAt?: string | null;
+  endDateAdded?: boolean;
+}
+
+/** The link fields of a record or analysis answer, as PublicLink reads them. */
+export function linkStateOf(d: unknown): LinkState {
+  const x = (d ?? {}) as { share_status?: LinkStatus | null; share_expires_at?: string | null; share_ended_at?: string | null; share_end_date_added?: boolean };
+  return { status: x.share_status ?? null, expiresAt: x.share_expires_at ?? null, endedAt: x.share_ended_at ?? null, endDateAdded: !!x.share_end_date_added };
+}
+
+/**
+ * The record's public link. A new link ends after 30 days unless the sharer
+ * picks 90 days, a year or no end date; the person who made it (or an admin)
+ * can switch it off, and the server says who may.
+ */
 export function PublicLink({
   shareUrl,
   canShare,
@@ -146,19 +166,23 @@ export function PublicLink({
   onCreate,
   onTurnOff,
   toast,
+  link,
 }: {
   shareUrl: string | null;
   canShare: boolean;
   blurb: string;
-  onCreate: () => Promise<unknown>;
+  onCreate: (days: ExpiryChoice) => Promise<unknown>;
   onTurnOff: () => Promise<unknown>;
   toast: (m: string) => void;
+  link?: LinkState;
 }) {
   const [busy, setBusy] = React.useState(false);
   const [asking, setAsking] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const [days, setDays] = React.useState<ExpiryChoice>(30);
   const [err, setErr] = React.useState<string | null>(null);
   const full = shareUrl ? (typeof window !== "undefined" && shareUrl.startsWith("/") ? window.location.origin + shareUrl : shareUrl) : null;
+  const pickId = React.useId();
   React.useEffect(() => {
     setCopied(false);
     setAsking(false);
@@ -168,8 +192,8 @@ export function PublicLink({
     setBusy(true);
     setErr(null);
     try {
-      await onCreate();
-      toast("Link created");
+      await onCreate(days);
+      toast(days == null ? "Link created. It has no end date." : `Link created. It ends in ${days === 365 ? "a year" : `${days} days`}.`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "The link wasn't created.");
     } finally {
@@ -191,29 +215,43 @@ export function PublicLink({
     try {
       await onTurnOff();
       setAsking(false);
-      toast("Link turned off");
+      toast("Link switched off");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "The link is still on.");
       setAsking(false);
     }
   };
+  const ended = !shareUrl && (link?.status === "expired" || link?.status === "off");
 
   return (
     <>
       <div className="gh">
         <span>Public link</span>
-        <span>{shareUrl ? "On" : "Off"}</span>
+        <span>{shareUrl ? (link?.status ? linkEndText("active", link.expiresAt ?? null) : "On") : ended ? linkEndText(link?.status, link?.expiresAt, link?.endedAt) : "Off"}</span>
       </div>
       {!shareUrl ? (
         canShare ? (
-          <div className="bar2">
-            <button type="button" className="btn sm" onClick={create} disabled={busy}>
-              {busy ? "Creating…" : "Create link"}
-            </button>
-            <span>{blurb}</span>
-          </div>
+          <>
+            {ended ? <p className="ro-note">{link?.status === "expired" ? "The last link has ended." : "The last link was switched off."} Anyone who opens it sees that.</p> : null}
+            <div className="bar2">
+              <label htmlFor={pickId} className="sr">
+                How long the link lasts
+              </label>
+              <select id={pickId} value={choiceKey(days)} onChange={(e) => setDays(choiceFromKey(e.target.value))} disabled={busy} style={{ height: 32, borderRadius: 999, border: "1px solid var(--rule2)", padding: "0 10px", background: "#fff" }}>
+                {EXPIRY_CHOICES.map((c) => (
+                  <option key={choiceKey(c.value)} value={choiceKey(c.value)}>
+                    {c.value === 30 ? "Lasts 30 days" : c.value == null ? "No end date" : `Lasts ${c.label}`}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="btn sm" onClick={create} disabled={busy}>
+                {busy ? "Creating…" : "Create link"}
+              </button>
+              <span>{blurb}</span>
+            </div>
+          </>
         ) : (
-          <p className="ro-note">No public link. Analysts and admins create links.</p>
+          <p className="ro-note">{ended ? `${linkEndText(link?.status, link?.expiresAt, link?.endedAt)}. ` : "No public link. "}Analysts and admins create links.</p>
         )
       ) : (
         <>
@@ -221,8 +259,9 @@ export function PublicLink({
             Link
             <input type="text" readOnly value={full ?? ""} onFocus={(e) => e.currentTarget.select()} />
           </label>
+          {link?.endDateAdded ? <p className="ro-note">{endDateAddedNote(link.expiresAt)}</p> : null}
           {asking ? (
-            <Confirm label="Turn off link" question="Turn off the link? It stops working right away." action="Turn off" onConfirm={off} onCancel={() => setAsking(false)} />
+            <Confirm label="Switch off link" question="Switch off the link? It stops working right away; anyone who opens it sees that it was switched off." action="Switch off" onConfirm={off} onCancel={() => setAsking(false)} />
           ) : (
             <div className="bar2">
               <button type="button" className="btn sm" onClick={copy}>
@@ -233,9 +272,12 @@ export function PublicLink({
               </a>
               {canShare ? (
                 <button type="button" className="btn sm ghost" onClick={() => setAsking(true)}>
-                  Turn off
+                  Switch off
                 </button>
               ) : null}
+              <Link className="btn sm ghost" href="/app/account/links">
+                All your links
+              </Link>
             </div>
           )}
         </>

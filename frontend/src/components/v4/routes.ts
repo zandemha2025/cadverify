@@ -40,6 +40,7 @@ export const R = {
   notifications: "/app/account/notifications",
   activity: "/app/account/activity",
   data: "/app/account/data",
+  links: "/app/account/links",
 } as const;
 
 export type NavSection = "home" | "parts" | "many" | "make" | "shop" | "account";
@@ -92,6 +93,7 @@ export const TABS: Record<Exclude<NavSection, "home">, { label: string; href: st
     { label: "Plan and billing", href: R.billing },
     { label: "Notifications", href: R.notifications },
     { label: "Activity", href: R.activity },
+    { label: "Share links", href: R.links },
     { label: "Files and data", href: R.data },
   ],
 };

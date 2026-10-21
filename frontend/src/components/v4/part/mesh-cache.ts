@@ -100,3 +100,34 @@ export async function putCachedMesh(entry: CachedMesh): Promise<boolean> {
     db.close();
   }
 }
+
+/** Drop this browser's copies of these parts (a part was deleted). Fails soft. */
+export async function deleteCachedMeshes(hashes: string[]): Promise<boolean> {
+  const db = await open();
+  if (!db) return false;
+  try {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    for (const h of hashes) store.delete(h);
+    return await done(tx);
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
+}
+
+/** Drop every part copy in this browser (an organization was deleted). Fails soft. */
+export async function clearCachedMeshes(): Promise<boolean> {
+  const db = await open();
+  if (!db) return false;
+  try {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).clear();
+    return await done(tx);
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
+}

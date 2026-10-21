@@ -9,6 +9,13 @@ import { Chip, Fig, Figs } from "../ui";
 import { SharedFrame, SharedStage } from "./shared-frame";
 import { checkFacts, checkWays, partFindings, type SharedCheckLite } from "./shared-derive";
 import { longDate, sizeText, wayName } from "./words";
+import { day } from "../datacontrol/words";
+
+/** " · link ends 20 Nov 2026" when the sharer's link has an end date. */
+export function linkEnds(data: unknown): string {
+  const at = (data as { link_expires_at?: string | null } | null)?.link_expires_at;
+  return at ? ` · link ends ${day(at)}` : "";
+}
 
 export function SharedCheck({ data }: { data: SharedAnalysis }) {
   const d = data as unknown as SharedCheckLite;
@@ -34,7 +41,7 @@ export function SharedCheck({ data }: { data: SharedAnalysis }) {
             <h2 className="stitle" style={{ overflowWrap: "anywhere" }}>
               {d.filename}
             </h2>
-            <p className="smeta">Manufacturability check · {longDate(d.created_at)} · view only</p>
+            <p className="smeta">Manufacturability check · {longDate(d.created_at)} · view only{linkEnds(data)}</p>
             <Figs>
               <Fig k="Best fit for the shape" v={d.best_process ? wayName(d.best_process) : "None found"} />
               <Fig k="Can make it" v={`${f.can} of ${f.total}`} sub="processes, with checks" tone={f.can ? "ok" : undefined} />

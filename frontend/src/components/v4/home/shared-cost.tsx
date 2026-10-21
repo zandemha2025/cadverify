@@ -7,6 +7,7 @@ import * as React from "react";
 import type { SharedCostDecision } from "@/lib/api";
 import { Fig, Figs, Src } from "../ui";
 import { SharedFrame, SharedStage } from "./shared-frame";
+import { linkEnds } from "./shared-check";
 import { assumptionName, assumptionSource, assumptionValue, crossoverLine, listQty, pickRange, priceFigs, wayRows, type SharedCostLite } from "./shared-derive";
 import { longDate, sizeText } from "./words";
 
@@ -29,7 +30,7 @@ export function SharedCost({ data }: { data: SharedCostDecision }) {
             <h2 className="stitle" style={{ overflowWrap: "anywhere" }}>
               {title}
             </h2>
-            <p className="smeta">{["Should-cost", d.material_class, longDate(d.created_at), "view only"].filter(Boolean).join(" · ")}</p>
+            <p className="smeta">{["Should-cost", d.material_class, longDate(d.created_at), "view only"].filter(Boolean).join(" · ")}{linkEnds(data)}</p>
             {figs.length ? (
               <Figs>
                 {figs.map((f) => (

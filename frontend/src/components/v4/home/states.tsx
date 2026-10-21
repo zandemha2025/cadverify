@@ -115,11 +115,22 @@ export function Skeleton({ rows = 4, label = "Loading" }: { rows?: number; label
 }
 
 /** A public shared link that was turned off (or never existed). No app nav: these pages are public. */
-export function LinkOff({ home = "/" }: { home?: string }) {
+export type LinkOffReason = "off" | "expired" | "missing" | "error";
+
+/** Why a shared link shows nothing: switched off, expired, unknown, or not reachable. No record data. */
+export function linkOffWords(reason: LinkOffReason, endedOn: string): { title: string; body: string } {
+  if (reason === "expired") return { title: "This link has expired", body: `${endedOn ? `It ended on ${endedOn}. ` : ""}Ask whoever sent it for a new one.` };
+  if (reason === "off") return { title: "This link was switched off", body: `${endedOn ? `It was switched off on ${endedOn}. ` : ""}Ask whoever sent it for a new one.` };
+  if (reason === "error") return { title: "This link couldn't be opened", body: "ScaleCAD didn't answer. Try again in a minute." };
+  return { title: "This link isn't available", body: "It may have ended, been switched off, or the part was deleted. Ask whoever sent it for a new one." };
+}
+
+export function LinkOff({ home = "/", reason = "off", endedOn = "" }: { home?: string; reason?: LinkOffReason; endedOn?: string }) {
+  const w = linkOffWords(reason, endedOn);
   return (
     <div className="empty" role="alert">
-      <b>This link was turned off</b>
-      <span>Ask whoever sent it for a new one.</span>
+      <b>{w.title}</b>
+      <span>{w.body}</span>
       <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <Link className="btn sm ink" href={home}>
           Go to ScaleCAD

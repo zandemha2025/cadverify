@@ -24,6 +24,7 @@ import {
 import { Chip, Content, Failed, KV, Loading, Panel, Sheet, cx } from "../ui";
 import { R } from "../routes";
 import { useShell } from "../shell";
+import { DeleteOrgPanel } from "../datacontrol/delete-org";
 import { AccountFrame, AccountHead, Banner, Confirm, CopyButton } from "./frame";
 import * as api from "./api";
 import {
@@ -334,6 +335,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
                     </div>
                   )}
                 </Panel>
+                <DeleteOrgPanel orgName={active.name} />
               </>
             ) : null}
           </>

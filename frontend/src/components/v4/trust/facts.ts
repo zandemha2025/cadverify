@@ -6,10 +6,9 @@
  * certification, a retention promise or a claim about provider settings the
  * code can't see.
  *
- * DELETING and SHARE_LINKS hold the two answers that are about to change
- * (deleting a part or all of an organization's data, and share links that
- * expire). Edit them in place when that lands; the page and the tests read
- * them from here.
+ * DELETING and SHARE_LINKS describe deleting a part or the organization and
+ * share links that end (src/services/data_deletion_service.py,
+ * src/services/share_links.py); the page and the tests read them from here.
  *
  * Pure: no React, no fetch (runs under node --test).
  */
@@ -56,11 +55,13 @@ export const WHO: FactSection = {
 export const SHARE_LINKS: FactSection = {
   id: "share",
   title: "Share links",
-  short: "Anyone with a share link can see the file name and findings. Links don’t expire today.",
+  short: "Anyone with a share link can see the file name and findings. A link ends after 30 days unless you pick longer.",
+  link: { label: "Your share links", href: "/app/account/links" },
   rows: [
     { k: "Who sees it", v: "Anyone with the link, without signing in, can see the file name, the verdicts, the findings and the measurements." },
     { k: "Never included", v: "The file, the 3D model, who uploaded it and their email." },
-    { k: "How long", v: "Links don’t expire today. A link stays on until someone in your team turns it off; it stops working at once." },
+    { k: "How long", v: "A link ends 30 days after it’s made, unless whoever makes it picks 90 days, a year or no end date. Links made before end dates existed were given one, 30 days after the change." },
+    { k: "Switching off", v: "The person who made a link, or an admin, can switch it off at any time in Share links. It stops working at once; anyone who opens it then sees only that it ended or was switched off." },
   ],
 };
 
@@ -85,15 +86,19 @@ export const TRANSIT: FactSection = {
   ],
 };
 
-/** Deleting today: not in the product. Replace when part and organization deletion land. */
+/** Deleting a part or the organization (data control, 2026-10-21). */
 export const DELETING: FactSection = {
   id: "delete",
   title: "Keeping and deleting",
-  short: "Kept until deleted. Deleting isn’t in ScaleCAD yet; send a privacy request.",
+  short: "Kept until you delete it. A member can delete a part; an admin can delete the whole organization.",
   link: { label: "Privacy requests", href: "/privacy#retention" },
   rows: [
-    { k: "How long", v: "Saved files, checks and records are kept. Nothing expires them." },
-    { k: "Deleting", v: "Deleting a part, its file or an account isn’t in ScaleCAD yet. To ask for deletion, send a privacy request." },
+    { k: "How long", v: "Saved files, checks and records are kept until someone deletes them. Nothing expires them." },
+    { k: "Deleting a part", v: "From the part or the Parts list. It removes the stored file, its checks, cost records and PDFs, its program and volume, actual costs logged against that file, and the copies ScaleCAD fixed from it unless you keep them. Share links to it stop working. Members delete parts only they checked; admins delete any part. It can’t be undone." },
+    { k: "Deleting the organization", v: "An admin can delete the organization in Account: every part, file, record and setting, for every member. Members are signed out. Accounts, plans and billing records stay." },
+    { k: "What stays", v: "A record that a file with a given fingerprint was deleted, by whom and when, without its name or results; audit events with their details removed; usage counts; and each account’s free-check count." },
+    { k: "Backups", v: "Deleting removes the data from ScaleCAD at once. Backups and the storage provider’s earlier versions of files aren’t changed by it; how long those are kept is set in the hosting setup." },
+    { k: "Your account", v: "Deleting a sign-in account isn’t in ScaleCAD yet. To ask for it, send a privacy request." },
     { k: "People leaving", v: "Removing someone from your organization ends their access. The organization keeps its parts." },
     { k: "Taking data out", v: "Cost records export as JSON, CSV or PDF." },
   ],

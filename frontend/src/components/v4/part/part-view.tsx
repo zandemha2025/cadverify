@@ -8,6 +8,7 @@
 import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { downloadCostPdf, shareCostDecision } from "@/lib/api";
 import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
@@ -36,6 +37,8 @@ import { AskDialog } from "../fix/ask-dialog";
 import { AfterFixView } from "../fix/after-fix";
 import { OrientChip, OrientTool } from "../orient/panel";
 import { useOrientView } from "../orient/state";
+import { DeletePartButton } from "../datacontrol/delete-part";
+import { day } from "../datacontrol/words";
 import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
@@ -110,6 +113,7 @@ export function PartView({
   const [hint, setHint] = React.useState(true);
   const [viewer, setViewer] = React.useState<ViewerState>("loading");
   const shell = useShell();
+  const router = useRouter();
   const retryPreview = mesh.url ? (
     <button className="btn sm" type="button" onClick={() => setViewer("loading")}>
       Retry preview
@@ -276,7 +280,11 @@ export function PartView({
     try {
       const r = await shareCostDecision(data.decisionId);
       await navigator.clipboard?.writeText(new URL(r.share_url, window.location.origin).toString()).catch(() => undefined);
-      toast({ text: "Share link copied. View only, no sign-in needed.", link: { label: "Preview", href: r.share_url } });
+      const ends = (r as { share_expires_at?: string | null }).share_expires_at;
+      toast({
+        text: `Share link copied. View only, no sign-in needed. ${ends ? `It ends ${day(ends)}.` : "It has no end date."}`,
+        link: { label: "Share links", href: R.links },
+      });
     } catch (e) {
       toast({ text: e instanceof Error ? e.message : "The share link wasn't made." });
     }
@@ -369,6 +377,7 @@ export function PartView({
             <button className="btn sm" type="button" onClick={() => void pdf()} disabled={!data.decisionId} title={data.decisionId ? "The record as a PDF" : "Saved records only"}>
               Export PDF
             </button>
+            {data.key && !checking ? <DeletePartButton partKey={data.key} fileName={data.fileName} label="Delete" onDeleted={() => router.push(R.parts)} /> : null}
           </div>
 
           <UseLayer />

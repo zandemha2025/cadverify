@@ -13,7 +13,7 @@ import { canMutateWorkspace } from "@/lib/role-capabilities";
 import { R } from "../routes";
 import { Chip, Src, cx } from "../ui";
 import { approve, errorText, exportRecord, reopen, setOutcome, shareRecord, unshareRecord, useMembers, usePartContext, useRecord } from "./api";
-import { Confirm, Glyph, NotFound, PublicLink, RecSheet, Skeleton } from "./common";
+import { Confirm, Glyph, NotFound, PublicLink, RecSheet, Skeleton, linkStateOf } from "./common";
 import {
   cheapestAt,
   costLines,
@@ -376,9 +376,10 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           shareUrl={detail.is_public ? detail.share_url : null}
           canShare={canEdit}
           blurb="Anyone with the link sees prices and assumptions."
-          onCreate={() => shareRecord(detail.id)}
+          onCreate={(days) => shareRecord(detail.id, days)}
           onTurnOff={() => unshareRecord(detail.id)}
           toast={toast}
+          link={linkStateOf(detail)}
         />
 
         {/* Export */}

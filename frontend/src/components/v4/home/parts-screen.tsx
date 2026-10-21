@@ -17,6 +17,7 @@ import { InlineFailed, LoadMore, NoneYet, Skeleton } from "./states";
 import { PartGlyph } from "./thumb";
 import { LibraryPanel } from "./library";
 import { JoinedWelcome } from "../onboard/teammate";
+import { DeletePartButton } from "../datacontrol/delete-part";
 import * as api from "./data";
 import { buildQueue } from "./home-derive";
 import {
@@ -346,7 +347,16 @@ export function PartsScreen() {
 
       <aside className="sheet" aria-label={picked ? "Part" : "Needs you"} ref={sheetRef}>
         {picked ? (
-          <Peek key={picked.part_key} row={picked} v={verdicts.get(picked.part_key)!} onClose={() => setSel(null)} />
+          <Peek
+            key={picked.part_key}
+            row={picked}
+            v={verdicts.get(picked.part_key)!}
+            onClose={() => setSel(null)}
+            onDeleted={() => {
+              setSel(null);
+              reload();
+            }}
+          />
         ) : (
           <SheetHome
             rows={rows}
@@ -377,7 +387,7 @@ function SegButton({ on, onClick, label, n }: { on: boolean; onClick: () => void
   );
 }
 
-function Peek({ row, v, onClose }: { row: PartRow; v: Verdict; onClose: () => void }) {
+function Peek({ row, v, onClose, onDeleted }: { row: PartRow; v: Verdict; onClose: () => void; onDeleted: () => void }) {
   const [d, setD] = React.useState<DecisionLite | null>(null);
   const closeRef = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => {
@@ -461,6 +471,7 @@ function Peek({ row, v, onClose }: { row: PartRow; v: Verdict; onClose: () => vo
               Analysis
             </Link>
           ) : null}
+          <DeletePartButton partKey={row.part_key} fileName={row.filename} className="btn sm ghost" label="Delete" onDeleted={onDeleted} />
         </div>
       </div>
     </>

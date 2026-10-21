@@ -19,7 +19,7 @@ import { R } from "../routes";
 import { setPendingFile } from "../pending-file";
 import { Chip, cx } from "../ui";
 import { analysisPdf, errorText, repairFile, repairedFile, saveBlob, shareAnalysis, unshareAnalysis, useAnalysis, usePartKeyForAnalysis, useRecordList } from "./api";
-import { Dialog, Glyph, NotFound, PublicLink, RecSheet, Skeleton } from "./common";
+import { Dialog, Glyph, NotFound, PublicLink, RecSheet, Skeleton, linkStateOf } from "./common";
 import { summaryLines } from "./facts";
 import { REPAIRABLE, finding, num, plural, rowTime, seconds, short, sizeText, stampUtc, volumeText, way, wayLower, type Tone } from "./words";
 import { familyOf } from "../fix/problems";
@@ -366,8 +366,9 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           shareUrl={detail.is_public ? detail.share_url : null}
           canShare={canEdit}
           blurb="Anyone with the link sees the checks, not your machines."
-          onCreate={() => shareAnalysis(detail.id)}
+          onCreate={(days) => shareAnalysis(detail.id, days)}
           onTurnOff={() => unshareAnalysis(detail.id)}
+          link={linkStateOf(detail)}
           toast={toast}
         />
 

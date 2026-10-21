@@ -23,6 +23,8 @@ import type {
   ValidationResult,
 } from "@/lib/api";
 import type { AnalysisListRow } from "@/lib/recent-parts";
+import type { ShareLinkFields } from "../datacontrol/api";
+import type { ExpiryChoice } from "../datacontrol/words";
 import type { Portfolio, PortfolioDelta } from "@/lib/verify/program-rollup";
 import { applyPortfolioDelta } from "@/lib/verify/program-rollup";
 
@@ -220,7 +222,9 @@ export function useRecords(ids: (string | null)[]) {
   });
 }
 
-function applyGovernance(id: string, patch: Partial<CostDecisionGovernance> & { is_public?: boolean; share_url?: string | null }): void {
+type LinkPatch = Partial<ShareLinkFields>;
+
+function applyGovernance(id: string, patch: Partial<CostDecisionGovernance> & LinkPatch): void {
   details.set((m) => {
     const cur = m[id];
     return cur?.detail ? { ...m, [id]: { ...cur, detail: { ...cur.detail, ...patch } } } : m;
@@ -274,15 +278,31 @@ function pickGovernance(r: CostDecisionGovernance): Partial<CostDecisionGovernan
   return out as Partial<CostDecisionGovernance>;
 }
 
-export async function shareRecord(id: string): Promise<string> {
-  const r = await json<{ share_url: string }>(`/cost-decisions/${encodeURIComponent(id)}/share`, { method: "POST" });
-  applyGovernance(id, { is_public: true, share_url: r.share_url });
+/** The link fields every share answer carries (src/services/share_links.py). */
+function linkPatch(r: Partial<ShareLinkFields> & { share_url: string }): LinkPatch {
+  return {
+    is_public: r.is_public ?? true,
+    share_url: r.share_url,
+    share_status: r.share_status ?? "active",
+    share_expires_at: r.share_expires_at ?? null,
+    share_created_at: r.share_created_at ?? null,
+    share_ended_at: null,
+    share_end_date_added: r.share_end_date_added ?? false,
+  };
+}
+
+const SWITCHED_OFF = (): LinkPatch => ({ is_public: false, share_url: null, share_status: "off", share_ended_at: new Date().toISOString() });
+
+/** A public link to the record that ends after `days` (null: the explicit "no end date"). */
+export async function shareRecord(id: string, days: ExpiryChoice = 30): Promise<string> {
+  const r = await json<ShareLinkFields & { share_url: string }>(`/cost-decisions/${encodeURIComponent(id)}/share`, body("POST", { expires_in_days: days }));
+  applyGovernance(id, linkPatch(r));
   return r.share_url;
 }
 
 export async function unshareRecord(id: string): Promise<void> {
   await send(`/cost-decisions/${encodeURIComponent(id)}/share`, { method: "DELETE" });
-  applyGovernance(id, { is_public: false, share_url: null });
+  applyGovernance(id, SWITCHED_OFF());
 }
 
 export async function exportRecord(id: string, filename: string, kind: "pdf" | "csv" | "json"): Promise<string> {
@@ -433,6 +453,10 @@ export interface AnalysisFull {
   created_at: string;
   is_public: boolean;
   share_url: string | null;
+  share_status?: ShareLinkFields["share_status"];
+  share_expires_at?: string | null;
+  share_ended_at?: string | null;
+  share_end_date_added?: boolean;
   result: ValidationResult & { analysis_mesh_hash?: string };
   decision_links: { id: string; url: string; filename: string; make_now_process: string | null; approval_status: string; created_at: string }[];
 }
@@ -470,15 +494,25 @@ function patchAnalysis(id: string, patch: Partial<AnalysisFull>): void {
   });
 }
 
-export async function shareAnalysis(id: string): Promise<string> {
-  const r = await json<{ share_url: string }>(`/analyses/${encodeURIComponent(id)}/share`, { method: "POST" });
-  patchAnalysis(id, { is_public: true, share_url: r.share_url });
+/** A public link to the check that ends after `days` (null: the explicit "no end date"). */
+export async function shareAnalysis(id: string, days: ExpiryChoice = 30): Promise<string> {
+  const r = await json<ShareLinkFields & { share_url: string }>(`/analyses/${encodeURIComponent(id)}/share`, body("POST", { expires_in_days: days }));
+  const p = linkPatch(r);
+  patchAnalysis(id, { ...p, is_public: p.is_public ?? true, share_url: r.share_url });
   return r.share_url;
 }
 
 export async function unshareAnalysis(id: string): Promise<void> {
   await send(`/analyses/${encodeURIComponent(id)}/share`, { method: "DELETE" });
-  patchAnalysis(id, { is_public: false, share_url: null });
+  patchAnalysis(id, { ...SWITCHED_OFF(), is_public: false, share_url: null });
+}
+
+/** Forget every loaded list and record (a part or the organization was deleted); screens reload on next view. */
+export function forgetLoaded(): void {
+  recordList.set(emptyList());
+  analysisList.set(emptyList());
+  details.set({});
+  analyses.set({});
 }
 
 export async function analysisPdf(id: string, filename: string): Promise<string> {

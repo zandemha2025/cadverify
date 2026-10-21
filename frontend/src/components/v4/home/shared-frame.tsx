@@ -8,7 +8,7 @@ import Link from "next/link";
 import { Instrument_Sans, Sora } from "next/font/google";
 import { R } from "../routes";
 import { PartGlyph } from "./thumb";
-import { LinkOff } from "./states";
+import { LinkOff, type LinkOffReason } from "./states";
 import "../v4.css";
 import "./home.css";
 
@@ -59,8 +59,8 @@ export function SharedStage({ title, facts, foot }: { title: string; facts: stri
   );
 }
 
-/** P8 "Shared link · turned off": the link was revoked, or never existed. */
-export function SharedOff() {
+/** P8 "Shared link · turned off": switched off, expired, unknown (or its part was deleted), or unreachable. */
+export function SharedOff({ reason = "missing", endedOn = "" }: { reason?: LinkOffReason; endedOn?: string }) {
   return (
     <SharedFrame kind={null}>
       <main className="world h-page" aria-label="Shared link">
@@ -68,7 +68,7 @@ export function SharedOff() {
         <div className="h-wrap">
           <div className="h-col" style={{ width: "min(520px, 100%)", marginTop: 80 }}>
             <section className="panel">
-              <LinkOff />
+              <LinkOff reason={reason} endedOn={endedOn} />
             </section>
           </div>
         </div>

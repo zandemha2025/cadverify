@@ -6,6 +6,9 @@ import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
 import { UI_V4 } from "@/lib/ui-v4-flag";
 import { SharedCheck } from "@/components/v4/home/shared-check";
 import { SharedOff } from "@/components/v4/home/shared-frame";
+import { linkOffWords } from "@/components/v4/home/states";
+import { readPublicShare } from "@/components/v4/datacontrol/api";
+import { day } from "@/components/v4/datacontrol/words";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -100,15 +103,13 @@ export default async function SharedAnalysisPage({
 }) {
   const { shortId } = await params;
 
-  let data: SharedAnalysis | null = null;
-  try {
-    data = await fetchSharedAnalysis(shortId);
-  } catch {
-    /* 404 or network error */
-  }
+  // 410 when the link ended or was switched off (no record data), 404 when unknown.
+  const res = await readPublicShare<SharedAnalysis>(`/s/${shortId}`);
+  const data: SharedAnalysis | null = res.ok ? res.data : null;
+  const off = res.ok ? null : { reason: res.reason, endedOn: day(res.endedAt) };
 
   // v4 ("object first") look behind NEXT_PUBLIC_UI_V4; today's page below is unchanged when it's off.
-  if (UI_V4) return data ? <SharedCheck data={data} /> : <SharedOff />;
+  if (UI_V4) return data ? <SharedCheck data={data} /> : <SharedOff reason={off?.reason} endedOn={off?.endedOn} />;
 
   if (!data) {
     return (
@@ -116,11 +117,10 @@ export default async function SharedAnalysisPage({
         <Card>
           <CardContent className="py-12 text-center">
             <h1 className="text-xl font-semibold text-foreground">
-              Analysis not available
+              {linkOffWords(off?.reason ?? "missing", off?.endedOn ?? "").title}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              This shared analysis is no longer available. It may have been
-              revoked by its owner.
+              {linkOffWords(off?.reason ?? "missing", off?.endedOn ?? "").body}
             </p>
             <Button asChild className="mt-6">
               <Link href="/">Go to ScaleCAD</Link>
