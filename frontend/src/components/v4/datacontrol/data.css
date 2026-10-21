@@ -5,13 +5,14 @@
 @starting-style{.ob .dc-dlg{transform:translateY(10px);opacity:0}}
 .ob .dc-dlg h2{margin:0;font-family:var(--v4-disp);font-size:19px;font-weight:600;letter-spacing:-.01em}
 .ob .dc-meta{margin:4px 0 12px;color:var(--ink3);font-size:13px;overflow-wrap:anywhere}
-.ob .dc-list{margin:6px 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:3px;color:var(--ink);font-size:14px}
+.ob .dc-list{list-style:disc;margin:6px 0 10px;padding-left:20px;color:var(--ink);font-size:14px}
 .ob .dc-p{margin:8px 0;color:var(--ink2);font-size:13.5px}
 .ob .dc-p b{color:var(--ink)}
 .ob .dc-warn{margin:10px 0;padding:10px 12px;border-radius:12px;background:var(--bad-bg);color:var(--bad);font-size:13.5px}
 .ob .dc-kept{margin:10px 0;font-size:13px;color:var(--ink2)}
 .ob .dc-kept summary{cursor:pointer;color:var(--ink);font-weight:500}
-.ob .dc-kept ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.ob .dc-kept ul{list-style:disc;margin:6px 0 0;padding-left:20px}
+.ob .dc-list li,.ob .dc-kept li{margin:3px 0}
 .ob .dc-check{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:13.5px;color:var(--ink)}
 .ob .dc-check input{margin-top:3px}
 .ob .dc-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
@@ -20,7 +21,7 @@
 .ob .dc-pad{padding:4px 16px 14px}
 .ob .dc-name{width:100%;max-width:420px}
 .ob .dc-links{display:flex;flex-direction:column}
-.ob .dc-row{display:grid;grid-template-columns:minmax(0,1.5fr) 110px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 16px;border-top:1px solid var(--rule)}
+.ob .dc-row{display:grid;grid-template-columns:minmax(0,1.5fr) 120px minmax(0,1fr) 250px;gap:10px;align-items:center;padding:10px 16px;border-top:1px solid var(--rule)}
 .ob .dc-row.th{border-top:0;padding-top:4px;padding-bottom:4px;color:var(--ink3);font-size:12px}
 .ob .dc-row b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ob .dc-row small{display:block;color:var(--ink3);font-size:12.5px;overflow-wrap:anywhere}

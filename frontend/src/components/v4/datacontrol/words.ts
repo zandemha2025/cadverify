@@ -139,7 +139,9 @@ export interface OrgPreview {
 export function orgRemovalLines(p: OrgPreview): string[] {
   const w = p.will_remove;
   const lines = [
-    `${n(w.parts, "part")} with their stored files, ${n(w.checks, "check")} and ${n(w.cost_records, "cost record")}`,
+    w.parts || w.checks || w.cost_records
+      ? `${n(w.parts, "part")} with their stored files, ${n(w.checks, "check")} and ${n(w.cost_records, "cost record")}`
+      : "No parts, checks or cost records yet",
   ];
   if (w.batches) lines.push(n(w.batches, "catalog run"));
   if (w.designs) lines.push(n(w.designs, "Design Studio design"));

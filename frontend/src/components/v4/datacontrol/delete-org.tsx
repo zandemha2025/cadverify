@@ -11,7 +11,7 @@ import { forget } from "../home/data";
 import { forgetLoaded } from "../records/api";
 import { clearCachedMeshes } from "../part/mesh-cache";
 import { deleteOrg, orgDeletionPreview } from "./api";
-import { useReceipt } from "./delete-part";
+import { useDialogFocus, useReceipt } from "./delete-part";
 import { nameMatches, orgRemovalLines, receiptLine, type OrgPreview, type Receipt } from "./words";
 import "./data.css";
 
@@ -55,27 +55,10 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
     }
   };
 
-  if (receipt)
-    return (
-      <Panel title="Organization deleted">
-        <div className="dc-pad">
-          <p className={receipt.status === "done" ? "dc-ok" : "dc-p"} role="status">
-            {receiptLine(receipt)}
-          </p>
-          <p className="dc-p">
-            Members were signed out. Your account and your other organizations are as they were; if this was your only organization you now have a new, empty one. Deletion ID{" "}
-            <span className="mono">{receipt.id}</span>.
-          </p>
-          <div className="dc-acts">
-            <button className="btn sm ink" type="button" onClick={() => window.location.replace(new URL("/app", window.location.origin).toString())}>
-              Continue
-            </button>
-          </div>
-        </div>
-      </Panel>
-    );
+  if (receipt) return <OrgDeleted receipt={receipt} />;
 
   return (
+    <>
     <Panel title="Delete organization">
       <div className="dc-pad">
         {!open ? (
@@ -145,5 +128,34 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
         )}
       </div>
     </Panel>
+    {/* Room below the last panel, so it scrolls clear of the floating corner controls. */}
+    <div aria-hidden="true" style={{ height: 120, flexShrink: 0 }} />
+    </>
+  );
+}
+
+/** Over the page (which still shows the deleted organization until it reloads): the receipt and Continue. */
+function OrgDeleted({ receipt }: { receipt: Receipt }) {
+  const id = React.useId();
+  const go = () => window.location.replace(new URL("/app", window.location.origin).toString());
+  const { ref, onKeyDown } = useDialogFocus(go);
+  return (
+    <div className="dc-back">
+      <div ref={ref} className="dc-dlg" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={onKeyDown}>
+        <h2 id={id}>Organization deleted</h2>
+        <p className={receipt.status === "done" ? "dc-ok" : "dc-p"} role="status">
+          {receiptLine(receipt)}
+        </p>
+        <p className="dc-p">
+          Members were signed out. Your account and your other organizations are as they were; if this was your only organization you now have a new, empty one. Deletion ID{" "}
+          <span className="mono">{receipt.id}</span>.
+        </p>
+        <div className="dc-acts">
+          <button className="btn sm ink" type="button" onClick={go}>
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

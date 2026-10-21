@@ -91,4 +91,6 @@ test("deleting the organization: typed name must match exactly; the list counts 
   assert.ok(lines.includes("2 API keys: they stop working now"));
   assert.equal(lines[lines.length - 1], "Access for 4 members and 1 pending invite");
   assert.ok(!lines.some((l) => l.includes("catalog run")));
+  const empty = orgRemovalLines({ ...p, will_remove: { ...p.will_remove, parts: 0, checks: 0, cost_records: 0 } });
+  assert.equal(empty[0], "No parts, checks or cost records yet");
 });
