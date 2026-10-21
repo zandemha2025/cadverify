@@ -206,9 +206,27 @@ test("machines say whether they can make it, and why not", () => {
   assert.equal(hp.cost, 7.5);
   assert.match(hp.checks, /Size ✓ · weight ✓ · material ✓/);
   assert.equal(vf2.verdict, "Not set up");
-  assert.equal(vf2.why, "Declared for stainless, aluminum and steel, not plastic.");
+  assert.equal(vf2.why, "Declared for stainless, aluminum and steel, not Delrin.");
   assert.equal(st20.verdict, "Can't");
   assert.equal(st20.why, "Part lacks rotational geometry; required for cnc_turning.");
+});
+
+test("a printer declared for the route's own material can make it (feedback 15)", () => {
+  const f = fixture();
+  // An unedited catalog X1C declares filament names, not the class "polymer".
+  const x1c = { ...f.machines[0], id: "m9", name: "Bambu Lab X1C", process: "fdm", materials: ["PLA", "PETG", "ABS", "Nylon (PA6)", "TPU 95A"] };
+  const cost = { ...f.cost, estimates: [...f.cost.estimates, est("fdm", "PLA", 10, 15.66)], verification: { ...f.cost.verification, per_route: { ...f.cost.verification.per_route, fdm: { verdict: "makeable_in_house", machines_evaluated: 1, best_machine: "Bambu Lab X1C", failures: [] } } } };
+  const methods = buildMethods({ ...f, cost, machines: [x1c] as never });
+  const [v] = machineViews([x1c] as never, methods, cost, 10, [20, 15, 10]);
+  assert.equal(v.verdict, "Can make");
+  assert.equal(v.cost, 15.66);
+  assert.match(v.checks, /material ✓/);
+  // Declared for other filaments only, and no engine fit: not set up, naming the route's material.
+  const petg = { ...x1c, materials: ["PETG"] };
+  const bare = { ...cost, verification: { ...cost.verification, per_route: {} } };
+  const [w] = machineViews([petg] as never, buildMethods({ ...f, cost: bare, machines: [petg] as never }), bare, 10, [20, 15, 10]);
+  assert.equal(w.verdict, "Not set up");
+  assert.equal(w.why, "Declared for PETG, not PLA.");
 });
 
 test("decide offers the real routes and binds each to an exact estimate", () => {

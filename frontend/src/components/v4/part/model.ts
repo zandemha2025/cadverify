@@ -396,7 +396,7 @@ export function methodSub(m: Method): string {
   if (m.material) parts.push(m.material);
   if (m.inHouse) parts.push(`on your ${m.inHouse}`);
   if (m.geometryPick) parts.push("best fit for the shape");
-  else if (m.routePick) parts.push("recommended");
+  else if (m.routePick) parts.push("typical for the shape");
   return parts.join(" · ");
 }
 
@@ -711,8 +711,12 @@ export function machineViews(machines: OwnedMachine[], methods: Method[], cost: 
     const env = machineEnvelope(mc);
     const sizeOk = fitsEnvelope(bbox, env);
     const declared = (mc.materials ?? []).map((m) => m.toLowerCase());
-    const materialOk = cls ? declared.length === 0 ? null : declared.includes(cls) : null;
+    // The material this route is priced in (PLA for a filament printer): a machine
+    // declared for it, or for its class, is set up for it, as the engine's fit reads it.
+    const routeMat = method?.prices.get(q)?.material ?? method?.material ?? null;
     const fit = verification?.per_route?.[mc.process] ?? null;
+    const fitsHere = !!fit && (fit.verdict === "makeable_in_house" || fit.verdict === "makeable_with_secondary_op") && (!fit.best_machine || fit.best_machine === mc.name);
+    const materialOk = fitsHere ? true : cls ? declared.length === 0 ? null : declared.includes(cls) || (!!routeMat && declared.includes(routeMat.toLowerCase())) : null;
     const failures: FitFailure[] = fit?.failures ?? [];
     const kind = MACHINE_KIND[mc.process] ?? methodName(mc.process);
     const sub = [kind, mc.hourly_rate_usd != null ? `$${trimNum(mc.hourly_rate_usd, 2)}/h` : null, mc.max_workpiece_kg != null ? `${trimNum(mc.max_workpiece_kg, 0)} kg max` : null]
@@ -735,11 +739,11 @@ export function machineViews(machines: OwnedMachine[], methods: Method[], cost: 
       tone = "bad";
       verdict = "Can't";
       why = method.blockedReason ?? "Not makeable as drawn on this route.";
-    } else if (materialOk === false && cls) {
+    } else if (materialOk === false && cls && !fitsHere) {
       tone = "warn";
       verdict = "Not set up";
-      why = `Declared for ${joinWords(mc.materials ?? [])}, not ${(MATERIAL_CLASS_LABEL[cls] ?? cls).toLowerCase()}.`;
-    } else if (fit && (fit.verdict === "makeable_in_house" || fit.verdict === "makeable_with_secondary_op") && (!fit.best_machine || fit.best_machine === mc.name)) {
+      why = `Declared for ${joinWords(mc.materials ?? [])}, not ${routeMat ?? (MATERIAL_CLASS_LABEL[cls] ?? cls).toLowerCase()}.`;
+    } else if (fitsHere && fit) {
       tone = "ok";
       verdict = "Can make";
       price = method ? priceAt(method, q) : null;
@@ -946,7 +950,7 @@ export function verdictAnswer(methods: Method[], validation: ValidationResult | 
   const gp = singles.find((m) => m.geometryPick);
   const rows = [{ k: "Can make", v: `${can.length} of ${singles.length} processes` }];
   if (gp) rows.push({ k: "Best fit for the shape", v: `${gp.name}, DFM ${gp.score?.toFixed(1) ?? "—"}` });
-  if (cost?.routing) rows.push({ k: "Recommended process", v: `${methodName(cost.routing.recommended_process)}, confidence ${cost.routing.confidence.toFixed(1)}` });
+  if (cost?.routing) rows.push({ k: "Typical for the shape", v: `${methodName(cost.routing.recommended_process)}, confidence ${cost.routing.confidence.toFixed(1)}` });
   if (blocked.length) rows.push({ k: "Blocked", v: joinWords([...new Set(blocked)].slice(0, 4)) });
   const fixes = validation?.priority_fixes?.length ?? 0;
   const text = [cost?.routing?.reasoning, `${plural(fixes, "suggested fix", "suggested fixes")} in total; overall, ${overallWords(validation?.overall_verdict)}.`].filter(Boolean).join(" ");
