@@ -9,6 +9,7 @@ import type { IdentityResult } from "@/lib/verify/identity";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { buildMethods, cheapestAt, defaultQty, groupUnpriced, quantitiesOf, type Method } from "./model";
 import type { CheckSession } from "./store";
+import type { EarlierChoice } from "./choice";
 
 /** The five views of one part. Ids stay as they are in links (?lens=make); the names are what engineers call them. */
 export type Lens = "make" | "cost" | "use" | "shop" | "decide";
@@ -43,6 +44,8 @@ export interface PartData {
   identity: IdentityResult | null;
   checks: number | null;
   createdAt: string | null;
+  /** A way to make it chosen on an earlier check of this part, offered to keep on this one. */
+  earlierChoice?: EarlierChoice | null;
 }
 
 export interface Toast {

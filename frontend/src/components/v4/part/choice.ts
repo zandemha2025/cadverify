@@ -7,7 +7,7 @@
  * Pure: no React, no fetch, and only relative `.ts` runtime imports, so it runs
  * under `node --test` (choice.test.ts). Every number is the engine's.
  */
-import type { CostDecisionGovernance, CostEstimate, CostOptionPair, CostOptionSide, CostPickBasis, CostReport } from "@/lib/api";
+import type { CostDecisionGovernance, CostDecisionSummary, CostEstimate, CostOptionPair, CostOptionSide, CostPickBasis, CostReport } from "@/lib/api";
 import { days, methodName, money, qtyWord } from "./model.ts";
 
 /** In-house and the cheapest outside route at one quantity, when a machine you own clears a route. */
@@ -102,4 +102,22 @@ export function chooseBody(e: Pick<CostEstimate, "process" | "material" | "quant
 /** Whether a process is the one you chose (same process; the material is the engine's for it). */
 export function isChosen(choice: Choice | null, process: string): boolean {
   return !!choice && choice.process === process;
+}
+
+export interface EarlierChoice extends Choice {
+  recordId: string;
+}
+
+/**
+ * The newest choice recorded on an earlier check of this part (records newest
+ * first), when the record on screen isn't it. A re-check makes a new record; the
+ * choice stays on the old one until you keep it on the new one.
+ */
+export function earlierChoiceFrom(decisions: readonly CostDecisionSummary[], currentId: string | null): EarlierChoice | null {
+  for (const d of decisions) {
+    if (d.id === currentId) continue;
+    const c = recordedChoice(d);
+    if (c) return { ...c, recordId: d.id };
+  }
+  return null;
 }

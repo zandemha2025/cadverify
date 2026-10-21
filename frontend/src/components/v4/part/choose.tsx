@@ -65,5 +65,13 @@ export function useChoice() {
     }
   };
 
-  return { choice, pick, pair, follow, canChoose, makeThisWay, backToPick, busy, err };
+  // A choice made on an earlier check, while this check has none yet.
+  const earlier = !choice && !gov?.user_disposition ? p.data.earlierChoice ?? null : null;
+  const earlierMethod = earlier ? p.methods.find((m) => m.code === earlier.process) ?? null : null;
+  const canKeep = !!earlierMethod && canChoose(earlierMethod) && (earlier!.kind !== "inhouse" || !!earlierMethod.inHouse);
+  const keepEarlier = async () => {
+    if (earlierMethod && canKeep) await makeThisWay(earlierMethod);
+  };
+
+  return { choice, pick, pair, follow, canChoose, makeThisWay, backToPick, busy, err, earlier, earlierMethod, canKeep, keepEarlier };
 }

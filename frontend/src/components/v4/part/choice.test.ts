@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseBody, enginePick, followed, isChosen, pairAt, pickWhy, recordedChoice } from "./choice.ts";
+import { chooseBody, earlierChoiceFrom, enginePick, followed, isChosen, pairAt, pickWhy, recordedChoice } from "./choice.ts";
 
 type AnyObj = Record<string, unknown>;
 
@@ -76,4 +76,15 @@ test("Make it this way records in-house only on a machine of yours that clears i
   const e = { process: "fdm", material: "PLA", quantity: 100 };
   assert.deepEqual(chooseBody(e, true), { disposition: "inhouse", process: "fdm", material: "PLA", quantity: 100 });
   assert.equal(chooseBody({ ...e, process: "mjf", material: "PP (Polypropylene)" }, false).disposition, "outside");
+});
+
+test("a choice on an earlier check of the part is offered on the new record", () => {
+  const recs = [
+    { id: "NEW", user_disposition: null, disposition_basis: null },
+    { id: "MID", user_disposition: "acquire", disposition_basis: { process: "injection_molding", material: "PP (Molded)", quantity: 1000 } },
+    { id: "OLD", user_disposition: "inhouse", disposition_basis: { process: "fdm", material: "PLA", quantity: 100 }, disposition_updated_at: "2026-10-20T10:00:00Z" },
+  ] as never;
+  assert.deepEqual(earlierChoiceFrom(recs, "NEW"), { process: "fdm", material: "PLA", quantity: 100, kind: "inhouse", at: "2026-10-20T10:00:00Z", recordId: "OLD" });
+  assert.equal(earlierChoiceFrom(recs, "OLD"), null, "the record on screen is not an earlier one");
+  assert.equal(earlierChoiceFrom([], null), null);
 });

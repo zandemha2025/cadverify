@@ -22,6 +22,7 @@ import {
   priceAt,
   priceMeta,
   qtyWord,
+  shortId,
   type Method,
 } from "./model";
 import { RunNotice, SheetTop, classLabel, envLine, type FigItem } from "./sheet-bits";
@@ -490,6 +491,7 @@ export function PickNote({ ch }: { ch: ReturnType<typeof useChoice> }) {
   const p = usePart();
   const [rule, setRule] = React.useState(false);
   const pair = ch.pair;
+  if (ch.earlier) return <EarlierNote ch={ch} />;
   if (!pair || ch.choice) return null;
   const inHouse = pair.pick === "in_house";
   const title = inHouse
@@ -506,6 +508,45 @@ export function PickNote({ ch }: { ch: ReturnType<typeof useChoice> }) {
         <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Open any process below to make it that way instead.</span>
       </span>
       {rule && p.data.cost?.decision?.rule ? <span className="swap" style={{ color: "var(--ink2)", fontSize: 12.5 }}>{p.data.cost.decision.rule}</span> : null}
+    </div>
+  );
+}
+
+/** A way to make it chosen on an earlier check of this part: keep it on this check, or not. */
+function EarlierNote({ ch }: { ch: ReturnType<typeof useChoice> }) {
+  const p = usePart();
+  const e = ch.earlier!;
+  const m = ch.earlierMethod;
+  const where = e.kind === "inhouse" ? `on your ${m?.inHouse ?? "machine"}` : "outside";
+  const when = e.at ? new Date(e.at).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : null;
+  const why = !m
+    ? "That process isn't in this check."
+    : !m.prices.has(p.q)
+      ? `It isn't priced at ${qtyWord(p.q)} in this check.`
+      : e.kind === "inhouse" && !m.inHouse
+        ? "None of your machines clears it in this check."
+        : !ch.canKeep
+          ? "It can't make the part as checked now."
+          : `${money(priceAt(m, p.q))} each at ${qtyWord(p.q)} in this check.`;
+  return (
+    <div className="note" style={{ margin: "6px 12px 6px" }}>
+      <b>
+        Your choice on an earlier check: {methodName(e.process).toLowerCase()} {where}
+      </b>
+      <span>
+        {[when, `record ${shortId(e.recordId)}`].filter(Boolean).join(" · ")}. This check made a new record. {why}
+      </span>
+      <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button className="btn sm ink" type="button" disabled={!ch.canKeep || !!ch.busy} onClick={() => void ch.keepEarlier()}>
+          {ch.busy && m && ch.busy === m.code ? "Saving…" : "Keep it on this check"}
+        </button>
+        <span style={{ color: "var(--ink3)", fontSize: 12.5, alignSelf: "center" }}>Or open any process below to make it another way.</span>
+      </span>
+      {ch.err ? (
+        <span role="alert" style={{ color: "var(--bad)", fontSize: 12.5 }}>
+          {ch.err}
+        </span>
+      ) : null}
     </div>
   );
 }
