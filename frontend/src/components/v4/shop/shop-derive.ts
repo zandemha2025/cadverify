@@ -4,31 +4,10 @@
  * shop operations, and the record/provenance counts the Rates and Real costs
  * pages show. No fetching here; every number comes from the caller's API data.
  */
+import { processLabel } from "../process-names.ts";
 
-/** Methods in the order and words the add/edit form uses (board O9). */
-export const PROCS: readonly (readonly [string, string])[] = [
-  ["fdm", "Filament printing (FDM)"],
-  ["sla", "Resin printing (SLA)"],
-  ["dlp", "Resin printing (DLP)"],
-  ["sls", "Nylon powder printing (SLS)"],
-  ["mjf", "Nylon powder printing (MJF)"],
-  ["dmls", "Metal powder printing (DMLS)"],
-  ["slm", "Metal powder printing (SLM)"],
-  ["ebm", "Electron beam printing (EBM)"],
-  ["binder_jetting", "Binder jetting"],
-  ["ded", "Metal deposition (DED)"],
-  ["waam", "Wire-arc printing (WAAM)"],
-  ["cnc_3axis", "3-axis milling"],
-  ["cnc_5axis", "5-axis milling"],
-  ["cnc_turning", "Lathe (CNC turning)"],
-  ["wire_edm", "Wire EDM"],
-  ["injection_molding", "Injection molding"],
-  ["die_casting", "Die casting"],
-  ["investment_casting", "Investment casting"],
-  ["sand_casting", "Sand casting"],
-  ["sheet_metal", "Sheet metal"],
-  ["forging", "Forging"],
-];
+/** Processes in the order the add/edit form lists them (board O9), in the one spelling every screen uses. */
+export const PROCS: readonly (readonly [string, string])[] = ["fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting", "ded", "waam", "cnc_3axis", "cnc_5axis", "cnc_turning", "wire_edm", "injection_molding", "die_casting", "investment_casting", "sand_casting", "sheet_metal", "forging"].map((c) => [c, processLabel(c)] as const);
 
 const PROC_NAME: Record<string, string> = Object.fromEntries(PROCS);
 

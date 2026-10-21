@@ -1,34 +1,13 @@
 /**
  * Plain names the Workbench uses for engine ids (methods, cost drivers, line
  * items, assumptions, finding codes) and the number formats every tab shares.
- * Pure, no imports, so the derivations that use it run under `node --test`.
+ * Pure, only relative .ts imports, so the derivations that use it run under `node --test`.
  * An unknown id falls back to a readable version of the id, never to an
  * invented name.
  */
+import { PROCESS_NAME, processLabel } from "../process-names.ts";
 
-export const METHOD: Record<string, string> = {
-  binder_jetting: "Metal binder jetting",
-  cnc_3axis: "3-axis milling",
-  cnc_5axis: "5-axis milling",
-  cnc_turning: "Lathe",
-  ded: "Metal deposition",
-  dmls: "Metal printing, DMLS",
-  slm: "Metal printing, SLM",
-  ebm: "Electron beam printing",
-  forging: "Forging",
-  investment_casting: "Investment casting",
-  sand_casting: "Sand casting",
-  die_casting: "Die casting",
-  injection_molding: "Injection molding",
-  waam: "Wire-arc printing",
-  wire_edm: "Wire EDM",
-  fdm: "Filament printing",
-  sla: "Resin printing, SLA",
-  dlp: "Resin printing, DLP",
-  sls: "Nylon printing, SLS",
-  mjf: "Nylon printing, MJF",
-  sheet_metal: "Sheet metal",
-};
+export const METHOD: Record<string, string> = Object.fromEntries(Object.keys(PROCESS_NAME).map((c) => [c, processLabel(c)]));
 
 function readable(id: string): string {
   const words = id.replace(/[_-]+/g, " ").trim();

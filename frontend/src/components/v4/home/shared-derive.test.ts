@@ -64,7 +64,7 @@ test("shared check: can-make ways first by score, then can't; facts", () => {
     ],
   };
   const w = checkWays(d);
-  assert.deepEqual(w.map((x) => `${x.name}:${x.verdict}:${x.count}`), ["Resin printing, DLP:Can make:0 findings", "Filament printing:Check:1 finding", "Lathe:Can't:2 findings"]);
+  assert.deepEqual(w.map((x) => `${x.name}:${x.verdict}:${x.count}`), ["Resin printing (DLP):Can make:0 findings", "Filament printing (FDM/FFF):Check:1 finding", "Turning:Can't:2 findings"]);
   assert.deepEqual(w[2].findings, ["Not a round part (must change)", "Walls near the limit, unconfirmed (advisory)"]);
   assert.deepEqual(checkFacts(d), { can: 2, cant: 1, total: 3 });
 });

@@ -1,33 +1,12 @@
 /**
  * Plain-English names the v4 screens use for engine ids: ways of making a part
- * and finding codes. Pure (no imports) so the derivations that use it run under
+ * and finding codes. Pure (only relative .ts imports) so the derivations that use it run under
  * `node --test`. Unknown ids fall back to a readable version of the id, never to
  * an invented name.
  */
+import { PROCESS_NAME, processLabel } from "../process-names.ts";
 
-export const WAY: Record<string, string> = {
-  fdm: "Filament printing",
-  sla: "Resin printing, SLA",
-  dlp: "Resin printing, DLP",
-  sls: "Nylon powder printing",
-  mjf: "Multi Jet Fusion",
-  binder_jetting: "Metal binder jetting",
-  dmls: "Metal powder printing, DMLS",
-  slm: "Metal powder printing, SLM",
-  ebm: "Electron beam melting",
-  ded: "Metal deposition",
-  waam: "Wire arc deposition",
-  cnc_3axis: "3-axis milling",
-  cnc_5axis: "5-axis milling",
-  cnc_turning: "Lathe",
-  wire_edm: "Wire EDM",
-  investment_casting: "Investment casting",
-  sand_casting: "Sand casting",
-  die_casting: "Die casting",
-  injection_molding: "Injection molding",
-  forging: "Forging",
-  sheet_metal: "Sheet metal",
-};
+export const WAY: Record<string, string> = Object.fromEntries(Object.keys(PROCESS_NAME).map((c) => [c, processLabel(c)]));
 
 /** "cnc_3axis" → "3-axis milling"; an unknown id → "Some process" (spaces, first letter up). */
 export function wayName(process: string | null | undefined): string {

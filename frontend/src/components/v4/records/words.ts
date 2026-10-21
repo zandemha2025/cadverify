@@ -1,33 +1,12 @@
 /**
  * Words and number formats shared by Records, Compare, Analyses, Supplier
- * packages and Programs (boards P2–P6). Pure: no React, no runtime imports, so
+ * packages and Programs (boards P2–P6). Pure: no React, only relative .ts imports, so
  * the derivations that use it run under `node --test`.
  */
+import { PROCESS_NAME, processLabel } from "../process-names.ts";
 
-/** Plain names for the engine's process codes (board P4 spelling, which tells SLA from DLP). */
-export const PROC: Record<string, string> = {
-  fdm: "Filament printing",
-  sla: "Resin printing, SLA",
-  dlp: "Resin printing, DLP",
-  sls: "Nylon powder printing",
-  mjf: "Multi Jet Fusion",
-  binder_jetting: "Metal binder jetting",
-  dmls: "Metal powder printing, DMLS",
-  slm: "Metal powder printing, SLM",
-  ebm: "Electron beam melting",
-  ded: "Metal deposition",
-  waam: "Wire arc deposition",
-  cnc_3axis: "3-axis milling",
-  cnc_5axis: "5-axis milling",
-  cnc_turning: "Lathe",
-  wire_edm: "Wire EDM",
-  investment_casting: "Investment casting",
-  sand_casting: "Sand casting",
-  die_casting: "Die casting",
-  injection_molding: "Injection molding",
-  forging: "Forging",
-  sheet_metal: "Sheet metal",
-};
+/** Plain names for the engine's process codes: the one spelling every screen uses (tells SLA from DLP). */
+export const PROC: Record<string, string> = Object.fromEntries(Object.keys(PROCESS_NAME).map((c) => [c, processLabel(c)]));
 
 export function way(code: string | null | undefined): string {
   if (!code) return "—";

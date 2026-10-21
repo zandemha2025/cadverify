@@ -173,7 +173,7 @@ test("filter round-trips through the URL and rejects junk", () => {
 });
 
 test("words", () => {
-  assert.equal(wayName("cnc_turning"), "Lathe");
+  assert.equal(wayName("cnc_turning"), "Turning");
   assert.equal(wayName("new_process"), "New process");
   assert.equal(tidyReason("24 faces (100.0%) below 1.5mm min wall for ded. Thinnest: 0.5mm."), "24 faces below 1.5 mm min wall · thinnest 0.5 mm");
   assert.equal(sizeText([20, 15.2, 6.04]), "20 × 15 × 6 mm");

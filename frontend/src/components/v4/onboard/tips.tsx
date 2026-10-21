@@ -183,15 +183,15 @@ export function Tips({
     body = team
       ? {
           id: "nb-tip3",
-          title: "Shop is your team’s machines",
+          title: "In-house is your team’s machines",
           text: `${listWords(team)}, set up by your team. You and your team see the same answers.`,
-          live: `Tip ${num.n} of ${num.of}: Shop is your team’s machines.`,
+          live: `Tip ${num.n} of ${num.of}: In-house is your team’s machines.`,
         }
       : {
           id: "nb-tip3",
-          title: "The dial answers five questions",
-          text: `Make: how. Cost: how many. Use: where it’s used. Shop: your machines. Decide: what next.${p.data.machines.length ? "" : " Shop is empty until you add machines."}`,
-          live: `Tip ${num.n} of ${num.of}: the dial answers five questions.`,
+          title: "Five views of the same part",
+          text: `Process: can it be made, and how (DFM). Cost: price by quantity. Conditions: where it’s used. In-house: your machines. Decision: make or buy.${p.data.machines.length ? "" : " In-house is empty until you add machines."}`,
+          live: `Tip ${num.n} of ${num.of}: five views of the same part.`,
         };
     if (a.dial && a.host) {
       ring = team

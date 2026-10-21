@@ -27,12 +27,12 @@ test("sample summary reads the run", () => {
   const s = sampleSummary(RUN);
   assert.deepEqual(s.figs.map((f) => `${f.k}|${f.v}|${f.s}`), [
     "Can make it|2 of 5|3 can't as drawn",
-    "Make now · 1|$30.00|Filament printing · PLA",
+    "Make now · 1|$30.00|Filament printing (FDM/FFF) · PLA",
     "Each at 10|$7.50|Sheet metal · 5052 Aluminum",
     "Your shop|In-house|HP Jet Fusion 5200",
   ]);
-  assert.deepEqual(s.firstIssue, { way: "Filament printing", tone: "warn", chip: "Warning", text: "Aspect ratio 8.3 : 1 is over the 8 : 1 limit. Split it, brace it or reorient it." });
-  assert.equal(s.cantText, "Lathe: not a round part. Injection molding, Die casting: no draft on the straight walls.");
+  assert.deepEqual(s.firstIssue, { way: "Filament printing (FDM/FFF)", tone: "warn", chip: "Warning", text: "Aspect ratio 8.3 : 1 is over the 8 : 1 limit. Split it, brace it or reorient it." });
+  assert.equal(s.cantText, "Turning: not a round part. Injection molding, Die casting: no draft on the straight walls.");
   assert.deepEqual(s.measured, [["Size", "50 × 40 × 6 mm"], ["Volume", "5.95 cm³"], ["Faces", "20"], ["Watertight", "Yes"]]);
   assert.equal(s.ratesNote, "Costs use typical rates, not supplier quotes.");
   assert.equal(sampleBarLine(s), "sample-routing-bracket.stl · 2 of 5 can make it · saved to Records");

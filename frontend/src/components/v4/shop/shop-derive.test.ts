@@ -24,7 +24,7 @@ const vf2 = {
 };
 
 test("every method has a plain name; unknown ids pass through", () => {
-  assert.equal(procName("cnc_turning"), "Lathe (CNC turning)");
+  assert.equal(procName("cnc_turning"), "Turning");
   assert.equal(procName("mjf"), "Nylon powder printing (MJF)");
   assert.equal(procName("plasma"), "plasma");
 });

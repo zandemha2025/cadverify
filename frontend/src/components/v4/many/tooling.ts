@@ -7,6 +7,7 @@
 import type { CostReport } from "@/lib/api";
 import { makeNowEstimate, unitCostByQty } from "../../../lib/verify/derive.ts";
 import { machineFor, procName, routeName, type Machine } from "./makeability.ts";
+import { machineKind } from "../process-names.ts";
 
 export const Q_MIN = 1;
 export const Q_MAX = 10000;
@@ -171,7 +172,7 @@ export function capCard(e: RankEntry, machines: readonly Machine[] | null | unde
   }
   if (a.gate === "envelope") {
     const need = bounds?.need ?? minEnv;
-    const title = need != null ? `${procName(a.process)} wider than ${Math.round(need).toLocaleString("en-US")} mm` : `${procName(a.process)} with a larger work area`;
+    const title = need != null ? `${machineKind(a.process)} wider than ${Math.round(need).toLocaleString("en-US")} mm` : `${machineKind(a.process)} with a larger work area`;
     return { title, kind: "envelope", machine, materials, bounds, caveat: caveatOf(bound), summary: spec.summary ?? null };
   }
   const verb = a.kind === "acquire" ? "Add" : "Upgrade";

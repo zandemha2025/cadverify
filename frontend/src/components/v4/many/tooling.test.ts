@@ -85,7 +85,7 @@ test("capability cards name the machine, the material or the measured bound", ()
   assert.deepEqual(env.bounds, { need: 268.814272, have: 254 });
   assert.equal(env.caveat, "This necessary bound is not a machine specification; verify the full XYZ setup.");
   const add = capCard({ acquisition: { kind: "acquire", process: "mjf", gate: null, spec: { summary: "a nylon printer" } }, parts_unlocked: 3, stale: false, stale_parts: 0 }, machines);
-  assert.equal(add.title, "Add Nylon printing, MJF: a nylon printer");
+  assert.equal(add.title, "Add Nylon powder printing (MJF): a nylon printer");
   assert.equal(boundsOf("nothing here"), null);
   assert.equal(caveatOf("One sentence only"), null);
 });

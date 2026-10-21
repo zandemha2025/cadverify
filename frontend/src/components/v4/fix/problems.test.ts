@@ -78,7 +78,7 @@ test("the fix says which methods a wall covers and what the others need", () => 
   const v = shellValidation();
   const f = fixText(thin, pickMethod(thin, "cnc_3axis", null), alternativeOf(v, thin));
   assert.equal(f.fix, "Make the walls at least 0.8 mm thick.");
-  assert.match(f.alt!, /^That covers nylon powder printing, 3-axis milling, 5-axis milling, die casting and filament printing\. Others need more: lathe 1\.0 mm\. Consider SLA/);
+  assert.match(f.alt!, /^That covers nylon powder printing, 3-axis milling, 5-axis milling, die casting and filament printing\. Others need more: turning 1\.0 mm\. Consider SLA/);
 });
 
 test("a saved part with no analysis uses the cost record's blocker details", () => {

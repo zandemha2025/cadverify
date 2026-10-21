@@ -5,6 +5,7 @@
  * `node --test`. Unknown bucket keys and verdict strings get a neutral bucket
  * of their own instead of being folded into a known one.
  */
+import { PROCESS_NAME, processLabel } from "../process-names.ts";
 
 export type Tone = "ok" | "warn" | "bad" | "unk";
 
@@ -104,29 +105,7 @@ export function countOf(summary: Record<string, unknown> | null | undefined, key
 /*  Process names                                                      */
 /* ------------------------------------------------------------------ */
 
-const PROC: Record<string, string> = {
-  fdm: "Filament printing",
-  sla: "Resin printing, SLA",
-  dlp: "Resin printing, DLP",
-  sls: "Nylon printing, SLS",
-  mjf: "Nylon printing, MJF",
-  dmls: "Metal powder printing",
-  slm: "Metal powder printing",
-  ebm: "Metal powder printing, EBM",
-  binder_jetting: "Binder jetting",
-  ded: "Metal deposition",
-  waam: "Wire-arc deposition",
-  cnc_3axis: "3-axis milling",
-  cnc_5axis: "5-axis milling",
-  cnc_turning: "Lathe",
-  wire_edm: "Wire EDM",
-  injection_molding: "Injection molding",
-  die_casting: "Die casting",
-  investment_casting: "Investment casting",
-  sand_casting: "Sand casting",
-  sheet_metal: "Sheet metal",
-  forging: "Forging",
-};
+const PROC: Record<string, string> = Object.fromEntries(Object.keys(PROCESS_NAME).map((c) => [c, processLabel(c)]));
 
 export function procName(p: string | null | undefined): string {
   if (!p) return "—";

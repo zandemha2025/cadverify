@@ -248,7 +248,7 @@ test("progress reports each stage from real responses, and stops at an open shel
 
 test("fixes keep the engine's order and severity", () => {
   const fixes = fixesOf(fixture().validation);
-  assert.deepEqual(fixes.map((x) => [x.where, x.fix, x.sev]), [["Lathe", "Use milling.", "Blocks"], ["Every method", "Thin", "Check"]]);
+  assert.deepEqual(fixes.map((x) => [x.where, x.fix, x.sev]), [["Turning", "Use milling.", "Blocks"], ["Every process", "Thin", "Check"]]);
 });
 
 test("typed asks route to answers this part can give, or a refusal", () => {

@@ -10,14 +10,20 @@ import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { buildMethods, cheapestAt, defaultQty, groupUnpriced, quantitiesOf, type Method } from "./model";
 import type { CheckSession } from "./store";
 
+/** The five views of one part. Ids stay as they are in links (?lens=make); the names are what engineers call them. */
 export type Lens = "make" | "cost" | "use" | "shop" | "decide";
 export const LENSES: [Lens, string, string][] = [
-  ["make", "Make", "how"],
-  ["cost", "Cost", "how many"],
-  ["use", "Use", "where"],
-  ["shop", "Shop", "your machines"],
-  ["decide", "Decide", "what next"],
+  ["make", "Process", "DFM, can it be made"],
+  ["cost", "Cost", "by quantity"],
+  ["use", "Conditions", "where it’s used"],
+  ["shop", "In-house", "your machines"],
+  ["decide", "Decision", "make or buy"],
 ];
+
+/** A view's name, for copy that points at it ("See it in Process"). */
+export function lensName(l: Lens): string {
+  return LENSES.find(([k]) => k === l)?.[1] ?? l;
+}
 
 export interface PartData {
   key: string | null;

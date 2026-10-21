@@ -12,6 +12,7 @@ import type { CostDriver, CostEstimate, CostReport, Issue, ProcessScore, Validat
 import type { OwnedMachine } from "@/lib/verify/machine-api";
 import type { FitFailure, PerRouteFit } from "@/lib/verify/verification";
 import { gapText, readVerification } from "../../../lib/verify/verification.ts";
+import { MACHINE_KIND, processLabel } from "../process-names.ts";
 
 /* ── formatting ─────────────────────────────────────────────────────────── */
 
@@ -76,7 +77,7 @@ interface MethodInfo {
 }
 
 export const METHODS: Record<string, MethodInfo> = {
-  fdm: { name: "Filament printing", short: "FDM", family: "print" },
+  fdm: { name: "Filament printing", short: "FDM/FFF", family: "print" },
   sla: { name: "Resin printing", short: "SLA", family: "print" },
   dlp: { name: "Resin printing", short: "DLP", family: "print" },
   sls: { name: "Nylon powder printing", short: "SLS", family: "print" },
@@ -89,7 +90,7 @@ export const METHODS: Record<string, MethodInfo> = {
   waam: { name: "Wire-arc printing", short: "WAAM", family: "print", metalOnly: true, group: "metalprint" },
   cnc_3axis: { name: "3-axis milling", short: "CNC", family: "machine" },
   cnc_5axis: { name: "5-axis milling", short: "CNC", family: "machine" },
-  cnc_turning: { name: "Lathe", short: "CNC turning", family: "machine" },
+  cnc_turning: { name: "Turning", short: "CNC lathe", family: "machine" },
   wire_edm: { name: "Wire EDM", short: "EDM", family: "machine", metalOnly: true },
   sheet_metal: { name: "Sheet metal", short: "Bend and cut", family: "form" },
   injection_molding: { name: "Injection molding", short: "IM", family: "form" },
@@ -108,27 +109,16 @@ export function methodShort(code: string): string {
   return METHODS[code]?.short ?? code.toUpperCase();
 }
 
-/** The machine kind a process stands for, for machine rows ("3-axis mill"). */
-export const MACHINE_KIND: Record<string, string> = {
-  cnc_3axis: "3-axis mill",
-  cnc_5axis: "5-axis mill",
-  cnc_turning: "Lathe",
-  wire_edm: "Wire EDM",
-  mjf: "Nylon powder printer",
-  sls: "Nylon powder printer",
-  fdm: "Filament printer",
-  sla: "Resin printer",
-  dlp: "Resin printer",
-  dmls: "Metal powder printer",
-  slm: "Metal powder printer",
-  ebm: "Electron-beam printer",
-  binder_jetting: "Binder-jet printer",
-  ded: "Metal deposition cell",
-  waam: "Wire-arc cell",
-  injection_molding: "Injection molder",
-  sheet_metal: "Press brake",
-  die_casting: "Die-casting cell",
-};
+/** An engine process in plain words with its acronym: "Filament printing (FDM/FFF)". One spelling for every screen. */
+export { processLabel };
+
+/** The engine's overall DFM verdict in plain words. */
+export function overallWords(v: string | null | undefined): string {
+  return v === "pass" ? "no problems found" : v === "issues" ? "problems to check" : v === "fail" ? "problems that stop processes" : "not reported";
+}
+
+/** The machine kind a process stands for, for machine rows ("3-axis mill"): shared with every screen. */
+export { MACHINE_KIND };
 
 export const MATERIAL_CLASS_LABEL: Record<string, string> = {
   polymer: "Plastic",
@@ -399,14 +389,14 @@ export function makeRows(methods: Method[], q: number): MakeRow[] {
   return rows;
 }
 
-/** "DLP · Standard Resin · on your Haas VF-2 · geometry pick" */
+/** "DLP · Standard Resin · on your Haas VF-2 · best fit for the shape" */
 export function methodSub(m: Method): string {
   if (m.members.length > 1) return m.short;
   const parts = [m.short];
   if (m.material) parts.push(m.material);
   if (m.inHouse) parts.push(`on your ${m.inHouse}`);
-  if (m.geometryPick) parts.push("geometry pick");
-  else if (m.routePick) parts.push("route pick");
+  if (m.geometryPick) parts.push("best fit for the shape");
+  else if (m.routePick) parts.push("recommended");
   return parts.join(" · ");
 }
 
@@ -418,7 +408,7 @@ export function dfmMeta(m: Method): string {
     parts.push(`DFM score ${m.score.toFixed(1)}${m.bestOf ? `, best of ${m.bestOf}` : ""}`);
   }
   if (m.dfm === "fail") parts.push("blocked");
-  if (m.members.length > 1) parts.push(`${m.members.length} methods`);
+  if (m.members.length > 1) parts.push(`${m.members.length} processes`);
   else parts.push(plural(m.issues.length, "finding"));
   return parts.join(" · ");
 }
@@ -438,7 +428,7 @@ export function methodWhy(m: Method, materialClass: string | null): string {
   if (m.members.length > 1 && m.prices.size === 0 && materialClass === "polymer") return "Priced once you choose a metal.";
   if (m.finding) return m.finding.text;
   if (m.prices.size === 0 && METHODS[m.code]?.metalOnly && materialClass === "polymer") return "Needs a metal; not priced in plastic.";
-  return m.issues.length ? m.issues[0].message : "No findings for this method.";
+  return m.issues.length ? m.issues[0].message : "No findings for this process.";
 }
 
 /* ── fixes (the priority list) ─────────────────────────────────────────── */
@@ -457,7 +447,7 @@ export function fixesOf(validation: ValidationResult | null): Fix[] {
     const text = (f.fix ?? f.message ?? "").split(/\n\s*\n/)[0].trim();
     return {
       n: i + 1,
-      where: f.process ? methodName(f.process) : "Every method",
+      where: f.process ? methodName(f.process) : "Every process",
       fix: text || f.message,
       tone,
       sev: tone === "bad" ? "Blocks" : tone === "warn" ? "Check" : "Note",
@@ -884,7 +874,7 @@ export function progressSteps(p: ProgressInput): Step[] {
   if (p.sample) {
     return [
       { t: "Read and measure the shape", d: v ? measuredLine(v) : "Reading the shape now…", state: v ? "done" : "now" },
-      { t: `Compare ${v ? v.process_scores.length : 21} ways to make it`, d: v ? `${methodName(v.best_process)} is the geometry pick` : "Waiting", state: v ? "done" : "wait" },
+      { t: `Compare ${v ? v.process_scores.length : 21} ways to make it`, d: v ? `${methodName(v.best_process)} is the best fit for the shape` : "Waiting", state: v ? "done" : "wait" },
       { t: "Price it and list what’s uncertain", d: p.cost ? `${p.cost.estimates.length} prices · ${p.cost.saved ? `record ${shortId(p.cost.saved.id)}` : "not saved"}` : p.costError ? "Didn’t finish" : v ? "Pricing now…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" },
     ];
   }
@@ -895,7 +885,7 @@ export function progressSteps(p: ProgressInput): Step[] {
     return [
       received,
       { t: "Measured", d: v ? `${dimsText(v.geometry.bounding_box_mm) ?? ""} · ${edges}`.replace(/^ · /, "") : edges, state: "bad" },
-      { t: "Routed", d: "Not computed", state: "skip" },
+      { t: "Process chosen", d: "Not computed", state: "skip" },
       { t: "Machines checked", d: "Not computed", state: "skip" },
       { t: "Record saved", d: "Not computed", state: "skip" },
     ];
@@ -910,7 +900,7 @@ export function progressSteps(p: ProgressInput): Step[] {
   return [
     received,
     { t: "Measured", d: v ? measuredLine(v) : "Measuring the shape…", state: v ? "done" : "now" },
-    { t: "Routed", d: p.cost ? routed : p.costError ? "Didn’t finish" : v ? "Routing and pricing…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" },
+    { t: "Process chosen", d: p.cost ? routed : p.costError ? "Didn’t finish" : v ? "Choosing the process and pricing…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" },
     { t: "Machines checked", d: p.cost ? machines : p.costError ? "Not computed" : "Waiting", state: p.cost ? "done" : p.costError ? "skip" : "wait" },
     { t: "Record saved", d: p.cost ? p.cost.saved ? `Record ${shortId(p.cost.saved.id)}` : "Not saved: record keeping is off" : p.costError ? "Not computed" : "Waiting", state: p.cost ? (p.cost.saved ? "done" : "skip") : p.costError ? "skip" : "wait" },
   ];
@@ -954,12 +944,12 @@ export function verdictAnswer(methods: Method[], validation: ValidationResult | 
   const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn");
   const blocked = singles.filter((m) => m.verdict === "bad").map((m) => m.name);
   const gp = singles.find((m) => m.geometryPick);
-  const rows = [{ k: "Can make", v: `${can.length} of ${singles.length} methods` }];
-  if (gp) rows.push({ k: "Geometry pick", v: `${gp.name}, DFM ${gp.score?.toFixed(1) ?? "—"}` });
-  if (cost?.routing) rows.push({ k: "Route pick", v: `${methodName(cost.routing.recommended_process)}, confidence ${cost.routing.confidence.toFixed(1)}` });
+  const rows = [{ k: "Can make", v: `${can.length} of ${singles.length} processes` }];
+  if (gp) rows.push({ k: "Best fit for the shape", v: `${gp.name}, DFM ${gp.score?.toFixed(1) ?? "—"}` });
+  if (cost?.routing) rows.push({ k: "Recommended process", v: `${methodName(cost.routing.recommended_process)}, confidence ${cost.routing.confidence.toFixed(1)}` });
   if (blocked.length) rows.push({ k: "Blocked", v: joinWords([...new Set(blocked)].slice(0, 4)) });
   const fixes = validation?.priority_fixes?.length ?? 0;
-  const text = [cost?.routing?.reasoning, `${plural(fixes, "fix", "fixes")} in total, overall: ${validation?.overall_verdict ?? "unknown"}.`].filter(Boolean).join(" ");
+  const text = [cost?.routing?.reasoning, `${plural(fixes, "suggested fix", "suggested fixes")} in total; overall, ${overallWords(validation?.overall_verdict)}.`].filter(Boolean).join(" ");
   return { tag: "Computed", title: "Why this verdict", rows, text };
 }
 
@@ -989,7 +979,7 @@ export function driversAnswer(m: Method | null, q: number): Answer | null {
     tag: "Computed",
     title: `Cost drivers, ${m.inHouse ?? m.name} at ${qtyWord(q)}`,
     rows: lines.slice(0, 4).map((l) => ({ k: l.name, v: money(l.value) })),
-    text: `${g.grounded} of ${g.total} drivers come from your data. Shop has every line and its formula.`,
+    text: `${g.grounded} of ${g.total} cost inputs come from your file, your shop or you. The cost breakdown has every line and its formula.`,
   };
 }
 
@@ -997,7 +987,7 @@ export const REFUSAL: Answer = {
   tag: "Not computable",
   title: "Not in the model",
   rows: [],
-  text: "ScaleCAD prices from geometry, materials and rates, not from market behaviour. Ask about methods, cost drivers, lead time, materials or quantity.",
+  text: "ScaleCAD prices from geometry, materials and rates, not from market behaviour. Ask about processes, cost drivers, lead time, materials or quantity.",
 };
 
 export type AskRoute = { kind: "method"; code: string } | { kind: "lead" } | { kind: "drivers" } | { kind: "routes"; qty: number | null } | { kind: "why" } | { kind: "saved" } | { kind: "refuse" };
