@@ -14,7 +14,7 @@
  *               `cantReadCopy(reason)` to get both from the server's message.
  * - `meta`      facts after the file name ("945 open edges", "Top face missing").
  * - `onPick`    "Choose file" (upload another).
- * - `onRepair`  optional; shows "Repair here · Pilot" for open shells.
+ * - `onRepair`  optional; shows "Repair here" for open shells (any plan, no check used).
  * - `onRetry`   optional; shows "Try again" when the check never reached the engine.
  *
  * Also: `CadToolSteps` (the per-tool export path picker) and `NothingToDraw`.
@@ -136,7 +136,7 @@ export function CantReadSheet({
             <div className="sep" />
             <div className="step">
               <b>
-                Repair here <small style={{ color: "var(--ink3)", fontWeight: 500 }}>Pilot</small>
+                Repair here <small style={{ color: "var(--ink3)", fontWeight: 500 }}>No check used</small>
               </b>
               <p>Closes gaps and shows the result beside the original. Reports if it can&apos;t.</p>
               <span>
