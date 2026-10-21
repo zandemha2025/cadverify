@@ -6,10 +6,12 @@
  * server: the exact collision volume and the closest sampled gap, with the
  * assembly as a see-through ghost and the measured overlap drawn in 3D.
  *
- * Access comes first. GET /validate/fit/capability answers from the plan, role
- * and server setting before any file is read: other plans see the pilot gate
- * (board X5), a server with the setting off says so, and the two preview meshes
- * (each a check for free plans) are fetched only once the tool can run.
+ * Access comes first. GET /validate/fit/capability answers from the role and
+ * server setting before any file is read (the tool is on every plan, the free
+ * trial included): a server with the setting off says so, and the two preview
+ * meshes are fetched only once the tool can run. Measuring never uses a check;
+ * on a free account each preview holds a check slot for up to an hour unless
+ * that file is checked, and the server limits measurements an hour and a day.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -19,8 +21,8 @@ import { API_BASE } from "@/lib/api-base";
 import { measureContextFit, type FitResult, type FitUnits } from "@/lib/verify/context-fit";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { R } from "../routes";
-import { Chip, Content, KV, Sheet, cx } from "../ui";
-import { LOCK, MakeHead, MakeWorld, PILOT_INCLUDES, PilotPlanCard, errorText, isPaidAccessError, usePlan } from "./head";
+import { Chip, KV, Sheet, cx } from "../ui";
+import { MakeHead, MakeWorld, errorText } from "./head";
 import { Turntable, type StageLayer, type StageMarker, type StageState } from "./turntable";
 import {
   FIT_ACCEPT,
@@ -63,7 +65,6 @@ async function getCapability(signal: AbortSignal): Promise<CapabilityAnswer> {
 export function FitScreen() {
   const { user } = useAuth();
   const canMutate = canMutateWorkspace(user?.role);
-  const plan = usePlan();
   const [answer, setAnswer] = React.useState<CapabilityAnswer>({ kind: "loading" });
   const [capTry, setCapTry] = React.useState(0);
   React.useEffect(() => {
@@ -76,23 +77,18 @@ export function FitScreen() {
       });
     return () => ctl.abort();
   }, [capTry]);
-  const [gated, setGated] = React.useState(false);
-  const access = gated ? "gate" : resolveAccess(answer, plan, canMutate);
-
-  if (access === "gate") return <FitPilotGate />;
-  return <FitTool access={access} retryCapability={() => setCapTry((n) => n + 1)} capError={answer.kind === "error" ? answer.message : null} onGate={() => setGated(true)} />;
+  const access = resolveAccess(answer, canMutate);
+  return <FitTool access={access} retryCapability={() => setCapTry((n) => n + 1)} capError={answer.kind === "error" ? answer.message : null} />;
 }
 
 function FitTool({
   access,
   retryCapability,
   capError,
-  onGate,
 }: {
   access: "loading" | "off" | "viewer" | "on" | "error";
   retryCapability: () => void;
   capError: string | null;
-  onGate: () => void;
 }) {
   const usable = access === "on";
   const [files, setFiles] = React.useState<Record<Role, File | null>>({ part: null, context: null });
@@ -177,7 +173,6 @@ function FitTool({
       setView(r.collision.intersects ? "col" : "gap");
     } catch (e) {
       if (id !== run.current) return;
-      if (isPaidAccessError(e)) onGate();
       setErr(errorText(e, "The fit check didn’t finish."));
     } finally {
       if (id === run.current) setRunning(false);
@@ -254,7 +249,7 @@ function FitTool({
     <MakeWorld label="Fit in assembly">
       <MakeHead
         title="Fit in assembly"
-        meta={[partName && ctxName ? `${partName} in ${ctxName}` : "Your part in its assembly", seatMeta(seating), "Pilot plan"]}
+        meta={[partName && ctxName ? `${partName} in ${ctxName}` : "Your part in its assembly", seatMeta(seating), "Measuring doesn’t use a check"]}
         tools={
           <button className="btn sm" type="button" aria-pressed={hide} onClick={() => setHide((h) => !h)} disabled={!usable}>
             {hide ? "Show assembly" : "Hide assembly"}
@@ -558,49 +553,5 @@ function FitResults({ result, view, setView, painted }: { result: FitResult; vie
       ))}
       <div style={{ height: 12 }} />
     </div>
-  );
-}
-
-const GATE_FEATURES = [
-  { title: "Collisions", text: "Overlap shown in red, with its volume", tone: "#FBE7E4" },
-  { title: "Closest gap", text: "Smallest clearance to the assembly", tone: "#E8EEFB" },
-  { title: "Seating", text: "Shared CAD frame or automatic, then nudge in X, Y, Z", tone: "#ECEEF1" },
-];
-
-/** Board X5: what Fit in assembly does, locked, and how to get the pilot plan. No file is read. */
-function FitPilotGate() {
-  return (
-    <MakeWorld label="Fit in assembly">
-      <MakeHead title="Fit in assembly" meta={[<b key="p">Pilot plan</b>, "Your plan: single-part checks"]} />
-      <Content>
-        <div className="slot">
-          <span className="lab">Part + assembly</span>
-          <span className="lock">{LOCK}Pilot</span>
-          <svg width="260" height="190" viewBox="0 0 260 190" fill="none" aria-hidden="true">
-            <path d="M30 120 130 70l100 50-100 50z" fill="rgba(154,163,174,.18)" stroke="#9AA3AE" strokeWidth="1.5" strokeDasharray="4 4" />
-            <path d="M30 120v-24l100-50 100 50v24" stroke="#9AA3AE" strokeWidth="1.5" strokeDasharray="4 4" />
-            <path d="M100 92 140 72l40 20-40 20z" fill="#D3D7DD" stroke="#5F656E" strokeWidth="1.5" />
-            <path d="M100 92v34l40 20v-34zM180 92v34l-40 20" fill="#C3C8CF" stroke="#5F656E" strokeWidth="1.5" />
-            <path d="M128 118l12 6 12-6-12-6z" fill="#D92D20" opacity=".85" />
-          </svg>
-        </div>
-        <div className="three">
-          {GATE_FEATURES.map((f) => (
-            <div key={f.title} className="panel">
-              <i style={{ background: f.tone }} aria-hidden="true" />
-              <b>{f.title}</b>
-              <span>{f.text}</span>
-            </div>
-          ))}
-        </div>
-        <p className="pmeta">
-          <span>Inputs: part + assembly</span>
-          <span>STEP, STL, OBJ, 3MF, IGES</span>
-        </p>
-      </Content>
-      <Sheet label="Get access" style={{ bottom: "auto" }}>
-        <PilotPlanCard includes={PILOT_INCLUDES} />
-      </Sheet>
-    </MakeWorld>
   );
 }

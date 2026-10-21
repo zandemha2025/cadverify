@@ -16,22 +16,19 @@ export interface FitCapability {
 /** What the capability probe answered: the body, "missing" (a server without the probe), or an error. */
 export type CapabilityAnswer = { kind: "loading" } | { kind: "ok"; cap: FitCapability } | { kind: "missing" } | { kind: "error"; message: string };
 
-export type FitAccess = "loading" | "gate" | "off" | "viewer" | "on" | "error";
+export type FitAccess = "loading" | "off" | "viewer" | "on" | "error";
 
 /**
- * Access first: the pilot gate for other plans, then the server setting, then
- * the role. A server without the probe (older API) is treated as not offering
- * the tool, using the account's plan for the gate.
+ * Access first: the server setting, then the role. The tool is on every plan,
+ * the free trial included, so the plan doesn't decide it (``paid_access`` is
+ * always true from the server). A server without the probe (older API) is
+ * treated as not offering the tool.
  */
-export function resolveAccess(answer: CapabilityAnswer, plan: "pilot" | "other" | null, canMutate: boolean): FitAccess {
+export function resolveAccess(answer: CapabilityAnswer, canMutate: boolean): FitAccess {
   if (answer.kind === "loading") return "loading";
   if (answer.kind === "error") return "error";
-  if (answer.kind === "missing") {
-    if (plan === null) return "loading";
-    return plan === "pilot" ? "off" : "gate";
-  }
+  if (answer.kind === "missing") return "off";
   const c = answer.cap;
-  if (!c.paid_access) return "gate";
   if (!c.enabled) return "off";
   if (!c.can_submit || !canMutate) return "viewer";
   return "on";

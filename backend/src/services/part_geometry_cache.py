@@ -103,9 +103,12 @@ def _make_hot(k: tuple) -> None:
     _hot = k
 
 
-def key(user_id: int, data: bytes, filename: str, units: str) -> tuple:
-    """The identity a reused analysis must match: account, bytes, name, units."""
-    return (int(user_id), hashlib.sha256(data).hexdigest(), filename or "unknown", units)
+def key(user_id: int, data: bytes, filename: str, units: str, *, orientation: str | None = None) -> tuple:
+    """The identity a reused analysis must match: account, bytes, name, units,
+    and the orientation the part was turned to (``Orientation.key``; None for
+    the file's own), since a turned part is analysed as placed."""
+    base = (int(user_id), hashlib.sha256(data).hexdigest(), filename or "unknown", units)
+    return base if orientation is None else (*base, orientation)
 
 
 def get(k: tuple) -> Optional[AnalysedPart]:

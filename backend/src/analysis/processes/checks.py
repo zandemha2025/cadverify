@@ -100,6 +100,25 @@ def check_wall_thickness(
 # ──────────────────────────────────────────────────────────────
 # Overhangs
 # ──────────────────────────────────────────────────────────────
+def overhang_faces(angles_from_up_deg: np.ndarray, centroids: np.ndarray, bbox_diag: float,
+                   max_angle_deg: float) -> np.ndarray:
+    """Faces whose angle from +Z exceeds 90 + max_angle_deg, except those resting on the plate.
+
+    Shared by ``check_overhangs`` and the orientation comparison
+    (``src.analysis.orientation``) so both mark exactly the same faces.
+    """
+    oh_mask = angles_from_up_deg > 90.0 + max_angle_deg
+    # Faces resting ON the build plate need no supports: exclude near-flat
+    # downward faces whose centroid sits at the part's z-minimum (scale-aware
+    # tolerance so micro and macro parts both behave).
+    if len(centroids):
+        z = centroids[:, 2]
+        z_tol = max(0.1, bbox_diag * 1e-3)
+        on_plate = (z <= float(z.min()) + z_tol) & (angles_from_up_deg >= 175.0)
+        oh_mask = oh_mask & ~on_plate
+    return np.where(oh_mask)[0]
+
+
 def check_overhangs(
     ctx: GeometryContext,
     max_angle_deg: float,
@@ -110,17 +129,7 @@ def check_overhangs(
     """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports."""
     if max_angle_deg >= 90.0:
         return []  # self-supporting process
-    threshold = 90.0 + max_angle_deg
-    oh_mask = ctx.angles_from_up_deg > threshold
-    # Faces resting ON the build plate need no supports: exclude near-flat
-    # downward faces whose centroid sits at the part's z-minimum (scale-aware
-    # tolerance so micro and macro parts both behave).
-    if len(ctx.centroids):
-        z = ctx.centroids[:, 2]
-        z_tol = max(0.1, ctx.bbox_diag * 1e-3)
-        on_plate = (z <= float(z.min()) + z_tol) & (ctx.angles_from_up_deg >= 175.0)
-        oh_mask = oh_mask & ~on_plate
-    oh_faces = np.where(oh_mask)[0]
+    oh_faces = overhang_faces(ctx.angles_from_up_deg, ctx.centroids, ctx.bbox_diag, max_angle_deg)
     if len(oh_faces) == 0:
         return []
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
@@ -510,6 +519,15 @@ def _undersized_cavity_drain(
 # ──────────────────────────────────────────────────────────────
 # Draft angles (molding / casting / forging)
 # ──────────────────────────────────────────────────────────────
+def draft_sidewalls(angles_from_up_deg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Side walls (80–100° from +Z) and their draft, ``|90° - angle from +Z|``.
+
+    Shared by ``check_draft_angles`` and the orientation comparison.
+    """
+    sidewall_faces = np.where((angles_from_up_deg > 80) & (angles_from_up_deg < 100))[0]
+    return sidewall_faces, np.abs(90.0 - angles_from_up_deg[sidewall_faces])
+
+
 def check_draft_angles(
     ctx: GeometryContext,
     min_draft_deg: float,
@@ -530,13 +548,9 @@ def check_draft_angles(
     the reading of a real face.
     """
     areas = ctx.face_areas
-    # Sidewalls: faces roughly perpendicular to Z (80–100° from Z-up)
-    sidewall_mask = (ctx.angles_from_up_deg > 80) & (ctx.angles_from_up_deg < 100)
-    sidewall_faces = np.where(sidewall_mask)[0]
+    sidewall_faces, draft = draft_sidewalls(ctx.angles_from_up_deg)
     if len(sidewall_faces) == 0:
         return []
-    # Draft = |90 - angle_from_z|
-    draft = np.abs(90.0 - ctx.angles_from_up_deg[sidewall_faces])
     no_draft = draft < min_draft_deg
     no_draft_faces = sidewall_faces[no_draft]
     if len(no_draft_faces) == 0:

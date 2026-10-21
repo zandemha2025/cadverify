@@ -3,9 +3,10 @@
 /**
  * Pieces shared by the Design tools screens (boards F1, F2, F4, X5): the world
  * these screens render in (scoped as `.mk` so their board-local classes can't
- * meet another area's), the page head with the Make and fit tabs (Fit in assembly
+ * meet another area's), the page head with the Make and fit tabs (Photo to 3D
  * carries its Pilot tag, and a tools slot sits beside the tabs), one toast line,
- * the account's plan, and the pilot gate.
+ * the account's plan, and the pilot gate. Design Studio and Fit in assembly are
+ * on every plan; Photo to 3D (reconstruction) still needs the pilot plan.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -45,7 +46,7 @@ export function MakeHead({ title, meta, tools }: { title: string; meta?: React.R
           {TABS.make.map((t) => (
             <Link key={t.href} href={t.href} className={cx(t === current && "on")} aria-current={t === current ? "page" : undefined}>
               {t.label}
-              {t.href === R.fit ? <b>Pilot</b> : null}
+              {t.href === R.photo ? <b>Pilot</b> : null}
             </Link>
           ))}
         </nav>
@@ -140,4 +141,5 @@ export function PilotPlanCard({ includes, note = "Pro adds checks only. Pilot to
   );
 }
 
-export const PILOT_INCLUDES = ["Fit in assembly", "Batch runs", "Assemblies", "File repair", "Design Studio", "Recalibration from real costs"];
+/** Tools that still need the pilot plan (backend require_paid_access). Fixes, repair, Fit in assembly and Design Studio are on every plan. */
+export const PILOT_INCLUDES = ["Photo to 3D", "Batch runs", "Assemblies", "Recalibration from real costs"];

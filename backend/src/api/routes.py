@@ -456,7 +456,7 @@ def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
 # ──────────────────────────────────────────────────────────────
 # Cost decision engine + options parsing (POST /validate/cost)
 # ──────────────────────────────────────────────────────────────
-def _run_cost_engine_ctx(mesh, filename: str):
+def _run_cost_engine_ctx(mesh, filename: str, orientation=None):
     """Score every registered process for the cost decision layer (mirrors
     cli._run_engine but from an already-parsed in-memory mesh; no narrowing,
     no persistence, no network).
@@ -496,6 +496,11 @@ def _run_cost_engine_ctx(mesh, filename: str):
         for p in pbase._REGISTRY
         if get_analyzer(p)
     ]
+    if orientation is not None:
+        # ``mesh`` is the turned part; report region centres in file coordinates.
+        from src.analysis.orientation import all_issues, turn_points_to_file
+
+        turn_points_to_file(orientation, all_issues(universal, scores))
     result = AnalysisResult(
         filename=filename,
         file_type="stl",
@@ -739,6 +744,18 @@ def _parse_qty_list(qty: str) -> list[int]:
 # ──────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────
+def _parse_orientation_param(raw: Optional[str]):
+    """The requested orientation (None for the file's own), or a 400 saying what's wrong."""
+    from src.analysis.orientation import OrientationError, parse_orientation
+
+    if raw is not None and len(raw) > 2000:
+        raise HTTPException(status_code=400, detail="The orientation is too long.")
+    try:
+        return parse_orientation(raw)
+    except OrientationError as exc:
+        raise HTTPException(status_code=400, detail=f"Orientation: {exc}")
+
+
 @router.post("/validate", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_file(
@@ -773,6 +790,17 @@ async def validate_file(
             "before geometry and DFM analysis. STEP/IGES use their embedded units."
         ),
     ),
+    orientation: Optional[str] = Query(
+        None,
+        description=(
+            "Turn the part before the check (its +Z is the build direction for "
+            "printing and the opening direction for molding): turns:x90,z-90 "
+            "(90° steps about the placed axes), down:x,y,z (that file direction "
+            "on the plate), rotation:r00,…,r22, or the same as JSON. Unset => the "
+            "file's own axes. Same file, so it uses no extra check; the result "
+            "says which orientation it used."
+        ),
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
@@ -793,6 +821,7 @@ async def validate_file(
             status_code=400,
             detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
         )
+    placed = _parse_orientation_param(orientation)
 
     upload_started = time.perf_counter()
     data = await _read_capped(file)
@@ -807,6 +836,7 @@ async def validate_file(
         include_thickness=include_thickness,
         source_units=units,
         return_persisted_id=True,
+        orientation=placed,
     )
     # The authenticated public path exposes only fixed stage names + durations.
     # This is response metadata, not persisted analysis evidence, and contains no
@@ -1540,6 +1570,7 @@ async def _run_cost_decision(
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
     response: Optional[Response] = None,
+    orientation: Optional[str] = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
@@ -1633,6 +1664,7 @@ async def _run_cost_decision(
     rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
     owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
+    placed = _parse_orientation_param(orientation)    # 400 on a bad orientation
 
     # material_class: capture the caller's ORIGINAL declaration BEFORE any CAD
     # fill below. The existing material_class_is_user heuristic (!= "polymer")
@@ -1679,7 +1711,8 @@ async def _run_cost_decision(
         from src.services import part_geometry_cache
 
         geometry_key = (
-            part_geometry_cache.key(user.user_id, data, file.filename or "unknown", effective_units)
+            part_geometry_cache.key(user.user_id, data, file.filename or "unknown", effective_units,
+                                    orientation=placed.key if placed is not None else None)
             if user is not None else None
         )
         reused = part_geometry_cache.get(geometry_key) if geometry_key else None
@@ -1699,6 +1732,9 @@ async def _run_cost_decision(
             # conversion, never a double.
             from src.costing.units import scale_mesh_to_mm
             mesh = scale_mesh_to_mm(mesh, effective_units)
+            if placed is not None:
+                # Price the part as placed (a cached entry for this key is already turned).
+                mesh = placed.apply(mesh)
         tracing.set_attr(_sp_parse, "cadverify.file.suffix", suffix)
         tracing.set_attr(_sp_parse, "cadverify.file.bytes", len(data))
         tracing.set_attr(_sp_parse, "cadverify.units", effective_units)
@@ -1922,7 +1958,7 @@ async def _run_cost_decision(
             with tracing.span("cost.dfm_analysis") as _sp_dfm:
                 _t_geo = time.perf_counter()
                 result, m, ctx = _run_cost_engine_ctx(
-                    mesh, file.filename or "unknown"
+                    mesh, file.filename or "unknown", orientation=placed
                 )
                 features = ctx.features
                 geo = result.geometry if isinstance(result.geometry, dict) else {}
@@ -2086,26 +2122,37 @@ async def _run_cost_decision(
             data,
         )
         def _export_costable():
+            # The derivative is the file's own geometry, never a turned copy.
+            def own(m):
+                return placed.unapply(m) if placed is not None else m
             if reused is None:
-                return mesh.export(file_type="stl")
+                return own(mesh).export(file_type="stl")
             with reused.lock:  # shared with a concurrent re-price of this part
-                return mesh.export(file_type="stl")
+                return own(mesh).export(file_type="stl")
 
-        costable_stl = await asyncio.to_thread(_export_costable)
-        if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
-            raise HTTPException(
-                status_code=500,
-                detail="Costable source derivative could not be persisted.",
+        from src.services.source_artifact_service import costable_mesh_exists
+
+        if placed is None or not await costable_mesh_exists(
+                cal_org_id, source_hash, source_units=effective_units):
+            costable_stl = await asyncio.to_thread(_export_costable)
+            if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Costable source derivative could not be persisted.",
+                )
+            await save_costable_mesh_artifact(
+                cal_org_id,
+                source_hash,
+                bytes(costable_stl),
+                source_units=effective_units,
             )
-        await save_costable_mesh_artifact(
-            cal_org_id,
-            source_hash,
-            bytes(costable_stl),
-            source_units=effective_units,
-        )
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
         result_dict = report_to_dict(report)
+    if placed is not None:
+        # The record says which way the part was turned for this price.
+        result_dict = dict(result_dict)
+        result_dict["orientation"] = placed.record()
 
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------
     # Turns the flagship decision into a durable artifact (list/export/share/
@@ -2132,6 +2179,7 @@ async def _run_cost_decision(
                 shop=shop_slug,
                 overrides=rate_overrides,
                 source_units=effective_units,
+                orientation=placed.key if placed is not None else None,
             )
             mesh_hash = compute_mesh_hash(data)
             try:
@@ -2275,6 +2323,13 @@ async def validate_cost(
                     "decision reads the real part. STATED input; a plausibility WARNING "
                     "still fires if the mm-interpreted size looks wrong.",
     ),
+    orientation: Optional[str] = Form(
+        None,
+        description="Turn the part before costing, as for POST /validate "
+                    "(turns:x90,z-90 | down:x,y,z | rotation:r00,…,r22 | JSON). "
+                    "Unset => the file's own axes. Same file: no extra check. "
+                    "The decision records the orientation it used.",
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
@@ -2309,6 +2364,7 @@ async def validate_cost(
         user=user,
         session=session,
         response=response,
+        orientation=orientation,
     )
 
 

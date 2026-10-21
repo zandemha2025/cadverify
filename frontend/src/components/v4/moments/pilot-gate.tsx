@@ -28,12 +28,11 @@ export type PilotFeature = { title: string; text: string; tone?: string };
 
 export const PILOT_PLAN_FACTS = "$7,500 · 4–6 weeks · up to 500 parts · one factory";
 
+/** Tools that still need the pilot plan (backend require_paid_access). Fixes, repair, Fit in assembly and Design Studio are on every plan. */
 export const PILOT_INCLUDES = [
-  "Fit in assembly",
   "Batch runs",
   "Assemblies",
-  "File repair",
-  "Design Studio",
+  "Photo to 3D",
   "Recalibration from real costs",
 ];
 

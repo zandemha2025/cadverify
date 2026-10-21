@@ -31,20 +31,21 @@ const cap = (over: Partial<{ enabled: boolean; paid_access: boolean; can_submit:
   cap: { enabled: true, paid_access: true, can_submit: true, available: true, ...over },
 });
 
-test("access: the pilot gate comes first, then the server setting, then the role", () => {
-  assert.equal(resolveAccess({ kind: "loading" }, "pilot", true), "loading");
-  assert.equal(resolveAccess(cap({ paid_access: false, enabled: false }), "other", true), "gate");
-  assert.equal(resolveAccess(cap({ enabled: false }), "pilot", true), "off");
-  assert.equal(resolveAccess(cap({ can_submit: false }), "pilot", false), "viewer");
-  assert.equal(resolveAccess(cap({}), "pilot", false), "viewer");
-  assert.equal(resolveAccess(cap({}), "pilot", true), "on");
-  assert.equal(resolveAccess({ kind: "error", message: "x" }, "pilot", true), "error");
+test("access: the server setting, then the role; the plan never gates it", () => {
+  assert.equal(resolveAccess({ kind: "loading" }, true), "loading");
+  assert.equal(resolveAccess(cap({ enabled: false }), true), "off");
+  assert.equal(resolveAccess(cap({ can_submit: false }), false), "viewer");
+  assert.equal(resolveAccess(cap({}), false), "viewer");
+  assert.equal(resolveAccess(cap({}), true), "on");
+  assert.equal(resolveAccess({ kind: "error", message: "x" }, true), "error");
+  // A free trial account: the probe answers paid_access true; even an older
+  // server's false no longer shows a gate (the measurement says what it says).
+  assert.equal(resolveAccess(cap({ paid_access: false }), true), "on");
 });
 
-test("a server without the probe offers no fit; the plan still picks the gate", () => {
-  assert.equal(resolveAccess({ kind: "missing" }, null, true), "loading");
-  assert.equal(resolveAccess({ kind: "missing" }, "other", true), "gate");
-  assert.equal(resolveAccess({ kind: "missing" }, "pilot", true), "off");
+test("a server without the probe offers no fit", () => {
+  assert.equal(resolveAccess({ kind: "missing" }, true), "off");
+  assert.equal(resolveAccess({ kind: "missing" }, false), "off");
 });
 
 test("file kinds and units", () => {

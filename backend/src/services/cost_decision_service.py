@@ -71,6 +71,7 @@ def compute_params_hash(
     shop: Optional[str],
     overrides: Optional[dict],
     source_units: str = "mm",
+    orientation: Optional[str] = None,
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
@@ -79,21 +80,21 @@ def compute_params_hash(
     """
     from src import __version__
 
-    canonical = json.dumps(
-        {
-            "engine_version": __version__,
-            "source_units": source_units,
-            "quantities": sorted(quantities),
-            "region": region or "US",
-            "cavities": int(cavities),
-            "complexity": complexity,
-            "material_class": material_class,
-            "shop": shop or "",
-            "overrides": overrides or {},
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    params = {
+        "engine_version": __version__,
+        "source_units": source_units,
+        "quantities": sorted(quantities),
+        "region": region or "US",
+        "cavities": int(cavities),
+        "complexity": complexity,
+        "material_class": material_class,
+        "shop": shop or "",
+        "overrides": overrides or {},
+    }
+    if orientation is not None:
+        # Only a turned part adds the key, so the file's own hash is unchanged.
+        params["orientation"] = orientation
+    canonical = json.dumps(params, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 

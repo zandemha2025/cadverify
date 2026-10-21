@@ -7,8 +7,9 @@
  * them on the turntable, compare two (plan and generated summary, with both
  * previews), download a revision's STEP, or open it in a check.
  *
- * Writes are role-gated (canMutateWorkspace) and pilot-plan only on the server;
- * viewers get the library read-only, other plans see what the pilot adds.
+ * Writes are role-gated (canMutateWorkspace) and on every plan, the free trial
+ * included; viewers get the library read-only. The server limits how many
+ * designs or revisions a free account generates an hour and a day, and says so.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -43,7 +44,7 @@ import {
 import { R } from "../routes";
 import { useRegisterPaletteItems } from "../palette";
 import { Chip, Empty, Loading, Row, cx } from "../ui";
-import { MakeHead, MakeWorld, PILOT_INCLUDES, PilotPlanCard, errorText, usePlan, useToast } from "./head";
+import { MakeHead, MakeWorld, errorText, useToast } from "./head";
 import { Turntable, type StageLayer, type StageState } from "./turntable";
 import {
   INTERPRET_IDLE,
@@ -97,9 +98,7 @@ function previewLayers(designId: string | null, rev: Pick<DesignRevision, "numbe
 export function StudioScreen() {
   const { user } = useAuth();
   const canMutate = canMutateWorkspace(user?.role);
-  const plan = usePlan();
-  const pilotBlocked = plan === "other";
-  const writable = canMutate && !pilotBlocked;
+  const writable = canMutate;
 
   const [designs, setDesigns] = React.useState<Design[] | null>(null);
   const [listErr, setListErr] = React.useState<string | null>(null);
@@ -433,7 +432,7 @@ export function StudioScreen() {
           ) : (
             "Designs loading"
           ),
-          "Pilot plan",
+          "Generating doesn’t use a check",
         ]}
         tools={
           <button
@@ -880,19 +879,11 @@ export function StudioScreen() {
               </div>
               <p className="fine">Validated operations in an isolated CAD process. No generated code, no third-party model.</p>
             </>
-          ) : !canMutate ? (
+          ) : (
             <div className="note">
               <b>Read only for your role</b>
               <span>Analysts and admins create, revise and archive designs. You can view every revision, compare them and download STEP files.</span>
             </div>
-          ) : (
-            <>
-              <div className="note" style={{ marginBottom: 6 }}>
-                <b>Generating designs is part of the pilot plan</b>
-                <span>Your plan covers single-part checks. Designs your team already made stay viewable and downloadable here.</span>
-              </div>
-              <PilotPlanCard includes={PILOT_INCLUDES} />
-            </>
           )}
         </div>
       </aside>

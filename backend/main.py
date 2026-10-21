@@ -48,6 +48,7 @@ from src.api.scim import router as scim_router
 from src.api.part_context import router as part_context_router
 from src.api.part_preview import router as part_preview_router
 from src.api.part_fixes import router as part_fixes_router
+from src.api.part_orientation import router as part_orientation_router
 from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
@@ -511,6 +512,8 @@ app.include_router(part_preview_router, prefix="/api/v1/parts", tags=["parts"])
 # Fixes ScaleCAD makes itself on a copy of the stored source (pilot, like
 # mesh repair): per-finding can-fix flags, apply + re-check, fixed-file download.
 app.include_router(part_fixes_router, prefix="/api/v1/parts", tags=["parts"])
+# Ways to lay a stored part down, compared by the check's own rules. Never a check.
+app.include_router(part_orientation_router, prefix="/api/v1/parts", tags=["parts"])
 # Confirmed part identity (identity Slice 1): the human-in-the-loop seam that turns
 # a retrieved SUGGESTION into a USER-asserted identity on the org's corpus row.
 app.include_router(

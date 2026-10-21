@@ -389,12 +389,19 @@ async def run_analysis(
     org_id: str | None = None,
     source_units: str | None = None,
     return_persisted_id: bool = False,
+    orientation=None,
 ) -> dict | AnalysisRun:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
     On cache hit returns stored result_json without running analyzers.
     On cache miss runs the full pipeline, persists, writes usage_event.
     Handles race condition via IntegrityError catch (T-03B-01).
+
+    ``orientation`` (``src.analysis.orientation.Orientation``, or None for the
+    file's own) turns the part before analysis: its +Z is the build direction
+    for printing and the opening direction for molding. The result says which
+    orientation it used (``result["orientation"]``) and is its own cached row.
+    The source evidence is the file's own bytes and mesh, never the turned copy.
     """
     # Suffix gate BEFORE the cache lookup. The fresh path rejects unsupported
     # suffixes inside the parse prelude, but a cache hit (same bytes, new
@@ -465,6 +472,15 @@ async def run_analysis(
         process_fingerprint.append(
             f"rule_pack={pack.name.lower()}@{pack.version}"
         )
+    from src.analysis.orientation import OrientationError, parse_orientation
+
+    try:
+        orientation = parse_orientation(orientation)
+    except OrientationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if orientation is not None:
+        # A turned check answers a different question about the same bytes.
+        process_fingerprint.append(f"orientation={orientation.key}")
     process_set_hash = compute_process_set_hash(
         process_fingerprint
     )
@@ -549,6 +565,10 @@ async def run_analysis(
         from src.costing.units import scale_mesh_to_mm
 
         mesh = scale_mesh_to_mm(mesh, effective_units)
+    # The file's own mesh stays the source evidence; analysis runs on the turned copy.
+    file_mesh = mesh
+    if orientation is not None:
+        mesh = orientation.apply(file_mesh)
 
     # The cost engine scores every registered process with no rule pack. When
     # this analysis is exactly that (all processes, no pack), keep a copy of
@@ -556,7 +576,8 @@ async def run_analysis(
     from src.services import part_geometry_cache
 
     cost_cache_key = (
-        part_geometry_cache.key(user.user_id, file_bytes, filename, effective_units)
+        part_geometry_cache.key(user.user_id, file_bytes, filename, effective_units,
+                                orientation=orientation.key if orientation is not None else None)
         if not processes and pack is None and getattr(user, "user_id", None) is not None
         else None
     )
@@ -603,6 +624,11 @@ async def run_analysis(
             ps = score_process(proc_issues, geometry, proc)
             process_scores.append(ps)
         sync_timings["process_analyzers"] = _elapsed_ms(sync_started)
+        if orientation is not None:
+            from src.analysis.orientation import all_issues, turn_points_to_file
+
+            # Region centres in the file's coordinates, like its 3D view.
+            turn_points_to_file(orientation, all_issues(universal_issues, process_scores))
 
         # Customer-context Slice 1: compute the 18-dim shape signature while the
         # mesh + geometry + ctx are still alive (they are freed before persist).
@@ -612,7 +638,9 @@ async def run_analysis(
         try:
             from src.eval.similarity import feature_vector
 
-            signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
+            # A turned check is the same part: the corpus keeps the file's own signature.
+            if orientation is None:
+                signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
         except Exception:
             logger.warning(
                 "shape-signature computation failed — corpus write-back skipped",
@@ -678,6 +706,16 @@ async def run_analysis(
     stage_started = time.perf_counter()
     result_dict = to_response_fn(result, features, pack)
     result_dict["analysis_mesh_hash"] = analysis_mesh_hash(ctx.mesh)
+    if orientation is not None:
+        from src.analysis.orientation import record_points_to_file
+
+        # Same faces in the same order as the file's own analysis mesh, so the
+        # face hash is the file-frame one the 3D view checks (when not decimated).
+        decimated = bool(((ctx.metadata or {}).get("decimation") or {}).get("succeeded"))
+        file_face_hash = analysis_mesh_hash(file_mesh if not decimated else orientation.unapply(ctx.mesh))
+        result_dict["analysis_mesh_hash"] = file_face_hash
+        result_dict["orientation"] = orientation.record(file_face_hash=file_face_hash)
+        record_points_to_file(orientation, result_dict)
     stage_timings_ms["serialize"] = _elapsed_ms(stage_started)
     if effective_units != "mm":
         result_dict["source_units"] = {
@@ -726,6 +764,7 @@ async def run_analysis(
     # Release mesh + context memory before async persist
     try:
         mesh._cache.clear()
+        file_mesh._cache.clear()
     except Exception:
         pass
     del ctx, features, universal_issues, process_scores, geometry
@@ -770,7 +809,7 @@ async def run_analysis(
                         mesh_hash,
                         filename,
                         file_bytes,
-                        parsed_mesh=mesh,
+                        parsed_mesh=file_mesh,
                         source_units=effective_units,
                     )
                 )

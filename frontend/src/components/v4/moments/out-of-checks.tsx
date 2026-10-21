@@ -146,6 +146,7 @@ export function OutOfChecks({
               </span>
             )}
             <span>1 check = one part&apos;s preview, analysis and cost. Re-running a step on the same file doesn&apos;t use another.</span>
+            <span>Without checks you can still open saved parts, run the sample, and use ScaleCAD&apos;s fixes, mesh repair, Design Studio and Fit in assembly.</span>
           </div>
         ) : null}
         {!pro ? (
@@ -163,7 +164,7 @@ export function OutOfChecks({
             )}
             <p>{monthly != null ? `${monthly} checks a month` : "Monthly checks"} · your machines and prices · cancel anytime</p>
             {checkout === false ? <p className="honest">Checkout is unavailable right now. Email us for more checks.</p> : null}
-            <p className="honest">Checks only. Batch runs, Fit in assembly and other pilot tools aren&apos;t included.</p>
+            <p className="honest">More checks. Batch runs, assemblies and other pilot tools aren&apos;t included.</p>
           </div>
         ) : null}
         <div className="opt">

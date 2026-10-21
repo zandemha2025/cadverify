@@ -155,6 +155,9 @@ export function BillingScreen({ plans }: { plans: Plans }) {
               <li>
                 <i aria-hidden="true">✓</i>Machines, service conditions, decisions, records
               </li>
+              <li>
+                <i aria-hidden="true">✓</i>Fixes ScaleCAD makes, mesh repair, Design Studio, Fit in assembly: no check used
+              </li>
             </ul>
             <div className="a-act">
               <span className="a-fh">Sample part: no check used</span>
@@ -223,10 +226,10 @@ export function BillingScreen({ plans }: { plans: Plans }) {
                 <i aria-hidden="true">✓</i>Up to 500 parts, 4–6 weeks
               </li>
               <li>
-                <i aria-hidden="true">✓</i>Batches, assemblies, Fit in assembly
+                <i aria-hidden="true">✓</i>Batches, assemblies, Photo to 3D
               </li>
               <li>
-                <i aria-hidden="true">✓</i>Design Studio, repair, recalibration from real jobs
+                <i aria-hidden="true">✓</i>Recalibration from real jobs
               </li>
             </ul>
             <div className="a-act">
@@ -237,16 +240,18 @@ export function BillingScreen({ plans }: { plans: Plans }) {
           </section>
         </div>
         <div className="a-g2">
-          <section className="panel" aria-label="Pro vs pilot">
+          <section className="panel" aria-label="Tools by plan">
             <div className="ph">
-              <h2>Pro vs pilot</h2>
+              <h2>Tools by plan</h2>
               <span />
             </div>
             <div className="kv" style={{ padding: "0 16px 14px", gridTemplateColumns: "110px minmax(0,1fr)" }}>
+              <span>Every plan</span>
+              <b style={{ textAlign: "left" }}>Fixes ScaleCAD makes, mesh repair, Design Studio, Fit in assembly. The free trial has an hourly and daily limit on them</b>
               <span>Pro adds</span>
-              <b style={{ textAlign: "left" }}>Monthly checks only</b>
+              <b style={{ textAlign: "left" }}>Monthly checks, and no free-trial limit on those tools</b>
               <span>Pilot only</span>
-              <b style={{ textAlign: "left" }}>Batches, assemblies, Fit in assembly, Design Studio, repair, recalibration</b>
+              <b style={{ textAlign: "left" }}>Batches, assemblies, Photo to 3D, recalibration</b>
             </div>
           </section>
           <section className="panel" aria-label="Payment and invoices">
