@@ -147,14 +147,15 @@ def test_shorthands_normalize_to_registry_names():
 
 
 def test_garbage_material_still_reported_with_vocab_hint():
-    # A genuinely unknown material stays an honest 400 — and the message now
-    # points at the accepted vocabulary instead of only saying "unknown".
+    # A genuinely unknown material stays an honest 400 — and the message points
+    # at what this machine's method knows, in one sentence, not the whole registry.
     m = _good_machine()
     m["materials"] = ["unobtainium"]
     with pytest.raises(ValueError, match="unknown material") as exc:
         svc.validate_machine(m)
     msg = str(exc.value)
-    assert "accepted:" in msg and "shorthand" in msg
+    assert "Known there:" in msg and "a class (aluminum" in msg
+    assert "accepted:" not in msg and len(msg) < 300
 
 
 def test_capital_frac_out_of_range_reported():
@@ -665,7 +666,7 @@ def test_printer_details_are_checked_against_each_other_and_the_registry():
         ({"max_chamber_c": 60}, "max_chamber_c needs enclosure 'heated'"),
         ({"enclosure": "heated", "max_chamber_c": -5}, "'max_chamber_c' must be > 0"),
         ({"stocked_materials": "PLA"}, "stocked_materials must be a list"),
-        ({"stocked_materials": ["PA12-CF"]}, "stocked_materials has unknown material 'PA12-CF'"),
+        ({"stocked_materials": ["Unobtainium-CF"]}, "stocked_materials has unknown material 'Unobtainium-CF'"),
         ({"stocked_materials": [""]}, "stocked_materials entries must be non-empty strings"),
     ]
     for caps, msg in bad:

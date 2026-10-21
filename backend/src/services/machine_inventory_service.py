@@ -46,7 +46,7 @@ from ulid import ULID
 from src.analysis.models import ProcessType
 from src.costing.rates import ADDITIVE, BINDER_JET_FAMILY, METAL_POWDER_BED
 from src.db.models import MachineInstance, ShopCapabilities
-from src.profiles.database import MACHINES, get_material_by_name
+from src.profiles.database import MACHINES, MATERIALS, get_material_by_name, get_materials_for_process
 from src.profiles.models import MAKER_DESCRIBED, MAKER_SPEC
 # Reuse the EXACT material-class vocabulary the ground-truth / manifest importers
 # validate against — a machine can never smuggle in a material the cost engine
@@ -191,7 +191,8 @@ def _validate_capabilities(caps: Any, errors: list[str], process: Any = None) ->
                 errors.append(f"enclosure must be one of {sorted(_ENCLOSURES)}")
             continue
         if key == "stocked_materials":
-            _validate_material_list(val, errors, field_name="stocked_materials")
+            _validate_material_list(val, errors, field_name="stocked_materials",
+                                    process=process if isinstance(process, str) else None)
             continue
         if key == "achievable_it_grade":
             if isinstance(val, bool) or not isinstance(val, int):
@@ -254,42 +255,178 @@ _MATERIAL_ALIASES: dict[str, str] = {
     "4140": "AISI 4140",
 }
 
-# What the validator actually accepts, surfaced in the error so the message
-# points at the real vocabulary instead of only saying "unknown".
-_MATERIAL_VOCAB_HINT = (
-    "accepted: a material class ("
-    + ", ".join(sorted(KNOWN_MATERIAL_CLASSES))
-    + "), an exact registry name (e.g. 6061-T6 Aluminum, SS316L, 304 Stainless, "
-    "PP (Molded)), or a common shorthand ("
-    + ", ".join(sorted(_MATERIAL_ALIASES)) + ")"
-)
+# Material names as a machine's own method uses them. The same word means a
+# different registry material on a different machine: a filament printer's
+# "Nylon" is the registry's Nylon (PA6), a powder printer's is PA12 or PA11.
+# Product-line names makers sell a polymer under ("PLA Basic", "PETG HF") are
+# that polymer; a filled grade maps only to the filled registry entry, never to
+# its base. Keys are compared case-, space- and punctuation-insensitively
+# (``_mkey``). ``None`` = a real material with no registry equivalent on that
+# method: refused with that said, never swapped for a look-alike.
+_METHOD_NAMES: dict[str, dict[str, tuple[str, ...]]] = {
+    "fdm": {
+        "PLA": ("PLA Basic", "PLA Matte", "PLA Silk", "PLA Silk+", "PLA+", "PLA Plus",
+                "PLA Pro", "PLA Tough", "PLA Tough+", "PLA Lite", "PLA HF", "PLA High Flow",
+                "PLA High Speed", "PLA HS", "PLA Translucent", "PLA Metal", "PLA Marble",
+                "PLA Sparkle", "PLA Galaxy", "PLA Glow", "PLA Basic Gradient"),
+        "PETG": ("PETG HF", "PETG Basic", "PETG Translucent", "PETG+", "PETG Pro",
+                 "PETG HS", "PETG High Flow", "PET-G"),
+        "ABS": ("ABS Basic", "ABS+", "ABS-M30"),
+        "TPU 95A": ("TPU", "TPU 95A HF", "TPU for AMS", "TPU 95"),
+        "Nylon (PA6)": ("Nylon", "PA", "PA6", "Nylon 6", "Nylon PA6"),
+        "CF-Nylon": ("PA-CF", "PA6-CF", "PA12-CF", "PAHT-CF", "Nylon-CF", "CF Nylon",
+                     "Nylon 12CF", "Carbon Fiber Nylon", "Carbon Fibre Nylon"),
+        "ULTEM 9085": ("ULTEM", "PEI 9085"),
+    },
+    "sls": {
+        "PA12 (Nylon 12)": ("PA12", "Nylon 12", "PA 2200"),
+        "PA11": ("Nylon 11",),
+        "Glass-filled PA12": ("PA-GF", "PA12-GF", "PA12 GF", "PA 3200 GF"),
+        "TPU (SLS)": ("TPU",),
+    },
+    "mjf": {
+        "PA12 (Nylon 12)": ("PA12", "Nylon 12"),
+        "PA11": ("Nylon 11",),
+        "PP (MJF)": ("PP", "Polypropylene"),
+    },
+    "sla": {
+        "Standard Resin": ("Standard", "Grey Resin", "Clear Resin", "Black Resin", "White Resin"),
+        "Tough Resin": ("Tough", "Tough 1500", "Tough 2000"),
+        "Flexible Resin": ("Flexible", "Flexible 80A"),
+        "Castable Resin": ("Castable", "Castable Wax"),
+        "Dental Model Resin": ("Dental Model",),
+    },
+    "dlp": {
+        "Standard Resin": ("Standard",),
+        "Tough Resin": ("Tough",),
+        "Flexible Resin": ("Flexible",),
+        "Castable Resin": ("Castable",),
+        "Dental Model Resin": ("Dental Model",),
+    },
+}
+# A name that is several registry materials on that method: asked, not guessed.
+_METHOD_AMBIGUOUS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("sls", "Nylon"): ("PA12 (Nylon 12)", "PA11"),
+    ("sls", "PA"): ("PA12 (Nylon 12)", "PA11"),
+    ("mjf", "Nylon"): ("PA12 (Nylon 12)", "PA11"),
+    ("mjf", "PA"): ("PA12 (Nylon 12)", "PA11"),
+}
+# Polymers that are one registry material on any machine.
+_ANY_METHOD_NAMES: dict[str, tuple[str, ...]] = {
+    "PC (Polycarbonate)": ("PC", "Polycarbonate"),
+    "Delrin (POM)": ("Delrin", "POM", "Acetal"),
+}
+
+_METHOD_LABEL = {
+    "fdm": "a filament printer (FDM)", "sla": "a resin printer (SLA)",
+    "dlp": "a resin printer (DLP)", "sls": "a powder printer (SLS)",
+    "mjf": "a powder printer (MJF)", "cnc_3axis": "a 3-axis mill",
+    "cnc_5axis": "a 5-axis mill", "cnc_turning": "a lathe", "wire_edm": "a wire EDM",
+    "dmls": "a metal powder printer (DMLS)", "slm": "a metal powder printer (SLM)",
+    "ebm": "a metal powder printer (EBM)", "binder_jetting": "a binder-jet printer",
+    "sheet_metal": "a sheet-metal line", "injection_molding": "an injection molding machine",
+}
+_POLYMER_METHODS = frozenset({"fdm", "sla", "dlp", "sls", "mjf", "injection_molding"})
 
 
-def _canonical_material(name: str) -> Optional[str]:
-    """Resolve a declared material to its canonical stored form, or ``None`` if
-    genuinely unknown.
+def _mkey(name: str) -> str:
+    """Compare material names ignoring case, spaces and punctuation ("TPU-95A" = "tpu 95a")."""
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
 
-    Order: a known material CLASS (kept as its lower-case class token) → a common
-    unambiguous SHORTHAND (mapped to its registry name) → an exact registry NAME
-    (returned in the registry's canonical casing). Case-insensitive. Nothing is
-    coerced: an unrecognised token resolves to ``None`` and stays a reported error.
+
+def _method_table(process: Optional[str]) -> dict[str, Optional[str]]:
+    """``{_mkey(name): registry name | None}`` for one method: its own names,
+    the catalog's vendor names for it, and names that mean one material anywhere."""
+    table: dict[str, Optional[str]] = {}
+    for target, names in _ANY_METHOD_NAMES.items():
+        for n in names:
+            table[_mkey(n)] = target
+    if isinstance(process, str):
+        for (proc, name), target in _CATALOG_MATERIALS.items():
+            if proc == process:
+                table[_mkey(name)] = target
+        for target, names in _METHOD_NAMES.get(process, {}).items():
+            for n in names:
+                table[_mkey(n)] = target
+    return table
+
+
+def _resolve_material(name: str, process: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+    """``(canonical stored form, None)`` or ``(None, problem)`` for one declared material.
+
+    Order: a material CLASS → the machine's method names (``_METHOD_NAMES``, the
+    catalog's vendor names) → a common metal/polymer SHORTHAND → an exact
+    registry NAME (case-insensitive) → the same ignoring spaces and punctuation.
+    An ambiguous or unknown name resolves to nothing and the problem names it.
     """
     stripped = name.strip()
     low = stripped.lower()
     if low in KNOWN_MATERIAL_CLASSES:
-        return low
+        return low, None
+    key = _mkey(stripped)
+    label = _METHOD_LABEL.get(process or "", "this method")
+    for (proc, amb), options in _METHOD_AMBIGUOUS.items():
+        if proc == process and _mkey(amb) == key:
+            return None, (f"'{stripped}' could be {' or '.join(options)} on {label}. "
+                          f"Name which one.")
+    table = _method_table(process)
+    if key in table:
+        target = table[key]
+        if target is None:
+            return None, (f"unknown material '{stripped}' for {label}: ScaleCAD has no "
+                          f"price for it on this method. Leave it out, or use "
+                          f"{_known_for(process)}.")
+        return target, None
     alias = _MATERIAL_ALIASES.get(low)
     if alias is not None:
-        return alias
+        return alias, None
     prof = get_material_by_name(stripped)
     if prof is not None:
-        return prof.name
-    return None
+        return prof.name, None
+    compact = [m.name for m in MATERIALS if _mkey(m.name) == key]
+    if len(compact) == 1:
+        return compact[0], None
+    return None, _unknown_text(stripped, process, label)
 
 
-def _validate_material_list(materials: Any, errors: list[str], *, field_name: str) -> None:
-    """Each entry must be a known material NAME, CLASS, or an unambiguous
-    shorthand (see ``_MATERIAL_ALIASES``)."""
+def _method_materials(process: Optional[str]) -> list[str]:
+    try:
+        pt = ProcessType(process) if process else None
+    except ValueError:
+        pt = None
+    return [m.name for m in get_materials_for_process(pt)] if pt is not None else []
+
+
+def _known_for(process: Optional[str]) -> str:
+    names = _method_materials(process)[:8]
+    cls = "the class polymer" if process in _POLYMER_METHODS else "a class (aluminum, steel, stainless, titanium)"
+    return (", ".join(names) + f", or {cls}") if names else cls
+
+
+def _unknown_text(name: str, process: Optional[str], label: str) -> str:
+    """One sentence: the entry, and the closest names ScaleCAD knows on that method."""
+    import difflib
+
+    pool = _method_materials(process) or [m.name for m in MATERIALS]
+    key = _mkey(name)
+    closest = [n for n in pool if _mkey(n) and key.startswith(_mkey(n))]
+    by_low = {n.lower(): n for n in pool}
+    closest += [by_low[c] for c in difflib.get_close_matches(name.lower(), list(by_low), n=3, cutoff=0.5)
+                if by_low[c] not in closest]
+    if closest:
+        return f"unknown material '{name}' for {label}. Closest names ScaleCAD knows: {', '.join(closest[:3])}."
+    return f"unknown material '{name}' for {label}. Known there: {_known_for(process)}."
+
+
+def _canonical_material(name: str, process: Optional[str] = None) -> Optional[str]:
+    """Resolve a declared material to its canonical stored form, or ``None`` if
+    it is ambiguous or unknown on this method (see ``_resolve_material``)."""
+    return _resolve_material(name, process)[0]
+
+
+def _validate_material_list(materials: Any, errors: list[str], *, field_name: str,
+                            process: Optional[str] = None) -> None:
+    """Each entry must resolve on this machine's method (``_resolve_material``)."""
     if materials is None:
         return
     if not isinstance(materials, (list, tuple)):
@@ -300,22 +437,20 @@ def _validate_material_list(materials: Any, errors: list[str], *, field_name: st
         if not isinstance(m, str) or not m.strip():
             errors.append(f"{label} entries must be non-empty strings (got {m!r})")
             continue
-        name = m.strip()
-        if _canonical_material(name) is not None:
+        canon, problem = _resolve_material(m, process)
+        if canon is not None:
             continue
-        prefix = "unknown material" if field_name == "materials" else f"{field_name} has unknown material"
-        errors.append(
-            f"{prefix} '{name}' (not a known material, class, or shorthand; "
-            f"{_MATERIAL_VOCAB_HINT})"
-        )
+        if field_name != "materials" and problem and problem.startswith("unknown material"):
+            problem = f"{field_name} has {problem}"
+        errors.append(problem or f"unknown material '{m.strip()}'")
 
 
-def _validate_materials(materials: Any, errors: list[str]) -> None:
+def _validate_materials(materials: Any, errors: list[str], process: Optional[str] = None) -> None:
     """The machine's qualified materials (see ``_validate_material_list``)."""
-    _validate_material_list(materials, errors, field_name="materials")
+    _validate_material_list(materials, errors, field_name="materials", process=process)
 
 
-def _canonical_thickness_key(key: str) -> Optional[str]:
+def _canonical_thickness_key(key: str, process: Optional[str] = None) -> Optional[str]:
     """Canonical stored form of a ``material_thickness_map`` key, or ``None``.
 
     The engine looks a part up by its registry material name, then its class,
@@ -324,13 +459,13 @@ def _canonical_thickness_key(key: str) -> Optional[str]:
     """
     text = key.strip()
     prefix = "@" if text.startswith("@") else ""
-    canon = _canonical_material(text[len(prefix):])
+    canon = _canonical_material(text[len(prefix):], process)
     if canon is None or (prefix and canon not in KNOWN_MATERIAL_CLASSES):
         return None
     return prefix + canon
 
 
-def _validate_thickness_map(tmap: Any, errors: list[str]) -> None:
+def _validate_thickness_map(tmap: Any, errors: list[str], process: Optional[str] = None) -> None:
     if tmap is None:
         return
     if not isinstance(tmap, dict):
@@ -341,11 +476,11 @@ def _validate_thickness_map(tmap: Any, errors: list[str]) -> None:
         if not isinstance(k, str) or not k.strip():
             errors.append("material_thickness_map keys must be material names")
         else:
-            canon = _canonical_thickness_key(k)
+            canon = _canonical_thickness_key(k, process)
             if canon is None:
                 errors.append(
                     f"material_thickness_map has unknown material '{k.strip()}' "
-                    f"(not a known material, @class, or shorthand; {_MATERIAL_VOCAB_HINT})"
+                    f"(a material, or @ and a class such as @aluminum)"
                 )
             elif canon in seen:
                 errors.append(
@@ -418,9 +553,10 @@ def validate_machine(fields: dict) -> None:
         if not _is_number(cf) or not (0.0 <= cf <= 1.0):
             errors.append("capital_frac must be in [0,1] and finite")
 
+    proc = process if isinstance(process, str) else None
     _validate_capabilities(fields.get("capabilities"), errors, fields.get("process"))
-    _validate_materials(fields.get("materials"), errors)
-    _validate_thickness_map(fields.get("material_thickness_map"), errors)
+    _validate_materials(fields.get("materials"), errors, proc)
+    _validate_thickness_map(fields.get("material_thickness_map"), errors, proc)
 
     if errors:
         raise ValueError("; ".join(errors))
@@ -459,28 +595,35 @@ def _normalize(fields: dict) -> dict:
         out["count"] = 1
     if out.get("capabilities") is None:
         out["capabilities"] = {}
+    proc = out.get("process") if isinstance(out.get("process"), str) else None
+
+    def canon_list(items):
+        # Each name as its registry material on this method, once ("PLA Basic",
+        # "PLA Matte" are both PLA).
+        seen: list = []
+        for m in items:
+            c = (_canonical_material(m, proc) or m) if isinstance(m, str) else m
+            if c not in seen:
+                seen.append(c)
+        return seen
+
     # Stocked filament/resin is stored under the same canonical names as materials.
     caps = out.get("capabilities")
     if isinstance(caps, dict) and isinstance(caps.get("stocked_materials"), (list, tuple)):
         caps = dict(caps)
-        caps["stocked_materials"] = [
-            _canonical_material(m) or m if isinstance(m, str) else m
-            for m in caps["stocked_materials"]
-        ]
+        caps["stocked_materials"] = canon_list(caps["stocked_materials"])
         out["capabilities"] = caps
     # Canonicalize accepted materials (shorthand → registry name) so the stored
     # value is the real material the form advertised, not the bare shorthand.
     mats = out.get("materials")
     if isinstance(mats, (list, tuple)):
-        out["materials"] = [
-            _canonical_material(m) or m if isinstance(m, str) else m for m in mats
-        ]
+        out["materials"] = canon_list(mats)
     # Same for thickness-map keys, so the engine's registry-name / class lookup
     # actually finds the limit the user declared under a shorthand.
     tmap = out.get("material_thickness_map")
     if isinstance(tmap, dict):
         out["material_thickness_map"] = {
-            (_canonical_thickness_key(k) or k) if isinstance(k, str) else k: v
+            (_canonical_thickness_key(k, proc) or k) if isinstance(k, str) else k: v
             for k, v in tmap.items()
         }
     # The maker-spec label is the server's to set: it names only the fields
@@ -1122,7 +1265,7 @@ def _catalog_materials(prof) -> tuple[list[str], list[str]]:
     skipped: list[str] = []
     for name in prof.materials or ():
         key = (proc, name)
-        reg = _CATALOG_MATERIALS[key] if key in _CATALOG_MATERIALS else _canonical_material(name)
+        reg = _CATALOG_MATERIALS[key] if key in _CATALOG_MATERIALS else _canonical_material(name, proc)
         if reg is None:
             skipped.append(name)
         elif reg not in resolved:

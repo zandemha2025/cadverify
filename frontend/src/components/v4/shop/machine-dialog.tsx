@@ -60,6 +60,19 @@ function formFrom(m: Partial<MachineInput> | null, process = "cnc_3axis"): Form 
   };
 }
 
+/** What a machine's method takes in Materials, as the server resolves it (machine_inventory_service._METHOD_NAMES). */
+const MATERIAL_HINT: Record<string, [string, string]> = {
+  fdm: ["PLA, PETG, TPU", "Comma-separated, as on the spool: PLA, PETG, ABS, Nylon, TPU, CF-Nylon, PEEK. Product names such as PLA Basic or PETG HF count as their polymer. Or the class polymer."],
+  sla: ["Standard Resin, Tough Resin", "Comma-separated: Standard, Tough, Flexible, Castable or Dental Model Resin, or the class polymer."],
+  dlp: ["Standard Resin, Tough Resin", "Comma-separated: Standard, Tough, Flexible, Castable or Dental Model Resin, or the class polymer."],
+  sls: ["PA12, PA11", "Comma-separated: PA12, PA11, Glass-filled PA12, TPU, or the class polymer."],
+  mjf: ["PA12, PP", "Comma-separated: PA12, PA11, PP, or the class polymer."],
+};
+const METAL_HINT: [string, string] = [
+  "6061, 316L, PP",
+  "Comma-separated: a class (aluminum, steel, stainless, titanium, polymer), a grade (6061-T6 Aluminum, SS316L) or a shorthand (6061, 7075, 304, 316L, PP, 4130, 4140).",
+];
+
 const ENCLOSURE_LABELS: [PrinterText["enclosure"], string][] = [
   ["", "Not declared"],
   ["none", "Open"],
@@ -358,10 +371,17 @@ export function MachineDialog({
         </label>
         <label className="field full">
           Materials
-          <input aria-label="Materials" type="text" value={form.mats} placeholder="6061, 316L, PP" onChange={(e) => set("mats", e.target.value)} aria-describedby={`${ids}-math`} />
+          <input
+            aria-label="Materials"
+            type="text"
+            value={form.mats}
+            placeholder={(MATERIAL_HINT[form.process] ?? METAL_HINT)[0]}
+            onChange={(e) => set("mats", e.target.value)}
+            aria-describedby={`${ids}-math`}
+            aria-invalid={!!saveError && /material/i.test(saveError) ? true : undefined}
+          />
           <span className="fh" id={`${ids}-math`}>
-            Comma-separated: a class (aluminum, steel, stainless, titanium, polymer), a grade (6061-T6 Aluminum, SS316L) or a shorthand (6061, 7075, 304, 316L,
-            PP, 4130, 4140).
+            {(MATERIAL_HINT[form.process] ?? METAL_HINT)[1]}
           </span>
         </label>
       </div>

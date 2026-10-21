@@ -764,7 +764,7 @@ function MachineFormModal({
         <Field label="MATERIALS (comma-separated)">
           <input style={inputStyle} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="6061, 316L, PP" />
           <span style={{ display: "block", marginTop: 5, fontFamily: MONO, fontSize: 10, lineHeight: 1.5, color: C.ink40 }}>
-            a class (aluminum, steel, stainless, titanium, polymer), a registry name (e.g. 6061-T6 Aluminum, SS316L), or a shorthand (6061, 7075, 304, 316L, PP, 4130, 4140)
+            a class (aluminum, steel, stainless, titanium, polymer), a registry name (e.g. 6061-T6 Aluminum, SS316L, PLA, PETG), or a common name (6061, 316L, PP, Nylon, TPU, PLA Basic)
           </span>
         </Field>
         <Field label="NOTES (OPTIONAL)" span><input style={inputStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="throughput note, fixturing, secondary ops…" /></Field>

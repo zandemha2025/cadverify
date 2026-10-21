@@ -520,7 +520,7 @@ function MachineCard({
             <span className="pm">{(t.materials ?? []).join(", ")}</span>
           ) : (
             <span className="unit">
-              <input type="text" value={d.matsText} placeholder="e.g. EPU 40, RPU 70" aria-label={`Materials the ${name} prints, separated by commas`} aria-invalid={miss.includes("materials")} onChange={(e) => onChange({ matsText: e.target.value })} />
+              <input type="text" value={d.matsText} placeholder={t.process === "fdm" ? "e.g. PLA, PETG" : t.process === "sls" || t.process === "mjf" ? "e.g. PA12" : "e.g. Standard Resin, Tough Resin"} aria-label={`Materials the ${name} prints, separated by commas`} aria-invalid={miss.includes("materials")} onChange={(e) => onChange({ matsText: e.target.value })} />
             </span>
           )}
         </div>
