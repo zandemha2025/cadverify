@@ -122,9 +122,9 @@ export function buildQueue(input: HomeInput): QueueItem[] {
       icon: "↻",
       tone: "warn",
       n: String(n),
-      title: `${plural(n, "machine verdict")} out of date`,
-      short: "Machine list changed after these parts were checked",
-      name: "Machine verdicts",
+      title: `${plural(n, "part")} checked before your machines changed`,
+      short: "Which of your machines can make them may have changed",
+      name: "Fit on your machines",
       meta: "Machine list changed after these parts were checked",
       figs: [
         { k: "Out of date", v: `${n} of ${make.total}`, s: "parts", c: "warn" },

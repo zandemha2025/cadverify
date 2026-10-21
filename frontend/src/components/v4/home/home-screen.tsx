@@ -27,7 +27,7 @@ type Source = "records" | "parts" | "make" | "machines" | "changes" | "actuals" 
 const SOURCE_NAME: Record<Source, string> = {
   records: "records",
   parts: "parts",
-  make: "machine verdicts",
+  make: "fit on your machines",
   machines: "machines",
   changes: "changes to review",
   actuals: "actual costs",
