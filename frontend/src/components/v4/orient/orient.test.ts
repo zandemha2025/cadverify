@@ -12,6 +12,11 @@ import {
   label,
   mul,
   orientationParam,
+  priceBasis,
+  PRICES_LINE,
+  flagWords,
+  fitWords,
+  layerWords,
   rankedFor,
   recordOf,
   matOf,
@@ -129,10 +134,24 @@ test("ways to lay it down rank like the backend and read in plain words", () => 
   assert.equal(candidateFor(options, turned(IDENTITY, "x"))?.id, "down-y");
   assert.equal(candidateFor(options, turned(turned(IDENTITY, "x"), "z"))?.id, "down-y"); // a spin keeps up
   assert.deepEqual(candidateFacts(options.candidates[1], "fdm", rules), { main: "Support on 2,160 mm²", sub: "45 mm tall · 60 × 40 mm on the plate" });
+  // With the engine's layer, work-area and support-space figures (the L-bracket upside down).
+  const upside = { ...options.candidates[1], layers: { fdm: 225 }, fits: { fdm: true }, flags: { fdm: ["OVERHANG"], sla: ["OVERHANG", "CUPPING_RISK"] }, support: { ...options.candidates[1].support, fdm: { faces: 28242, area_mm2: 2160, volume_cm3: 84.24 } } };
+  const full = { ...options, layer_mm: { fdm: 0.2 }, work_areas_mm: { fdm: [300, 300, 350] } };
+  assert.deepEqual(candidateFacts(upside, "fdm", rules, full), {
+    main: "Support on 2,160 mm², about 84 cm³ under it (estimate)",
+    sub: "45 mm tall · 225 layers at 0.2 mm · 60 × 40 mm on the plate · fits the 300 × 300 × 350 mm work area",
+  });
+  assert.equal(flagWords(upside, "sla"), "needs support, cupping risk in the resin tank");
+  assert.equal(flagWords(upside, "cnc_3axis"), "");
+  assert.equal(fitWords({ ...upside, fits: { fdm: false } }, "fdm", full), "doesn't fit the 300 × 300 × 350 mm work area standing this way");
+  assert.equal(layerWords(upside, "sla", full), null);
+  assert.match(PRICES_LINE, /don't yet include support material or print height/);
   assert.equal(candidateFacts(options.candidates[2], "fdm", rules).main, "No support needed");
   assert.equal(candidateFacts(options.candidates[0], "injection_molding", rules).main, "4,788 mm² of wall without 1° draft");
   assert.equal(candidateName(options.candidates[0]), "As in the file");
   assert.equal(candidateName(options.candidates[2]), "On the file's −Y side");
+  assert.equal(priceBasis({ ...options, limits: ["Prices are the same in every orientation."] }), "Prices are the same in every orientation.");
+  assert.equal(priceBasis(null), null);
   assert.equal(shadeFor("fdm", rules)?.deg, 45);
   assert.equal(shadeFor("sls", rules), null);
   assert.match(whyLine("fdm", rules), /overhang more than 45° need support/);
@@ -193,6 +212,21 @@ test("before and after a re-check: findings, methods and prices from the two res
   (dearer.cost.estimates[1] as { unit_cost_usd: number }).unit_cost_usd = 28.94;
   const c2 = compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: dearer.validation as never, cost: dearer.cost as never, rotation: matOf(rec) }, 100, "fdm");
   assert.deepEqual(c2.pricesChanged, ["fdm"]);
-  assert.equal(c2.rows.find((r) => r.what === "Filament printing at 100")?.now, "$28.94");
-  assert.equal(row("Filament printing at 100")?.now, row("Filament printing at 100")?.before);
+  assert.equal(c2.rows.find((r) => /\$/.test(r.now)), undefined);
+  assert.equal(row("Filament printing at 100"), undefined); // no price rows: prices don't depend on it
+  // With the comparison's figures: layers, work area and the space under the support faces.
+  const opts2 = {
+    ...options, layer_mm: { fdm: 0.2 },
+    candidates: [
+      { ...cand("down-z", [0, 0, 1], 0, 45), layers: { fdm: 225 }, fits: { fdm: true } },
+      { ...cand("down-y", [0, 1, 0], 0, 40), layers: { fdm: 200 }, fits: { fdm: true } },
+    ],
+  } as Options;
+  opts2.candidates[0].support.fdm = { faces: 2, area_mm2: 2160, volume_cm3: 84.24 };
+  opts2.candidates[1].support.fdm = { faces: 0, area_mm2: 0, volume_cm3: 0 };
+  const c3 = compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: n.validation as never, cost: n.cost as never, rotation: matOf(rec) }, 100, "fdm", [], opts2);
+  const row3 = (what: string) => c3.rows.find((r) => r.what === what);
+  assert.deepEqual(row3("Layers at 0.2 mm"), { what: "Layers at 0.2 mm", before: "225", now: "200", tone: "ok" });
+  assert.deepEqual(row3("Space under them (estimate)"), { what: "Space under them (estimate)", before: "84 cm³", now: "None", tone: "ok" });
+  assert.deepEqual(row3("Work area, standing this way"), { what: "Work area, standing this way", before: "Fits", now: "Fits", tone: "" });
 });

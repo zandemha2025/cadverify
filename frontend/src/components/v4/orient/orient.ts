@@ -16,7 +16,7 @@
  */
 import type { CostReport, ValidationResult } from "@/lib/api";
 import type { OwnedMachine } from "@/lib/verify/machine-api";
-import { buildMethods, cheapestAt, money, priceAt, qtyWord, trimNum, VERDICT_LABEL, type Method } from "../part/model.ts";
+import { buildMethods, priceAt, trimNum, VERDICT_LABEL, type Method } from "../part/model.ts";
 import { processLabel, processName } from "../process-names.ts";
 
 export type Mat = number[];
@@ -264,11 +264,18 @@ export interface Candidate {
   height_mm: number;
   footprint_mm: [number, number];
   on_plate_area_mm2: number;
-  support: Record<string, { faces: number; area_mm2: number }>;
+  /** volume_cm3: the space under those faces down to the part or plate (an estimate). */
+  support: Record<string, { faces: number; area_mm2: number; volume_cm3?: number }>;
   draft: Record<string, { faces: number; area_mm2: number }>;
   downward_area_mm2: number;
   downward_share_pct: number | null;
   face_area_mm2?: number;
+  /** Layers at a typical layer per process (layer_mm). */
+  layers?: Record<string, number>;
+  /** Fits the work area the check uses, standing this way (any turn on the plate). */
+  fits?: Record<string, boolean>;
+  /** The findings that read the build direction this way would raise, per process. */
+  flags?: Record<string, string[]>;
 }
 
 export interface Options {
@@ -282,6 +289,40 @@ export interface Options {
   best: Record<string, string>;
   ranking: { printing: string; molding: string };
   limits: string[];
+  work_areas_mm?: Record<string, number[]>;
+  layer_mm?: Record<string, number>;
+}
+
+/** Said wherever orientations are compared: the cost model doesn't price these yet. */
+export const PRICES_LINE = "Prices don't yet include support material or print height, so they're the same in every orientation.";
+
+const FLAG_WORDS: Record<string, string> = {
+  OVERHANG: "needs support",
+  CUPPING_RISK: "cupping risk in the resin tank",
+  RESIDUAL_STRESS_RISK: "curl risk on large flat areas",
+  INSUFFICIENT_DRAFT: "walls without draft",
+};
+
+/** "needs support, cupping risk in the resin tank" for this way and process; "" when none. */
+export function flagWords(c: Candidate, process: string | null): string {
+  const codes = process ? c.flags?.[process] ?? [] : [];
+  return codes.map((k) => FLAG_WORDS[k] ?? k).join(", ");
+}
+
+/** "225 layers at 0.2 mm" for this way and process, when the engine counted them. */
+export function layerWords(c: Candidate, process: string | null, options: Options | null): string | null {
+  const n = process ? c.layers?.[process] : undefined;
+  const t = process ? options?.layer_mm?.[process] : undefined;
+  return n != null && t != null ? `${n.toLocaleString("en-US")} layers at ${trimNum(t, 2)} mm` : null;
+}
+
+/** "fits the 300 × 300 × 350 mm work area" or "doesn't fit … standing this way". */
+export function fitWords(c: Candidate, process: string | null, options: Options | null): string | null {
+  const fit = process ? c.fits?.[process] : undefined;
+  const env = process ? options?.work_areas_mm?.[process] : undefined;
+  if (fit == null || !env) return null;
+  const area = `${env.map((d) => trimNum(d, 0)).join(" × ")} mm work area`;
+  return fit ? `fits the ${area}` : `doesn't fit the ${area} standing this way`;
 }
 
 export function candidateMat(c: Candidate): Mat {
@@ -317,13 +358,14 @@ export function rankedFor(options: Options | null, process: string | null): Cand
   return list;
 }
 
-/** "Lying on the 60 × 45 mm footprint, 40 mm tall" style facts for a way, for the selected process. */
-export function candidateFacts(c: Candidate, process: string | null, rules: Rules | null): { main: string; sub: string } {
+/** The physical facts of a way, for the selected process: support, then height, layers and fit. */
+export function candidateFacts(c: Candidate, process: string | null, rules: Rules | null, options: Options | null = null): { main: string; sub: string } {
   const r = process && rules ? rules[process] : null;
-  const shape = `${mm(c.height_mm)} tall · ${trimNum(c.footprint_mm[0], 0)} × ${trimNum(c.footprint_mm[1], 0)} mm on the plate`;
+  const shape = [`${mm(c.height_mm)} tall`, layerWords(c, process, options), `${trimNum(c.footprint_mm[0], 0)} × ${trimNum(c.footprint_mm[1], 0)} mm on the plate`, fitWords(c, process, options)].filter(Boolean).join(" · ");
   if (r?.overhang_deg != null && process) {
     const s = c.support[process];
-    return { main: s.faces ? `Support on ${area(s.area_mm2)}` : "No support needed", sub: shape };
+    const vol = s.volume_cm3 != null && s.faces ? `, about ${trimNum(s.volume_cm3, s.volume_cm3 >= 10 ? 0 : 1)} cm³ under it (estimate)` : "";
+    return { main: s.faces ? `Support on ${area(s.area_mm2)}${vol}` : "No support needed", sub: shape };
   }
   if (r?.draft_deg != null && process) {
     const d = c.draft[process];
@@ -351,9 +393,10 @@ export function candidateName(c: Candidate): string {
   return down ? `On the file's ${down} side` : c.label;
 }
 
-/** Why prices move (or don't) with the orientation, in one line. */
-export const PRICE_BASIS =
-  "A check in a chosen orientation prices filament and resin printing as placed: the support material under the faces that need it and, for FDM and SLA, the print height. The file's own check prices ScaleCAD's best placement without support material. Other methods don't depend on the orientation.";
+/** How prices relate to the orientation, in the engine's own words (the first of its limits). */
+export function priceBasis(options: Options | null): string | null {
+  return options?.limits?.[0] ?? null;
+}
 
 /* ── before and after a re-check ────────────────────────────────────────── */
 
@@ -396,12 +439,24 @@ function findingWords(code: string, process: string, v: ValidationResult | null)
 }
 
 /** What changed between the check before and the re-check in another orientation, from the two results. */
-export function compare(before: Side, now: Side, q: number, process: string | null, machines: OwnedMachine[] = []): Comparison {
+export function compare(before: Side, now: Side, q: number, process: string | null, machines: OwnedMachine[] = [], options: Options | null = null): Comparison {
   const rows: ChangeRow[] = [];
   const hb = before.validation?.geometry?.bounding_box_mm?.[2];
   const hn = now.validation?.geometry?.bounding_box_mm?.[2];
   rows.push({ what: "Up (the file's axis)", before: upWord(before.rotation), now: upWord(now.rotation), tone: "" });
   if (hb != null && hn != null) rows.push({ what: "Height", before: mm(hb), now: mm(hn), tone: hn < hb ? "ok" : hn > hb ? "warn" : "" });
+  const cb = candidateFor(options, before.rotation);
+  const cn = candidateFor(options, now.rotation);
+  const t = process ? options?.layer_mm?.[process] : undefined;
+  if (process && t != null && cb?.layers?.[process] != null && cn?.layers?.[process] != null) {
+    const lb = cb.layers[process];
+    const ln = cn.layers[process];
+    rows.push({ what: `Layers at ${trimNum(t, 2)} mm`, before: lb.toLocaleString("en-US"), now: ln.toLocaleString("en-US"), tone: ln < lb ? "ok" : ln > lb ? "warn" : "" });
+  }
+  if (process && cb?.fits?.[process] != null && cn?.fits?.[process] != null) {
+    const w = (f: boolean) => (f ? "Fits" : "Doesn't fit");
+    rows.push({ what: "Work area, standing this way", before: w(cb.fits[process]), now: w(cn.fits[process]), tone: cn.fits[process] && !cb.fits[process] ? "ok" : !cn.fits[process] && cb.fits[process] ? "bad" : "" });
+  }
   const findings = { cleared: [] as string[], added: [] as string[] };
   if (process) {
     const b = scoreOf(before.validation, process);
@@ -416,6 +471,12 @@ export function compare(before: Side, now: Side, q: number, process: string | nu
     if (sb || sn) {
       const words = (i: typeof sb) => (i ? `${(i.affected_face_count ?? i.affected_faces_sample?.length ?? 0).toLocaleString("en-US")} faces` : "None");
       rows.push({ what: "Faces needing support", before: words(sb), now: words(sn), tone: !sn ? "ok" : !sb ? "bad" : "" });
+      const vb = cb?.support?.[process]?.volume_cm3;
+      const vn = cn?.support?.[process]?.volume_cm3;
+      if (vb != null && vn != null) {
+        const v = (x: number) => (x ? `${trimNum(x, x >= 10 ? 0 : 1)} cm³` : "None");
+        rows.push({ what: "Space under them (estimate)", before: v(vb), now: v(vn), tone: vn < vb ? "ok" : vn > vb ? "bad" : "" });
+      }
     }
     const draft = (s: typeof b) => s?.issues.find((i) => i.code === "INSUFFICIENT_DRAFT");
     const db = draft(b);
@@ -450,16 +511,6 @@ export function compare(before: Side, now: Side, q: number, process: string | nu
     if ([...m.prices.keys()].some((qq) => priceAt(o, qq) !== priceAt(m, qq))) pricesChanged.push(m.code);
   }
   const pricesSame = pricesChanged.length === 0;
-  const cb = cheapestAt(mb, q);
-  const cn = cheapestAt(mn, q);
-  if (cb || cn) {
-    const words = (c: Method | null) => (c ? `${processLabel(c.code)} ${money(priceAt(c, q))}` : "None");
-    rows.push({ what: `Cheapest at ${qtyWord(q)}`, before: words(cb), now: words(cn), tone: "" });
-  }
-  if (process) {
-    const pb = mb.find((m) => m.code === process);
-    const pn = mn.find((m) => m.code === process);
-    if (pb && pn && (pb.prices.size || pn.prices.size)) rows.push({ what: `${processName(process)} at ${qtyWord(q)}`, before: money(priceAt(pb, q)), now: money(priceAt(pn, q)), tone: "" });
-  }
+  void q;
   return { rows, findings, methods, pricesSame, pricesChanged, process };
 }

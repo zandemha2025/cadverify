@@ -35,7 +35,9 @@ import {
   label,
   matOf,
   orientationParam,
-  PRICE_BASIS,
+  flagWords,
+  priceBasis,
+  PRICES_LINE,
   rankedFor,
   recordOf,
   same,
@@ -183,13 +185,14 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
     recheck(orientationParam(target));
   };
 
-  if (rc) return <Rechecked rc={rc} running={!s || s.status === "running"} failed={!!s && s.status !== "running" && s.status !== "done"} onBack={() => go(rc.before.rotation)} canRecheck={canRecheck} />;
+  if (rc) return <Rechecked rc={rc} running={!s || s.status === "running"} failed={!!s && s.status !== "running" && s.status !== "done"} onBack={() => go(rc.before.rotation)} canRecheck={canRecheck} options={opts} />;
 
   const target = st.target;
   const here = candidateFor(opts, target);
   const ranked = rankedFor(opts, process);
   const best = process && opts ? opts.best[process] ?? null : null;
-  const facts = here ? candidateFacts(here, process, rules) : null;
+  const facts = here ? candidateFacts(here, process, rules, opts) : null;
+  const flags = here ? flagWords(here, process) : "";
   const atShown = same(target, shown);
   const pickedName = st.picked && here?.basis === "picked" ? "On the face you picked" : null;
   return (
@@ -243,18 +246,20 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
         ) : options0.s === "none" ? (
           <p className="or-hint">{options0.why}</p>
         ) : (
-          ranked.map((c) => <Way key={c.id} c={c} process={process} rules={rules} on={same(candidateMat(c), target) || (!!here && here.id === c.id && c.basis !== "side")} best={best === c.id} checked={same(candidateMat(c), shown)} onPick={() => patchOrient({ target: candidateMat(c), picked: null })} />)
+          ranked.map((c) => <Way key={c.id} c={c} process={process} options={opts} on={same(candidateMat(c), target) || (!!here && here.id === c.id && c.basis !== "side")} best={best === c.id} checked={same(candidateMat(c), shown)} onPick={() => patchOrient({ target: candidateMat(c), picked: null })} />)
         )}
         {opts ? (
           <p className="or-hint">
             {process && rules?.[process] ? (rules[process].overhang_deg != null ? opts.ranking.printing : opts.ranking.molding) + " " : ""}
-            {opts.limits[0]}
+            {opts.limits.slice(1).join(" ")}
           </p>
         ) : null}
 
         <div className="note or-go">
           <b>{pickedName ?? (isIdentity(target) ? "As in the file" : label(target))}</b>
           <span>{facts ? [facts.main, facts.sub].filter(Boolean).join(" · ") : options0.s === "loading" ? "Measuring…" : "Re-check to measure it this way."}</span>
+          {here && process ? <span>{flags ? `Findings this way: ${flags}.` : "None of the findings that depend on orientation, this way."}</span> : null}
+          <span>{priceBasis(opts) ?? PRICES_LINE}</span>
           {canRecheck ? (
             <span className="or-actions">
               <button className="btn ink sm" type="button" disabled={atShown || p.checking} onClick={() => go(target)}>
@@ -276,8 +281,8 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
   );
 }
 
-function Way({ c, process, rules, on, best, checked, onPick }: { c: Candidate; process: string | null; rules: Options["rules"] | null; on: boolean; best: boolean; checked: boolean; onPick: () => void }) {
-  const f = candidateFacts(c, process, rules);
+function Way({ c, process, options, on, best, checked, onPick }: { c: Candidate; process: string | null; options: Options | null; on: boolean; best: boolean; checked: boolean; onPick: () => void }) {
+  const f = candidateFacts(c, process, options?.rules ?? null, options);
   return (
     <button type="button" className={cx("mr or-way", on && "on")} aria-pressed={on} onClick={onPick}>
       <span>
@@ -297,16 +302,16 @@ function Way({ c, process, rules, on, best, checked, onPick }: { c: Candidate; p
   );
 }
 
-function Rechecked({ rc, running, failed, onBack, canRecheck }: { rc: OrientRecheck; running: boolean; failed: boolean; onBack: () => void; canRecheck: boolean }) {
+function Rechecked({ rc, running, failed, onBack, canRecheck, options }: { rc: OrientRecheck; running: boolean; failed: boolean; onBack: () => void; canRecheck: boolean; options: Options | null }) {
   const p = usePart();
   const st = useOrient(p.data.key);
   const process = processOf(p.sel?.code, p.sel?.members);
   const nowRot = matOf(recordOf(p.data.validation));
   const before = rc.before;
   const cmp = React.useMemo(
-    () => (!running && !failed && p.data.validation ? compare(before, { validation: p.data.validation, cost: p.data.cost, rotation: nowRot }, p.q, process, p.data.machines) : null),
+    () => (!running && !failed && p.data.validation ? compare(before, { validation: p.data.validation, cost: p.data.cost, rotation: nowRot }, p.q, process, p.data.machines, options) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [running, failed, p.data.validation, p.data.cost, p.q, process, p.data.machines, before],
+    [running, failed, p.data.validation, p.data.cost, p.q, process, p.data.machines, before, options],
   );
   if (running) {
     const v = p.session?.validation ?? null;
@@ -459,9 +464,8 @@ function Rechecked({ rc, running, failed, onBack, canRecheck }: { rc: OrientRech
         ) : null}
         <p className="or-hint">
           {cmp.pricesSame
-            ? "Prices: the same for every method at every quantity. "
-            : `Prices changed for ${cmp.pricesChanged.map((c) => processLabel(c)).join(", ")}; the Cost view shows them at ${qtyWord(p.q)} and the other quantities. `}
-          {PRICE_BASIS}
+            ? priceBasis(options) ?? PRICES_LINE
+            : `Prices changed for ${cmp.pricesChanged.map((c) => processLabel(c)).join(", ")}; the Cost view shows them at ${qtyWord(p.q)} and the other quantities.`}
         </p>
         <div className="or-actions" style={{ padding: "10px 12px 4px" }}>
           <button className="btn ink sm" type="button" onClick={closeOrient}>
