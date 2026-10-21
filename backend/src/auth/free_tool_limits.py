@@ -69,8 +69,10 @@ def _wait(seconds: int) -> str:
     if seconds < 90:
         return "in a minute"
     minutes = math.ceil(seconds / 60)
-    if minutes < 90:
+    if minutes < 58:
         return f"in {minutes} minutes"
+    if minutes <= 62:
+        return "in an hour"
     hours = math.ceil(minutes / 60)
     return f"in {hours} hours"
 

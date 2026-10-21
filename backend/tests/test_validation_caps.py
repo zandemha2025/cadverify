@@ -556,6 +556,8 @@ def test_free_ceiling_wording_and_a_bad_setting_falls_back(monkeypatch):
     assert ftl.describe('fix') == '10 fixes an hour and 40 a day'
     monkeypatch.setenv('FREE_FIX_LIMIT', '1/hour')
     assert ftl.describe('fix') == '1 fix an hour'
+    assert [ftl._wait(n) for n in (30, 600, 3597, 3600, 7200)] == [
+        'in a minute', 'in 10 minutes', 'in an hour', 'in an hour', 'in 2 hours']
 
 
 @pytest.mark.asyncio
