@@ -18,10 +18,10 @@ function mb(n: number): string {
 }
 
 const TOOLS: [string, [string, string, string?][]][] = [
-  ["Parts", [["Your parts", R.parts], ["Records", R.records], ["Recent analyses", R.analyses], ["Compare A/B", R.compare], ["RFQ packages", R.packages], ["Programs", R.programs]]],
-  ["Many parts · Pilot", [["Batch runs", R.many], ["Triage", R.triage], ["Import from SAP", R.imports, "read only"], ["Import from Windchill", R.imports, "read only"]]],
-  ["Make and fit", [["Design Studio", R.studio], ["Cost and DFM workbench", R.workbench], ["Fit in context", R.fit, "Pilot"], ["Photo to 3D", R.photo]]],
-  ["Your shop", [["Machines and printers", R.shop], ["Rates and actual costs", R.rates], ["Changes to review", R.changes], ["Actual results", R.actuals]]],
+  ["Parts", [["Your parts", R.parts], ["Cost records", R.records], ["DFM checks", R.analyses], ["Compare records", R.compare], ["RFQ packages", R.packages], ["Programs", R.programs]]],
+  ["Make or buy", [["Make or buy, across parts", R.triage], ["Batch runs", R.many, "Pilot"], ["Import from SAP", R.imports, "read only"], ["Import from Windchill", R.imports, "read only"]]],
+  ["Your shop", [["Machines and printers", R.shop], ["Rates", R.rates], ["Changes to review", R.changes], ["Actual costs", R.actuals]]],
+  ["Design tools", [["Design Studio", R.studio], ["Fit in assembly", R.fit], ["Photo to 3D", R.photo, "Pilot"]]],
   ["Account", [["Organization", R.org], ["Security and sign-in", R.security], ["API and docs", R.api], ["Integrations", R.imports], ["Plan and billing", R.billing], ["Notifications", R.notifications]]],
 ];
 
