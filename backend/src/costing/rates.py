@@ -179,13 +179,17 @@ RATE_CARD_V0: dict = {
             deposition=16, vert=25, finish=None, queue_days=2, post_days=1,
             build_env_mm=COMMON_ENVELOPE_MM[PT.FDM], packing_density=0.10, part_spacing_mm=4.0,
             # Finishing: post_hr_part is handling a part with nothing to remove (off
-            # the plate, brim and strings); support removal adds support_hr_per_cm2 for
-            # each cm² of surface the slicer supports (break the support away, clean the
-            # face): a clip with none is 3 min, 15 cm² of supported surface is 12 min.
+            # the plate, brim and strings, check, bag); support removal adds
+            # support_hr_per_cm2 for each cm² of surface the slicer supports (break the
+            # support away, clean the face): a clip with none is 6 min, 15 cm² of
+            # supported surface is 10 min, 100 cm² is 30 min. These keep a part's
+            # finishing inside the independent print-bureau handling band ($3–15 a part,
+            # harness R1/R1S): at 0.05 h and 0.01 h/cm² the tiny coupons fell under it and
+            # the big supported ones over it (7 of 11 sliced coupons out of band).
             # Without a measured mesh (no slicer plan) the support is unknown: the
             # finishing stays the typical 0.2 h that assumes some support.
-            nesting_mode="serial", post_hr_part=0.05, post_hr_build=0.10,
-            support_hr_per_cm2=0.01, post_hr_part_unmeasured=0.20,
+            nesting_mode="serial", post_hr_part=0.10, post_hr_build=0.10,
+            support_hr_per_cm2=0.004, post_hr_part_unmeasured=0.20,
             lot_size="build", min_charge=30,
             xy_packing_density=0.50, n_machines=12, machine_hours_per_day=22),
         PT.SLA: dict(

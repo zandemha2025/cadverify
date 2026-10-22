@@ -506,11 +506,11 @@ def test_fdm_finishing_follows_the_support_to_remove():
     flipped = estimate_decision(*_analyze(flipped_mesh), EstimateOptions(quantities=[100]))
     up = _driver(_est(upright, "fdm", 100), "labor_cost")
     down = _driver(_est(flipped, "fdm", 100), "labor_cost")
-    assert "support removal 0.01hr/cm²" in up["source"]
+    assert "support removal 0.004hr/cm²" in up["source"]
     assert "no support to remove" in down["source"]
-    assert up["value"] > down["value"] * 1.2
-    # Handling alone: 0.05 h a part (plus the plate's share), not 0.2 h.
-    assert down["value"] < 0.06 * 35 * 1.5
+    assert up["value"] > down["value"] * 1.1
+    # Handling alone: 0.1 h a part (plus the plate's share), not 0.2 h.
+    assert down["value"] < 0.11 * 35 * 1.5
 
 
 def test_deposited_metal_is_priced_with_its_finish_machining():
