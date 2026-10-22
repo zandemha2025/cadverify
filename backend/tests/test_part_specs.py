@@ -145,7 +145,9 @@ def test_area_priced_finish_is_the_greater_of_lot_minimum_and_area():
     assert ln.unit_usd == pytest.approx(12.5)
     assert ln.fixed_usd == pytest.approx(125 - 16.15 * 0.01 * 10, abs=1e-3)
     assert ln.lead_days == 5.0
-    assert ln.driver.provenance.value == "DEFAULT" and "Alibaba.com" in ln.driver.source
+    # The anodize price has no credible public source: it says so instead of citing a seller's blog.
+    assert ln.driver.provenance.value == "DEFAULT" and "typical, unverified" in ln.driver.source
+    assert "Alibaba" not in ln.driver.source
     big = ps.price_route(_rs(["anodize_ii"]), rates=rates, region="US", qty=10000, area_cm2=100.0, mass_kg=0.2)
     assert big[0].unit_usd == pytest.approx(16.15 * 0.01, abs=1e-4)
     assert big[0].fixed_usd == 0.0
@@ -341,6 +343,7 @@ def test_spec_defaults_route_lists_every_op_with_its_source(monkeypatch):
     body = TestClient(app).get("/api/v1/rate-library/spec-defaults").json()
     ops = {o["op"]: o for o in body["ops"]}
     assert set(ops) == set(ps.SPEC_OPS_V0)
-    assert ops["anodize_ii"]["typical"]["lot_usd"] == 125.0 and "Alibaba.com" in ops["anodize_ii"]["source"]
+    assert ops["anodize_ii"]["typical"]["lot_usd"] == 125.0 and "typical, unverified" in ops["anodize_ii"]["source"]
+    assert "Alibaba" not in ops["anodize_iii"]["source"]
     assert ops["quench_temper"]["group"] == "heat" and ops["cmm_report"]["group"] == "inspection"
     assert ops["anodize_ii"]["yours"] == {} and body["using_governed"] is False

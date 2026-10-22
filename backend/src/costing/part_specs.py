@@ -135,8 +135,12 @@ _CLASS_WORDS = {"polymer": "plastic", "aluminum": "aluminum", "steel": "steel",
 # Typical prices and lead times (all overridable on the rate card)
 # ─────────────────────────────────────────────────────────────────────────────
 
-SRC_ANODIZE = ("Alibaba.com seller guide to anodizing (2026): Type II $0.50–2.50/ft², "
-               "Type III $2–6/ft², small-order minimums $50–200 (Type II) and $100–300 (Type III)")
+# No anodizing house publishes a price list we could cite (the public figures are sellers'
+# marketing guides that disagree with each other), so the prices are labelled for what
+# they are rather than given a weak source.
+SRC_ANODIZE = ("typical, unverified: no anodizing house's published price list was found to cite; "
+               "Type II $1.50/ft² and Type III $4.00/ft², lot minimums $125 and $200, sit mid-range in "
+               "the figures trade buyers' guides quote")
 SRC_HEAT = ("IBISWorld heat treatment services benchmark (2026): $8.08 per lb of steel; "
             "a partial load pays the greater of the per-pound price and the lot minimum "
             "(HEF USA, liquid nitriding price page)")
