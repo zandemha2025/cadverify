@@ -29,12 +29,12 @@
 .ob .mo-x1 .sent{display:flex;flex-direction:column;gap:12px;padding:6px 22px 18px}
 .ob .mo-x1 .mail{width:52px;height:52px;border-radius:16px;background:#fff;border:1px solid rgba(20,24,31,.1);display:grid;place-items:center;box-shadow:0 6px 18px rgba(20,24,31,.06)}
 .ob .mo-x1 .err,.ob .mo-x2 .err{margin:0;color:var(--bad);font-size:13px}
-.ob .mo-x1 .heldrow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:32px;font-size:13px;color:var(--ink2)}
-.ob .mo-x1 .heldrow > span{min-width:0;overflow-wrap:anywhere}
-.ob .mo-x1 .heldrow b{font-weight:600;color:var(--ink)}
-.ob .mo-x1 .filebtn{position:relative;overflow:hidden}
-.ob .mo-x1 .filebtn:focus-within{outline:2px solid var(--file);outline-offset:2px}
-.ob .mo-x1 .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.ob .mo-x1 .heldrow,.ob .mo-x12 .heldrow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:32px;font-size:13px;color:var(--ink2)}
+.ob .mo-x1 .heldrow > span,.ob .mo-x12 .heldrow > span{min-width:0;overflow-wrap:anywhere}
+.ob .mo-x1 .heldrow b,.ob .mo-x12 .heldrow b{font-weight:600;color:var(--ink)}
+.ob .mo-x1 .filebtn,.ob .mo-x12 .filebtn{position:relative;overflow:hidden}
+.ob .mo-x1 .filebtn:focus-within,.ob .mo-x12 .filebtn:focus-within{outline:2px solid var(--file);outline-offset:2px}
+.ob .mo-x1 .filebtn input,.ob .mo-x12 .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
 .ob .mo-x1 .drop1{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:min(420px,100%);height:300px;border:2px dashed rgba(20,24,31,.18);border-radius:28px;background:rgba(255,255,255,.55);cursor:pointer;text-align:center;padding:20px;transition:border-color 150ms ease,background-color 150ms ease}
 .ob .mo-x1 .drop1.drag{border-color:var(--ink);background:#fff}
 .ob .mo-x1 .drop1 input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
@@ -221,6 +221,7 @@
 .ob .mo-x1 .stage,.ob .mo-x2 .stage{height:auto;min-height:0;padding:8px 16px 32px}
 .ob .mo-x1 .wait,.ob .mo-x2 .wait{position:relative;left:auto;right:auto;top:auto;bottom:auto;gap:8px}
 .ob .mo-x1 .pic,.ob .mo-x2 .pic{width:140px;height:140px}
+.ob .mo-x1 .pic svg,.ob .mo-x2 .pic svg{width:100%;height:100%}
 .ob .mo-x1 .drop1{height:140px;border-radius:20px}
 .ob .mo-x12,.ob.mo-auth .mo-x12{min-height:calc(100dvh - 56px)}
 .ob .mo-x12 .stage{position:absolute;inset:0;height:auto}

@@ -33,7 +33,7 @@ async def db(monkeypatch):
     engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     try:
         async with engine.begin() as connection:
-            await connection.execute(text("CREATE TABLE users (id bigint PRIMARY KEY, verified_phone text, phone_verified_at timestamptz)"))
+            await connection.execute(text("CREATE TABLE users (id bigint PRIMARY KEY, phone text, verified_phone text, phone_verified_at timestamptz)"))
             await connection.execute(text("CREATE UNIQUE INDEX uq_phone ON users (verified_phone) WHERE verified_phone IS NOT NULL"))
             await connection.execute(text("INSERT INTO users (id) VALUES (1), (2)"))
         factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -153,3 +153,24 @@ async def test_refuses_api_keys_bad_input_and_missing_configuration(db, monkeypa
 ])
 def test_normalize_phone(raw, expected):
     assert pv.normalize_phone(raw) == expected
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_phone_check_fills_in_the_number_typed_at_signup(db):
+    async with db() as session, session.begin():
+        await session.execute(text("UPDATE users SET phone = '(616) 555-0142' WHERE id = 1"))
+    async with _client(1) as client:
+        assert (await client.get("/api/v1/account/phone")).json() == {"phone": "+16165550142", "verified": False}
+    async with _client(2) as client:
+        assert (await client.get("/api/v1/account/phone")).json() == {"phone": None, "verified": False}
+    async with _client(1, prefix="cv_live") as client:
+        refused = await client.get("/api/v1/account/phone")
+    assert refused.status_code == 403 and refused.json()["detail"]["code"] == "browser_session_required"
+
+    respx.post(f"{VERIFY}/Verifications").mock(return_value=httpx.Response(201, json={"status": "pending"}))
+    respx.post(f"{VERIFY}/VerificationCheck").mock(return_value=httpx.Response(200, json={"status": "approved"}))
+    async with _client(1) as client:
+        assert (await client.post("/api/v1/account/phone/start", json={"phone": "+1 616 555 0142"})).status_code == 200
+        assert (await client.post("/api/v1/account/phone/check", json={"phone": "+1 616 555 0142", "code": "123456"})).status_code == 200
+        assert (await client.get("/api/v1/account/phone")).json() == {"phone": "+16165550142", "verified": True}

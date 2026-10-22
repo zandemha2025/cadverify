@@ -6,11 +6,17 @@
  * POST /account/phone/check { phone, code }. The server owns every rule (one
  * number per account, 5 codes an hour, code expiry); this shows its answers.
  *
- * `<PhoneGate>` is the sheet (an `<aside class="sheet">`):
+ * The number typed at sign-up is used: when sign-up already sent the code, the
+ * check opens on "Enter code"; otherwise the number on the account
+ * (GET /account/phone) is filled in.
+ *
+ * `<PhoneSteps>` is the content (number, code, done) for any sheet that holds
+ * the work the check waits on, so nothing picked there is lost:
  * - `onVerified()`   called once the number is verified (usage is refreshed for you).
  * - `onContinue()`   optional; the done step shows a button that calls it.
  * - `continueLabel`  that button's text (default "Open part").
  *
+ * `<PhoneGate>` is the sheet (an `<aside class="sheet">`) around the steps.
  * `<PhoneGateView>` is the whole screen: the waiting part on the stage plus the sheet.
  * Same props, plus `fileName` (the part that checks after verification, if any).
  */
@@ -18,10 +24,12 @@ import * as React from "react";
 import { apiProblemDetail } from "@/lib/api-recovery";
 import { cx } from "../ui";
 import { useUsage } from "./out-of-checks";
+import { RESEND_S, clearSignupPhone, gateStart, readSignupPhone, sessionStore } from "./signup-phone";
 import "./moments.css";
 
-const RESEND_S = 30;
 const BOXES = 6;
+/** What the phone check says it is for, everywhere it is asked. */
+export const PHONE_WHY = "Needed for free checks: we text you a code once";
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: unknown }> {
   const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -32,15 +40,23 @@ function mmss(s: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function PhoneGate({
-  onVerified,
-  onContinue,
-  continueLabel = "Open part",
-}: {
+type StepsProps = {
   onVerified: () => void;
   onContinue?: () => void;
   continueLabel?: string;
-}) {
+  /** The title's heading level: 1 on its own screen, 2 inside another sheet. */
+  level?: 1 | 2;
+};
+
+export function PhoneGate(props: Omit<StepsProps, "level">) {
+  return (
+    <aside className="sheet" aria-label="Verify your phone">
+      <PhoneSteps {...props} level={1} />
+    </aside>
+  );
+}
+
+export function PhoneSteps({ onVerified, onContinue, continueLabel = "Open part", level = 1 }: StepsProps) {
   const usage = useUsage();
   const [step, setStep] = React.useState<"phone" | "code" | "done">("phone");
   const [phone, setPhone] = React.useState("");
@@ -49,6 +65,29 @@ export function PhoneGate({
   const [error, setError] = React.useState<string | null>(null);
   const [badCode, setBadCode] = React.useState(false);
   const [left, setLeft] = React.useState(0);
+  const typed = React.useRef(false);
+
+  // The number from sign-up (code already sent, or why it wasn't), else the one on the account.
+  React.useEffect(() => {
+    const start = gateStart(readSignupPhone(sessionStore()), null);
+    if (start.phone) {
+      setStep(start.step);
+      setPhone(start.phone);
+      setError(start.error);
+      setLeft(start.resendIn);
+      return;
+    }
+    let live = true;
+    fetch("/api/proxy/account/phone", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { phone?: unknown } | null) => {
+        if (live && !typed.current && typeof d?.phone === "string" && d.phone) setPhone(d.phone);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   const tried = React.useRef("");
   const codeRef = React.useRef<HTMLInputElement>(null);
   const phoneRef = React.useRef<HTMLInputElement>(null);
@@ -61,6 +100,7 @@ export function PhoneGate({
   }, [step, left]);
 
   const verified = React.useCallback(() => {
+    clearSignupPhone(sessionStore());
     setStep("done");
     setError(null);
     window.dispatchEvent(new Event("proofshape:usage-changed"));
@@ -121,19 +161,20 @@ export function PhoneGate({
 
   const lead =
     step === "phone"
-      ? ["Verify your phone", "Required for free checks · one text with a code"]
+      ? ["Verify your phone", PHONE_WHY]
       : step === "code"
         ? ["Enter code", `Sent to ${phone}`]
         : ["Phone verified", usage?.cap ? `${usage.cap} free checks · ${usage.tier === "personal" ? "personal" : "work"} email` : "Free checks unlocked"];
   const boxes = Math.max(BOXES, Math.min(10, code.length));
   const canConfirm = code.length >= 4 && !working;
 
+  const Title = level === 1 ? "h1" : "h2";
   return (
-    <aside className="sheet" aria-label="Verify your phone">
+    <>
       <div className="top" style={{ borderBottom: 0, paddingBottom: 8 }}>
-        <h1 className="ptitle" ref={doneRef} tabIndex={-1} style={{ outline: "none" }}>
+        <Title className={level === 1 ? "ptitle" : "stitle"} ref={doneRef} tabIndex={-1} style={{ outline: "none" }}>
           {lead[0]}
-        </h1>
+        </Title>
         <p className="pmeta" style={{ marginTop: 6 }}>
           <span style={{ overflowWrap: "anywhere" }}>{lead[1]}</span>
         </p>
@@ -166,7 +207,10 @@ export function PhoneGate({
               value={phone}
               aria-invalid={error ? true : undefined}
               aria-describedby="mo-phone-help"
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                typed.current = true;
+                setPhone(e.target.value);
+              }}
             />
           </label>
           <span className="hintx" id="mo-phone-help">
@@ -278,7 +322,7 @@ export function PhoneGate({
         <b>One number per account</b>
         <span>Free checks are per person, so a number can be linked to one ScaleCAD account.</span>
       </div>
-    </aside>
+    </>
   );
 }
 

@@ -16,8 +16,9 @@ import { isSupportedCad } from "@/lib/cad-file";
 import { browserPendingPartStore, holdPendingPart, PENDING_PART_MAX_BYTES } from "@/lib/pending-part";
 import { safeLocalPath } from "@/lib/safe-return-path";
 import { FORM_MAX_MB } from "@/lib/upload-limit";
-import { CAD_ACCEPT } from "../pending-file";
+import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { Chip, cx } from "../ui";
+import { adoptTyped } from "./early-typing";
 import { tierHint } from "./email-tier";
 import { V4_HELD_PART, V4_HOME, v4Landing } from "./landing";
 import { PartGlyph } from "./phone-gate";
@@ -46,14 +47,14 @@ export function V4SignIn({
   passwordEnabled,
   ssoLoginPath,
   freeChecks,
-  passwordSignup,
 }: {
   turnstileSiteKey?: string;
   nonce?: string;
   passwordEnabled: boolean;
   ssoLoginPath?: string;
   freeChecks: { work: number; personal: number };
-  passwordSignup: boolean;
+  /** Sign-up's own page says whether it takes a password or starts from an email link. */
+  passwordSignup?: boolean;
 }) {
   const params = useSearchParams();
   const asked = params.get("next");
@@ -76,8 +77,13 @@ export function V4SignIn({
   const [heldSent, setHeldSent] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const emailRef = React.useRef<HTMLInputElement>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
 
-  React.useEffect(() => setHydrated(true), []);
+  React.useEffect(() => {
+    // Anything typed while the page was still loading stays.
+    adoptTyped(formRef.current, { email: setEmail, password: setPassword });
+    setHydrated(true);
+  }, []);
 
   function pick(file: File | undefined) {
     if (!file) return;
@@ -254,7 +260,7 @@ export function V4SignIn({
                 ))}
               </p>
             </div>
-            <form className="form" onSubmit={submit} noValidate>
+            <form ref={formRef} className="form" onSubmit={submit} noValidate>
               {ssoLoginPath ? (
                 <>
                   <a className="btn big" href={ssoLoginPath}>
@@ -379,11 +385,10 @@ export function V4SignIn({
                     </>
                   ) : null}
                   <span className="links">
-                    {passwordSignup ? (
-                      <Link href={signupHref}>Create an account with a password</Link>
-                    ) : (
-                      <Link href={signupHref}>Create an account</Link>
-                    )}
+                    {/* A part added here comes along to sign-up and checks after it. */}
+                    <Link href={signupHref} onClick={() => part && setPendingFile(part)}>
+                      New here? Create an account
+                    </Link>
                   </span>
                 </>
               ) : (

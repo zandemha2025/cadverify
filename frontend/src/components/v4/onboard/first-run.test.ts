@@ -248,3 +248,16 @@ test("the owned machine line reads in the current and the older wording", () => 
   assert.deepEqual(before, { rate: 75, cap: 0.35, yours: true });
   assert.equal(ownedBasis(est("0.0242 hr × $75/hr × region-labor ×1")), null);
 });
+
+test("the own-part card says the phone check comes first and keeps the catalog allowance apart from checks", async () => {
+  const { allowanceLines } = await import("./first-run.ts");
+  const fresh = allowanceLines({ checksLeft: 15, plan: "trial", phoneFirst: true, catalog: { cap: 50, left: 50, started: false } });
+  assert.equal(fresh.uses, "Uses 1 of 15 free checks · phone check first");
+  assert.match(fresh.drop, /^Drop a part here\. Verify your phone first \(we text you a code once\)/);
+  assert.equal(fresh.batch, "Many parts at once: up to 50 free, separate from your 15 free checks");
+  const later = allowanceLines({ checksLeft: 1, plan: "trial", phoneFirst: false, catalog: { cap: 50, left: 38, started: true } });
+  assert.equal(later.uses, "Uses 1 of 1 free check");
+  assert.equal(later.drop, "Drop a part here. It checks right away and opens on its own page.");
+  assert.equal(later.batch, "Many parts at once: 38 of 50 free catalog parts left, separate from your 1 free check");
+  assert.equal(allowanceLines({ checksLeft: null, plan: "pilot", phoneFirst: false, catalog: null }).batch, null);
+});

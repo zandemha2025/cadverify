@@ -28,7 +28,7 @@ function navTag(key: string, usage: Usage | null): string {
   return "Pilot";
 }
 
-type Usage = { plan: string; tier?: string; unlimited: boolean; used: number; cap: number; remaining: number };
+type Usage = { plan: string; tier?: string; unlimited: boolean; used: number; cap: number; remaining: number; phone_verification_required?: boolean };
 type Org = { org_id: string; name: string; org_role: string; is_active: boolean };
 type Orgs = { active: string | null; list: Org[] };
 

@@ -32,7 +32,7 @@ import { PartThumb } from "../home/thumb";
 import { classifyDrop, refusal } from "../home/drop";
 import { recentRows, yoursOf, type HomeInput } from "../home/home-derive";
 import * as api from "../home/data";
-import { firstSteps, homeMode, materialWord, ranOnMachines, resumeCard, type FirstStep, type HomeMode } from "./first-run";
+import { allowanceLines, firstSteps, homeMode, materialWord, ranOnMachines, resumeCard, type FirstStep, type HomeMode } from "./first-run";
 import { readSetupDismissed, writeSetupDismissed } from "./state";
 import "../home/home.css";
 import "./onboard.css";
@@ -141,12 +141,22 @@ export function FirstHome({
 
   const left = usage ? (usage.unlimited ? null : usage.remaining) : null;
   const checksFact = !usage ? null : usage.unlimited ? "Pilot plan · checks aren’t capped" : `${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} ${usage.remaining === 1 ? "check" : "checks"}${mode === "back" ? " left" : ""}`;
-  const usesOne = !usage || usage.unlimited ? "Uses 1 check" : `Uses 1 of ${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} checks`;
+  const batchAccess = useBatchAccess();
+  const catalog = batchAccess.kind === "free" ? batchAccess.usage : null;
+  const lines = allowanceLines({
+    checksLeft: !usage || usage.unlimited ? null : usage.remaining,
+    plan: usage?.plan ?? null,
+    phoneFirst: usage?.phone_verification_required === true,
+    catalog: catalog ? { cap: catalog.cap, left: catalog.remaining, started: (catalog.used ?? 0) + (catalog.reserved ?? 0) > 0 } : null,
+  });
+  // The catalog run's parts are a separate allowance; Home says both, side by side.
+  const catalogFact = catalog?.cap != null ? `${catalog.remaining ?? catalog.cap} free catalog ${catalog.remaining === 1 ? "part" : "parts"}${mode === "back" ? " left" : ""}` : null;
   const facts = [
     x.org,
     mode === "back" && input.partsTotal != null ? `${input.partsTotal} ${input.partsTotal === 1 ? "part" : "parts"}` : null,
     mode === "back" && input.records ? `${input.records.length}${input.recordsMore ? "+" : ""} ${input.records.length === 1 ? "record" : "records"}` : null,
     checksFact,
+    catalogFact,
     nMachines == null ? null : nMachines ? `${nMachines} ${nMachines === 1 ? "machine" : "machines"}` : mode === "first" ? "No machines yet" : "No machines",
     input.rates ? `Rates: ${input.rates.using_governed ? "your rate card" : "Default v0, typical"}` : null,
   ].filter((f): f is string => Boolean(f));
@@ -183,7 +193,7 @@ export function FirstHome({
         {mode === "first" ? (
           <div className="swap nb-first">
             <div className="nb-ways">
-              <OwnPartWay usesOne={usesOne} />
+              <OwnPartWay lines={lines} />
               <section className="nb-way" aria-labelledby="nb-w2">
                 <div className="pic">
                   <SampleArt />
@@ -377,7 +387,7 @@ function SetupSheet({ steps, done, foot, onDismiss }: { steps: FirstStep[]; done
 
 
 /** "Your own part": drop or choose one file; it checks right away and opens on its own page. */
-function OwnPartWay({ usesOne }: { usesOne: string }) {
+function OwnPartWay({ lines }: { lines: { drop: string; uses: string; batch: string | null } }) {
   const router = useRouter();
   const [drag, setDrag] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "bad" | "many" | "ok"; text: string } | null>(null);
@@ -431,7 +441,7 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
               <path d="M10 13V3.5M6 7.5l4-4 4 4M3.5 12.5v2.5a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
-          <span>{drag ? "Drop to check it" : "Drop a part here. It checks right away and opens on its own page."}</span>
+          <span>{drag ? "Drop to check it" : lines.drop}</span>
           {msg ? (
             <span className={msg.kind === "ok" ? "nb-ok" : "nb-msg"} role="status">
               {msg.text}
@@ -449,7 +459,7 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
       </div>
       <h2 id="nb-w1">Your own part</h2>
       <p>STEP, STL or IGES · {CAD_LIMIT} · one file</p>
-      <small>{usesOne}</small>
+      <small>{lines.uses}</small>
       <FileTrustLine style={{ margin: "4px 0 0", textAlign: "inherit" }} />
       <span className="acts">
         <label className="btn ink nb-file">
@@ -466,7 +476,7 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
         </label>
         <BatchEntryButton />
       </span>
-      <small className="nb-batch">Batch: {batchEntryNote(batch)}</small>
+      <small className="nb-batch">{lines.batch ?? `Batch: ${batchEntryNote(batch)}`}</small>
     </section>
   );
 }

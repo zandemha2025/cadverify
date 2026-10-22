@@ -721,3 +721,32 @@ export function resumeCard(i: {
     alt: { label: "Open the part", href: i.partHref },
   };
 }
+
+/* ── N5: what a free account gets, said once ──────────────────────────── */
+
+/**
+ * The own-part card's words: what one check uses (and that the phone check
+ * comes first, when it does), and the catalog run's allowance next to it, so
+ * "15 free checks" and "50 free catalog parts" read as two separate things.
+ */
+export function allowanceLines(i: {
+  checksLeft: number | null;
+  plan: string | null;
+  phoneFirst: boolean;
+  catalog: { cap: number | null; left: number | null; started: boolean } | null;
+}): { drop: string; uses: string; batch: string | null } {
+  const kind = i.plan === "pro" ? "Pro" : "free";
+  const uses = (i.checksLeft == null ? "Uses 1 check" : `Uses 1 of ${i.checksLeft} ${kind} ${i.checksLeft === 1 ? "check" : "checks"}`) + (i.phoneFirst ? " · phone check first" : "");
+  const drop = i.phoneFirst
+    ? "Drop a part here. Verify your phone first (we text you a code once), then it checks and opens on its own page."
+    : "Drop a part here. It checks right away and opens on its own page.";
+  const c = i.catalog;
+  let batch: string | null = null;
+  if (c?.cap != null) {
+    const yours = i.checksLeft == null ? "your checks" : `your ${i.checksLeft} ${kind} ${i.checksLeft === 1 ? "check" : "checks"}`;
+    batch = c.started && c.left != null
+      ? `Many parts at once: ${c.left} of ${c.cap} free catalog parts left, separate from ${yours}`
+      : `Many parts at once: up to ${c.cap} free, separate from ${yours}`;
+  }
+  return { drop, uses, batch };
+}

@@ -132,6 +132,30 @@ def _session_user(user: AuthedUser) -> None:
         raise _problem(403, "browser_session_required", "Verify your phone from the ScaleCAD web app.")
 
 
+@router.get("")
+async def phone_on_file(user: AuthedUser = Depends(require_api_key)) -> dict:
+    """The account's own number, so the phone check never asks for it twice.
+
+    The verified number once there is one; before that, the number typed at
+    sign-up (E.164 when it reads as one). Only the signed-in account's own.
+    """
+    _session_user(user)
+    try:
+        async with get_session_factory()() as session:
+            row = (await session.execute(
+                select(User.phone, User.verified_phone).where(User.id == user.user_id)
+            )).one_or_none()
+    except SQLAlchemyError as exc:
+        raise _problem(503, "sms_unavailable", "Phone verification isn't available right now.") from exc
+    if row is None:
+        return {"phone": None, "verified": False}
+    signup, verified = row
+    if verified:
+        return {"phone": verified, "verified": True}
+    typed = (signup or "").strip()
+    return {"phone": (normalize_phone(typed) or typed) if typed else None, "verified": False}
+
+
 @router.post("/start")
 async def phone_start(body: PhoneStartIn, request: Request, user: AuthedUser = Depends(require_api_key)) -> dict:
     _session_user(user)

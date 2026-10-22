@@ -6,7 +6,9 @@
  * parts list with quantities and materials. Many files or a folder are zipped
  * in the browser, so it's one upload. A free account sees its allowance; with
  * no machines yet it is asked to add them first, because the answer is about
- * its machines. Refusals say exactly why, with the way forward.
+ * its machines. Refusals say exactly why, with the way forward. When free runs
+ * need a verified phone, the phone check opens in this sheet with the files
+ * still picked, and the run starts as soon as the number is verified.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -15,6 +17,7 @@ import { R } from "../routes";
 import { Chip, Sheet, cx } from "../ui";
 import { registerWork, removeWork, runKey } from "../work/work-bar";
 import { PILOT_HREF } from "../moments/pilot-gate";
+import { PHONE_WHY, PhoneSteps } from "../moments/phone-gate";
 import { saveBlob } from "./common";
 import { CatalogRunError, startCatalogRun, waitUntilUnpacked, type RunCreated } from "./catalog-api";
 import { fetchMachines } from "./many-api";
@@ -95,6 +98,9 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
   const [phase, setPhase] = React.useState<Phase>({ k: "idle" });
   const [machines, setMachines] = React.useState<number | null>(null);
   const [goAhead, setGoAhead] = React.useState(false);
+  // The phone check, in this sheet: the picked files wait, then the run starts.
+  const [phoneStep, setPhoneStep] = React.useState(false);
+  const [phoneOk, setPhoneOk] = React.useState(false);
   const qtyHint = React.useId();
   const busy = phase.k === "packing" || phase.k === "uploading" || phase.k === "unpacking";
 
@@ -128,9 +134,15 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
     });
   };
 
-  const start = async (e?: React.FormEvent) => {
+  const phoneFirst = free && access.phoneNeeded && !phoneOk;
+  const start = async (e?: React.FormEvent, verified = false) => {
     e?.preventDefault();
     if (off || qtyVal == null) return;
+    if (phoneFirst && !verified) {
+      setPhase({ k: "idle" });
+      setPhoneStep(true);
+      return;
+    }
     try {
       let zip: Blob;
       let zipName: string;
@@ -172,6 +184,12 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
       router.push(R.batch(run.batch_id));
     } catch (err) {
       const e2 = err instanceof CatalogRunError ? err : new CatalogRunError(err instanceof Error ? err.message : "The run didn’t start.", 0, null, null);
+      if (e2.code === "phone_verification_required") {
+        setPhase({ k: "idle" });
+        setPhoneOk(false);
+        setPhoneStep(true);
+        return;
+      }
       setPhase({ k: "err", title: refusalTitle(e2), message: e2.message, code: e2.code, batchId: e2.batchId });
     }
   };
@@ -188,8 +206,30 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
           {access.kind === "pilot" ? <Chip tone="ok">Pilot plan · no part limit</Chip> : null}
           {free ? <Chip tone={noneLeft ? "warn" : "ok"}>{allowanceText(access)}</Chip> : null}
           {free ? <span className="fh">Separate from your single-part checks</span> : null}
+          {phoneFirst ? <span className="fh">Phone check first. {PHONE_WHY}.</span> : phoneOk ? <Chip tone="ok">Phone verified</Chip> : null}
         </div>
       </div>
+      {phoneStep ? (
+        <div className="scroll mo-x2 cs-phone">
+          <p className="cs-keep" role="status">
+            {plan.zip ? plan.zip.name : `${plan.cad.length} ${plan.cad.length === 1 ? "part" : "parts"}`}
+            {list ? ` and ${list.name}` : ""} stay picked. The run starts once your phone is verified.
+          </p>
+          <PhoneSteps
+            level={2}
+            onVerified={() => {
+              setPhoneOk(true);
+              setPhoneStep(false);
+              void start(undefined, true);
+            }}
+          />
+          <div style={{ padding: "0 22px 16px" }}>
+            <button className="btn ghost sm" type="button" onClick={() => setPhoneStep(false)}>
+              Back to the run
+            </button>
+          </div>
+        </div>
+      ) : (
       <form className="scroll" onSubmit={start} noValidate>
         {machines === 0 ? (
           <div className="cs-shop" role="note">
@@ -395,10 +435,6 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
                 <Link className="lk" href={R.batch(phase.batchId)}>
                   Open the run
                 </Link>
-              ) : phase.code === "phone_verification_required" ? (
-                <Link className="lk" href={R.phone}>
-                  Verify your phone
-                </Link>
               ) : phase.code === "catalog_allowance_exceeded" || phase.code === "catalog_run_work_email" ? (
                 <Link className="lk" href={PILOT_HREF.request}>
                   Talk to us about a pilot
@@ -436,6 +472,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
           </p>
         ) : null}
       </form>
+      )}
     </Sheet>
   );
 }
