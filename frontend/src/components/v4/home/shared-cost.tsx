@@ -1,7 +1,8 @@
 /**
  * Shared should-cost, view only (board P7): the engine's pick at each quoted
  * quantity, every priced way, and the assumptions with where each came from.
- * Inputs the sharer's shop declared arrive hidden and show as "Hidden".
+ * Inputs the sharer's shop declared arrive hidden and show as "Hidden"; routes
+ * priced on its own machines aren't in the payload (backend outbound.py).
  */
 import * as React from "react";
 import type { SharedCostDecision } from "@/lib/api";
@@ -101,7 +102,7 @@ export function SharedCost({ data }: { data: SharedCostDecision }) {
               </>
             ) : null}
             <p style={{ margin: "10px 12px", color: "var(--ink3)", fontSize: 12.5 }}>
-              Model prices; they shift with cycle times, tooling, batch size and shop rates. Not shown: machines, outcomes, approvals.
+              Model prices; they shift with cycle times, tooling, batch size and shop rates. Not shown: the sharer’s machines, rates, choices, outcomes and approvals.
             </p>
           </div>
         </aside>

@@ -25,6 +25,8 @@ let keptPicks: Set<string> = new Set();
 let keptScope: "latest" | "all" = "latest";
 
 const PACKAGE_NOTE = "ScaleCAD doesn't send packages or track replies. Download the ZIP and send it to your supplier yourself.";
+/** What a supplier's copy leaves out (backend src/services/outbound.py). */
+const PACKAGE_PRIVATE = "Not in the package: your machines, rates, in-house routes and choices, calibration, approvers and notes.";
 
 export function PackagesScreen() {
   const params = useParams<{ id?: string }>();
@@ -416,7 +418,7 @@ function Builder({
           {[
             ["Supplier brief", "supplier-brief.pdf"],
             ["Line items and sources", "line-items.csv"],
-            ["Each record, full", "cost-decision.json"],
+            ["Each record, for the supplier", "cost-decision.json"],
             ["Each record, cost inputs", "cost-drivers.csv"],
             ["Each record, should-cost report", "should-cost-report.pdf"],
             ...(hasCtx ? [["Service conditions declared on the part", "part-context.json"]] : []),
@@ -488,7 +490,7 @@ function Builder({
           <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Not sent by ScaleCAD.</span>
         </div>
         <p className="ro-note" style={{ margin: "0 12px 12px" }}>
-          {canEdit ? PACKAGE_NOTE : "Read only. Analysts and admins build packages."}
+          {canEdit ? `${PACKAGE_NOTE} ${PACKAGE_PRIVATE}` : "Read only. Analysts and admins build packages."}
         </p>
       </div>
     </RecSheet>
@@ -579,7 +581,7 @@ function PackageSheet({ id, toast }: { id: string; toast: (m: string) => void })
           </Link>
         </div>
         <p className="ro-note" style={{ margin: "0 12px" }}>
-          {PACKAGE_NOTE}
+          {PACKAGE_NOTE} {PACKAGE_PRIVATE}
         </p>
         <div className="gh">
           <span>Records in this package</span>
