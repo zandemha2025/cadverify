@@ -4,6 +4,11 @@ Builds a durable, downloadable package from saved should-cost decisions. This is
 not live procurement: it creates evidence for an RFQ handoff and explicitly
 records that no supplier was contacted and raw CAD is absent unless already
 recoverable from same-org batch storage.
+
+A package is the supplier's copy. Every record in it, in the API view and in
+every file of the ZIP, is ``outbound.rfq_item``: the shop's machines, rates,
+in-house routes and choices, calibration, approvers and notes never go in. It
+is saved that way, and a package saved before that is cleaned on every read.
 """
 from __future__ import annotations
 
@@ -27,7 +32,7 @@ from ulid import ULID
 from src.auth.org_context import caller_org_subquery, resolve_org
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Batch, BatchItem, CostDecision, ManifestPart, PartContext, RfqPackage
-from src.services import cost_decision_service
+from src.services import cost_decision_service, outbound
 from src.services.cost_pdf_service import cached_cost_pdf, precompute_cost_pdf
 
 MAX_ITEMS = 25
@@ -70,27 +75,18 @@ def _decision_status(decision: CostDecision) -> dict[str, Any]:
 
 
 def _snapshot_decision(item: dict[str, Any]) -> CostDecision:
-    """Adapt saved RFQ evidence to the existing PDF renderer, without a live row."""
+    """Adapt a package record (``outbound.rfq_item``) to the PDF renderer, without
+    a live row: the file, its review status and the supplier's copy of the
+    should-cost. Approvers, outcomes and notes are not in the item to copy."""
     meta = item["decision"]
-    fields = {key: meta.get(key) for key in (
-        "filename", "file_type", "label", "mesh_hash", "approval_status",
-        "approved_by_user_id", "approval_note", "user_disposition",
-        "disposition_note", "disposition_basis", "disposition_updated_by_user_id", "stale_reason",
-    )}
-    for key in ("created_at", "approved_at", "disposition_updated_at", "stale_at"):
-        fields[key] = datetime.fromisoformat(meta[key]) if meta.get(key) else None
+    fields = {key: meta.get(key) for key in ("filename", "file_type", "label", "approval_status")}
+    fields["created_at"] = (
+        datetime.fromisoformat(meta["created_at"]) if meta.get("created_at") else None
+    )
     return CostDecision(
-        ulid=meta["id"], engine_version=meta.get("engine_version") or "unknown",
+        ulid=meta.get("id") or "unknown", engine_version=meta.get("engine_version") or "unknown",
         result_json=item["cost_decision"], **fields,
     )
-
-
-def _confidence_unvalidated(result_json: dict[str, Any]) -> bool:
-    for estimate in result_json.get("estimates", []) or []:
-        confidence = estimate.get("confidence") or {}
-        if confidence.get("validated") is not True:
-            return True
-    return False
 
 
 def _normalized_stem(value: str | None) -> str:
@@ -210,6 +206,9 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
             "manifest_part_id",
             "program",
             "raw_cad_included",
+            "requested_process",
+            "requested_material",
+            "requested_quantity",
         ]
     )
     for item in items:
@@ -217,6 +216,7 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
         manifest = item.get("declared_part")
         context = item.get("part_context") or {}
         raw = item.get("raw_cad") or {}
+        requested = decision.get("requested") or {}
         writer.writerow(
             [
                 cost_decision_service.spreadsheet_safe_cell(value)
@@ -231,6 +231,9 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
                     ((manifest or {}).get("part") or {}).get("part_id"),
                     context.get("program"),
                     raw.get("included") is True,
+                    requested.get("process"),
+                    requested.get("material"),
+                    requested.get("quantity"),
                 ]
             ]
         )
@@ -330,9 +333,37 @@ async def _decision_item(
     decision: CostDecision,
     *,
     include_raw_cad: bool,
+    terms: tuple[str, ...] = (),
 ) -> tuple[dict[str, Any], list[dict[str, Any]], tuple[str | None, bytes | None]]:
     status = _decision_status(decision)
-    unvalidated = _confidence_unvalidated(decision.result_json or {})
+    raw_name, raw_bytes, raw_meta = await _raw_cad_payload(
+        session, decision, include_raw_cad
+    )
+    item = outbound.rfq_item(
+        {
+            "decision": {
+                "id": decision.ulid,
+                "filename": decision.filename,
+                "file_type": decision.file_type,
+                "label": decision.label,
+                "engine_version": decision.engine_version,
+                "created_at": decision.created_at.isoformat() if decision.created_at else None,
+                "quantities": decision.quantities or [],
+                "approval_status": status["approval_status"],
+                "is_stale": status["is_stale"],
+                # "Make outside" on a route: what the supplier is asked to quote.
+                "requested": outbound.requested_route(
+                    status["user_disposition"], status["disposition_basis"]
+                ),
+            },
+            "cost_decision": decision.result_json or {},
+            "declared_part": await _manifest_match(session, decision),
+            "part_context": await _part_context(session, decision),
+            "raw_cad": raw_meta,
+        },
+        terms=terms,
+    )
+    unvalidated = item["decision"]["unvalidated_confidence"]
     warnings: list[dict[str, Any]] = []
     if not status["approved"]:
         warnings.append(
@@ -359,9 +390,6 @@ async def _decision_item(
             }
         )
 
-    raw_name, raw_bytes, raw_meta = await _raw_cad_payload(
-        session, decision, include_raw_cad
-    )
     if include_raw_cad and not raw_meta.get("included"):
         warnings.append(
             {
@@ -371,40 +399,6 @@ async def _decision_item(
             }
         )
 
-    item = {
-        "decision": {
-            "id": decision.ulid,
-            "filename": decision.filename,
-            "file_type": decision.file_type,
-            "label": decision.label,
-            "engine_version": decision.engine_version,
-            "mesh_hash": decision.mesh_hash,
-            "created_at": decision.created_at.isoformat() if decision.created_at else None,
-            "make_now_process": decision.make_now_process,
-            "crossover_qty": decision.crossover_qty,
-            "quantities": decision.quantities or [],
-            "approval_status": status["approval_status"],
-            "approved_at": status["approved_at"],
-            "approved_by_user_id": status["approved_by_user_id"],
-            "approval_note": status["approval_note"],
-            "user_disposition": status["user_disposition"],
-            "user_disposition_label": status["user_disposition_label"],
-            "disposition_note": status["disposition_note"],
-            "disposition_basis": status["disposition_basis"],
-            "disposition_updated_at": status["disposition_updated_at"],
-            "disposition_updated_by_user_id": status[
-                "disposition_updated_by_user_id"
-            ],
-            "is_stale": status["is_stale"],
-            "stale_at": status["stale_at"],
-            "stale_reason": status["stale_reason"],
-            "unvalidated_confidence": unvalidated,
-        },
-        "cost_decision": decision.result_json or {},
-        "declared_part": await _manifest_match(session, decision),
-        "part_context": await _part_context(session, decision),
-        "raw_cad": raw_meta,
-    }
     return item, warnings, (raw_name, raw_bytes)
 
 
@@ -441,9 +435,10 @@ async def create_package(
     warnings: list[dict[str, Any]] = []
     raw_included = False
     raw_payloads: list[tuple[str, bytes]] = []
+    terms = await outbound.org_names(session, org_id)
     for did in ids:
         item, item_warnings, raw = await _decision_item(
-            session, by_id[did], include_raw_cad=options.include_raw_cad
+            session, by_id[did], include_raw_cad=options.include_raw_cad, terms=terms
         )
         items.append(item)
         warnings.extend(item_warnings)
@@ -495,11 +490,13 @@ async def create_package(
     # is correct (just slower for that one item), and steady state is all-cache.
     import asyncio as _asyncio
 
-    decisions_to_warm = [_snapshot_decision(item) for item in items]
+    decisions_to_warm = [
+        (_snapshot_decision(item), outbound.rfq_governance(item["decision"])) for item in items
+    ]
 
     async def _warm() -> None:
         await _asyncio.gather(
-            *(precompute_cost_pdf(d) for d in decisions_to_warm)
+            *(precompute_cost_pdf(d, gov) for d, gov in decisions_to_warm)
         )
 
     try:
@@ -530,7 +527,8 @@ def serialize_package(package: RfqPackage, *, include_items: bool = False) -> di
         "updated_at": package.updated_at.isoformat() if package.updated_at else None,
     }
     if include_items:
-        out["items"] = package.items_json or []
+        # Saved as the supplier's copy; one saved before that is cleaned here.
+        out["items"] = [outbound.rfq_item(item) for item in package.items_json or []]
     return out
 
 
@@ -577,6 +575,8 @@ async def build_zip(
             b"Supplier brief PDF generation failed; package_manifest.json and "
             b"supplier-brief.md retain the complete package evidence.\n"
         )
+    terms = await outbound.org_names(session, package.org_id)
+    items = [outbound.rfq_item(item, terms=terms) for item in package.items_json or []]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         manifest = serialize_package(package, include_items=False)
@@ -591,18 +591,18 @@ async def build_zip(
             "package_manifest.json",
             json.dumps(manifest, indent=2, sort_keys=True, default=str),
         )
-        zf.writestr("line-items.csv", _line_items_csv(package.items_json or []))
+        zf.writestr("line-items.csv", _line_items_csv(items))
         zf.writestr("supplier-brief.md", _supplier_brief(package))
         zf.writestr(supplier_pdf_name, supplier_pdf)
         zf.writestr(
             "cost-decisions.json",
-            json.dumps(package.items_json or [], indent=2, sort_keys=True, default=str),
+            json.dumps(items, indent=2, sort_keys=True, default=str),
         )
 
-        for index, item in enumerate(package.items_json or [], start=1):
+        for index, item in enumerate(items, start=1):
             decision_meta = item["decision"]
-            decision_ulid = decision_meta["id"]
-            stem = _safe_name(decision_meta["filename"], f"decision-{index}")
+            decision_ulid = decision_meta.get("id")
+            stem = _safe_name(decision_meta.get("filename") or "", f"decision-{index}")
             zf.writestr(
                 f"decisions/{index:02d}-{stem}/cost-decision.json",
                 json.dumps(item["cost_decision"], indent=2, sort_keys=True, default=str),
@@ -610,7 +610,7 @@ async def build_zip(
             zf.writestr(
                 f"decisions/{index:02d}-{stem}/cost-drivers.csv",
                 cost_decision_service.build_estimates_csv(
-                    item["cost_decision"], governance=item["decision"]
+                    item["cost_decision"], governance=item["decision"], outbound=True
                 ),
             )
             if item.get("declared_part"):
@@ -634,7 +634,9 @@ async def build_zip(
             try:
                 zf.writestr(
                     f"decisions/{index:02d}-{stem}/should-cost-report.pdf",
-                    await cached_cost_pdf(_snapshot_decision(item)),
+                    await cached_cost_pdf(
+                        _snapshot_decision(item), outbound.rfq_governance(item["decision"])
+                    ),
                 )
             except Exception:
                 zf.writestr(

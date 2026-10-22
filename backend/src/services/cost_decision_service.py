@@ -19,7 +19,6 @@ import io
 import json
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -814,19 +813,40 @@ def spreadsheet_safe_cell(value):
     return value
 
 
+_GOVERNANCE_COLUMNS = (
+    "approval_status",
+    "approved_by_user_id",
+    "approved_at",
+    "approval_note",
+    "user_disposition",
+    "user_disposition_label",
+    "disposition_note",
+    "disposition_basis",
+    "disposition_updated_at",
+    "disposition_updated_by_user_id",
+)
+# A supplier's copy (RFQ package) states the review status only; approvers,
+# the recorded outcome and its notes stay inside the organization.
+_OUTBOUND_GOVERNANCE_COLUMNS = ("approval_status",)
+
+
 def build_estimates_csv(
     result_json: dict,
     *,
     governance: Optional[dict] = None,
+    outbound: bool = False,
 ) -> str:
     """Flatten per-(process, qty) estimates into an auditable CSV table.
 
     Includes the honest confidence band columns (band label + validated flag)
     and the persisted approval fields, so the exported artifact never presents
-    an unvalidated or unsigned number as governed evidence.
+    an unvalidated or unsigned number as governed evidence. ``outbound`` is the
+    supplier's copy: ``result_json`` is already an ``outbound.cost_record`` and
+    only the review status column of the governance travels.
     """
     buf = io.StringIO()
     writer = csv.writer(buf)
+    gov_columns = _OUTBOUND_GOVERNANCE_COLUMNS if outbound else _GOVERNANCE_COLUMNS
     writer.writerow(
         [
             "process",
@@ -841,20 +861,18 @@ def build_estimates_csv(
             "confidence_label",
             "confidence_validated",
             "dfm_ready",
-            "approval_status",
-            "approved_by_user_id",
-            "approved_at",
-            "approval_note",
-            "user_disposition",
-            "user_disposition_label",
-            "disposition_note",
-            "disposition_basis",
-            "disposition_updated_at",
-            "disposition_updated_by_user_id",
+            *gov_columns,
             "line_items",
         ]
     )
     governance = governance or {}
+
+    def gov(key: str):
+        if key == "disposition_basis":
+            basis = governance.get(key)
+            return json.dumps(basis, sort_keys=True) if basis else ""
+        return governance.get(key, "")
+
     for e in result_json.get("estimates", []) or []:
         ci = e.get("confidence") or {}
         line_items = e.get("line_items") or {}
@@ -876,16 +894,7 @@ def build_estimates_csv(
                     # Honesty: this is False for assumption-based bands.
                     ci.get("validated", False),
                     e.get("dfm_ready", ""),
-                    governance.get("approval_status", ""),
-                    governance.get("approved_by_user_id", ""),
-                    governance.get("approved_at", ""),
-                    governance.get("approval_note", ""),
-                    governance.get("user_disposition", ""),
-                    governance.get("user_disposition_label", ""),
-                    governance.get("disposition_note", ""),
-                    json.dumps(governance["disposition_basis"], sort_keys=True) if governance.get("disposition_basis") else "",
-                    governance.get("disposition_updated_at", ""),
-                    governance.get("disposition_updated_by_user_id", ""),
+                    *(gov(key) for key in gov_columns),
                     li_str,
                 ]
             ]
@@ -999,107 +1008,24 @@ async def get_shared(short_id: str, session: AsyncSession) -> Optional[dict]:
     if d is None:
         return None
     share_links.public_or_raise(d, "Shared cost decision not found")
-    return {**sanitize_for_share(d), **share_links.public_meta(d)}
+    from src.services import outbound
+
+    terms = await outbound.org_names(session, getattr(d, "org_id", None))
+    return {**sanitize_for_share(d, terms=terms), **share_links.public_meta(d)}
 
 
-# USER/SHOP-tagged inputs are the sharer's own: their machines and declared
-# rates, markup, shop profile and capacity. A public link keeps the tag (so the
-# reader still sees the number was the shop's, not a default) but hides the
-# value and the text that names it. Declarations about the part itself stay.
-_PRIVATE_PROVENANCE = {"USER", "SHOP"}
-_PART_DECLARATIONS = {"material_class", "tolerance_class", "source_units", "n_cavities", "complexity"}
-_PRIVATE_NUMBERS = ("value", "n_machines", "machine_hours_per_day")
-_HIDDEN_SOURCE = "Set by the sharer's shop. Not shown on shared links."
-_SHOP_TAG = re.compile(r"\s*\[shop: [^\]]*\]")
-_MACHINE_NAME = re.compile(r"\b(fitted machine|machine|envelope of) '[^']*'")
+def sanitize_for_share(d: CostDecision, *, terms=()) -> dict:
+    """The public payload of ``GET /s/cost/{id}`` — ``outbound.cost_share``.
 
-
-def _redact_private_inputs(node: Any) -> Any:
-    if isinstance(node, str):
-        return _MACHINE_NAME.sub(r"\1 (name hidden)", _SHOP_TAG.sub("", node))
-    if isinstance(node, list):
-        # The "owned in-house" driver exists only when the sharer owns the machine:
-        # its presence alone is their shop's fact, so it's left out entirely.
-        return [_redact_private_inputs(v) for v in node
-                if not (isinstance(v, dict) and v.get("name") == "owned_in_house")]
-    if not isinstance(node, dict):
-        return node
-    out = {k: _redact_private_inputs(v) for k, v in node.items()}
-    # Whether the sharer owns a machine for this route is their shop's fact too.
-    if "owned_in_house" in out and not isinstance(out.get("owned_in_house"), dict):
-        out["owned_in_house"] = None
-    # An in-house lead time names the machine it runs on.
-    if out.get("in_house") is True and "machine_hours_per_day" in out:
-        out.pop("in_house", None)
-        out.pop("machine", None)
-    if out.get("provenance") in _PRIVATE_PROVENANCE and out.get("name") not in _PART_DECLARATIONS:
-        for key in ("source", "basis"):
-            if key in out:
-                out[key] = _HIDDEN_SOURCE
-        # A "$" driver is a cost line of the result itself; anything else
-        # (a $/hr rate, a markup fraction, a machine count) is the shop's input.
-        if out.get("unit") != "$":
-            for key in _PRIVATE_NUMBERS:
-                if key in out:
-                    out[key] = None
-    return out
-
-
-def _redact_owned_choice(decision: Any) -> Any:
-    """Drop what says the sharer owns a machine that can make the part: the
-    in-house / outside comparison, its rule, the per-quantity in-house flags and
-    the note's owned-machine clause. The picks and their prices stay."""
-    from src.costing.decision import OWNED_CLAUSE_PREFIX
-
-    if not isinstance(decision, dict):
-        return decision
-    out = {k: v for k, v in decision.items() if k not in ("options", "rule")}
-    note = out.get("note")
-    if isinstance(note, str) and OWNED_CLAUSE_PREFIX in note:
-        out["note"] = note.split(" " + OWNED_CLAUSE_PREFIX, 1)[0].split(OWNED_CLAUSE_PREFIX, 1)[0]
-    rec = out.get("recommendation")
-    if isinstance(rec, dict):
-        out["recommendation"] = {
-            q: ({k: v for k, v in r.items() if k not in ("in_house", "basis", "machine")}
-                if isinstance(r, dict) else r)
-            for q, r in rec.items()
-        }
-    return out
-
-
-def sanitize_for_share(d: CostDecision) -> dict:
-    """Allow-listed public payload — ZERO owner/user PII.
-
-    EXCLUDED: user_id, api_key_id, mesh_hash, params_hash, share_short_id,
-    is_public, id, ulid. The decision content (geometry, estimates with
-    provenance, honest confidence band, crossover, assumptions) is preserved,
-    except the sharer's own shop inputs (``_redact_private_inputs``): machine
-    names, declared rates, markup and capacity are hidden on a public link.
+    No owner, ids or hashes (user_id, api_key_id, mesh_hash, params_hash,
+    share_short_id, id/ulid), and nothing of the sharer's shop: its machines,
+    rates and terms, routes it prices on its own machines, its in-house choices,
+    calibration and actuals stay inside (see ``src.services.outbound``). The
+    geometry, findings, outside should-cost and stated band are kept.
     """
-    from src.costing.estimate import OWNED_PICK_NOTE_PREFIX
+    from src.services import outbound
 
-    result_json = _redact_private_inputs(d.result_json or {})
-    notes = [n for n in result_json.get("notes", [])
-             if not (isinstance(n, str) and n.startswith(OWNED_PICK_NOTE_PREFIX))]
-    return {
-        "filename": d.filename,
-        "file_type": d.file_type,
-        "label": d.label,
-        "created_at": d.created_at.isoformat(),
-        "make_now_process": d.make_now_process,
-        "crossover_qty": d.crossover_qty,
-        "quantities": d.quantities or [],
-        # Glass-box decision content, preserved (provenance + honest CI intact).
-        "geometry": result_json.get("geometry", {}),
-        "material_class": result_json.get("material_class"),
-        "routing": result_json.get("routing"),
-        "estimates": result_json.get("estimates", []),
-        "decision": _redact_owned_choice(result_json.get("decision")),
-        "assumptions": result_json.get("assumptions", []),
-        "engine_feasibility": result_json.get("engine_feasibility", []),
-        "notes": notes,
-        "status": result_json.get("status"),
-    }
+    return outbound.cost_share(d, terms=terms)
 
 
 # ---------------------------------------------------------------------------

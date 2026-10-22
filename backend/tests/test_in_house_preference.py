@@ -192,6 +192,19 @@ def test_a_public_share_does_not_say_the_sharer_owns_a_machine():
     assert "options" not in body["decision"] and "rule" not in body["decision"]
     assert all({"in_house", "basis", "machine"}.isdisjoint(r) for r in body["decision"]["recommendation"].values())
     assert all("in_house" not in (e["lead_time"]["capacity"] or {}) for e in body["estimates"])
-    # The pick and its price stay; only whose machine it is goes.
+    # The printer's route is priced on the sharer's own machine (its rate, its
+    # lead time with no shipping): it isn't in the copy. The pick is the engine's
+    # own rule over the routes the copy shows, and its price is that route's.
+    assert all(e["process"] != "fdm" for e in body["estimates"])
     rec = body["decision"]["recommendation"]
-    assert (rec.get(100) or rec.get("100"))["process"] == "fdm"
+    pick = rec.get(100) or rec.get("100")
+    from src.costing.decision import MAKE_NOW_FAMILIES
+    from src.costing.rates import process_family
+
+    shown = [e for e in body["estimates"] if e["quantity"] == 100 and e["dfm_ready"]
+             and process_family(ProcessType(e["process"])) in MAKE_NOW_FAMILIES]
+    cheapest = min(shown, key=lambda e: e["unit_cost_usd"])
+    assert pick["process"] == cheapest["process"] and pick["unit_cost_usd"] == cheapest["unit_cost_usd"]
+    assert body["make_now_process"] == (rec.get(1) or rec.get("1"))["process"]
+    # A crossover computed against the in-house price isn't shown.
+    assert body["decision"]["crossover_qty"] is None and body["crossover_qty"] is None

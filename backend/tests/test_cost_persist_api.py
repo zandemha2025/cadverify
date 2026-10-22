@@ -1144,16 +1144,24 @@ def test_public_share_sanitized_no_owner_leak(client, real_result_json):
 def test_public_share_hides_shop_inputs(client, real_result_json):
     cl, app = client
     rj = copy.deepcopy(real_result_json)
-    rj["estimates"][0]["drivers"] += [
+    owned = rj["estimates"][0]
+    outside = next(e for e in rj["estimates"] if e["process"] != owned["process"])
+    # A route priced on the sharer's own machine.
+    owned["drivers"] += [
         {"name": "machine_cost", "unit": "$", "value": 1.43, "provenance": "USER",
          "source": "0.0258 hr × $85/hr (fitted machine 'Haas VF-2', its OWN declared rate)"},
         {"name": "owned_in_house", "unit": "×", "value": 0.65, "provenance": "USER",
          "source": "machine 'Haas VF-2' OWNED in-house: MARGINAL rate $55.25/hr"},
+    ]
+    owned["owned_in_house"] = True
+    # An outside route with a rate the sharer typed and a tolerance they declared.
+    outside["drivers"] += [
+        {"name": "machine_cost", "unit": "$", "value": 2.71, "provenance": "USER",
+         "source": "0.0319 hr × $85/hr × region-labor ×1"},
         {"name": "tolerance_class", "unit": "×", "value": 1.2, "provenance": "USER",
          "source": "declared tolerance 'precision'"},
     ]
-    rj["estimates"][0]["owned_in_house"] = True
-    rj["estimates"][0]["lead_time"]["capacity"] = {
+    outside["lead_time"]["capacity"] = {
         "n_machines": 3, "machine_hours_per_day": 20.0, "provenance": "USER",
         "basis": "capacity-bound: 3 machines × 20 hr/day"}
     rj["assumptions"] += [
@@ -1169,14 +1177,18 @@ def test_public_share_hides_shop_inputs(client, real_result_json):
     text = json.dumps(body)
     for private in ("Haas VF-2", "$85/hr", "$55.25/hr", "Acme Machining", "20 hr/day"):
         assert private not in text, f"public share leaked {private}"
-    drivers = {d["name"]: d for d in body["estimates"][0]["drivers"] if d.get("provenance") == "USER"}
-    assert drivers["machine_cost"]["value"] == 1.43  # the cost line itself stays
-    assert "owned_in_house" not in drivers  # its presence alone says the sharer owns the machine
+    # The route priced on the sharer's machine isn't in the copy, at any quantity.
+    assert all(e["process"] != owned["process"] for e in body["estimates"])
+    row = next(e for e in body["estimates"]
+               if e["process"] == outside["process"] and e["quantity"] == outside["quantity"])
+    drivers = {d["name"]: d for d in row["drivers"] if d.get("provenance") == "USER"}
+    assert drivers["machine_cost"]["value"] == 2.71  # the cost line itself stays
+    assert drivers["machine_cost"]["source"] == "Set by the sender's shop. Not shown outside it."
     assert drivers["tolerance_class"]["source"] == "declared tolerance 'precision'"
-    assert body["estimates"][0]["lead_time"]["capacity"]["n_machines"] is None
+    assert row["lead_time"]["capacity"]["n_machines"] is None
     margin = next(a for a in body["assumptions"] if a["name"] == "margin" and a["provenance"] == "SHOP")
     assert margin["value"] is None and margin["provenance"] == "SHOP"
-    assert all(e.get("owned_in_house") is None for e in body["estimates"])
+    assert all("owned_in_house" not in e for e in body["estimates"])
     # The owner's stored record is untouched.
     assert "Haas VF-2" in json.dumps(dec.result_json)
 

@@ -255,25 +255,28 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
             csv.DictReader(io.StringIO(zf.read(drivers_name).decode("utf-8")))
         )
         assert len(driver_rows) == 1
+        # The review status travels. A package saved with the full governance
+        # (before supplier copies) is cleaned: approvers, the recorded in-house
+        # outcome and the internal notes stay with the organization.
         assert driver_rows[0]["approval_status"] == "approved"
-        assert driver_rows[0]["approved_by_user_id"] == "11"
-        assert driver_rows[0]["approved_at"] == "2026-07-13T05:00:00+00:00"
-        assert driver_rows[0]["approval_note"] == "Reviewed against governed rates"
-        assert driver_rows[0]["user_disposition"] == "make_in_house"
-        assert driver_rows[0]["user_disposition_label"] == "Make in-house"
-        assert json.loads(driver_rows[0]["disposition_basis"]) == item["decision"]["disposition_basis"]
-        assert driver_rows[0]["disposition_note"] == "Release to cell 4"
-        assert driver_rows[0]["disposition_updated_at"] == disposition_at.isoformat()
-        assert driver_rows[0]["disposition_updated_by_user_id"] == "12"
+        for internal in ("approved_by_user_id", "approved_at", "approval_note", "user_disposition",
+                         "user_disposition_label", "disposition_basis", "disposition_note",
+                         "disposition_updated_at", "disposition_updated_by_user_id"):
+            assert internal not in driver_rows[0]
+        everything = b"".join(zf.read(n) for n in names if not n.endswith(".pdf"))
+        for private in (b"Reviewed against governed rates", b"Release to cell 4", b"make_in_house",
+                        b"Make in-house", b"disposition"):
+            assert private not in everything, private
 
     # The live decision is unreviewed; the package was approved when captured.
-    pdf_decision = svc.cached_cost_pdf.call_args.args[0]
-    assert pdf_decision.approval_status == "approved"
-    assert pdf_decision.approval_note == item["decision"]["approval_note"]
-    assert pdf_decision.disposition_note == "Release to cell 4"
-    assert pdf_decision.disposition_basis == item["decision"]["disposition_basis"]
-    assert pdf_decision.disposition_updated_at == disposition_at
-    assert pdf_decision.result_json == item["cost_decision"]
+    pdf_decision, pdf_gov = svc.cached_cost_pdf.call_args.args
+    assert pdf_decision.approval_status == "approved" and pdf_gov["approval_status"] == "approved"
+    assert pdf_decision.approval_note is None and pdf_decision.disposition_note is None
+    assert pdf_decision.user_disposition is None and pdf_decision.disposition_basis is None
+    assert pdf_gov["requested"] is None  # "Make in-house" is not a request to a supplier
+    from src.services import outbound
+
+    assert pdf_decision.result_json == outbound.cost_record(item["cost_decision"])
     assert decision.approval_status == "unreviewed", "rendering must not mutate the live row"
 
     # Historical evidence must remain downloadable after the source is removed.

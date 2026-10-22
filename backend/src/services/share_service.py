@@ -146,28 +146,23 @@ async def get_shared_analysis(
     if analysis is None:
         return None
     share_links.public_or_raise(analysis, "Shared analysis not found")
-    return {**sanitize_analysis_for_share(analysis), **share_links.public_meta(analysis)}
+    from src.services import outbound
 
-
-def sanitize_analysis_for_share(analysis: Analysis) -> dict:
-    """Return an allow-listed dict with zero PII fields.
-
-    EXCLUDED: user_id, api_key_id, email, mesh_hash, share_short_id,
-    is_public, ulid, key_prefix, process_set_hash, analysis_version,
-    file_size_bytes, id.
-    """
-    result_json = analysis.result_json or {}
-
+    terms = await outbound.org_names(session, getattr(analysis, "org_id", None))
     return {
-        "filename": analysis.filename,
-        "file_type": analysis.file_type,
-        "verdict": analysis.verdict,
-        "face_count": analysis.face_count,
-        "duration_ms": analysis.duration_ms,
-        "created_at": analysis.created_at.isoformat(),
-        "process_scores": result_json.get("process_scores", []),
-        "universal_issues": result_json.get("universal_issues", []),
-        "geometry": result_json.get("geometry", {}),
-        "best_process": result_json.get("best_process"),
-        "priority_fixes": result_json.get("priority_fixes", []),
+        **sanitize_analysis_for_share(analysis, terms=terms),
+        **share_links.public_meta(analysis),
     }
+
+
+def sanitize_analysis_for_share(analysis: Analysis, *, terms=()) -> dict:
+    """The public payload of ``GET /s/{id}`` — ``outbound.check_share``.
+
+    Allow-listed: the file, its geometry, verdicts and findings. EXCLUDED:
+    user_id, api_key_id, email, mesh_hash, share_short_id, is_public, ulid,
+    key_prefix, process_set_hash, analysis_version, file_size_bytes, id, and
+    anything of the sharer's shop (``src.services.outbound``).
+    """
+    from src.services import outbound
+
+    return outbound.check_share(analysis, terms=terms)

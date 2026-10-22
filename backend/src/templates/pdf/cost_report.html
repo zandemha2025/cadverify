@@ -57,7 +57,22 @@
     not a quote.
   </div>
 
-  <!-- Persisted signoff travels with every exported decision record. -->
+  <!-- Persisted signoff travels with every exported decision record. A
+       supplier's copy (RFQ package, ``outbound``) states the review status and
+       the route requested; approvers, the recorded outcome and notes stay with
+       the organization. -->
+  {% if outbound is not none %}
+  <h2>Review</h2>
+  <div class="governance">
+    <strong>Status:</strong> {{ outbound.get('approval_status') or 'unreviewed' }}
+    {% if outbound.get('is_stale') %}&middot; out of date: check again before quoting{% endif %}
+    {% set req = outbound.get('requested') %}
+    {% if req %}
+      &middot; <strong>Requested:</strong> {{ req.get('process') }} / {{ req.get('material') | pdf_text }} / quantity {{ req.get('quantity') }}
+    {% endif %}
+    <div class="governance-note">The sender's machines, rates, choices and internal notes are not in this copy. A value marked hidden was set by the sender's shop.</div>
+  </div>
+  {% else %}
   <h2>Decision Governance</h2>
   <div class="governance">
     <strong>Status:</strong> {{ governance.get('approval_status', 'unreviewed') }}
@@ -90,6 +105,7 @@
 {{ governance.get('disposition_note') | pdf_text }}</div>
     {% endif %}
   </div>
+  {% endif %}
 
   <!-- Geometry -->
   <h2>Geometry</h2>
@@ -135,6 +151,8 @@
       {% if dec.get('crossover_qty') %}
         &asymp; {{ dec.get('crossover_qty') }} units &mdash; above this the tooling/production
         route becomes the cheaper per-unit choice.
+      {% elif outbound is not none %}
+        not stated in this copy.
       {% else %}
         none within the evaluated range &mdash; make-as-is stays cheapest.
       {% endif %}
@@ -259,8 +277,12 @@
   <p class="muted" style="margin:0 0 4px 0;">
     <span class="prov prov-DEFAULT">DEFAULT</span> generic book value &middot;
     <span class="prov prov-MODEL">MODEL</span> learned/estimated &middot;
+    {% if outbound is not none %}
+    <span class="prov prov-SHOP">SHOP</span> <span class="prov prov-USER">USER</span> set by the sender's shop, value hidden &middot;
+    {% else %}
     <span class="prov prov-SHOP">SHOP</span> your calibrated profile &middot;
     <span class="prov prov-USER">USER</span> override &middot;
+    {% endif %}
     <span class="prov prov-MEASURED">MEASURED</span> real held-out residuals.
     Provenance holds across all quantities; values shown at qty
     {{ (estimates[0].get('quantity')) }} (reference).
@@ -279,7 +301,7 @@
         {% for d in drivers %}
         <tr>
           <td>{{ d.get('name') }}</td>
-          <td class="num">{{ d.get('value') }} {{ d.get('unit') }}</td>
+          <td class="num">{% if d.get('value') is none %}hidden{% else %}{{ d.get('value') }} {{ d.get('unit') }}{% endif %}</td>
           <td><span class="prov prov-{{ d.get('provenance') }}">{{ d.get('provenance') }}</span></td>
           <td class="src">{{ d.get('source') }}</td>
         </tr>
@@ -297,7 +319,11 @@
 
   <!-- Assumptions log -->
   <h2>Assumptions Log</h2>
+  {% if outbound is not none %}
+  <p class="muted" style="margin:0 0 3px 0;">DEFAULT = generic fallback &middot; SHOP / USER = set by the sender's shop, value hidden.</p>
+  {% else %}
   <p class="muted" style="margin:0 0 3px 0;">DEFAULT = generic fallback &middot; SHOP = your calibrated profile &middot; USER = ad-hoc override. Every assumption is editable and re-costable.</p>
+  {% endif %}
   {% set assumptions = result.get('assumptions', []) %}
   {% if assumptions %}
   <table>
@@ -305,7 +331,7 @@
     {% for a in assumptions %}
     <tr>
       <td>{{ a.get('name') }}</td>
-      <td class="num">{{ a.get('value') }}</td>
+      <td class="num">{% if a.get('value') is none %}hidden{% else %}{{ a.get('value') }}{% endif %}</td>
       <td>{{ a.get('unit') }}</td>
       <td class="src">{{ a.get('source') }}</td>
       <td><span class="prov prov-{{ a.get('provenance') }}">{{ a.get('provenance') }}</span></td>
@@ -326,7 +352,7 @@
 
   <!-- Footer -->
   <div class="footer">
-    ScaleCAD {{ engine_version }} | mesh: {{ mesh_hash }} | generated {{ created_at }} |
+    ScaleCAD {{ engine_version }} |{% if mesh_hash %} mesh: {{ mesh_hash }} |{% endif %} generated {{ created_at }} |
     Assumption-based should-cost &mdash; not a validated quote.
   </div>
 

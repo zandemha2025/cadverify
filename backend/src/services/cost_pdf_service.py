@@ -95,8 +95,14 @@ _jinja_env.filters["format_money"] = _format_money
 _jinja_env.filters["pdf_text"] = _pdf_text
 
 
-def build_cost_pdf_context(decision: CostDecision) -> dict:
-    """Assemble the Jinja render context from a persisted CostDecision."""
+def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None) -> dict:
+    """Assemble the Jinja render context from a persisted CostDecision.
+
+    ``outbound`` makes the supplier's copy (RFQ package): ``decision.result_json``
+    is then already an ``outbound.cost_record`` and ``outbound`` is its
+    ``outbound.rfq_governance`` (review status, out of date, requested route), so
+    the report carries no approvers, recorded outcome, notes or file hash.
+    """
     from src.services.cost_decision_service import governance_fields
 
     return {
@@ -107,19 +113,20 @@ def build_cost_pdf_context(decision: CostDecision) -> dict:
         "material_class": (decision.result_json or {}).get("material_class"),
         "result": decision.result_json or {},
         "engine_version": decision.engine_version or _app_version,
-        "mesh_hash": (decision.mesh_hash or "")[:12],
-        "governance": governance_fields(decision),
+        "mesh_hash": "" if outbound is not None else (decision.mesh_hash or "")[:12],
+        "governance": {} if outbound is not None else governance_fields(decision),
+        "outbound": outbound,
     }
 
 
-def render_cost_html(decision: CostDecision) -> str:
+def render_cost_html(decision: CostDecision, outbound: dict | None = None) -> str:
     """Render the cost report template to HTML (no WeasyPrint dependency).
 
     Exposed so tests can assert on rendered content without the system PDF
     libraries, and reused by the sync PDF renderer below.
     """
     template = _jinja_env.get_template("cost_report.html")
-    return template.render(**build_cost_pdf_context(decision))
+    return template.render(**build_cost_pdf_context(decision, outbound))
 
 
 def _render_cost_pdf_sync(decision: CostDecision, html_str: str | None = None) -> bytes:
@@ -149,7 +156,7 @@ async def generate_cost_pdf(decision: CostDecision, html_str: str | None = None)
     return pdf_bytes
 
 
-async def cached_cost_pdf(decision: CostDecision) -> bytes:
+async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None) -> bytes:
     """Return this decision's cost-report PDF, rendering ONCE and caching bytes.
 
     Content-addressed: the cache key embeds a fingerprint of the rendered HTML,
@@ -158,7 +165,7 @@ async def cached_cost_pdf(decision: CostDecision) -> bytes:
     hot path for BOTH the single-PDF download and every RFQ-package item, so a
     package download streams stored bytes with no per-request WeasyPrint render.
     """
-    html_str = render_cost_html(decision)
+    html_str = render_cost_html(decision, outbound)
     key = _cache_key(decision.ulid, _fingerprint(html_str))
     store = _pdf_store()
     try:
@@ -182,7 +189,9 @@ async def cached_cost_pdf(decision: CostDecision) -> bytes:
     return pdf_bytes
 
 
-async def precompute_cost_pdf(decision: CostDecision) -> bytes | None:
+async def precompute_cost_pdf(
+    decision: CostDecision, outbound: dict | None = None
+) -> bytes | None:
     """Warm the PDF cache for a decision (best-effort; never raises).
 
     Called when the durable evidence is assembled (RFQ-package create), so the
@@ -190,7 +199,7 @@ async def precompute_cost_pdf(decision: CostDecision) -> bytes | None:
     stream stored bytes.
     """
     try:
-        return await cached_cost_pdf(decision)
+        return await cached_cost_pdf(decision, outbound)
     except Exception:  # pragma: no cover - warming must not break the caller
         logger.warning(
             "Cost PDF precompute failed for %s", decision.ulid, exc_info=True
