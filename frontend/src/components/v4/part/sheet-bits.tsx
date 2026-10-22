@@ -14,6 +14,7 @@ import { sureOf, type SureLens } from "./sure";
 import { CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../moments";
 import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
+import { isMultiBody } from "@/lib/verify/bodies";
 
 export interface FigItem {
   k: string;
@@ -92,7 +93,34 @@ function SureLine({ lens }: { lens: SureLens }) {
 }
 
 /** Interrupted check, or prices that didn't finish: the shared X11 banners, plus where usage lives. */
+/** A file of several bodies, under a whole-file answer: that answer treats it as one block. */
+function BodiesNotice() {
+  const p = usePart();
+  const pt = p.data.validation?.part_type;
+  if (!p.openBodies || !isMultiBody(pt) || p.checking) return null;
+  return (
+    <div className="note swap" role="note" style={{ marginTop: 8 }}>
+      <b>{pt.summary}</b>
+      <span>These figures treat the file as one block, which is not how it would be made. Each body’s own answer is under Body by body.</span>
+      <span>
+        <button className="btn sm" type="button" onClick={p.openBodies}>
+          Body by body
+        </button>
+      </span>
+    </div>
+  );
+}
+
 export function RunNotice() {
+  return (
+    <>
+      <BodiesNotice />
+      <RunState />
+    </>
+  );
+}
+
+function RunState() {
   const p = usePart();
   const shell = useShell();
   const usage = (

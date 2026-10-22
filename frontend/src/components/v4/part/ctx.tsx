@@ -88,6 +88,8 @@ export interface PartCtxValue {
   canRecheck: boolean;
   retryPrices: () => void;
   pickFile: () => void;
+  /** A file of several bodies: open it body by body (null for one body). */
+  openBodies?: (() => void) | null;
 }
 
 const Ctx = React.createContext<PartCtxValue | null>(null);

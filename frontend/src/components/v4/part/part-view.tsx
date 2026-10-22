@@ -227,6 +227,7 @@ export function PartView({
     canRecheck,
     retryPrices: onRetryPrices,
     pickFile: () => fileRef.current?.click(),
+    openBodies: bodies ? () => bodies.setOpen(true) : null,
   };
 
   // Answers for the search palette, computed from this part's own results.

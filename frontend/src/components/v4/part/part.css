@@ -19,7 +19,7 @@
 .ob .pv .hud{z-index:3;max-width:calc(100% - 520px - 380px)}
 .ob .pv .hud h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ob .pv .hud .chips{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.ob .pv .hud .bodies-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;padding:6px 6px 6px 10px;border-radius:10px;background:rgba(46,107,230,.08);color:var(--ink);font-size:13px;line-height:1.35;max-width:560px}
+.ob .pv .hud .bodies-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;padding:6px 6px 6px 10px;border-radius:10px;background:rgba(46,107,230,.08);color:var(--ink);font-size:13px;line-height:1.35;max-width:440px}
 .ob .pv .hud .bodies-hud>span{flex:1 1 220px;min-width:0}
 .ob .pv .fp{font-family:var(--font-geist-mono),ui-monospace,monospace;font-size:11px}
 
