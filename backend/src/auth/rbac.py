@@ -28,7 +28,7 @@ from src.config.public_urls import error_doc_url
 from enum import Enum
 from typing import Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.auth.models import lookup_org_membership
@@ -132,7 +132,9 @@ def require_org_role(min_role: OrgRole):
     first place ``resolve_org``-style resolution is wired into a real consumer.
     """
 
-    async def _check(user: AuthedUser = Depends(require_api_key)) -> OrgAuthContext:
+    async def _check(
+        request: Request, user: AuthedUser = Depends(require_api_key)
+    ) -> OrgAuthContext:
         is_superadmin = user.role == Role.superadmin.value
         membership = await lookup_org_membership(user.user_id)
         # Bearer keys retain their issuing org. If the user's active membership
@@ -153,6 +155,13 @@ def require_org_role(min_role: OrgRole):
                 except ValueError:
                     allowed = False
             if not allowed:
+                await log_refused_write(
+                    request,
+                    user,
+                    org_id=org_id or user.org_id,
+                    org_role=org_role,
+                    reason="insufficient_org_role",
+                )
                 raise HTTPException(
                     403,
                     detail={
@@ -177,6 +186,41 @@ def require_org_role(min_role: OrgRole):
         )
 
     return _check
+
+
+_WRITE_SAFE = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+async def log_refused_write(
+    request: Request | None,
+    user: AuthedUser,
+    *,
+    org_id: str | None,
+    org_role: str | None,
+    reason: str,
+) -> None:
+    """Record a refused write in the org's audit log ("Refused: <action>").
+
+    Reads are not logged. Never raises: the refusal is the answer either way.
+    """
+    method = (getattr(request, "method", None) or "").upper()
+    if not method or method in _WRITE_SAFE:
+        return
+    path = getattr(getattr(request, "url", None), "path", "") or ""
+    try:
+        from src.services.audit_service import record_refusal
+
+        await record_refusal(
+            user_id=user.user_id,
+            org_id=org_id,
+            method=method,
+            path=path,
+            org_role=org_role,
+            reason=reason,
+            key_prefix=user.key_prefix,
+        )
+    except Exception:  # the audit row is best effort; the 403 stands
+        pass
 
 
 _org_member_gate = require_org_role(OrgRole.member)
@@ -250,9 +294,12 @@ def _org_member_write_gate(action: str):
     Platform superadmins keep the ``require_org_role`` bypass.
     """
 
-    async def _gate(user: AuthedUser = Depends(require_role(Role.analyst))) -> AuthedUser:
+    async def _gate(
+        request: Request, user: AuthedUser = Depends(require_role(Role.analyst))
+    ) -> AuthedUser:
         try:
-            await _org_member_gate(user)
+            # The org-role check logs the refused write itself.
+            await _org_member_gate(request, user)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get("code") != "insufficient_org_role":
@@ -279,7 +326,8 @@ async def org_role_allows_writes(user: AuthedUser) -> bool:
     if rank < Role.analyst.rank:
         return False
     try:
-        await _org_member_gate(user)
+        # A capability probe is a read: no request, so nothing is logged.
+        await _org_member_gate(None, user)
     except HTTPException:
         return False
     return True

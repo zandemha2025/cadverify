@@ -27,6 +27,71 @@ class AuthedUser(BaseModel):
     # Present only for bearer API-key auth. Dashboard sessions intentionally
     # resolve their mutable active org at the route/service boundary.
     org_id: str | None = None
+    # What this credential may do: "read" (GET/HEAD/OPTIONS only) or
+    # "read_write". A dashboard session is "read_write"; the org-role gates
+    # still decide what its person may change.
+    scope: str = "read_write"
+
+
+# Methods a read-only key may use. Everything else changes data (including
+# starting a check, which reserves one and stores a record).
+READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+SCOPE_READ = "read"
+SCOPE_READ_WRITE = "read_write"
+
+
+def effective_key_scope(stored_scope: str | None, owner_org_role: str | None) -> str:
+    """A key's scope as enforced: a viewer's key is read only, whatever it says.
+
+    ``None`` is a key made before scopes existed (0061): read and write.
+    """
+    if owner_org_role == "viewer" or stored_scope == SCOPE_READ:
+        return SCOPE_READ
+    return SCOPE_READ_WRITE
+
+
+def _date_words(value: object) -> str | None:
+    strftime = getattr(value, "strftime", None)
+    if strftime is None:
+        return None
+    return f"{strftime('%b')} {value.day}, {value.year}"
+
+
+def _401_expired(expires_at: object) -> HTTPException:
+    when = _date_words(expires_at)
+    return HTTPException(
+        status_code=401,
+        detail={
+            "code": "api_key_expired",
+            "message": (
+                (f"This API key expired on {when}. " if when else "This API key has expired. ")
+                + "Create a new key in Account, API and keys."
+            ),
+            "doc_url": error_doc_url("api_key_expired"),
+        },
+    )
+
+
+def _403_read_only(owner_org_role: str | None, method: str) -> HTTPException:
+    if owner_org_role == "viewer":
+        message = (
+            "This API key belongs to a viewer, so it is read only: it can open "
+            "parts and records but not change them or check new parts."
+        )
+    else:
+        message = (
+            "This API key is read only: it can open parts and records but not "
+            "change them or check new parts. Use a read-and-write key."
+        )
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "api_key_read_only",
+            "message": message,
+            "method": method,
+            "doc_url": error_doc_url("api_key_read_only"),
+        },
+    )
 
 
 def _401(code: str, message: str) -> HTTPException:
@@ -152,17 +217,51 @@ async def require_api_key(
                 "doc_url": error_doc_url("api_key_org_mismatch"),
             },
         )
+    # 0061: an expired key is refused with the date it stopped working. The
+    # comparison ran on the database clock in ``lookup_api_key``.
+    if getattr(row, "expired", False):
+        raise _401_expired(getattr(row, "expires_at", None))
     role = getattr(row, "role", None)
     if role is None:
         role = await lookup_user_role(row.user_id)
     role = role or "analyst"
+    owner_org_role = getattr(row, "key_org_role", None)
+    scope = effective_key_scope(getattr(row, "scope", None), owner_org_role)
     user = AuthedUser(
         user_id=row.user_id,
         api_key_id=row.id,
         key_prefix=row.prefix,
         role=role,
         org_id=key_org_id,
+        scope=scope,
     )
     request.state.authed_user = user
     asyncio.create_task(touch_last_used(row.id))
+    method = (getattr(request, "method", None) or "GET").upper()
+    if scope == SCOPE_READ and method not in READ_METHODS:
+        # Every route that takes a key authenticates here, so a read-only key
+        # (or any viewer's key) can never reach a write, whatever the route.
+        await _record_read_only_refusal(request, user, owner_org_role, method)
+        raise _403_read_only(owner_org_role, method)
     return user
+
+
+async def _record_read_only_refusal(
+    request: Request, user: AuthedUser, owner_org_role: str | None, method: str
+) -> None:
+    """Log the refused write in the org's audit log; never blocks the refusal."""
+    try:
+        from src.services.audit_service import record_refusal
+
+        path = getattr(getattr(request, "url", None), "path", "") or ""
+        await record_refusal(
+            user_id=user.user_id,
+            org_id=user.org_id,
+            method=method,
+            path=path,
+            org_role=owner_org_role,
+            reason="api_key_read_only",
+            key_prefix=user.key_prefix,
+        )
+    except Exception:  # pragma: no cover - logging must not change the answer
+        pass

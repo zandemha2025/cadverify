@@ -1,218 +1,262 @@
-"""Integration tests for /api/v1/keys using in-memory DB stubs."""
+"""/api/v1/keys against live Postgres: scope, expiry, org admin governance, secret once.
+
+Each test builds its own organization, people and keys and removes them after.
+"""
 from __future__ import annotations
 
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from fastapi import Response
-from fastapi.testclient import TestClient
+import pytest_asyncio
+from fastapi import FastAPI, Response
+from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock
+from ulid import ULID
+
+from src.auth import keys_api
+from src.auth.dashboard_session import require_dashboard_session
+
+_PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
+_requires_pg = pytest.mark.skipif(
+    not _PG, reason="requires local Postgres (set DATABASE_URL=postgresql://...)"
+)
+
+
+async def _pg(sql: str, *args):
+    import asyncpg
+
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        return await conn.fetch(sql, *args)
+    finally:
+        await conn.close()
 
 
 @pytest.fixture
-def client(monkeypatch):
-    import main as m
-    import src.auth.dashboard_session as ds
-    import src.auth.keys_api as k
+def _engine():
+    import src.db.engine as eng
 
-    # Override dashboard session to return user_id=1 unconditionally.
-    async def fake_session() -> int:
-        return 1
+    eng._ENGINE = None
+    eng._SESSION_FACTORY = None
+    yield eng
+    eng._ENGINE = None
+    eng._SESSION_FACTORY = None
 
-    m.app.dependency_overrides[ds.require_dashboard_session] = fake_session
 
-    # In-memory rows + monotonic id.
-    rows: list[dict] = []
-    counter = {"n": 0}
+class _Org:
+    """One shared org with an admin, a member and a viewer (plus cleanup)."""
 
-    async def fake_create_api_key(uid, name, prefix, hidx, sh):
-        counter["n"] += 1
-        rows.append(
-            {
-                "id": counter["n"],
-                "user_id": uid,
-                "org_id": "org-1",
-                "name": name,
-                "prefix": prefix,
-                "hmac_index": hidx,
-                "secret_hash": sh,
-                "revoked_at": None,
-                "created_at": "2026-04-15T00:00:00",
-                "last_used_at": None,
-            }
+    def __init__(self) -> None:
+        self.tag = uuid.uuid4().hex[:10]
+        self.id = str(ULID())
+        self.other_id = str(ULID())
+        self.users: dict[str, int] = {}
+
+    async def make(self) -> "_Org":
+        for org_id, name in ((self.id, f"Kestrel {self.tag}"), (self.other_id, f"Other {self.tag}")):
+            await _pg(
+                "INSERT INTO organizations (id, name, slug, created_at) VALUES ($1, $2, $3, now())",
+                org_id,
+                name,
+                f"org-{ULID()}".lower(),
+            )
+        for who, role in (("admin", "admin"), ("member", "member"), ("viewer", "viewer")):
+            await self.person(who, role)
+        await self.person("outsider", "admin", org_id=self.other_id)
+        return self
+
+    async def person(self, who: str, role: str, org_id: str | None = None) -> int:
+        org_id = org_id or self.id
+        rows = await _pg(
+            "INSERT INTO users (email, email_lower, auth_provider, current_org_id) "
+            "VALUES ($1, $1, 'password', $2) RETURNING id",
+            f"{who}-{self.tag}@kestrel.example",
+            org_id,
         )
-        return counter["n"]
+        uid = int(rows[0]["id"])
+        self.users[who] = uid
+        await _pg(
+            "INSERT INTO memberships (id, org_id, user_id, org_role, created_at) "
+            "VALUES ($1, $2, $3, $4, now())",
+            str(ULID()),
+            org_id,
+            uid,
+            role,
+        )
+        return uid
 
-    monkeypatch.setattr(k, "create_api_key", fake_create_api_key)
-
-    # Fake async session that intercepts text() queries used by rotate/revoke/list/rename.
-    class _FakeResult:
-        def __init__(self, rows):
-            self._rows = rows
-
-        def first(self):
-            return self._rows[0] if self._rows else None
-
-        def all(self):
-            return self._rows
-
-        def scalar_one_or_none(self):
-            if not self._rows:
-                return None
-            row = self._rows[0]
-            return row[0] if isinstance(row, tuple) else row
-
-    class _FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a):
-            return None
-
-        async def execute(self, stmt, params=None):
-            params = params or {}
-            sql = str(stmt)
-            # LIST
-            if "SELECT id, name, prefix, created_at" in sql:
-                out = [
-                    (
-                        r["id"],
-                        r["name"],
-                        r["prefix"],
-                        r["created_at"],
-                        r["last_used_at"],
-                        r["revoked_at"],
-                    )
-                    for r in rows
-                    if r["user_id"] == params["u"]
-                ]
-                return _FakeResult(out)
-            # ROTATE (update old, return name/org/prefix)
-            if "RETURNING name" in sql and "revoked_at IS NULL" in sql:
-                for r in rows:
-                    if (
-                        r["id"] == params["i"]
-                        and r["user_id"] == params["u"]
-                        and r["revoked_at"] is None
-                    ):
-                        r["revoked_at"] = "2026-04-15T00:00:00"
-                        return _FakeResult(
-                            [(r["name"], r["org_id"], r["prefix"])]
-                        )
-                return _FakeResult([])
-            # ROTATE replacement insert (same transaction as revocation).
-            if "INSERT INTO api_keys" in sql:
-                counter["n"] += 1
-                rows.append(
-                    {
-                        "id": counter["n"],
-                        "user_id": params["u"],
-                        "org_id": params["o"],
-                        "name": params["n"],
-                        "prefix": params["p"],
-                        "hmac_index": params["h"],
-                        "secret_hash": params["s"],
-                        "revoked_at": None,
-                        "created_at": "2026-04-15T00:00:00",
-                        "last_used_at": None,
-                    }
-                )
-                return _FakeResult([(counter["n"],)])
-            # REVOKE
-            if "RETURNING id" in sql and "revoked_at IS NULL" in sql:
-                for r in rows:
-                    if (
-                        r["id"] == params["i"]
-                        and r["user_id"] == params["u"]
-                        and r["revoked_at"] is None
-                    ):
-                        r["revoked_at"] = "2026-04-15T00:00:00"
-                        return _FakeResult(
-                            [(r["id"], r["org_id"], r["prefix"])]
-                        )
-                return _FakeResult([])
-            # RENAME
-            if "SET name = :n" in sql:
-                for r in rows:
-                    if r["id"] == params["i"] and r["user_id"] == params["u"]:
-                        r["name"] = params["n"]
-                        return _FakeResult(
-                            [(r["id"], r["org_id"], r["prefix"])]
-                        )
-                return _FakeResult([])
-            return _FakeResult([])
-
-        async def commit(self):
-            return None
-
-        def add(self, _row):
-            return None
-
-    def fake_session_maker():
-        def _factory():
-            return _FakeSession()
-
-        return _factory
-
-    monkeypatch.setattr(k, "_session", fake_session_maker)
-
-    yield TestClient(m.app)
-    m.app.dependency_overrides.clear()
+    async def cleanup(self) -> None:
+        ids = list(self.users.values())
+        orgs = [self.id, self.other_id]
+        await _pg("DELETE FROM audit_log WHERE org_id = ANY($1::text[])", orgs)
+        await _pg("DELETE FROM api_keys WHERE user_id = ANY($1::bigint[])", ids)
+        await _pg("DELETE FROM memberships WHERE org_id = ANY($1::text[])", orgs)
+        await _pg("DELETE FROM users WHERE id = ANY($1::bigint[])", ids)
+        await _pg("DELETE FROM organizations WHERE id = ANY($1::text[])", orgs)
 
 
-def test_create_key_returns_prefix_and_sets_reveal_cookie(client):
-    r = client.post("/api/v1/keys", json={"name": "CI"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert "prefix" in body and len(body["prefix"]) == 8
-    sc = r.headers.get("set-cookie", "")
-    assert "cv_mint_once=cv_live_" in sc
-    assert "Path=/settings/developer" in sc
-    assert "Max-Age=60" in sc
+def _client(user_id: int) -> AsyncClient:
+    app = FastAPI()
+    app.include_router(keys_api.router)
+
+    async def _session() -> int:
+        return user_id
+
+    app.dependency_overrides[require_dashboard_session] = _session
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://t")
 
 
-def test_rotate_atomic(client):
-    c = client.post("/api/v1/keys", json={"name": "rotate-me"}).json()
-    r = client.post(f"/api/v1/keys/{c['id']}/rotate")
-    assert r.status_code == 200, r.text
-    new_body = r.json()
-    assert new_body["prefix"] != c["prefix"]
-    assert new_body["id"] != c["id"]
+@pytest_asyncio.fixture
+async def org(_engine):
+    o = await _Org().make()
+    try:
+        yield o
+    finally:
+        await o.cleanup()
+        await _engine.dispose_engine()
 
 
-def test_rotate_missing_returns_404(client):
-    r = client.post("/api/v1/keys/9999/rotate")
-    assert r.status_code == 404
-    assert r.json()["code"] == "key_not_found"
+@_requires_pg
+@pytest.mark.asyncio
+async def test_create_returns_the_secret_once_with_scope_and_expiry(org):
+    async with _client(org.users["member"]) as c:
+        r = await c.post("/api/v1/keys", json={"name": "  PLM integration  ", "expires_in_days": 90})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["secret"].startswith(f"cv_live_{body['prefix']}_")
+        assert body["name"] == "PLM integration"
+        # Read only is the default for everyone.
+        assert body["scope"] == body["effective_scope"] == "read"
+        expires = datetime.fromisoformat(body["expires_at"])
+        assert timedelta(days=89, hours=23) < expires - datetime.now(timezone.utc) <= timedelta(days=90)
+        assert r.headers["cache-control"] == "no-store"
+        # The legacy developer page still gets its reveal cookie.
+        assert "cv_mint_once=cv_live_" in r.headers["set-cookie"]
+        listed = (await c.get("/api/v1/keys")).json()
+    assert [k["id"] for k in listed] == [body["id"]]
+    assert "secret" not in listed[0] and listed[0]["scope"] == "read" and listed[0]["expired"] is False
+    stored = await _pg("SELECT secret_hash, scope FROM api_keys WHERE id=$1", body["id"])
+    assert body["secret"] not in stored[0]["secret_hash"] and stored[0]["scope"] == "read"
+    audit = await _pg(
+        "SELECT detail_json FROM audit_log WHERE action='api_key.created' AND resource_id=$1",
+        str(body["id"]),
+    )
+    assert '"scope": "read"' in audit[0]["detail_json"]
 
 
-def test_list_keys_returns_created(client):
-    client.post("/api/v1/keys", json={"name": "one"})
-    client.post("/api/v1/keys", json={"name": "two"})
-    r = client.get("/api/v1/keys")
-    assert r.status_code == 200
-    names = {k["name"] for k in r.json()}
-    assert {"one", "two"}.issubset(names)
+@_requires_pg
+@pytest.mark.asyncio
+async def test_a_viewer_can_make_only_read_only_keys(org):
+    async with _client(org.users["viewer"]) as c:
+        refused = await c.post("/api/v1/keys", json={"name": "dana", "scope": "read_write"})
+        assert refused.status_code == 403
+        assert refused.json()["detail"]["code"] == "api_key_scope_not_allowed"
+        made = await c.post("/api/v1/keys", json={"name": "dana", "scope": "read"})
+        assert made.status_code == 200 and made.json()["scope"] == "read"
+    rows = await _pg("SELECT count(*) AS n FROM api_keys WHERE user_id=$1", org.users["viewer"])
+    assert int(rows[0]["n"]) == 1
 
 
-def test_revoke_then_rotate_404(client):
-    c = client.post("/api/v1/keys", json={"name": "x"}).json()
-    r = client.delete(f"/api/v1/keys/{c['id']}")
-    assert r.status_code == 204
-    # Rotating a revoked key should 404.
-    r = client.post(f"/api/v1/keys/{c['id']}/rotate")
-    assert r.status_code == 404
+@_requires_pg
+@pytest.mark.asyncio
+async def test_bad_scope_or_expiry_is_refused(org):
+    async with _client(org.users["member"]) as c:
+        assert (await c.post("/api/v1/keys", json={"scope": "admin"})).status_code == 422
+        assert (await c.post("/api/v1/keys", json={"expires_in_days": 7})).status_code == 422
 
 
-def test_rename(client):
-    c = client.post("/api/v1/keys", json={"name": "old"}).json()
-    r = client.patch(f"/api/v1/keys/{c['id']}", json={"name": "new"})
-    assert r.status_code == 200
-    assert r.json()["name"] == "new"
+@_requires_pg
+@pytest.mark.asyncio
+async def test_an_org_admin_lists_and_revokes_every_key_in_the_org(org):
+    async with _client(org.users["viewer"]) as viewer:
+        dana = (await viewer.post("/api/v1/keys", json={"name": "dana test"})).json()
+    async with _client(org.users["member"]) as member:
+        lee = (await member.post("/api/v1/keys", json={"name": "ERP", "scope": "read_write"})).json()
+        # A member sees only their own keys and can't list or revoke others'.
+        assert (await member.get("/api/v1/keys/org")).status_code == 403
+        assert (await member.delete(f"/api/v1/keys/{dana['id']}")).status_code == 404
+    async with _client(org.users["outsider"]) as outsider:
+        # An admin of another org can't touch this org's keys.
+        assert (await outsider.delete(f"/api/v1/keys/{dana['id']}")).status_code == 404
+    async with _client(org.users["admin"]) as admin:
+        mine = (await admin.post("/api/v1/keys", json={"name": "Sam"})).json()
+        listing = await admin.get("/api/v1/keys/org")
+        assert listing.status_code == 200, listing.text
+        body = listing.json()
+        assert body["org_id"] == org.id and body["org_name"] == f"Kestrel {org.tag}"
+        by_id = {k["id"]: k for k in body["keys"]}
+        assert set(by_id) == {dana["id"], lee["id"], mine["id"]}
+        assert by_id[dana["id"]]["owner_email"] == f"viewer-{org.tag}@kestrel.example"
+        assert by_id[dana["id"]]["owner_role"] == "viewer"
+        assert by_id[lee["id"]]["owner_role"] == "member" and by_id[lee["id"]]["scope"] == "read_write"
+        assert by_id[mine["id"]]["yours"] is True and by_id[dana["id"]]["yours"] is False
+        assert all("secret" not in k for k in body["keys"])
+
+        revoked = await admin.delete(f"/api/v1/keys/{dana['id']}")
+        assert revoked.status_code == 204
+        # The admin can't rotate or rename someone else's key (that would hand
+        # the admin a secret that acts as that person).
+        assert (await admin.post(f"/api/v1/keys/{lee['id']}/rotate")).status_code == 404
+        assert (await admin.patch(f"/api/v1/keys/{lee['id']}", json={"name": "x"})).status_code == 404
+    rows = await _pg("SELECT revoked_at FROM api_keys WHERE id=$1", dana["id"])
+    assert rows[0]["revoked_at"] is not None
+    audit = await _pg(
+        "SELECT user_id, detail_json FROM audit_log WHERE action='api_key.revoked' AND resource_id=$1",
+        str(dana["id"]),
+    )
+    assert int(audit[0]["user_id"]) == org.users["admin"]
+    assert '"reason": "org_admin_revoked"' in audit[0]["detail_json"]
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_rotate_keeps_name_scope_and_lifetime_and_returns_the_new_secret(org):
+    async with _client(org.users["member"]) as c:
+        made = (await c.post("/api/v1/keys", json={"name": "rotate-me", "scope": "read_write", "expires_in_days": 30})).json()
+        rotated = await c.post(f"/api/v1/keys/{made['id']}/rotate")
+        assert rotated.status_code == 200, rotated.text
+        new = rotated.json()
+        assert new["id"] != made["id"] and new["prefix"] != made["prefix"]
+        assert new["secret"].startswith(f"cv_live_{new['prefix']}_") and new["secret"] != made["secret"]
+        assert new["name"] == "rotate-me" and new["scope"] == "read_write"
+        left = datetime.fromisoformat(new["expires_at"]) - datetime.now(timezone.utc)
+        assert timedelta(days=29, hours=23) < left <= timedelta(days=30)
+        # The old key is revoked and can't be rotated again.
+        assert (await c.post(f"/api/v1/keys/{made['id']}/rotate")).status_code == 404
+        assert (await c.post("/api/v1/keys/999999999/rotate")).status_code == 404
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_rotating_a_demoted_members_key_makes_it_read_only(org):
+    async with _client(org.users["member"]) as c:
+        made = (await c.post("/api/v1/keys", json={"name": "was member", "scope": "read_write"})).json()
+        await _pg(
+            "UPDATE memberships SET org_role='viewer' WHERE user_id=$1 AND org_id=$2",
+            org.users["member"],
+            org.id,
+        )
+        listed = (await c.get("/api/v1/keys")).json()
+        assert listed[0]["scope"] == "read_write" and listed[0]["effective_scope"] == "read"
+        rotated = (await c.post(f"/api/v1/keys/{made['id']}/rotate")).json()
+    assert rotated["scope"] == rotated["effective_scope"] == "read"
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_rename_trims_and_revoke_then_rename_still_names_it(org):
+    async with _client(org.users["member"]) as c:
+        made = (await c.post("/api/v1/keys", json={"name": "old"})).json()
+        renamed = await c.patch(f"/api/v1/keys/{made['id']}", json={"name": "  new  "})
+        assert renamed.status_code == 200 and renamed.json()["name"] == "new"
+        assert (await c.delete(f"/api/v1/keys/{made['id']}")).status_code == 204
+        assert (await c.delete(f"/api/v1/keys/{made['id']}")).status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_rotate_audit_failure_never_commits_revocation(monkeypatch):
-    import src.auth.keys_api as keys_api
-
     class Result:
         def __init__(self, row):
             self.row = row
@@ -222,7 +266,8 @@ async def test_rotate_audit_failure_never_commits_revocation(monkeypatch):
 
     session = AsyncMock()
     session.execute.side_effect = [
-        Result(("rotate-me", "org-1", "oldpref")),
+        Result(("rotate-me", "org-1", "oldpref", "read", None)),
+        Result(("member",)),
         Result((99,)),
     ]
 

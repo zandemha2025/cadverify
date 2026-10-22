@@ -40,6 +40,14 @@ class ApiKeyRow:
     # these to match before admitting the request.
     org_id: str | None = None
     active_org_id: str | None = None
+    # 0061: the key's own scope ('read', 'read_write', or None = read and
+    # write for keys made before 0061), when it stops working, whether that
+    # moment has passed on the database clock, and the owner's org role in the
+    # key's issuing org (a viewer's key is read only whatever its scope says).
+    scope: str | None = None
+    expires_at: object = None
+    expired: bool = False
+    key_org_role: str | None = None
 
 
 @dataclass
@@ -407,7 +415,10 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
                     "(SELECT oldest_m.org_id FROM memberships oldest_m "
                     " WHERE oldest_m.user_id = k.user_id "
                     " ORDER BY oldest_m.created_at ASC, oldest_m.id ASC LIMIT 1)"
-                    ") AS active_org_id "
+                    ") AS active_org_id, "
+                    "k.scope, k.expires_at, "
+                    "(k.expires_at IS NOT NULL AND k.expires_at <= now()) AS expired, "
+                    "key_m.org_role AS key_org_role "
                     "FROM api_keys k JOIN users u ON u.id = k.user_id "
                     "JOIN memberships key_m ON key_m.user_id = k.user_id "
                     "AND key_m.org_id = k.org_id "
