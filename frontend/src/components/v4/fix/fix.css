@@ -37,6 +37,9 @@
 .ob .pv .kkick{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .ob .pv .kkick > span:last-child{display:flex;gap:6px;align-items:center}
 .ob .pv .kcode{font-family:var(--font-geist-mono),ui-monospace,monospace;font-size:11.5px;color:var(--ink3);overflow-wrap:anywhere}
+.ob .pv .kdet{margin:8px 12px 0;font-size:12.5px;color:var(--ink3)}
+.ob .pv .kdet summary{cursor:pointer;color:var(--ink2);width:max-content}
+.ob .pv .kdet > span{display:block;margin-top:4px}
 .ob .pv .kplain{margin:10px 12px 0;font-size:14px;color:var(--ink2);line-height:1.5}
 .ob .pv .krule{margin:8px 12px 0;padding:8px 12px;border-radius:12px;background:rgba(20,24,31,.035);font-size:12.5px;color:var(--ink2);display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px}
 .ob .pv .krule span:nth-child(odd){color:var(--ink3)}

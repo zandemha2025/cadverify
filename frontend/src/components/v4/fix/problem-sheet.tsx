@@ -157,9 +157,7 @@ export function ProblemSheet() {
           </span>
         </div>
         <h2 className="stitle">{P.title}</h2>
-        <p className="smeta">
-          {ut(P.where)} · <span className="kcode">{P.codes.join(" · ")}</span>
-        </p>
+        <p className="smeta">{ut(P.where)}</p>
         <div className="figs" aria-live="polite">
           {figs.map((g) => (
             <div className="fig" key={g.k}>
@@ -184,6 +182,13 @@ export function ProblemSheet() {
             <span>Cited</span>
             <span>{rule.source}</span>
           </div>
+          {/* The engine's rule names, for anyone matching this to a report or the API. */}
+          <details className="kdet">
+            <summary>Details</summary>
+            <span>
+              Engine {P.codes.length === 1 ? "rule" : "rules"}: <span className="kcode">{P.codes.join(" · ")}</span>
+            </span>
+          </details>
         </div>
         <div className="gh" style={{ marginTop: 6 }}>
           <span>The fix</span>

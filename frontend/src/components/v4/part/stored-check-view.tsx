@@ -214,6 +214,16 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
               </li>
             ))}
           </ol>
+          {steps.some((x) => x.tech) ? (
+            <details className="sc-tech">
+              <summary>Details</summary>
+              <ul>
+                {steps.filter((x) => x.tech).map((x) => (
+                  <li key={x.key}>{x.tech}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
           {failed ? null : <StoredMaterial id={id} current={c.materialClass} open={!c.checkId && !c.link} />}
           <div className="ft">
             <span>{failed ? (c.failure?.code === "CHECK_TOO_LARGE" || c.failure?.code?.startsWith("LINK_") || !c.checkId ? "Nothing was charged." : "Nothing after this step ran.") : "The same file always gets the same result."}</span>

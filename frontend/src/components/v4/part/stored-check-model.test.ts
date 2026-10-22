@@ -31,7 +31,12 @@ test("the worker's stages move the steps along, and done is done", () => {
   assert.deepEqual(states({ ...base, phase: "measuring", checkId: "C" }), ["upload:done", "verify:done", "size:done", "measure:now", "price:wait"]);
   const done = { ...base, phase: "done" as const, checkId: "C", memory: { need_bytes: 0.9 * GB, budget_bytes: 1.2 * GB } };
   assert.deepEqual(states(done), ["upload:done", "verify:done", "size:done", "measure:done", "price:done"]);
-  assert.equal(storedSteps(done)[2].d, "About 922 MB of 1.2 GB this worker has for one check");
+  // Plain words in the step; the worker's memory and the fingerprint only under Details.
+  assert.equal(storedSteps(done)[2].d, "It fits");
+  assert.equal(storedSteps(done)[2].tech, "Memory: about 922 MB of the 1.2 GB one check may use on this worker");
+  assert.equal(storedSteps(done)[1].t, "Upload checked");
+  assert.match(storedSteps(done)[1].tech ?? "", /SHA-256/);
+  assert.ok(storedSteps(done).every((x) => !/SHA-256|worker has|memory/i.test(`${x.t} ${x.d}`)));
   const open = { ...done, geometryInvalid: "the mesh has 12 open edges" };
   assert.equal(storedSteps(open)[4].state, "skip");
 });
@@ -67,7 +72,7 @@ test("a share link: one fetch step, on the server, then the worker's stages", ()
   assert.ok(f > 0.3 && f < 0.6, String(f));
   const measuring = { ...link, name: "bracket.step", phase: "measuring" as const, checkId: "C", fetchedBytes: 12 * 1024 * 1024 };
   assert.deepEqual(states(measuring), ["fetch:done", "size:done", "measure:now", "price:wait"]);
-  assert.equal(storedSteps(measuring)[0].d, "12 MB fetched · its SHA-256 taken as it arrived");
+  assert.equal(storedSteps(measuring)[0].d, "12 MB fetched · checked as it arrived");
   const zipped = { ...measuring, name: "bracket.step.gz", phase: "unpacking" as const };
   assert.deepEqual(states(zipped), ["fetch:done", "unpack:now", "size:wait", "measure:wait", "price:wait"]);
 });

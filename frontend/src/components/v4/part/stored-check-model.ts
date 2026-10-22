@@ -43,8 +43,11 @@ export type StepState = "done" | "now" | "wait" | "bad" | "skip";
 export interface StoredStep {
   key: "upload" | "fetch" | "verify" | "unpack" | "size" | "measure" | "price";
   t: string;
+  /** In plain words. */
   d: string;
   state: StepState;
+  /** The technical fact behind it (a fingerprint, the worker's memory), for a "Details" disclosure. */
+  tech?: string;
 }
 
 const ORDER: StoredPhaseName[] = ["hashing", "uploading", "finishing", "starting", "queued", "fetching", "verifying", "unpacking", "sizing", "measuring", "pricing", "done"];
@@ -100,7 +103,7 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
     return i < at ? "done" : i === at ? "now" : "wait";
   };
   const steps: StoredStep[] = [];
-  const st = (key: StoredStep["key"], t: string, d: string) => steps.push({ key, t, d, state: stateOf(key) });
+  const st = (key: StoredStep["key"], t: string, d: string, tech?: string) => steps.push({ key, t, d, state: stateOf(key), ...(tech ? { tech } : {}) });
 
   if (link) {
     const f = stateOf("fetch");
@@ -110,12 +113,13 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
       f === "bad"
         ? c.failure?.detail ?? "The file didn’t arrive."
         : f === "done"
-          ? `${c.fetchedBytes ? `${sizeText(c.fetchedBytes)} fetched` : "Fetched"} · its SHA-256 taken as it arrived`
+          ? `${c.fetchedBytes ? `${sizeText(c.fetchedBytes)} fetched` : "Fetched"} · checked as it arrived`
           : c.phase === "fetching"
             ? `Fetching on the server${c.fetchedBytes ? ` · ${sizeText(c.fetchedBytes)}` : ""} · nothing downloads to this browser`
             : c.phase === "starting"
               ? "Sending the link"
               : "Waiting for a worker",
+      f === "done" ? "Fingerprinted (SHA-256) as it streamed in" : undefined,
     );
   }
   const up = link ? null : stateOf("upload");
@@ -135,8 +139,9 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
   const v = link ? null : stateOf("verify");
   if (v) st(
     "verify",
-    "Fingerprint",
-    v === "bad" ? c.failure?.detail ?? "The upload didn’t match." : v === "done" ? "Matches the file this browser sent" : c.phase === "queued" || c.phase === "starting" ? "Waiting for a worker" : "The server reads the whole file and checks its SHA-256",
+    "Upload checked",
+    v === "bad" ? c.failure?.detail ?? "The upload didn’t match." : v === "done" ? "Matches the file this browser sent" : c.phase === "queued" || c.phase === "starting" ? "Waiting for a worker" : "Making sure every byte arrived",
+    v === "done" ? "The server read the whole file and its SHA-256 matched this browser's" : undefined,
   );
   if (zipped) {
     const u = stateOf("unpack");
@@ -149,12 +154,13 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
   const s = stateOf("size");
   st(
     "size",
-    "Memory",
+    "Room to check it",
     s === "bad"
       ? c.failure?.detail ?? "Too large to check."
-      : s === "done" && c.memory
-        ? `About ${sizeText(c.memory.need_bytes)} of ${sizeText(c.memory.budget_bytes)} this worker has for one check`
-        : "Estimating what the check needs before it starts",
+      : s === "done"
+        ? "It fits"
+        : "Making sure the check has room before it starts",
+    s === "done" && c.memory ? `Memory: about ${sizeText(c.memory.need_bytes)} of the ${sizeText(c.memory.budget_bytes)} one check may use on this worker` : undefined,
   );
   const m = stateOf("measure");
   st(

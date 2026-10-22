@@ -754,7 +754,7 @@ function ServerBody({ P, close }: { P: Problem; close: () => void }) {
       <div className="db">
         <div className="gh">
           <span>The change</span>
-          <span className="kcode">{P.codes.join(" · ")}</span>
+          <span />
         </div>
         {fix.param ? (
           <div className="kptab">
@@ -906,7 +906,7 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
       <div className="db">
         <div className="gh">
           <span>The change</span>
-          <span className="kcode">{P.codes.join(" · ")}</span>
+          <span />
         </div>
         <p className="kchange">
           {f.fix}
@@ -994,7 +994,7 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
               ) : null}
             </div>
             <small>
-              {red && red.process === best.m.code ? `From the cost engine’s price if redesigned (“${red.caveat}”). ` : "The cost engine’s price for this process on today’s shape. "}
+              {red && red.process === best.m.code ? `ScaleCAD’s estimate for the part with this change (its note: “${red.caveat}”). ` : "ScaleCAD’s estimate for this process, on today’s shape. "}
               {u.today ? `Today’s cheapest at ${qtyWord(uq)} is ${u.today.m.name.toLowerCase()}, ${money(u.today.price)}.` : `Nothing can be ordered today at ${qtyWord(uq)}.`}
             </small>
           </div>

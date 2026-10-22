@@ -26,7 +26,7 @@ import {
 } from "./model";
 import { RunNotice, SheetTop, classLabel, envLine, type FigItem } from "./sheet-bits";
 import { useFix } from "../fix/ctx";
-import { notListedKind, problemForIssue } from "../fix/problems";
+import { notListedKind, plainNumbers, problemForIssue } from "../fix/problems";
 import { pairAt, pickWhy, recordedChoice, enginePick } from "./choice";
 import { featureCells } from "../workbench/derive";
 import { useChoice } from "./choose";
@@ -421,7 +421,7 @@ function Detail({ m, pricing, ch }: { m: Method; pricing: boolean; ch: ReturnTyp
   const lit = !!kind && (m.finding?.faces.length ?? 0) > 0;
   const price = !pricing && !p.costOff ? priceMeta(m, p.q) : null;
   const meta = [dfmMeta(m), price].filter(Boolean).join(" · ");
-  const why = inText(methodWhy(m, p.data.cost?.material_class ?? null), unit);
+  const why = inText(plainNumbers(methodWhy(m, p.data.cost?.material_class ?? null)), unit);
   return (
     <div className="det swap">
       <div className="f">

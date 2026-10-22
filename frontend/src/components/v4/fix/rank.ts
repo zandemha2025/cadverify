@@ -276,9 +276,9 @@ export function unlockRows(
   if (!u.added.length && !u.partial.length && rows.length === 0) {
     rows.push({ k: "Methods it flags", v: String(p.warns.length + p.blocks.length), s: p.warnCount ? `Clears ${p.warnCount} ${p.warnCount === 1 ? "warning" : "warnings"}; nothing it stops` : "Nothing it stops" });
   }
-  const notes: string[] = ["Prices are the cost engine’s price if redesigned, on today’s shape."];
+  const notes: string[] = ["Prices are ScaleCAD’s estimate with this fixed, on today’s size and shape."];
   const red = opts.cost?.decision?.if_redesigned?.[String(q)];
-  if (red && u.added.some((m) => m.code === red.process)) notes.push(`From its price if redesigned: “${red.caveat}”.`);
+  if (red && u.added.some((m) => m.code === red.process)) notes.push(`The estimate’s note: “${red.caveat}”.`);
   if (p.id === "thin") notes.push("Thicker walls add material, so re-check after the change.");
   return { rows: rows.slice(0, 4), foot: notes.join(" ") };
 }

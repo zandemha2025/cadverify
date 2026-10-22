@@ -6,6 +6,7 @@
  * can drag, every process at the quantity, where the money goes, tooling, and the way into the cost breakdown.
  */
 import * as React from "react";
+import { howText } from "../fix/problems";
 import Link from "next/link";
 import { R } from "../routes";
 import { Empty, cx } from "../ui";
@@ -187,7 +188,7 @@ export function CostLines({ estimate, where, max = 12 }: { estimate: NonNullable
             </button>
             {open === l.key ? (
               <span className="lnhow swap">
-                <span className="num">{l.how}</span>
+                <span className="num">{howText(l.how)}</span>
                 <br />
                 <span style={{ color: "var(--ink3)" }}>{l.band}</span>
               </span>

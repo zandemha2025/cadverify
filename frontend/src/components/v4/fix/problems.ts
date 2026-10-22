@@ -52,7 +52,25 @@ const FAMILIES: FamilyDef[] = [
 const BY_CODE = new Map<string, FamilyDef>();
 for (const f of FAMILIES) for (const c of f.codes) BY_CODE.set(c, f);
 
+/** Plain titles for engine codes that have no problem family of their own (never the code itself). */
+const PLAIN_TITLE: Record<string, string> = {
+  WIRE_CANNOT_REACH: "A closed-in face a wire can’t cut",
+  SEALED_VOID_NO_ACCESS: "A sealed void no tool can reach",
+  SEALED_VOID: "A sealed void inside",
+  SEALED_VOID_SUPPORT: "Support sealed inside a void",
+  CONDUCTIVITY_REQUIRED: "Needs a conductive material",
+  NOT_SHEET_STOCK: "Too thick for sheet",
+  BODIES_SHARE_EDGES: "Bodies touch along edges",
+  SETUP_ACCESS_UNVERIFIED: "Tool access not confirmed",
+  BUILD_REORIENTATION_REQUIRED: "Fits only turned on the plate",
+  MACHINING_ALLOWANCE: "Needs machining after printing",
+  PATTERN_TOOLING_REVIEW: "Pattern tooling to review",
+  SINTERING_SHRINKAGE: "Shrinks when sintered",
+  RIB_RULES_CHECK: "Ribs to check",
+};
+
 function titleFromCode(code: string): string {
+  if (PLAIN_TITLE[code]) return PLAIN_TITLE[code];
   const words = code.toLowerCase().replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -129,8 +147,26 @@ export function n0(v: number): string {
 }
 
 /** Engine prose in product typography: "0.8mm" → "0.8 mm", "2x" → "2×", ">=" → "at least". */
+/** A long decimal from an engine message in three figures ("0.347954" → "0.348"); "(0.0%)" as "under 0.1%". */
+export function plainNumbers(text: string): string {
+  return text
+    .replace(/-?\d+\.\d{4,}/g, (m) => {
+      const n = Number(m);
+      if (!Number.isFinite(n)) return m;
+      return Math.abs(n) >= 100 ? n.toFixed(0) : Math.abs(n) >= 10 ? n.toFixed(1) : String(Number(n.toPrecision(3)));
+    })
+    .replace(/\((?:0\.0+|0)%\)/g, "(under 0.1%)");
+}
+
+/** A cost driver's derivation in plain figures: numbers in three figures, no "× region-labor ×1" that changes nothing. */
+export function howText(how: string): string {
+  return plainNumbers(how)
+    .replace(/\s*×\s*region-labor\s*×1(?![\d.])/g, "")
+    .replace(/region-labor\s*×/g, "regional labor ×");
+}
+
 export function tidy(text: string | null | undefined): string {
-  return String(text ?? "")
+  return plainNumbers(String(text ?? ""))
     .replace(/(\d)\s?mm\b/g, "$1 mm")
     .replace(/(\d)mm([²³])/g, "$1 mm$2")
     .replace(/(\d)x\b/g, "$1×")

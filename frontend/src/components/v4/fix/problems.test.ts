@@ -235,3 +235,24 @@ test("the CAD steps give the draft angles the check asks for", () => {
   assert.ok(steps.some((x) => x.includes("at 2° (the inside walls’ rule)")));
   assert.ok(steps.every((x) => !/the (outside|inside) angle/.test(x)));
 });
+
+test("an engine code with no problem family gets a plain title, never the code's words", async () => {
+  const { familyOf } = await import("./problems.ts");
+  assert.equal(familyOf("WIRE_CANNOT_REACH").title, "A closed-in face a wire can’t cut");
+  assert.equal(familyOf("SEALED_VOID_NO_ACCESS").title, "A sealed void no tool can reach");
+  assert.equal(familyOf("SOMETHING_NEW").title, "Something new");
+});
+
+test("engine numbers read in three figures, and a 0.0% share says under 0.1%", async () => {
+  const { plainNumbers, tidy } = await import("./problems.ts");
+  assert.equal(plainNumbers("24 faces (0.0%) below 1.5mm min wall. Thinnest: 0.347954mm."), "24 faces (under 0.1%) below 1.5mm min wall. Thinnest: 0.348mm.");
+  assert.equal(plainNumbers("1.8833 hr × $8/hr"), "1.88 hr × $8/hr");
+  assert.equal(plainNumbers("area 1234.56789 mm²; 45.0° threshold"), "area 1235 mm²; 45.0° threshold");
+  assert.equal(tidy("Thinnest: 0.347954mm"), "Thinnest: 0.348 mm");
+});
+
+test("a cost driver's derivation reads in plain figures", async () => {
+  const { howText } = await import("./problems.ts");
+  assert.equal(howText("1.8833 hr × $8/hr × region-labor ×1 · calibrated"), "1.88 hr × $8/hr · calibrated");
+  assert.equal(howText("2 hr × $60/hr × region-labor ×1.25"), "2 hr × $60/hr × regional labor ×1.25");
+});
