@@ -292,9 +292,11 @@ async def _bodies_inputs(data: bytes, name: str, suffix: str, units: Optional[st
         from src.parsers import parse_pool
 
         try:
-            model = await asyncio.wait_for(parse_pool.submit_assembly_async(data, suffix), timeout=max(5.0, budget / 2))
+            async with parse_pool.pool_slot():  # the timer starts once a pool worker is free
+                model = await asyncio.wait_for(parse_pool.submit_assembly_async(data, suffix),
+                                               timeout=max(5.0, budget / 2))
         except asyncio.TimeoutError:
-            parse_pool.recycle_pool(kill=True)
+            # The extraction retired its pool (its worker dies once the others' are done).
             tree_note = "The file's product tree wasn't read in time; bodies come from its geometry."
         except Exception:
             tree_note = "The file's product tree couldn't be read; bodies come from its geometry."

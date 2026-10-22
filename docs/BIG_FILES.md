@@ -128,6 +128,29 @@ starts when the work does.
   instead waits as long as its hour allows. A batch's `concurrency_limit`
   (10) is unchanged: the items beyond the budget wait.
 
+**Under load.**
+
+- A STEP/IGES parse or assembly extraction waits for one of the parse pool's
+  slots (`parse_pool.pool_slot`) before its timer starts, so the assembly
+  probe's 60 s and a parse's own limit are spent on its own extraction, not
+  behind other parts'.
+- The ladder's rung caps are wall time, so on a saturated box they measure the
+  load. When every rung fails and one ran out of time while the CPUs were
+  oversubscribed (the 1-minute load average above the CPU count, or every
+  compute slot in use), the answer is busy, not "this file can't be meshed":
+  the API's 429 `server_busy`; a catalog part is checked again after the rest
+  of its run; a big file's check ends `CHECK_BUSY`, nothing charged.
+- A rung that hits its cap, or whose request went away, no longer SIGKILLs
+  the whole shared pool (which broke every other request's parse in flight):
+  the pool is retired (`parse_pool.retire_pool`). New work goes to a fresh
+  pool, and the old one, the stuck worker with it, is killed once its other
+  parses have finished, or after `RETIRE_GRACE_SEC` (30 s).
+- After heavy work the process hands freed heap back to the OS
+  (`malloc_trim(0)`, at most every 2 s), and the budget never gives more than
+  0.9 of the machine's memory less the process tree's own resident memory,
+  measured when it was last idle (the interpreter, the warm parse workers and
+  whatever the heap kept).
+
 ## Measurements
 
 Each file was checked by the real worker task (`run_stored_check`: download

@@ -407,26 +407,23 @@ async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
 
     loop = asyncio.get_event_loop()
     timeout = _analysis_timeout_sec()
-    try:
-        return await asyncio.wait_for(
-            _parse_mesh_pooled(data, filename, loop),
-            timeout=timeout,
-        )
-    except asyncio.TimeoutError:
-        # future.cancel() cannot stop a running gmsh C call. Hard-kill the shared
-        # pool so adversarial CAD cannot keep consuming CPU after the request has
-        # returned 504; sibling requests recover through the existing broken-pool
-        # fallback and the next dispatch gets a fresh pool.
-        parse_pool.recycle_pool(kill=True)
-        raise HTTPException(
-            status_code=504,
-            detail=f"File parsing exceeded {timeout:.0f}s timeout.",
-        )
-    except asyncio.CancelledError:
-        # Client disconnect / server cancellation has the same ownership rule as
-        # a timeout: no untrusted parser child may outlive its abandoned request.
-        parse_pool.recycle_pool(kill=True)
-        raise
+    # A pool slot first: waiting behind other parts' parses isn't this part's time.
+    async with parse_pool.pool_slot():
+        try:
+            return await asyncio.wait_for(
+                _parse_mesh_pooled(data, filename, loop),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            # future.cancel() cannot stop a running gmsh C call. No untrusted
+            # parser may outlive its abandoned request (a timeout or a client
+            # gone): the ladder retires the shared pool, so its stuck worker is
+            # killed once the other requests' parses on it have finished (never
+            # theirs with it), and kills its own single-use rung processes.
+            raise HTTPException(
+                status_code=504,
+                detail=f"File parsing exceeded {timeout:.0f}s timeout.",
+            )
 
 
 async def _parse_mesh_in_thread_async(data: bytes, filename: str):
@@ -492,6 +489,9 @@ async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str):
         return await parse_pool.submit_async(data, suffix)
     except HTTPException:
         raise
+    except parse_pool.ParseBusy as e:
+        # A rung ran out of wall time on a saturated box: busy, not a bad file.
+        raise compute_budget.MeshBusy() from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -1322,19 +1322,19 @@ async def _extract_assembly_async(data: bytes, filename: str):
 
     timeout = _analysis_timeout_sec()
     try:
+        # Room in the compute budget, then a pool slot, then the timer: the
+        # probe's 60 s are its own extraction's, not its wait behind others.
         async with compute_budget.hold_for_data(data, filename, label="assembly parse"):
-            return await asyncio.wait_for(
-                parse_pool.submit_assembly_async(data, suffix), timeout=timeout
-            )
+            async with parse_pool.pool_slot():
+                return await asyncio.wait_for(
+                    parse_pool.submit_assembly_async(data, suffix), timeout=timeout
+                )
     except asyncio.TimeoutError:
-        parse_pool.recycle_pool(kill=True)
+        # The extraction retired its pool (its worker dies once the others' are done).
         raise HTTPException(
             status_code=504,
             detail=f"Assembly parsing exceeded {timeout:.0f}s timeout.",
         )
-    except asyncio.CancelledError:
-        parse_pool.recycle_pool(kill=True)
-        raise
     except HTTPException:
         raise
     except ValueError as e:

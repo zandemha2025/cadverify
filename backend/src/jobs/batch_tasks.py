@@ -54,11 +54,13 @@ def _item_wait_seconds(work_seconds: float) -> float:
     return compute_budget.job_wait_seconds(started, work_seconds, JOB_TIMEOUT_SECONDS)
 
 
-async def _put_back_for_room(session, item_ulid: str) -> None:
+async def _put_back_for_room(session, item_ulid: str, *, count_try: bool = False) -> None:
     """No compute room within the item's wait: back to pending, this delivery not counted as a try.
 
     The coordinator publishes it again on a later tick, in its turn. Nothing
-    was computed or saved for it.
+    was computed or saved for it. ``count_try``: its meshing ran out of time on a
+    saturated box (``MeshBusy``); that try counts, so a part that never meshes
+    still ends after its tries with a plain reason.
     """
     try:
         await session.rollback()
@@ -70,12 +72,18 @@ async def _put_back_for_room(session, item_ulid: str) -> None:
     if item is None or item.status != "processing":
         return
     item.status = "pending"
-    item.attempt_count = max(0, int(item.attempt_count or 1) - 1)
     item.started_at = None
     item.lease_started_at = None
-    item.error_message = None
+    if count_try:
+        from src.services.batch_service import STOPPED_MID_CHECK
+
+        item.error_message = STOPPED_MID_CHECK
+    else:
+        item.attempt_count = max(0, int(item.attempt_count or 1) - 1)
+        item.error_message = None
     await session.commit()
-    logger.info("BatchItem %s found no compute room in its wait; back in the run", item_ulid)
+    logger.info("BatchItem %s %s; back in the run", item_ulid,
+                "was too busy to mesh" if count_try else "found no compute room in its wait")
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -1914,6 +1922,8 @@ def _catalog_max_triangles() -> int:
 def _timed_out(exc: BaseException) -> bool:
     from fastapi import HTTPException
 
+    if isinstance(exc, compute_budget.MeshBusy):
+        return True  # meshing ran out of time on a saturated box: check it again later
     if isinstance(exc, HTTPException):
         if exc.status_code == 504:
             return True
@@ -2459,9 +2469,11 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     item_ulid,
                 )
             raise
-        except compute_budget.ComputeBusy:
-            # No room within the wait its job allows: back in the run, try not spent.
-            await _put_back_for_room(session, item_ulid)
+        except compute_budget.ComputeBusy as exc:
+            # No room within the wait its job allows: back in the run, try not
+            # spent. Meshing that ran out of time on a saturated box: back too,
+            # that try counted.
+            await _put_back_for_room(session, item_ulid, count_try=isinstance(exc, compute_budget.MeshBusy))
             return
         except Exception as exc:
             if is_transient_batch_item_error(exc):

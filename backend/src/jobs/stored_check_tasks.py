@@ -459,6 +459,9 @@ async def _check_stored_part(ctx: dict, job_ulid: str, room) -> dict:
                         org_id=meta["org_id"], source_units=params.get("units"), return_persisted_id=True,
                         orientation=params.get("orientation"),
                     )
+                except compute_budget.MeshBusy as exc:
+                    raise _Failed("CHECK_BUSY", "The worker was too busy to mesh this part in time. "
+                                  "Nothing was charged; check the file again.") from exc
                 except HTTPException as exc:
                     detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
                     raise _Failed("CHECK_UNREADABLE" if exc.status_code < 500 else "CHECK_TIMEOUT",

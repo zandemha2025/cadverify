@@ -87,8 +87,10 @@ async def check_file_bodies(
         from src.parsers import parse_pool
 
         try:
-            model = await asyncio.wait_for(parse_pool.submit_assembly_async(file_bytes, Path(filename).suffix.lower()),
-                                           timeout=max(10.0, budget_sec / 3))
+            async with parse_pool.pool_slot():  # the timer starts once a pool worker is free
+                model = await asyncio.wait_for(
+                    parse_pool.submit_assembly_async(file_bytes, Path(filename).suffix.lower()),
+                    timeout=max(10.0, budget_sec / 3))
         except Exception:
             tree_note = "Its product tree couldn't be read; bodies come from its geometry."
     from src.services import compute_budget

@@ -93,6 +93,63 @@ def memory_capacity_bytes() -> int:
     return int(total * fraction)
 
 
+# The process may use at most this share of the machine's memory in all: its own
+# baseline (the interpreter, the parse pool's warm workers, memory its heap kept
+# from earlier work) plus the work in flight. The budget gives no more than what
+# that leaves above the baseline measured when the process was last idle.
+MACHINE_SHARE = 0.9
+# Freed heap goes back to the OS (glibc malloc_trim) after heavy work, at most this often.
+TRIM_EVERY_SECONDS = 2.0
+
+
+def _tree_rss_bytes() -> Optional[int]:
+    """Resident memory of this process and its children (the parse pool's workers)."""
+    def rss(pid) -> int:
+        try:
+            with open(f"/proc/{pid}/status") as fh:
+                for line in fh:
+                    if line.startswith("VmRSS:"):
+                        return int(line.split()[1]) * 1024
+        except OSError:
+            pass
+        return 0
+
+    me = os.getpid()
+    total = rss(me)
+    if not total:
+        return None
+    try:
+        for task in os.listdir(f"/proc/{me}/task"):
+            try:
+                with open(f"/proc/{me}/task/{task}/children") as fh:
+                    total += sum(rss(int(pid)) for pid in fh.read().split())
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return total
+
+
+_LIBC_TRIM = None
+
+
+def give_memory_back() -> None:
+    """Hand freed heap back to the OS (glibc ``malloc_trim(0)``; a no-op elsewhere)."""
+    global _LIBC_TRIM
+    if _LIBC_TRIM is None:
+        try:
+            import ctypes
+
+            _LIBC_TRIM = ctypes.CDLL("libc.so.6").malloc_trim
+        except (OSError, AttributeError):
+            _LIBC_TRIM = False
+    if _LIBC_TRIM:
+        try:
+            _LIBC_TRIM(0)
+        except Exception:
+            pass
+
+
 def compute_slots() -> int:
     """``COMPUTE_SLOTS``, else ``max(2, os.cpu_count())``."""
     default = max(2, os.cpu_count() or 2)
@@ -174,6 +231,15 @@ class ComputeBusy(HTTPException):
         )
 
 
+class MeshBusy(ComputeBusy):
+    """A part's meshing ran out of wall time while the CPUs were saturated.
+
+    ``parse_pool.ParseBusy``: the part may well mesh once there is room, so a web
+    request answers busy (the same 429 ``server_busy``), not "can't be meshed";
+    a catalog part is checked again after the rest of its run.
+    """
+
+
 # ---------------------------------------------------------------------------
 # The budget
 # ---------------------------------------------------------------------------
@@ -214,7 +280,9 @@ class Reservation:
                 return
             self.released = True
             granted = self.budget._give_back(self)
+            idle = self.budget.used_slots == 0
         self.budget._wake(granted)
+        self.budget._after_release(idle)
 
 
 class _Waiter:
@@ -240,13 +308,24 @@ class ComputeBudget:
         self._lock = threading.Lock()
         self.used_bytes = 0
         self.used_slots = 0  # one per reservation: the pieces of work running
-        self.capacity_bytes = memory_capacity_bytes()
         self.slots = compute_slots()
         self._queue: deque[_Waiter] = deque()
+        # The process tree's resident memory when it was last idle (no work in flight).
+        self.idle_baseline_bytes: Optional[int] = _tree_rss_bytes()
+        self._last_trim = 0.0
+        self.capacity_bytes = self._capacity()
+
+    def _capacity(self) -> int:
+        """The configured capacity, but no more than the machine's share left above the idle baseline."""
+        configured = memory_capacity_bytes()
+        machine = _machine_memory_bytes()
+        if machine and self.idle_baseline_bytes:
+            return max(0, min(configured, int(machine * MACHINE_SHARE) - self.idle_baseline_bytes))
+        return configured
 
     # -- all of these run under self._lock ---------------------------------
     def _refresh(self) -> None:
-        self.capacity_bytes = memory_capacity_bytes()
+        self.capacity_bytes = self._capacity()
         self.slots = compute_slots()
 
     def _fits(self, need: int) -> bool:
@@ -275,6 +354,36 @@ class ComputeBudget:
         return self._admit_waiting()
 
     # -- outside the lock ----------------------------------------------------
+    def _after_release(self, idle: bool) -> None:
+        """After heavy work: give freed heap back, and when idle, measure the baseline.
+
+        Never on an event loop's thread (a trim of a big heap takes a while):
+        there it is handed to the loop's executor.
+        """
+        now = time.monotonic()
+        if not idle and now - self._last_trim < TRIM_EVERY_SECONDS:
+            return
+        self._last_trim = now
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            try:
+                loop.run_in_executor(None, self._trim_and_measure, idle)
+            except RuntimeError:
+                pass
+            return
+        self._trim_and_measure(idle)
+
+    def _trim_and_measure(self, idle: bool) -> None:
+        give_memory_back()
+        if idle:
+            rss = _tree_rss_bytes()
+            with self._lock:
+                if self.used_slots == 0 and rss:
+                    self.idle_baseline_bytes = rss
+
     def _wake(self, granted: list[_Waiter]) -> None:
         for w in granted:
             try:
@@ -288,6 +397,7 @@ class ComputeBudget:
                 "used_bytes": self.used_bytes, "capacity_bytes": self.capacity_bytes,
                 "used_slots": self.used_slots, "slots": self.slots,
                 "running": self.used_slots, "waiting": len(self._queue),
+                "idle_baseline_bytes": self.idle_baseline_bytes,
             }
 
     async def reserve(self, need_bytes: int, *, wait: Optional[float], label: str = "cad") -> Reservation:
@@ -346,6 +456,7 @@ class ComputeBudget:
     def _state_fields(self) -> dict[str, Any]:
         s = self.snapshot()
         return {"used_mb": round(s["used_bytes"] / MB), "capacity_mb": round(s["capacity_bytes"] / MB),
+                "baseline_mb": round((s["idle_baseline_bytes"] or 0) / MB),
                 "running": s["running"], "slots": s["slots"], "waiting": s["waiting"]}
 
 

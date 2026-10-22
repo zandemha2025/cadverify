@@ -357,12 +357,22 @@ async def test_triangle_cap_enforced_on_pooled_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_timeout_returns_504_and_recycles(monkeypatch):
+async def test_timeout_returns_504_without_killing_other_requests_parses(monkeypatch):
+    """The route answers 504; it never SIGKILLs the shared pool, whose other
+    workers are parsing other requests' parts. The runaway is reclaimed by the
+    ladder itself (``_rung0_via_pool`` retires its pool, the recovery rungs kill
+    their own single-use processes): see test_parse_pool_retire.py."""
     monkeypatch.setattr(routes, "is_step_supported", lambda: True)
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "0.3")
 
+    cancelled = {"n": 0}
+
     async def _slow_submit(data, suffix):
-        await asyncio.sleep(5)  # far beyond the timeout
+        try:
+            await asyncio.sleep(5)  # far beyond the timeout
+        except asyncio.CancelledError:
+            cancelled["n"] += 1  # the ladder sees its cancellation (and retires its pool)
+            raise
         return trimesh.creation.box()
 
     recycled = {"n": 0}
@@ -376,12 +386,12 @@ async def test_timeout_returns_504_and_recycles(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         await _parse_mesh_async(_fake_step_bytes(), "part.step")
     assert ei.value.status_code == 504
-    assert recycled["n"] >= 1, "timeout must recycle the pool to reclaim a runaway"
-    assert recycled["kill"] is True, "timed-out untrusted CAD workers must be killed"
+    assert cancelled["n"] == 1
+    assert recycled["n"] == 0, "a timeout must not kill every other request's parse"
 
 
 @pytest.mark.asyncio
-async def test_cancelled_parse_hard_kills_pool(monkeypatch):
+async def test_cancelled_parse_leaves_the_shared_pool_to_the_ladder(monkeypatch):
     monkeypatch.setattr(routes, "is_step_supported", lambda: True)
 
     started = asyncio.Event()
@@ -404,7 +414,9 @@ async def test_cancelled_parse_hard_kills_pool(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert recycled["kill"] is True
+    # The ladder itself is cancelled (and retires its pool); the route doesn't
+    # kill the shared pool, which holds other requests' parses.
+    assert recycled["kill"] is False
 
 
 # ──────────────────────────────────────────────────────────────

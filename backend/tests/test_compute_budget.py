@@ -304,3 +304,35 @@ async def test_need_for_data_uses_the_memory_model():
     stl = b"solid x\n" + b"facet normal 0 0 1\n" * 100 + b"endsolid\n"
     assert cb.need_for_data(stl, "x.stl") == estimate_memory_bytes_for_data(stl, "x.stl")[0]
     assert cb.need_for_data(b"ISO-10303-21;" * 10, "x.step") >= cb.default_need()
+
+
+# ---------------------------------------------------------------------------
+# The process's own baseline, and memory given back after work
+# ---------------------------------------------------------------------------
+
+
+def test_capacity_leaves_room_for_the_process_baseline(monkeypatch):
+    monkeypatch.delenv("COMPUTE_MEMORY_BUDGET_MB", raising=False)
+    monkeypatch.delenv("COMPUTE_MEMORY_FRACTION", raising=False)
+    monkeypatch.setattr(cb, "_machine_memory_bytes", lambda: 4 * 1024**3)
+    # A 4 GB machine whose process kept 2.4 GB after earlier checks: 0.9 x 4 GB - 2.4 GB.
+    monkeypatch.setattr(cb, "_tree_rss_bytes", lambda: int(2.4 * 1024**3))
+    b = cb.ComputeBudget()
+    assert b.capacity_bytes == int(4 * 1024**3 * cb.MACHINE_SHARE) - int(2.4 * 1024**3)
+    # A lean baseline: the configured 0.7 of the machine is the limit.
+    monkeypatch.setattr(cb, "_tree_rss_bytes", lambda: 300 * MB)
+    assert cb.ComputeBudget().capacity_bytes == int(4 * 1024**3 * 0.7)
+
+
+@pytest.mark.asyncio
+async def test_finished_work_gives_memory_back_and_measures_the_idle_baseline(small_budget, monkeypatch):
+    trims = []
+    monkeypatch.setattr(cb, "give_memory_back", lambda: trims.append(time.monotonic()))
+    monkeypatch.setattr(cb, "_tree_rss_bytes", lambda: 777 * MB)
+    await cb.run_within_budget(lambda: None, need_bytes=100 * MB)
+    for _ in range(100):
+        if trims and small_budget.snapshot()["idle_baseline_bytes"] == 777 * MB:
+            break
+        await asyncio.sleep(0.01)
+    assert trims
+    assert small_budget.snapshot()["idle_baseline_bytes"] == 777 * MB

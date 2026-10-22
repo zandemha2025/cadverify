@@ -33,10 +33,13 @@ first use.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import contextvars
 import logging
 import multiprocessing
 import os
 import threading
+from contextlib import asynccontextmanager
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 from concurrent.futures.process import BrokenProcessPool
 
@@ -52,6 +55,11 @@ _WORKER_CAP = 8
 _POOL_LOCK = threading.Lock()
 _POOL: ProcessPoolExecutor | None = None
 _STOPPING = False
+# The futures running or queued on each shared pool (by id), so a retired pool
+# is killed only once its other parses are done (``retire_pool``).
+_INFLIGHT: dict[int, set] = {}
+# How long a retired pool's other parses may run on before it is killed anyway.
+RETIRE_GRACE_SEC = 30.0
 
 # ── Per-rung wall-clock budget (the periodic-surface fix) ───────────────────
 # gmsh's DEFAULT 2D algorithm (retry-ladder rung 0) grinds for 2+ MINUTES before
@@ -76,6 +84,34 @@ _RECOVERY_FRACTION = 0.5
 
 class _RungTimeout(Exception):
     """A single ladder rung exceeded its wall-clock cap and was hard-killed."""
+
+
+class ParseBusy(ValueError):
+    """Every rung failed, at least one at its wall-clock cap while the CPUs were saturated.
+
+    The caps measure wall time, so on a saturated box they measure the load as
+    much as the part: the part may well mesh once there is room. It carries the
+    ladder's own message (it is still a ValueError); the route answers "busy,
+    try again" (429 ``server_busy``) instead of "this file can't be meshed".
+    """
+
+
+def _saturated() -> bool:
+    """Whether the CPUs are oversubscribed now: the 1-minute load average above the
+    CPU count, or this process's compute budget using every slot."""
+    cpus = os.cpu_count() or 1
+    try:
+        if os.getloadavg()[0] > cpus:
+            return True
+    except OSError:
+        pass
+    try:
+        from src.services import compute_budget
+
+        snap = compute_budget.budget().snapshot()
+        return snap["slots"] > 1 and snap["running"] >= snap["slots"]
+    except Exception:
+        return False
 
 
 def _budget_sec() -> float:
@@ -267,6 +303,60 @@ def prewarm(block: bool = False, timeout: float | None = 45.0) -> int:
     return len(futures)
 
 
+def _submit_tracked(pool: ProcessPoolExecutor, fn, *args):
+    """``pool.submit`` that remembers the future until it is done (for ``retire_pool``)."""
+    cfut = pool.submit(fn, *args)
+    key = id(pool)
+    with _POOL_LOCK:
+        _INFLIGHT.setdefault(key, set()).add(cfut)
+
+    def _done(f, key=key):
+        with _POOL_LOCK:
+            live = _INFLIGHT.get(key)
+            if live is not None:
+                live.discard(f)
+
+    cfut.add_done_callback(_done)
+    return cfut
+
+
+def retire_pool(pool: ProcessPoolExecutor, stuck=None, *, grace: float | None = None) -> None:
+    """Take a shared pool out of service without killing the other parses on it.
+
+    For a parse that ran past its cap or whose request went away: gmsh's C call
+    can't be interrupted, so its worker must die, but SIGKILLing the whole pool
+    at once (``recycle_pool(kill=True)``) breaks every other request's parse on
+    it. Instead new work goes to a fresh pool at once, and this one is
+    hard-killed, the stuck worker with it, as soon as its other in-flight
+    parses have finished, or after ``grace`` seconds (``RETIRE_GRACE_SEC``),
+    whichever is first. A parse still on it then gets ``BrokenProcessPool`` and
+    the usual isolated retry.
+    """
+    global _POOL
+    grace = RETIRE_GRACE_SEC if grace is None else grace
+    with _POOL_LOCK:
+        if _POOL is pool:
+            _POOL = None
+        others = [f for f in _INFLIGHT.get(id(pool), ()) if f is not stuck and not f.done()]
+    logger.info("parse pool retired (%d other parses finish first)", len(others))
+
+    def _reap() -> None:
+        if others:
+            concurrent.futures.wait(others, timeout=grace)
+        _hard_kill(pool)
+        try:
+            pool.shutdown(wait=False, cancel_futures=False)
+        except Exception:
+            logger.exception("retired parse pool shutdown failed")
+        with _POOL_LOCK:
+            _INFLIGHT.pop(id(pool), None)
+
+    if others:
+        threading.Thread(target=_reap, name="parse-pool-reaper", daemon=True).start()
+    else:
+        _reap()
+
+
 def recycle_pool(kill: bool = False) -> None:
     """Tear down the current pool and drop the singleton so the NEXT dispatch
     lazily builds a fresh one.
@@ -349,6 +439,30 @@ def _ladder_semaphore() -> "asyncio.Semaphore":
         sem = asyncio.Semaphore(worker_count())
         setattr(loop, "_cadverify_ladder_sem", sem)
     return sem
+
+
+# The task holding a pool slot (a task it starts is not it, and waits for its own).
+_SLOT_HOLDER: contextvars.ContextVar[object] = contextvars.ContextVar("cadverify_parse_slot_holder", default=None)
+
+
+@asynccontextmanager
+async def pool_slot():
+    """One of the pool's ``worker_count()`` slots for this task (re-entrant in the task).
+
+    A caller with a time limit takes it before starting its timer, so the time
+    spent waiting for a free pool worker behind other parts isn't counted as its
+    own (the ladder and the assembly extraction take it again harmlessly).
+    """
+    me = asyncio.current_task()
+    if me is not None and _SLOT_HOLDER.get() is me:
+        yield
+        return
+    async with _ladder_semaphore():
+        token = _SLOT_HOLDER.set(me)
+        try:
+            yield
+        finally:
+            _SLOT_HOLDER.reset(token)
 
 
 def _hard_kill(ex: ProcessPoolExecutor) -> None:
@@ -462,8 +576,9 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
     caps = _rung_caps(_budget_sec(), n)
     last_msg = ""
     best_open: trimesh.Trimesh | None = None
+    capped_when_saturated = False
 
-    async with _ladder_semaphore():
+    async with pool_slot():
         for idx in range(n):
             try:
                 if idx == 0:
@@ -487,7 +602,10 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
                 ) from exc
             except _RungTimeout as exc:
                 last_msg = str(exc) or "periodic surface grind (rung capped)"
-                logger.info("step ladder rung %d hit its cap; advancing (%s)", idx, exc)
+                saturated = _saturated()
+                capped_when_saturated = capped_when_saturated or saturated
+                logger.info("step ladder rung %d hit its cap%s; advancing (%s)", idx,
+                            " with the CPUs saturated" if saturated else "", exc)
                 continue
             except sm._EmptyMeshError as exc:
                 last_msg = str(exc)
@@ -531,8 +649,14 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
         )
         return best_open
 
-    # Every rung failed within budget -> the SPECIFIC, honest 400 (not a 504).
-    raise sm.ladder_failure_error(last_msg)
+    # Every rung failed within budget -> the SPECIFIC, honest 400 (not a 504),
+    # unless a rung ran out of wall time while the box was saturated: then the
+    # part may be fine, and the honest answer is "busy, try again".
+    failure = sm.ladder_failure_error(last_msg)
+    if capped_when_saturated:
+        logger.warning("step ladder failed with a rung capped under saturation; answering busy")
+        raise ParseBusy(str(failure))
+    raise failure
 
 
 async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop):
@@ -542,15 +666,21 @@ async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop):
     do NOT hard-kill a shared pool worker (it may serve sibling requests; see
     recycle_pool). ``BrokenProcessPool`` propagates for the caller's fallback."""
     pool = _get_pool()
-    cfut = pool.submit(_rung_worker, data, suffix, 0)
+    cfut = _submit_tracked(pool, _rung_worker, data, suffix, 0)
     try:
         return await asyncio.wait_for(asyncio.wrap_future(cfut), cap)
     except asyncio.TimeoutError:
-        # Hard-kill the grinding worker + rebuild the pool so we don't leak a
-        # runaway (or block exit) while the recovery rungs run. Siblings recover
-        # via submit_async's BrokenProcessPool -> isolated retry.
-        recycle_pool(kill=True)
+        # The grinding worker must die so it doesn't keep a CPU (or block exit)
+        # while the recovery rungs run, but the other requests' parses on the
+        # same pool must not: the pool is retired, not killed outright.
+        if not cfut.cancel() and not cfut.done():
+            retire_pool(pool, stuck=cfut)
         raise _RungTimeout(f"rung 0 exceeded {cap:.0f}s cap (periodic-surface grind)")
+    except asyncio.CancelledError:
+        # The request's time limit or the request itself went away mid-rung.
+        if not cfut.cancel() and not cfut.done():
+            retire_pool(pool, stuck=cfut)
+        raise
 
 
 def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
@@ -614,14 +744,23 @@ async def submit_assembly_async(data: bytes, suffix: str):
         return await loop.run_in_executor(
             None, _extract_assembly_worker, data, suffix
         )
-    pool = _get_pool()
-    try:
-        cfut = pool.submit(_extract_assembly_worker, data, suffix)
-        return await asyncio.wrap_future(cfut)
-    except BrokenProcessPool:
-        logger.warning(
-            "parse pool worker died during assembly extraction; hard-recycling + "
-            "isolated retry"
-        )
-        recycle_pool(kill=True)
-        return await _run_assembly_killable(data, suffix)
+    async with pool_slot():
+        pool = _get_pool()
+        try:
+            cfut = _submit_tracked(pool, _extract_assembly_worker, data, suffix)
+            try:
+                return await asyncio.wrap_future(cfut)
+            except asyncio.CancelledError:
+                # The caller's time limit or its request went away. A queued
+                # extraction is simply dropped; a running one is gmsh in C: its
+                # pool is retired, its siblings left to finish.
+                if not cfut.cancel() and not cfut.done():
+                    retire_pool(pool, stuck=cfut)
+                raise
+        except BrokenProcessPool:
+            logger.warning(
+                "parse pool worker died during assembly extraction; hard-recycling + "
+                "isolated retry"
+            )
+            recycle_pool(kill=True)
+            return await _run_assembly_killable(data, suffix)
