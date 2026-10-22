@@ -24,12 +24,14 @@ Filament (FDM), per part
             (support: interface layers under the area, a sparse body down the column)
 Resin (SLA, whole-layer exposure), per part
   time      per plate: t0 + t_layer·ceil((h + lift) / layer), ÷ n
-  resin     V + p·F + u·C   (supports and the pad)
+  resin     V + p·P + u·C   (the pad and supports; each part on a plate has its own pad)
 
 V volume, A area, A_wall wall area (faces within 60° of vertical), A_flat the rest
 (top and bottom skins), h height, F footprint, A_need / C_need area and column
 (footprint × drop) under the faces needing support, C the column under every
-overhanging face.
+overhanging face, P the pad: the part's outline seen from above, grown by the
+pad margin (it was the box footprint F, which overstated round, hollow and
+open-frame parts by up to 2.5×).
 Calibrated estimates, not quotes: a shop's own slicer settings, materials and
 machines differ.
 """
@@ -68,8 +70,11 @@ RESIN = {
     "lift_mm": 6.0,
     "t0_s": 181.9,
     "t_layer_s": 4.75,
-    "pad_ml_per_cm2": 0.2163,
-    "support_ml_per_cm3_column": 0.09387,
+    # The pad follows the part's outline from above grown by pad_margin_mm, not its box
+    # (refit 2026-10-22 on the same split; held-out resin median 5.5% → 1.2%, plates 25.8% → 6.6%).
+    "pad_ml_per_cm2": 0.1826,
+    "pad_margin_mm": 2.0,
+    "support_ml_per_cm3_column": 0.0752,
 }
 # Held-out error against the slicer (parts the fit never saw, every calibration coupon among
 # them): n placements, median and 90th-percentile |error| in %. One part on the plate; FDM
@@ -80,7 +85,7 @@ CALIBRATION: dict = {
     "fdm_filament": {"n": 165, "median_abs_pct": 3.6, "p90_abs_pct": 10.6},
     "fdm_support": {"n": 118, "median_abs_pct": 8.4, "p90_abs_pct": 59.2},
     "resin_time": {"n": 18, "median_abs_pct": 0.0, "p90_abs_pct": 0.0},
-    "resin": {"n": 18, "median_abs_pct": 5.5, "p90_abs_pct": 19.8},
+    "resin": {"n": 22, "median_abs_pct": 1.2, "p90_abs_pct": 2.9},
 }
 CALIBRATION_NOTE = "slicer-calibrated estimate, not a quote"
 CALIBRATED_AGAINST = ("calibrated against PrusaSlicer 2.7.2 (MK4 IS; CoreXY profile with Bambu X1C motion "
@@ -114,6 +119,9 @@ class PrintFeatures:
     # Cross-sections at FDM layer mid-heights (every ``layer_step``-th layer): perimeter mm, area mm².
     layer_perimeter_mm: tuple = field(default=(), repr=False, compare=False)
     layer_area_mm2: tuple = field(default=(), repr=False, compare=False)
+    # The resin pad's area, cm²: the outline from above grown by RESIN["pad_margin_mm"]
+    # (``pad_area_cm2``). 0 => not measured: the box footprint grown by the margin.
+    pad_cm2: float = 0.0
 
 
 LAYER_SAMPLES = 400  # cross-sections read per part at most; more layers are sampled evenly
@@ -172,6 +180,23 @@ def layer_profile(mesh, layer_mm: float = 0.2, cap: int = LAYER_SAMPLES) -> tupl
     return perimeter, np.maximum(area, 0.0)
 
 
+def pad_area_cm2(mesh, margin_mm: float | None = None) -> float:
+    """Area (cm²) of the resin pad under ``mesh`` as placed: its outline seen from above (the
+    union of every face's shadow), grown by the pad margin with square corners. A mesh whose
+    outline can't be read gets its box footprint grown by the same margin."""
+    w = RESIN["pad_margin_mm"] if margin_mm is None else float(margin_mm)
+    try:
+        from trimesh.path.polygons import projected
+
+        shadow = projected(mesh, normal=[0.0, 0.0, 1.0])
+    except Exception:
+        shadow = None
+    if shadow is None or shadow.is_empty or not shadow.area > 0:
+        ext = mesh.extents
+        return float((ext[0] + 2 * w) * (ext[1] + 2 * w)) / 100.0
+    return float(shadow.buffer(w, join_style="mitre").area) / 100.0
+
+
 _cache: "OrderedDict[str, PrintFeatures]" = OrderedDict()
 _lock = threading.Lock()
 _CACHE_ENTRIES = 32
@@ -222,6 +247,7 @@ def placed_features(mesh) -> PrintFeatures:
         fdm_need_cm2=fdm.area_mm2 / 100.0, fdm_column_cm3=fdm.column_mm3 / 1000.0, fdm_bridges=fdm.bridges,
         resin_column_cm3=resin.column_mm3 / 1000.0, outline_xy=outline,
         layer_perimeter_mm=tuple(perimeter.round(4)), layer_area_mm2=tuple(area.round(4)),
+        pad_cm2=pad_area_cm2(bounded),
     )
     with _lock:
         _cache[key] = out
@@ -316,10 +342,13 @@ def resin_estimate(f: PrintFeatures, parts_per_plate: int = 1, cal: dict | None 
     layers = max(1, math.ceil(round((f.height_mm + c["lift_mm"]) / c["layer_mm"], 6)))
     plate_s = c["t0_s"] + c["t_layer_s"] * layers
     hours = plate_s / n / 3600.0
-    support = c["pad_ml_per_cm2"] * f.footprint_cm2 + c["support_ml_per_cm3_column"] * f.resin_column_cm3
+    w = c.get("pad_margin_mm", 0.0)
+    pad_cm2 = f.pad_cm2 if f.pad_cm2 > 0 else (f.x_mm + 2 * w) * (f.y_mm + 2 * w) / 100.0
+    support = c["pad_ml_per_cm2"] * pad_cm2 + c["support_ml_per_cm3_column"] * f.resin_column_cm3
     resin = f.volume_cm3 + support
     material_source = (f"resin {f.volume_cm3:.2f} cm³ part + {support:.2f} cm³ supports and pad "
-                       f"(pad under {f.footprint_cm2:.1f} cm², supports under {f.resin_column_cm3:.1f} cm³ of overhang)")
+                       f"(pad {pad_cm2:.1f} cm², the part's outline and {w:g} mm around it; supports under "
+                       f"{f.resin_column_cm3:.1f} cm³ of overhang)")
     source = (f"{CALIBRATION_NOTE}, {_calibration('resin_time', 'resin', 'resin')}; "
               f"priced on the {c['printer']}: {layers} layers of {c['layer_mm']:g} mm "
               f"({f.height_mm:.1f} mm tall as checked + {c['lift_mm']:g} mm supports and pad), every layer "

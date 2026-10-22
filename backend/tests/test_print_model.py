@@ -146,6 +146,47 @@ def test_resin_time_is_linear_in_layers_like_the_slicer():
     assert resin_estimate(f, 4).hours_per_part == pytest.approx(est.hours_per_part / 4)
 
 
+# PrusaSlicer 2.7.2 SL1S ('0.05 Normal', default supports and pad), the calibration coupons and
+# generated parts in their file orientation: resin ml per part (a coupon's from its full plate;
+# each part on a plate has its own pad, so it matches the part sliced alone).
+SLICED_SL1S_RESIN = {
+    "cv_cal_small_flat_housing.stl": 8.422,
+    "cv_cal_small_rotational_sensor.stl": 6.934,
+    "cv_cal_tiny_boxy_cover.stl": 4.729,
+    "cv_cal_tiny_flat_gasket.stl": 1.230,
+    "cv_cal_tiny_rotational_adapter.stl": 4.293,
+    "cv_cal_tiny_rotational_ring.stl": 1.984,
+    "cv_cal_small_boxy_bracket.stl": 45.333,
+}
+
+
+def test_the_resin_pad_follows_the_parts_outline_not_its_box():
+    # Round 7: the pad was priced over the box footprint, 26% over on the coupons' plates and
+    # 2.5x on a thin gasket. Over the outline from above grown by 2 mm it stays within 12%.
+    from pathlib import Path as _P
+
+    from src.costing.calibration_fixtures import ensure_calibration_fixtures
+
+    root = ensure_calibration_fixtures(_P(__file__).resolve().parents[2] / ".pytest_cache")
+    errors = {}
+    for name, slicer_ml in SLICED_SL1S_RESIN.items():
+        f = placed_features(trimesh.load(root / name, force="mesh"))
+        est = resin_estimate(f, 1)
+        errors[name] = est.material_cm3 / slicer_ml - 1
+        assert "the part's outline and 2 mm around it" in est.material_source
+    assert all(abs(e) < 0.12 for e in errors.values()), errors
+    assert sorted(abs(e) for e in errors.values())[len(errors) // 2] < 0.08, errors
+    # A box's pad is its footprint grown by 2 mm on every side; a ring's leaves its hole open.
+    box = _features(_box((20, 15, 10), (0, 0, 5)))
+    assert box.pad_cm2 == pytest.approx(24 * 19 / 100.0, rel=0.005)
+    ring = _features(trimesh.creation.annulus(r_min=10, r_max=20, height=5, sections=256))
+    assert ring.pad_cm2 == pytest.approx(math.pi * (22 ** 2 - 8 ** 2) / 100.0, rel=0.01)
+    assert ring.pad_cm2 < 0.85 * (ring.x_mm + 4) * (ring.y_mm + 4) / 100.0
+    # Features built without an outline fall back to the box grown by the margin.
+    bare = PrintFeatures(**{**box.__dict__, "pad_cm2": 0.0})
+    assert resin_estimate(bare, 1).material_cm3 == pytest.approx(resin_estimate(box, 1).material_cm3, rel=0.005)
+
+
 def test_plate_capacity_uses_the_footprint_as_checked():
     f = _features(_box((100, 100, 20), (0, 0, 0)))
     # 250 × 250 plate, 4 mm apart: a 2 × 2 grid; 0.5 areal packing allows int(0.5·62500/104²) = 2.
