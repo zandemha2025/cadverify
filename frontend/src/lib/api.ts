@@ -910,6 +910,14 @@ export interface CostEstimate {
   environment_excluded?: boolean;
   /** Cited reason for environment_excluded, usually naming the governing standard. */
   environment_exclusion_reason?: string;
+  /** True when the part's declared specs (finish/Ra, heat treatment…) can't be met on this route. */
+  spec_excluded?: boolean;
+  /** Why the specs rule this route out, with the source of the process's typical roughness etc. */
+  spec_exclusion_reason?: string;
+  /** The unmet spec requirements as findings (code SPEC_*). */
+  spec_findings?: Issue[];
+  /** Spec facts said plainly that don't block the route ("HIP isn't added for wrought stock"). */
+  spec_notes?: string[];
   line_items: Record<string, number>;
   drivers: CostDriver[];
   lead_time: CostLeadTime;
@@ -1013,6 +1021,19 @@ export interface CostUnitWarning {
   provenance?: string;
 }
 
+export interface CostSpecsBlock {
+  /** As declared: {finishes, ra_um, ra_unit, heat_treatments, inspection, certifications, nadcap_processes}. */
+  declared: Record<string, unknown>;
+  summary: string[];
+  ra_text: string | null;
+  certifications: { key: string; label: string; shop_op: string }[];
+  nadcap_processes: string[];
+  ops: { op: string; label: string }[];
+  excluded_processes: string[];
+  provenance: "user";
+  note: string;
+}
+
 export interface CostReport {
   filename: string;
   status: "OK" | "GEOMETRY_INVALID";
@@ -1029,6 +1050,8 @@ export interface CostReport {
   /** Measured-geometry safety rail for unitless CAD. These warnings must stay
    * visible until the user confirms millimetres versus inches and re-costs. */
   unit_warnings?: CostUnitWarning[];
+  /** The part specs this check was priced with (present only when declared). */
+  specs?: CostSpecsBlock | null;
   decision: CostDecision | null;
   /** Persisted machine-fit verdict lattice. Present when the organization has
    *  declared inventory and/or a service environment. This is independent of
@@ -1220,6 +1243,18 @@ export interface CostDecisionGovernance {
   disposition_basis?: CostDispositionBasis | null;
   disposition_updated_at?: string | null;
   disposition_updated_by_user_id?: number | null;
+  /** The sign-off as people see it (who, when, note, and whether it went out of date). */
+  signoff?: CostSignoff | null;
+}
+
+export interface CostSignoff {
+  by_user_id: number | null;
+  by: string | null;
+  at: string | null;
+  note: string | null;
+  stale: boolean;
+  stale_reason: string | null;
+  stale_at: string | null;
 }
 
 export interface CostDecisionSummary extends CostDecisionGovernance {

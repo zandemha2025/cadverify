@@ -205,7 +205,7 @@ function primaryFinding(issues: Issue[]): Finding | null {
 function cheapestByQty(estimates: CostEstimate[], process: string): Map<number, CostEstimate> {
   const out = new Map<number, CostEstimate>();
   for (const e of estimates) {
-    if (e.process !== process || e.environment_excluded) continue;
+    if (e.process !== process || e.environment_excluded || e.spec_excluded) continue;
     const prev = out.get(e.quantity);
     if (!prev || e.unit_cost_usd < prev.unit_cost_usd) out.set(e.quantity, e);
   }
@@ -243,7 +243,8 @@ export function buildMethods(input: PartInputs): Method[] {
     const issues = ps?.issues ?? [];
     const prices = cheapestByQty(estimates, code);
     const all = estimates.filter((e) => e.process === code);
-    const excluded = all.length > 0 && all.every((e) => e.environment_excluded);
+    const excluded = all.length > 0 && all.every((e) => e.environment_excluded || e.spec_excluded);
+    const bySpecs = excluded && all.every((e) => e.spec_excluded && !e.environment_excluded);
     const fit = verification?.per_route?.[code] ?? null;
     const dfm = (ps?.verdict ?? (feas?.verdict as ProcessScore["verdict"] | undefined) ?? null) as Method["dfm"];
     const score = ps?.score ?? feas?.score ?? null;
@@ -272,7 +273,11 @@ export function buildMethods(input: PartInputs): Method[] {
       issues,
       finding: primaryFinding(issues),
       blockedReason: verdict === "bad" ? universalError?.message ?? dfmFailureReason(fit) ?? blocker : null,
-      excludedReason: excluded ? all.find((e) => e.environment_exclusion_reason)?.environment_exclusion_reason ?? "Ruled out by the declared service conditions." : null,
+      excludedReason: !excluded
+        ? null
+        : bySpecs
+          ? all.find((e) => e.spec_exclusion_reason)?.spec_exclusion_reason ?? "Can't meet the part's specs."
+          : all.find((e) => e.environment_exclusion_reason)?.environment_exclusion_reason ?? "Ruled out by the declared service conditions.",
       prices,
       inHouse,
       fit,
@@ -479,6 +484,23 @@ const DRIVER_LABEL: Record<string, (q: number) => string> = {
   post_process_cost: () => "Finishing",
   sintering_cost: () => "Sintering",
   energy_cost: () => "Energy",
+  // Declared part specs (Conditions): each finish, heat treatment and inspection is its own line.
+  spec_bead_blast_cost: () => "Bead blast",
+  spec_anodize_ii_cost: () => "Anodize, Type II",
+  spec_anodize_iii_cost: () => "Hard anodize, Type III",
+  spec_passivate_cost: () => "Passivation",
+  spec_electropolish_cost: () => "Electropolish",
+  spec_powder_coat_cost: () => "Powder coat",
+  spec_plating_cost: () => "Plating",
+  spec_stress_relief_cost: () => "Stress relief",
+  spec_solution_age_cost: () => "Solution treat and age",
+  spec_quench_temper_cost: () => "Quench and temper",
+  spec_case_harden_cost: () => "Case hardening",
+  spec_hip_cost: () => "HIP",
+  spec_fai_as9102_cost: (q) => `First article report, AS9102, shared over ${qtyWord(q)}`,
+  spec_cmm_report_cost: (q) => `CMM report, shared over ${qtyWord(q)}`,
+  spec_full_100_cost: () => "100% inspection",
+  spec_fine_finish_cost: () => "Grind or polish to the Ra",
 };
 
 function driverLabel(d: CostDriver, q: number): string {

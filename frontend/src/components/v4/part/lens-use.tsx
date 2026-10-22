@@ -23,6 +23,7 @@ import { ConfirmButton, cx } from "../ui";
 import { usePart } from "./ctx";
 import { MATERIAL_CLASS_LABEL, cheapestAt, money, priceAt, qtyWord } from "./model";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
+import { SpecsSection } from "./specs-section";
 
 const CLASSES: [string, string][] = [
   ["polymer", "Plastic"],
@@ -235,6 +236,7 @@ export function UseSheet() {
                 </div>
               </>
             ) : null}
+            <SpecsSection />
             <div className="gh">
               <span>
                 Material class <span className={cx("src", cls === "polymer" ? "s-typ" : "s-yours")} style={{ marginLeft: 6 }}>{cls === "polymer" ? "Default" : "Yours"}</span>

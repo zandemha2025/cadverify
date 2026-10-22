@@ -31,6 +31,9 @@ export interface PartContext {
   provenance: "user";
   /** the declared service world, only present when actually declared. */
   service_environment?: Record<string, unknown>;
+  /** the declared part specs (finish, Ra, heat treatment, inspection,
+   *  certifications), only present when actually declared. */
+  part_specs?: Record<string, unknown>;
   /** BOM-rollup linkage (Slice 3), present only when the org tied this part to a
    *  persisted bom_edges tree — names the tree + this part's ref + vehicles/year so
    *  its annual volume rolls up from the real hierarchy instead of the flat field. */

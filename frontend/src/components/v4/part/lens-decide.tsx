@@ -14,6 +14,8 @@ import { putDisposition, reloadDecision } from "./api";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { useMachineViews } from "./lens-shop";
 import { enginePick, pairAt, pickWhy } from "./choice";
+import { SignOff } from "./signoff";
+import { mustHold, normalizeSpecs } from "./specs";
 import { hoursText, massText, routeResources, runLine } from "./resources";
 
 const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
@@ -119,6 +121,11 @@ export function DecideTicket() {
         {facts.join(" · ")}{env && (env.sour_service || env.corrosive || env.max_temp_c != null) ? " · for the declared service conditions" : ""}
       </span>
       {isSaved ? <span className="stamp">Recorded on the part&apos;s record</span> : null}
+      {isSaved && gov?.approval_status === "approved" ? (
+        <span className="stamp" style={gov.is_stale ? { background: "#FBF3DC", color: "var(--ink)" } : undefined}>
+          {gov.is_stale ? "Signed off, now out of date" : `Signed off${gov.signoff?.by ? ` by ${gov.signoff.by}` : ""}`}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -265,6 +272,7 @@ export function DecideSheet() {
             ? { text: "weigh the machine against your other parts.", link: "Parts it would unlock", href: R.triage }
             : { text: "fix what blocks it (see Make), then check the revised file." };
   const basis = gov?.disposition_basis;
+  const specsMust = mustHold(normalizeSpecs(p.data.context?.part_specs ?? null));
   const recText = gov?.user_disposition
     ? `${LABEL[gov.user_disposition] ?? gov.user_disposition}${basis ? `, ${methodName(basis.process).toLowerCase()}` : ""} · ${gov.disposition_updated_at ? new Date(gov.disposition_updated_at).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : ""} · ${basis ? `${qtyWord(basis.quantity)} parts · ` : ""}${shortId(id)}`
     : "";
@@ -337,6 +345,9 @@ export function DecideSheet() {
                   </button>
                 </div>
               ) : null}
+              {!askW && !loadErr ? (
+                <SignOff id={id} gov={gov ?? null} onChange={(patch) => p.patchData({ decision: p.data.decision ? { ...p.data.decision, ...patch } : null })} />
+              ) : null}
               {askW ? (
                 <div className="swap" role="alertdialog" aria-label="Withdraw the decision" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--bad-bg)", display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
                   <span>Withdraw this outcome? The record and its numbers stay; only the decision clears.</span>
@@ -405,7 +416,10 @@ export function DecideSheet() {
               <span />
             </div>
             <div className="note" style={{ marginTop: 2 }}>
-              <span>ZIP: estimate, material and conditions, quantities, findings. Original CAD only for parts checked in a batch. Not sent by ScaleCAD; replies aren&apos;t tracked.</span>
+              <span>
+                ZIP: estimate, material and conditions, {specsMust.length ? "specs, " : ""}quantities, findings. Original CAD only for parts checked in a batch. Not sent by ScaleCAD; replies aren&apos;t tracked.
+                {specsMust.length ? <b style={{ display: "block", fontWeight: 600, marginTop: 4 }}>The supplier must hold {specsMust.join(", ")}.</b> : null}
+              </span>
               <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn sm" type="button" disabled={!id || busy === "zip"} onClick={() => void pkg()}>
                   {busy === "zip" ? "Building…" : "Download package (ZIP)"}
