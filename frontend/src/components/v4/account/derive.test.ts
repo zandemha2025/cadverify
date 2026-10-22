@@ -200,3 +200,12 @@ test("password rule: 8 to 128 characters, and both match", () => {
   assert.equal(passwordProblem("long enough", "long enough"), null);
   assert.equal(passwordProblem("😀".repeat(8), "😀".repeat(8)), null);
 });
+
+test("two-step and session events read as plain words in Activity", () => {
+  assert.equal(actionName("auth.two_step_enabled"), "Two-step sign-in turned on");
+  assert.equal(actionName("auth.two_step_disabled"), "Two-step sign-in turned off");
+  assert.equal(actionName("auth.two_step_recovery_used"), "Recovery code used");
+  assert.equal(actionName("auth.two_step_locked"), "Code entry paused after wrong codes");
+  assert.equal(actionName("org.two_step_policy_changed"), "Two-step rule changed");
+  assert.equal(actionName("user.sessions_revoked"), "Sessions ended");
+});
