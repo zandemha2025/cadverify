@@ -693,8 +693,17 @@ async def get_record(
 
 
 async def load_org_ground_truth(session: AsyncSession, org_id: str) -> list:
-    """All of ONE org's records as costing dataclasses (the recalibration feed)."""
-    return [_row_to_gt(r) for r in await list_records(session, org_id)]
+    """All of ONE org's cost records as costing dataclasses (the recalibration feed).
+
+    A row that carries machine hours but no cost (migration 0054) is a real
+    actual for the hours comparison, not a cost datum: the cost loop and the
+    analogy k-NN skip it rather than invent a cost.
+    """
+    return [
+        _row_to_gt(r)
+        for r in await list_records(session, org_id)
+        if r.actual_unit_cost_usd is not None
+    ]
 
 
 # ── recalibration trigger (item 4) ───────────────────────────────────────────

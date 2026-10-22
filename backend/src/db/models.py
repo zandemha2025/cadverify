@@ -1304,8 +1304,18 @@ class GroundTruthRecordRow(Base):
     __tablename__ = "ground_truth_records"
     __table_args__ = (
         CheckConstraint("source_units IN ('mm', 'inch')", name="ck_ground_truth_source_units"),
+        # Migration 0054: a row carries a cost per part, machine hours, or both.
+        CheckConstraint(
+            "actual_unit_cost_usd IS NOT NULL OR actual_machine_hours IS NOT NULL",
+            name="ck_ground_truth_cost_or_hours",
+        ),
+        CheckConstraint(
+            "match_basis IS NULL OR match_basis IN ('file_hash', 'part_number', 'file_name', 'chosen')",
+            name="ck_ground_truth_match_basis",
+        ),
         Index("ix_ground_truth_records_org", "org_id"),
         Index("ix_ground_truth_records_org_part", "org_id", "part_id"),
+        Index("ix_ground_truth_records_org_evidence", "org_id", "evidence_sha256"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1321,7 +1331,8 @@ class GroundTruthRecordRow(Base):
     part_id: Mapped[str] = mapped_column(Text, nullable=False)
     process: Mapped[str] = mapped_column(Text, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    actual_unit_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    # Real cost per part. Empty when the row carries machine hours only (0054).
+    actual_unit_cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     material_class: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="polymer"
     )
@@ -1355,6 +1366,55 @@ class GroundTruthRecordRow(Base):
     surface_area_cm2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     max_bbox_mm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     face_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # ── Part actuals (migration 0054): what the customer gave and what it matched.
+    # The customer's own part number and machine name, as given; how the row was
+    # matched to a checked part (the part's file hash is kept in evidence_sha256).
+    part_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    machine: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    match_basis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class OrgCalibration(Base):
+    """One calibration an organization applied to its future estimates (0054).
+
+    ``factors`` is ``{process: {"hours": f | null, "cost": f | null, ...}}``:
+    machine hours for that method are multiplied by ``hours`` and the cost per
+    part by ``cost``, both fitted on the organization's own matched actuals.
+    ``basis`` keeps what the factors were fitted on (parts, records, held-out
+    errors before and after). The newest ``applied`` row is in effect; Undo
+    marks it ``undone`` (who and when) and the one before it takes effect again.
+    Org-scoped: one organization's calibration never touches another's numbers.
+    """
+
+    __tablename__ = "org_calibrations"
+    __table_args__ = (
+        CheckConstraint("status IN ('applied', 'undone')", name="ck_org_calibrations_status"),
+        Index("ix_org_calibrations_org_applied", "org_id", "applied_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    factors: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    basis: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="applied")
+    applied_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    applied_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    undone_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    undone_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
