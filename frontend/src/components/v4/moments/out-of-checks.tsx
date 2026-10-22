@@ -12,20 +12,25 @@
  * - `usage`    pass a usage object if you already have one; otherwise the shell's is used
  *              (or it is read once).
  * - `plans`    the public plan facts (`getPlans()` on the server) for the Pro price.
- *              Without it the price reads "Price shown at checkout".
+ *              Without it they are read from /api/billing/plans (the pricing page's source).
+ * - `file`     the file that was just refused. It waits on this device for this
+ *              account and checks after an upgrade (Checkout returns to the app).
  *
  * Focus moves into the dialog, Tab stays inside, Esc closes, focus returns.
  */
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UpgradeButton } from "@/components/billing/upgrade-button";
-import { billingStatus, formatProPrice, SALES_MAILTO, type Plans } from "@/lib/billing";
+import { useAuth } from "@/components/ui/auth-provider";
+import { parsePlans, SALES_MAILTO, type Plans } from "@/lib/billing";
+import { browserPendingPartStore, holdPendingPart } from "@/lib/pending-part";
+import { billingLink } from "../account/api";
 import { useShell } from "../shell";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { PILOT_HREF } from "./pilot-gate";
 import { useFocusTrap } from "./focus";
+import { outOfChecksCopy, plainRefusal } from "./out-of-checks-copy";
 import "./moments.css";
 
 export type CheckUsage = {
@@ -70,46 +75,102 @@ function resetText(u: CheckUsage | null, pro: boolean): string {
   return "Free checks don't reset";
 }
 
+/** The public plans as given, else one read of /api/billing/plans; `loaded` once known either way. */
+function usePlans(given: Plans | null | undefined): { plans: Plans | null; loaded: boolean } {
+  const [own, setOwn] = React.useState<{ plans: Plans | null; loaded: boolean }>({ plans: null, loaded: false });
+  React.useEffect(() => {
+    if (given) return;
+    let live = true;
+    fetch("/api/billing/plans", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => live && setOwn({ plans: b ? parsePlans(b) : null, loaded: true }))
+      .catch(() => live && setOwn({ plans: null, loaded: true }));
+    return () => {
+      live = false;
+    };
+  }, [given]);
+  return given ? { plans: given, loaded: true } : own;
+}
+
+/** Checkout from inside the app, so Stripe sends the person back here (/app?upgraded=1). */
+function UpgradeHere() {
+  const router = useRouter();
+  const [working, setWorking] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  return (
+    <>
+      <button
+        className="btn ink"
+        type="button"
+        disabled={working}
+        aria-busy={working}
+        onClick={async () => {
+          setWorking(true);
+          setError(null);
+          const out = await billingLink("checkout");
+          if (out.kind === "redirect") window.location.assign(out.url);
+          else if (out.kind === "manage") router.push(R.billing);
+          else if (out.kind === "sign_in") router.push(`/login?next=${encodeURIComponent(R.billing)}`);
+          else {
+            setError(out.message);
+            setWorking(false);
+          }
+        }}
+      >
+        {working ? "Opening checkout…" : "Upgrade"}
+      </button>
+      {error ? (
+        <p className="honest" role="alert">
+          {error} <a href={SALES_MAILTO}>Email us</a>
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function OutOfChecks({
   message,
   onClose,
   usage: given,
-  plans,
+  plans: givenPlans,
+  file,
 }: {
   message?: string;
   onClose?: () => void;
   usage?: CheckUsage | null;
   plans?: Plans | null;
+  file?: File | null;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
   const usage = useUsage(given);
+  const { plans, loaded } = usePlans(givenPlans);
   const ref = React.useRef<HTMLElement>(null);
-  const [status, setStatus] = React.useState<{ checkout: boolean; monthly: number } | null>(null);
   const close = React.useCallback(() => (onClose ? onClose() : router.push(R.parts)), [onClose, router]);
   const onKeyDown = useFocusTrap(ref, close);
+  const [held, setHeld] = React.useState(false);
 
+  // The refused file waits for this account; after Checkout the app checks it.
   React.useEffect(() => {
-    if (plans) return;
+    if (!file || !user?.email) return;
     let live = true;
-    void billingStatus().then((s) => {
-      if (live && s) setStatus({ checkout: s.checkout_available, monthly: s.pro_monthly_checks });
-    });
+    void holdPendingPart(browserPendingPartStore(), file, user.email).then((ok) => live && setHeld(ok));
     return () => {
       live = false;
     };
-  }, [plans]);
+  }, [file, user?.email]);
 
   const pro = usage?.plan === "pro";
   const cap = usage?.cap ?? 0;
   const used = usage?.used ?? cap;
-  const checkout = plans ? plans.pro.checkout_available : status?.checkout;
-  const monthly = plans?.pro.monthly_checks ?? status?.monthly ?? null;
-  const price = formatProPrice(plans?.pro.price ?? null);
+  const checkout = plans ? plans.pro.checkout_available : undefined;
+  const copy = outOfChecksCopy(plans, loaded, file && held ? file.name : null);
+  const why = plainRefusal(message);
 
   return (
     <div className="mo-x3">
       <button type="button" className="scrim" tabIndex={-1} aria-hidden="true" onClick={close} />
-      <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="oc-title" aria-describedby={message ? "oc-why" : undefined} tabIndex={-1} onKeyDown={onKeyDown}>
+      <section ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="oc-title" aria-describedby={why ? "oc-why" : undefined} tabIndex={-1} onKeyDown={onKeyDown}>
         <div className="hd">
           <h1 className="ptitle" id="oc-title">
             {pro ? "This month's Pro checks used" : "Free checks used"}
@@ -126,9 +187,18 @@ export function OutOfChecks({
             <span>{resetText(usage, pro)}</span>
             <span>Saved results stay available</span>
           </p>
-          {message ? (
+          {why ? (
             <p id="oc-why" className="sr">
-              {message}
+              {why}
+            </p>
+          ) : null}
+          {copy.kept ? (
+            <p className="smeta" role="status" style={{ marginTop: 8, overflowWrap: "anywhere" }}>
+              {copy.kept}
+            </p>
+          ) : file ? (
+            <p className="smeta" style={{ marginTop: 8, overflowWrap: "anywhere" }}>
+              {file.name} wasn’t checked and used no check. It stays picked on this page.
             </p>
           ) : null}
         </div>
@@ -153,16 +223,16 @@ export function OutOfChecks({
           <div className="opt">
             <span>
               <b>Pro</b>
-              <span className="p num">{price ? price.replace(/\/mo$/, " / month").replace(/\/yr$/, " / year") : "Price shown at checkout"}</span>
+              <span className="p num">{copy.price}</span>
             </span>
             {checkout === false ? (
               <a className="btn ink" href={SALES_MAILTO}>
                 Email us
               </a>
             ) : (
-              <UpgradeButton label="Upgrade" className="btn ink" checkoutAvailable={checkout} />
+              <UpgradeHere />
             )}
-            <p>{monthly != null ? `${monthly} checks a month` : "Monthly checks"} · your machines and prices · cancel anytime</p>
+            <p>{copy.monthly} · your machines and prices · cancel anytime</p>
             {checkout === false ? <p className="honest">Checkout is unavailable right now. Email us for more checks.</p> : null}
             <p className="honest">More checks. Batch runs, assemblies and other pilot tools aren&apos;t included.</p>
           </div>

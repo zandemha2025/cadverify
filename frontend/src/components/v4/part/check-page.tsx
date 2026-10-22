@@ -178,8 +178,9 @@ export function CheckPage() {
   if (f?.kind === "quota")
     return (
       <>
-        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} onLink={beginLink} carried={carried} />
-        <OutOfChecks message={f.message} />
+        {/* The refused file stays picked here and waits on this device; it checks after an upgrade. */}
+        <StartScreen file={picked ?? session.file} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => begin(picked ?? session.file)} onSample={beginSample} onLink={beginLink} carried={carried} />
+        <OutOfChecks message={f.message} file={session.sample ? null : session.file} />
       </>
     );
   if (f?.kind === "phone")

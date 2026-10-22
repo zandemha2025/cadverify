@@ -74,6 +74,18 @@ export function isLifetimeQuotaErrorMessage(message: string | null | undefined):
   return Boolean(message?.startsWith("Verification allowance used up."));
 }
 
+/**
+ * A refused request's words for a screen that sorts failures by them: an
+ * allowance or phone refusal keeps its recognisable lead-in (so it opens Out of
+ * checks or the phone check, never "Can't read this file"); anything else is
+ * the server's own detail.
+ */
+export function refusalDetail(status: number, payload: unknown, resource: string): string {
+  const recovery = apiRecoveryMessage({ status, payload, resource });
+  if (isQuotaErrorMessage(recovery) || isPhoneVerificationMessage(recovery)) return recovery;
+  return apiProblemDetail(payload) ?? recovery;
+}
+
 /** A failed sign-in service must not be reported as rejected credentials. */
 export function authErrorMessage(status: number, payload: unknown, fallback: string): string {
   if (status >= 500 || status === 429) {

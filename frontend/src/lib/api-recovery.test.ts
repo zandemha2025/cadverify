@@ -9,6 +9,7 @@ import {
   networkRecoveryMessage,
   isQuotaErrorMessage,
   isLifetimeQuotaErrorMessage,
+  refusalDetail,
 } from "./api-recovery.ts";
 
 for (const [status, code, detail] of [
@@ -146,4 +147,13 @@ test("phone verification is its own recovery, not a permission error", () => {
   assert.equal(isPhoneVerificationMessage(message), true);
   assert.doesNotMatch(message, /permission|admin/i);
   assert.equal(isQuotaErrorMessage(message), false);
+});
+
+test("a refused STEP probe out of checks reads as out of checks, not as an unreadable file", () => {
+  const quota = { detail: { code: "user_validation_cap_exceeded", message: "Your 3 free checks are used or in progress. Upgrade to Pro to keep checking. Saved results stay available.", cap: 3, remaining: 0, window_days: 0 } };
+  assert.ok(isQuotaErrorMessage(refusalDetail(403, quota, "verification")));
+  const phone = { detail: { code: "phone_verification_required", message: "Verify your phone number to start your free checks. We send one text with a code." } };
+  assert.ok(isPhoneVerificationMessage(refusalDetail(403, phone, "verification")));
+  const bad = { detail: { code: "unreadable_step", message: "The STEP file has no solids." } };
+  assert.equal(refusalDetail(422, bad, "verification"), "The STEP file has no solids.");
 });

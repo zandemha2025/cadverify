@@ -62,13 +62,13 @@ export function MaterialAsk({ session }: { session: CheckSession }) {
   );
 }
 
-/** "Held from sign-up": the part dropped before signing in, checking now. */
+/** "Held on this device": the part kept while signing in or up, or through an upgrade, checking now. */
 export function HeldNote({ session }: { session: CheckSession }) {
   if (!isHeld(session.file)) return null;
   return (
     <span className="nb-held">
       <i aria-hidden="true" />
-      Held from sign-up
+      Held on this device
     </span>
   );
 }

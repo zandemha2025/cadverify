@@ -11,6 +11,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
+import { browserPendingPartStore, normalizeEmail, peekPendingPart } from "@/lib/pending-part";
 import { ANALYTICS_CONSENT } from "@/lib/analytics";
 import { NAV, R, GO_KEYS, sectionOf } from "./routes";
 import { setPendingFile } from "./pending-file";
@@ -116,6 +117,15 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     const t = window.setTimeout(() => window.dispatchEvent(new Event("proofshape:usage-changed")), 4000);
     return () => window.clearTimeout(t);
   }, []);
+  // A part refused for want of checks waited on this device: check it now (the phone page hands it to the check).
+  const { user: me } = useAuth();
+  React.useEffect(() => {
+    if (!upgraded || !me?.email) return;
+    const email = normalizeEmail(me.email);
+    void peekPendingPart(browserPendingPartStore()).then((p) => {
+      if (p && p.email === email) router.push(R.phone);
+    });
+  }, [upgraded, me?.email, router]);
 
   // ⌘K / Ctrl K opens search from anywhere; ? and go-to letters only outside text fields and dialogs.
   React.useEffect(() => {

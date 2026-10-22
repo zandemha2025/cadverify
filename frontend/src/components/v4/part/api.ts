@@ -19,7 +19,7 @@ import {
   type CostReport,
   type ValidationResult,
 } from "@/lib/api";
-import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
+import { apiProblemDetail, apiRecoveryMessage, refusalDetail } from "@/lib/api-recovery";
 import { listMachines, type OwnedMachine } from "@/lib/verify/machine-api";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
 import { partCheckHeaders } from "@/lib/verify/check-id";
@@ -239,7 +239,8 @@ export async function probeAssemblyV4(file: File): Promise<AssemblyProbeV4> {
     return {
       kind: "refused",
       title: json.status >= 500 || json.status === 429 ? "The check couldn't start" : "Can't read this file",
-      detail: apiProblemDetail(body) ?? apiRecoveryMessage({ status: json.status, payload: body, resource: "verification" }),
+      // Out of checks or a phone check first must read as that, not as an unreadable file.
+      detail: refusalDetail(json.status, body, "verification"),
       retry: json.status >= 500 || json.status === 429,
       status: json.status,
     };
