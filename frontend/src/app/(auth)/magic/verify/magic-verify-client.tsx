@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
+import { twoStepHref } from "@/components/two-step/href";
 import { browserPendingPartStore, peekPendingPart } from "@/lib/pending-part";
 
 function safeLocalPath(raw: unknown): string {
@@ -57,9 +58,10 @@ export function MagicVerifyClient() {
       }
       // A part held from sign-in checks itself first; then the page they came from.
       const heldPart = await peekPendingPart(browserPendingPartStore());
-      const redirect = heldPart ? "/verify" : next ?? safeLocalPath(data?.redirect);
+      const redirect = heldPart ? "/verify" : next ?? safeLocalPath(data?.two_step ? null : data?.redirect);
       window.history.replaceState(null, "", "/magic/verify");
-      window.location.href = redirect;
+      // Two-step sign-in: the link was right; the code comes next.
+      window.location.href = data?.two_step ? twoStepHref(redirect) : redirect;
     } catch {
       setError("Could not establish a secure session. Please try again.");
     } finally {

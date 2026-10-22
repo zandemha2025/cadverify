@@ -9,11 +9,15 @@ import { mock, test } from "node:test";
 
 const sessionStub =
   "data:text/javascript,export let sets=0;export async function setSession(){sets++};export async function setRevealOnce(){};export async function clearSession(){};export async function getSessionToken(){return null};export function reset(){sets=0}";
+// Two-step challenge cookie helpers (next/headers): never reached in these cases.
+const twoStepStub =
+  "data:text/javascript,export function isChallenge(){return false};export function isPurpose(){return false};export async function setTwoStepChallenge(){}";
 const hooks = registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "next/server") return next("next/server.js", context);
     if (specifier === "server-only") return next("data:text/javascript,", context);
     if (specifier === "@/lib/session") return next(sessionStub, context);
+    if (specifier === "@/lib/two-step-cookie") return next(twoStepStub, context);
     if (specifier === "@/lib/same-origin-request") return next(new URL("./same-origin-request.ts", import.meta.url).href, context);
     if (specifier === "@/lib/api-base") return next(new URL("./api-base.ts", import.meta.url).href, context);
     if (specifier === "@/lib/auth-proxy") return next(new URL("./auth-proxy.ts", import.meta.url).href, context);

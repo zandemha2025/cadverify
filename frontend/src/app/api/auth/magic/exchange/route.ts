@@ -7,6 +7,7 @@ import { backendUrl } from "@/lib/api-base";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 import { setRevealOnce, setSession } from "@/lib/session";
 import { crossSiteRefusal } from "@/lib/same-origin-request";
+import { isChallenge, isPurpose, setTwoStepChallenge } from "@/lib/two-step-cookie";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +42,22 @@ export async function POST(req: Request) {
       mint_once?: unknown;
       key_prefix?: unknown;
       detail?: unknown;
+      two_step?: unknown;
+      challenge?: unknown;
     };
     if (!res.ok) {
       return NextResponse.json(data, {
         status: res.status,
         headers: { "cache-control": "no-store" },
       });
+    }
+    // Two-step sign-in owed: keep the challenge server-side, ask for the code.
+    if (isPurpose(data.two_step) && isChallenge(data.challenge)) {
+      await setTwoStepChallenge(data.challenge);
+      return NextResponse.json(
+        { two_step: data.two_step, redirect: "/login/two-step" },
+        { headers: { "cache-control": "no-store" } },
+      );
     }
     if (typeof data.session !== "string" || data.session.length < 32) {
       return NextResponse.json(

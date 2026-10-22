@@ -2,10 +2,11 @@
 
 /**
  * Security (board A2): change or set the password (which variant depends on
- * AUTH_MODE and whether the account has one), the ways this deployment signs
- * people in, and Sign out — which signs out every browser at once, because
- * logout revokes the account's sessions (there is no per-device list) — and
- * Delete account, last.
+ * AUTH_MODE and whether the account has one), two-step sign-in (authenticator
+ * app codes and recovery codes), the ways this deployment signs people in, and
+ * Sign out: other browsers (this one stays) or every browser. Sessions are
+ * signed cookies with one version per account and no row per browser, so
+ * there is no per-device list. Delete account, last.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -17,6 +18,7 @@ import { DeleteAccountPanel } from "../datacontrol/delete-account";
 import { AccountFrame, AccountHead, Confirm } from "./frame";
 import * as api from "./api";
 import { passwordProblem, signIn } from "./derive";
+import { TwoStepPanel, useTwoStepStatus } from "./two-step-panel";
 
 export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode: string; magicLink: boolean; hasPassword: boolean }) {
   const { user, signOut } = useAuth();
@@ -25,6 +27,23 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
   const [orgName, setOrgName] = React.useState<string | null>(null);
   const [askOut, setAskOut] = React.useState(false);
   const [leaving, setLeaving] = React.useState(false);
+  const [others, setOthers] = React.useState<"idle" | "busy" | "done" | "failed">("idle");
+  const [recoveryUsed, setRecoveryUsed] = React.useState(false);
+  const twoStep = useTwoStepStatus();
+
+  React.useEffect(() => {
+    setRecoveryUsed(new URLSearchParams(window.location.search).get("recovery") === "used");
+  }, []);
+
+  async function signOutOthers() {
+    setOthers("busy");
+    try {
+      const res = await fetch("/api/auth/two-step/sign-out-others", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      setOthers(res.ok ? "done" : "failed");
+    } catch {
+      setOthers("failed");
+    }
+  }
 
   React.useEffect(() => {
     api.getOrgs().then(
@@ -60,6 +79,15 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
         ) : (
           <PasswordPanel hasPassword={has} onSet={() => setHas(true)} linkOn={si.linkOn} />
         )}
+        {si.ssoOnly ? null : (
+          <TwoStepPanel
+            email={user?.email ?? null}
+            status={twoStep.status}
+            setStatus={twoStep.setStatus}
+            failed={twoStep.failed}
+            recoveryUsed={recoveryUsed}
+          />
+        )}
         <Panel title="Ways to sign in">
           <div className="a-row2">
             <span>
@@ -86,8 +114,23 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
         <Panel title="Sign out">
           <div className="a-row2">
             <span>
+              <b>Other browsers</b>
+              <small>
+                {others === "done"
+                  ? "Other browsers signed out. This one stays signed in."
+                  : others === "failed"
+                    ? "Couldn’t sign out other browsers. Try again."
+                    : "Every other browser and device signed in to this account. This one stays signed in."}
+              </small>
+            </span>
+            <button className="btn sm" type="button" onClick={signOutOthers} disabled={others === "busy"} aria-busy={others === "busy"}>
+              {others === "busy" ? "Signing out…" : "Sign out others"}
+            </button>
+          </div>
+          <div className="a-row2">
+            <span>
               <b>Every browser signed in to this account</b>
-              <small>Includes this one. No per-device list.</small>
+              <small>Includes this one. ScaleCAD keeps no list of devices: sessions are signed cookies, ended all at once.</small>
             </span>
             <button className="btn sm" type="button" onClick={() => setAskOut(true)} disabled={askOut}>
               Sign out
@@ -122,10 +165,17 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
             rows={[
               ["Password length", si.ssoOnly ? "Set by your provider" : "8 to 128 characters"],
               ["After a change", "Other browsers signed out"],
-              ["Sign out", "Every browser, at once"],
+              ["Sign out", "Others, or every browser"],
               ["Email link", si.linkOn ? "Single use" : "Off"],
-              ["Two-step codes", "Not available"],
-              ["Device list", "Not available"],
+              [
+                "Two-step codes",
+                si.ssoOnly ? "Set by your provider" : !twoStep.status ? "…" : twoStep.status.enabled ? "On, authenticator app" : "Off",
+              ],
+              ...(twoStep.status?.required_by.length
+                ? ([["Required by", twoStep.status.required_by.join(", ")]] as [string, string][])
+                : []),
+              ["Wrong codes", "5 in a row pause code entry"],
+              ["Device list", "Not kept"],
             ]}
           />
           <div className="note">

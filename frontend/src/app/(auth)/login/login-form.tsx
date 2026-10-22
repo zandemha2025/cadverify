@@ -6,6 +6,7 @@ import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/aut
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { safeLocalPath } from "@/lib/safe-return-path";
 import { authErrorMessage } from "@/lib/api-recovery";
+import { twoStepHref } from "@/components/two-step/href";
 import { PartDrop } from "@/components/auth/part-drop";
 import { browserPendingPartStore, holdPendingPart } from "@/lib/pending-part";
 
@@ -55,7 +56,8 @@ export function LoginForm({
         setError(authErrorMessage(res.status, data, "Invalid email or password."));
         return;
       }
-      window.location.href = next;
+      // Two-step sign-in: the password was right; the code comes next.
+      window.location.href = data?.two_step ? twoStepHref(next) : next;
     } catch {
       setError("Could not reach the server. Please try again.");
     } finally {

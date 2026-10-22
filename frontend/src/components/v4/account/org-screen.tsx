@@ -26,6 +26,7 @@ import { R } from "../routes";
 import { useShell } from "../shell";
 import { DeleteOrgPanel } from "../datacontrol/delete-org";
 import { SignoffPanel } from "./signoff-panel";
+import { TwoStepRulePanel } from "./two-step-org";
 import { AccountFrame, AccountHead, Banner, Confirm, CopyButton } from "./frame";
 import * as api from "./api";
 import {
@@ -281,6 +282,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
               </p>
             </Panel>
             <SignoffPanel />
+            <TwoStepRulePanel me={me} />
             {isAdmin ? (
               <>
                 <InvitePanel onInvited={() => void load()} domain={user?.email ? domainOf(user.email) : ""} />

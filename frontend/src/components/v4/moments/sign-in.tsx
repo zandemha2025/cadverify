@@ -21,6 +21,7 @@ import { Chip, cx } from "../ui";
 import { adoptTyped } from "./early-typing";
 import { tierHint } from "./email-tier";
 import { V4_HELD_PART, V4_HOME, v4Landing } from "./landing";
+import { twoStepHref } from "@/components/two-step/href";
 import { PartGlyph } from "./phone-gate";
 import { SecurityCheck } from "./turnstile";
 import "./moments.css";
@@ -110,7 +111,9 @@ export function V4SignIn({
       }
       // A part added here checks itself first, for this account only.
       const held = part ? await holdPendingPart(browserPendingPartStore(), part, email) : false;
-      window.location.href = held ? V4_HELD_PART : next;
+      const landing = held ? V4_HELD_PART : next;
+      // Two-step sign-in: the password was right; the code comes next.
+      window.location.href = data?.two_step ? twoStepHref(landing) : landing;
     } catch {
       setError("Could not reach the server. Please try again.");
     } finally {

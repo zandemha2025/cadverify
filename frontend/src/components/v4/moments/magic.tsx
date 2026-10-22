@@ -19,6 +19,7 @@ import { browserPendingPartStore, peekPendingPart } from "@/lib/pending-part";
 import { safeLocalPath } from "@/lib/safe-return-path";
 import { AuthCard } from "./auth-card";
 import { V4_HELD_PART, V4_HOME, v4Landing } from "./landing";
+import { twoStepHref } from "@/components/two-step/href";
 import "./moments.css";
 
 export function V4MagicVerify() {
@@ -74,9 +75,10 @@ export function V4MagicVerify() {
       // A part held from sign-in checks itself first; then the page they came from.
       const heldPart = await peekPendingPart(browserPendingPartStore());
       const serverPath = typeof data?.redirect === "string" ? safeLocalPath(data.redirect, V4_HOME) : V4_HOME;
-      const redirect = heldPart ? V4_HELD_PART : next ?? v4Landing(serverPath);
+      const redirect = heldPart ? V4_HELD_PART : next ?? v4Landing(data?.two_step ? V4_HOME : serverPath);
       window.history.replaceState(null, "", "/magic/verify");
-      window.location.href = redirect;
+      // Two-step sign-in: the link was right; the code comes next.
+      window.location.href = data?.two_step ? twoStepHref(redirect) : redirect;
     } catch {
       setError("Could not establish a secure session. Please try again.");
     } finally {
