@@ -311,12 +311,12 @@ export function loadTile(l: LoadLike | null): string {
   return l.hours != null ? `${hoursShort(l.hours)} of work · ${partsWord(l.parts)}` : `${partsWord(l.parts)} · machine time not estimated`;
 }
 
-/** The sheet's rows: total, then recorded in-house (at their quantities) and not decided yet (at `qty` of each). */
+/** The sheet's rows: total, then recorded in-house (at their quantities) and not decided yet (at the quantity each was checked for, else `qty` of each). */
 export function loadRows(l: LoadLike | null, qty: number): [string, string][] {
   if (!l || !l.parts) return [];
   const cover = l.hours_parts < l.parts ? ` (${l.hours_parts} of ${l.parts} parts)` : "";
   const rows: [string, string][] = [["Machine time", `${hoursShort(l.hours)}${cover} · ${partsWord(l.parts)}`]];
   if (l.decided_parts) rows.push(["Recorded in-house", `${partsWord(l.decided_parts)} · ${hoursShort(l.decided_hours)} at their quantities`]);
-  if (l.default_parts) rows.push(["Not decided yet", `${partsWord(l.default_parts)} · ${hoursShort(l.default_hours)} at ${qty.toLocaleString("en-US")} of each`]);
+  if (l.default_parts) rows.push(["Not decided yet", `${partsWord(l.default_parts)} · ${hoursShort(l.default_hours)} at the quantity checked, else ${qty.toLocaleString("en-US")} of each`]);
   return rows;
 }

@@ -367,8 +367,9 @@ async def machine_load(
 
     Per machine: parts and machine hours, from each part's newest record and the
     outcome recorded on it: a recorded "Make in-house" at its quantity, else (no
-    outcome yet) the part at 100 of each when its newest record sorts it onto
-    that machine. Parts recorded another way are only counted. Every hour is the
+    outcome yet), when its newest record sorts it onto that machine, the
+    quantity it was checked for (else 100 of each). Parts recorded another way
+    are only counted. Every hour is the
     engine's machine time per part × quantity. Org-scoped (403 without an org).
     """
     from src.services import machine_load_service

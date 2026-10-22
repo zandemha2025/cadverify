@@ -351,7 +351,7 @@ function WorkOnIt({ load, error, onRetry, name }: { load: { qty: number; machine
                 {p.file_name ?? "Part"}
                 <small className="num">
                   {p.hours != null ? `${hoursShort(p.hours)} · ` : "machine time not priced at this quantity · "}
-                  {p.quantity.toLocaleString("en-US")} {p.basis === "decided" ? "recorded in-house" : "of each, not decided"}
+                  {p.quantity.toLocaleString("en-US")} {p.basis === "decided" ? "recorded in-house" : p.basis === "checked" ? "as checked, not decided" : "of each, not decided"}
                 </small>
               </span>
               {p.part_key ? (
@@ -366,7 +366,7 @@ function WorkOnIt({ load, error, onRetry, name }: { load: { qty: number; machine
       )}
       {load && !error ? (
         <p className="sh-note">
-          Machine time is ScaleCAD&apos;s estimate per part × quantity: a part recorded &quot;Make in-house&quot; at its recorded quantity, else {load.qty.toLocaleString("en-US")} of each.
+          Machine time is ScaleCAD&apos;s estimate per part × quantity: a part recorded &quot;Make in-house&quot; at its recorded quantity, else the quantity it was checked for (a catalog run&apos;s list, a declared yearly volume), else {load.qty.toLocaleString("en-US")} of each.
           {l?.stale_parts ? ` ${l.stale_parts} ${l.stale_parts === 1 ? "was" : "were"} checked before a machine change; check again for current hours.` : ""}
           {load.other ? ` ${load.other} ${load.other === 1 ? "part is" : "parts are"} recorded outside or another way and aren't counted.` : ""}
         </p>

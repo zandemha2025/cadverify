@@ -41,6 +41,17 @@ def test_not_decided_lands_on_the_machine_the_record_sorts_it_onto_at_100_of_eac
                     "hours_each": 0.25, "hours": 25.0}
 
 
+def test_not_decided_counts_at_the_quantity_the_part_was_checked_for():
+    # A catalog run listed 25 of it: the ladder carries 25 in place of 100.
+    run = {**MILL, "quantities": [1, 25, 1000, 2000, 5000, 10000],
+           "estimates": [_est("cnc_3axis", 25, 0.3), _est("cnc_3axis", 1000, 0.2)]}
+    load = ml.part_load(run, None, None)
+    assert (load["basis"], load["quantity"], load["hours"]) == ("checked", 25, 7.5)
+    assert ml.checked_quantity({"quantities": [1, 100, 1000, 2000, 5000, 10000]}) is None
+    assert ml.checked_quantity({"quantities": [1, 100, 500, 2000, 5000, 10000]}) == 500
+    assert ml.checked_quantity({}) is None
+
+
 def test_a_recorded_in_house_outcome_counts_at_its_own_quantity_and_route():
     load = ml.part_load(MILL, "inhouse", {"process": "cnc_3axis", "quantity": 10, "material": "6061-T6 Aluminum"})
     assert (load["basis"], load["machine"], load["quantity"], load["hours"]) == ("decided", "Haas VF-2", 10, 5.0)

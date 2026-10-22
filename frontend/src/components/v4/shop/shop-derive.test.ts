@@ -116,7 +116,7 @@ test("machine load: the tile line, the sheet's rows, matched by machine name", (
   assert.deepEqual(loadRows(haas, 100), [
     ["Machine time", "30 h (2 of 3 parts) · 3 parts"],
     ["Recorded in-house", "2 parts · 5 h at their quantities"],
-    ["Not decided yet", "1 part · 25 h at 100 of each"],
+    ["Not decided yet", "1 part · 25 h at the quantity checked, else 100 of each"],
   ]);
   assert.deepEqual(loadRows({ ...haas, parts: 0 }, 100), []);
   assert.deepEqual([hoursShort(0.0002), hoursShort(0.5), hoursShort(2.41), hoursShort(1204.4), hoursShort(null)], ["<1 min", "30 min", "2.4 h", "1,204 h", "—"]);

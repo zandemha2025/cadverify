@@ -53,14 +53,14 @@ function json(method: string, body: unknown): RequestInit {
 
 /* ---------------- machine load ---------------- */
 
-/** One part's machine time on a machine: at its recorded in-house quantity, or 100 of each when nothing's recorded. */
+/** One part's machine time on a machine: at its recorded in-house quantity, else the quantity it was checked for, else 100 of each. */
 export type LoadPart = {
   part_key: string | null;
   record_id: string | null;
   file_name: string | null;
   process: string | null;
   quantity: number;
-  basis: "decided" | "default";
+  basis: "decided" | "checked" | "default";
   hours_each: number | null;
   hours: number | null;
 };

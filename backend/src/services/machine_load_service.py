@@ -7,8 +7,11 @@ fit) and the newest outcome recorded on any of its records:
   time per part × that quantity, on the machine of yours that clears the route
   on the newest record (``basis: "decided"``);
 * nothing recorded, and the newest record sorts the part onto one of your
-  machines: its machine time at ``DEFAULT_QUANTITY`` of the part, on that
-  machine (``basis: "default"``), the pilot report's "every part" quantity;
+  machines: its machine time on that machine at the quantity the part was
+  checked for (a catalog run's listed quantity, a declared yearly volume: the
+  one quantity the record priced off the standard ladder; ``basis:
+  "checked"``), else at ``DEFAULT_QUANTITY`` of the part (``basis:
+  "default"``), the pilot report's "every part" quantity;
 * recorded another way (outside, acquire, redesign): not counted on a machine,
   only in ``other_decisions``.
 
@@ -29,6 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 DEFAULT_QUANTITY = 100
 TOP_PARTS = 10
+# The standard quantities every check prices; a part's own quantity takes the place of the nearest inner one.
+LADDER = (1, 100, 1000, 2000, 5000, 10000)
 IN_HOUSE = ("makeable_in_house", "makeable_with_secondary_op")
 OTHER_OUTCOMES = ("outside", "acquire", "redesign")
 
@@ -50,6 +55,13 @@ def _hours_each(result: dict, process: str, qty: int) -> Optional[float]:
             h = _num(d.get("value"))
             return h if h is not None and h >= 0 else None
     return None
+
+
+def checked_quantity(result: dict) -> Optional[int]:
+    """The quantity a part was checked for: the one quantity its record priced off the standard ladder, if exactly one."""
+    qs = {int(q) for q in result.get("quantities") or [] if isinstance(q, (int, float)) and not isinstance(q, bool) and q > 0}
+    extra = sorted(qs - set(LADDER))
+    return extra[0] if len(extra) == 1 else None
 
 
 def part_load(result: Optional[dict], disposition: Optional[str], basis: Optional[dict],
@@ -76,10 +88,12 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
                 "hours_each": hours_each, "hours": round(hours_each * qty, 4) if hours_each is not None else None}
     if v.get("verdict") in IN_HOUSE and (resource.get("machine") or v.get("best_machine")):
         process = resource.get("process")
-        hours_each = _hours_each(result, process, default_quantity) if process else None
-        return {"basis": "default", "machine": resource.get("machine") or v.get("best_machine"), "process": process,
-                "quantity": default_quantity, "hours_each": hours_each,
-                "hours": round(hours_each * default_quantity, 4) if hours_each is not None else None}
+        own = checked_quantity(result)
+        qty = own or default_quantity
+        hours_each = _hours_each(result, process, qty) if process else None
+        return {"basis": "checked" if own else "default", "machine": resource.get("machine") or v.get("best_machine"),
+                "process": process, "quantity": qty, "hours_each": hours_each,
+                "hours": round(hours_each * qty, 4) if hours_each is not None else None}
     return None
 
 
@@ -111,7 +125,7 @@ def machine_load(parts: Iterable[dict], default_quantity: int = DEFAULT_QUANTITY
             "stale_parts": 0, "top": [],
         })
         m["parts"] += 1
-        kind = load["basis"]
+        kind = "decided" if load["basis"] == "decided" else "default"  # not decided yet: at its own or the default quantity
         m[f"{kind}_parts"] += 1
         if p.get("stale"):
             m["stale_parts"] += 1
@@ -122,7 +136,7 @@ def machine_load(parts: Iterable[dict], default_quantity: int = DEFAULT_QUANTITY
             m[f"{kind}_hours"] = round((m[f"{kind}_hours"] or 0.0) + h, 4)
         m["top"].append({"part_key": p.get("part_key"), "record_id": p.get("record_id"),
                          "file_name": p.get("label") or p.get("file_name"), "process": load.get("process"),
-                         "quantity": load.get("quantity"), "basis": kind, "hours_each": load.get("hours_each"),
+                         "quantity": load.get("quantity"), "basis": load["basis"], "hours_each": load.get("hours_each"),
                          "hours": h})
     for m in machines.values():
         m["top"].sort(key=lambda t: (-(t["hours"] or 0.0), str(t["file_name"] or "")))
