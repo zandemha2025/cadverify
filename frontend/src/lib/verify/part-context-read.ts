@@ -40,6 +40,8 @@ export interface PartContext {
   bom_assembly_key?: string | null;
   bom_child_ref?: string | null;
   bom_roots_per_year?: number | null;
+  /** What the org pays today to buy the part (typed on its Decision view, or from a catalog run's parts list). */
+  buy_price?: import("../../components/v4/part/buy-price").BuyPrice | null;
 }
 
 export interface PartContextResult {

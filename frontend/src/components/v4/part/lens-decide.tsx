@@ -17,6 +17,7 @@ import { enginePick, pairAt, pickWhy } from "./choice";
 import { SignOff } from "./signoff";
 import { mustHold, normalizeSpecs } from "./specs";
 import { hoursText, massText, routeResources, runLine } from "./resources";
+import { buyCompareText, buyPriceText, readTypedPrice, saveBuyPrice } from "./buy-price";
 
 const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
 
@@ -293,6 +294,7 @@ export function DecideSheet() {
                 <b style={{ fontWeight: 600 }}>ScaleCAD’s pick:</b> {pickWhy(pair, p.q)}
               </p>
             ) : null}
+            <BuyPriceBlock make={pair && !p.costOff ? { usd: pair.in_house.unit_cost_usd, machine: pair.in_house.machine ?? methodName(pair.in_house.process) } : null} />
             <div role="radiogroup" aria-label="Outcome" ref={groupRef}>
               {opts.map((o) => {
                 const on = chosen?.id === o.id;
@@ -448,5 +450,102 @@ export function DecideSheet() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * What you pay today for this part: shown with where it came from, typed or
+ * cleared here (a typed price wins over a parts list's), and set against making
+ * it on your machine. It never changes the engine's figures, so the record stays current.
+ */
+function BuyPriceBlock({ make }: { make: { usd: number; machine: string } | null }) {
+  const p = usePart();
+  const stored = p.data.context?.buy_price ?? null;
+  const [editing, setEditing] = React.useState(false);
+  const [price, setPrice] = React.useState("");
+  const [per, setPer] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const priceId = React.useId();
+  const perId = React.useId();
+  const key = p.data.key;
+  const yearly = p.data.context?.resolved_annual_volume ?? p.data.context?.annual_volume ?? null;
+  const compare = buyCompareText(stored, make, yearly);
+  const save = async (clear: boolean) => {
+    if (!key || busy) return;
+    const value = clear ? null : readTypedPrice(price, per);
+    if (typeof value === "string") {
+      setErr(value);
+      return;
+    }
+    if (!clear && value == null) {
+      setErr("Type what you pay for one, or for a number of them.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const saved = await saveBuyPrice(key, value);
+      const base = p.data.context ?? { mesh_hash: key, program: null, parent_assembly: null, units_per_parent: null, annual_volume: null, provenance: "user" as const };
+      p.patchData({ context: { ...base, buy_price: saved } });
+      setEditing(false);
+      p.toast({ text: clear ? "Current price cleared. The record is unchanged." : "Current price saved on the part. The record is unchanged." });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "The price wasn’t saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="bp">
+      <div className="bp-head">
+        <span>
+          <b>What you pay today</b>
+          <small>{buyPriceText(stored) ?? "No price yet. With one, make or buy and the saving use it instead of an outside model price."}</small>
+        </span>
+        {key && !editing ? (
+          <button className="btn sm" type="button" onClick={() => setEditing(true)}>
+            {stored ? "Change" : "Add a price"}
+          </button>
+        ) : null}
+      </div>
+      {compare ? <p className="bp-cmp">{compare}</p> : null}
+      {editing ? (
+        <form
+          className="bp-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save(false);
+          }}
+        >
+          <label htmlFor={priceId}>
+            Price, US dollars
+            <input id={priceId} inputMode="decimal" autoComplete="off" placeholder="12.40" value={price} onChange={(e) => setPrice(e.target.value)} />
+          </label>
+          <label htmlFor={perId}>
+            Per
+            <input id={perId} inputMode="numeric" autoComplete="off" placeholder="1" value={per} onChange={(e) => setPer(e.target.value)} />
+          </label>
+          <span className="bp-acts">
+            <button className="btn sm ink" type="submit" disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+            {stored ? (
+              <button className="btn sm" type="button" disabled={busy} onClick={() => void save(true)}>
+                Clear
+              </button>
+            ) : null}
+            <button className="btn sm ghost" type="button" disabled={busy} onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </span>
+          {err ? (
+            <span role="alert" className="bp-err">
+              {err}
+            </span>
+          ) : null}
+        </form>
+      ) : null}
+    </div>
   );
 }

@@ -188,3 +188,16 @@
 .ob .pv .sure-r b{font-weight:600;color:var(--ink)}
 .ob .pv .sure-n{padding-left:86px}
 @media (max-width:900px){.ob .pv .sure-h{grid-template-columns:minmax(0,1fr) auto}.ob .pv .sure-h span{grid-column:1 / -1;grid-row:2}.ob .pv .sure-n{padding-left:0}}
+
+/* Decision: what you pay today for the part */
+.ob .bp{margin:4px 12px 8px;padding:10px 12px;border-radius:12px;border:1px solid var(--rule);background:#fff;display:flex;flex-direction:column;gap:6px}
+.ob .bp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.ob .bp-head span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ob .bp-head b{font-weight:600;font-size:13.5px;color:var(--ink)}
+.ob .bp-head small{font-size:12.5px;color:var(--ink2);line-height:1.4}
+.ob .bp-cmp{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.4}
+.ob .bp-form{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:8px;align-items:end}
+.ob .bp-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--ink3)}
+.ob .bp-form input{box-sizing:border-box;height:34px;padding:0 10px;border:1px solid rgba(20,24,31,.18);border-radius:9px;background:#fff;font-size:14px;color:var(--ink);width:100%}
+.ob .bp-acts{grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap}
+.ob .bp-err{grid-column:1 / -1;color:var(--bad);font-size:12.5px}
