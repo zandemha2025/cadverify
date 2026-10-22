@@ -22,6 +22,11 @@ function bboxOf(p: ReturnType<typeof usePart>): [number, number, number] | null 
   return b && b.length === 3 ? [b[0], b[1], b[2]] : null;
 }
 
+/** A machine's verdict as its chip says it: one declared for other materials reads so, not "Not set up". */
+function machineChip(verdict: string): string {
+  return verdict === "Not set up" ? "Material not declared" : verdict;
+}
+
 export function useMachineViews(): MachineView[] {
   const p = usePart();
   const bbox = bboxOf(p);
@@ -127,7 +132,7 @@ export function ShopSheet() {
   }
   const warn = views.filter((v) => v.tone === "warn");
   if (cant.length) figs.push({ k: "Can't", v: cant.map((v) => v.name).join(", "), s: cant.map((v) => (v.verdict === "Can't" ? "can't make it as drawn" : v.verdict.toLowerCase())).join(" · "), tone: "bad" });
-  else if (warn.length) figs.push({ k: "Not set up", v: warn.map((v) => v.name).join(", "), tone: "warn" });
+  else if (warn.length) figs.push({ k: warn.every((v) => v.verdict === "Not set up") ? "Material not declared" : "Not set up", v: warn.map((v) => v.name).join(", "), s: warn.length === 1 ? warn[0].why : undefined, tone: "warn" });
   const { unit } = useUnits();
   const box = bboxOf(p);
   const dims = box ? unitDims(box, unit) : dimsText(box);
@@ -160,6 +165,7 @@ export function ShopSheet() {
                   <span>
                     <b>{v.name}</b>
                     <small>{inText(v.sub, unit)}</small>
+                    {v.verdict === "Not set up" ? <small className="mr-why">{inText(v.why, unit)}</small> : null}
                     {v.tone === "ok" && v.method && !p.costOff ? (
                       (() => {
                         const takes = runLine(routeResources(v.method.prices.get(p.q), vol));
@@ -169,7 +175,7 @@ export function ShopSheet() {
                   </span>
                   <span className={`chip c-${v.tone}`}>
                     <i />
-                    {v.verdict}
+                    {machineChip(v.verdict)}
                   </span>
                   <span className="c num">{p.costOff || v.cost == null ? "—" : money(v.cost)}</span>
                 </button>
@@ -224,9 +230,17 @@ export function ShopSheet() {
             ) : m ? (
               <div className="note">
                 <b>
-                  {m.name}: {m.verdict.toLowerCase()}
+                  {m.name}: {machineChip(m.verdict).toLowerCase()}
                 </b>
                 <span>{inText(m.why, unit)}</span>
+                {m.verdict === "Not set up" ? (
+                  <span>
+                    <Link className="lk" href={R.shop}>
+                      Add the material to {m.name} in Your shop
+                    </Link>
+                    , then check the part again.
+                  </span>
+                ) : null}
                 {m.checks ? <span className="num" style={{ color: "var(--ink3)", fontSize: 12.5 }}>{m.checks}</span> : null}
                 {blockedBy && m.method ? (
                   <span>
