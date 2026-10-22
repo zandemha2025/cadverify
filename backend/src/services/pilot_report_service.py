@@ -335,6 +335,8 @@ def coverage(rows: list[dict], unlisted: int = 0) -> dict:
     unsorted = [r for r in rows if r.get("bucket") == "not_sorted"]
     reasons: dict[str, int] = {}
     for r in unchecked:
+        if r.get("bucket") != "not_checked":
+            continue  # a part still to go isn't "not checked" (op-28)
         why = r.get("reason") or "Not checked"
         reasons[why] = reasons.get(why, 0) + 1
     text = f"{len(rows) - len(unchecked):,} of {len(rows):,} checked"
@@ -347,8 +349,9 @@ def coverage(rows: list[dict], unlisted: int = 0) -> dict:
     if unlisted:
         text += f"; {unlisted:,} {'file isn’t' if unlisted == 1 else 'files aren’t'} on your parts list"
     return {
-        "parts": len(rows), "checked": len(rows) - len(unchecked), "not_checked": len(unchecked), "to_go": to_go,
-        "not_sorted": len(unsorted), "unlisted": unlisted,
+        # not_checked: failed or skipped; to_go: queued or being checked; left: both, the parts listed at the end.
+        "parts": len(rows), "checked": len(rows) - len(unchecked), "not_checked": len(unchecked) - to_go,
+        "to_go": to_go, "left": len(unchecked), "not_sorted": len(unsorted), "unlisted": unlisted,
         "text": text,
         "reasons": [{"reason": k, "parts": v} for k, v in sorted(reasons.items(), key=lambda kv: -kv[1])],
         "unchecked": [{"part": r.get("part_number") or r.get("filename"), "reason": r.get("reason")}

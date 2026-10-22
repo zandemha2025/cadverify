@@ -37,7 +37,11 @@ def test_coverage_counts_and_lists_every_part_not_checked():
     # op-28: the run page's breakdown, with the files that aren't on the parts list said apart.
     assert pr.coverage(rows, unlisted=2)["text"] == "28 of 296 checked; 268 not checked; 2 files aren’t on your parts list"
     going = rows[:28] + [{"bucket": "checking", "reason": "Queued"}] * 268 + [{"bucket": "not_sorted", "reason": "x"}] * 3
-    assert pr.coverage(going)["text"] == "31 of 299 checked; 268 to go; 3 checked without a machine verdict"
+    g = pr.coverage(going)
+    assert g["text"] == "31 of 299 checked; 268 to go; 3 checked without a machine verdict"
+    # Parts still to go aren't "not checked": counted apart, and no "not checked" reason is made of them.
+    assert (g["not_checked"], g["to_go"], g["left"], g["reasons"]) == (0, 268, 268, [])
+    assert len(g["unchecked"]) == 268 and g["unchecked"][0]["reason"] == "Queued"
     assert c["reasons"] == [{"reason": "Skipped", "parts": 268}]
     assert len(c["unchecked"]) == 268 and c["unchecked"][0] == {"part": "S0", "reason": "Skipped"}
 

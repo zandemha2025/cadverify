@@ -80,6 +80,8 @@ export function ReportScreen({ run }: { run: string | null }) {
   }
   const a = rep.accuracy;
   const other = Object.entries(rep.other);
+  // Every part not checked has the one reason, and none is still to go: said once, not on each.
+  const oneReason = !!rep.coverage && rep.coverage.reasons.length === 1 && !rep.coverage.to_go;
   return (
     <article className="val-paper val-rep" aria-label="Pilot report">
       <div className="val-bar val-noprint">
@@ -120,7 +122,9 @@ export function ReportScreen({ run }: { run: string | null }) {
       {rep.coverage ? (
         <p className="rp">
           <b>{rep.coverage.text}.</b>
-          {rep.coverage.not_checked ? ` Not checked: ${rep.coverage.reasons.map((g) => `${g.parts} ${g.reason.toLowerCase()}`).join(", ")}; they are listed at the end and aren’t in any figure here.` : ""}
+          {rep.coverage.not_checked ? ` Not checked: ${rep.coverage.reasons.map((g) => `${g.parts} ${g.reason.toLowerCase()}`).join(", ")}.` : ""}
+          {rep.coverage.to_go ? ` ${rep.coverage.to_go} still to go.` : ""}
+          {rep.coverage.not_checked || rep.coverage.to_go ? " They are listed at the end and aren’t in any figure here." : ""}
         </p>
       ) : null}
       {rep.overloaded?.length ? (
@@ -152,7 +156,13 @@ export function ReportScreen({ run }: { run: string | null }) {
         <div>
           <span>Parts</span>
           <b className="num">{rep.parts}</b>
-          <small>{rep.coverage?.not_checked ? `${rep.coverage.not_checked} not checked` : other.length ? `${other.reduce((s, [, v]) => s + v, 0)} not sorted` : "all sorted"}</small>
+          <small>
+            {rep.coverage?.not_checked || rep.coverage?.to_go
+              ? [rep.coverage.not_checked ? `${rep.coverage.not_checked} not checked` : null, rep.coverage.to_go ? `${rep.coverage.to_go} to go` : null].filter(Boolean).join(" · ")
+              : other.length
+                ? `${other.reduce((s, [, v]) => s + v, 0)} not sorted`
+                : "all sorted"}
+          </small>
         </div>
         {rep.buckets.map((b) => (
           <div key={b.key}>
@@ -519,14 +529,15 @@ export function ReportScreen({ run }: { run: string | null }) {
       {rep.coverage && (rep.coverage.unchecked.length || rep.coverage.unsorted.length) ? (
         <>
           <h2>
-            Not checked ({rep.coverage.not_checked}){rep.coverage.not_sorted ? `, and checked without a machine verdict (${rep.coverage.not_sorted})` : ""}
+            Not checked ({rep.coverage.not_checked}){rep.coverage.to_go ? `, still to go (${rep.coverage.to_go})` : ""}
+            {rep.coverage.not_sorted ? `, and checked without a machine verdict (${rep.coverage.not_sorted})` : ""}
           </h2>
-          <p className="foot">They aren’t in any figure above. Check them again from the run.{rep.coverage.reasons.length === 1 ? ` All ${rep.coverage.not_checked}: ${rep.coverage.reasons[0].reason.toLowerCase()}.` : ""}</p>
+          <p className="foot">They aren’t in any figure above. Check them again from the run.{oneReason ? ` All ${rep.coverage.not_checked}: ${rep.coverage.reasons[0].reason.toLowerCase()}.` : ""}</p>
           <ul className="rcols">
             {[...rep.coverage.unchecked, ...rep.coverage.unsorted].map((u, i) => (
               <li key={i}>
                 {u.part}
-                {rep.coverage!.reasons.length !== 1 && u.reason ? <small> {u.reason}</small> : null}
+                {!oneReason && u.reason ? <small> {u.reason}</small> : null}
               </li>
             ))}
           </ul>

@@ -122,7 +122,6 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
         <span>
           {qty(rows.length)} {rows.length === 1 ? "part" : "parts"}
           {board.has_list ? " on the parts list" : ""}
-          {apart.length ? ` · ${qty(apart.length)} ${apart.length === 1 ? "file isn’t" : "files aren’t"} on it` : ""}
         </span>
         <span>{board.machines.length ? `${machinesText(board)}: ${machines}` : "No machines declared"}</span>
         <span>{board.has_list ? "Quantities a year from the parts list" : `${qty(board.quantity)} each`}</span>

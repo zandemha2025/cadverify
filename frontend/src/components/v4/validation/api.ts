@@ -302,7 +302,10 @@ export type Report = {
   coverage?: {
     parts: number;
     checked: number;
+    /** Failed or skipped. */
     not_checked: number;
+    /** Queued or being checked (op-28). */
+    to_go?: number;
     not_sorted: number;
     text: string;
     reasons: { reason: string; parts: number }[];

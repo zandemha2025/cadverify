@@ -58,7 +58,9 @@
   {% set c = r.coverage %}
   {% if c %}
   <p class="cov"><strong>{{ c.text }}.</strong>
-    {% if c.not_checked %}Not checked: {% for g in c.reasons %}{{ g.parts }} {{ g.reason | lower }}{% if not loop.last %}, {% endif %}{% endfor %}; they are listed at the end and aren't in any figure here.{% endif %}
+    {% if c.not_checked %}Not checked: {% for g in c.reasons %}{{ g.parts }} {{ g.reason | lower }}{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
+    {% if c.to_go %}{{ c.to_go }} still to go.{% endif %}
+    {% if c.left %}They are listed at the end and aren't in any figure here.{% endif %}
   </p>
   {% endif %}
   {% if r.overloaded %}
@@ -72,7 +74,7 @@
   {% endif %}
 
   <div class="figs" style="margin-top:8px">
-    <div class="fig"><span>Parts</span><b>{{ r.parts }}</b>{% if c and c.not_checked %}<small>{{ c.not_checked }} not checked</small>{% elif r.other %}<small>{{ r.other.values() | sum }} not sorted</small>{% endif %}</div>
+    <div class="fig"><span>Parts</span><b>{{ r.parts }}</b>{% if c and (c.not_checked or c.to_go) %}<small>{% if c.not_checked %}{{ c.not_checked }} not checked{% endif %}{% if c.not_checked and c.to_go %} · {% endif %}{% if c.to_go %}{{ c.to_go }} to go{% endif %}</small>{% elif r.other %}<small>{{ r.other.values() | sum }} not sorted</small>{% endif %}</div>
     {% for b in r.buckets %}
     <div class="fig"><span>{{ b.label }}</span><b>{{ b.parts or 0 }}</b>{% if b.hours %}<small>{{ b.hours | hours }} machine time</small>{% endif %}</div>
     {% endfor %}
@@ -247,14 +249,14 @@
   </div>
 
   {% if c and (c.unchecked or c.unsorted) %}
-  <h2>Not checked ({{ c.not_checked }}){% if c.not_sorted %}, and checked without a machine verdict ({{ c.not_sorted }}){% endif %}</h2>
+  <h2>Not checked ({{ c.not_checked }}){% if c.to_go %}, still to go ({{ c.to_go }}){% endif %}{% if c.not_sorted %}, and checked without a machine verdict ({{ c.not_sorted }}){% endif %}</h2>
   <p class="muted">They aren't in any figure above. Check them again from the run.</p>
-  {% set one_reason = c.reasons | length == 1 %}
+  {% set one_reason = c.reasons | length == 1 and not c.to_go %}
   {% if one_reason %}<p>All {{ c.not_checked }}: {{ c.reasons[0].reason | lower }}.</p>{% endif %}
   <div class="cols"{% if one_reason %} style="column-count: 5"{% endif %}>
     {% for u in c.unchecked %}<div>{{ u.part }}{% if not one_reason %} <span class="muted">{{ u.reason }}</span>{% endif %}</div>{% endfor %}
   </div>
-  {% if c.not_checked > c.unchecked | length %}<p class="muted">And {{ c.not_checked - (c.unchecked | length) }} more.</p>{% endif %}
+  {% if c.left > c.unchecked | length %}<p class="muted">And {{ c.left - (c.unchecked | length) }} more.</p>{% endif %}
   {% for g in c.unsorted_groups %}<p><strong>{{ g.reason }}</strong> ({{ g.parts | length }}): {{ g.parts | join(', ') }}</p>{% endfor %}
   {% endif %}
 
