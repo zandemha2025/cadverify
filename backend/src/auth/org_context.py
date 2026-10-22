@@ -57,6 +57,30 @@ def personal_org_name(email: str) -> str:
     return f"{local}'s Organization"
 
 
+_PERSONAL_NAME_SUFFIX = "'s Organization"
+_SHORT_ULID_RE = re.compile(r"[0-9a-z]{8}")
+
+
+def is_personal_org(name: object, slug: object) -> bool:
+    """True when ``(name, slug)`` is the pair ``ensure_personal_org`` writes.
+
+    A personal org is named ``"<local>'s Organization"`` and slugged
+    ``"<sanitized local>-<8 ulid chars>"`` from the same email local part. A
+    named org from ``org_service.create_org`` derives its slug from its whole
+    name, so its slug carries ``-s-organization`` before the suffix and never
+    matches. Organizations have no rename path, so the pair stays a reliable
+    marker for the lifetime of the org.
+    """
+    if not isinstance(name, str) or not isinstance(slug, str):
+        return False
+    if not name.endswith(_PERSONAL_NAME_SUFFIX):
+        return False
+    local = name[: -len(_PERSONAL_NAME_SUFFIX)]
+    stem = _SLUG_SANITIZE.sub("-", local.lower()).strip("-") or "org"
+    prefix = f"{stem}-"
+    return slug.startswith(prefix) and _SHORT_ULID_RE.fullmatch(slug[len(prefix):]) is not None
+
+
 def caller_org_subquery(user_id: int):
     """Correlated scalar expression → the org_id that owns ``user_id``.
 

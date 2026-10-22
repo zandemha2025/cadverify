@@ -170,6 +170,8 @@ async function main() {
     configuredToken: token,
     runId,
     purpose: "scim",
+    // SCIM refuses personal orgs, so the throwaway admin provisions a team org.
+    sharedOrg: true,
   });
   token = credential.token;
   if (!token) {
@@ -178,7 +180,7 @@ async function main() {
       generatedAt: new Date().toISOString(),
       runId,
       apiBase,
-      boundary: credential.boundary || "Requires PROOFSHAPE_SCIM_TOKEN or PROOFSHAPE_API_KEY for an org-admin user.",
+      boundary: credential.boundary || "Requires PROOFSHAPE_SCIM_TOKEN or PROOFSHAPE_API_KEY for an admin of a shared (non-personal) org on a backend that mounts SCIM (AUTH_MODE saml/oidc/hybrid or SCIM_ENABLED=1).",
       providers: [],
     };
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);

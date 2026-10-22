@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -26,6 +26,11 @@ def _ctx(org_id: str | None = "org_1") -> OrgAuthContext:
 def _build_app(session, ctx: OrgAuthContext | None = None):
     app = FastAPI()
     app.include_router(scim.router)
+
+    # The router's personal-org check reads the key's org: a shared team org.
+    org_row = MagicMock()
+    org_row.first.return_value = ("Acme Corp", "acme-corp-01abcdef")
+    session.execute = AsyncMock(return_value=org_row)
 
     async def _fake_ctx():
         return ctx or _ctx()
