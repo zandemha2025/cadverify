@@ -735,11 +735,9 @@ def _batch_item_lease_seconds() -> int:
     while still making a worker crash or failed cancellation self-healing.
     Operators may lengthen, but never shorten, this safety boundary.
     """
-    try:
-        configured = int(os.getenv("BATCH_ITEM_LEASE_SECONDS", "660"))
-    except (TypeError, ValueError):
-        configured = _BATCH_ITEM_LEASE_FLOOR_SECONDS
-    return max(_BATCH_ITEM_LEASE_FLOOR_SECONDS, configured)
+    from src.services.batch_service import batch_item_lease_seconds
+
+    return batch_item_lease_seconds()
 
 
 def _batch_item_queue_lease_seconds() -> int:
@@ -1220,18 +1218,62 @@ async def _notify_run_finished(batch_ulid: str) -> None:
         logger.warning("Run-finished notification not sent for %s", batch_ulid, exc_info=True)
 
 
+async def _notify_run_stopped(batch_ulid: str) -> None:
+    """One notification when a catalog run stops before every part was checked.
+
+    Says how many were checked and how many weren't, and that they can be
+    checked again (the run's page). Best effort: a failure here never touches
+    the run. Idempotent per run (the inbox keeps one row per source).
+    """
+    from src.services import notification_service
+    from src.services.catalog_run_service import run_meta
+
+    try:
+        async with get_session_factory()() as session:
+            batch = (await session.execute(select(Batch).where(Batch.ulid == batch_ulid))).scalars().first()
+            if batch is None or batch.job_type != "catalog":
+                return
+            counts = dict((await session.execute(
+                select(BatchItem.status, func.count(BatchItem.id))
+                .where(BatchItem.batch_id == batch.id)
+                .group_by(BatchItem.status)
+            )).all())
+            total = sum(int(n) for n in counts.values())
+            checked = int(counts.get("completed", 0))
+            not_checked = total - checked
+            name = run_meta(batch).get("name") or "Catalog run"
+            failure = (batch.manifest_json or {}).get("failure") or {}
+            body = (
+                f"{checked:,} of {total:,} checked; {not_checked:,} not checked. "
+                f"Check {'it' if not_checked == 1 else 'them'} again on the run's page."
+            )
+            await notification_service.emit_notification(
+                session, org_id=batch.org_id, actor_user_id=batch.user_id, kind="catalog.run_stopped",
+                severity="cond", title=f"Catalog run stopped - {name}", body=body, dest="verify",
+                source_type="catalog_run", source_id=batch.ulid,
+                metadata={"batch_id": batch.ulid, "name": name, "parts": total, "checked": checked,
+                          "not_checked": not_checked, "reason": failure.get("message")},
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("Run-stopped notification not sent for %s", batch_ulid, exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Orphan sweeper (F-ARCH-1)
 # ---------------------------------------------------------------------------
 
 
 async def sweep_orphaned_batches(ctx: dict) -> int:
-    """arq cron: reap batches stuck in pending/processing past the TTL.
+    """arq cron: resume batches that stopped making progress; fail only those that can't go on.
 
     Backstops the reject-don't-orphan path in POST /batch: if the API crashed
     between committing the batch and enqueuing its coordinator (or the
     coordinator died mid-run), the batch would sit 'pending'/'processing'
-    forever. This marks such batches failed with reason 'orphaned'.
+    forever. A stale batch whose parts are stored is resumed (stuck parts back
+    in the run, a new coordinator); one that can't be resumed is marked failed
+    with reason 'orphaned', each skipped part says why, and a catalog run's
+    owner gets one notification that it stopped.
 
     Off-switch: BATCH_ORPHAN_SWEEP_ENABLED=0.
     """
@@ -1240,14 +1282,32 @@ async def sweep_orphaned_batches(ctx: dict) -> int:
 
     from src.services import batch_service
 
+    resumed: list[str] = []
+    stopped: list[str] = []
     session_factory = get_session_factory()
     async with session_factory() as session:
-        reaped = await batch_service.sweep_orphaned_batches(session)
-        if reaped:
+        reaped = await batch_service.sweep_orphaned_batches(
+            session, resumed=resumed, stopped=stopped
+        )
+        if reaped or resumed:
             # Commit while the session context is alive. Committing after
             # __aexit__ silently loses the durable reaping transaction with a
             # real AsyncSession even though a loose mock appears to accept it.
             await session.commit()
+    pool = ctx.get("redis") or ctx.get("pool")
+    for batch_ulid in resumed:
+        # A new chain takes the batch over (any old one stops at its next tick).
+        try:
+            if pool is None:
+                from src.jobs.arq_backend import get_arq_pool
+
+                pool = await get_arq_pool()
+            await pool.enqueue_job("run_batch_coordinator", batch_ulid)
+        except Exception:
+            # The minute cron starts one when Redis is back.
+            logger.exception("Resumed batch %s, but its coordinator could not be queued", batch_ulid)
+    for batch_ulid in stopped:
+        await _notify_run_stopped(batch_ulid)
     if reaped:
         from src.api.metrics_registry import record_orphan_sweep
 

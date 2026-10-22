@@ -1215,29 +1215,152 @@ async def mark_pending_items_terminal(
     session: AsyncSession,
     batch_id: int,
     terminal_status: str = "skipped",
+    *,
+    error_message: Optional[str] = None,
 ) -> int:
     """Move a batch's non-terminal items to a terminal state (F-ARCH-1/#3).
 
     When a batch is marked failed on the enqueue-failure path, its items would
     otherwise keep their non-terminal 'pending' status, so progress endpoints
     (pending_items = total - completed - failed) would advertise work that will
-    never run. Terminalize them so the read is consistent. Caller commits.
+    never run. Terminalize them so the read is consistent. ``error_message``,
+    when given, is each item's reason. Caller commits.
     """
     now = datetime.now(timezone.utc)
+    values: dict = {
+        "status": terminal_status,
+        "completed_at": func.coalesce(BatchItem.completed_at, now),
+        "lease_started_at": None,
+    }
+    if error_message is not None:
+        values["error_message"] = error_message[:500]
     result = await session.execute(
         update(BatchItem)
         .where(
             BatchItem.batch_id == batch_id,
             BatchItem.status.in_(["pending", "queued", "processing"]),
         )
-        .values(
-            status=terminal_status,
-            completed_at=func.coalesce(BatchItem.completed_at, now),
-            lease_started_at=None,
-        )
+        .values(**values)
         .returning(BatchItem.id)
     )
     return len(result.scalars().all())
+
+
+# A stale run is resumed, not failed, while it can go on: its parts are still
+# stored and it made progress since it was last resumed (or was resumed fewer
+# than this many times without any).
+BATCH_RESUME_LIMIT = max(1, int(os.getenv("BATCH_RESUME_LIMIT", "3")))
+RUN_STOPPED_PREFIX = "The run stopped before this part was checked: "
+_FILE_GONE_ITEM = "This part's file is no longer stored. Start a new run with it."
+
+
+def batch_item_lease_seconds() -> int:
+    """How long a processing lease lasts before recovery: the 600 s job ceiling plus a margin.
+
+    Operators may lengthen, but never shorten, this boundary.
+    """
+    try:
+        configured = int(os.getenv("BATCH_ITEM_LEASE_SECONDS", "660"))
+    except (TypeError, ValueError):
+        configured = 660
+    return max(660, configured)
+
+
+def _missing_batch_blobs(batch_ulid: str, filenames: list[str]) -> set[str]:
+    """The filenames whose extracted object is no longer in the batch store (blocking I/O)."""
+    store = _batch_store()
+    missing: set[str] = set()
+    for name in filenames:
+        try:
+            if not store.exists(_batch_key(batch_ulid, name)):
+                missing.add(name)
+        except ValueError:
+            missing.add(name)
+    return missing
+
+
+@dataclass
+class _ResumeDecision:
+    resume: bool
+    reason: Optional[str] = None  # why the run stopped (the run's failure message)
+    item_reason: Optional[str] = None  # why each part it skips wasn't checked
+
+
+async def _resume_stale_batch(
+    session: AsyncSession,
+    batch: Batch,
+    *,
+    now: datetime,
+    heartbeat_stale_seconds: int,
+) -> _ResumeDecision:
+    """Resume a stale run whose parts are stored (the caller holds its row lock), or say why not.
+
+    Resuming: parts stuck mid-check past their lease, or queued longer than the
+    heartbeat window, go back in the run (their tries counted); a part whose
+    file is gone fails with that reason; the heartbeat and the resume count are
+    recorded. The caller starts a coordinator after commit.
+    """
+    import asyncio
+
+    remaining = (
+        await session.execute(
+            select(BatchItem.id, BatchItem.filename).where(
+                BatchItem.batch_id == batch.id,
+                BatchItem.status.in_(["pending", "queued", "processing"]),
+            )
+        )
+    ).all()
+    missing = (
+        await asyncio.to_thread(_missing_batch_blobs, batch.ulid, [r.filename for r in remaining])
+        if remaining
+        else set()
+    )
+    if remaining and len(missing) == len(remaining):
+        return _ResumeDecision(
+            False,
+            "its files are no longer stored, so its parts can't be checked again here. Start a new run with them",
+            "the run's files are no longer stored. Start a new run with this part.",
+        )
+
+    done = int(batch.completed_items or 0) + int(batch.failed_items or 0)
+    manifest = dict(batch.manifest_json or {})
+    prior = manifest.get("resumes") if isinstance(manifest.get("resumes"), dict) else {}
+    try:
+        prior_count, prior_done = int(prior.get("count") or 0), int(prior.get("done") or 0)
+    except (TypeError, ValueError):
+        prior_count, prior_done = 0, 0
+    count = prior_count + 1 if prior_count and done <= prior_done else 1
+    if count > BATCH_RESUME_LIMIT:
+        return _ResumeDecision(
+            False,
+            f"it made no progress after {BATCH_RESUME_LIMIT} restarts. Check the parts again",
+            f"the run made no progress after {BATCH_RESUME_LIMIT} restarts. Check it again.",
+        )
+
+    if missing:
+        gone = [r.id for r in remaining if r.filename in missing]
+        await session.execute(
+            update(BatchItem)
+            .where(BatchItem.id.in_(gone), BatchItem.status.in_(["pending", "queued", "processing"]))
+            .values(status="failed", completed_at=now, lease_started_at=None, error_message=_FILE_GONE_ITEM)
+        )
+        batch.failed_items = int(batch.failed_items or 0) + len(gone)
+    recovery = await recover_stale_batch_item_leases(
+        session,
+        batch,
+        processing_cutoff=now - timedelta(seconds=batch_item_lease_seconds()),
+        queued_cutoff=now - timedelta(seconds=heartbeat_stale_seconds),
+        now=now,
+    )
+    manifest = dict(batch.manifest_json or {})
+    manifest["resumes"] = {"count": count, "done": done, "at": now.isoformat()}
+    manifest["heartbeat_at"] = now.isoformat()
+    batch.manifest_json = manifest
+    logger.warning(
+        "Resumed stale batch %s (resume %d; %d part(s) back in the run, %d out of tries, %d file(s) gone)",
+        batch.ulid, count, len(recovery.requeued_ulids), len(recovery.exhausted_ulids), len(missing),
+    )
+    return _ResumeDecision(True)
 
 
 async def reconcile_terminal_batch_items(
@@ -1278,8 +1401,11 @@ async def sweep_orphaned_batches(
     ttl_seconds: Optional[int] = None,
     heartbeat_stale_seconds: Optional[int] = None,
     now: Optional[datetime] = None,
+    *,
+    resumed: Optional[list[str]] = None,
+    stopped: Optional[list[str]] = None,
 ) -> int:
-    """Mark dead batches stuck in pending/processing as failed=orphaned.
+    """Resume stale batches that can go on; mark the rest failed=orphaned.
 
     Staleness is measured from the coordinator's heartbeat
     (manifest_json['heartbeat_at']) when present: a batch is reaped only once its
@@ -1288,7 +1414,14 @@ async def sweep_orphaned_batches(
     was ever written -- the coordinator never ran (crash between commit and
     enqueue) -- do we fall back to the wall-clock TTL from started_at/created_at.
 
-    Returns the number of batches reaped. Caller commits.
+    A stale batch whose parts were unpacked (``input_mode`` zip) is resumed
+    while its files are stored and it hasn't been resumed BATCH_RESUME_LIMIT
+    times without progress (``_resume_stale_batch``); its ulid goes in
+    ``resumed`` for the caller to start a coordinator after commit. Otherwise it
+    fails, and each part it skips says why ("The run stopped before this part
+    was checked: ..."); the ulids of those go in ``stopped``.
+
+    Returns the number of batches reaped (failed). Caller commits.
     """
     ttl = BATCH_ORPHAN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
     hb_stale = (
@@ -1330,6 +1463,34 @@ async def sweep_orphaned_batches(
         if not stale:
             continue
 
+        stop_reason: Optional[str] = None
+        item_reason = "its worker stopped and the run couldn't be resumed."
+        if batch.status != "extracting" and batch.input_mode == "zip":
+            # Lock the row and look again: a tick or a part that finished since
+            # the read above wins, and the resume's counters can't race them.
+            locked = (
+                await session.execute(
+                    select(Batch)
+                    .where(Batch.id == batch.id, Batch.status == batch.status)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalars().first()
+            if locked is None:
+                continue
+            fresh = _parse_heartbeat(locked.manifest_json)
+            if fresh is not None and fresh > hb_cutoff:
+                continue
+            decision = await _resume_stale_batch(
+                session, locked, now=now, heartbeat_stale_seconds=hb_stale
+            )
+            if decision.resume:
+                if resumed is not None:
+                    resumed.append(locked.ulid)
+                continue
+            stop_reason = decision.reason
+            item_reason = decision.item_reason or item_reason
+
         # Compare-and-swap both active status and the exact manifest observed
         # above. If a coordinator refreshed heartbeat or cancellation committed
         # after our read, this update affects zero rows and the newer state wins.
@@ -1337,6 +1498,11 @@ async def sweep_orphaned_batches(
         old_manifest = batch.manifest_json
         new_manifest = dict(old_manifest or {})
         new_manifest["failure_reason"] = "orphaned"
+        if stop_reason is not None:
+            new_manifest["failure"] = {
+                "code": "run_stopped",
+                "message": f"The run stopped before every part was checked: {stop_reason}.",
+            }
         manifest_predicate = (
             Batch.manifest_json.is_(None)
             if old_manifest is None
@@ -1366,7 +1532,14 @@ async def sweep_orphaned_batches(
         batch.status = "failed"
         batch.completed_at = now
         batch.manifest_json = new_manifest
-        await mark_pending_items_terminal(session, batch.id, "skipped")
+        await mark_pending_items_terminal(
+            session,
+            batch.id,
+            "skipped",
+            error_message=RUN_STOPPED_PREFIX + item_reason,
+        )
+        if stopped is not None:
+            stopped.append(batch.ulid)
         reaped += 1
         logger.warning(
             "Reaped orphaned batch %s (status was %s, heartbeat=%s)",

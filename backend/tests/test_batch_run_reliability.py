@@ -323,3 +323,138 @@ async def test_a_part_stopped_every_try_fails_with_a_plain_reason(run_world, mon
     assert item["status"] == "failed" and item["attempt_count"] == 3
     assert "stopped before it finished" in item["error_message"]
     assert "database" not in item["error_message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# 2. The orphan sweep recovers before it fails
+# ---------------------------------------------------------------------------
+
+
+async def _age_run(ulid: str, *, heartbeat_minutes: int, stuck: int = 0, manifest_extra: dict | None = None) -> None:
+    """Make the run look like the incident: no heartbeat for a while, some parts stuck mid-check."""
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    hb = (datetime.now(timezone.utc) - timedelta(minutes=heartbeat_minutes)).isoformat()
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text(
+            "UPDATE batches SET manifest_json = manifest_json || CAST(:m AS jsonb) WHERE ulid = :u"
+        ), {"u": ulid, "m": json.dumps({"heartbeat_at": hb, **(manifest_extra or {})})})
+        if stuck:
+            await s.execute(text(
+                "UPDATE batch_items SET status = 'processing', attempt_count = 1, "
+                "started_at = now() - interval '20 minutes', lease_started_at = now() - interval '20 minutes' "
+                "WHERE id IN (SELECT bi.id FROM batch_items bi JOIN batches b ON b.id = bi.batch_id "
+                "WHERE b.ulid = :u ORDER BY bi.id LIMIT :n)"
+            ), {"u": ulid, "n": stuck})
+
+
+@pytest.mark.asyncio
+async def test_a_stale_run_with_its_parts_stored_is_resumed_not_failed(run_world, monkeypatch):
+    from src.jobs import batch_tasks
+
+    _install_part_check(monkeypatch)
+    pool = FakeArq()
+    ulid = await run_world["make_run"](6)
+    await _age_run(ulid, heartbeat_minutes=15, stuck=2)
+
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 0
+    state = await _batch(ulid)
+    assert state["status"] == "processing"
+    stuck = state["items"][:2]
+    assert all(i["status"] == "pending" and i["attempt_count"] == 1 for i in stuck), stuck
+    resumes = state["manifest_json"]["resumes"]
+    assert resumes["count"] == 1 and resumes["done"] == 0
+    hb = datetime.fromisoformat(state["manifest_json"]["heartbeat_at"])
+    assert datetime.now(timezone.utc) - hb < timedelta(minutes=1)
+    assert [j[0] for j in pool.queue] == ["run_batch_coordinator"]
+
+    await _drive(pool)
+    state = await _batch(ulid)
+    assert state["status"] == "completed" and state["completed_items"] == 6
+
+
+@pytest.mark.asyncio
+async def test_a_stale_run_whose_files_are_gone_stops_with_the_reason_on_each_part(run_world):
+    from src.jobs import batch_tasks
+
+    pool = FakeArq()
+    ulid = await run_world["make_run"](4, blobs=False)
+    await _age_run(ulid, heartbeat_minutes=15)
+
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    state = await _batch(ulid)
+    assert state["status"] == "failed"
+    assert not pool.queue
+    failure = state["manifest_json"]["failure"]
+    assert failure["code"] == "run_stopped" and "no longer stored" in failure["message"]
+    for item in state["items"]:
+        assert item["status"] == "skipped"
+        assert item["error_message"].startswith("The run stopped before this part was checked: ")
+
+
+@pytest.mark.asyncio
+async def test_a_run_resumed_without_progress_stops_after_the_limit(run_world):
+    from src.jobs import batch_tasks
+
+    pool = FakeArq()
+    ulid = await run_world["make_run"](3)
+    await _age_run(ulid, heartbeat_minutes=15, manifest_extra={"resumes": {"count": 3, "done": 0}})
+
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    state = await _batch(ulid)
+    assert state["status"] == "failed"
+    assert "no progress" in state["manifest_json"]["failure"]["message"]
+    assert all(i["error_message"].startswith("The run stopped before this part was checked: ")
+               for i in state["items"])
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_run_that_made_progress_starts_its_count_again(run_world):
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs import batch_tasks
+
+    pool = FakeArq()
+    ulid = await run_world["make_run"](3)
+    await _age_run(ulid, heartbeat_minutes=15, manifest_extra={"resumes": {"count": 3, "done": 0}})
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text("UPDATE batches SET completed_items = 1 WHERE ulid = :u"), {"u": ulid})
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'completed' WHERE id = (SELECT min(bi.id) FROM batch_items bi "
+            "JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u)"), {"u": ulid})
+
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 0
+    state = await _batch(ulid)
+    assert state["status"] == "processing"
+    assert state["manifest_json"]["resumes"] == {**state["manifest_json"]["resumes"], "count": 1, "done": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_run_sends_one_notification_saying_so(run_world):
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs import batch_tasks
+
+    pool = FakeArq()
+    ulid = await run_world["make_run"](4, blobs=False)
+    await _age_run(ulid, heartbeat_minutes=15)
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text("UPDATE batches SET completed_items = 1 WHERE ulid = :u"), {"u": ulid})
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'completed' WHERE id = (SELECT min(bi.id) FROM batch_items bi "
+            "JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u)"), {"u": ulid})
+
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    await batch_tasks._notify_run_stopped(ulid)  # a second sweep, or a retry: still one
+    async with eng.get_session_factory()() as s:
+        rows = (await s.execute(text(
+            "SELECT kind, title, body FROM notifications WHERE org_id = :o AND source_id = :u"
+        ), {"o": run_world["org"], "u": ulid})).mappings().all()
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "catalog.run_stopped"
+    assert rows[0]["title"] == "Catalog run stopped - Reliability run"
+    assert rows[0]["body"] == "1 of 4 checked; 3 not checked. Check them again on the run's page."
