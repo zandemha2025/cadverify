@@ -40,7 +40,7 @@ export function SiteFooter() {
     <nav aria-label="Explore"><h2>Explore</h2><Link href="/sample">Sample part</Link><Link href="/teams">Your workflow</Link><Link href="/method">How it works</Link><Link href="/platform">The platform</Link><Link href="/pricing">Pricing</Link></nav>
     <nav aria-label="Resources"><h2>Resources</h2><Link href="/developers">Developers</Link><Link href="/api-reference">API reference</Link><Link href="/security">Security</Link><Link href="/pilot-report">Pilot report</Link></nav>
     <nav aria-label="Company"><h2>ScaleCAD</h2><Link href="/company">Company</Link><Link href="/contact">Contact</Link><Link href="/pilot">Plan a pilot</Link><Link href="/status">Service status</Link><Link href="/login">Log in</Link></nav>
-  </div><div className="cv-footer-bottom"><span>© {new Date().getFullYear()} ScaleCAD</span><nav aria-label="Legal"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/dpa">Data processing</Link><button type="button" className="cv-footer-pref" onClick={() => window.dispatchEvent(new Event(ANALYTICS_PREFERENCES_EVENT))}>Analytics preferences</button></nav><span>Built for decisions that matter.</span></div></footer>;
+  </div><div className="cv-footer-bottom"><span>© {new Date().getFullYear()} ScaleCAD</span><nav aria-label="Legal"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/dpa">Data processing</Link><button type="button" className="cv-footer-pref" onClick={() => window.dispatchEvent(new Event(ANALYTICS_PREFERENCES_EVENT))}>Privacy choices</button></nav><span>Built for decisions that matter.</span></div></footer>;
 }
 
 export function SiteFooterTagline({ className }: { className?: string }) {

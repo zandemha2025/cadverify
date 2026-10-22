@@ -12,7 +12,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
 import { browserPendingPartStore, normalizeEmail, peekPendingPart } from "@/lib/pending-part";
-import { ANALYTICS_CONSENT } from "@/lib/analytics";
+import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
+import { CHOICES_EVENT, choicesSummary, readChoices, type PrivacyChoices } from "@/lib/privacy-choices";
 import { NAV, R, GO_KEYS, sectionOf } from "./routes";
 import { setPendingFile } from "./pending-file";
 import { Palette, PaletteProvider, usePalette } from "./palette";
@@ -287,16 +288,15 @@ function AccountMenu({
   const [open, setOpen] = React.useState(false);
   const [askOut, setAskOut] = React.useState(false);
   const [switching, setSwitching] = React.useState(false);
-  const [consent, setConsent] = React.useState<string | null>(null);
+  const [consent, setConsent] = React.useState<PrivacyChoices | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
-    try {
-      setConsent(localStorage.getItem(ANALYTICS_CONSENT));
-    } catch {
-      setConsent(null);
-    }
+    const read = () => setConsent(readChoices());
+    read();
+    window.addEventListener(CHOICES_EVENT, read);
+    return () => window.removeEventListener(CHOICES_EVENT, read);
   }, []);
 
   React.useEffect(() => {
@@ -441,33 +441,23 @@ function AccountMenu({
           ))}
           <div style={{ height: 1, background: "var(--rule)", margin: "4px 10px" }} />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px" }}>
-            <span>
-              Analytics{" "}
+            <span style={{ minWidth: 0 }}>
+              Privacy choices{" "}
               <Link href={R.data} onClick={() => setOpen(false)} style={{ fontSize: 12.5 }}>
-                Privacy details
+                Details
               </Link>
+              <small style={{ display: "block", color: "var(--ink3)", fontSize: 12 }}>{choicesSummary(consent)}</small>
             </span>
-            <span className="seg" role="group" aria-label="Analytics">
-              {(["yes", "no"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={cx(consent === v && "on")}
-                  aria-pressed={consent === v}
-                  onClick={() => {
-                    try {
-                      localStorage.setItem(ANALYTICS_CONSENT, v);
-                    } catch {
-                      return;
-                    }
-                    setConsent(v);
-                    if (v !== "yes") location.reload();
-                  }}
-                >
-                  {v === "yes" ? "Allow" : "Off"}
-                </button>
-              ))}
-            </span>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new Event(ANALYTICS_PREFERENCES_EVENT));
+              }}
+            >
+              Change
+            </button>
           </div>
           <div style={{ height: 1, background: "var(--rule)", margin: "4px 10px" }} />
           <Link href={`${R.home}?welcome=1`} onClick={() => setOpen(false)} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", borderRadius: 10, color: "var(--ink)", textDecoration: "none" }}>

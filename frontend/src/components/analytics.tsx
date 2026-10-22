@@ -4,24 +4,56 @@ import * as React from "react";
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import posthog from "posthog-js";
-import { ANALYTICS_CONSENT, analyticsAllowed, track } from "@/lib/analytics";
+import { ANALYTICS_PREFERENCES_EVENT, track } from "@/lib/analytics";
 import { cleanAnalyticsEvent, publicReplayAllowed, routeLabel } from "@/lib/analytics-privacy";
+import {
+  CHOICES_EVENT,
+  CHOICES_KEY,
+  LEGACY_KEY,
+  NONE,
+  effectiveChoices,
+  readChoices,
+  saveChoices,
+  trackingFreePath,
+  withdrawn,
+  type PrivacyChoices,
+} from "@/lib/privacy-choices";
 import { RB2B_SCRIPT, rb2bAllowed } from "@/lib/rb2b";
-import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
 
+/**
+ * Three separate choices (see lib/privacy-choices): product analytics and
+ * session recordings (PostHog), and business visitor identification (RB2B).
+ * All off until chosen. The first visit to a public page asks; "Privacy
+ * choices" in the site footer or the account menu reopens the same panel,
+ * showing what is on now. Supplier share pages (/s/...) load nothing and ask
+ * nothing: the supplier isn't ScaleCAD's visitor.
+ */
 export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
   const path = usePathname();
-  const [choice, setChoice] = React.useState<string | null>(null);
+  const [choices, setChoices] = React.useState<PrivacyChoices | null>(null);
   const [ready, setReady] = React.useState(false);
+  const [asked, setAsked] = React.useState(false);
+  const free = trackingFreePath(path);
+  const on = free ? NONE : effectiveChoices(choices);
 
   React.useEffect(() => {
-    try { setChoice(localStorage.getItem(ANALYTICS_CONSENT)); } catch { setChoice("no"); }
+    setChoices(readChoices());
     setReady(true);
+    const reread = () => setChoices(readChoices());
+    const fromStorage = (e: StorageEvent) => {
+      if (e.key === CHOICES_KEY || e.key === LEGACY_KEY) reread();
+    };
+    window.addEventListener(CHOICES_EVENT, reread);
+    window.addEventListener("storage", fromStorage);
+    return () => {
+      window.removeEventListener(CHOICES_EVENT, reread);
+      window.removeEventListener("storage", fromStorage);
+    };
   }, []);
 
   React.useEffect(() => {
     if (!token || !ready) return;
-    if (choice !== "yes" || !analyticsAllowed()) {
+    if (!on.analytics) {
       if (posthog.__loaded) { posthog.stopSessionRecording(); posthog.opt_out_capturing(); posthog.reset(); }
       window.dispatchEvent(new Event("scalecad-analytics-ready"));
       return;
@@ -43,7 +75,8 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
         maskCapturedNetworkRequestFn: () => null,
       },
       before_send: event => {
-        if (event?.event === "$snapshot" && !publicReplayAllowed(location.pathname, location.search, location.hash)) return null;
+        if (trackingFreePath(location.pathname)) return null;
+        if (event?.event === "$snapshot" && (!effectiveChoices().recordings || !publicReplayAllowed(location.pathname, location.search, location.hash))) return null;
         const cleaned = cleanAnalyticsEvent(event);
         if (cleaned && !publicReplayAllowed(location.pathname, location.search, location.hash)) delete cleaned.properties.$heatmap_data;
         return cleaned;
@@ -57,26 +90,26 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
       posthog.register_once(JSON.parse(sessionStorage.getItem("scalecad_attribution") || "{}"));
     } catch { /* Storage may be disabled. */ }
     window.dispatchEvent(new Event("scalecad-analytics-ready"));
-  }, [choice, ready, token]);
+  }, [on.analytics, ready, token]);
 
   React.useEffect(() => {
-    if (!posthog.__loaded || !analyticsAllowed()) return;
+    if (!posthog.__loaded || !on.analytics) return;
     const replay = publicReplayAllowed(path, location.search, location.hash);
     posthog.set_config({ capture_heatmaps: replay && ["/", "/pricing", "/pilot"].includes(path) });
-    if (replay) posthog.startSessionRecording(); else posthog.stopSessionRecording();
+    if (replay && on.recordings) posthog.startSessionRecording(); else posthog.stopSessionRecording();
     posthog.register({ surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
     track("$pageview", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
     return () => {
       track("$pageleave", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
       posthog.stopSessionRecording();
     };
-  }, [path, choice, ready]);
+  }, [path, on.analytics, on.recordings, ready]);
 
-  const visitorTracking = ready && rb2bAllowed(
+  const visitorTracking = ready && !free && rb2bAllowed(
     typeof location === "undefined" ? "" : location.hostname, path,
     typeof location === "undefined" ? "" : location.search,
     typeof location === "undefined" ? "" : location.hash,
-    choice === "yes" && analyticsAllowed(),
+    on.visitors,
   );
 
   React.useEffect(() => {
@@ -97,29 +130,76 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
     return () => { document.removeEventListener("click", navigate, true); window.removeEventListener("popstate", reload); };
   }, [visitorTracking]);
 
-  // "Analytics preferences" at the foot of public pages asks again (nothing floats over the page once chosen).
+  // "Privacy choices" in the footer or the account menu opens the panel with what is on now.
   React.useEffect(() => {
-    const ask = () => setChoice(null);
+    const ask = () => setAsked(true);
     window.addEventListener(ANALYTICS_PREFERENCES_EVENT, ask);
     return () => window.removeEventListener(ANALYTICS_PREFERENCES_EVENT, ask);
   }, []);
 
-  function choose(value: string) {
-    try { localStorage.setItem(ANALYTICS_CONSENT, value); } catch { return; }
-    setChoice(value);
-    if (value !== "yes" && "reb2b" in window) location.reload();
+  function choose(next: PrivacyChoices) {
+    const before = effectiveChoices(choices);
+    const saved = saveChoices(next);
+    setChoices(saved);
+    setAsked(false);
+    const stop = withdrawn(before, effectiveChoices(saved));
+    // Withdrawn choices stop at once: PostHog in place, RB2B (no stop call) by a reload.
+    if (stop.stopRecordings && posthog.__loaded) posthog.stopSessionRecording();
+    if (stop.reload && "reb2b" in window) location.reload();
   }
-  if (!ready) return null;
-  // Inside the app the choice lives in the account menu (Analytics: Allow / Off, with Privacy details),
-  // so nothing floats over the work. Until someone chooses there, analytics stays off, as if declined.
+
+  if (!ready || free) return null;
+  // Inside the app nothing floats over the work unless asked (account menu, Privacy choices).
   const inApp = !!path && (path === "/app" || path.startsWith("/app/"));
+  const show = asked || (choices === null && !inApp);
   return <>
     {visitorTracking && <Script id="scalecad-rb2b" nonce={nonce} strategy="afterInteractive">{RB2B_SCRIPT}</Script>}
-    {inApp || choice !== null ? null : (
-    <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-3 left-3 right-3 sm:right-auto z-50 max-w-md rounded-xl border border-black/15 bg-white px-3 py-2.5 text-[13px] leading-snug text-black shadow-lg">
-      <p><b>Allow</b>: we count visits, record public pages with text masked, and our sales tool sees which company visited. <b>Decline</b>: none of that. Your files and passwords are never included. <a href="/privacy#analytics" className="underline">Details</a></p>
-      <div className="mt-2 flex gap-2"><button type="button" onClick={() => choose("yes")} className="rounded bg-black px-3 py-1.5 text-white">Allow</button><button type="button" onClick={() => choose("no")} className="rounded border px-3 py-1.5">Decline</button></div>
-    </aside>
-    )}
+    {show ? <ChoicesPanel current={choices} first={choices === null} onSave={choose} onClose={asked ? () => setAsked(false) : null} /> : null}
   </>;
+}
+
+const ROWS: { key: keyof PrivacyChoices; title: string; what: string }[] = [
+  { key: "analytics", title: "Product analytics (PostHog)", what: "Counts pages and button clicks, with all text masked. Never your files, file names or passwords." },
+  { key: "recordings", title: "Session recordings (PostHog)", what: "Records public website pages with all text and form fields masked. Never inside the app." },
+  { key: "visitors", title: "Business visitor identification (RB2B)", what: "Tells ScaleCAD’s sales team which company visited the public website. Never inside the app." },
+];
+
+function ChoicesPanel({ current, first, onSave, onClose }: { current: PrivacyChoices | null; first: boolean; onSave: (c: PrivacyChoices) => void; onClose: (() => void) | null }) {
+  const [draft, setDraft] = React.useState<PrivacyChoices>(current ?? NONE);
+  const id = React.useId();
+  return (
+    <aside aria-labelledby={`${id}-t`} data-private className="ph-no-capture fixed bottom-3 left-3 right-3 sm:right-auto z-50 max-w-md max-h-[calc(100dvh-24px)] overflow-auto rounded-xl border border-black/15 bg-white px-3.5 py-3 text-[13px] leading-snug text-black shadow-lg">
+      <p id={`${id}-t`} className="font-semibold">Privacy choices</p>
+      <p className="mt-0.5 text-black/65">{first ? "Each is off until you turn it on. Your files and passwords are never included." : "What this browser allows now. Change any of them."}</p>
+      <div className="mt-2 flex flex-col gap-2">
+        {ROWS.map((r) => {
+          const needs = r.key === "recordings" && !draft.analytics;
+          return (
+            <label key={r.key} className={`flex gap-2 items-start ${needs ? "opacity-60" : ""}`}>
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={draft[r.key] && !needs}
+                disabled={needs}
+                onChange={(e) => setDraft((d) => ({ ...d, [r.key]: e.target.checked }))}
+              />
+              <span>
+                <b className="font-medium">{r.title}</b>
+                <span className="block text-black/65">{needs ? "Needs product analytics." : r.what}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => onSave(draft)} className="rounded bg-black px-3 py-1.5 text-white">Save choices</button>
+        {first ? (
+          <button type="button" onClick={() => onSave(NONE)} className="rounded border px-3 py-1.5">Decline all</button>
+        ) : onClose ? (
+          <button type="button" onClick={onClose} className="rounded border px-3 py-1.5">Cancel</button>
+        ) : null}
+        <a href="/privacy#analytics" className="underline">Details</a>
+      </div>
+    </aside>
+  );
 }
