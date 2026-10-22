@@ -466,11 +466,7 @@ def test_a_tiny_part_never_reads_zero_kg():
     assert (kg_text(0.0136), kg_text(0.0000412), kg_text(0.00085)) == ("0.0136", "0.0000412", "0.000850")
 
 
-@pytest.mark.parametrize("process", ["sand_casting", "investment_casting", "forging"])
-def test_a_casting_or_forging_twice_the_size_pays_8x_the_metal_and_the_same_per_piece_time(process):
-    # Round 7 item 5: at 10,000 a 2x part was barely dearer. The metal is modelled by
-    # weight (8x the volume, 8x the material cost); what doesn't grow is the per-piece
-    # time (fettling, pour, press), which the labor line now says in words.
+def _small_and_big_at_10000(process):
     small = trimesh.creation.box(extents=[40.0, 30.0, 20.0])
     big = trimesh.creation.box(extents=[80.0, 60.0, 40.0])
     est = {}
@@ -481,6 +477,31 @@ def test_a_casting_or_forging_twice_the_size_pays_8x_the_metal_and_the_same_per_
     mat = [_driver(est[k], "material_cost")["value"] for k in ("small", "big")]
     assert mat[1] / mat[0] == pytest.approx(8.0, rel=0.01)
     assert est["big"]["material_mass"]["used_kg"] / est["small"]["material_mass"]["used_kg"] == pytest.approx(8.0, rel=0.01)
+    return est
+
+
+@pytest.mark.parametrize("process", ["sand_casting", "investment_casting"])
+def test_a_casting_twice_the_size_pays_8x_the_metal_more_of_its_mould_and_more_fettling(process):
+    # Round 7 item 5 found a 2x casting at 10,000 barely dearer: the pour and 0.6 h of
+    # fettling were per piece at any size. Round 14: published cost structure (Boothroyd
+    # Dewhurst, Sand / Investment Casting Cost Estimating) spreads a mould or tree over
+    # the castings it holds and fettles a small casting for $0.50-2.00, a large one for
+    # hours. A mould holds fewer of the bigger casting, and its fettling follows its surface.
+    est = _small_and_big_at_10000(process)
+    machine = [_driver(est[k], "machine_cost")["value"] for k in ("small", "big")]
+    labor = [_driver(est[k], "labor_cost") for k in ("small", "big")]
+    assert machine[1] > 2 * machine[0]
+    assert labor[1]["value"] > labor[0]["value"]
+    assert "it follows the surface, mass to the 2/3 power" in labor[0]["source"]
+    assert "castings a " in _driver(est["small"], "cycle_time")["source"]
+    assert est["big"]["unit_cost_usd"] > 1.05 * est["small"]["unit_cost_usd"]
+
+
+def test_a_forging_twice_the_size_pays_8x_the_metal_and_the_same_per_piece_time():
+    # A forging is a press stroke and a trim a piece (a 20-120 s cycle set by complexity:
+    # Boothroyd Dewhurst, Forging Cost Estimating); its cleanup is per piece too, and the
+    # labor line says so in words.
+    est = _small_and_big_at_10000("forging")
     labor = [_driver(est[k], "labor_cost") for k in ("small", "big")]
     assert labor[0]["value"] == labor[1]["value"]
     assert "per piece, the same time at any size" in labor[0]["source"]

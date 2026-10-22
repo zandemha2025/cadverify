@@ -113,15 +113,17 @@ def test_no_change_at_or_below_the_first_lot(block):
 
 def test_sand_casting_tooling_is_its_own_line_at_100():
     """ce-04: "Tooling (pattern/core box) $5,250 ÷ 100 = $52.50 each as its own line, with
-    Setup $0.35 separate (0.35 + 52.50 + 21.00 + 3.52 + 0.86 = 78.23)"."""
+    Setup $0.35 separate". Round 14: the mould is shared by the 28 castings it holds and
+    fettling follows this 0.27 kg casting's size (0.35 + 52.50 + 0.93 + 0.44 + 0.86 = 55.08;
+    it was 21.00 labor + 3.52 machine, one casting a mould and 0.6 h of fettling at any size)."""
     rates = build_rate_card()
     mat = select_material(PT.SAND_CASTING, "steel", rates)
     e = cost_breakdown(PT.SAND_CASTING, _pocket_block(), mat, "steel", 100, rates, "US")
     assert e.line_items["tooling"] == pytest.approx(52.50)
     assert e.line_items["amortized_fixed"] == pytest.approx(0.35)          # setup only, was $52.85
     assert [round(e.line_items[k], 2) for k in ("amortized_fixed", "tooling", "labor", "machine", "material")] \
-        == [0.35, 52.50, 21.00, 3.52, 0.86]
-    assert round(e.unit_cost_usd, 2) == 78.23
+        == [0.35, 52.50, 0.93, 0.44, 0.86]
+    assert round(e.unit_cost_usd, 2) == 55.08
     whole = _driver(e, "tooling_cost")
     each = _driver(e, "tooling_per_part")
     # The whole tool is a once-for-the-tool value, never in the column of per-part dollars.

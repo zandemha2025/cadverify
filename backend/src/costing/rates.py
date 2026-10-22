@@ -276,32 +276,47 @@ RATE_CARD_V0: dict = {
             handling_hr=0.020),         # load/unload/locate per part
         # ── CASTING (pour + solidify) — foundry cell. Material = poured metal =
         # net part mass × (1 + yield_loss) for gating/risers. Machine cycle =
-        # pour + solidification cool (∝ poured mass). Knockout/fettle/clean is
-        # LABOR (post_hr_part). Tooling is a pattern (sand) / wax die + shell
-        # (investment), sized by the shared size-tier table × a casting multiplier
-        # (see tooling_casting_mult). EVERY constant below is a DEFAULT assumption,
-        # NOT foundry-validated. ──────────────────────────────────────────────
+        # the mould's (sand) or tree's (investment) share + solidification cool
+        # (∝ poured mass). A mould or tree holds as many castings as fit it
+        # (mould_w_mm × mould_l_mm, mould_gap_mm of sand or gating around each),
+        # and its pour_hr is shared by them. Fettling is LABOR: post_hr_part a
+        # casting (cut off, handling) + fettle_hr_kg × (casting kg)^(2/3), the
+        # grinding and blasting, which follow its surface. Published structure
+        # (Boothroyd Dewhurst, "Sand Casting Cost Estimating" and "Investment
+        # Casting Cost Estimating", dfma.com, 2026): mould sand spread over
+        # multi-cavity moulds; castings under 2 lb fettled for $0.50–2.00 (tumbled),
+        # over 50 lb 1–4 h; 3–8 castings a tree by size, shell $2–6 and pour and
+        # breakout $3–8 a casting, cut-off and finishing $4–15. Tooling is a
+        # pattern (sand) / wax die + shell (investment), sized by the shared
+        # size-tier table × a casting multiplier (see tooling_casting_mult).
+        # EVERY constant below is a DEFAULT assumption, NOT foundry-validated. ──
         PT.SAND_CASTING: dict(
             machine_rate=40.0,          # $/hr loaded sand-foundry pour cell (DEFAULT, un-validated)
             setup_hr=1.00,              # mould box / gating setup per lot (DEFAULT)
             post_hr=0.0, scrap=0.06,    # casting-defect scrap fraction (DEFAULT)
             deposition=None, vert=None, finish=None, queue_days=6, post_days=3,
-            post_hr_part=0.60,          # shakeout + knockout + fettle/grind/clean, per part (DEFAULT)
+            post_hr_part=0.01,          # cut a casting off its runner + handling, per casting (DEFAULT)
+            fettle_hr_kg=0.04,          # grind + blast: 0.04 h for a 1 kg casting, × (kg)^(2/3) (DEFAULT)
             post_hr_build=0.0, lot_size=200, min_charge=120,
             n_machines=3, machine_hours_per_day=16,
             yield_loss=0.50,            # gating+risers: poured = net × 1.50 (sand runs heavy) (DEFAULT)
-            pour_hr=0.08,               # ladle pour + handling per part (DEFAULT)
+            pour_hr=0.08,               # make, close, pour + knock out one mould (DEFAULT)
+            mould_w_mm=500.0, mould_l_mm=400.0,  # a typical flask's pattern plate (DEFAULT)
+            mould_gap_mm=25.0,          # sand + gating around each casting and to the flask (DEFAULT)
             cool_min_per_kg=1.20),      # solidification/cool minutes per kg poured (DEFAULT)
         PT.INVESTMENT_CASTING: dict(
             machine_rate=55.0,          # $/hr loaded investment (lost-wax) shell+pour cell (DEFAULT)
             setup_hr=1.50,              # tree assembly / shell prep per lot (DEFAULT)
             post_hr=0.0, scrap=0.05,    # casting-defect scrap fraction (DEFAULT)
             deposition=None, vert=None, finish=None, queue_days=10, post_days=4,
-            post_hr_part=0.35,          # near-net precision route: less fettling than sand (DEFAULT)
+            post_hr_part=0.02,          # cut a casting off the tree + handling, per casting (DEFAULT)
+            fettle_hr_kg=0.15,          # grind the gate, blast, finish: 0.15 h for 1 kg, × (kg)^(2/3) (DEFAULT)
             post_hr_build=0.0, lot_size=200, min_charge=180,
             n_machines=2, machine_hours_per_day=16,
             yield_loss=0.40,            # gating tree metal: poured = net × 1.40 (DEFAULT)
-            pour_hr=0.12,               # shell fill + handling per part (DEFAULT)
+            pour_hr=0.60,               # assemble, shell, dewax, pour + knock out one tree (DEFAULT)
+            mould_w_mm=300.0, mould_l_mm=200.0,  # room for castings on one tree (DEFAULT)
+            mould_gap_mm=30.0,          # gates + shell between castings (DEFAULT)
             cool_min_per_kg=1.50),      # ceramic shell holds heat: slower cool per kg (DEFAULT)
         # ── FORGING (heat + press/hammer a billet in a closed die) — material =
         # billet mass = net × (1 + flash/scale loss), bought as bar stock. Machine
@@ -821,7 +836,7 @@ _NUMERIC_FIELDS = {
     # E-now #3+#4: CNC NRE / inspection / outsourced secondary finishing
     "nre_hr", "fai_hr", "inspect_hr_part", "finish_lot_charge", "finish_per_part",
     # CASTING / FORGING / WIRE-EDM physics constants (all DEFAULT, overridable)
-    "yield_loss", "pour_hr", "cool_min_per_kg",
+    "yield_loss", "pour_hr", "cool_min_per_kg", "fettle_hr_kg", "mould_w_mm", "mould_l_mm", "mould_gap_mm",
     "flash_loss", "heat_min_per_kg", "press_hr", "trim_hr",
     "n_threads", "thread_min", "wire_cost_per_hr",
     # METAL-AM physics constants (powder-bed / binder-jet / DED — all DEFAULT, overridable)

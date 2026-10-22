@@ -307,11 +307,13 @@ GOLDEN = {
     PT.FORGING: (_ALU, "aluminum", 139.0068,
                  {"amortized_fixed": 1.05, "material": 0.8505, "machine": 10.1063, "labor": 7.0,
                   "tooling": 120.0}),
-    PT.INVESTMENT_CASTING: (_ALU, "aluminum", 74.4835,
-                            {"amortized_fixed": 0.525, "material": 0.9526, "machine": 6.7559,
-                             "labor": 12.25, "tooling": 54.0}),
-    PT.SAND_CASTING: (_ALU, "aluminum", 46.6775,
-                      {"amortized_fixed": 0.35, "material": 1.0303, "machine": 3.2972, "labor": 21.0,
+    # Castings updated (round 14): a mould or tree is shared by the castings it holds
+    # (42 of this part a sand mould, 8 a tree) and fettling follows the casting's size.
+    PT.INVESTMENT_CASTING: (_ALU, "aluminum", 61.4413,
+                            {"amortized_fixed": 0.525, "material": 0.9526, "machine": 4.2809,
+                             "labor": 1.6828, "tooling": 54.0}),
+    PT.SAND_CASTING: (_ALU, "aluminum", 23.1658,
+                      {"amortized_fixed": 0.35, "material": 1.0303, "machine": 0.1734, "labor": 0.6121,
                        "tooling": 21.0}),
     # One setup for the order (de-19): 100 parts on a 50-part lot paid two setups before.
     PT.WIRE_EDM: (_ALU, "aluminum", 22.9955,

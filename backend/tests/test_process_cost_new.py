@@ -253,3 +253,61 @@ def test_existing_eleven_byte_identical():
             f"{proc.name} unit_cost drifted: {est.unit_cost_usd} != {exp_unit}")
         assert est.line_items == exp_items, (
             f"{proc.name} line_items drifted: {est.line_items} != {exp_items}")
+
+
+# ── Round 14: a mould or tree is shared; fettling follows the casting's size ──
+@pytest.mark.parametrize("process, per_mould", [(PT.SAND_CASTING, 42), (PT.INVESTMENT_CASTING, 8)])
+def test_a_mould_or_tree_is_shared_by_the_castings_it_holds(process, per_mould):
+    """25 x 30 x 40 mm: 42 to a 500 x 400 mm sand mould, 8 to a 300 x 200 mm tree
+    (25 / 30 mm of sand or gating around each). The mould's time is shared."""
+    from src.costing.cost_model import castings_per_mould
+
+    rc, d = build_rate_card(), _drivers()
+    n, share, words = castings_per_mould(process, d, rc)
+    assert (n, share) == (per_mould, pytest.approx(1 / per_mould))
+    est = cost_breakdown(process, d, _alu(), "aluminum", 100, rc, "US")
+    cycle = _driver(est, "cycle_time")
+    assert f"÷ {per_mould}" in cycle.source and f"{per_mould} castings a " in cycle.source
+
+
+def test_a_casting_too_big_for_the_mould_takes_a_bigger_one():
+    from src.costing.cost_model import castings_per_mould
+
+    big = GeoDrivers(volume_cm3=64000.0, surface_area_cm2=9600.0, bbox_mm=(400.0, 400.0, 400.0),
+                     bbox_volume_cm3=64000.0, hull_volume_cm3=64000.0, nominal_wall_mm=200.0,
+                     face_count=12, max_bbox_mm=400.0, is_valid=True, rotational=False,
+                     rot_axis_len_mm=400.0, rot_cross_dia_mm=565.0)
+    n, share, words = castings_per_mould(PT.SAND_CASTING, big, build_rate_card())
+    assert n == 1 and share == pytest.approx(450 * 450 / (500 * 400))
+    assert "takes a mould 1.01× the 500 × 400 mm one" in words
+
+
+def test_fettling_follows_the_casting_surface_unless_the_hours_are_set():
+    rc, d = build_rate_card(), _drivers()
+    kg = d.mass_kg(_alu().density)
+    est = cost_breakdown(PT.SAND_CASTING, d, _alu(), "aluminum", 100, rc, "US")
+    expected_hr = 0.01 + 0.04 * kg ** (2 / 3)
+    assert est.line_items["labor"] == pytest.approx(expected_hr * 35.0, abs=1e-3)
+    assert "mass to the 2/3 power" in _driver(est, "labor_cost").source
+    # A shop's or user's own hand-work hours are the whole of it, at any size.
+    set_hours = build_rate_card({"post_hr_part.SAND_CASTING": 0.3})
+    est = cost_breakdown(PT.SAND_CASTING, d, _alu(), "aluminum", 100, set_hours, "US")
+    assert est.line_items["labor"] == pytest.approx(0.3 * 35.0)
+    assert "your figure for cutting off, fettling and cleaning" in _driver(est, "labor_cost").source
+
+
+def test_a_rate_table_published_before_the_mould_keys_prices_as_it_did():
+    """An org's governed card copied from the earlier table has no mould or fettling
+    keys: one casting a mould and its own flat hand work, as when it was published."""
+    import copy
+
+    from src.costing.rates import RATE_CARD_V0
+
+    table = copy.deepcopy(RATE_CARD_V0)
+    for key in ("mould_w_mm", "mould_l_mm", "mould_gap_mm", "fettle_hr_kg"):
+        table["process"][PT.SAND_CASTING].pop(key)
+    table["process"][PT.SAND_CASTING]["post_hr_part"] = 0.60
+    rc = build_rate_card(base_rate_table=table)
+    est = cost_breakdown(PT.SAND_CASTING, _drivers(), _alu(), "aluminum", 100, rc, "US")
+    assert est.line_items["labor"] == pytest.approx(21.0)
+    assert est.line_items["machine"] == pytest.approx(3.2972, abs=1e-4)

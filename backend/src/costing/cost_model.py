@@ -328,23 +328,70 @@ def _formative_cycle(process, drivers, rates: RateCard):
     return cycle_hr, src
 
 
-def _casting_cycle(process, drivers, material, rates: RateCard):
-    """Foundry pour cycle: pour/handling + solidification cool (∝ poured mass).
+def castings_per_mould(process, drivers, rates: RateCard) -> tuple:
+    """(castings one mould or tree holds, the share of it one casting takes, words).
 
-    Poured mass = net part mass × (1 + yield_loss) (gating + risers). The mould
-    machine-cycle is the ladle pour plus the solidification/cool the part must sit
-    in the mould before knockout — cool time scales with the metal poured. Knockout
-    / fettle / clean is LABOR (post_hr_part), not machine time. Every constant is a
-    DEFAULT foundry assumption, NOT validated.
+    A mould is as shallow as the part allows, so a casting lies with its two
+    longest sides in the parting plane; castings sit ``mould_gap_mm`` apart and
+    from the edge, room for sand and gating. A sand mould's pour and knock-out,
+    or an investment tree's shell and pour, is then shared by every casting in
+    it (multi-cavity moulds spread the mould's cost: Boothroyd Dewhurst, "Sand
+    Casting Cost Estimating"; small investment castings cost what fits a tree:
+    "Investment Casting Cost Estimating", dfma.com, 2026). A casting too big for
+    the standard mould takes a bigger one, its time in proportion to the area it
+    needs. The box is the part's own (orientation-free) enclosing stock box. A
+    rate table without the mould keys (a card published before them) keeps one
+    casting a mould.
+    """
+    width, length = rates.pget(process, "mould_w_mm"), rates.pget(process, "mould_l_mm")
+    if width <= 0 or length <= 0:
+        return 1, 1.0, "one casting a mould"
+    big, small = max(width, length), min(width, length)
+    gap = rates.pget(process, "mould_gap_mm")
+    dims = sorted(drivers.billet_bbox_mm or drivers.bbox_mm)
+    # Like the tool's size tier: the measured size, not an STL's allowance for rounding.
+    precision = float(getattr(drivers, "bbox_precision_mm", 0.0) or 0.0)
+    a, b = max(dims[2] - precision, 0.0), max(dims[1] - precision, 0.0)
+
+    def fit(span, side):
+        return max(0, int(math.floor((span - gap) / (side + gap) + 1e-6))) if side + gap > 0 else 0
+
+    what = "tree" if process == PT.INVESTMENT_CASTING else "mould"
+    n = max(fit(big, a) * fit(small, b), fit(big, b) * fit(small, a))
+    size = f"{a:.0f} × {b:.0f} mm across with {gap:g} mm around each"
+    if n >= 1:
+        return n, 1.0 / n, f"{n} casting{'s' if n != 1 else ''} a {big:g} × {small:g} mm {what}, {size}"
+    share = max(1.0, (a + 2 * gap) * (b + 2 * gap) / (big * small))
+    return 1, share, f"one casting, {size}, takes a {what} {share:.2f}× the {big:g} × {small:g} mm one"
+
+
+def _casting_cycle(process, drivers, material, rates: RateCard):
+    """Foundry cycle: the casting's share of its mould or tree + solidification cool.
+
+    Poured mass = net part mass × (1 + yield_loss) (gating + risers). A sand
+    mould (made, closed, poured, knocked out) or an investment tree (assembled,
+    shelled, dewaxed, poured, knocked out) takes ``pour_hr``, shared by the
+    castings it holds (``castings_per_mould``); each casting then sits its
+    solidification/cool, which scales with the metal poured. Cutting off,
+    fettling and cleaning is LABOR, not machine time. Every constant is a DEFAULT
+    foundry assumption, NOT validated.
     """
     net_mass = drivers.mass_kg(material.density)
     yl = rates.p(process, "yield_loss")
     poured = net_mass * (1.0 + yl)
     cool_min_per_kg = rates.p(process, "cool_min_per_kg")
     pour_hr = rates.p(process, "pour_hr")
+    n, share, mould_words = castings_per_mould(process, drivers, rates)
+    mould_hr = pour_hr * share
     cool_hr = poured * cool_min_per_kg / 60.0
-    cycle = pour_hr + cool_hr
-    src = (f"pour {pour_hr:g}hr + solidify/cool {poured:.3f}kg poured "
+    cycle = mould_hr + cool_hr
+    if process == PT.INVESTMENT_CASTING:
+        what = "a tree assembled, shelled, dewaxed, poured and knocked out"
+    else:
+        what = "a mould made, closed, poured and knocked out"
+    share_words = (f" ÷ {n}" if n > 1 else (f" × {share:.2f}" if share != 1.0 else ""))
+    src = (f"{what}: {pour_hr:g}hr{share_words} = {mould_hr:.4f}hr a casting ({mould_words}) "
+           f"+ solidify/cool {poured:.3f}kg poured "
            f"(net {net_mass:.3f}kg × 1+{yl:g} yield) × {cool_min_per_kg:g}min/kg "
            f"= {cool_hr * 60:.1f}min = {cycle:.4f} hr  "
            f"(typical value, not confirmed by a shop)")
@@ -916,6 +963,30 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         support_hr = rates.pget(process, "support_hr_per_cm2") * support_cm2
     elif process == PT.FDM:
         post_hr_part = rates.pget(process, "post_hr_part_unmeasured", post_hr_part)
+    # A casting's fettling (grinding gates and the parting line, blasting) follows
+    # its size: castings under 2 lb are tumbled for about $0.50–2.00, ones over
+    # 50 lb take 1–4 hours (Boothroyd Dewhurst, "Sand Casting Cost Estimating",
+    # dfma.com, 2026). It scales with the casting's surface, mass to the 2/3; the
+    # cutting off and handling (post_hr_part) is the same for any casting. A
+    # shop's or user's own post_hr_part is their figure for all of it, as given.
+    fettle_hr = 0.0
+    fettle_note = ""
+    if family == "casting":
+        fettle_coef = rates.pget(process, "fettle_hr_kg")
+        if rates.prov_tag(f"post_hr_part.{process.name}") != Provenance.DEFAULT:
+            fettle_note = "; the hours are your figure for cutting off, fettling and cleaning a casting"
+        elif fettle_coef > 0:
+            cast_kg = drivers.mass_kg(material.density)
+            fettle_factor = cast_kg ** (2.0 / 3.0)
+            fettle_hr = fettle_coef * fettle_factor
+            published = ("castings under 2 lb are fettled for about $0.50–2.00, over 50 lb in 1–4 hours "
+                         "(Boothroyd Dewhurst, Sand Casting Cost Estimating)" if process == PT.SAND_CASTING else
+                         "cut-off and finishing run about $4–15 a casting, more for a larger one "
+                         "(Boothroyd Dewhurst, Investment Casting Cost Estimating)")
+            fettle_note = (f"; the hours are cutting it off and handling, {post_hr_part:g}hr a casting, + fettling "
+                           f"(grinding and blasting) {fettle_coef:g}hr for a 1 kg casting × {fettle_factor:.3g} "
+                           f"for this {kg_text(cast_kg)} kg one (it follows the surface, mass to the 2/3 power) "
+                           f"= {fettle_hr:.3g}hr; {published} (typical value, not confirmed by a shop)")
     # ce-18 / me-05: a machined part's hand work is named for what it is. The flat
     # allowance stands in for real non-machine time too (handling between setups,
     # tool changes), which is why it isn't sized to the deburr alone; the rate card
@@ -930,7 +1001,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                "typical value, not confirmed by a shop; the hours can be set per process on the rate card")
             + ". Hand deburring alone is typically 3–10% of machining time (Gillespie, Hand Deburring, "
               "SME 2003); the allowance also covers handling and non-cut time")
-    post_labor = (post_hr_part + support_hr + post_hr_build / n) * labor_rate
+    post_labor = (post_hr_part + support_hr + fettle_hr + post_hr_build / n) * labor_rate
     post_labor_learned = post_labor * learn_mult         # touch labor learns (lot average, ce-03)
     labor_scaled = post_labor_learned * rl * mgn * burden
     qm["learning_usd" if qm["learning"] else "per_part_usd"] += post_labor * rl * mgn * burden
@@ -945,16 +1016,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                      f"÷ {n} ≈ {post_hr_part + support_hr + post_hr_build / n:.6g}hr × ${labor_rate:g}/hr"
                      f"{learn_note} × region-labor ×{rl:g}{conversion_note}")
     else:
-        labor_src = (f"post-process {post_hr_part + support_hr + post_hr_build / n:.6g} hr{support_note} × "
-                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}{machined_note}")
-    if family in ("casting", "forging"):
+        labor_src = (f"post-process {post_hr_part + support_hr + fettle_hr + post_hr_build / n:.6g} hr{support_note} × "
+                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}{machined_note}{fettle_note}")
+    if family == "forging":
         # Said plainly: this time is per piece and doesn't grow with the part, so at
-        # volume a casting or forging twice the size is barely dearer (the metal, which
+        # volume a small forging twice the size is barely dearer (the metal, which
         # does scale, is a small share of a small part's price).
-        what = ("shakeout, fettling and cleaning" if family == "casting"
-                else "descaling and flash cleanup")
-        labor_src += (f"; {what} per piece, the same time at any size "
-                      f"(typical value, not confirmed by a shop)")
+        labor_src += ("; descaling and flash cleanup per piece, the same time at any size "
+                      "(typical value, not confirmed by a shop)")
     drivers_out.append(Driver(
         name="labor_cost", value=round(labor_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"), source=labor_src, error_band_pct=20.0,
