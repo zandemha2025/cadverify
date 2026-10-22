@@ -82,6 +82,15 @@ async def startup(ctx: dict) -> None:
 
     await init_engine()
     ctx["db_engine"] = True
+    # Batches stored before webhook signing secrets were sealed: seal them once.
+    try:
+        from src.services.webhook_service import seal_plaintext_webhook_secrets
+
+        sealed_secrets = await seal_plaintext_webhook_secrets()
+        if sealed_secrets:
+            logger.info("sealed %d stored webhook signing secrets", sealed_secrets)
+    except Exception:  # pragma: no cover - never block boot; deliveries re-save them
+        logger.exception("could not seal stored webhook signing secrets")
     try:
         design_concurrency = int(os.getenv("DESIGN_GENERATION_CONCURRENCY", "2"))
     except ValueError:

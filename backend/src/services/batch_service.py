@@ -190,6 +190,8 @@ async def create_batch(
     """Create a Batch row with status='pending'. Returns the Batch object."""
     from src.auth.org_context import resolve_org
 
+    from src.services.webhook_service import seal_webhook_secret
+
     effective_concurrency = validate_batch_concurrency_limit(concurrency_limit)
     batch = Batch(
         ulid=str(ULID()),
@@ -198,7 +200,8 @@ async def create_batch(
         input_mode=input_mode,
         job_type=job_type,
         webhook_url=webhook_url,
-        webhook_secret=webhook_secret,
+        # Stored sealed (Fernet, the connector-credential key); never plaintext.
+        webhook_secret=seal_webhook_secret(webhook_secret),
         concurrency_limit=effective_concurrency,
         api_key_id=_nullable_api_key_id(api_key_id),
     )

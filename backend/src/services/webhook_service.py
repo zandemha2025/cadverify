@@ -119,6 +119,99 @@ async def create_webhook_delivery(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The batch's signing secret at rest
+# ---------------------------------------------------------------------------
+
+# batches.webhook_secret holds the secret sealed with the connector-credential
+# Fernet key (CONNECTOR_SECRET_KEY), behind this prefix. A value without it is a
+# row written before sealing (plaintext); the first delivery re-saves it sealed.
+SEALED_SECRET_PREFIX = "fernet:v1:"
+
+
+class WebhookSecretUnreadable(ValueError):
+    """A sealed webhook secret that this deployment's key cannot open."""
+
+
+def seal_webhook_secret(secret: Optional[str]) -> Optional[str]:
+    """The value to store for a batch's signing secret (none or blank: None)."""
+    if secret is None or not secret.strip():
+        return None
+    from fastapi import HTTPException
+
+    from src.services.connector_credentials_service import _fernet
+
+    try:
+        token = _fernet().encrypt(secret.encode("utf-8")).decode("ascii")
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook signing storage is not configured. Ask the workspace operator to enable it.",
+        ) from exc
+    return SEALED_SECRET_PREFIX + token
+
+
+def open_webhook_secret(stored: Optional[str]) -> tuple[Optional[str], bool]:
+    """``(secret, plaintext_row)`` from a stored value.
+
+    ``plaintext_row`` is True for a value written before sealing, which the
+    caller re-saves sealed. Raises WebhookSecretUnreadable when a sealed value
+    can't be opened with this deployment's key.
+    """
+    if not stored or not stored.startswith(SEALED_SECRET_PREFIX):
+        return stored, bool(stored)
+    from cryptography.fernet import InvalidToken
+
+    from src.services.connector_credentials_service import _fernet
+
+    token = stored[len(SEALED_SECRET_PREFIX):]
+    try:
+        return _fernet().decrypt(token.encode("ascii")).decode("utf-8"), False
+    except (InvalidToken, RuntimeError, UnicodeError, ValueError) as exc:
+        raise WebhookSecretUnreadable("webhook signing secret cannot be opened") from exc
+
+
+async def seal_plaintext_webhook_secrets(session_factory=None, *, page: int = 200) -> int:
+    """Seal every batch webhook secret still stored in plaintext; returns how many.
+
+    Same column, no migration: each plaintext value is replaced by its sealed
+    form only if it is unchanged since it was read. Run once at worker startup.
+    """
+    from sqlalchemy import update
+
+    if session_factory is None:
+        from src.db.engine import get_session_factory
+
+        session_factory = get_session_factory()
+    sealed = 0
+    last_id = 0
+    while True:
+        async with session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(Batch.id, Batch.webhook_secret)
+                    .where(
+                        Batch.id > last_id,
+                        Batch.webhook_secret.is_not(None),
+                        ~Batch.webhook_secret.startswith(SEALED_SECRET_PREFIX, autoescape=True),
+                    )
+                    .order_by(Batch.id)
+                    .limit(page)
+                )
+            ).all()
+            if not rows:
+                return sealed
+            for batch_id, stored in rows:
+                last_id = batch_id
+                await session.execute(
+                    update(Batch)
+                    .where(Batch.id == batch_id, Batch.webhook_secret == stored)
+                    .values(webhook_secret=seal_webhook_secret(stored))
+                )
+            await session.commit()
+            sealed += len(rows)
+
+
 async def deliver_webhook(
     session: AsyncSession,
     delivery_id: int,
@@ -157,7 +250,23 @@ async def deliver_webhook(
         await session.commit()
         return True
 
-    secret = batch.webhook_secret
+    try:
+        secret, plaintext_row = open_webhook_secret(batch.webhook_secret)
+    except WebhookSecretUnreadable:
+        # Sealed under a key this deployment doesn't hold: a configuration
+        # error that retrying can't fix. Never sign with anything else.
+        delivery.status = "failed"
+        delivery.last_attempt_at = datetime.now(timezone.utc)
+        await session.commit()
+        logger.warning("Webhook delivery %d: the signing secret cannot be opened", delivery_id)
+        return False
+    if plaintext_row and secret.strip():
+        # A row stored before sealing: keep it sealed from now on (saved with
+        # this delivery's own commit). Without the key it stays as it was.
+        try:
+            batch.webhook_secret = seal_webhook_secret(secret)
+        except Exception:
+            logger.warning("Webhook delivery %d: could not re-save the signing secret sealed", delivery_id)
     if not secret or not secret.strip():
         # Old rows may predate submission validation. Never send a signature
         # made with the public empty key, or retry this permanent configuration error.
