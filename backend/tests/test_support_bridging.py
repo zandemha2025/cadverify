@@ -1,4 +1,4 @@
-"""FDM bridging: a flat span between walls prints without support.
+"""FDM bridging: a short flat span between walls prints without support.
 
 ``src.analysis.support.support_regions`` splits the faces the overhang rule
 marks into connected regions and leaves a flat region off the support list when
@@ -7,10 +7,14 @@ below it). FDM's check uses it (``check_overhangs(..., bridges=True)``); resin
 and metal printers don't bridge, so their checks are unchanged. The
 orientation comparison reports the same FDM faces as the check.
 
-The rule was checked against PrusaSlicer 2.7.2 (MK4 IS profile, every overhang
-supported vs "don't support bridges") on generated spans of 5–80 mm, a
-window frame, cantilevers, a table and a C bracket in all six orientations
-(the reference set in the slicer calibration; see ``src.costing.print_model``).
+Up to desktop FDM's published bridge limit (10 mm: Bambu Studio and
+OrcaSlicer's max bridge length; over 5 mm it can sag, Protolabs' FDM guide)
+a span is a bridge; a longer one needs support, although PrusaSlicer bridges
+any length. The rule was checked against PrusaSlicer 2.7.2 (MK4 IS profile,
+every overhang supported vs "don't support bridges") on generated spans of
+5–80 mm, a window frame, cantilevers, a table and a C bracket in all six
+orientations (the reference set in the slicer calibration; see
+``src.costing.print_model``).
 """
 from __future__ import annotations
 
@@ -25,7 +29,7 @@ from src.analysis.models import ProcessType
 from src.analysis.orientation import orientation_options
 from src.analysis.processes.base import get_analyzer
 from src.analysis.processes.checks import check_overhangs
-from src.analysis.support import support_regions
+from src.analysis.support import FDM_BRIDGE_CLEAN_MM, FDM_BRIDGE_MAX_MM, support_regions
 
 
 def _box(size, centre):
@@ -78,8 +82,8 @@ def _codes(mesh: trimesh.Trimesh, process: str) -> list[str]:
     return [i.code for i in get_analyzer(ProcessType(process)).analyze(_ctx(mesh))]
 
 
-@pytest.mark.parametrize("span", [5, 20, 80])
-def test_a_span_between_two_pillars_is_a_bridge_for_fdm_only(span):
+@pytest.mark.parametrize("span", [5, 8])
+def test_a_short_span_between_two_pillars_is_a_bridge_for_fdm_only(span):
     mesh = _bridge(span)
     ctx = _ctx(mesh)
     plain = check_overhangs(ctx, 45.0, ProcessType.FDM)
@@ -92,6 +96,28 @@ def test_a_span_between_two_pillars_is_a_bridge_for_fdm_only(span):
     assert est.bridges == 1 and est.area_mm2 == 0.0 and est.column_mm3 == 0.0
     assert est.longest_bridge_mm == pytest.approx(span, abs=0.5)
     assert est.bridge_area_mm2 == pytest.approx(span * 10.0, rel=1e-6)
+    # Over the clean limit (5 mm, Protolabs' FDM guide) a bridge can sag a little.
+    assert est.sagging_bridges == (1 if span > FDM_BRIDGE_CLEAN_MM else 0)
+
+
+@pytest.mark.parametrize("span", [20, 80])
+def test_a_span_longer_than_the_published_limit_needs_support(span):
+    """PrusaSlicer bridges any length; desktop FDM guidance stops at 10 mm (Bambu Studio and
+    OrcaSlicer's max bridge length), so a 20 mm or 80 mm span is supported."""
+    mesh = _bridge(span)
+    issues = check_overhangs(_ctx(mesh), 45.0, ProcessType.FDM, bridges=True)
+    assert len(issues) == 1 and issues[0].code == "OVERHANG"
+    assert (f"A flat span between walls is {span} mm across, longer than the 10 mm a desktop printer "
+            "bridges without sagging, so it is counted.") in issues[0].message
+    assert "OVERHANG" in _codes(mesh, "fdm")
+    est = support_regions(mesh, 45.0)
+    assert (est.bridges, est.long_spans) == (0, 1)
+    assert est.longest_long_span_mm == pytest.approx(span, abs=0.5)
+    assert est.area_mm2 == pytest.approx(span * 10.0, rel=1e-6)
+    assert est.column_mm3 == pytest.approx(span * 10.0 * 30.0, rel=1e-6)
+    # As PrusaSlicer slices it (no length limit) it is a bridge.
+    assert support_regions(mesh, 45.0, bridge_limit_mm=None).bridges == 1
+    assert FDM_BRIDGE_MAX_MM == 10.0
 
 
 def test_a_bridge_limit_keeps_longer_spans_on_the_support_list():
@@ -122,29 +148,33 @@ def test_a_table_top_on_corner_legs_needs_support():
     assert "OVERHANG" in _codes(mesh, "fdm")
 
 
-def test_a_window_lintel_bridges_and_the_sill_rests_on_the_plate():
+def test_a_window_lintel_is_too_long_to_bridge_and_the_sill_rests_on_the_plate():
     mesh = _window()
-    assert "OVERHANG" not in _codes(mesh, "fdm")
+    assert "OVERHANG" in _codes(mesh, "fdm")
     est = support_regions(mesh, 45.0)
-    assert est.bridges == 1 and est.longest_bridge_mm == pytest.approx(60.0, abs=0.5)
+    assert (est.bridges, est.long_spans) == (0, 1) and est.longest_long_span_mm == pytest.approx(60.0, abs=0.5)
+    assert est.area_mm2 == pytest.approx(60 * 10, rel=1e-6)  # the lintel's underside; the sill is on the plate
+    geometric = support_regions(mesh, 45.0, bridge_limit_mm=None)
+    assert geometric.bridges == 1 and geometric.longest_bridge_mm == pytest.approx(60.0, abs=0.5)
 
 
 def test_a_bridge_and_a_cantilever_together_mark_only_the_cantilever():
-    mesh = _bridge(20, tail=15)
+    mesh = _bridge(8, tail=15)
     ctx = _ctx(mesh)
     issues = check_overhangs(ctx, 45.0, ProcessType.FDM, bridges=True)
     assert len(issues) == 1
     faces = np.asarray(issues[0].affected_faces)
     centres = ctx.centroids[faces]
-    # Every marked face is under the tail, past the second pillar (x > 40).
-    assert np.all(centres[:, 0] > 40.0 - 1e-6)
+    # Every marked face is under the tail, past the second pillar (x > 28).
+    assert np.all(centres[:, 0] > 28.0 - 1e-6)
     assert float(ctx.face_areas[faces].sum()) == pytest.approx(15 * 10, rel=1e-6)
-    assert "A flat span between walls" in issues[0].message and "20 mm across" in issues[0].message
-    assert issues[0].region_center[0] > 40.0
+    assert "A flat span between walls" in issues[0].message and "8 mm across" in issues[0].message
+    assert "Over 5 mm a bridge can sag a little." in issues[0].message
+    assert issues[0].region_center[0] > 28.0
 
 
 def test_the_orientation_comparison_reports_the_check_s_fdm_faces():
-    mesh = _bridge(20, tail=15)
+    mesh = _bridge(8, tail=15)
     options = orientation_options(mesh)
     for cand in options["candidates"]:
         from src.analysis.orientation import Orientation
@@ -156,15 +186,15 @@ def test_the_orientation_comparison_reports_the_check_s_fdm_faces():
         assert ("OVERHANG" in cand["flags"]["fdm"]) == bool(faces), cand["id"]
     as_file = next(c for c in options["candidates"] if c["id"] == "down-z")
     fdm = as_file["support"]["fdm"]
-    assert fdm["bridges"] == 1 and fdm["longest_bridge_mm"] == pytest.approx(20.0, abs=0.5)
+    assert fdm["bridges"] == 1 and fdm["longest_bridge_mm"] == pytest.approx(8.0, abs=0.5)
     assert fdm["area_mm2"] == pytest.approx(150.0, rel=1e-4)
     # The bridged faces' centres, as fractions of the placed box: under the beam between the pillars.
     (box,) = fdm["bridge_boxes"]
     x0, y0, z0, x1, y1, z1 = box
-    assert 10 / 55 - 1e-3 <= x0 < x1 <= 30 / 55 + 1e-3
+    assert 10 / 43 - 1e-3 <= x0 < x1 <= 18 / 43 + 1e-3
     assert z0 == pytest.approx(30 / 35, abs=1e-4) and z1 == pytest.approx(30 / 35, abs=1e-4)
     # Resin doesn't bridge: the whole underside past the pillars still needs support.
-    assert as_file["support"]["sla"]["area_mm2"] == pytest.approx(350.0, rel=1e-4)
+    assert as_file["support"]["sla"]["area_mm2"] == pytest.approx(230.0, rel=1e-4)
 
 
 def test_bridging_is_deterministic():

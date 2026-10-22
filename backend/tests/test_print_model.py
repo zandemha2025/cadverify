@@ -88,12 +88,17 @@ def test_support_reads_the_faces_needing_it_and_leaves_bridges_out():
     assert f.fdm_need_cm2 == pytest.approx(6.0)
     assert f.fdm_column_cm3 == pytest.approx(6.0 * 3.2)
     assert f.resin_column_cm3 == pytest.approx(6.0 * 3.2)
-    b = _features(_bridge(20))
+    b = _features(_bridge(8))
     assert (b.fdm_need_cm2, b.fdm_column_cm3, b.fdm_bridges) == (0.0, 0.0, 1)
-    # Resin doesn't bridge: the span is supported (20 × 10 mm, 30 mm up).
-    assert b.resin_column_cm3 == pytest.approx(2.0 * 3.0)
+    # Resin doesn't bridge: the span is supported (8 × 10 mm, 30 mm up).
+    assert b.resin_column_cm3 == pytest.approx(0.8 * 3.0)
     assert fdm_estimate(b, 1).support_cm3 == 0.0
     assert "bridged without support" in fdm_estimate(b, 1).material_source
+    # Longer than desktop FDM's 10 mm bridge limit, a span is supported (20 × 10 mm, 30 mm up).
+    long = _features(_bridge(20))
+    assert (long.fdm_need_cm2, long.fdm_bridges) == (pytest.approx(2.0), 0)
+    assert long.fdm_column_cm3 == pytest.approx(2.0 * 3.0)
+    assert fdm_estimate(long, 1).support_cm3 > 0.0
 
 
 def _tee():
@@ -108,7 +113,7 @@ SLICED_MK4IS = {
     "cantilever 60": (lambda: _cantilever(60), (2011.0, 7.18), (2398.0, 14.50)),
     "tee": (_tee, (2285.0, 7.29), (2746.0, 14.90)),
     "sphere 40": (_sphere, (1846.0, 9.61), (2076.0, 10.22)),
-    "bridge span 20": (lambda: _bridge(20), (1587.0, 3.86), None),  # bridged: no support either way
+    "bridge span 10": (lambda: _bridge(10), (1530.0, 3.48), None),  # bridged (at the limit): no support
 }
 
 

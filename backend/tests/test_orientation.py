@@ -276,17 +276,20 @@ def test_work_areas_and_layers():
     assert checks_module.check_build_volume  # the shared check still exists
     for proc, env in BUILD_VOLUME_MM.items():
         assert seen[proc] == tuple(float(d) for d in env), proc
-    # A 300 mm bar is too tall for FDM's 250 mm work area standing up; lying down it fits, turned.
-    bar = trimesh.creation.box((20, 30, 300))
-    bar.apply_translation((10, 15, 150))
+    # A bar 10 mm taller than FDM's work area doesn't fit standing up; lying down it fits.
+    X, Y, Z = BUILD_VOLUME_MM["fdm"]
+    length = Z + 10
+    bar = trimesh.creation.box((20, 30, length))
+    bar.apply_translation((10, 15, length / 2))
     opts = orientation_options(bar)
     side = {c["id"]: c for c in opts["candidates"]}
     assert side["down-z"]["fits"]["fdm"] is False and side["down-x"]["fits"]["fdm"] is True
-    assert side["down-z"]["layers"]["fdm"] == 1500 and side["down-x"]["layers"]["fdm"] == 100
+    assert side["down-z"]["layers"]["fdm"] == round(length / 0.2) and side["down-x"]["layers"]["fdm"] == 100
     assert opts["layer_mm"] == LAYER_MM
     assert opts["limits"][0].startswith("FDM and SLA prices follow the orientation")
-    # A diagonal fit on the plate counts: 330 mm long fits FDM's 250 × 250 bed only turned.
-    diag = trimesh.creation.box((330, 20, 10))
+    # A diagonal fit on the plate counts: longer than the bed, it fits turned 45°.
+    diag = trimesh.creation.box((min(X, Y) * 2 ** 0.5 - 30, 20, 10))
+    assert diag.extents[0] > max(X, Y)
     assert orientation_options(diag)["candidates"][0]["fits"]["fdm"] is True
 
 

@@ -213,9 +213,10 @@ def bridged_overhang_faces(ctx: GeometryContext, max_angle_deg: float, oh_faces:
     """Split marked faces into those needing support and flat spans printed as bridges.
 
     ``src.analysis.support.support_regions`` on the context's own arrays (the
-    same marked faces), without its ray casts. Returns (needing, bridged
-    count, bridged faces, longest span in mm). If the bridge test fails on a
-    mesh, every marked face stays marked.
+    same marked faces), without its ray casts, with desktop FDM's published
+    bridge limit (a longer span needs support). Returns (needing faces, the
+    estimate, bridged faces), or (all marked faces, None, 0) if the bridge
+    test fails on a mesh.
     """
     from src.analysis.support import support_regions
 
@@ -227,13 +228,13 @@ def bridged_overhang_faces(ctx: GeometryContext, max_angle_deg: float, oh_faces:
         )
     except Exception:  # pragma: no cover - defensive: shapely/trimesh on a broken mesh
         logger.warning("bridge test failed; every overhanging face stays marked", exc_info=True)
-        return oh_faces, 0, 0, 0.0
+        return oh_faces, None, 0
     if not est.bridges:
-        return oh_faces, 0, 0, 0.0
-    bridged = [r.faces for r in est.regions if r.bridge]
+        return oh_faces, est, 0
+    bridged = sum(len(r.faces) for r in est.regions if r.bridge)
     need = [r.faces for r in est.regions if not r.bridge]
     needing = np.sort(np.concatenate(need)) if need else np.empty(0, dtype=int)
-    return needing, est.bridges, int(sum(len(b) for b in bridged)), float(est.longest_bridge_mm)
+    return needing, est, int(bridged)
 
 
 def check_overhangs(
@@ -247,19 +248,22 @@ def check_overhangs(
     """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports.
 
     ``bridges=True`` (FDM): a flat span whose two ends rest on the part below
-    it prints as a bridge, strand by strand, and isn't counted
-    (``src.analysis.support``; PrusaSlicer's default, no length limit).
+    it prints as a bridge, strand by strand, and isn't counted, up to the
+    published limit for desktop FDM (``src.analysis.support.BRIDGE_LIMITS_MM``:
+    10 mm; over 5 mm it can sag a little). A longer span needs support.
     """
     if max_angle_deg >= 90.0:
         return []  # self-supporting process
     oh_faces = overhang_faces(ctx.angles_from_up_deg, ctx.centroids, ctx.bbox_diag, max_angle_deg)
     if len(oh_faces) == 0:
         return []
-    spans, span_faces, longest = 0, 0, 0.0
+    est, span_faces = None, 0
     if bridges:
-        oh_faces, spans, span_faces, longest = bridged_overhang_faces(ctx, max_angle_deg, oh_faces)
+        oh_faces, est, span_faces = bridged_overhang_faces(ctx, max_angle_deg, oh_faces)
         if len(oh_faces) == 0:
             return []
+    spans = est.bridges if est is not None else 0
+    longest = est.longest_bridge_mm if est is not None else 0.0
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
     # Same quantity the threshold compares: degrees past vertical (90 = a flat ceiling).
@@ -272,6 +276,20 @@ def check_overhangs(
                         "across) print as bridges and aren't counted.")
     else:
         bridged_note = ""
+    if est is not None and est.sagging_bridges:
+        from src.analysis.support import FDM_BRIDGE_CLEAN_MM
+
+        bridged_note += f" Over {FDM_BRIDGE_CLEAN_MM:g} mm a bridge can sag a little."
+    if est is not None and est.long_spans:
+        from src.analysis.support import FDM_BRIDGE_MAX_MM
+
+        n, far = est.long_spans, est.longest_long_span_mm
+        if n == 1:
+            bridged_note += (f" A flat span between walls is {far:.0f} mm across, longer than the "
+                             f"{FDM_BRIDGE_MAX_MM:g} mm a desktop printer bridges without sagging, so it is counted.")
+        else:
+            bridged_note += (f" {n} flat spans between walls are up to {far:.0f} mm across, longer than the "
+                             f"{FDM_BRIDGE_MAX_MM:g} mm a desktop printer bridges without sagging, so they are counted.")
     return [Issue(
         code="OVERHANG",
         measurement_unit="deg",

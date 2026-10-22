@@ -3,16 +3,20 @@
 ``check_overhangs`` marks every face that overhangs past a process's limit.
 A printer doesn't support all of them: a flat span between two pieces of the
 part below it is printed as a bridge, strand by strand from one anchor to the
-other (PrusaSlicer's default "don't support bridges"; Bambu Studio and Orca
-support only bridges longer than their limit). This module splits the marked
-faces into connected regions and keeps a region off the support list when it
-is a bridge:
+other. This module splits the marked faces into connected regions and keeps a
+region off the support list when it is a bridge:
 
 * the region is flat (its faces within ~18° of facing straight down), and
 * in some direction, at least ``COVERED`` of the region lies on lines whose
   two ends both rest on an anchor: an edge where the part continues below the
   region (a wall or pillar it spans between), and
-* the longest such span is within the printer's bridge limit.
+* the longest such span is within the printer class's bridge limit
+  (``BRIDGE_LIMITS_MM``). A longer span sags, so it needs support.
+
+The limit comes from published guidance, not from the slicer: PrusaSlicer
+bridges a span of any length by default ("don't support bridges"), and in the
+calibration set it left 19–123 mm spans unsupported that the guidance below
+supports. Below the limit the rule and PrusaSlicer agree.
 
 What remains needs support. For each remaining face the support column is
 its footprint on the plate times the drop to the part or plate below (a ray
@@ -32,6 +36,26 @@ DIRECTIONS = 12        # directions tried for the bridge lines (every 15°)
 LINES = 48             # lines across the region per direction
 RAY_CAP = 4000         # rays without Embree; more faces are sampled by a fixed stride
 
+# The longest flat span a printer lays as a bridge without support, per printer class.
+# Desktop FDM (Prusa MK4, Bambu X1C class), from published guidance:
+#   * Bambu Studio and OrcaSlicer, "Max bridge length: max length of bridges that don't
+#     need support", default 10 mm (src/libslic3r/PrintConfig.cpp, max_bridge_length;
+#     github.com/bambulab/BambuStudio, github.com/SoftFever/OrcaSlicer). Bambu's own X1C
+#     system profiles set it to 0: every bridge is supported when supports are on.
+#   * Protolabs Network (Hubs), "How to design parts for FDM 3D printing": "sagging or
+#     marks from support material are to some extent always present unless the bridge is
+#     less than 5mm" (hubs.com/knowledge-base/how-design-parts-fdm-3d-printing).
+#   * Prusa knowledge base, "Modeling with 3D printing in mind": "short horizontal bridges
+#     can be printed without supports", no length given (help.prusa3d.com/article/
+#     modeling-with-3d-printing-in-mind_164135). PrusaSlicer has no length limit.
+# So a span up to 5 mm bridges cleanly, 5–10 mm bridges but can sag a little, and over
+# 10 mm needs support. Resin and metal printers don't bridge (``bridging=False``).
+BRIDGE_LIMITS_MM: dict[str, dict] = {
+    "fdm": {"clean": 5.0, "max": 10.0, "class": "desktop FDM (Prusa MK4, Bambu X1C class)"},
+}
+FDM_BRIDGE_CLEAN_MM = BRIDGE_LIMITS_MM["fdm"]["clean"]
+FDM_BRIDGE_MAX_MM = BRIDGE_LIMITS_MM["fdm"]["max"]
+
 
 @dataclass
 class Region:
@@ -43,6 +67,7 @@ class Region:
     bridge: bool = False
     span_mm: float | None = None      # longest anchored span, when it is a bridge candidate
     covered: float = 0.0              # share of the region on anchored lines (best direction)
+    too_long: bool = False            # anchored like a bridge, but longer than the limit
 
 
 @dataclass
@@ -57,6 +82,9 @@ class SupportEstimate:
     bridge_area_mm2: float = 0.0      # marked, but printed as bridges
     bridges: int = 0
     longest_bridge_mm: float = 0.0
+    sagging_bridges: int = 0          # bridges longer than the clean limit (they can sag a little)
+    long_spans: int = 0               # spans anchored at both ends but over the limit: supported
+    longest_long_span_mm: float = 0.0
     sampled: bool = False
     regions: list[Region] = field(default_factory=list)
 
@@ -174,13 +202,13 @@ def _bridge(mesh: trimesh.Trimesh, faces: np.ndarray, centroids, tol: float) -> 
     return best, best_span
 
 
-def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm: float | None = None,
+def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm: float | None = FDM_BRIDGE_MAX_MM,
                     keep_regions: bool = False, measures: dict | None = None,
                     columns: bool = True, bridging: bool = True) -> SupportEstimate:
     """Support for one process limit on a placed mesh (+Z up), bridging-aware.
 
-    ``bridge_limit_mm``: the printer's longest unsupported bridge (None: no
-    limit, PrusaSlicer's default; Bambu Studio's default is 10 mm).
+    ``bridge_limit_mm``: the longest span bridged without support (desktop FDM's
+    published 10 mm by default; None: any length, as PrusaSlicer does).
     ``measures``: the per-face arrays already built for this mesh
     (``placed_measures`` keys: angles, centroids, areas, normals, bbox_diag),
     so a check marks exactly the faces its context marks. ``columns=False``
@@ -226,12 +254,18 @@ def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm:
                      column_mm3=float(column[rows].sum()), flat=flat)
         if flat and bridging:
             reg.covered, reg.span_mm = _bridge(mesh, faces, centroids, tol)
-            reg.bridge = reg.covered >= COVERED and (bridge_limit_mm is None or reg.span_mm <= bridge_limit_mm)
+            anchored = reg.covered >= COVERED
+            reg.bridge = anchored and (bridge_limit_mm is None or reg.span_mm <= bridge_limit_mm)
+            reg.too_long = anchored and not reg.bridge
         if reg.bridge:
             out.bridges += 1
             out.bridge_area_mm2 += reg.area_mm2
             out.longest_bridge_mm = max(out.longest_bridge_mm, reg.span_mm or 0.0)
+            out.sagging_bridges += int((reg.span_mm or 0.0) > FDM_BRIDGE_CLEAN_MM)
         else:
+            if reg.too_long:
+                out.long_spans += 1
+                out.longest_long_span_mm = max(out.longest_long_span_mm, reg.span_mm or 0.0)
             out.area_mm2 += reg.area_mm2
             out.column_mm3 += reg.column_mm3
             out.faces += len(faces)
