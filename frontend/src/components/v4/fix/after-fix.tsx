@@ -14,7 +14,6 @@ import type { CostReport, StoredRepairResult, ValidationResult } from "@/lib/api
 import { createDesignRevision } from "@/lib/designs-api";
 import { cx } from "../ui";
 import { R } from "../routes";
-import { useShell } from "../shell";
 import { LENSES, usePart } from "../part/ctx";
 import { buildMethods, cheapestAt, money, priceAt, qtyWord, trimNum, type Method } from "../part/model";
 import { loadSavedPart } from "../part/api";
@@ -32,7 +31,6 @@ import { fixedFileUrl } from "./server";
 import { loadPartMesh } from "../part/api";
 import { methodName } from "../part/model";
 import { forgetStudioOrigin } from "./origin";
-import { newCheckLine } from "./all-sheet";
 import { failureText } from "./ask-dialog";
 import { roving } from "./problem-sheet";
 import { outcomeOf, repairHead, signedPct } from "./repair-outcome";
@@ -284,7 +282,6 @@ type ShellFn = (body: React.ReactNode, sheet: React.ReactNode, meta: string) => 
 function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<RepairRun, { s: "fixed" }>; mesh: MeshSource; problem: Problem | null; shell: ShellFn; flash: (x: { text: string; link?: { label: string; href: string } }) => void }) {
   const p = usePart();
   const fx = useFix();
-  const sh = useShell();
   const router = useRouter();
   const r = run.r;
   const d = r.repair_details;
@@ -459,7 +456,7 @@ function RepairAfter({ run, mesh, problem, shell, flash }: { run: Extract<Repair
             ? `The repaired copy is in Parts, linked to your file. Opening it doesn’t use a check.`
             : savedAlready
               ? `This exact repaired file is already a part${saved?.name ? `: ${saved.name}` : ""}. Opening it doesn’t use a check.`
-              : `The repaired copy was checked during the repair. Keeping it saves it as a new part, separate from your file. ${newCheckLine(sh.usage, "Saving checks it like an upload")}.`}{" "}
+              : "The repaired copy was checked during the repair. Keeping it saves it as a new part, separate from your file. It doesn’t use a check: ScaleCAD made it from a part you checked."}{" "}
           <button className="btn sm ghost" type="button" style={{ height: 22, padding: "0 4px" }} onClick={() => (fx.setAfter(false), fx.openAsk(run.problem, "upload"))}>
             Fix it in CAD instead
           </button>
