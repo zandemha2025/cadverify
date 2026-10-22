@@ -1,5 +1,6 @@
 """Sheet Metal — bend, punch, laser cut."""
 
+from src.analysis.constants import SHEET_GAUGE_MAX_MM
 from src.analysis.context import GeometryContext, wall_thickness_tolerance
 from src.analysis.models import Issue, ProcessType, Severity
 from src.analysis.processes.base import register
@@ -36,6 +37,11 @@ class SheetMetalAnalyzer:
             return []  # check_sheet_gauge already reports the missing measurement.
         t = dims[0]
         tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + ctx.sheet_precision
+        if t > SHEET_GAUGE_MAX_MM + tolerance:
+            # Thicker than any sheet: a block, bar or tube measured end-on (its
+            # length reads as the "gauge"). check_sheet_gauge says it isn't sheet;
+            # comparing its bore to that length would be meaningless.
+            return []
         issues: list[Issue] = []
         for h in holes:
             if h.radius and h.radius * 2 < t - tolerance:

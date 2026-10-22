@@ -133,10 +133,11 @@ export interface RankEntry {
   stale_parts: number;
 }
 
-/** "Part minimum width is at least 268.8mm > smallest chamber span 254mm. …" → {need, have} */
+/** "Part is at least 268.8mm wide at its narrowest > the 254mm shortest side of the work area, …" → {need, have}.
+ *  Also reads the older "Part minimum width is at least 268.8mm > smallest chamber span 254mm." */
 export function boundsOf(text: string | undefined): { need: number; have: number } | null {
   if (!text) return null;
-  const m = /at least\s*([0-9]+(?:\.[0-9]+)?)\s*mm\s*>\s*[^0-9]*?([0-9]+(?:\.[0-9]+)?)\s*mm/i.exec(text);
+  const m = /at least\s*([0-9]+(?:\.[0-9]+)?)\s*mm\b[^>]*>\s*[^0-9]*?([0-9]+(?:\.[0-9]+)?)\s*mm/i.exec(text);
   return m ? { need: Number(m[1]), have: Number(m[2]) } : null;
 }
 

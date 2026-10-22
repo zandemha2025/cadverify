@@ -1310,7 +1310,9 @@ def check_wall_uniformity(
         ranked = wt[order]
         gap = np.full(len(wt), np.inf)
         if len(wt) > 1:
-            step = np.abs(np.diff(ranked))
+            with np.errstate(invalid="ignore"):  # two unmeasured (inf) readings side by side
+                step = np.abs(np.diff(ranked))
+            step = np.where(np.isnan(step), np.inf, step)
             gap[order[1:]] = np.minimum(gap[order[1:]], step)
             gap[order[:-1]] = np.minimum(gap[order[:-1]], step)
         corroborated = gap <= np.maximum(margin, 1e-6 * np.abs(wt))
@@ -1606,21 +1608,22 @@ def check_rotational_symmetry(
         # Two eigenvalues should be approximately equal for rotational symmetry
         ratio_01 = eig[0] / eig[1] if eig[1] > 0 else 0
         ratio_12 = eig[1] / eig[2] if eig[2] > 0 else 0
-        is_symmetric = (
-            (abs(1.0 - ratio_01) < tolerance)
-            or (abs(1.0 - ratio_12) < tolerance)
-        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area, mesh=ctx.mesh)
-        if not is_symmetric:
+        balanced = (abs(1.0 - ratio_01) < tolerance) or (abs(1.0 - ratio_12) < tolerance)
+        round_surface = balanced and has_rotational_surface_evidence(
+            ctx.features, ctx.info.surface_area, mesh=ctx.mesh)
+        if not round_surface:
+            # Two equal principal moments (mass spread evenly about one axis) is
+            # necessary but not enough: a cube has them. A lathe also needs a
+            # round outer surface to turn.
+            reason = ("no round outer surface was found to turn" if balanced
+                      else "it isn't round about any axis")
             return [Issue(
                 code="NOT_ROTATIONALLY_SYMMETRIC",
                 severity=Severity.ERROR,
-                message=(
-                    f"Part lacks positive rotational geometry (eigenvalue ratios: "
-                    f"{ratio_01:.2f}, {ratio_12:.2f}; insufficient outer rotational "
-                    f"surface evidence). Required for {process.value}."
-                ),
+                message=f"A lathe can't make this part as drawn: {reason}.",
                 process=process,
-                fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",
+                fix_suggestion=("Turning needs a part that is round about one axis. Mill it "
+                                "(3-axis or 5-axis), or use a mill-turn for a round part with milled features."),
             )]
     except Exception:
         logger.warning(
@@ -1631,12 +1634,9 @@ def check_rotational_symmetry(
         return [Issue(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
-            message=(
-                f"Rotational-symmetry check incomplete for {process.value} "
-                f"(eigen decomposition failed)."
-            ),
+            message="The roundness check for turning didn't finish: the part's mass properties couldn't be computed.",
             process=process,
-            fix_suggestion="Verify mesh integrity via /validate/quick.",
+            fix_suggestion="Check that the file is one closed solid, then check it again.",
         )]
     return []
 

@@ -86,6 +86,9 @@ test("capability cards name the machine, the material or the measured bound", ()
   assert.equal(env.caveat, "This necessary bound is not a machine specification; verify the full XYZ setup.");
   const add = capCard({ acquisition: { kind: "acquire", process: "mjf", gate: null, spec: { summary: "a nylon printer" } }, parts_unlocked: 3, stale: false, stale_parts: 0 }, machines);
   assert.equal(add.title, "Add Nylon powder printing (MJF): a nylon printer");
+  const plain = "Part is at least 268.8mm wide at its narrowest > the 254mm shortest side of the work area, so it fits in no orientation.";
+  assert.deepEqual(boundsOf(plain), { need: 268.8, have: 254 });
+  assert.equal(caveatOf(plain), null);
   assert.equal(boundsOf("nothing here"), null);
   assert.equal(caveatOf("One sentence only"), null);
 });

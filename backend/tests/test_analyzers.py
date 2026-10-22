@@ -138,16 +138,19 @@ def test_unproved_step_profiles_request_wire_path_review():
     from src.parsers.step_mesher import step_to_trimesh_from_bytes
 
     controls = Path(__file__).resolve().parents[2] / "outputs/production-audit-20260929/shape-controls"
-    # The boss changes section despite all normals being axis aligned. The
-    # curved hole's adaptive triangles are not an exact extrusion, and the
-    # parser supplies no tessellation-error bound to certify its nominal CAD.
-    for filename in ["156-plate-with-boss.step", "166-transverse-hole-bar.step"]:
-        source = controls / filename
-        mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
-        issues = check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM)
-        assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
-        assert issues[0].severity.value == "warning"
-        assert "multi-axis" in issues[0].message
+    # The boss changes section despite all normals being axis aligned.
+    source = controls / "156-plate-with-boss.step"
+    mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
+    issues = check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM)
+    assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
+    assert issues[0].severity.value == "warning"
+    assert "multi-axis" in issues[0].message
+    # The bar with a transverse hole IS a straight extrusion along the hole. Its
+    # tessellated bore leans off square, but equal caps, volume = cap area ×
+    # 12 mm and bore nodes within one arc sagitta of the outline certify it (M9).
+    source = controls / "166-transverse-hole-bar.step"
+    mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
+    assert check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM) == []
 
 
 def test_profile_check_discloses_rounding_decimation_and_nonextrusions():

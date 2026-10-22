@@ -16,6 +16,7 @@ Design contract:
 
 from __future__ import annotations
 
+import math
 import os
 import hashlib
 from collections import defaultdict
@@ -263,13 +264,18 @@ def envelope_nonfit_bound(box, envelope, minimum_width=0.0, precision=0.0):
     ):
         return None
     error = np.sqrt(3) * precision
-    for axis, need, have, label, capacity in (
-        ("minimum_width_mm", minimum_width - error, min(envelope), "minimum width", "smallest chamber span"),
-        ("diameter_mm", max(box) - error, np.linalg.norm(envelope), "diameter", "chamber diagonal"),
+    for axis, need, have, part, space in (
+        ("minimum_width_mm", minimum_width - error, min(envelope), "wide at its narrowest", "shortest side of the work area"),
+        ("diameter_mm", max(box) - error, np.linalg.norm(envelope), "corner to corner", "work-area diagonal"),
     ):
         if need > have:
-            human = (f"Part {label} is at least {need:.9g}mm > {capacity} {have:.9g}mm. "
-                     "This necessary bound is not a machine specification; verify the full XYZ setup.")
+            # A part's narrowest width can't exceed the box's shortest side, and its
+            # span can't exceed the diagonal, in any orientation. The part figure is
+            # rounded down and the space figure up, so the sentence never overstates.
+            shown_need = math.floor(need * 10) / 10
+            shown_have = math.ceil(have * 10) / 10
+            human = (f"Part is at least {shown_need:g}mm {part} > the {shown_have:g}mm {space}, "
+                     "so it fits in no orientation.")
             return axis, float(need), float(have), human
     return None
 
@@ -1154,6 +1160,61 @@ def _normal_precision(mesh: trimesh.Trimesh, error: float) -> np.ndarray:
     return np.minimum(2., 2 * cross_error / np.maximum(cross_length - cross_error, 1e-300))
 
 
+# Facets of a tessellated round hole or curved cut-out lean off square to the
+# caps (a few degrees in a STEP tessellation, ~11° in a coarse STL with nodes
+# along the wall). Up to this lean they still read as a wall through the gauge,
+# provided the solid stays a straight extrusion (``_straight_through``).
+_TESSELLATED_WALL_SIN = math.sin(math.radians(15.0))
+_STRAIGHT_THROUGH_REL = 1e-3
+# A node on a tessellated arc sits at most one sagitta off the chord between its
+# neighbours: tan(pi / 2n) / 2 of the chord for an n-segment circle, 0.134 at
+# n = 6. Wall nodes farther than this from the cap outline aren't tessellation.
+_SAGITTA_PER_CHORD = 0.15
+
+
+def _straight_through(mesh, caps, heights, low, high, gauge, tol, normal, leaning) -> bool:
+    """A straight extrusion, read through tessellation error.
+
+    Both caps the same area, volume = cap area × gauge (each within 0.1%), and
+    every node part-way up a leaning wall within one arc sagitta of the cap
+    outline when projected onto it. A draft, chamfer, fillet or bulge moves the
+    cap areas, the volume or the wall nodes.
+    """
+    face_heights = heights[mesh.faces].mean(axis=1)
+    low_caps = caps & (np.abs(face_heights - low) <= tol)
+    area_low = float(mesh.area_faces[low_caps].sum())
+    area_high = float(mesh.area_faces[caps & (np.abs(face_heights - high) <= tol)].sum())
+    area = max(area_low, area_high)
+    if area <= 0 or abs(area_low - area_high) > _STRAIGHT_THROUGH_REL * area:
+        return False
+    volume = _finite_body_volume(mesh)
+    if not (volume > 0 and abs(volume - area * gauge) <= _STRAIGHT_THROUGH_REL * volume):
+        return False
+    nodes = np.unique(mesh.faces[leaning])
+    nodes = nodes[(np.abs(heights[nodes] - low) > tol) & (np.abs(heights[nodes] - high) > tol)]
+    if not len(nodes):
+        return True
+    edges = np.sort(mesh.faces[low_caps][:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2), axis=1)
+    unique, counts = np.unique(edges, axis=0, return_counts=True)
+    outline = unique[counts == 1]
+    if not len(outline):
+        return False
+    rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
+    flat = (np.asarray(mesh.vertices) @ rotation.T)[:, :2]
+    start, end = flat[outline[:, 0]], flat[outline[:, 1]]
+    k = min(8, len(outline))
+    _, near = KDTree((start + end) / 2).query(flat[nodes], k=k)
+    near = np.asarray(near).reshape(len(nodes), k)
+    a, b = start[near], end[near]
+    ab = b - a
+    length2 = np.maximum((ab * ab).sum(axis=2), 1e-30)
+    point = flat[nodes][:, None, :]
+    t = np.clip(((point - a) * ab).sum(axis=2) / length2, 0.0, 1.0)
+    distance = np.linalg.norm(a + t[..., None] * ab - point, axis=2)
+    allowed = _SAGITTA_PER_CHORD * np.sqrt(length2) + tol
+    return bool(np.all((distance <= allowed).any(axis=1)))
+
+
 def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] | None:
     measured = flat_sheet_geometry(mesh)
     return measured[0] if measured is not None else None
@@ -1194,13 +1255,21 @@ def flat_sheet_geometry(mesh: trimesh.Trimesh, *, normal_face: int | None = None
             return None  # Cap and rim directions cannot be distinguished.
         alignment = np.abs(mesh.face_normals @ normal)
         caps = np.linalg.norm(np.cross(mesh.face_normals, normal), axis=1) <= angular_tol
-        if gauge <= tol + precision or not np.all(caps | (alignment <= angular_tol)):
+        leaning = ~(caps | (alignment <= angular_tol))
+        if gauge <= tol + precision or np.any(alignment[leaning] > _TESSELLATED_WALL_SIN):
             return None
         cap_heights = heights[mesh.faces[caps]]
         if not np.all((np.abs(cap_heights - low) <= tol + precision) | (np.abs(cap_heights - high) <= tol + precision)):
             return None
+        if np.any(leaning) and not _straight_through(mesh, caps, heights, low, high, gauge, tol + precision,
+                                                     normal, leaning):
+            return None
         rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
-        footprint = (vertices @ rotation.T)[:, :2]
+        # A tessellated curved wall has nodes along its whole height, every one
+        # of them on the outline (tens of thousands on a STEP cylinder); the caps
+        # carry the outline itself, so measure the blank from their vertices.
+        outline_vertices = vertices[np.unique(mesh.faces[caps])] if np.any(leaning) else vertices
+        footprint = (outline_vertices @ rotation.T)[:, :2]
         hull = footprint[ConvexHull(footprint).vertices]
         edges = np.roll(hull, -1, axis=0) - hull
         lengths = np.linalg.norm(edges, axis=1)
