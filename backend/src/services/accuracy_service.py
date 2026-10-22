@@ -604,13 +604,16 @@ class Scope:
 
 
 async def latest_records(session: AsyncSession, org_id: str, keys: Optional[Iterable[str]] = None) -> dict[str, dict]:
-    """Newest record per part (file hash) in the org, optionally only for ``keys``."""
+    """Newest record per part (file hash) in the org, optionally only for ``keys``.
+
+    A what-if re-cost is never the part's price, so an actual is never graded against one (ce-17)."""
     from src.db.models import CostDecision
+    from src.services.cost_decision_service import current_price_clause
 
     stmt = (
         select(CostDecision.mesh_hash, CostDecision.ulid, CostDecision.filename, CostDecision.label,
                CostDecision.created_at, CostDecision.result_json)
-        .where(CostDecision.org_id == org_id)
+        .where(CostDecision.org_id == org_id, current_price_clause())
         .distinct(CostDecision.mesh_hash)
         .order_by(CostDecision.mesh_hash, CostDecision.created_at.desc(), CostDecision.id.desc())
     )

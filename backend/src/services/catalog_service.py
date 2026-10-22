@@ -483,6 +483,8 @@ async def _fold_org_parts(
     hydrated into DB-free ``SourceRef``s. A single bounded, ulid-desc scan per
     source table (cap+1 so truncation is honest without a second COUNT). An
     exact part key instead selects only its newest artifact from each table."""
+    from src.services.cost_decision_service import current_price_clause
+
     # One bounded, ulid-desc query per source table (newest first). Fetch cap+1
     # so we can honestly report truncation without a second COUNT round-trip.
     an_rows = (
@@ -504,6 +506,8 @@ async def _fold_org_parts(
                 select(CostDecision)
                 .where(CostDecision.org_id == org_id)
                 .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
+                # A what-if re-cost never becomes the part's price on the parts list (ce-17).
+                .where(current_price_clause())
                 .order_by(CostDecision.ulid.desc())
                 .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
             )
