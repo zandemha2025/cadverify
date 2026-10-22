@@ -32,8 +32,10 @@ export async function fetchInviteSummary(token: string, f: typeof fetch = fetch)
         },
       };
     }
+    // FastAPI's {detail: …} or the app's flattened {code, message}.
     const d = data.detail as { message?: unknown } | string | undefined;
-    const message = typeof d === "string" ? d : typeof d?.message === "string" ? d.message : "This invitation could not be checked.";
+    const message =
+      typeof d === "string" ? d : typeof d?.message === "string" ? d.message : typeof data.message === "string" ? data.message : "This invitation could not be checked.";
     return { ok: false, status: res.status, message };
   } catch {
     return { ok: false, status: 503, message: "Could not reach ScaleCAD." };

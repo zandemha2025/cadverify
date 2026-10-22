@@ -84,10 +84,10 @@ async function acceptInvite(session: string, token: string): Promise<InviteOutco
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });
-    const data = (await res.json().catch(() => ({}))) as { org_id?: unknown; org_role?: unknown; detail?: unknown };
+    const data = (await res.json().catch(() => ({}))) as { org_id?: unknown; org_role?: unknown; detail?: unknown; message?: unknown };
     if (res.ok && typeof data.org_id === "string") return { org_id: data.org_id, org_role: String(data.org_role ?? "member") };
     const d = data.detail as { message?: unknown } | string | undefined;
-    const message = typeof d === "string" ? d : typeof d?.message === "string" ? d.message : null;
+    const message = typeof d === "string" ? d : typeof d?.message === "string" ? d.message : typeof data.message === "string" ? data.message : null;
     return { error: message ?? "The invite wasn’t accepted." };
   } catch {
     return { error: "Couldn’t reach ScaleCAD to accept the invite." };

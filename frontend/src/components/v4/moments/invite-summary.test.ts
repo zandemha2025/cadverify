@@ -22,6 +22,8 @@ test("the summary names the org, the inviter and the role", async () => {
 test("a used or unknown invite says so, with the server's words", async () => {
   const f = (async () => new Response(JSON.stringify({ detail: { message: "This invite has already been used." } }), { status: 409 })) as unknown as typeof fetch;
   assert.deepEqual(await fetchInviteSummary(TOKEN, f), { ok: false, status: 409, message: "This invite has already been used." });
+  const flat = (async () => new Response(JSON.stringify({ code: "conflict", message: "This invite has expired." }), { status: 409 })) as unknown as typeof fetch;
+  assert.deepEqual(await fetchInviteSummary(TOKEN, flat), { ok: false, status: 409, message: "This invite has expired." });
   const down = (async () => { throw new Error("x"); }) as unknown as typeof fetch;
   assert.deepEqual(await fetchInviteSummary(TOKEN, down), { ok: false, status: 503, message: "Could not reach ScaleCAD." });
 });
