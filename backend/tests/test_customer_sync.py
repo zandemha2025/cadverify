@@ -204,7 +204,7 @@ async def test_profile_signup_crm_retry_and_sync_with_real_postgres(monkeypatch)
         if uid:
             async with get_session_factory()() as db:
                 for other_id, sync_after in previous_sync:
-                    await db.execute(text("UPDATE users SET crm_sync_after=CAST(:after AS timestamptz) WHERE id=:id"), {"id": other_id, "after": sync_after})
+                    await db.execute(text("UPDATE users SET crm_sync_after=CAST(CAST(:after AS text) AS timestamptz) WHERE id=:id"), {"id": other_id, "after": sync_after})
                 await db.execute(text("DELETE FROM audit_log WHERE user_id=:id"), {"id": uid})
                 await db.execute(text("DELETE FROM users WHERE id=:id"), {"id": uid})
                 await db.commit()
