@@ -415,7 +415,7 @@ def test_supplier_report_pdf_text_carries_nothing_of_the_shop(shop_result):
     html = render_cost_html(snap, outbound.rfq_governance(item["decision"]))
     pdf = _render_cost_pdf_sync(snap, html)
     text = subprocess.run(["pdftotext", "-", "-"], input=pdf, capture_output=True, check=True).stdout
-    assert b"Should-Cost" in text and b"mjf" in text
+    assert b"Should-Cost" in text and b"(MJF)" in text  # processes by name, not engine id
     assert_nothing_private(text.replace(b"\n", b" "), "should-cost-report.pdf text")
 
 

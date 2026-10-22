@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from src.analysis.models import ProcessType as PT
 from src.profiles.models import MaterialProfile
 from src.costing.drivers import GeoDrivers
@@ -96,7 +98,7 @@ def test_each_new_process_positive_finite_cost_with_drivers():
         for dr in est.drivers:
             assert dr.provenance.value in ("MEASURED", "USER", "DEFAULT"), p.name
         # source strings honestly caveat the assumption
-        assert "not shop-validated" in cyc_d.source or "assumption" in cyc_d.source, p.name
+        assert "not confirmed by a shop" in cyc_d.source, p.name
 
 
 def test_new_families_carry_honesty_literal_in_drivers():
@@ -108,7 +110,7 @@ def test_new_families_carry_honesty_literal_in_drivers():
     for p in NEW_PROCESSES:
         est = cost_breakdown(p, d, mat, "aluminum", 100, rc, "US")
         sources = " ".join(dr.source for dr in est.drivers)
-        assert "assumption, not shop-validated" in sources, (
+        assert "typical value, not confirmed by a shop" in sources, (
             f"{p.name}: no driver carries the honesty caveat")
 
 
@@ -168,18 +170,20 @@ def test_forging_unit_cost_amortizes_down_with_qty():
 
 
 def test_wire_edm_is_slow_and_tool_less():
-    """Wire-EDM: no hard tooling (fixed cost 0), and the SLOW cut dominates the
-    unit cost (machine is the largest line item), with a wire consumable present."""
+    """Wire-EDM: no hard tooling (its one-time cost is just the order's first
+    setup), and the SLOW cut dominates the unit cost (machine is the largest line
+    item), with a wire consumable present."""
     rc, d, mat = build_rate_card(), _drivers(), _alu()
     est = cost_breakdown(PT.WIRE_EDM, d, mat, "aluminum", 100, rc, "US")
-    assert est.fixed_cost_usd == 0.0, "wire-EDM has no hard tooling"
     assert _driver(est, "tooling_cost") is None
+    assert 0 < est.fixed_cost_usd < est.unit_cost_usd * 100, "only the first setup is one-time"
+    assert est.fixed_cost_usd / 100 + est.variable_cost_usd == pytest.approx(est.unit_cost_usd, abs=2e-4)
     li = est.line_items
     assert li["machine"] == max(li.values()), f"slow EDM cut should dominate: {li}"
     assert "consumables" in li and li["consumables"] > 0, "wire consumable must appear"
     # the cut-path proxy is honestly flagged
     cyc = _driver(est, "cycle_time")
-    assert "PROXY" in cyc.source and "not a true 3D cut perimeter" in cyc.source
+    assert "cut path estimated" in cyc.source and "not a measured 3D path" in cyc.source
 
 
 def test_wire_edm_slower_material_costs_more_machine_time():

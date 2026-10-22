@@ -27,6 +27,12 @@ from enum import Enum
 from typing import Optional
 
 
+# How a driver's source says its number is an assumption, in words a buyer
+# reads (the DEFAULT tag says the same to software). Replaces the bracketed
+# "[assumption, not shop-validated]" tag the cost breakdown showed verbatim.
+TYPICAL = "typical value, not confirmed by a shop"
+
+
 class Provenance(str, Enum):
     MEASURED = "MEASURED"   # extracted from the CAD — not assumable
     USER = "USER"           # team-declared input — authoritative, not calibrated

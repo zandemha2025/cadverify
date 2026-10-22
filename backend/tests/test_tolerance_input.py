@@ -128,8 +128,8 @@ def test_provenance_and_validated_never_flipped():
     assert d is not None
     # the DECLARATION is USER; the factor is a DEFAULT assumption (said so)
     assert d.provenance.value == "USER"
-    assert "DEFAULT assumption" in d.source
-    assert "not shop-validated" in d.source
+    assert "You set the tolerance; the factor is a typical value" in d.source
+    assert "not confirmed by a shop" in d.source
 
     # a tolerance declaration can NEVER flip a confidence interval to validated:
     # with no real residual model the band stays an assumption band.
@@ -181,7 +181,7 @@ def test_non_machining_family_cost_unchanged_band_widens():
     assert tight.est_error_band_pct > std.est_error_band_pct
     d = _driver(tight, "tolerance_class")
     assert d is not None and d.provenance.value == "USER"
-    assert "cost UNCHANGED" in d.source
+    assert "the price is unchanged" in d.source
 
 
 def test_tolerance_classes_ordered_and_standard_is_noop():

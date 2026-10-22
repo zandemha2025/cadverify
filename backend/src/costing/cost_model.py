@@ -23,8 +23,8 @@ import math
 import os
 
 from src.analysis.models import ProcessType
-from src.costing.drivers import build_orientation, parts_per_build
-from src.costing.provenance import CostEstimate, Driver, Provenance
+from src.costing.drivers import basis_words, build_orientation, parts_per_build
+from src.costing.provenance import TYPICAL, CostEstimate, Driver, Provenance
 from src.costing.rates import (
     ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, CASTING, FORGING_FAMILY, EDM,
     METAL_POWDER_BED, BINDER_JET_FAMILY, DED_FAMILY,
@@ -82,7 +82,7 @@ def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
     src = (f"learning curve {rate:g}×/doubling of cumulative qty on machine+labor: "
            f"({qty}/{ref_qty} first-lot)^{b:.3f} = ×{mult:.3f} "
            f"(~{doublings:.1f} doublings, floor {floor:g}) "
-           f"[assumption, not shop-validated]")
+           f"(typical value, not confirmed by a shop)")
     return mult, src
 
 
@@ -144,19 +144,21 @@ def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
         deposition_hr = drivers.volume_cm3 / dep      # per-part — single nozzle/laser, irreducible
         sweep_hr = (build_h / vert) / n               # per-PLATE Z-climb, amortized over the XY nest
         machine_hr = deposition_hr + sweep_hr
-        src = (f"serial XY nest: deposition V/{dep:g} = {drivers.volume_cm3:.2f}/{dep:g} "
-               f"= {deposition_hr:.3f}hr/part (per-part nozzle) + Z-sweep "
+        who = ("the laser traces each part in turn" if process in (PT.SLA, PT.DLP)
+               else "one nozzle lays each part in turn")
+        src = (f"parts side by side on one plate: deposition V/{dep:g} = {drivers.volume_cm3:.2f}/{dep:g} "
+               f"= {deposition_hr:.4g}hr/part ({who}) + Z-sweep "
                f"({build_h:.1f}/{vert:g})÷{n} parts/plate = {sweep_hr:.3f}hr/part "
                f"(plate Z-climb amortized; XY packing {rates.xy_packing_density(process):g}, "
                f"plate {envelope[0]:g}×{envelope[1]:g}mm) "
                f"= {machine_hr:.3f}hr/part")
-    src += (f"; {basis} oriented XYZ "
-            f"{tuple(round(d, 6) for d in orientation)}mm; spaced-grid capacity limit "
-            "(packing/setup assumption, not a verified nesting plan)")
+    src += (f"; laid out {' × '.join(f'{round(d, 6):g}' for d in orientation)} mm "
+            f"({basis_words(basis)}); parts per build from a spaced grid, an estimate, "
+            "not a planned nest")
     if shrink:
         src += f"; green dimensions ×{1 + shrink:g} for sinter shrinkage"
     if (machine_override or {}).get("build_env_mm"):
-        src += f"; USER-declared envelope of '{(machine_override or {}).get('machine_name')}'"
+        src += f"; work area declared for '{(machine_override or {}).get('machine_name')}'"
     return machine_hr, n, src
 
 
@@ -167,7 +169,7 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
         stock_vol = drivers.turning_stock_volume_cm3(allow)
         stock_src = (f"bounding cylinder π·({drivers.rot_cross_dia_mm:.1f}/2)²·"
                      f"{drivers.rot_axis_len_mm:.1f} mm × {allow:.2f} stock allowance "
-                     f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
+                     f"= {stock_vol:.1f} cm³ (typical value, not confirmed by a shop)")
     else:
         # E-now #1: mill from a rectangular BILLET (bounding box), not a hull —
         # a pocketed part is cut from a solid block, so more is roughed away.
@@ -177,7 +179,7 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
         if bbox_billet_enabled():
             stock_src = (f"{drivers.billet_basis} "
                          f"bbox billet {drivers.billet_volume_cm3(1):.1f} cm³ × {allow:.2f} "
-                         f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
+                         f"= {stock_vol:.1f} cm³ (typical value, not confirmed by a shop)")
         else:
             stock_src = (f"hull {drivers.hull_volume_cm3:.1f} cm³ × {allow:.2f} "
                          f"= {stock_vol:.1f} cm³")
@@ -260,7 +262,7 @@ def _casting_cycle(process, drivers, material, rates: RateCard):
     src = (f"pour {pour_hr:g}hr + solidify/cool {poured:.3f}kg poured "
            f"(net {net_mass:.3f}kg × 1+{yl:g} yield) × {cool_min_per_kg:g}min/kg "
            f"= {cool_hr * 60:.1f}min = {cycle:.4f} hr  "
-           f"[foundry assumption, not shop-validated]")
+           f"(typical value, not confirmed by a shop)")
     return cycle, src
 
 
@@ -284,8 +286,8 @@ def _forging_cycle(process, drivers, material, rates: RateCard):
     cycle = heat_hr + press_hr + trim_hr
     src = (f"heat {billet:.3f}kg billet (net {net_mass:.3f}kg × 1+{fl:g} flash/scale) "
            f"× {heat_min_per_kg:g}min/kg = {heat_hr * 60:.1f}min + press {press_hr:g}hr "
-           f"+ trim {trim_hr:g}hr = {cycle:.4f} hr  (near-net blank — finish machining "
-           f"NOT bundled) [forge assumption, not shop-validated]")
+           f"+ trim {trim_hr:g}hr = {cycle:.4f} hr  (a near-net blank: finish machining "
+           f"is not included; typical value, not confirmed by a shop)")
     return cycle, src
 
 
@@ -320,9 +322,9 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
     src = (f"wire-EDM cut path {cut_len:.0f}mm × {thickness:.1f}mm stock "
            f"= {swept_area:.0f}mm² swept ÷ {cut_rate:g}mm²/hr ({material_class}, slow) "
            f"= {cut_hr * 60:.1f}min + thread {n_threads}×{thread_min:g}min "
-           f"= {cycle:.4f} hr  [cut-path = outline_perimeter × minimum stock extent PROXY "
-           f"({drivers.billet_basis if blank else 'file-axis'}), "
-           f"not a true 3D cut perimeter; assumption, not shop-validated]")
+           f"= {cycle:.4f} hr  (cut path estimated as the outline length × the thinnest "
+           f"stock side, {basis_words(drivers.billet_basis if blank else 'file-axis fallback')}, "
+           f"not a measured 3D path; typical value, not confirmed by a shop)")
     return cycle, swept_area, cut_hr, src
 
 
@@ -348,15 +350,15 @@ def _metal_am_post(process, n, rates: RateCard):
     return [
         ("plate_removal", "plate_removal_cost", plate_hr,
          (f"build-plate removal (wire-EDM/bandsaw off the plate) {plate_hr:g}hr/part "
-          f"[metal-AM assumption, not shop-validated]")),
+          f"(typical value, not confirmed by a shop)")),
         ("support_removal", "support_removal_cost", support_hr,
          (f"metal support removal (grind/break-off) {support_hr:g}hr/part "
-          f"[metal-AM assumption, not shop-validated]")),
+          f"(typical value, not confirmed by a shop)")),
         ("stress_relief", "stress_relief_cost", sr_per_part,
          (f"stress-relief furnace {sr_build:g}hr/build ÷ {n} parts/build "
           f"= {sr_per_part:.3f}hr/part (batch amortized). HIP / solution heat-treat / "
-          f"CNC finish of critical surfaces are part-specific and NOT bundled "
-          f"[metal-AM assumption, not shop-validated]")),
+          f"CNC finish of critical surfaces are part-specific and not included "
+          f"(typical value, not confirmed by a shop)")),
     ]
 
 
@@ -376,9 +378,9 @@ def _ded_cycle(process, drivers, material, rates: RateCard):
     rate_kg_hr = rates.p(process, "deposition_rate_kg_hr")
     machine_hr = deposited / rate_kg_hr if rate_kg_hr > 0 else 0.0
     src = (f"deposit {deposited:.4f}kg (net {net_mass:.4f}kg × {fm:g} near-net overbuild) "
-           f"÷ {rate_kg_hr:g}kg/hr deposition = {machine_hr:.4f}hr  [COARSE deposition-rate "
-           f"model — DED/WAAM cost is highly geometry/path/shop-specific; assumption, "
-           f"not shop-validated]")
+           f"÷ {rate_kg_hr:g}kg/hr deposition = {machine_hr:.4f}hr  (a rough deposition-rate "
+           f"model: real deposition time depends on the part, the path and the shop; "
+           f"typical value, not confirmed by a shop)")
     return machine_hr, deposited, src
 
 
@@ -463,7 +465,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mass_src = (f"poured metal = net {net_mass:.4f} kg (CAD volume "
                     f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
                     f"{material.density:.2f} g/cm³) × (1+{yl:g} gating/riser yield) "
-                    f"[foundry assumption, not shop-validated]")
+                    f"(typical value, not confirmed by a shop)")
     elif process in FORGING_FAMILY:
         # billet from bar stock = net part mass × (1 + flash/scale loss)
         net_mass = drivers.mass_kg(material.density)
@@ -472,7 +474,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mass_src = (f"billet from bar = net {net_mass:.4f} kg (CAD volume "
                     f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
                     f"{material.density:.2f} g/cm³) × (1+{fl:g} flash/scale loss) "
-                    f"[forge assumption, not shop-validated]")
+                    f"(typical value, not confirmed by a shop)")
     elif process in EDM:
         # wire-EDM cuts the part from a solid billet plate (bbox block × allowance)
         input_mass = drivers.billet_mass_kg(material.density, rates.g("stock_allowance"))
@@ -488,7 +490,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
                     f"{material.density:.2f} g/cm³) × (1+{svf:g} support structure "
                     f"printed+removed); powder $/kg assumed at material-DB value "
-                    f"[metal-AM assumption, not shop-validated]")
+                    f"(typical value, not confirmed by a shop)")
     elif process in BINDER_JET_FAMILY:
         # green part printed OVERSIZE for sinter shrinkage: material = net × (1+s)³ of
         # powder (net volume grows by the cube of the linear shrink factor).
@@ -499,7 +501,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mass_src = (f"green part = net {net_mass:.4f} kg × (1+{shr:g})³ = ×{oversize:.3f} "
                     f"sinter-shrink oversize (CAD volume {drivers.volume_cm3:.2f} cm³ × "
                     f"{material.name} density {material.density:.2f} g/cm³); powder $/kg at "
-                    f"material-DB value [binder-jet assumption, not shop-validated]")
+                    f"material-DB value (typical value, not confirmed by a shop)")
     elif process in DED_FAMILY:
         # feedstock (wire/powder) = net part mass × near-net overbuild, at material price
         net_mass = drivers.mass_kg(material.density)
@@ -523,12 +525,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # metal powder-bed: a KNOWN, explicit powder-price refinement knob (DEFAULT 1.0 =
     # material-DB $/kg used as-is, NO silent inflation). Guarded to the new family so
     # every existing family's price path is byte-identical.
+    if price_prov == Provenance.DEFAULT and getattr(material, "price_form", None):
+        # The catalog prices each process at the form it buys (src.profiles.pricing).
+        price_note = f"catalog {material.price_form} price, {TYPICAL}"
     if process in METAL_POWDER_BED:
         pmult = rates.p(process, "metal_am_powder_mult")
         if pmult != 1.0:
             price_per_kg = price_per_kg * pmult
-        price_note = (f"{price_note}; ×{pmult:g} metal-AM powder mult "
-                      f"(powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)")
+            price_note = f"{price_note}; ×{pmult:g} powder price adjustment"
     material_cost = input_mass * price_per_kg * (1.0 + scrap)
     material_scaled = material_cost * rm * mgn
     drivers_out.append(Driver(
@@ -550,8 +554,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             source=(f"support structure {_svf:g}×net = {_support_mass:.4f} kg powder "
                     f"× ${price_per_kg:g}/kg × (1+{scrap:g} scrap) "
                     f"× region-material ×{rm:g}{margin_note} "
-                    f"printed then removed (INCLUDED in material_cost above; surfaced for "
-                    f"inspection) [metal-AM assumption, not shop-validated]"),
+                    f"printed then removed (already in the material cost above, shown "
+                    f"separately; typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
 
@@ -562,7 +566,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         machine_hr, n = est.hours_per_part, est.parts_per_plate
         cycle_src = f"{est.source}; {placement}"
         if (machine_override or {}).get("build_env_mm"):
-            cycle_src += f"; USER-declared envelope of '{(machine_override or {}).get('machine_name')}'"
+            cycle_src += f"; work area declared for '{(machine_override or {}).get('machine_name')}'"
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=rates.prov_tag(f"xy_packing_density.{process.name}"),
@@ -666,15 +670,15 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     machine_cost = machine_hr * eff_machine_rate / cav_div / util
     machine_learned = machine_cost * learn_mult          # attended-time learning (S1)
     machine_scaled = machine_learned * rl_machine * mgn * burden   # E-now #2: labor-only region scaling
-    owned_note = (f" × (1-{cap_frac:g} capital sunk) OWNED-IN-HOUSE marginal "
-                  f"[assumption, not shop-validated]") if owned_here else ""
+    owned_note = (f" × (1-{cap_frac:g}) on a machine you own: running cost only, the "
+                  f"machine is already paid for (typical value, not confirmed by a shop)") if owned_here else ""
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
     learn_note = f" × {learn_mult:.3f} learning@qty{qty}" if learn_mult != 1.0 else ""
     if rl_machine != rl:
         _frac = rates.g("machine_labor_frac")
         region_mach_note = (f" × region-machine ×{rl_machine:g} (labor {_frac:g} of "
-                            f"rate ×{rl:g}, capital global ×1) [assumption, not shop-validated]")
+                            f"rate ×{rl:g}, capital global ×1) (typical value, not confirmed by a shop)")
     else:
         region_mach_note = f" × region-labor ×{rl_machine:g}"
     # machine-specific override: name the fitted machine, show its OWN rate, and
@@ -683,7 +687,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     if machine_name is not None:
         machine_prov_tag = machine_prov
         machine_rate_shown = base_machine_rate
-        machine_name_note = f" (fitted machine '{machine_name}', its OWN declared rate)"
+        machine_name_note = f" (machine '{machine_name}', at its declared rate)"
     else:
         machine_prov_tag = rates.prov_tag(f"machine_rate.{process.name}")
         machine_rate_shown = rates.p(process, "machine_rate")
@@ -702,21 +706,20 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # removed is a DEFAULT assumption, not shop-validated. validated never
         # flips here — this is a structural sunk-cost adjustment, not a measured
         # number. Driver only (does not enter the line_items sum).
-        _owned_subject = (f"machine '{machine_name}' OWNED in-house"
-                          if machine_name is not None else "process OWNED in-house")
+        _owned_subject = (f"machine '{machine_name}' you own"
+                          if machine_name is not None else "a machine you own")
         _frac_prov = ("declared on the machine" if (machine_name is not None
                       and isinstance(machine_override.get("capital_frac"), (int, float))
                       and not isinstance(machine_override.get("capital_frac"), bool))
-                      else "DEFAULT [assumption, not shop-validated]")
+                      else "a typical value, not confirmed by a shop")
         drivers_out.append(Driver(
             name="owned_in_house", value=round(1.0 - cap_frac, 4), unit="×",
             provenance=Provenance.USER,
-            source=(f"{_owned_subject}: machine costed at MARGINAL rate "
+            source=(f"{_owned_subject}: machine time at the running-cost rate "
                     f"${eff_machine_rate:g}/hr = ${base_machine_rate:g}/hr × "
-                    f"(1-{cap_frac:g} capital) — capital purchase/amortization removed "
-                    f"(sunk on gear the org already owns; make-it-ourselves, not "
-                    f"rent-the-time). USER-declared ownership; the {cap_frac:g} capital "
-                    f"fraction is {_frac_prov}"),
+                    f"(1-{cap_frac:g} capital): the machine is already paid for, so its "
+                    f"purchase isn't charged again. Ownership is as declared; the "
+                    f"{cap_frac:g} capital share is {_frac_prov}"),
             error_band_pct=band,
         ))
     if rl_machine != rl:
@@ -727,11 +730,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     f"{rates.g('machine_labor_frac'):g} of the ${machine_rate_shown:g}/hr "
                     f"rate scales ×{rl:g}; capital/facility/energy stays global ×1 "
                     f"(fixes the whole-rate offshore over-discount) "
-                    f"[assumption, not shop-validated]"),
+                    f"(typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
     drivers_out.append(Driver(
-        name="cycle_time", value=round(machine_hr, 4), unit="hr",
+        # Three significant figures under 0.01 hr: a tiny part's few seconds
+        # rounded to 4 decimals read as "0.0 h" of machine time.
+        name="cycle_time", value=(round(machine_hr, 4) if machine_hr >= 0.01
+                                  else float(f"{machine_hr:.3g}")), unit="hr",
         provenance=Provenance.DEFAULT, source=cycle_src, error_band_pct=band,
     ))
 
@@ -783,6 +789,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # removes both lines (byte-identical old cost).
     nre_scaled = 0.0
     inspection_scaled = 0.0
+    fai_hr_order = 0.0   # first-article hours this order pays once (see the fixed split)
     if family == "subtractive" and os.getenv("CADVERIFY_CNC_NRE", "1") != "0":
         nre_hr = rates.pget(process, "nre_hr")
         fai_hr = rates.pget(process, "fai_hr")
@@ -796,10 +803,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 provenance=rates.prov_tag(f"nre_hr.{process.name}"),
                 source=(f"CAM programming/NRE {nre_hr:g}hr × ${labor_rate:g}/hr × "
                         f"region-labor ×{rl:g} ÷ {qty} order (one-time){conversion_note} "
-                        f"[assumption, not shop-validated]"),
+                        f"(typical value, not confirmed by a shop)"),
                 error_band_pct=40.0,
             ))
         inspect_part = inspect_hr_part * learn_mult                   # per-part (learns/samples down at volume)
+        fai_hr_order = fai_hr
         fai_per_unit = fai_hr * n_setups / qty                       # first article per lot
         insp_hr_per_unit = fai_per_unit + inspect_part
         if insp_hr_per_unit > 0:
@@ -811,7 +819,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 source=(f"first-article {fai_hr:g}hr × {n_setups} lot(s) ÷ {qty} + in-process "
                         f"{inspect_hr_part:g}hr/part{learn_note} = {insp_hr_per_unit:.4f}hr × "
                         f"${labor_rate:g}/hr × region-labor ×{rl:g}{conversion_note} "
-                        f"[assumption, not shop-validated]"),
+                        f"(typical value, not confirmed by a shop)"),
                 error_band_pct=40.0,
             ))
 
@@ -827,7 +835,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 provenance=Provenance.DEFAULT,
                 source=(f"perishable tooling/consumables {perishable_frac:g} × machine "
                         f"${machine_scaled:.2f} (cutting tools, inserts, coolant) "
-                        f"[assumption, not shop-validated]"),
+                        f"(typical value, not confirmed by a shop)"),
                 error_band_pct=40.0,
             ))
     # ---- wire-EDM consumable: brass wire + dielectric/filter, ∝ cut time -----
@@ -842,7 +850,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 provenance=Provenance.DEFAULT,
                 source=(f"wire-EDM consumable {edm_cut_hr:.3f} cut-hr × ${wire_per_hr:g}/hr "
                         f"(brass wire + dielectric/filter) × region-material ×{rm:g}{margin_note} "
-                        f"[assumption, not shop-validated]"),
+                        f"(typical value, not confirmed by a shop)"),
                 error_band_pct=40.0,
             ))
 
@@ -864,7 +872,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             provenance=rates.prov_tag(f"finish_per_part.{process.name}"),
             source=(f"outsourced finishing: lot ${fin_lot:g} × {n_setups} ÷ {qty} + "
                     f"${fin_part:g}/part = ${finishing_per_unit:.2f}/unit × region-labor ×{rl:g}{margin_note} "
-                    f"[assumption, not shop-validated]"),
+                    f"(typical value, not confirmed by a shop)"),
             error_band_pct=40.0,
         ))
 
@@ -902,7 +910,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             provenance=Provenance.DEFAULT,
             source=(f"debind+sinter furnace {sinter_hr_build:g}hr/batch ÷ {n_sinter} parts/batch "
                     f"= {sinter_per_part_hr:.3f}hr × ${sinter_rate:g}/hr furnace × region-machine "
-                    f"×{rl_machine:g}{conversion_note} [binder-jet assumption, not shop-validated]"),
+                    f"×{rl_machine:g}{conversion_note} (typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
     elif family == "ded":
@@ -913,8 +921,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="finish_machining", value=round(ded_finish_scaled, 4), unit="$",
             provenance=Provenance.DEFAULT,
             source=(f"finish-machining allowance {finish_frac:g} × deposition machine "
-                    f"${machine_scaled:.2f} (near-net DED/WAAM ALWAYS needs finishing) "
-                    f"[coarse allowance; assumption, not shop-validated]"),
+                    f"${machine_scaled:.2f} (a deposited part always needs finish machining) "
+                    f"(a rough allowance; typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
 
@@ -947,8 +955,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     f"${finish_machine_scaled:.2f} + inspection ${inspection_scaled:.2f}"
                     + (f" + finishing ${finishing_scaled:.2f}" if finishing_scaled else "")
                     + f" = ${tol_base:.2f}) = +${tolerance_surcharge:.2f}/unit; band widened "
-                    f"+{tol_band_add:g}pts (uncertainty grows). DECLARATION is USER; the "
-                    f"factor is a DEFAULT assumption [not shop-validated]"),
+                    f"+{tol_band_add:g}pts (uncertainty grows). You set the tolerance; the "
+                    f"factor is a typical value, not confirmed by a shop"),
             error_band_pct=band,
         ))
     elif tol_cost_mult != 1.0 or tol_band_add != 0.0:
@@ -956,10 +964,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="tolerance_class", value=1.0, unit="×",
             provenance=Provenance.USER,
             source=(f"declared tolerance '{tolerance_class}': band widened +{tol_band_add:g}pts "
-                    f"(uncertainty grows), but NO per-part machining surcharge applies to a "
-                    f"{family} part in V0 (tolerance is set by the tool/process, not by "
-                    f"quantifiable per-part finishing passes) — cost UNCHANGED. DECLARATION "
-                    f"is USER; DEFAULT assumption [not shop-validated]"),
+                    f"(uncertainty grows), but no per-part machining surcharge applies to a "
+                    f"{family} part (its tolerance is set by the tool or process, not by "
+                    f"per-part finishing passes), so the price is unchanged. You set the "
+                    f"tolerance; typical value, not confirmed by a shop"),
             error_band_pct=band,
         ))
 
@@ -968,22 +976,22 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     tooling_size = round(max(drivers.billet_bbox_mm), 6) if drivers.billet_bbox_mm else drivers.max_bbox_mm
     tooling_basis = drivers.billet_basis if drivers.billet_bbox_mm else "file-axis fallback"
     # ponytail: size-tier proxy; a verified tool layout needs pull direction and allowances.
-    tooling_note = "[size proxy, tooling layout not verified; assumption, not shop-validated]"
+    tooling_note = "(estimated from the part's size; no tool was laid out; typical value, not confirmed by a shop)"
     # ---- TOOLING (formative only; cavity + complexity, weakness #5) -----
     if process in FORMATIVE:
         tooling_cost = rates.tooling_cost(process, tooling_size, n_cavities, complexity)
         flat = rates.data.get("_tooling_flat", {}).get(process) is not None
         if flat:
-            tool_src = "flat USER override (whole tool); ±60%, OVERRIDABLE"
+            tool_src = "your figure for the whole tool; ±60%"
         else:
             from src.costing.rates import family_to_size_tier
             tier = family_to_size_tier(tooling_size)
             cav = float(n_cavities) ** rates.data["cavity_exponent"]
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"size tier {tier} (enclosing box max {tooling_size}mm; {tooling_basis}) "
+            tool_src = (f"size tier {tier} (largest side {tooling_size}mm, {basis_words(tooling_basis)}) "
                         f"× {n_cavities} cav^{rates.data['cavity_exponent']:g} (={cav:.2f}) "
                         f"× {complexity} (={comp:.2f}) = ${tooling_cost:,.0f}; "
-                        f"±60%, OVERRIDABLE {tooling_note}")
+                        f"±60%, you can override it {tooling_note}")
         drivers_out.append(Driver(
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
             provenance=rates.prov_tag(f"tooling.{process.name}"),
@@ -996,7 +1004,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         tooling_cost = rates.casting_forging_tooling(process, tooling_size, complexity)
         flat = rates.data.get("_tooling_flat", {}).get(process) is not None
         if flat:
-            tool_src = "flat USER override (whole tool); ±55%, OVERRIDABLE"
+            tool_src = "your figure for the whole tool; ±55%"
         else:
             from src.costing.rates import family_to_size_tier
             tier = family_to_size_tier(tooling_size)
@@ -1007,9 +1015,9 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 mult = rates.data["tooling_forging_mult"]
                 what = "hardened closed-die set"
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"{what}: size tier {tier} (enclosing box max {tooling_size}mm; {tooling_basis}) "
+            tool_src = (f"{what}: size tier {tier} (largest side {tooling_size}mm, {basis_words(tooling_basis)}) "
                         f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
-                        f"= ${tooling_cost:,.0f}; ±55%, OVERRIDABLE "
+                        f"= ${tooling_cost:,.0f}; ±55%, you can override it "
                         f"{tooling_note}")
         drivers_out.append(Driver(
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
@@ -1079,10 +1087,17 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # per-part inspection/finishing and the asymptotic per-lot inspection/finishing
     # shares are per-unit (→ variable). extra_fixed/extra_variable were accumulated
     # above. (The make-vs-buy crossover itself uses the exact numerical evaluator.)
-    setup_asymptotic_scaled = (setup_hr * labor_rate / lot_size) * rl * mgn * burden
-    fixed_cost_usd = tooling_cost * rt * mgn + extra_fixed
-    variable_cost_usd = (material_scaled + machine_scaled + labor_scaled
-                         + setup_asymptotic_scaled + extra_variable)
+    # C11: fixed is what this order pays once (tooling, programming, and its
+    # first setup and first-article inspection, which every order needs),
+    # variable the rest per part at this quantity, so fixed ÷ qty + variable is
+    # exactly the unit price (it read $70 + $26.37 against $139.68 at qty 1:
+    # the setup and first article were left out of both).
+    first_setup_scaled = setup_hr * labor_rate * rl * mgn * burden
+    first_article_scaled = (fai_hr_order * labor_rate * rl * mgn * burden)
+    fixed_cost_usd = (tooling_cost * rt * mgn + extra_fixed
+                      + min(first_setup_scaled + first_article_scaled,
+                            max(0.0, unit_cost * qty - tooling_cost * rt * mgn - extra_fixed)))
+    variable_cost_usd = unit_cost - fixed_cost_usd / qty
 
     # ---- DFM verdict pass-through ---------------------------------------
     dfm_ready = True

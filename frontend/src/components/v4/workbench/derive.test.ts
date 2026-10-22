@@ -23,6 +23,7 @@ import {
   decisionAt,
   decisionSummary,
   defaultQty,
+  driverValue,
   findingRows,
   formToOptions,
   governance,
@@ -346,4 +347,12 @@ test("small words", () => {
   assert.equal(newPartText(2, 1), "Drops this session’s 2 overrides and 1 saved scenario. The saved cost record stays in Cost records.");
   assert.equal(scenarioLabel(null, {}), "Engine");
   assert.equal(scenarioLabel("Midwest Precision CNC", { labor_rate: 40 }), "Midwest Precision CNC · labor_rate 40");
+});
+
+test("a tiny cycle time reads in seconds or minutes, never 0 h", () => {
+  assert.equal(driverValue({ value: 0.00001, unit: "hr" }), "0.036 s");
+  assert.equal(driverValue({ value: 0.004, unit: "hr" }), "14 s");
+  assert.equal(driverValue({ value: 0.009, unit: "hr" }), "32 s");
+  assert.equal(driverValue({ value: 0.0095, unit: "hr" }), "34 s");
+  assert.equal(driverValue({ value: 1.25, unit: "hr" }), "1.25 h");
 });

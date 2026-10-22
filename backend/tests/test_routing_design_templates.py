@@ -157,4 +157,4 @@ def test_report_routing_uses_actual_eligible_routes():
     result.process_scores[-1].verdict = "fail"
     report = estimate_decision(result, mesh, detect_all(mesh), options)
     assert report.routing is None
-    assert any("No eligible DFM-ready geometric route" in note for note in report.notes)
+    assert any(note.startswith("No eligible process suits this shape") for note in report.notes)

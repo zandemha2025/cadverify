@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from src.analysis.models import ProcessType
+from src.analysis.process_names import process_label, process_phrase
 from src.costing.rates import process_family
 
 _PV_TO_PT = {pt.value: pt for pt in ProcessType}
@@ -392,11 +393,12 @@ def _in_house_clause(options: dict) -> str:
     bits = []
     for q, o in sorted(options.items()):
         i, out = o["in_house"], o["outside"]
-        side = (f"qty {q}: in-house {i['process']} on {i['machine']} ${i['unit_cost_usd']}/unit"
-                + (f" vs outside {out['process']} ${out['unit_cost_usd']}/unit" if out else ""))
-        pick = (f"{i['process']} in-house" if o["pick"] == "in_house"
-                else f"{out['process']} outside")
-        bits.append(f"{side} -> {pick} ({_BASIS_TEXT[o['basis']]})")
+        side = (f"at {q:,}: in-house {process_phrase(i['process'])} on {i['machine']} "
+                f"${i['unit_cost_usd']} each"
+                + (f", outside {process_phrase(out['process'])} ${out['unit_cost_usd']} each"
+                   if out else ""))
+        pick = ("in-house" if o["pick"] == "in_house" else "outside")
+        bits.append(f"{side}; pick {pick} ({_BASIS_TEXT[o['basis']]})")
     return OWNED_CLAUSE_PREFIX + "; ".join(bits) + "."
 
 
@@ -404,27 +406,38 @@ def _in_house_clause(options: dict) -> str:
 OWNED_CLAUSE_PREFIX = "Owned machines: "
 
 
+def _picks_by_quantity(recommendation: dict) -> str:
+    """``"1: filament printing (FDM/FFF); 10 to 10,000: nylon powder printing (MJF)"``."""
+    runs: list = []
+    for q, pick in sorted(recommendation.items()):
+        if runs and runs[-1][2] == pick["process"]:
+            runs[-1][1] = q
+        else:
+            runs.append([q, q, pick["process"]])
+    return "; ".join((f"{a:,}" if a == b else f"{a:,} to {b:,}") + f": {process_phrase(p)}"
+                     for a, b, p in runs)
+
+
 def _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
                 make_unit_lo, tool_unit_hi, recommendation) -> str:
-    head = (f"Lowest-cost no-tooling estimate at qty {q_lo}: {make_now.process} "
-            f"({make_now.material}) — ${make_unit_lo}/unit.")
-    picks = "; ".join(f"qty {q}: {pick['process']}" for q, pick in sorted(recommendation.items()))
-    head += f" Costed make-route picks: {picks}."
+    head = (f"Cheapest without tooling at {q_lo:,}: {process_phrase(make_now.process)} "
+            f"in {make_now.material}, ${make_unit_lo} each.")
+    head += f" Cheapest way to make it as drawn, by quantity: {_picks_by_quantity(recommendation)}."
 
     if tool_champion is not None and q_star is not None and q_star > q_lo:
+        tool = process_label(tool_champion.process)
         crossover_clause = (
-            f" Estimated {tool_champion.process} crossover against the cheapest eligible "
-            f"no-tooling route: ~{q_star:.0f} units. Batch effects can shift this boundary; "
-            f"compare the costed options at your quantity. The tooling estimate is "
-            f"${tool_unit_hi}/unit at qty {q_hi}.")
+            f" {tool} becomes cheaper than the cheapest route without tooling at about "
+            f"{q_star:,.0f} parts. Batch sizes can move that point; compare the prices at "
+            f"your quantity. {tool} is ${tool_unit_hi} each at {q_hi:,}.")
     else:
-        crossover_clause = " No tooling crossover identified in this comparison."
+        crossover_clause = " No tooled process becomes cheaper in this comparison."
 
     tooling_clause = ""
     if tool_champion is not None and not tool_champion.dfm_ready:
-        blocker = tool_champion.dfm_blockers[0] if tool_champion.dfm_blockers else "draft DFM"
+        blocker = tool_champion.dfm_blockers[0] if tool_champion.dfm_blockers else "it lacks draft"
         tooling_clause = (
-            f" Note: {tool_champion.process} requires redesign for DFM ({blocker}); "
-            f"its cost is conditional on those changes, not a current-capability quote.")
+            f" {process_label(tool_champion.process)} needs a redesign to make the part "
+            f"({blocker.rstrip('.')}); its price assumes those changes, not the part as drawn.")
 
     return head + crossover_clause + tooling_clause

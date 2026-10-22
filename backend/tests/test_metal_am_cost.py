@@ -129,7 +129,7 @@ def test_each_metal_am_process_positive_finite_cost_with_drivers():
         assert est.dfm_verdict != "validated", p.name
         # the estimate honestly caveats its un-validated assumptions somewhere
         all_src = " ".join(dr.source for dr in est.drivers)
-        assert "not shop-validated" in all_src or "assumption" in all_src, p.name
+        assert "not confirmed by a shop" in all_src, p.name
 
 
 def test_metal_am_families_carry_honesty_literal_in_drivers():
@@ -141,7 +141,7 @@ def test_metal_am_families_carry_honesty_literal_in_drivers():
     for p in METAL_AM_PROCESSES:
         est = cost_breakdown(p, d, mat, "titanium", 100, rc, "US")
         sources = " ".join(dr.source for dr in est.drivers)
-        assert "assumption, not shop-validated" in sources, (
+        assert "typical value, not confirmed by a shop" in sources, (
             f"{p.name}: no driver carries the honesty caveat")
 
 
@@ -163,7 +163,7 @@ def test_powder_bed_has_metal_only_post_processing():
         assert sup is not None and sup.value > 0, p.name
         # the un-bundled part-specific ops are honestly caveated
         sr = _driver(est, "stress_relief_cost")
-        assert "NOT bundled" in sr.source and "HIP" in sr.source, p.name
+        assert "not included" in sr.source and "HIP" in sr.source, p.name
 
 
 def test_binder_jet_has_sinter_and_ded_has_finish_machining():
@@ -251,9 +251,10 @@ def test_powder_price_not_silently_inflated():
     rc, d, mat = build_rate_card(), _drivers(), _ti()
     est = cost_breakdown(PT.DMLS, d, mat, "titanium", 100, rc, "US")
     md = _driver(est, "material_cost")
-    # material = net×(1+support)×$/kg×(1+scrap): the $/kg is exactly the DB value
+    # material = net×(1+support)×$/kg×(1+scrap): the $/kg is exactly the DB value,
+    # and no adjustment is applied or claimed
     assert f"${mat.cost_per_kg:g}/kg" in md.source
-    assert "not silently inflated" in md.source
+    assert "powder price adjustment" not in md.source
 
 
 # ── BYTE-IDENTITY REGRESSION of the existing 15 costed processes ─────────────

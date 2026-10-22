@@ -315,13 +315,15 @@ export function ownedRate(rate: number, capitalFrac: number): number {
 
 /**
  * How the engine priced the machine line on a machine you own, in its own words
- * ("0.0242 hr × $75/hr × (1-0.35 capital sunk) OWNED-IN-HOUSE marginal …"): the
+ * ("0.0242 hr × $75/hr × (1-0.35) on a machine you own: running cost only …"): the
  * hourly rate it started from and the capital share it took off. Null when the
  * line wasn't priced as owned.
  */
 export function ownedBasis(e: CostEstimate | null | undefined): { rate: number; cap: number; yours: boolean } | null {
   const d = e?.drivers?.find((x) => x.name === "machine_cost");
-  const m = d?.source ? /× \$([\d.]+)\/hr(?: \([^)]*\))? × \(1-([\d.]+) capital sunk\) OWNED-IN-HOUSE/.exec(d.source) : null;
+  // Current wording "× (1-0.35) on a machine you own"; saved reports may carry the older
+  // "× (1-0.35 capital sunk) OWNED-IN-HOUSE".
+  const m = d?.source ? /× \$([\d.]+)\/hr(?: \([^)]*\))? × \(1-([\d.]+)(?: capital sunk\) OWNED-IN-HOUSE|\) on a machine you own)/.exec(d.source) : null;
   if (!d || !m) return null;
   return { rate: Number(m[1]), cap: Number(m[2]), yours: d.provenance === "USER" };
 }

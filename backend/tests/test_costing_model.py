@@ -428,6 +428,6 @@ def test_tooling_size_tiers_follow_the_part_not_file_axes(length, tier):
             tools_seen.append(tool)
             estimate.assert_sums()
     for tool in tools_seen:
-        assert f"size tier {tier}" in tool.source and "oriented candidate" in tool.source
+        assert f"size tier {tier}" in tool.source and "the smallest box found around the part" in tool.source
         assert f"{float(length)}mm" in tool.source
-        assert "assumption" in tool.source and "not shop-validated" in tool.source
+        assert "typical value, not confirmed by a shop" in tool.source

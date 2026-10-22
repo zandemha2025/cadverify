@@ -647,7 +647,11 @@ export function provOf(p: string | null | undefined): { cls: string; label: stri
 
 export function driverValue(d: Pick<CostDriver, "value" | "unit">): string {
   if (d.unit === "$") return money(d.value);
-  if (d.unit === "hr") return `${+d.value.toFixed(4)} h`;
+  if (d.unit === "hr") {
+    // A tiny part's cycle is seconds: "0.0000 h" read as no time at all.
+    if (d.value > 0 && d.value < 0.01) return `${+(d.value * 3600).toPrecision(2)} s`;
+    return `${+d.value.toFixed(4)} h`;
+  }
   if (d.unit === "×") return `×${+d.value.toFixed(3)}`;
   if (d.unit === "parts") return `${+d.value.toFixed(2)} parts`;
   return `${+d.value.toFixed(4)} ${d.unit}`.trim();

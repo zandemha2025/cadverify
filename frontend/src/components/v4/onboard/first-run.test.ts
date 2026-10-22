@@ -11,6 +11,7 @@ import {
   machineBody,
   missingFor,
   nextTip,
+  ownedBasis,
   ownedRate,
   parseTips,
   provenanceOf,
@@ -237,4 +238,13 @@ test("pick up where you left off: machines next, then the labor rate", () => {
   const lab = resumeCard({ file: "bored-block-mm.iges", partHref: "/p", cost: NOW_RATED, machines: 2, onMachines: true, hrefs: { addMachines: "/add", rates: "/r", recheck: "/re" } });
   assert.equal(lab?.title, "bored-block-mm.iges: on your Haas VF-2, $31.38 each at 10");
   assert.match(lab!.text, /^\$17\.50 of that is labor at a typical \$35\/h/);
+});
+
+test("the owned machine line reads in the current and the older wording", () => {
+  const est = (source: string) => ({ drivers: [{ name: "machine_cost", value: 1, unit: "$", provenance: "USER", source }] }) as never;
+  const now = ownedBasis(est("0.0242 hr × $75/hr (machine 'Haas VF-2', at its declared rate) × (1-0.35) on a machine you own: running cost only, the machine is already paid for (typical value, not confirmed by a shop)"));
+  assert.deepEqual(now, { rate: 75, cap: 0.35, yours: true });
+  const before = ownedBasis(est("0.0242 hr × $75/hr × (1-0.35 capital sunk) OWNED-IN-HOUSE marginal [assumption, not shop-validated]"));
+  assert.deepEqual(before, { rate: 75, cap: 0.35, yours: true });
+  assert.equal(ownedBasis(est("0.0242 hr × $75/hr × region-labor ×1")), null);
 });

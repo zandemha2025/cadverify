@@ -86,7 +86,7 @@ class GeoDrivers:
                      material_name: str) -> str:
         return (f"bounding cylinder Ø{self.rot_cross_dia_mm:.2f} × {self.rot_axis_len_mm:.2f} mm "
                 f"× {stock_allowance:.2f} stock allowance = {self.turning_stock_volume_cm3(stock_allowance):.2f} cm³ "
-                f"× {material_name} density {density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
+                f"× {material_name} density {density_g_cm3:.2f} g/cm³ (typical value, not confirmed by a shop)")
 
     # ---- Milling / wire-EDM billet: enclosing rectangular stock ------
     def billet_volume_cm3(self, stock_allowance: float) -> float:
@@ -106,13 +106,26 @@ class GeoDrivers:
         if not bbox_billet_enabled():
             return (f"hull volume {self.hull_volume_cm3:.2f} cm³ × {stock_allowance:.2f} "
                     f"stock allowance × {material_name} density {density_g_cm3:.2f} g/cm³")
-        basis = self.billet_basis
+        basis = basis_words(self.billet_basis)
         if self.billet_bbox_mm:
             basis += " " + "×".join(f"{d:.4g}" for d in self.billet_bbox_mm) + " mm"
         basis += "; minimum not certified"
         return (f"bounding-box billet {self.billet_volume_cm3(1):.2f} cm³ ({basis}) × "
                 f"{stock_allowance:.2f} stock allowance × {material_name} density "
-                f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
+                f"{density_g_cm3:.2f} g/cm³ (typical value, not confirmed by a shop)")
+
+
+_BASIS_WORDS = {
+    "oriented candidate": "the smallest box found around the part",
+    "principal-axis candidate": "a box along the part's main axes",
+    "file-axis fallback": "a box along the file's axes",
+    "measured enclosing cylinder": "the measured enclosing cylinder",
+}
+
+
+def basis_words(basis: str) -> str:
+    """How an enclosing box was found, in words: "oriented candidate" → "the smallest box found around the part"."""
+    return _BASIS_WORDS.get(basis, basis)
 
 
 def parts_per_build(proc, bbox_mm, rates, envelope=None, cylinder=None) -> int:
