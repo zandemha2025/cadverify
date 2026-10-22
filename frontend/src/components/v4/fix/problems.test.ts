@@ -31,7 +31,7 @@ test("where lines read the engine's own counts", () => {
   assert.equal(findProblem(set, "thin")!.where, "Every wall · 24 of 24 faces");
   assert.equal(findProblem(set, "draft")!.where, "Side walls · 100% of side-wall area · 16 faces");
   assert.equal(findProblem(set, "drain")!.where, "Sealed cavity · 6,859 mm³");
-  assert.equal(findProblem(set, "corners")!.where, "12 sharp inside edges");
+  assert.equal(findProblem(set, "corners")!.where, "12 sharp inside corners");
   assert.equal(findProblem(set, "flat")!.where, "761 mm² flat, facing down");
   assert.equal(findProblem(set, "bodies")!.title, "2 bodies in one file");
   const open = { id: "open", primary: { code: "NON_WATERTIGHT", severity: "error", message: "Mesh is not watertight — has 945 boundary edges.", fix_suggestion: null }, faceCount: null, scope: "whole_part", methods: [] } as never;

@@ -383,7 +383,7 @@ export function whereLine(p: Pick<Problem, "id" | "primary" | "faceCount" | "sco
     }
     case "corners": {
       const e = numIn(msg, /(\d[\d,]*)\s+sharp concave/);
-      return e != null ? `${n0(e)} sharp inside edges` : "Inside corners";
+      return e != null ? `${n0(e)} sharp inside corners` : "Inside corners";
     }
     case "overhang": {
       const a = numIn(msg, /exceed\s+([\d.]+)°/);
@@ -439,7 +439,7 @@ export function measuredFig(p: Problem, m: ProblemMethod | null): ProblemFig {
   }
   if (p.id === "corners") {
     const e = numIn(msg, /(\d[\d,]*)\s+sharp concave/);
-    return { k: "Measured", v: e != null ? n0(e) : "Sharp", s: "sharp inside edges", tone: p.severity === "error" ? "bad" : "warn" };
+    return { k: "Measured", v: e != null ? n0(e) : "Sharp", s: "sharp inside corners", tone: p.severity === "error" ? "bad" : "warn" };
   }
   const v = m?.measured ?? p.primary.measured_value ?? null;
   const unit = m?.unit ?? p.primary.measurement_unit ?? null;
@@ -497,7 +497,7 @@ export function callout(p: Problem, m: ProblemMethod | null): { main: string; su
   }
   if (p.id === "corners") {
     const e = numIn(msg, /(\d[\d,]*)\s+sharp concave/);
-    return { main: e != null ? `${n0(e)} sharp edges` : "Sharp inside corners", sub: m?.need != null ? `${name} needs ${trimNum(m.need, 1)} mm fillets` : name };
+    return { main: e != null ? `${n0(e)} sharp inside corners` : "Sharp inside corners", sub: m?.need != null ? `${name} needs ${trimNum(m.need, 1)} mm fillets` : name };
   }
   const meas = measure(m?.measured ?? null, m?.unit ?? null);
   const need = m ? needText(m) : null;
