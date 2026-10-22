@@ -79,6 +79,23 @@ async def start_stored_check(
     return svc.public_status(job)
 
 
+# How long a check takes here (me-21: the card always said "About 30 s" while
+# checks took 70-100 s): the median of the org's recent process checks and
+# pricings on this server (everyone's when the org has none yet), and how many
+# analyses this server is running now.
+@router.get("/timing")
+async def check_timing(
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.viewer)),
+):
+    """``{validate_s, cost_s, validate_samples, cost_samples, basis, running, running_org}``."""
+    from src.api.admission import in_flight, recent_timing
+
+    running, running_org = in_flight(ctx.org_id)
+    response.headers["Cache-Control"] = "no-store"
+    return {**recent_timing(ctx.org_id), "running": running, "running_org": running_org}
+
+
 @router.get("/{check_id}")
 async def get_stored_check(
     check_id: str,

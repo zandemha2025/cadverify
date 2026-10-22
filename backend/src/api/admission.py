@@ -50,6 +50,8 @@ from src.config.public_urls import error_doc_url
 import asyncio
 import logging
 import os
+import time
+from collections import deque
 from typing import AsyncGenerator
 
 from fastapi import HTTPException, Request
@@ -117,11 +119,14 @@ def _admission_err(code: str, message: str, retry_after: int) -> HTTPException:
 class _AdmissionState:
     """Mutable in-flight counters for ONE event loop's lifetime."""
 
-    __slots__ = ("global_count", "per_org")
+    __slots__ = ("global_count", "per_org", "durations")
 
     def __init__(self) -> None:
         self.global_count = 0
         self.per_org: dict[str, int] = {}
+        # How long recent analyses took on this process, by kind (validate,
+        # cost): (org_id, seconds). Read by the check card's expected time (me-21).
+        self.durations: dict[str, deque] = {}
 
 
 def _state() -> _AdmissionState:
@@ -174,6 +179,54 @@ def _release(state: _AdmissionState, org_id: str) -> None:
         state.per_org.pop(org_id, None)
     else:
         state.per_org[org_id] = remaining
+
+
+TIMING_KEEP = 50
+
+
+def _kind(path: str) -> str | None:
+    """The two calls a part check makes: ``validate`` (process checks) and ``cost`` (prices)."""
+    p = path.rstrip("/")
+    if p.endswith("/validate/cost"):
+        return "cost"
+    if p.endswith("/validate"):
+        return "validate"
+    return None
+
+
+def _median(xs: list[float]) -> float | None:
+    if not xs:
+        return None
+    o = sorted(xs)
+    m = len(o) // 2
+    return o[m] if len(o) % 2 else (o[m - 1] + o[m]) / 2
+
+
+def recent_timing(org_id: str | None, samples: int = 10) -> dict:
+    """Median seconds of the last ``samples`` validations and pricings on this
+    server process: the org's own when it has some, else everyone's (said in
+    ``basis``). None when nothing ran since the process started."""
+    state = _state()
+    out: dict = {"basis": None}
+    for kind in ("validate", "cost"):
+        rows = list(state.durations.get(kind, ()))
+        mine = [sec for org, sec in rows if org == org_id][-samples:]
+        use = mine or [sec for _org, sec in rows][-samples:]
+        if mine:
+            out["basis"] = "org"
+        elif use and out["basis"] is None:
+            out["basis"] = "server"
+        out[f"{kind}_s"] = round(_median(use), 1) if use else None
+        out[f"{kind}_samples"] = len(use)
+    return out
+
+
+def in_flight(org_id: str | None) -> tuple[int, int]:
+    """Analyses running now on this server process: all of them, and the org's.
+    A read of the same counters admission uses (me-21: "3 checks ahead of
+    yours"); one process's view, never a fleet-wide queue."""
+    state = _state()
+    return state.global_count, state.per_org.get(org_id or "", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +283,21 @@ async def admit_analysis(request: Request) -> AsyncGenerator[None, None]:
     state = _state()
 
     _acquire(state, org_id)
+    url = getattr(request, "url", None)
+    kind = _kind(getattr(url, "path", "") or "")
+    t0 = time.monotonic()
+
+    def note() -> None:
+        if kind:
+            state.durations.setdefault(kind, deque(maxlen=TIMING_KEEP)).append((org_id, time.monotonic() - t0))
+
     try:
         yield
+        note()
+    except HTTPException as exc:
+        # A check that ran out of time took that long too: it counts toward how long checks take here.
+        if exc.status_code == 504:
+            note()
+        raise
     finally:
         _release(state, org_id)

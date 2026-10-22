@@ -8,6 +8,39 @@ import { readsAsBodies, type CheckSession } from "./store";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
+import { API_BASE } from "@/lib/api-base";
+import { expectedLine, type CheckTiming } from "./check-timing";
+
+/** How long checks take here and what the server is running, read when a check starts and every 15 s while it runs (me-21). */
+function useCheckTiming(running: boolean, sessionId: number): CheckTiming | null {
+  const [t, setT] = React.useState<CheckTiming | null>(null);
+  React.useEffect(() => {
+    if (!running) return;
+    let live = true;
+    const read = () =>
+      fetch(`${API_BASE}/checks/timing`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => live && b && setT(b as CheckTiming))
+        .catch(() => undefined);
+    void read();
+    const iv = window.setInterval(read, 15000);
+    return () => {
+      live = false;
+      window.clearInterval(iv);
+    };
+  }, [running, sessionId]);
+  return t;
+}
+
+/** Re-render once a second while running, so the time so far moves. */
+function useTick(on: boolean): void {
+  const [, set] = React.useState(0);
+  React.useEffect(() => {
+    if (!on) return;
+    const iv = window.setInterval(() => set((n) => n + 1), 1000);
+    return () => window.clearInterval(iv);
+  }, [on]);
+}
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
@@ -60,7 +93,8 @@ export function progressModel(s: CheckSession) {
   const stopped = s.status === "stopped";
   const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;
   const title = running ? (s.sample ? "Checking the sample" : "Checking") : stopped ? "Stopped at Measured" : "Checked";
-  const meta = running ? [s.file.name, s.sample ? "No check used" : "About 30 s"] : stopped ? [s.file.name, "Not watertight"] : [s.file.name, seconds(elapsed)];
+  // The expected time comes from how long checks take here (ProgressPanel fills it); never a fixed promise.
+  const meta = running ? [s.file.name, s.sample ? "No check used" : null] : stopped ? [s.file.name, "Not watertight"] : [s.file.name, seconds(elapsed)];
   const foot = running ? "Hiding this doesn’t stop the check." : stopped ? "Nothing after this step ran." : "Same file, same result, every time.";
   return { steps, running, stopped, title, meta, foot };
 }
@@ -78,6 +112,9 @@ export function ProgressPanel({
   action?: React.ReactNode;
 }) {
   const m = progressModel(session);
+  const timing = useCheckTiming(m.running && !session.sample, session.id);
+  useTick(m.running);
+  const meta = m.meta.map((x) => x ?? expectedLine(timing, Date.now() - session.startedAt, true));
   // Sizes in the person's unit, like the rest of the part (me-04: "60 × 40 × 20 mm · 37.9 cm³" under an inches header).
   const { unit } = useUnits();
   const closeRef = React.useRef<HTMLButtonElement>(null);
@@ -112,7 +149,7 @@ export function ProgressPanel({
             {m.title}
           </h1>
           <p className="pmeta" style={{ marginTop: 4 }}>
-            {m.meta.map((t, i) => (
+            {meta.map((t, i) => (
               <span key={i} style={{ overflowWrap: "anywhere" }}>
                 {t}
               </span>
