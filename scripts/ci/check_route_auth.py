@@ -31,6 +31,9 @@ AUTH_DEPENDENCIES = {
     "require_role",
     "require_org_role",
     "require_role_and_org_role",
+    # The shared tenant-write gates (analyst + org member), src/auth/rbac.py.
+    "require_org_writer",
+    "require_org_checker",
     "require_dashboard_session",
 }
 
