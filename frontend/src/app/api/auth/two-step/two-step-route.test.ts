@@ -136,6 +136,11 @@ test("a wrong code keeps the challenge; an expired one is dropped", async () => 
     res = await twoStep.POST(req("/api/auth/two-step/verify", "POST", { code: "000000" }), { params: Promise.resolve({ action: "verify" }) });
     assert.equal(res.status, 401);
     assert.equal(challenge.jar.challenge, null);
+    // The app's own (flattened) error body is read the same way.
+    challenge.jar.challenge = CHALLENGE;
+    reply = () => Response.json({ code: "two_step_challenge_invalid", message: "Sign in again." }, { status: 401 });
+    res = await twoStep.POST(req("/api/auth/two-step/verify", "POST", { code: "000000" }), { params: Promise.resolve({ action: "verify" }) });
+    assert.equal(challenge.jar.challenge, null);
   } finally {
     fetchMock.mock.restore();
   }

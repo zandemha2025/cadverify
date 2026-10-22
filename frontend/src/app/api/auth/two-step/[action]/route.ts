@@ -91,7 +91,8 @@ async function handle(req: Request, ctx: { params: Promise<{ action: string }> }
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     // A challenge the backend no longer accepts is spent: drop the cookie.
-    const code = (data?.detail as { code?: unknown } | undefined)?.code;
+    // The API flattens errors to { code, message }; tolerate the wrapped shape too.
+    const code = (data?.detail as { code?: unknown } | undefined)?.code ?? data?.code;
     if (spec.auth === "challenge" && (code === "two_step_challenge_invalid" || res.status === 403)) {
       await clearTwoStepChallenge();
     }

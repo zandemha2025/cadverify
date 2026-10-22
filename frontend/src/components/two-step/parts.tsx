@@ -128,25 +128,4 @@ export function cleanCode(raw: string): string {
 
 export const SUPPORT_EMAIL = "nazeem@scalecad.ai";
 
-/** The server's own words for a two-step refusal (they carry the real wait). */
-export function twoStepError(status: number, payload: unknown, fallback: string): string {
-  const detail =
-    payload && typeof payload === "object" && "detail" in payload
-      ? (payload as { detail?: unknown }).detail
-      : null;
-  const message =
-    typeof detail === "string"
-      ? detail
-      : detail && typeof detail === "object" && typeof (detail as { message?: unknown }).message === "string"
-        ? (detail as { message: string }).message
-        : null;
-  if (message && status < 500) return message;
-  if (status >= 500) return message && /try again|unavailable/i.test(message) ? message : "The sign-in service couldn't finish this. Try again.";
-  return fallback;
-}
-
-export function errorCode(payload: unknown): string | null {
-  const detail = payload && typeof payload === "object" ? (payload as { detail?: unknown }).detail : null;
-  const code = detail && typeof detail === "object" ? (detail as { code?: unknown }).code : null;
-  return typeof code === "string" ? code : null;
-}
+export { errorCode, twoStepError } from "./errors";

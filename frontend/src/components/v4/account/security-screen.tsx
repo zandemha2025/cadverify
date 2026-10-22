@@ -60,7 +60,8 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
         meta={[
           <span key="m">Sign-in <b>{si.mode}</b></span>,
           <span key="p">Password <b>{pwState}</b></span>,
-          <span key="o">Sign out <b>All browsers</b></span>,
+          ...(si.ssoOnly ? [] : [<span key="t">Two-step <b>{twoStep.status ? (twoStep.status.enabled ? "On" : "Off") : "…"}</b></span>]),
+          <span key="o">Sign out <b>Others or all</b></span>,
           <a key="d" href="#delete-account">Delete account</a>,
           <Link key="f" href={R.data}>Your files and data</Link>,
         ]}
