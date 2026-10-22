@@ -13,10 +13,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { R } from "../routes";
 import { Chip, Sheet, cx } from "../ui";
-import { registerWork, runKey } from "../work/work-bar";
+import { registerWork, removeWork, runKey } from "../work/work-bar";
 import { PILOT_HREF } from "../moments/pilot-gate";
 import { saveBlob } from "./common";
-import { CatalogRunError, startCatalogRun, type RunCreated } from "./catalog-api";
+import { CatalogRunError, startCatalogRun, waitUntilUnpacked, type RunCreated } from "./catalog-api";
 import { fetchMachines } from "./many-api";
 import {
   FREE_MAX_ZIP_BYTES,
@@ -40,6 +40,7 @@ type Phase =
   | { k: "idle" }
   | { k: "packing"; done: number; total: number }
   | { k: "uploading"; frac: number | null }
+  | { k: "unpacking"; name: string }
   | { k: "err"; title: string; message: string; code: string | null; batchId: string | null }
   | { k: "started"; run: RunCreated };
 
@@ -95,7 +96,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
   const [machines, setMachines] = React.useState<number | null>(null);
   const [goAhead, setGoAhead] = React.useState(false);
   const qtyHint = React.useId();
-  const busy = phase.k === "packing" || phase.k === "uploading";
+  const busy = phase.k === "packing" || phase.k === "uploading" || phase.k === "unpacking";
 
   React.useEffect(() => {
     folderRef.current?.setAttribute("webkitdirectory", "");
@@ -150,7 +151,18 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
         zipName = `${folder}.zip`;
       }
       setPhase({ k: "uploading", frac: 0 });
-      const run = await startCatalogRun({ zip, zipName, list, materialClass: material || undefined, quantity: qtyVal }, (frac) => setPhase({ k: "uploading", frac }));
+      let run = await startCatalogRun({ zip, zipName, list, materialClass: material || undefined, quantity: qtyVal }, (frac) => setPhase({ k: "uploading", frac }));
+      if (run.preparing) {
+        // A large ZIP is unpacked on ScaleCAD's worker; the run's parts are known once it's done.
+        setPhase({ k: "unpacking", name: zipName });
+        registerWork({ key: runKey(run.batch_id), href: R.batch(run.batch_id), persist: true, state: "running", label: `Unpacking ${zipName}`, detail: "On ScaleCAD’s worker", progress: null });
+        try {
+          run = await waitUntilUnpacked(run);
+        } catch (e) {
+          removeWork(runKey(run.batch_id));
+          throw e;
+        }
+      }
       setPhase({ k: "started", run });
       registerWork({ key: runKey(run.batch_id), href: R.batch(run.batch_id), persist: true, state: "running", label: `Checking ${run.parts} ${run.parts === 1 ? "part" : "parts"}`, detail: `0 of ${run.parts}`, progress: 0 });
       window.dispatchEvent(new Event("proofshape:usage-changed"));
@@ -366,6 +378,15 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
               {pct != null ? <span className="num" style={{ color: "var(--ink3)", fontSize: 12 }}>{pct}%</span> : null}
             </div>
           ) : null}
+          {phase.k === "unpacking" ? (
+            <div className="upl" role="status">
+              <span>Uploaded · unpacking {phase.name} on ScaleCAD’s worker…</span>
+              <span className="pb ind" aria-hidden="true">
+                <i />
+              </span>
+              <span style={{ color: "var(--ink3)", fontSize: 12 }}>It goes on if you leave; the run appears in Batches.</span>
+            </div>
+          ) : null}
           {phase.k === "err" ? (
             <div className="errc" role="alert">
               <b>{phase.title}</b>
@@ -392,7 +413,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
               <b>Run started</b>
               <span>
                 {phase.run.parts} {phase.run.parts === 1 ? "part" : "parts"}
-                {phase.run.catalog.free ? ` · ${phase.run.catalog.new} new, ${phase.run.catalog.reruns} run before · ${phase.run.catalog.remaining} free left` : ""}
+                {"new" in phase.run.catalog ? ` · ${phase.run.catalog.new} new, ${phase.run.catalog.reruns} run before · ${phase.run.catalog.remaining} free left` : ""}
               </span>
               <Link className="lk" href={R.batch(phase.run.batch_id)}>
                 Open the run

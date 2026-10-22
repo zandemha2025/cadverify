@@ -230,8 +230,13 @@ async def _terminalize_direct_upload_preparation(
     *,
     code: str,
     message: str,
+    detail: dict | None = None,
 ) -> None:
-    """Persist a terminal preparation failure and align parent/item state."""
+    """Persist a terminal preparation failure and align parent/item state.
+
+    The batch keeps why (``manifest_json["failure"]``: code, message and any
+    details, such as a catalog run's allowance), so the app can say it.
+    """
     from src.services import batch_service
     from src.services.audit_service import emit_event
 
@@ -306,6 +311,9 @@ async def _terminalize_direct_upload_preparation(
         )
         if batch.status not in _TERMINAL_BATCH_STATUSES:
             batch_service.mark_batch_failed(batch, code.lower())
+            manifest = dict(batch.manifest_json or {})
+            manifest["failure"] = {**(detail or {}), "code": code, "message": message[:500]}
+            batch.manifest_json = manifest
         await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
         await emit_event(
             session,
@@ -385,7 +393,7 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
     durable ``prepared`` checkpoint before provider deletion/queue publication;
     a retry resumes from that checkpoint without creating duplicate items.
     """
-    from src.services import batch_service, direct_upload_service
+    from src.services import batch_service, catalog_run_service, direct_upload_service
     from src.services.audit_service import emit_event
 
     session_factory = get_session_factory()
@@ -583,6 +591,10 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
                     await session.execute(
                         delete(BatchItem).where(BatchItem.batch_id == current_batch.id)
                     )
+                    if current_batch.job_type == "catalog":
+                        # A catalog run from a stored ZIP: each part's quantities
+                        # and material, from the options its request kept.
+                        catalog_run_service.prepare_items(current_batch, items_data)
                     count = await batch_service.create_batch_items(
                         session,
                         current_batch.id,
@@ -597,6 +609,12 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
                     )
                     current_batch.input_mode = "zip"
                     current_batch.status = "pending"
+                    if current_batch.job_type == "catalog":
+                        # The free allowance counts the run's new parts with its
+                        # items, in this transaction; a refusal rolls both back
+                        # and ends the preparation (CatalogRunRefused).
+                        await session.flush()
+                        await catalog_run_service.reserve_prepared_run(session, current_batch)
                     current_upload.status = "prepared"
                     current_upload.prepared_at = datetime.now(timezone.utc)
                     current_upload.checksum_verified_at = current_upload.prepared_at
@@ -689,6 +707,7 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
                 upload_ulid,
                 code=code,
                 message=message,
+                detail=getattr(exc, "refusal", None),
             )
             return
         await _release_direct_upload_preparation_for_retry(

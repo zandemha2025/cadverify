@@ -40,6 +40,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Analysis, Batch, BatchItem, CostDecision
+from src.services.direct_upload_service import DirectUploadPreparationValidationError
 
 MATERIAL_CLASSES = ("polymer", "aluminum", "steel", "stainless", "titanium")
 MATERIAL_WORDS = {
@@ -850,6 +851,165 @@ def run_meta(batch: Batch) -> dict:
     return dict((batch.manifest_json or {}).get("catalog") or {})
 
 
+# ---------------------------------------------------------------------------
+# A run's parts: their quantities and materials, and the free allowance
+# ---------------------------------------------------------------------------
+#
+# A run from a ZIP posted with the request does both in the request. A run from
+# a ZIP uploaded to storage (``direct_upload_id``) is unpacked on the worker
+# (``batch_tasks.prepare_direct_upload_batch``): the request keeps the run's
+# options in ``manifest_json["catalog_run"]`` and the worker does both once the
+# ZIP is unpacked, with the same batch extraction limits as a posted ZIP.
+
+PENDING_KEY = "catalog_run"
+
+
+def apply_catalog_meta(
+    batch: Batch,
+    items_data: list[dict],
+    *,
+    free: bool,
+    material_class: Optional[str],
+    quantity: int,
+    parts_list: Optional[list[dict]],
+    list_name: Optional[str],
+) -> None:
+    """Give each part its quantity ladder and material, and keep the run's facts.
+
+    The parts list wins per file; a file it doesn't name takes the run's
+    quantity and material. Rows naming no file in the ZIP are kept (first 200)
+    so the board can list them honestly.
+    """
+    names = [it["filename"] for it in items_data if it.get("status") not in {"skipped", "failed"}]
+    by_file, unmatched = match_parts_list(parts_list or [], names)
+    per_file: dict[str, dict] = {}
+    for it in items_data:
+        if it.get("status") in {"skipped", "failed"}:
+            continue
+        row = by_file.get(it["filename"])
+        qty = (row or {}).get("quantity") or quantity
+        cls = (row or {}).get("material_class") or material_class
+        it["quantities"] = ";".join(str(q) for q in quantity_ladder(qty))
+        it["material_class"] = cls
+        if row is not None:
+            per_file[it["filename"]] = {
+                k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class",
+                                        "material_note", "row", "part_specs")
+                if k != "part_specs" or row.get(k)
+            }
+    manifest_json = dict(batch.manifest_json or {})
+    manifest_json["catalog"] = {
+        "free": free,
+        "material_class": material_class,
+        "quantity": quantity,
+        "parts_list": (
+            {"name": list_name, "rows": len(parts_list), "matched": len(by_file), "unmatched": len(unmatched)}
+            if parts_list is not None else None
+        ),
+        "unmatched": [
+            {k: r.get(k) for k in ("row", "file", "part_number", "quantity", "material")} for r in unmatched[:200]
+        ],
+        "items": per_file,
+    }
+    batch.manifest_json = manifest_json
+
+
+async def reserve_catalog_run(session: AsyncSession, user_id: int, batch: Batch, access) -> Any:
+    """Count the run's new parts against the free allowance, atomically with the batch.
+
+    ``access`` is ``catalog_allowance.CatalogAccess``; None is returned for a run
+    that isn't free. Raises the allowance's own 403 / 409 (``HTTPException``).
+    """
+    if not access.free:
+        return None
+    import hashlib
+
+    from src.auth.catalog_allowance import file_identity, reserve_catalog_parts
+    from src.auth.validation_caps import SAMPLE_PART_SHA256
+    from src.services import batch_service
+
+    items = (await session.execute(
+        select(BatchItem.id, BatchItem.filename).where(
+            BatchItem.batch_id == batch.id, BatchItem.status == "pending"
+        ).order_by(BatchItem.id)
+    )).all()
+
+    def _identities() -> list[tuple[int, str]]:
+        out = []
+        for item_id, filename in items:
+            data = batch_service.read_batch_blob(batch.ulid, filename)
+            if hashlib.sha256(data).hexdigest() in SAMPLE_PART_SHA256:
+                continue  # the app's sample part never counts
+            out.append((item_id, file_identity(filename, data)))
+        return out
+
+    identities = await asyncio.to_thread(_identities)
+    return await reserve_catalog_parts(
+        session, user_id, batch.id, identities, access=access, exclude_batch_id=batch.id
+    )
+
+
+def pending_options(*, free: bool, material_class: Optional[str], quantity: int,
+                    parts_list: Optional[list[dict]], list_name: Optional[str]) -> dict:
+    """The options a run from a stored ZIP is prepared with on the worker (plain JSON)."""
+    return {"free": free, "material_class": material_class, "quantity": int(quantity),
+            "parts_list": parts_list, "list_name": list_name}
+
+
+class CatalogRunRefused(DirectUploadPreparationValidationError):
+    """The worker refused a run from a stored ZIP (the allowance, one free run at a
+    time, the phone or work-email gate): its code, message and the allowance's
+    details. A refusal a retry can't change, so the preparation ends at once."""
+
+    def __init__(self, code: str, message: str, detail: Optional[dict] = None):
+        super().__init__(403, code, message)
+        self.refusal = dict(detail or {})
+
+
+def refusal_of(exc: Exception) -> CatalogRunRefused:
+    """The allowance's HTTPException as the worker's refusal."""
+    detail = getattr(exc, "detail", None)
+    detail = detail if isinstance(detail, dict) else {"message": str(detail or exc)}
+    return CatalogRunRefused(str(detail.get("code") or "catalog_run_refused"),
+                             str(detail.get("message") or "The catalog run wasn't started."), detail)
+
+
+def prepare_items(batch: Batch, items_data: list[dict]) -> None:
+    """Worker: each part's quantities and material, from the options the request kept."""
+    opts = (batch.manifest_json or {}).get(PENDING_KEY) or {}
+    apply_catalog_meta(
+        batch, items_data, free=bool(opts.get("free")), material_class=opts.get("material_class"),
+        quantity=int(opts.get("quantity") or DEFAULT_RUN_QUANTITY), parts_list=opts.get("parts_list"),
+        list_name=opts.get("list_name"),
+    )
+
+
+async def reserve_prepared_run(session: AsyncSession, batch: Batch) -> None:
+    """Worker: reserve the run's new parts once its items exist (raises ``CatalogRunRefused``).
+
+    The account's allowance is read now, not when the ZIP was posted: a plan
+    that changed since applies. The reservation is kept on the run's facts so
+    the app can say how many parts were new and how many are left.
+    """
+    from fastapi import HTTPException
+
+    from src.auth.catalog_allowance import _access
+
+    access = await _access(session, batch.user_id)
+    try:
+        reservation = await reserve_catalog_run(session, batch.user_id, batch, access)
+    except HTTPException as exc:
+        raise refusal_of(exc) from exc
+    manifest_json = dict(batch.manifest_json or {})
+    catalog = dict(manifest_json.get("catalog") or {})
+    catalog["free"] = access.free
+    if reservation is not None:
+        catalog["reservation"] = {"new": reservation.new, "reruns": reservation.reruns,
+                                  "cap": reservation.cap, "remaining": reservation.remaining}
+    manifest_json["catalog"] = catalog
+    batch.manifest_json = manifest_json
+
+
 # The part of a cost decision the board reads (derive_part_row), cut down in the
 # database. A decision's ``estimates`` (every process at every quantity, with
 # each driver's provenance) is ~170 KB of its ~190 KB; the board needs only a
@@ -972,9 +1132,17 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
             default_quantity=default_qty,
             governance={**gov, "user_disposition": disposition, "signers": signers},
         ))
+    manifest = batch.manifest_json or {}
+    # A run from a stored ZIP is unpacked on the worker first (input_mode
+    # direct_upload until then); a refusal there is kept as the run's failure.
+    preparing = batch.input_mode == "direct_upload" and batch.status not in ("completed", "failed", "cancelled")
     return {
         "batch_id": batch.ulid,
         "status": batch.status,
+        "preparing": preparing,
+        "failure": manifest.get("failure") if batch.status == "failed" else None,
+        "reservation": meta.get("reservation"),
+        "parts": None if preparing else max(0, (batch.total_items or 0) - (batch.failed_items or 0)),
         "free": bool(meta.get("free")),
         "material_class": meta.get("material_class"),
         "quantity": default_qty,

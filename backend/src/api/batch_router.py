@@ -41,11 +41,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.catalog_allowance import (
     CatalogAccess,
-    file_identity,
     free_catalog_concurrency,
     free_catalog_max_zip_bytes,
     require_catalog_access,
-    reserve_catalog_parts,
 )
 from src.auth.free_tool_limits import limit_free_catalog_runs
 from src.auth.kill_switch import require_kill_switch_open
@@ -53,7 +51,7 @@ from src.auth.org_context import caller_org_subquery
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
-from src.db.engine import get_db_session, get_session_factory
+from src.db.engine import get_db_session
 from src.db.models import Analysis, Batch, BatchItem, DirectUpload
 from src.services import batch_service, catalog_run_service, direct_upload_service
 from src.services.batch_service import (
@@ -110,72 +108,16 @@ def _apply_catalog_meta(
     parts_list: list[dict] | None,
     list_name: str | None,
 ) -> None:
-    """Give each part its quantity ladder and material, and keep the run's facts.
-
-    The parts list wins per file; a file it doesn't name takes the run's
-    quantity and material. Rows naming no file in the ZIP are kept (first 200)
-    so the board can list them honestly.
-    """
-    names = [it["filename"] for it in items_data if it.get("status") not in {"skipped", "failed"}]
-    by_file, unmatched = catalog_run_service.match_parts_list(parts_list or [], names)
-    per_file: dict[str, dict] = {}
-    for it in items_data:
-        if it.get("status") in {"skipped", "failed"}:
-            continue
-        row = by_file.get(it["filename"])
-        qty = (row or {}).get("quantity") or run.quantity
-        cls = (row or {}).get("material_class") or run.material_class
-        it["quantities"] = ";".join(str(q) for q in catalog_run_service.quantity_ladder(qty))
-        it["material_class"] = cls
-        if row is not None:
-            per_file[it["filename"]] = {
-                k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class",
-                                        "material_note", "row", "part_specs")
-                if k != "part_specs" or row.get(k)
-            }
-    manifest_json = dict(batch.manifest_json or {})
-    manifest_json["catalog"] = {
-        "free": run.access.free,
-        "material_class": run.material_class,
-        "quantity": run.quantity,
-        "parts_list": (
-            {"name": list_name, "rows": len(parts_list), "matched": len(by_file), "unmatched": len(unmatched)}
-            if parts_list is not None else None
-        ),
-        "unmatched": [
-            {k: r.get(k) for k in ("row", "file", "part_number", "quantity", "material")} for r in unmatched[:200]
-        ],
-        "items": per_file,
-    }
-    batch.manifest_json = manifest_json
+    """Each part's quantity ladder and material, and the run's facts (catalog_run_service)."""
+    catalog_run_service.apply_catalog_meta(
+        batch, items_data, free=run.access.free, material_class=run.material_class, quantity=run.quantity,
+        parts_list=parts_list, list_name=list_name,
+    )
 
 
 async def _reserve_catalog_run(session: AsyncSession, user_id: int, batch: Batch, run: CatalogRunOptions):
     """Count the run's new parts against the free allowance, atomically with the batch."""
-    if not run.access.free:
-        return None
-    from src.auth.validation_caps import SAMPLE_PART_SHA256
-    import hashlib
-
-    items = (await session.execute(
-        select(BatchItem.id, BatchItem.filename).where(
-            BatchItem.batch_id == batch.id, BatchItem.status == "pending"
-        ).order_by(BatchItem.id)
-    )).all()
-
-    def _identities() -> list[tuple[int, str]]:
-        out = []
-        for item_id, filename in items:
-            data = batch_service.read_batch_blob(batch.ulid, filename)
-            if hashlib.sha256(data).hexdigest() in SAMPLE_PART_SHA256:
-                continue  # the app's sample part never counts
-            out.append((item_id, file_identity(filename, data)))
-        return out
-
-    identities = await asyncio.to_thread(_identities)
-    return await reserve_catalog_parts(
-        session, user_id, batch.id, identities, access=run.access, exclude_batch_id=batch.id
-    )
+    return await catalog_run_service.reserve_catalog_run(session, user_id, batch, run.access)
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +352,7 @@ async def create_batch(
     # manifest now and persist only validated metadata for the worker; request
     # bodies are not available to an asynchronous task.
     direct_manifest_items: list[dict] | None = None
-    if input_mode == "direct_upload" and manifest_bytes is not None:
+    if input_mode == "direct_upload" and manifest_bytes is not None and catalog_run is None:
         try:
             direct_manifest_items = batch_service.parse_csv_manifest(
                 manifest_bytes.decode("utf-8"),
@@ -459,6 +401,19 @@ async def create_batch(
             if direct_manifest_items is not None:
                 manifest_json = dict(batch.manifest_json or {})
                 manifest_json["direct_upload_manifest"] = direct_manifest_items
+                batch.manifest_json = manifest_json
+            if catalog_run is not None:
+                # Unpacked on the worker: the run's options go with the batch, and it
+                # counts as the account's free run from now (one at a time).
+                manifest_json = dict(batch.manifest_json or {})
+                manifest_json[catalog_run_service.PENDING_KEY] = catalog_run_service.pending_options(
+                    free=catalog_run.access.free, material_class=catalog_run.material_class,
+                    quantity=catalog_run.quantity, parts_list=parts_list,
+                    list_name=getattr(manifest, "filename", None),
+                )
+                manifest_json["catalog"] = {"free": catalog_run.access.free,
+                                            "material_class": catalog_run.material_class,
+                                            "quantity": catalog_run.quantity}
                 batch.manifest_json = manifest_json
             if direct_upload is None:  # defensive: lock branch must set it
                 raise RuntimeError("completed direct upload was not locked")
@@ -581,11 +536,15 @@ async def create_batch(
             or batch.status in {"completed", "failed", "cancelled"}
         )
     ):
-        return {
+        recovered = {
             "batch_id": batch.ulid,
             "status": batch.status,
             "status_url": f"/api/v1/batch/{batch.ulid}",
         }
+        if catalog_run is not None:
+            recovered.update(job_type="catalog", board_url=f"/api/v1/batch/{batch.ulid}/catalog",
+                             parts=None, preparing=False, catalog={"free": catalog_run.access.free, "pending": False})
+        return recovered
 
     try:
         if release_test_fault == "batch_queue":
@@ -678,7 +637,13 @@ async def create_batch(
         "status": batch.status,
         "status_url": f"/api/v1/batch/{batch.ulid}",
     }
-    if catalog_run is not None:
+    if catalog_run is not None and input_mode == "direct_upload":
+        # The ZIP is unpacked on the worker: the parts and the allowance are known
+        # once it's done (GET /batch/{id}/catalog: "preparing", then "parts" and
+        # "reservation", or "failure" with the refusal).
+        response.update(job_type="catalog", board_url=f"/api/v1/batch/{batch.ulid}/catalog", parts=None,
+                        preparing=True, catalog={"free": catalog_run.access.free, "pending": True})
+    elif catalog_run is not None:
         response["job_type"] = "catalog"
         response["board_url"] = f"/api/v1/batch/{batch.ulid}/catalog"
         response["parts"] = batch.total_items - (batch.failed_items or 0)
@@ -801,77 +766,46 @@ async def _catalog_run_from_upload(
 ):
     """A catalog run from a ZIP the browser uploaded to storage.
 
-    The upload is taken (``preparing``) under its row lock so two requests can't
-    both use it, read to a local temp file with its size and SHA-256 verified,
-    and passed to the same path as a posted ZIP. It is consumed (and its
-    stored copy deleted) once the run exists; a refusal (the allowance, a bad
-    ZIP) hands it back so the same upload can be used again.
+    The request checks what it can without reading the ZIP (the upload is a
+    finished batch ZIP of this organization, within this run's size limit, and
+    a free account has no other run going), then attaches it to a new run and
+    hands it to the worker, as a pilot batch from a stored ZIP: the worker
+    downloads it (size and SHA-256 verified), unpacks it with the same
+    extraction limits as a posted ZIP, gives each part its quantities and
+    material, and reserves the free allowance with the items
+    (``batch_tasks.prepare_direct_upload_batch``). A refusal there ends the run
+    with the reason kept on it (the board's ``failure``). The answer is 202 with
+    ``preparing: true``; posting the same upload again returns the same run.
     """
-    import asyncio
-    import os
-    from types import SimpleNamespace
+    from src.auth.catalog_allowance import active_free_run, run_active
 
     def _http(exc: direct_upload_service.DirectUploadError) -> HTTPException:
         return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
     try:
-        upload = await direct_upload_service.lock_completed_for_batch(session, user_id=user.user_id, upload_ulid=upload_ulid)
+        upload, existing = await direct_upload_service.lock_for_batch_attachment(
+            session, user_id=user.user_id, upload_ulid=upload_ulid
+        )
     except direct_upload_service.DirectUploadError as exc:
         raise _http(exc) from exc
     if upload.purpose != direct_upload_service.PURPOSE_BATCH_ZIP:
         raise HTTPException(status_code=409, detail={"code": "DIRECT_UPLOAD_WRONG_PURPOSE",
                                                      "message": "This upload is a single part; check it with POST /api/v1/checks."})
-    if upload.expected_size_bytes > max_zip:
-        raise HTTPException(status_code=413, detail=f"ZIP of {upload.expected_size_bytes} bytes exceeds the maximum of {max_zip} bytes for this run")
-    upload.status = "preparing"
-    upload.preparation_started_at = datetime.now(timezone.utc)
-    snapshot = SimpleNamespace(
-        ulid=upload.ulid, org_id=upload.org_id, purpose=upload.purpose, filename=upload.filename,
-        object_key=upload.object_key, expected_size_bytes=upload.expected_size_bytes,
-        expected_checksum_sha256=upload.expected_checksum_sha256,
+    if existing is None:
+        if upload.expected_size_bytes > max_zip:
+            raise HTTPException(status_code=413, detail=f"ZIP of {upload.expected_size_bytes} bytes exceeds the maximum of {max_zip} bytes for this run")
+        options: CatalogRunOptions = request.state.catalog_run
+        if options.access.free:
+            other = await active_free_run(session, user.user_id)
+            if other is not None:
+                raise run_active(other)
+    await session.rollback()  # create_batch takes the upload's lock again, in its own transaction
+    return await create_batch(
+        request=request, user=user, session=session, file=None, direct_upload_id=upload_ulid,
+        webhook_url=None, webhook_secret=None, concurrency_limit=concurrency_limit, job_type="catalog",
+        s3_bucket=None, s3_prefix=None, manifest_url=None, manifest=manifest,
+        _org_limit=None, _paid_access=None,
     )
-    await session.commit()
-
-    async def _release(status: str, code: Optional[str] = None, message: Optional[str] = None) -> None:
-        async with get_session_factory()() as s2:
-            row = (await s2.execute(select(DirectUpload).where(DirectUpload.ulid == snapshot.ulid).with_for_update())).scalars().first()
-            if row is None:
-                return
-            if status == "completed":
-                row.status = "completed"
-                row.preparation_started_at = None
-                await s2.commit()
-                return
-            await direct_upload_service.finish_part_upload(s2, row, ok=status == "consumed", error_code=code, error_message=message)
-
-    path: Optional[str] = None
-    try:
-        try:
-            path = await asyncio.to_thread(direct_upload_service.download_to_bounded_tempfile, snapshot)
-        except direct_upload_service.DirectUploadError as exc:
-            await _release("failed", exc.code, exc.message)
-            raise _http(exc) from exc
-        with open(path, "rb") as fh:
-            zip_file = UploadFile(file=fh, filename=snapshot.filename, size=os.path.getsize(path))
-            try:
-                result = await create_batch(
-                    request=request, user=user, session=session, file=zip_file, direct_upload_id=None,
-                    webhook_url=None, webhook_secret=None, concurrency_limit=concurrency_limit, job_type="catalog",
-                    s3_bucket=None, s3_prefix=None, manifest_url=None, manifest=manifest,
-                    _org_limit=None, _paid_access=None,
-                )
-            except BaseException:
-                # Refused (the allowance, a bad ZIP, a limit): the upload can be used again.
-                await _release("completed")
-                raise
-        await _release("consumed")
-        return result
-    finally:
-        if path:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
 
 
 def _download_stem(value: str) -> str:

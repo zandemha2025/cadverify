@@ -17,8 +17,56 @@ export interface RunCreated {
   status_url: string;
   job_type: "catalog";
   board_url: string;
-  parts: number;
-  catalog: { free: true; new: number; reruns: number; cap: number; remaining: number } | { free: false };
+  /** null while ScaleCAD's worker unpacks a stored ZIP (``preparing``). */
+  parts: number | null;
+  preparing?: boolean;
+  catalog: { free: true; new: number; reruns: number; cap: number; remaining: number } | { free: boolean; pending: true } | { free: false };
+}
+
+/** What the board adds about a run from a stored ZIP: unpacking on the worker, then its parts or why it stopped. */
+interface Preparation {
+  status: string;
+  preparing?: boolean;
+  parts?: number | null;
+  free?: boolean;
+  reservation?: { new: number; reruns: number; cap: number; remaining: number } | null;
+  failure?: ({ code?: string; message?: string } & Record<string, unknown>) | null;
+}
+
+/**
+ * A run from a ZIP uploaded to storage is unpacked on ScaleCAD's worker. Wait for
+ * that (polling the board), then give the run its parts and allowance as a
+ * posted ZIP's answer has them; a refusal there (the allowance, a damaged
+ * upload, a bad ZIP) comes back as the same error the request would have given.
+ */
+export async function waitUntilUnpacked(run: RunCreated, onTick?: () => void): Promise<RunCreated> {
+  if (!run.preparing) return run;
+  for (let misses = 0; ; ) {
+    await new Promise((r) => setTimeout(r, misses ? Math.min(20_000, 2500 * (misses + 1)) : 2000));
+    let b: Preparation;
+    try {
+      b = (await fetchBoard(run.batch_id, 15_000)) as unknown as Preparation;
+      misses = 0;
+    } catch (e) {
+      if (e instanceof CatalogRunError && e.status === 404) throw e;
+      misses += 1;
+      continue;
+    }
+    onTick?.();
+    if (b.status === "failed") {
+      const f = b.failure ?? {};
+      throw new CatalogRunError(typeof f.message === "string" ? f.message : "The ZIP couldn’t be unpacked, so the run stopped. Nothing was counted.", 0, typeof f.code === "string" ? f.code : null, { ...f, batch_id: null });
+    }
+    if (b.preparing) continue;
+    const r = b.reservation;
+    return {
+      ...run,
+      status: b.status,
+      preparing: false,
+      parts: b.parts ?? 0,
+      catalog: r ? { free: true, new: r.new, reruns: r.reruns, cap: r.cap, remaining: r.remaining } : { free: false },
+    };
+  }
 }
 
 export class CatalogRunError extends Error implements RunError {

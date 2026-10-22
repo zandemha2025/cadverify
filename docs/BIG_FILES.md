@@ -176,9 +176,22 @@ size). `GET /api/v1/checks/{id}` returns the route's response as `result`
 once done; the work bar shows it on every page. Nothing is charged: neither
 uses a check.
 
+## A catalog run's large ZIP: unpacked on the worker
+
+A catalog run's ZIP of 20 MB or more uploads to storage in parts
+(`direct_upload_id`). `POST /api/v1/catalog-runs` no longer reads it back:
+it checks the upload (a finished batch ZIP of this organization, within the
+run's size limit, and no other free run of the account going), attaches it to
+a new run whose options (material, quantity, parts list) go with the batch,
+and answers 202 with `preparing: true`. The worker's direct-upload preparation
+(`batch_tasks.prepare_direct_upload_batch`) downloads it (size and SHA-256
+verified), unpacks it with the same extraction limits as a posted ZIP, gives
+each part its quantities and material, and reserves the free allowance with
+the items in one transaction (`catalog_run_service.prepare_items`,
+`reserve_prepared_run`). A refusal there (the allowance, a damaged upload, a
+bad ZIP) ends the run with its reason on it: the board's `failure`, which the
+app shows where the run was started. Deploy the worker with or before the
+API: an older worker would prepare such a run as a pilot batch.
+
 ## Not done here
-- A catalog run's large ZIP now uploads to storage in parts
-  (`direct_upload_id`), but the API still reads it back and unpacks it in the
-  request, as it did with a posted ZIP; moving that to the worker's existing
-  direct-upload preparation task is the follow-up.
 - Import from a link: design note in `docs/IMPORT_FROM_LINK.md`.

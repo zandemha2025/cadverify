@@ -388,30 +388,47 @@ async def test_bad_inputs_are_clean_errors(world):
 
 @pytest.mark.asyncio
 async def test_a_large_zip_comes_from_a_direct_upload(world, monkeypatch, tmp_path):
-    """The ZIP uploaded to storage in parts (resumable), read back verified, the same run."""
+    """The ZIP uploaded to storage in parts (resumable) is unpacked on the worker, not in the request.
+
+    The request checks the upload and attaches it to a run that is "preparing";
+    the worker's preparation (the real task) downloads it verified, unpacks it
+    with the batch extraction limits, gives the parts their quantities and
+    reserves the free allowance with the items, or ends the run with the
+    refusal kept on it.
+    """
     import hashlib
     import io as _io
 
     from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import text
 
     import src.db.engine as eng
+    from src.jobs.batch_tasks import prepare_direct_upload_batch
     from src.services import direct_upload_service as uploads
 
     monkeypatch.setenv("OBJECT_STORE_BACKEND", "local")
     monkeypatch.setenv("DIRECT_UPLOAD_LOCAL_ROOT", str(tmp_path / "incoming"))
     monkeypatch.delenv("RELEASE", raising=False)
-    app, uid = world["app"], world["users"]["work"]
+    app, uid, pool = world["app"], world["users"]["work"], world["pool"]
     _as(app, uid)
     data = _zip({"a.stl": _stl((20, 20, 20), seed=21), "b.stl": _stl((30, 20, 10), seed=22)})
+    reads = {"n": 0}
+    real_download = uploads.download_to_bounded_tempfile
 
-    async def _upload(checksum: str) -> str:
+    def counted(*args, **kwargs):
+        reads["n"] += 1
+        return real_download(*args, **kwargs)
+
+    monkeypatch.setattr(uploads, "download_to_bounded_tempfile", counted)
+
+    async def _upload(checksum: str, body: bytes = data) -> str:
         async with eng.get_session_factory()() as s:
             up, parts, _, _ = await uploads.initiate(
                 s, user_id=uid, purpose="batch_zip", filename="catalog.zip", content_type="application/zip",
-                size_bytes=len(data), checksum_sha256=checksum, idempotency_key=f"cat-{uuid.uuid4().hex}", plan="trial",
+                size_bytes=len(body), checksum_sha256=checksum, idempotency_key=f"cat-{uuid.uuid4().hex}", plan="trial",
             )
             store = uploads._require_s3_store()
-            etag, _ = store.put_part(up.object_key, up.multipart_upload_id, 1, _io.BytesIO(data), max_bytes=len(data))
+            etag, _ = store.put_part(up.object_key, up.multipart_upload_id, 1, _io.BytesIO(body), max_bytes=len(body))
             await uploads.complete(s, user_id=uid, upload_ulid=up.ulid, parts=[{"part_number": 1, "etag": etag}])
             return up.ulid
 
@@ -419,23 +436,108 @@ async def test_a_large_zip_comes_from_a_direct_upload(world, monkeypatch, tmp_pa
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             return await ac.post("/api/v1/catalog-runs", data={"direct_upload_id": upload_id, "quantity": "10"})
 
-    # A damaged upload is refused before anything runs, and nothing is reserved.
-    bad = await _post_upload(await _upload("0" * 64))
-    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "DIRECT_UPLOAD_CHECKSUM_MISMATCH"
-    assert (await _usage(uid))["reserved"] == 0
+    async def _prepare(upload_id: str) -> None:
+        await prepare_direct_upload_batch({"job_try": 1, "redis": pool}, upload_id)
 
-    upload_id = await _upload(hashlib.sha256(data).hexdigest())
-    r = await _post_upload(upload_id)
-    assert r.status_code == 202, r.text
-    assert r.json()["parts"] == 2 and r.json()["catalog"]["new"] == 2
-    # The upload is used up: a second run from it is refused.
-    again = await _post_upload(upload_id)
-    assert again.status_code == 409
+    try:
+        # A damaged upload is refused on the worker, with its reason on the run; nothing is reserved.
+        bad_id = await _upload("0" * 64)
+        bad = await _post_upload(bad_id)
+        assert bad.status_code == 202, bad.text
+        assert bad.json()["preparing"] is True and bad.json()["parts"] is None
+        assert reads["n"] == 0, "the request never reads the ZIP"
+        await _prepare(bad_id)
+        board = (await _get(app, f"/api/v1/batch/{bad.json()['batch_id']}/catalog")).json()
+        assert board["status"] == "failed" and board["preparing"] is False
+        assert board["failure"]["code"] == "DIRECT_UPLOAD_CHECKSUM_MISMATCH"
+        assert (await _usage(uid))["reserved"] == 0
+
+        upload_id = await _upload(hashlib.sha256(data).hexdigest())
+        r = await _post_upload(upload_id)
+        assert r.status_code == 202, r.text
+        run = r.json()
+        assert run["preparing"] is True and run["parts"] is None and run["catalog"] == {"free": True, "pending": True}
+        assert ("prepare_direct_upload_batch", (upload_id,)) in pool.jobs
+        board = (await _get(app, f"/api/v1/batch/{run['batch_id']}/catalog")).json()
+        assert board["preparing"] is True and board["rows"] == []
+        # A second free run while this one prepares is refused in the request.
+        other = await _post_upload(await _upload(hashlib.sha256(data).hexdigest()))
+        assert other.status_code == 409 and other.json()["detail"]["code"] == "catalog_run_active"
+        # Posting the same upload again is the same run.
+        again = await _post_upload(upload_id)
+        assert again.status_code == 202 and again.json()["batch_id"] == run["batch_id"]
+
+        await _prepare(upload_id)
+        board = (await _get(app, f"/api/v1/batch/{run['batch_id']}/catalog")).json()
+        assert board["preparing"] is False and board["status"] == "pending" and board["failure"] is None
+        assert board["parts"] == 2 and board["quantity"] == 10
+        assert board["reservation"]["new"] == 2 and board["reservation"]["remaining"] == board["reservation"]["cap"] - 2
+        assert ("run_batch_coordinator", (run["batch_id"],)) in pool.jobs
+        assert (await _usage(uid))["reserved"] == 2
+        async with eng.get_session_factory()() as s:
+            quantities = (await s.execute(text(
+                "SELECT DISTINCT bi.quantities FROM batch_items bi JOIN batches b ON b.id = bi.batch_id "
+                "WHERE b.ulid = :b"), {"b": run["batch_id"]})).scalars().all()
+            status, cleaned = (await s.execute(text(
+                "SELECT status, storage_cleaned_at IS NOT NULL FROM direct_uploads WHERE ulid = :u"), {"u": upload_id})).one()
+        assert quantities and all(q and q.split(";")[0] == "1" for q in quantities)
+        assert (status, cleaned) == ("consumed", True)
+    finally:
+        async with eng.get_session_factory()() as s:
+            await s.execute(text("DELETE FROM direct_uploads WHERE user_id = :u"), {"u": uid})
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_stored_zip_over_the_free_allowance_is_refused_on_the_worker(world, monkeypatch, tmp_path):
+    """The allowance is counted on the worker once the ZIP is unpacked; a refusal ends the run, says why
+    in the allowance's own words, reserves nothing and leaves nothing behind."""
+    import hashlib
+    import io as _io
+
+    from httpx import ASGITransport, AsyncClient
     from sqlalchemy import text
 
+    import src.db.engine as eng
+    from src.jobs.batch_tasks import prepare_direct_upload_batch
+    from src.services import direct_upload_service as uploads
+
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "local")
+    monkeypatch.setenv("DIRECT_UPLOAD_LOCAL_ROOT", str(tmp_path / "incoming"))
+    monkeypatch.setenv("FREE_CATALOG_PARTS", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
+    app, uid, pool = world["app"], world["users"]["work"], world["pool"]
+    _as(app, uid)
+    data = _zip({"c.stl": _stl((20, 20, 20), seed=31), "d.stl": _stl((30, 20, 10), seed=32)})
     async with eng.get_session_factory()() as s:
-        status, cleaned = (await s.execute(text(
-            "SELECT status, storage_cleaned_at IS NOT NULL FROM direct_uploads WHERE ulid = :u"), {"u": upload_id})).one()
-        await s.execute(text("DELETE FROM direct_uploads WHERE user_id = :u"), {"u": uid})
-        await s.commit()
-    assert (status, cleaned) == ("consumed", True)
+        up, _parts, _, _ = await uploads.initiate(
+            s, user_id=uid, purpose="batch_zip", filename="catalog.zip", content_type="application/zip",
+            size_bytes=len(data), checksum_sha256=hashlib.sha256(data).hexdigest(),
+            idempotency_key=f"cat-{uuid.uuid4().hex}", plan="trial",
+        )
+        store = uploads._require_s3_store()
+        etag, _ = store.put_part(up.object_key, up.multipart_upload_id, 1, _io.BytesIO(data), max_bytes=len(data))
+        await uploads.complete(s, user_id=uid, upload_ulid=up.ulid, parts=[{"part_number": 1, "etag": etag}])
+        upload_id = up.ulid
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            r = await ac.post("/api/v1/catalog-runs", data={"direct_upload_id": upload_id})
+        assert r.status_code == 202, r.text
+        await prepare_direct_upload_batch({"job_try": 1, "redis": pool}, upload_id)
+        board = (await _get(app, f"/api/v1/batch/{r.json()['batch_id']}/catalog")).json()
+        assert board["status"] == "failed" and board["preparing"] is False
+        failure = board["failure"]
+        assert failure["code"] == "catalog_allowance_exceeded"
+        assert "has 2 parts not run before" in failure["message"] and failure["remaining"] == 1 and failure["needed"] == 2
+        assert (await _usage(uid))["reserved"] == 0
+        async with eng.get_session_factory()() as s:
+            items = (await s.execute(text(
+                "SELECT count(*) FROM batch_items bi JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :b"),
+                {"b": r.json()["batch_id"]})).scalar_one()
+            status = (await s.execute(text("SELECT status FROM direct_uploads WHERE ulid = :u"), {"u": upload_id})).scalar_one()
+        assert items == 0 and status == "failed"
+        assert not any(name == "run_batch_coordinator" and args == (r.json()["batch_id"],) for name, args in pool.jobs)
+    finally:
+        async with eng.get_session_factory()() as s:
+            await s.execute(text("DELETE FROM direct_uploads WHERE user_id = :u"), {"u": uid})
+            await s.commit()
