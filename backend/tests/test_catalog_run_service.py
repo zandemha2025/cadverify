@@ -265,6 +265,17 @@ def test_failed_skipped_and_running_items():
     assert _row(None, item={**ITEM, "status": "skipped", "error_message": None})["reason"] == "Skipped"
 
 
+def test_a_part_waiting_its_turn_is_queued_and_only_one_a_worker_has_is_checking():
+    """op-27: a re-check of 270 parts showed all 270 as "Checking" at once."""
+    for waiting in ("pending", "queued"):
+        r = _row(None, item={**ITEM, "status": waiting})
+        assert (r["bucket"], r["reason"]) == ("checking", "Queued")
+    r = _row(None, item={**ITEM, "status": "processing"})
+    assert (r["bucket"], r["reason"]) == ("checking", "Checking")
+    # The CSV's bucket column says the same: still to go, whichever of the two.
+    assert cr.BUCKET_WORDS["checking"] == "To go"
+
+
 def test_totals_sum_real_figures_and_say_how_many_they_cover():
     rows = [
         {"bucket": "in_house", "quantity": 10, "hours_total": 2.5, "mass_kg_total": 1.0, "total_cost_usd": 300.0},

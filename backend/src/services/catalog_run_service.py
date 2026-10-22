@@ -661,8 +661,9 @@ def derive_part_row(
         row["record_out_of_date"] = bool(governance.get("is_stale"))
 
     if status in ("pending", "queued", "processing"):
+        # Still to go: "Checking" only while a worker has it, "Queued" while it waits its turn (op-27).
         row["bucket"] = "checking"
-        row["reason"] = "Checking"
+        row["reason"] = "Checking" if status == "processing" else "Queued"
         return row
     if status in ("failed", "skipped"):
         row["bucket"] = "not_checked"
@@ -1776,7 +1777,7 @@ BUCKET_WORDS = {
     "cant_make": "Can't be made as drawn",
     "not_sorted": "Not sorted",
     "not_checked": "Not checked",
-    "checking": "Checking",
+    "checking": "To go",
 }
 
 CSV_HEADER = (

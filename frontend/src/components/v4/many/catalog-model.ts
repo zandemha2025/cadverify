@@ -250,7 +250,7 @@ export const BUCKETS: BucketDef[] = [
 export const OTHER: BucketDef[] = [
   { key: "not_sorted", label: "Not sorted", short: "Not sorted", tone: "unk", color: "#9AA3AE", note: "Checked, no verdict on your machines" },
   { key: "not_checked", label: "Not checked", short: "Not checked", tone: "unk", color: "#141414", note: "The file couldn’t be checked" },
-  { key: "checking", label: "Checking", short: "Checking", tone: "unk", color: "#1F4FC4", note: "Still running" },
+  { key: "checking", label: "To go", short: "To go", tone: "unk", color: "#1F4FC4", note: "Queued, or being checked now" },
 ];
 
 const ALL_DEFS = [...BUCKETS, ...OTHER];
@@ -366,6 +366,35 @@ export function partLine(r: BoardRow, machines: BoardMachine[] = []): PartLine {
 export function rowWords(r: BoardRow, unit: LengthUnit, spec: string | null = null): { reason: string | null; body: string | null; spec: string | null; price: string; note: string | null } {
   const u = (t: string | null | undefined) => (t ? inText(t, unit) : null);
   return { reason: u(r.reason), body: bodyLine(r, unit), spec: u(spec), price: inText(partLine(r).price, unit), note: u(r.material.note) };
+}
+
+/** A part still to check that a worker hasn't picked up yet: grey, not the blue of "Checking". */
+const QUEUED_COLOR = "#9AA3AE";
+
+/**
+ * A row's status line, as it is said (op-27): a part waiting its turn is
+ * "Queued" and only a part a worker is checking now is "Checking". `sr` is the
+ * bucket name for screen readers, given only when the words don't already say
+ * it, so each status is heard once ("Checking", never "Checking: Checking").
+ */
+export function rowStatus(r: Pick<BoardRow, "bucket" | "status">, reason: string | null): { text: string; sr: string | null; color: string } {
+  const d = bucketDef(r.bucket);
+  if (r.bucket === "checking") return r.status === "processing" ? { text: "Checking", sr: null, color: d.color } : { text: "Queued", sr: null, color: QUEUED_COLOR };
+  const text = reason || d.label;
+  const said = text.toLowerCase().startsWith(d.label.toLowerCase());
+  return { text, sr: said ? null : `${d.label}: `, color: d.color };
+}
+
+/** A material the parts list names that ScaleCAD doesn't price yet (C360 brass): no class, and a "... yet" note. */
+export function rowNotPriced(r: Pick<BoardRow, "material">): boolean {
+  const m = r.material;
+  return !!m?.declared?.trim() && !m.class && /yet$/.test(m.note ?? "");
+}
+
+/** Said up front on a part still to check in a material that isn't priced: checking it won't price it (op-27). */
+export function rowNotPricedLine(r: Pick<BoardRow, "bucket" | "material">): string | null {
+  if (r.bucket !== "checking" || !rowNotPriced(r)) return null;
+  return `Not priced yet: ${r.material.declared!.trim()}. Checking finds problems; it won’t give a price.`;
 }
 
 /** The row's name: the file the person gave, or which body of it. */

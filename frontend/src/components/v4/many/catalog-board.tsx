@@ -54,6 +54,8 @@ import {
   money,
   partLine,
   rowWords,
+  rowNotPricedLine,
+  rowStatus,
   procName,
   sortRows,
   totalsText,
@@ -180,6 +182,8 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   const trouble = recheckTrouble(recheckErr);
   const answer = answerText(board);
   const rates = runningRateLines(board);
+  // Of the parts still to go, the ones a worker is checking now (the rest are queued).
+  const inWork = rows.filter((r) => r.bucket === "checking" && r.status === "processing").length;
 
   const recheck = async (ids?: string[]) => {
     const keys = ids ?? failed.map((r) => r.item_id);
@@ -371,7 +375,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 <button type="button" className={cx("bk", bucket === "all" && "on")} aria-pressed={bucket === "all"} onClick={() => setBucket("all")}>
                   <b className="num">{total}</b>
                   <span>All parts</span>
-                  <small>{prog.checking ? `${prog.checking} still checking` : "Sorted below"}</small>
+                  <small>{prog.checking ? `${prog.checking} to go` : "Sorted below"}</small>
                 </button>
                 {BUCKETS.map((d) => (
                   <button key={d.key} type="button" className={cx("bk", bucket === d.key && "on")} aria-pressed={bucket === d.key} onClick={() => setBucket((b) => (b === d.key ? "all" : d.key))}>
@@ -398,6 +402,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 {OTHER.map((d) => (
                   <button key={d.key} type="button" aria-pressed={bucket === d.key} onClick={() => setBucket((b) => (b === d.key ? "all" : d.key))}>
                     {d.label} <b className="num">{bucketCount(board, d.key)}</b>
+                    {d.key === "checking" && inWork ? ` (${inWork} checking now)` : ""}
                   </button>
                 ))}
                 <span>
@@ -564,7 +569,6 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
 function PartRow({ r, machines, onRecheck, rechecking, readOnly }: { r: BoardRow; machines?: BoardMachine[]; onRecheck?: () => void; rechecking?: boolean; readOnly?: string | null }) {
   const router = useRouter();
   const { unit } = useUnits();
-  const d = bucketDef(r.bucket);
   const line = partLine(r, machines ?? []);
   // The engine's words (reason, body, spec line, withheld price, note) in the person's unit.
   const words = rowWords(r, unit, rowSpecLine(r));
@@ -580,6 +584,9 @@ function PartRow({ r, machines, onRecheck, rechecking, readOnly }: { r: BoardRow
   const sign = rowSignoffLine(r);
   const name = rowName(r);
   const compare = compareLine(r);
+  // Queued until a worker picks it up, then Checking; each status heard once (op-27).
+  const status = rowStatus(r, words.reason);
+  const notPriced = rowNotPricedLine(r);
   return (
     <tr
       className={cx("cr-r", href && "click")}
@@ -610,16 +617,17 @@ function PartRow({ r, machines, onRecheck, rechecking, readOnly }: { r: BoardRow
             </small>
           ) : null}
           <span className="cr-why">
-            <i style={{ background: d.color }} aria-hidden="true" />
-            <span className="sr">{d.label}: </span>
-            {words.reason ?? d.label}
+            <i style={{ background: status.color }} aria-hidden="true" />
+            {status.sr ? <span className="sr">{status.sr}</span> : null}
+            {status.text}
           </span>
+          {notPriced ? <small className="cr-warn">{notPriced}</small> : null}
           {words.body ? <small className="cr-spec">{words.body}</small> : null}
           {words.spec ? <small className="cr-spec">{words.spec}</small> : null}
           {rowMustHold(r) ? <small className="cr-spec">{rowMustHold(r)}</small> : null}
           {sign ? <small className={cx("cr-sign", sign.tone)}>{sign.text}</small> : null}
           {compare ? <small className="cr-cmp num">{compare}</small> : null}
-          {words.note ? <small className="cr-warn">{words.note}</small> : null}
+          {words.note && !notPriced ? <small className="cr-warn">{words.note}</small> : null}
           {r.bucket === "not_checked" && onRecheck ? (
             <span className="cr-again-row">
               <button className="btn sm" type="button" onClick={onRecheck} disabled={rechecking || !!readOnly} title={readOnly ?? undefined}>

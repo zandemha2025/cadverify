@@ -351,3 +351,23 @@ test("a run's refusal carries every parts-list problem", () => {
   assert.equal(listProblemsOf(detail).length, 1);
   assert.deepEqual(listProblemsOf(null), []);
 });
+
+test("while a run goes, rows waiting their turn say Queued and only rows being checked say Checking, each heard once (op-27)", async () => {
+  const { rowStatus, rowNotPricedLine, bucketDef } = await import("./catalog-model.ts");
+  const waiting = row({ bucket: "checking", status: "pending", reason: "Checking" });
+  const queued = row({ bucket: "checking", status: "queued", reason: "Queued" });
+  const going = row({ bucket: "checking", status: "processing", reason: "Checking" });
+  assert.deepEqual(rowStatus(waiting, waiting.reason), { text: "Queued", sr: null, color: rowStatus(queued, null).color });
+  assert.equal(rowStatus(queued, queued.reason).text, "Queued");
+  assert.deepEqual(rowStatus(going, going.reason), { text: "Checking", sr: null, color: bucketDef("checking").color });
+  assert.notEqual(rowStatus(waiting, null).color, bucketDef("checking").color);
+  // A finished row's reason says its bucket once: the bucket name only when the reason doesn't already.
+  const skipped = row({ bucket: "not_checked", status: "skipped", reason: "Skipped" });
+  assert.deepEqual(rowStatus(skipped, skipped.reason), { text: "Skipped", sr: "Not checked: ", color: bucketDef("not_checked").color });
+  const nc = row({ bucket: "not_checked", status: "failed", reason: "Not checked" });
+  assert.equal(rowStatus(nc, nc.reason).sr, null);
+  // Brass isn't priced: said up front, while the part waits, so checking it again is no surprise.
+  const brass = row({ bucket: "checking", status: "pending", material: { declared: "C360 brass", class: null, note: "C360 brass isn't priced in ScaleCAD yet", name: null, mass_kg_each: null, mass_basis: null } });
+  assert.equal(rowNotPricedLine(brass), "Not priced yet: C360 brass. Checking finds problems; it won’t give a price.");
+  assert.equal(rowNotPricedLine(going), null);
+});
