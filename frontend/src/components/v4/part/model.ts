@@ -519,6 +519,19 @@ export interface CostLine {
 }
 
 /** The dollar drivers of one estimate, largest first, each with its own derivation. */
+// Secondary ops a machine fit names (the engine's op keys), in words.
+const OP_WORD: Record<string, string> = {
+  stress_relief: "stress relief", sinter: "sintering", hip: "HIP", grinding: "grinding or polishing",
+  bead_blast: "bead blasting", anodize_ii: "Type II anodizing", anodize_iii: "hard anodizing", passivate: "passivation",
+  electropolish: "electropolishing", powder_coat: "powder coating", plating: "plating", solution_age: "solution treating and ageing",
+  quench_temper: "quench and temper", case_harden: "case hardening", fai_as9102: "an AS9102 first article report",
+  cmm_report: "a CMM report", full_100: "100% inspection",
+};
+
+export function opWord(op: string): string {
+  return OP_WORD[op] ?? op.replace(/_/g, " ");
+}
+
 export function costLines(e: CostEstimate | null | undefined): CostLine[] {
   if (!e) return [];
   return e.drivers
@@ -770,12 +783,15 @@ export function machineViews(machines: OwnedMachine[], methods: Method[], cost: 
       verdict = "Can make";
       price = method ? priceAt(method, q) : null;
       why = env ? `Fits its ${env.map((n) => trimNum(n, 0)).join(" × ")} mm work area.` : "Clears every gate the engine checked.";
-      if (fit.secondary_ops?.length) why += ` Needs ${joinWords(fit.secondary_ops)} afterwards.`;
+      if (fit.secondary_ops?.length) why += ` Needs ${joinWords(fit.secondary_ops.map(opWord))} afterwards.`;
     } else if (fit?.verdict === "unknown" && failures.length && failures.every((f) => f.have == null)) {
       // Fits as far as it was declared; something it needs was never declared (a material, an op).
       tone = "warn";
       verdict = "Can't confirm";
-      why = `${failures.map(gapText).join(" · ")}. Declare it in Your shop to confirm.`;
+      const shopOnly = failures.every((f) => f.gate === "secondary_op" || f.gate === "certification");
+      why = shopOnly
+        ? `Not declared on Your shop: ${joinWords(failures.map((f) => (f.gate === "certification" ? String(f.need ?? f.axis) : opWord(String(f.axis)))))}. Declare what you do in-house, send out or hold to confirm.`
+        : `${failures.map(gapText).join(" · ")}. Declare it in Your shop to confirm.`;
     } else if (failures.length) {
       tone = "bad";
       verdict = "Doesn't fit";

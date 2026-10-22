@@ -243,6 +243,7 @@ export function DecideSheet() {
     const ihr = ih ? resOf({ process: ih.process, quantity: p.q }) : null;
     if (ih && ihr?.hoursRun != null) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: hoursText(ihr.hoursRun), s: `machine time on your ${ih.name}${ihr.kgRun != null ? ` · ${massText(ihr.kgRun)} ${ihr.grade}` : ""} · ${money(ih.cost)} each` });
     else if (ih) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(ih.cost), s: ih.name });
+    else if (views.some((v) => v.verdict === "Can't confirm")) figs.push({ k: "In-house", v: "Can't confirm", s: "a machine of yours may fit; declare what it needs on Your shop" });
     else figs.push({ k: "In-house", v: "None", s: p.data.machines.length ? "nothing of yours can make it" : "no machines declared", tone: "bad" });
     if (out?.cost != null) figs.push({ k: "Cheapest outside", v: money(out.cost), s: out.sub.split(" · ")[0] });
   }

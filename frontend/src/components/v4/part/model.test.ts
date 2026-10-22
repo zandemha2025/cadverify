@@ -236,7 +236,14 @@ test("a machine that fits but needs something never declared reads can't confirm
   const [v] = machineViews([eos] as never, buildMethods({ ...f, cost, machines: [eos] as never }), cost, 10, [20, 15, 10]);
   assert.equal(v.verdict, "Can't confirm");
   assert.equal(v.tone, "warn");
-  assert.match(v.why, /not declared whether you do it in-house\. Declare it in Your shop to confirm\./);
+  assert.equal(v.why, "Not declared on Your shop: stress relief. Declare what you do in-house, send out or hold to confirm.");
+  // A part spec's op and certification read the same way, in words.
+  const cost2 = { ...cost, verification: { ...cost.verification, per_route: { mjf: { ...cost.verification.per_route.mjf, failures: [
+    { gate: "secondary_op", axis: "anodize_ii", need: "anodize_ii", have: null, human: "needs Type II anodizing; not declared" },
+    { gate: "certification", axis: "as9100", need: "AS9100", have: null, human: "needs AS9100; not declared" },
+  ] } } } };
+  const [v2] = machineViews([eos] as never, buildMethods({ ...f, cost: cost2, machines: [eos] as never }), cost2, 10, [20, 15, 10]);
+  assert.equal(v2.why, "Not declared on Your shop: Type II anodizing and AS9100. Declare what you do in-house, send out or hold to confirm.");
 });
 
 test("decide offers the real routes and binds each to an exact estimate", () => {

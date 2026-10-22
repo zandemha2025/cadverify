@@ -639,7 +639,7 @@ def price_route(rs: RouteSpecs, *, rates, region: str, qty: int, area_cm2: float
             if p.get("hr_per_dm2"):
                 bits.append(f"{p['hr_per_dm2']:g} h/dm² × {area_dm2:.2f} dm²")
             how = (f"{label}: {' + '.join(bits) or '0 h'} ({_LABOR_WORDS.get(op, 'labor')}) = {hours:.2f} h "
-                   f"for {q} parts × ${labor_rate:g}/h labor (rate card) × region ×{rl:g}{markup}"
+                   f"for {q} parts × ${labor_rate:g}/hr labor (rate card) × region ×{rl:g}{markup}"
                    + (f" × {burden:g} overhead" if burden != 1.0 else "")
                    + f" = ${unit:.2f}/part ({origin})")
             if op == "full_100":

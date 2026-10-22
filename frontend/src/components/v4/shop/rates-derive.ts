@@ -166,10 +166,30 @@ const LINE_NAMES: Record<string, string> = {
   plate_removal_cost: "Plate removal",
   stress_relief_cost: "Stress relief",
   min_charge_floor: "Order minimum",
+  // Declared part specs (Conditions): one line per finish, heat treatment, inspection.
+  spec_bead_blast_cost: "Bead blast",
+  spec_anodize_ii_cost: "Anodize, Type II",
+  spec_anodize_iii_cost: "Hard anodize, Type III",
+  spec_passivate_cost: "Passivation",
+  spec_electropolish_cost: "Electropolish",
+  spec_powder_coat_cost: "Powder coat",
+  spec_plating_cost: "Plating",
+  spec_stress_relief_cost: "Stress relief",
+  spec_solution_age_cost: "Solution treat and age",
+  spec_quench_temper_cost: "Quench and temper",
+  spec_case_harden_cost: "Case hardening",
+  spec_hip_cost: "HIP",
+  spec_fai_as9102_cost: "First article report, AS9102",
+  spec_cmm_report_cost: "CMM report",
+  spec_full_100_cost: "100% inspection",
+  spec_fine_finish_cost: "Grind or polish to the Ra",
 };
 
 /** Labor-paid lines: their dollars are hours × the labor rate. */
-const LABOR_LINES = new Set(["labor_cost", "nre_cost", "inspection_cost", "setup_cost", "support_removal_cost", "plate_removal_cost"]);
+const LABOR_LINES = new Set([
+  "labor_cost", "nre_cost", "inspection_cost", "setup_cost", "support_removal_cost", "plate_removal_cost",
+  "spec_bead_blast_cost", "spec_fai_as9102_cost", "spec_cmm_report_cost", "spec_full_100_cost", "spec_fine_finish_cost",
+]);
 
 export type PreviewLine = { key: string; name: string; prov: Prov; tag: string; value: number; scales: boolean };
 
