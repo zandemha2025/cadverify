@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType, Severity
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_overhangs,
@@ -31,8 +32,8 @@ class SLAAnalyzer:
                  cite="Formlabs: 19° from horizontal without support."))
         i.extend(check_small_features(ctx, 0.05, self.process,
                  cite="25µm XY resolution on Form 4."))
-        i.extend(check_build_volume(ctx, (200, 125, 210), self.process,
-                 cite="Formlabs Form 4."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. Formlabs Form 3."))
         i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=3.5,
                  cite="Formlabs: 3.5mm drain holes for hollowed parts."))
         i.extend(self._check_cupping(ctx))

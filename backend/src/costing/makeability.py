@@ -257,6 +257,12 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     return tuple(out)
 
 
+_SIZE_CODES = frozenset({"EXCEEDS_BUILD_VOLUME", "BUILD_ENVELOPE_UNVERIFIED"})
+_ENVELOPE_AXIS = {"swing_dia": "swing diameter", "between_centers": "length between centers",
+                  "minimum_width_mm": "its narrowest width against the work area's smallest side",
+                  "diameter_mm": "its widest extent against the work area's diagonal"}
+
+
 def dfm_failures_from_score(process_score) -> tuple:
     """The route's DFM blockers as ``dfm`` FitFailures (duck-typed ProcessScore).
 
@@ -269,10 +275,9 @@ def dfm_failures_from_score(process_score) -> tuple:
         return ()
     route = _pt_value(getattr(process_score, "process", ""))
     out: list = []
-    for issue in getattr(process_score, "issues", None) or ():
-        sev = getattr(issue, "severity", None)
-        if getattr(sev, "value", sev) != "error":
-            continue
+    errors = [i for i in getattr(process_score, "issues", None) or ()
+              if getattr(getattr(i, "severity", None), "value", getattr(i, "severity", None)) == "error"]
+    for issue in errors:
         need = getattr(issue, "required_value", None)
         have = getattr(issue, "measured_value", None)
         if not (_is_number(need) and _is_number(have)):
@@ -583,7 +588,15 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
     notes: list = []
 
     # (a) ENVELOPE ----------------------------------------------------------
-    failures.extend(_envelope_failures(part_req, cap))
+    #   A concrete miss names the machine and the numbers ("too big for your
+    #   BigRep ONE: needs 1306 mm, has 1005 mm"), the same delta the gap carries.
+    for f in _envelope_failures(part_req, cap):
+        if f.have is not None and _is_number(f.need) and _is_number(f.have):
+            what = _ENVELOPE_AXIS.get(f.axis) or (f.human.split(" ", 1)[0] if f.axis == "envelope" else f.axis.replace("_", " "))
+            f = FitFailure(f.gate, f.axis, f.need, f.have,
+                           f"too big for your {machine_cap.name or 'machine'}: needs "
+                           f"{float(f.need):.0f} mm, has {float(f.have):.0f} mm ({what})")
+        failures.append(f)
 
     # (b) MASS --------------------------------------------------------------
     if machine_cap.max_workpiece_kg is None and _pt_value(machine_cap.process) in BUILD_VOLUME_BOUND:
@@ -1053,6 +1066,11 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
         preq = route_req[r]
         owned = [m for m in inventory if _pt_value(m.process) == r]
         dfm = tuple(getattr(preq, "dfm_failures", ()) or ())
+        if dfm and owned and all(f.axis in _SIZE_CODES for f in dfm):
+            # Only too big for every machine ScaleCAD knows: against the shop's
+            # own work areas the envelope gate gives the real answer ("too big
+            # for your X: needs N, has M", or a fit on a bigger machine of yours).
+            dfm = ()
         if dfm:
             # The process's own design rules fail on this geometry as drawn. No
             # machine (owned or outside) closes that, so the route is never

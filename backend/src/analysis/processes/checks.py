@@ -415,11 +415,30 @@ def check_build_volume(
             fix_suggestion="Confirm dimensions and the planned orientation in source CAD, or use a larger machine.",
             citation=parse_citation(cite),
         )]
+    # The envelope is a common machine for the process, not a limit of it
+    # (src.profiles.envelopes): bigger than it is a WARNING when a larger machine
+    # ScaleCAD knows takes the part, and an ERROR only when none does. Whether
+    # the shop's own machines take it is machine fit's answer ("too big for
+    # your X: needs N, has M").
+    larger = _larger_machine_that_fits(ctx, process, dims, max_dims_mm)
+    common = f"the {_mm(max_dims_mm)}mm build size ScaleCAD assumes for {process.value} when no machine is named"
+    if larger is not None:
+        name, env = larger
+        return [Issue(
+            code=("EXCEEDS_BUILD_VOLUME" if (bound or process == ProcessType.CNC_TURNING)
+                  else "BUILD_ENVELOPE_UNVERIFIED"),
+            severity=Severity.WARNING, process=process,
+            message=(f"Larger than {common} ({_size_reason(bound, dims)}). It fits a larger "
+                     f"{process.value} machine, such as the {name} ({_mm(env)}mm): check it "
+                     f"against the machine that will make it."),
+            fix_suggestion="Check the size against your machine, or use a larger-format machine.",
+            citation=parse_citation(cite),
+        )]
     if process != ProcessType.CNC_TURNING:
         return [Issue(
             code="EXCEEDS_BUILD_VOLUME" if bound else "BUILD_ENVELOPE_UNVERIFIED",
             severity=Severity.ERROR, process=process,
-            message=(bound[3] if bound else
+            message=(f"Larger than any {process.value} machine ScaleCAD knows ({_size_reason(bound, dims)})." if bound else
                      f"No fitting setup established for the {max_dims_mm}mm envelope for {process.value}. "
                      "The limited geometry/orientation check does not prove the part is too large."),
             fix_suggestion="Verify the full XYZ setup in source CAD, including tool access, supports and fixtures.",
@@ -429,13 +448,61 @@ def check_build_volume(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,
         message=(
-            f"Part exceeds build envelope for {process.value}: "
+            f"Larger than any {process.value} machine ScaleCAD knows: "
             + ", ".join(exceeds) + f". {cite}"
         ),
         process=process,
         fix_suggestion="Scale down, split part, or use a larger machine.",
         citation=parse_citation(cite),
     )]
+
+
+def _mm(dims) -> str:
+    return " x ".join(f"{float(d):g}" for d in dims)
+
+
+def _size_reason(bound, dims) -> str:
+    """The proof the part exceeds the size, in plain words."""
+    if bound:
+        axis, need, have, _human = bound
+        if axis == "minimum_width_mm":
+            return f"its minimum width is at least {need:.4g} mm, more than the {have:.4g} mm smallest side"
+        if axis == "diameter_mm":
+            return f"its widest extent is at least {need:.4g} mm, more than the {have:.4g} mm diagonal"
+    return f"part {_mm(dims)}mm"
+
+
+def _larger_machine_that_fits(ctx: GeometryContext, process: ProcessType, dims, common):
+    """``(name, work area)`` of a known machine bigger than the common size that
+    takes the part in some orientation (the same fit the check uses), or None."""
+    try:
+        from src.profiles.envelopes import known_envelopes
+        envs = [(n, e) for n, e in known_envelopes(process)
+                if n != "common" and tuple(e) != tuple(common)]
+    except KeyError:
+        return None
+    if not envs:
+        return None
+    if process == ProcessType.CNC_TURNING:
+        # (swing Ø, swing Ø, between centers) against (Ø, Ø, length)
+        for name, env in envs:
+            if dims[0] <= env[0] and dims[1] <= env[1] and dims[2] <= env[2]:
+                return name, env
+        return None
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    if ctx.metadata.get("decimation", {}).get("succeeded"):
+        part = sorted(dims)
+        for name, env in envs:
+            if all(a <= b + tolerance for a, b in zip(part, sorted(env))):
+                return name, env
+        return None
+    enclosing, _basis = ctx.enclosing_box
+    for name, env in envs:
+        caps = tuple(c + tolerance for c in env)
+        if (fitting_box_dimensions(enclosing, caps) is not None
+                or fitting_box_dimensions(enclosing, caps, ctx.enclosing_cylinder) is not None):
+            return name, env
+    return None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -490,16 +557,41 @@ def build_height_and_footprint_width(mesh) -> tuple[float, float]:
     except Exception:
         extents = np.ptp(plan, axis=0)
         return height, float(extents.min())
+    return height, _narrowest_width(hull)
+
+
+def _narrowest_width(hull: np.ndarray) -> float:
+    """Narrowest caliper width of a convex outline (vertices in order).
+
+    The narrowest width is across one of the outline's edges, to the vertex
+    farthest from it; rotating calipers find that vertex for every edge in one
+    pass, so a finely tessellated round footprint (40k hull vertices) costs
+    linear time and memory, not an edges x vertices table.
+    """
+    n = len(hull)
+    if n < 3:
+        return float(np.ptp(hull, axis=0).min()) if n else 0.0
     edges = np.roll(hull, -1, axis=0) - hull
     lengths = np.linalg.norm(edges, axis=1)
-    keep = lengths > 0
-    if not np.any(keep):
-        return height, 0.0
-    directions = edges[keep] / lengths[keep, None]
-    normals = np.stack([-directions[:, 1], directions[:, 0]], axis=1)
-    # The narrowest caliper width of a convex outline is across one of its edges.
-    widths = np.ptp(normals @ hull.T, axis=1)
-    return height, float(widths.min())
+    if not np.any(lengths > 0):
+        return 0.0
+
+    def height(i, k):
+        e = edges[i]
+        d = hull[k] - hull[i]
+        return abs(e[0] * d[1] - e[1] * d[0]) / lengths[i]
+
+    best = float("inf")
+    k = 1
+    for i in range(n):
+        if lengths[i] <= 0:
+            continue
+        steps = 0
+        while steps < n and height(i, (k + 1) % n) > height(i, k):
+            k = (k + 1) % n
+            steps += 1
+        best = min(best, float(height(i, k)))
+    return best
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1208,7 +1300,19 @@ def check_wall_uniformity(
     if not ctx.metadata.get("decimation", {}).get("succeeded"):
         error = float(ctx.mesh.metadata.get("coordinate_error", 0.0))
         measured = np.isfinite(wt) & _wall_measured(ctx)
-        estimate = np.where(np.isfinite(upper), upper, wt + 4.0 * error + tolerance)
+        margin = 4.0 * error + tolerance
+        # An unproved reading counts only when another face reads the same
+        # wall (within rounding): a wall many rays cross, not one stray ray.
+        order = np.argsort(np.where(measured, wt, np.inf))
+        ranked = wt[order]
+        gap = np.full(len(wt), np.inf)
+        if len(wt) > 1:
+            step = np.abs(np.diff(ranked))
+            gap[order[1:]] = np.minimum(gap[order[1:]], step)
+            gap[order[:-1]] = np.minimum(gap[order[:-1]], step)
+        corroborated = gap <= np.maximum(margin, 1e-6 * np.abs(wt))
+        estimate = np.where(np.isfinite(upper), upper,
+                            np.where(corroborated, wt + margin, np.inf))
         estimate = np.where(measured, estimate, np.inf)
         if len(estimate) and np.isfinite(estimate.min()) and estimate.min() < thin_end:
             index = int(np.argmin(estimate))

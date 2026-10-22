@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_overhangs,
@@ -28,7 +29,7 @@ class DLPAnalyzer:
                  cite="DLP typically 30° from vertical."))
         i.extend(check_small_features(ctx, 0.05, self.process,
                  cite="19µm pixel on Elegoo Saturn 4 Ultra."))
-        i.extend(check_build_volume(ctx, (218, 123, 250), self.process,
-                 cite="Elegoo Saturn 4 Ultra."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. Elegoo Saturn 4 Ultra."))
         i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=3.5))
         return i

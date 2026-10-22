@@ -913,7 +913,7 @@ def test_honesty_gap_is_quantified():
     v = verify_part({"cnc_3axis": part(bbox=(100, 200, 600))}, [m])
     g = v.gap[0]
     assert g.need == 600 and g.have == pytest.approx(305 * 3**.5)
-    assert g.axis == "diameter_mm" and "not a machine specification" in g.human
+    assert g.axis == "diameter_mm" and "too big for your" in g.human and "diagonal" in g.human
 
 
 def test_env_exclusion_cites_property():

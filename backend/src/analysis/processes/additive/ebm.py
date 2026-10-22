@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_overhangs,
@@ -29,7 +30,7 @@ class EBMAnalyzer:
                  cite="Arcam: 50° threshold (pre-heat reduces curl)."))
         i.extend(check_small_features(ctx, 0.3, self.process,
                  cite="Arcam Q20: ~200µm beam, 300µm feature."))
-        i.extend(check_build_volume(ctx, (350, 380, 380), self.process,
-                 cite="Arcam Q20plus."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. Arcam Q20plus."))
         i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=5.0))
         return i

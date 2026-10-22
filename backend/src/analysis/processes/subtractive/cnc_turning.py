@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_length_diameter_ratio,
@@ -27,6 +28,6 @@ class CNCTurningAnalyzer:
         i.extend(check_length_diameter_ratio(ctx, 10.0, self.process))
         i.extend(check_wall_thickness(ctx, 1.0, self.process,
                  cite="Turning thin walls chatter; 1.0mm min."))
-        i.extend(check_build_volume(ctx, (254, 254, 533), self.process,
-                 cite="Haas ST-20 (10in chuck)."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. Haas ST-20 (10in chuck)."))
         return i

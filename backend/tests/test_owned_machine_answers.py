@@ -136,3 +136,48 @@ def test_the_fdm_wall_floor_follows_a_standard_nozzle(wall, verdict):
     else:
         assert route["verdict"] == "makeable_in_house"
         assert rep["verification"]["verdict"] == "makeable_in_house"
+
+
+# ── W3 / M3 / W13: size is a machine's question, one envelope per process ─────
+def test_one_build_envelope_per_process_for_dfm_and_price():
+    from src.analysis.models import ProcessType as PT
+    from src.costing.rates import build_rate_card
+    from src.profiles.envelopes import common_envelope
+
+    rates = build_rate_card()
+    for p in (PT.FDM, PT.SLA, PT.DLP, PT.SLS, PT.MJF, PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET):
+        assert rates.build_env(p) == common_envelope(p), p
+
+
+def test_bigger_than_the_common_size_is_a_warning_and_bigger_than_every_machine_an_error():
+    def fdm(size):
+        result, _mesh, _f = _analyze(trimesh.creation.box(extents=list(size)))
+        return next(p for p in result.process_scores if p.process.value == "fdm")
+
+    big = fdm((400, 400, 400))
+    issue = next(i for i in big.issues if i.code == "EXCEEDS_BUILD_VOLUME")
+    assert big.verdict != "fail" and issue.severity.value == "warning"
+    assert "250 x 250 x 250mm build size" in issue.message
+    assert "Stratasys F900" in issue.message or "BigRep ONE" in issue.message
+    huge = fdm((2000, 1200, 1100))
+    assert huge.verdict == "fail"
+    assert any(i.code == "EXCEEDS_BUILD_VOLUME" and i.severity.value == "error"
+               and "Larger than any fdm machine ScaleCAD knows" in i.message for i in huge.issues)
+
+
+@pytest.mark.parametrize("name, size, cls, verdict, needs", [
+    ("BigRep ONE", 854, "polymer", "makeable_in_house", None),
+    ("DMG MORI DMU 50", 450, "aluminum", "makeable_in_house", None),
+    ("Bambu Lab X1C", 333, "polymer", "makeable_not_on_owned", "too big for your Bambu Lab X1C: needs 333 mm, has 256 mm"),
+    ("BigRep ONE", 1306, "polymer", "makeable_not_on_owned", "too big for your BigRep ONE: needs 1306 mm, has 1005 mm"),
+])
+def test_size_against_the_shops_own_machine(name, size, cls, verdict, needs):
+    rep = _run(name, cls, size=size)
+    proc = _catalog_cap(name).process
+    route = _route(rep, proc)
+    assert route["verdict"] == verdict, route
+    if needs:
+        assert any(f["human"].startswith(needs) for f in route["failures"])
+    else:
+        # priced on the owned machine's own work area
+        assert any(e["process"] == proc for e in rep["estimates"])

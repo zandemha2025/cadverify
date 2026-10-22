@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_aspect_ratio,
     check_build_volume,
@@ -36,8 +37,8 @@ class FDMAnalyzer:
                  cite="ISO/ASTM 52910:2018 §5.3.", bridges=True))
         i.extend(check_small_features(ctx, 0.4, self.process,
                  cite="Nozzle diameter. Stratasys DFM §3.2."))
-        i.extend(check_build_volume(ctx, (300, 300, 350), self.process,
-                 cite="Bambu Lab X1C / Prusa MK4."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. Bambu Lab X1C / Prusa MK4."))
         i.extend(check_aspect_ratio(ctx, 8.0, self.process))
         # Extrusion leaves a sealed void empty: no loose powder or resin to drain.
         i.extend(check_sealed_voids_fdm(ctx, self.process, max_overhang_deg=45.0))

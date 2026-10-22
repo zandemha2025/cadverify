@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
+from src.profiles.envelopes import COMMON_ENVELOPE_MM
 
 PT = ProcessType
 
@@ -177,35 +178,35 @@ RATE_CARD_V0: dict = {
         PT.FDM: dict(
             machine_rate=8, setup_hr=0.25, post_hr=0.25, scrap=0.10,
             deposition=16, vert=25, finish=None, queue_days=2, post_days=1,
-            build_env_mm=(250, 250, 250), packing_density=0.10, part_spacing_mm=4.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.FDM], packing_density=0.10, part_spacing_mm=4.0,
             nesting_mode="serial", post_hr_part=0.20, post_hr_build=0.10,
             lot_size="build", min_charge=30,
             xy_packing_density=0.50, n_machines=12, machine_hours_per_day=22),
         PT.SLA: dict(
             machine_rate=12, setup_hr=0.30, post_hr=0.50, scrap=0.10,
             deposition=8, vert=20, finish=None, queue_days=2, post_days=1,
-            build_env_mm=(145, 145, 185), packing_density=0.10, part_spacing_mm=3.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.SLA], packing_density=0.10, part_spacing_mm=3.0,
             nesting_mode="serial", post_hr_part=0.15, post_hr_build=0.20,
             lot_size="build", min_charge=40,
             xy_packing_density=0.50, n_machines=8, machine_hours_per_day=22),
         PT.DLP: dict(
             machine_rate=12, setup_hr=0.30, post_hr=0.50, scrap=0.10,
             deposition=12, vert=30, finish=None, queue_days=2, post_days=1,
-            build_env_mm=(192, 120, 245), packing_density=0.12, part_spacing_mm=3.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.DLP], packing_density=0.12, part_spacing_mm=3.0,
             nesting_mode="build_job", post_hr_part=0.15, post_hr_build=0.20,
             lot_size="build", min_charge=40,
             n_machines=8, machine_hours_per_day=22),
         PT.SLS: dict(
             machine_rate=20, setup_hr=0.50, post_hr=0.50, scrap=0.10,
             deposition=18, vert=20, finish=None, queue_days=3, post_days=1,
-            build_env_mm=(340, 340, 600), packing_density=0.10, part_spacing_mm=5.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.SLS], packing_density=0.10, part_spacing_mm=5.0,
             nesting_mode="build_job", post_hr_part=0.08, post_hr_build=0.50,
             lot_size="build", min_charge=75,
             n_machines=6, machine_hours_per_day=22),
         PT.MJF: dict(
             machine_rate=22, setup_hr=0.50, post_hr=0.50, scrap=0.10,
             deposition=20, vert=25, finish=None, queue_days=3, post_days=1,
-            build_env_mm=(380, 284, 380), packing_density=0.10, part_spacing_mm=5.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.MJF], packing_density=0.10, part_spacing_mm=5.0,
             nesting_mode="build_job", post_hr_part=0.08, post_hr_build=0.50,
             lot_size="build", min_charge=75,
             n_machines=6, machine_hours_per_day=22),
@@ -349,7 +350,7 @@ RATE_CARD_V0: dict = {
             setup_hr=0.50, post_hr=0.0, scrap=0.15,   # 15% effective powder loss (recycled) (DEFAULT)
             deposition=None, vert=6.0,  # SLOW metal Z build rate mm/hr (DEFAULT)
             finish=None, queue_days=7, post_days=3,
-            build_env_mm=(250, 250, 325), packing_density=0.08, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.DMLS], packing_density=0.08, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=250,
             n_machines=2, machine_hours_per_day=20,
@@ -362,7 +363,7 @@ RATE_CARD_V0: dict = {
         PT.SLM: dict(
             machine_rate=180.0, setup_hr=0.50, post_hr=0.0, scrap=0.15,
             deposition=None, vert=6.0, finish=None, queue_days=7, post_days=3,
-            build_env_mm=(250, 250, 325), packing_density=0.08, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.SLM], packing_density=0.08, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=250,
             n_machines=2, machine_hours_per_day=20,
@@ -373,7 +374,7 @@ RATE_CARD_V0: dict = {
             setup_hr=0.50, post_hr=0.0, scrap=0.15,
             deposition=None, vert=9.0,  # faster Z build than laser (DEFAULT)
             finish=None, queue_days=7, post_days=3,
-            build_env_mm=(350, 380, 380), packing_density=0.08, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.EBM], packing_density=0.08, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=250,
             n_machines=2, machine_hours_per_day=20,
@@ -390,7 +391,7 @@ RATE_CARD_V0: dict = {
             setup_hr=0.50, post_hr=0.0, scrap=0.10,
             deposition=None, vert=25.0, # fast green print Z rate mm/hr (DEFAULT)
             finish=None, queue_days=7, post_days=4,
-            build_env_mm=(400, 250, 250), packing_density=0.12, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.BINDER_JET], packing_density=0.12, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=150,
             n_machines=2, machine_hours_per_day=20,

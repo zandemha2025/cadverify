@@ -98,7 +98,7 @@ def test_envelope_failure_requires_geometric_evidence_and_named_bounds():
     assert failure.axis == "diameter_mm"
     assert failure.need == pytest.approx(400)
     assert failure.have == pytest.approx(sqrt(3)*200, abs=.01)
-    assert "diagonal" in failure.human and "not a machine specification" in failure.human
+    assert "diagonal" in failure.human and "needs 400 mm, has 346 mm" in failure.human
 
     # No fitting placement was established for this plate, but neither
     # necessary bound proves it too large. Do not turn failed search into proof.
