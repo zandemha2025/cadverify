@@ -158,12 +158,25 @@ cost is the stopped machine's root filesystem, cents a month. Work to build:
 about two days (queue routing, the starter, the deploy and health-gate changes,
 tests with a fake Machines API).
 
-## Not done here
+## A big kept part: re-priced and repaired on the worker
 
-- Re-pricing a big part in another material from its page still goes
-  through `POST /parts/{hash}/recheck`, which reads the kept file in the web
-  request and stops at 100 MB. A worker-side recheck (the same job type,
-  starting from the kept source instead of an upload) is the follow-up.
+A saved part is re-priced (`POST /parts/{hash}/recheck`: another material,
+quantities, machines, orientation) and repaired (`POST /parts/{hash}/repair`)
+from the file its organization kept. When the kept file is 20 MB or more
+(`KEPT_PART_WORKER_FROM_MB`), over `MAX_UPLOAD_MB`, or needs more memory than
+the web process gives one check, the route never reads it
+(`src/services/kept_part_jobs.py` sizes it from its size and first bytes): it
+starts the same job type as a big check (`stored_check`, `params.source =
+kept`) and answers 202 with the job's status. The worker
+(`src/jobs/kept_part_tasks.py`, run by `run_stored_check`) sizes the file
+against its own memory (`sizing`), then runs the route's own code under the
+big-check limits (`pricing` or `repairing`; a worker repair takes up to
+`REPAIR_MAX_FACES_WORKER`, 5 M faces, and the time budget for the file's
+size). `GET /api/v1/checks/{id}` returns the route's response as `result`
+once done; the work bar shows it on every page. Nothing is charged: neither
+uses a check.
+
+## Not done here
 - A catalog run's large ZIP now uploads to storage in parts
   (`direct_upload_id`), but the API still reads it back and unpacks it in the
   request, as it did with a posted ZIP; moving that to the worker's existing

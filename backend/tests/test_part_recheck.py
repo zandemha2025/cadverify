@@ -148,11 +148,21 @@ def test_recheck_auth_and_org_scoping(store, monkeypatch):
     assert TestClient(_app(1)).post(path.replace(digest, "0" * 64)).status_code == 404
     assert TestClient(_app(1)).post("/api/v1/parts/not-a-hash/recheck").status_code == 404
     assert TestClient(_app(3)).post(path).status_code == 403, "a viewer can't save a decision"
+    # Over the request's limit the kept file isn't read here: it's re-priced on
+    # the worker (kept_part_jobs) and the answer is the job, 202.
     from src.api import routes
+    from src.services import stored_check_service
 
+    queued: list[str] = []
+
+    async def enqueue(job):
+        queued.append(job.ulid)
+
+    monkeypatch.setattr(stored_check_service, "enqueue", enqueue)
     monkeypatch.setattr(routes, "_max_upload_bytes", lambda: 100)
     r = TestClient(_app(1)).post(path)
-    assert r.status_code == 413 and "limit" in r.json()["detail"]
+    assert r.status_code == 202, r.text
+    assert r.json()["action"] == "recheck" and r.json()["source"] == "kept" and queued == [r.json()["check_id"]]
 
 
 def test_recheck_uses_no_check_and_has_the_free_ceiling(store, monkeypatch):

@@ -2,6 +2,7 @@
 
     POST /api/v1/checks            {direct_upload_id, material_class?, qty?, units?, orientation?} -> 202
     GET  /api/v1/checks/{id}       stage, progress, and the part's page once done
+                                   (a big kept part's re-price or repair: its response, ``result``)
     GET  /api/v1/checks            the caller's checks of the last day (the work bar)
 
 The file was uploaded with ``POST /api/v1/uploads/multipart`` (purpose ``part``,
@@ -88,7 +89,8 @@ async def get_stored_check(
     except svc.StoredCheckError as exc:
         raise _http(exc) from exc
     response.headers["Cache-Control"] = "no-store"
-    return svc.public_status(job)
+    # A big kept part's re-price or repair, once done, carries its route's response.
+    return svc.public_status(job, with_result=True)
 
 
 @router.get("")

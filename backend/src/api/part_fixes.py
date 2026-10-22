@@ -166,16 +166,36 @@ async def repair_stored_part(
     plus ``outcome`` (repaired | closed_changed | partly | not_repaired | not_needed),
     ``summary``, ``source``, ``repaired``, ``download``, ``lineage`` and
     ``prices`` (the repaired copy only: the open original isn't priced).
+
+    A kept file beyond what a web request handles (``kept_part_jobs``: 20 MB and
+    up, over the upload limit, or more memory than this process gives one
+    check) isn't read here: the repair runs on the worker, and the answer is
+    202 with the job's status (``POST /api/v1/checks``'s shape); once done,
+    ``GET /api/v1/checks/{id}`` holds this route's response as ``result``.
     """
     from src.api.routes import _MATERIAL_CLASSES
     from src.analysis.rules import available_rule_packs, get_rule_pack
+    from src.services import kept_part_jobs as kept
     from src.services import repair_service
+    from src.services import stored_check_service as checks
 
     org_id, digest = _scope(ctx, mesh_hash)
     if rule_pack and get_rule_pack(rule_pack) is None:
         raise HTTPException(status_code=400, detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}")
     if material_class is not None and material_class not in _MATERIAL_CLASSES:
         raise HTTPException(status_code=400, detail=f"Unknown material_class '{material_class}'. Use one of {sorted(_MATERIAL_CLASSES)}")
+    info = await kept.kept_source_info(org_id, digest)
+    if info is not None and kept.needs_worker(info):
+        saved = await svc.latest_analysis(session, org_id, digest)
+        name = (saved.filename if saved is not None else None) or f"part{info.suffix}"
+        job = await kept.start_and_enqueue(
+            session, user_id=user.user_id, org_id=org_id, mesh_hash=digest, action=kept.REPAIR, filename=name,
+            info=info, options={"processes": processes, "rule_pack": rule_pack, "quantities": _quantities(qty),
+                                "material_class": material_class, "with_cost": with_cost},
+        )
+        response.status_code = 202
+        response.headers["Cache-Control"] = "no-store"
+        return checks.public_status(job)
     result = await repair_service.repair_stored(
         org_id=org_id, mesh_hash=digest, processes=processes, rule_pack=rule_pack,
         quantities=_quantities(qty), material_class=material_class, with_cost=with_cost,

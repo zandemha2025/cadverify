@@ -37,7 +37,8 @@ logger = logging.getLogger("cadverify.stored_check")
 
 JOB_TYPE = "stored_check"
 MATERIAL_CLASSES = ("polymer", "aluminum", "steel", "stainless", "titanium")
-STAGES = ("queued", "verifying", "unpacking", "sizing", "measuring", "pricing", "done", "failed")
+# "repairing": a big kept part's mesh repair (src.services.kept_part_jobs).
+STAGES = ("queued", "verifying", "unpacking", "sizing", "measuring", "pricing", "repairing", "done", "failed")
 _QTY = re.compile(r"^\d{1,7}(,\d{1,7}){0,11}$")
 
 
@@ -304,15 +305,20 @@ def is_stalled(job: Job, now: Optional[datetime] = None) -> bool:
     return now - last > STALLED_AFTER
 
 
-def public_status(job: Job, upload: Optional[DirectUpload] = None) -> dict[str, Any]:
+def public_status(job: Job, upload: Optional[DirectUpload] = None, *, with_result: bool = False) -> dict[str, Any]:
+    """The check's state. ``with_result``: a finished kept-part job also carries the
+    response its route would have given (``result``), for GET /checks/{id} only."""
     params = job.params_json or {}
     result = job.result_json or {}
-    key = result.get("mesh_hash")
+    key = result.get("mesh_hash") or params.get("mesh_hash")
     if is_stalled(job):
         # Said as it is the moment it's known; the sweep makes it durable.
         result = {**result, "stage": "failed", "error": {"code": "CHECK_INTERRUPTED", "message": STALLED_MESSAGE, "charged": False}}
         return {**_status_fields(job, params, result, key), "status": "failed", "stage": "failed", "error": result["error"]}
-    return _status_fields(job, params, result, key)
+    fields = _status_fields(job, params, result, key)
+    if with_result and params.get("source") == "kept" and job.status == "done":
+        fields["result"] = result.get("result")
+    return fields
 
 
 async def fail_stalled_checks(session: AsyncSession, *, limit: int = 50) -> int:
@@ -354,7 +360,12 @@ def _status_fields(job: Job, params: dict, result: dict, key: Optional[str]) -> 
         "part_bytes": result.get("part_bytes"),
         "material_class": params.get("material_class"),
         "mesh_hash": key,
-        "part_url": f"/app/part/{key}" if key and job.status == "done" else None,
+        # What it is: a big file's check ("check", from an upload), or a kept
+        # part's re-price or repair ("recheck" / "repair", from the kept file).
+        "source": params.get("source") or "upload",
+        "action": params.get("action") or "check",
+        "summary": result.get("summary"),
+        "part_url": (f"/app/part/{result.get('open_hash') or key}" if key and job.status == "done" else None),
         "analysis_id": result.get("analysis_id"),
         "cost_decision_id": result.get("cost_decision_id"),
         "memory": result.get("memory"),

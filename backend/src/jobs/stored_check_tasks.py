@@ -11,6 +11,9 @@ Stages, written to the job row as they start (``result_json.stage``):
 
 The check counts against the account's allowance exactly as an upload of the
 same file does; nothing is charged when it fails before measuring.
+
+A job whose ``params.source`` is ``kept`` is a big kept part's re-price or
+repair (``src.services.kept_part_jobs``); it runs ``kept_part_tasks.run_kept_part``.
 The incoming object is deleted at the end either way; a checked part's bytes
 are kept as the organization's source for it by the analysis.
 """
@@ -235,6 +238,14 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
     from src.services import direct_upload_service as uploads
     from src.services import stored_check_service as svc
     from src.services.part_archive import PartArchiveError, compression_of, unpack_part
+
+    # A big kept part's re-price or repair runs as this task too (same ceiling, one try).
+    from src.services.kept_part_jobs import is_kept_job
+
+    if await is_kept_job(job_ulid):
+        from src.jobs.kept_part_tasks import run_kept_part
+
+        return await run_kept_part(ctx, job_ulid)
 
     started = time.monotonic()
     claimed = await _claim(job_ulid)

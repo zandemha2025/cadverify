@@ -104,17 +104,77 @@ async def recheck_stored_part(
     decisions are persisted) plus ``recheck``: the kept file's name, size and
     format, the quantities and material it used and where they came from, and
     ``checks_used: 0``.
+
+    A kept file beyond what a web request handles (``kept_part_jobs``: 20 MB and
+    up, over the upload limit, or more memory than this process gives one
+    check) isn't read here: the re-price runs on the worker, and the answer is
+    202 with the job's status (``POST /api/v1/checks``'s shape); once done,
+    ``GET /api/v1/checks/{id}`` holds this route's response as ``result``.
+    """
+    from src.api.routes import _MATERIAL_CLASSES, _REGIONS, _parse_qty_list
+    from src.services import kept_part_jobs as kept
+    from src.services import stored_check_service as checks
+
+    digest = str(mesh_hash or "").lower()
+    if not ctx.org_id or not _SHA256.fullmatch(digest):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    options = dict(qty=qty, material_class=material_class, region=region, cavities=cavities,
+                   complexity=complexity, shop=shop, overrides=overrides, owned_processes=owned_processes,
+                   tolerance_class=tolerance_class, units=units, orientation=orientation)
+    info = await kept.kept_source_info(ctx.org_id, digest)
+    if info is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    if kept.needs_worker(info):
+        # Refuse what the worker would refuse, now: a bad option is a clean 400 here.
+        if material_class is not None and material_class not in _MATERIAL_CLASSES:
+            raise HTTPException(status_code=400, detail=f"Unknown material_class '{material_class}'. Use one of {sorted(_MATERIAL_CLASSES)}")
+        if region is not None and region not in _REGIONS:
+            raise HTTPException(status_code=400, detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}")
+        if qty is not None:
+            _parse_qty_list(qty)
+        job = await kept.start_and_enqueue(
+            session, user_id=user.user_id, org_id=ctx.org_id, mesh_hash=digest, action=kept.RECHECK,
+            filename=await _kept_name(session, ctx.org_id, digest, info.suffix), info=info, options=options,
+        )
+        response.status_code = 202
+        response.headers["Cache-Control"] = "no-store"
+        return checks.public_status(job)
+    result = await recheck_kept(session, org_id=ctx.org_id, digest=digest, user=user, response=response, **options)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+async def recheck_kept(
+    session: AsyncSession,
+    *,
+    org_id: str,
+    digest: str,
+    user: AuthedUser,
+    response: Response,
+    qty: Optional[str] = None,
+    material_class: Optional[str] = None,
+    region: Optional[str] = None,
+    cavities: int = 1,
+    complexity: str = "moderate",
+    shop: Optional[str] = None,
+    overrides: Optional[str] = None,
+    owned_processes: Optional[str] = None,
+    tolerance_class: Optional[str] = None,
+    units: Optional[str] = None,
+    orientation: Optional[str] = None,
+) -> dict:
+    """The re-price itself, from the kept bytes: this route's body, and the worker's.
+
+    On the worker it runs under the big-check limits, so the upload-size check
+    below is the worker's ceiling, not the web request's.
     """
     from src.api.routes import _max_upload_bytes, _run_cost_decision
     from src.services.cad_fix_service import DEFAULT_QUANTITIES, _saved_cost_inputs
     from src.services.source_artifact_service import read_source_artifact
     from src.storage import ObjectNotFoundError
 
-    digest = str(mesh_hash or "").lower()
-    if not ctx.org_id or not _SHA256.fullmatch(digest):
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
     try:
-        data, suffix = await read_source_artifact(ctx.org_id, digest)
+        data, suffix = await read_source_artifact(org_id, digest)
     except (ObjectNotFoundError, FileNotFoundError, ValueError):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     limit = _max_upload_bytes()
@@ -125,7 +185,7 @@ async def recheck_stored_part(
 
     basis = {"quantities": "request", "material_class": "request"}
     if qty is None or material_class is None:
-        saved_q, saved_m, saved_basis = await _saved_cost_inputs(session, ctx.org_id, digest)
+        saved_q, saved_m, saved_basis = await _saved_cost_inputs(session, org_id, digest)
         if qty is None:
             qty = ",".join(str(q) for q in (saved_q or DEFAULT_QUANTITIES))
             basis["quantities"] = saved_basis
@@ -133,7 +193,7 @@ async def recheck_stored_part(
             material_class = saved_m or "polymer"
             basis["material_class"] = "saved_cost_check" if saved_basis == "saved_cost_check" else "default"
 
-    name = await _kept_name(session, ctx.org_id, digest, suffix)
+    name = await _kept_name(session, org_id, digest, suffix)
     upload = UploadFile(file=io.BytesIO(data), filename=name, size=len(data))
     result = await _run_cost_decision(
         file=upload, qty=qty, region=region, cavities=cavities, complexity=complexity,
@@ -147,7 +207,6 @@ async def recheck_stored_part(
         "bytes": len(data), "qty": qty, "material_class": material_class, "basis": basis,
         "checks_used": 0,
     }
-    response.headers["Cache-Control"] = "no-store"
     return result
 
 

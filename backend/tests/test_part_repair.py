@@ -348,11 +348,21 @@ def test_repair_auth_org_scoping_and_request_errors(store, monkeypatch):
     monkeypatch.setenv("REPAIR_MAX_FACES", "4")
     assert client.post(path).status_code == 413
     monkeypatch.delenv("REPAIR_MAX_FACES")
+    # Over the request's limit the kept file isn't read here: it's repaired on
+    # the worker (kept_part_jobs) and the answer is the job, 202.
     from src.api import routes
+    from src.services import stored_check_service
 
+    queued: list[str] = []
+
+    async def enqueue(job):
+        queued.append(job.ulid)
+
+    monkeypatch.setattr(stored_check_service, "enqueue", enqueue)
     monkeypatch.setattr(routes, "_max_upload_bytes", lambda: 100)
     r = client.post(path)
-    assert r.status_code == 413 and "limit" in r.json()["detail"]
+    assert r.status_code == 202, r.text
+    assert r.json()["action"] == "repair" and queued == [r.json()["check_id"]]
 
 
 def test_repair_needs_no_paid_plan_uses_no_check_and_has_the_free_ceiling(store, monkeypatch):

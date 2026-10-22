@@ -38,20 +38,38 @@ logger = logging.getLogger("cadverify.repair_service")
 # ---------------------------------------------------------------------------
 
 
+# A big kept part repaired on the worker (src.jobs.kept_part_tasks) runs under
+# the big-check limits: the time budget for its size, and up to this many faces.
+WORKER_REPAIR_MAX_FACES_DEFAULT = 5_000_000
+
+
 def _repair_timeout_sec() -> float:
-    """Read REPAIR_TIMEOUT_SEC env var, default 30.0, min 0.1."""
+    """Read REPAIR_TIMEOUT_SEC env var, default 30.0, min 0.1 (on the worker: its time budget)."""
+    from src.config import check_limits
+
     try:
-        return max(0.1, float(os.getenv("REPAIR_TIMEOUT_SEC", "30")))
+        base = max(0.1, float(os.getenv("REPAIR_TIMEOUT_SEC", "30")))
     except ValueError:
-        return 30.0
+        base = 30.0
+    larger = check_limits.current()
+    return max(base, larger.budget_sec) if larger is not None else base
 
 
 def _repair_max_faces() -> int:
-    """Read REPAIR_MAX_FACES env var, default 500000, min 1."""
+    """Read REPAIR_MAX_FACES env var, default 500000, min 1 (on the worker: REPAIR_MAX_FACES_WORKER)."""
+    from src.config import check_limits
+
     try:
-        return max(1, int(os.getenv("REPAIR_MAX_FACES", "500000")))
+        base = max(1, int(os.getenv("REPAIR_MAX_FACES", "500000")))
     except ValueError:
-        return 500000
+        base = 500000
+    if check_limits.current() is None:
+        return base
+    try:
+        worker = max(1, int(os.getenv("REPAIR_MAX_FACES_WORKER", str(WORKER_REPAIR_MAX_FACES_DEFAULT))))
+    except ValueError:
+        worker = WORKER_REPAIR_MAX_FACES_DEFAULT
+    return max(base, worker)
 
 
 # ---------------------------------------------------------------------------
