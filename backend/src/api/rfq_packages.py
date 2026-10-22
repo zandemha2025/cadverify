@@ -22,8 +22,12 @@ from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import rfq_package_service as svc
+from src.services import supplier_links
+from src.services.share_links import ShareOptions
 
 router = APIRouter(tags=["rfq-packages"])
+# Public, mounted at /s: a package's link, opened by its supplier without signing in.
+public_package_router = APIRouter(tags=["rfq-packages"])
 
 
 class RequestedBy(BaseModel):
@@ -145,3 +149,87 @@ async def download_rfq_package(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+class PackageShareBody(BaseModel):
+    """How long a package's link lasts (``ShareOptions``'s expiry fields). What it
+    shows is the package itself: our cost only when the package was built with it."""
+
+    expires_in_days: Optional[int] = 7
+    expires_on: Optional[date] = None
+
+
+@router.post("/{package_id}/share")
+@limiter.limit("60/hour;500/day")
+async def share_rfq_package(
+    package_id: str,
+    request: Request,
+    response: Response,
+    body: Optional[PackageShareBody] = None,
+    user: AuthedUser = Depends(require_org_writer),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Share a package as one link (``/s/pkg/...``) that ends: 7 days unless the
+    body says 1, 30 or 90 days or a date. A link that was on stops working."""
+    b = body or PackageShareBody()
+    options = ShareOptions(expires_in_days=b.expires_in_days, expires_on=b.expires_on)
+    return await supplier_links.create_package_link(session, package_id, user.user_id, options)
+
+
+@router.delete("/{package_id}/share")
+@limiter.limit("60/hour;500/day")
+async def unshare_rfq_package(
+    package_id: str,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_org_writer),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Switch the package's link off now (its maker or an org admin)."""
+    await supplier_links.revoke_package_link(session, package_id, user.user_id)
+    return {"message": "Share revoked"}
+
+
+def _public_headers(response: Response) -> None:
+    response.headers["X-Robots-Tag"] = "noindex"
+    response.headers["Cache-Control"] = "private, no-store"
+
+
+@public_package_router.get("/pkg/{short_id}")
+@limiter.limit("120/hour")
+async def get_shared_package(
+    short_id: str,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """A package's link: the request for quote, part by part (no auth)."""
+    _public_headers(response)
+    return await supplier_links.package_view(session, short_id)
+
+
+@public_package_router.get("/pkg/{short_id}/download.zip")
+@limiter.limit("30/hour")
+async def download_shared_package(
+    short_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    filename, data = await supplier_links.package_zip(session, short_id)
+    return Response(content=data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Robots-Tag": "noindex", "Cache-Control": "private, no-store"})
+
+
+@public_package_router.get("/pkg/{short_id}/cad/{line}")
+@limiter.limit("60/hour")
+async def download_shared_package_cad(
+    short_id: str,
+    line: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    filename, data = await supplier_links.package_cad(session, short_id, line)
+    return Response(content=data, media_type="application/octet-stream", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Robots-Tag": "noindex", "Cache-Control": "private, no-store"})

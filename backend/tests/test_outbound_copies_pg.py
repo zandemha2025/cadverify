@@ -88,7 +88,7 @@ async def _seed(result_json):
                                                       "recommended_machine": SPARE, "issues": []}]})
         s.add_all([d, a])
         await s.flush()
-        share_links.open_link(d, uid, 30, f"c{uuid.uuid4().hex[:11]}")
+        share_links.open_link(d, uid, 30, f"c{uuid.uuid4().hex[:11]}", shows={"include_cost": True})
         share_links.open_link(a, uid, 30, f"a{uuid.uuid4().hex[:11]}")
         await s.commit()
         return {"org": org, "user": uid, "decision": d.ulid, "d_share": d.share_short_id,
@@ -138,7 +138,7 @@ async def test_outbound_copies_keep_the_org_inventory_out(shop_result, monkeypat
             assert cost_link.status_code == 200, cost_link.text
             assert_nothing_private(cost_link.content, "GET /s/cost")
             assert SPARE not in cost_link.text
-            assert all(SPARE not in n for n in cost_link.json()["notes"])
+            assert all(SPARE not in n for n in cost_link.json()["cost"]["notes"])
             check_link = await client.get(f"/s/{w['a_share']}")
             assert check_link.status_code == 200, check_link.text
             assert SPARE not in check_link.text

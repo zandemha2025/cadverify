@@ -991,22 +991,29 @@ async def create_share(
     ulid: str,
     user_id: int,
     session: AsyncSession,
-    expires_in_days: Optional[int] = 30,
+    expires_in_days: Optional[int] = share_links.DEFAULT_DAYS,
+    options: Optional["share_links.ShareOptions"] = None,
 ) -> dict:
-    """Make a public link to a cost decision that ends after ``expires_in_days``.
+    """Make a public link to a cost decision: what a supplier sees (``options``,
+    ``src.services.supplier_links``) until it ends.
 
-    ``None`` is the sharer's explicit "no end date". A link that is on is
-    returned unchanged (idempotent); one that ended or was switched off is
-    replaced by a new short id (the old one stops resolving).
+    Without ``options`` (callers made before the Share dialog) a link that is on
+    is returned unchanged, and a new one lasts ``expires_in_days`` (``None``:
+    no end date) and shows no cost and no CAD. With ``options`` the sharer chose
+    what the link shows and how long it lasts, so a new link is made and one
+    that was on stops working.
     """
     from src.services.audit_service import emit_event
 
     d = await _owned_for_share(ulid, user_id, session)
-    if share_links.status(d) == "active":
+    active = share_links.status(d) == "active"
+    if active and options is None:
         return _share_link(d)
 
+    opts = options or share_links.ShareOptions(expires_in_days=expires_in_days)
     short_id = generate_short_id()
-    share_links.open_link(d, user_id, expires_in_days, short_id)
+    replaced = d.share_short_id if active else None
+    share_links.open_link(d, user_id, opts.expires_in_days, short_id, ends_at=opts.ends_at(), shows=opts.shown())
     await emit_event(
         session,
         actor_id=user_id,
@@ -1016,6 +1023,8 @@ async def create_share(
         detail={
             "cost_decision_ulid": ulid,
             "expires_at": d.share_expires_at.isoformat() if d.share_expires_at else None,
+            "shows": d.share_options,
+            "replaced": replaced,
         },
         org_id=d.org_id,
     )
@@ -1061,10 +1070,11 @@ async def get_shared(short_id: str, session: AsyncSession) -> Optional[dict]:
     if d is None:
         return None
     share_links.public_or_raise(d, "Shared cost decision not found")
-    from src.services import outbound
+    # What a supplier sees: the part, specs, note, quantity, the CAD if chosen,
+    # and our cost estimate only when the sharer turned it on.
+    from src.services import supplier_links
 
-    terms = await outbound.org_names(session, getattr(d, "org_id", None))
-    return {**sanitize_for_share(d, terms=terms), **share_links.public_meta(d)}
+    return await supplier_links.record_view(session, d, short_id)
 
 
 def sanitize_for_share(d: CostDecision, *, terms=()) -> dict:

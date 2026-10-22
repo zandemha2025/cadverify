@@ -276,6 +276,8 @@ async def list_share_links(
         "scope": scope,
         "is_admin": is_admin,
         "default_days": share_links.DEFAULT_DAYS,
-        "choices": [*share_links.EXPIRY_CHOICES, None],
+        # What the Share dialog offers: these days, or a date up to a year ahead.
+        "choices": list(share_links.DIALOG_CHOICES),
+        "max_days": share_links.MAX_DAYS_AHEAD,
         "links": links,
     }

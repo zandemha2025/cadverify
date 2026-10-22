@@ -99,3 +99,16 @@ async def test_a_package_short_id_can_never_match_two_packages():
             await s.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
             await s.commit()
         await eng.dispose_engine()
+
+
+def test_the_models_match_the_migration():
+    from src.db.models import CostDecision, RfqPackage
+
+    assert CostDecision.__table__.c.share_options.nullable
+    cols = RfqPackage.__table__.c
+    for name in ("share_short_id", "share_created_at", "share_created_by", "share_expires_at",
+                 "share_revoked_at", "share_options"):
+        assert cols[name].nullable, name
+    assert not cols.is_public.nullable and str(cols.is_public.server_default.arg) == "false"
+    (index,) = [i for i in RfqPackage.__table__.indexes if i.name == "ix_rfq_packages_share"]
+    assert index.unique is True

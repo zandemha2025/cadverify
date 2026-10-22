@@ -42,8 +42,9 @@ async def create_share(
 ):
     """Share an analysis — a public short URL that ends.
 
-    Body (optional): ``{"expires_in_days": 30 | 90 | 365 | null}``; omitted is
-    30 days, ``null`` is the explicit "no end date" choice.
+    Body (optional): ``{"expires_in_days": 1 | 7 | 30 | 90 | 365 | null}`` or
+    ``{"expires_on": "YYYY-MM-DD"}``; omitted is 7 days, ``null`` is the
+    explicit "no end date" choice kept for API callers.
     """
     days = (body or ShareOptions()).expires_in_days
     return await share_service.create_share(analysis_id, user.user_id, session, days)

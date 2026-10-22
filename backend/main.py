@@ -38,7 +38,7 @@ from src.api.reconstruct_router import router as reconstruct_router
 from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
-from src.api.rfq_packages import router as rfq_packages_router
+from src.api.rfq_packages import public_package_router, router as rfq_packages_router
 from src.api.catalog import router as catalog_router
 from src.api.rate_library import router as rate_library_router
 from src.api.shop_library import router as shop_library_router
@@ -498,6 +498,7 @@ app.include_router(public_share_router, prefix="/s")
 # Cost-decision persistence surface (Phase 2 gap #3): list/detail/export/share/compare
 app.include_router(cost_decisions_router, prefix="/api/v1/cost-decisions")
 app.include_router(public_cost_share_router, prefix="/s")
+app.include_router(public_package_router, prefix="/s")
 # RFQ/supplier evidence packages: downloadable, local packages built from saved
 # decisions; no live supplier send or supplier-network claim.
 app.include_router(rfq_packages_router, prefix="/api/v1/rfq-packages")

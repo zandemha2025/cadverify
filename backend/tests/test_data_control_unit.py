@@ -118,13 +118,25 @@ def test_share_options_accept_only_the_offered_choices():
 
     from src.services.share_links import ShareOptions
 
-    assert ShareOptions().expires_in_days == 30
-    assert ShareOptions(expires_in_days=None).expires_in_days is None
-    for days in (30, 90, 365):
+    # The Share dialog: 7 days unless 1, 30 or 90 days or a date is picked (it-22, buyer-12).
+    assert ShareOptions().expires_in_days == 7
+    assert ShareOptions(expires_in_days=None).expires_in_days is None  # API callers made before
+    for days in (1, 7, 30, 90, 365):
         assert ShareOptions(expires_in_days=days).expires_in_days == days
-    for bad in (0, 1, 45, 366, -30):
+    for bad in (0, 2, 45, 366, -30):
         with pytest.raises(ValidationError):
             ShareOptions(expires_in_days=bad)
+    today = datetime.now(timezone.utc).date()
+    on = ShareOptions(expires_on=today + timedelta(days=12))
+    assert on.ends_at() == datetime.combine(today + timedelta(days=12), datetime.max.time().replace(microsecond=0),
+                                            tzinfo=timezone.utc)
+    for bad_day in (today - timedelta(days=1), today + timedelta(days=400)):
+        with pytest.raises(ValidationError):
+            ShareOptions(expires_on=bad_day)
+    # What a link shows: nothing of our cost or the CAD unless chosen.
+    assert ShareOptions().shown() == {"include_cost": False, "include_cad": False, "note": None, "quantity": None}
+    assert ShareOptions(include_cad=True, note="  Quote by Nov 5 ", quantity=250).shown() == {
+        "include_cost": False, "include_cad": True, "note": "Quote by Nov 5", "quantity": 250}
 
 
 def test_open_and_close_link():

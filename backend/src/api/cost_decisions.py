@@ -386,13 +386,17 @@ async def create_cost_share(
     user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Share a cost decision — a public short URL (/s/cost/...) that ends.
+    """Share a cost decision: a public short URL (/s/cost/...) for a supplier that ends.
 
-    Body (optional): ``{"expires_in_days": 30 | 90 | 365 | null}``; omitted is
-    30 days, ``null`` is the explicit "no end date" choice.
+    Body (optional): ``{"expires_in_days": 1 | 7 | 30 | 90 | 365 | null,
+    "expires_on": "YYYY-MM-DD", "include_cost": false, "include_cad": false,
+    "note": "...", "quantity": 250}``. Omitted: 7 days, no cost, no CAD, and a
+    link that is already on is returned unchanged. With a body, a new link is
+    made (one that was on stops working).
     """
-    days = (body or ShareOptions()).expires_in_days
-    return await svc.create_share(decision_id, user.user_id, session, days)
+    if body is None:
+        return await svc.create_share(decision_id, user.user_id, session, ShareOptions().expires_in_days)
+    return await svc.create_share(decision_id, user.user_id, session, body.expires_in_days, options=body)
 
 
 @router.delete("/{decision_id}/share")
@@ -407,6 +411,23 @@ async def revoke_cost_share(
     """Switch the link off now (its maker or an org admin). It then says so (410)."""
     await svc.revoke_share(decision_id, user.user_id, session)
     return {"message": "Share revoked"}
+
+
+@public_cost_share_router.get("/cost/{short_id}/cad")
+@limiter.limit("30/hour")
+async def get_shared_cost_cad(
+    short_id: str,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The part's CAD file, when the link's sharer included it (no auth)."""
+    from src.services import supplier_links
+
+    filename, data = await supplier_links.record_cad(session, short_id)
+    return Response(content=data, media_type="application/octet-stream", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Robots-Tag": "noindex", "Cache-Control": "private, no-store"})
 
 
 @public_cost_share_router.get("/cost/{short_id}")

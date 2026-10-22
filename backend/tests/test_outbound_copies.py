@@ -185,10 +185,13 @@ def _session_returning(row):
 def test_public_cost_link_carries_nothing_of_the_shop(shop_result, monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_DISABLED", "1")
     d = _decision(shop_result)
+    # The most a link shows: the sharer turned "Include our cost estimate" on.
+    d.share_options = {"include_cost": True}
     r = TestClient(_app(_session_returning(d))).get("/s/cost/shopshare0001")
     assert r.status_code == 200, r.text
     assert_nothing_private(r.content, "GET /s/cost")
-    body = r.json()
+    assert r.json()["includes_cost_estimate"] is True
+    body = r.json()["cost"]
     assert "verification" not in body and "calibration" not in body
     assert {"options", "rule", "calibration_note"}.isdisjoint(body["decision"])
     # The route on the shop's printer isn't in the copy; the outside routes are,

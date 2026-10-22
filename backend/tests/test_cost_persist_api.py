@@ -1146,11 +1146,18 @@ def test_public_share_sanitized_no_owner_leak(client, real_result_json):
     )
     _override(app, _session_returning(scalar_one=dec))
 
+    # By default a link carries none of our cost (buyer-12).
     r = cl.get("/s/cost/shortpub1234")
     assert r.status_code == 200
     assert r.headers.get("x-robots-tag") == "noindex"
-    body = r.json()
-    # Decision content preserved + honest
+    assert "cost" not in r.json() and r.json()["includes_cost_estimate"] is False
+    # With "Include our cost estimate" on: the decision, preserved and honest.
+    dec.share_options = {"include_cost": True}
+    r = cl.get("/s/cost/shortpub1234")
+    outer = r.json()
+    body = outer["cost"]
+    for leaked in ("user_id", "api_key_id", "mesh_hash", "params_hash", "share_short_id", "id", "ulid", "email"):
+        assert leaked not in outer, f"public share leaked {leaked}"
     assert body["decision"]["make_now_process"]
     assert body["estimates"]
     assert body["estimates"][0]["confidence"]["validated"] is False
@@ -1189,10 +1196,12 @@ def test_public_share_hides_shop_inputs(client, real_result_json):
          "source": "loaded shop-floor labor [shop: Acme Machining]"},
     ]
     dec = _make_decision("01PUB0000000000000000000B", rj, share_short_id="shortpub5678", is_public=True)
+    dec.share_options = {"include_cost": True}
     _override(app, _session_returning(scalar_one=dec))
 
-    body = cl.get("/s/cost/shortpub5678").json()
-    text = json.dumps(body)
+    outer = cl.get("/s/cost/shortpub5678").json()
+    body = outer["cost"]
+    text = json.dumps(outer)
     for private in ("Haas VF-2", "$85/hr", "$55.25/hr", "Acme Machining", "20 hr/day"):
         assert private not in text, f"public share leaked {private}"
     # The route priced on the sharer's machine isn't in the copy, at any quantity.

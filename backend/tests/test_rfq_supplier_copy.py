@@ -284,3 +284,20 @@ def test_a_run_quantity_is_the_yearly_quantity_of_every_part_the_list_doesnt_nam
     assert part_facts({"quantity": 40, "part_number": "A-1"}, {"quantity": 250}) == {"quantity": 40, "part_number": "A-1"}
     assert part_facts({"current_price_usd": 9.5}, {"quantity": 250}) == {"current_price_usd": 9.5, "quantity": 250}
     assert part_facts({}, {}) == {}
+
+
+@pytest.mark.asyncio
+async def test_a_package_link_takes_the_record_links_short_id_and_retries_a_taken_one(monkeypatch):
+    from src.services import share_service, supplier_links
+
+    ids = iter(["TAKENtaken12", "FRESHfresh12"])
+    monkeypatch.setattr(share_service, "generate_short_id", lambda length=12: next(ids))
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[_Rows([1]), _Rows([])])
+    assert await supplier_links._fresh_package_short_id(session) == "FRESHfresh12"
+    # Five collisions in a row: refused in words, never a duplicate.
+    monkeypatch.setattr(share_service, "generate_short_id", lambda length=12: "TAKENtaken12")
+    session.execute = AsyncMock(return_value=_Rows([1]))
+    with pytest.raises(Exception) as err:
+        await supplier_links._fresh_package_short_id(session)
+    assert err.value.status_code == 503 and "wasn't made" in err.value.detail

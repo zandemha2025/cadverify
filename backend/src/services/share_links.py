@@ -1,11 +1,18 @@
 """Share-link lifecycle: how long a link lasts, whether it is on, who may end it.
 
-A share link is a public, read-only view of one check (``analyses``) or one
-cost record (``cost_decisions``), addressed by a random short id on the row.
-Product decisions (2026-10-21):
+A share link is a public, read-only view of one check (``analyses``), one
+cost record (``cost_decisions``) or one RFQ package (``rfq_packages``),
+addressed by a random short id on the row. Product decisions (2026-10-21,
+2026-10-22):
 
-* A link ends 30 days after it is made unless the sharer explicitly picks 90
-  days, a year, or no end date (``EXPIRY_CHOICES``; ``None`` = no end date).
+* A link ends 7 days after it is made unless the sharer picks 1, 30 or 90
+  days or a date of their own (``expires_on``, at most a year ahead). The API
+  still takes a year (365) and an explicit ``null`` (no end date) from callers
+  made before; the Share dialog offers neither.
+* A record's link is what a buyer sends a supplier: it shows the part, its
+  specs, the buyer's note and quantity, the CAD only when the sharer ticks
+  it, and our cost estimate only when the sharer turns it on
+  (``share_options``; ``src.services.supplier_links``).
 * The person who made the link, or an org admin, can switch it off at any time.
   A link made before ``share_created_by`` existed falls back to the record's
   owner (plus admins).
@@ -20,37 +27,73 @@ then simply unknown (404).
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Optional, Union
 
 from fastapi import HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models import Analysis, CostDecision, Membership
+from src.db.models import Analysis, CostDecision, Membership, RfqPackage
 
-DEFAULT_DAYS = 30
-EXPIRY_CHOICES = (30, 90, 365)
+DEFAULT_DAYS = 7
+# 1, 7, 30 and 90 days are the Share dialog's; a year stays for API callers made before.
+EXPIRY_CHOICES = (1, 7, 30, 90, 365)
+DIALOG_CHOICES = (1, 7, 30, 90)
+MAX_DAYS_AHEAD = 366
 
-ShareRow = Union[Analysis, CostDecision]
+ShareRow = Union[Analysis, CostDecision, RfqPackage]
 Status = Literal["active", "expired", "off"]
 
 
 class ShareOptions(BaseModel):
-    """Body of ``POST .../share``. Omitted body or field: 30 days.
+    """Body of ``POST .../share``. Omitted body or field: 7 days, no cost, no CAD.
 
-    ``expires_in_days: null`` is the explicit "no end date" choice.
+    ``expires_on`` (a date, the link works through that day, UTC) wins over
+    ``expires_in_days``. ``expires_in_days: null`` is the explicit "no end
+    date" choice, kept for API callers made before the Share dialog.
+    ``include_cost`` / ``include_cad`` / ``note`` / ``quantity`` are what a
+    record's link shows its supplier (``src.services.supplier_links``).
     """
 
     expires_in_days: Optional[int] = DEFAULT_DAYS
+    expires_on: Optional[date] = None
+    include_cost: bool = False
+    include_cad: bool = False
+    note: Optional[str] = Field(default=None, max_length=2000)
+    quantity: Optional[int] = Field(default=None, ge=1, le=10_000_000)
 
     @field_validator("expires_in_days")
     @classmethod
     def _allowed(cls, value: Optional[int]) -> Optional[int]:
         if value is not None and value not in EXPIRY_CHOICES:
-            raise ValueError("expires_in_days must be 30, 90, 365 or null (no end date)")
+            raise ValueError("expires_in_days must be 1, 7, 30, 90 or 365 (or a date in expires_on)")
         return value
+
+    @model_validator(mode="after")
+    def _date_ahead(self) -> "ShareOptions":
+        if self.expires_on is not None:
+            today = now_utc().date()
+            if self.expires_on < today:
+                raise ValueError("The end date has passed. Pick today or a later day.")
+            if self.expires_on > today + timedelta(days=MAX_DAYS_AHEAD - 1):
+                raise ValueError("A link lasts a year at most. Pick an earlier day.")
+        return self
+
+    def ends_at(self, now: Optional[datetime] = None) -> Optional[datetime]:
+        """When the link stops working; None is no end date."""
+        if self.expires_on is not None:
+            return datetime.combine(self.expires_on, time(23, 59, 59), tzinfo=timezone.utc)
+        if self.expires_in_days is None:
+            return None
+        return (now or now_utc()) + timedelta(days=self.expires_in_days)
+
+    def shown(self) -> dict[str, Any]:
+        """What the link shows, as it is saved on the row (``share_options``)."""
+        note = (self.note or "").strip() or None
+        return {"include_cost": bool(self.include_cost), "include_cad": bool(self.include_cad),
+                "note": note, "quantity": self.quantity}
 
 
 def now_utc() -> datetime:
@@ -92,7 +135,7 @@ def ended_at(row: ShareRow) -> Optional[datetime]:
 def url_for(row: ShareRow) -> Optional[str]:
     if not row.share_short_id:
         return None
-    prefix = "/s/cost/" if isinstance(row, CostDecision) else "/s/"
+    prefix = "/s/cost/" if isinstance(row, CostDecision) else "/s/pkg/" if isinstance(row, RfqPackage) else "/s/"
     return f"{prefix}{row.share_short_id}"
 
 
@@ -112,18 +155,29 @@ def fields(row: ShareRow) -> dict[str, Any]:
         "share_ended_at": _iso(ended_at(row)),
         # Made before links had an end date; it was given one at the release.
         "share_end_date_added": bool(row.share_short_id) and row.share_created_at is None,
+        # What the link shows (a record's or a package's link); None for a check's.
+        **({"share_shows": getattr(row, "share_options", None) if row.share_short_id else None}
+           if hasattr(row, "share_options") else {}),
     }
 
 
-def open_link(row: ShareRow, user_id: int, days: Optional[int], short_id: str) -> None:
-    """Start a new link on ``row`` (a new short id; any old one stops resolving)."""
+def open_link(row: ShareRow, user_id: int, days: Optional[int], short_id: str, *,
+              ends_at: Optional[datetime] = None, shows: Optional[dict] = None) -> None:
+    """Start a new link on ``row`` (a new short id; any old one stops resolving).
+
+    ``ends_at`` (a chosen date) wins over ``days``; ``shows`` is what a record's
+    or package's link shows (``ShareOptions.shown``).
+    """
     now = now_utc()
     row.share_short_id = short_id
     row.is_public = True
     row.share_created_at = now
     row.share_created_by = user_id
-    row.share_expires_at = now + timedelta(days=days) if days is not None else None
+    row.share_expires_at = ends_at if ends_at is not None else (
+        now + timedelta(days=days) if days is not None else None)
     row.share_revoked_at = None
+    if hasattr(row, "share_options"):
+        row.share_options = shows
 
 
 def close_link(row: ShareRow) -> None:
@@ -207,7 +261,7 @@ async def list_links(
 
     out: list[dict[str, Any]] = []
     admin = await org_role(session, org_id, user_id) == "admin"
-    for model, kind in ((Analysis, "check"), (CostDecision, "record")):
+    for model, kind in ((Analysis, "check"), (CostDecision, "record"), (RfqPackage, "package")):
         stmt = select(model).where(model.org_id == org_id, model.share_short_id.is_not(None))
         if not everyone:
             stmt = stmt.where(
@@ -220,14 +274,15 @@ async def list_links(
             )
         ).scalars().all()
         for row in rows:
-            name = row.filename
+            name = row.title if isinstance(row, RfqPackage) else row.filename
             if isinstance(row, CostDecision) and row.label:
                 name = row.label
             out.append(
                 {
                     "kind": kind,
                     "id": row.ulid,
-                    "part_key": row.mesh_hash,
+                    "part_key": getattr(row, "mesh_hash", None),
+                    "shows": getattr(row, "share_options", None),
                     "name": name,
                     "url": url_for(row),
                     "status": status(row),

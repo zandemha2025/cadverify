@@ -954,6 +954,10 @@ def serialize_package(package: RfqPackage, *, include_items: bool = False) -> di
         "created_at": package.created_at.isoformat() if package.created_at else None,
         "updated_at": package.updated_at.isoformat() if package.updated_at else None,
     }
+    if hasattr(package, "share_short_id"):
+        from src.services import share_links
+
+        out.update(share_links.fields(package))
     if include_items:
         # Saved as the supplier's copy; one saved before that is cleaned here.
         out["items"] = [outbound.rfq_item(item) for item in package.items_json or []]

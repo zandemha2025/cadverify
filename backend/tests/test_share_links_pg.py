@@ -1,7 +1,7 @@
 """Share links that end and can be switched off, against real Postgres.
 
 Skipped unless DATABASE_URL points at Postgres migrated to head. Covers: the
-30-day default and the explicit longer choices (no end date included), the
+7-day default and the other choices (API callers' no end date included), the
 public page's 410 for an expired or switched-off link (no record data), who may
 switch a link off (its maker or an org admin), re-sharing, the "my links" list,
 and that another org's record is the same 404.
@@ -44,13 +44,13 @@ async def test_link_lifecycle_and_who_may_switch_it_off(stores):  # noqa: F811 -
             assert set(off.json()["detail"]) == {"code", "message", "ended_at"}  # no record data
             assert (await client.get(f"/s/cost/{Q['d_share']}")).json()["detail"]["code"] == "share_switched_off"
 
-            # Default: 30 days.
+            # Default: 7 days.
             made = await client.post(f"/api/v1/analyses/{Q['analysis']}/share")
             assert made.status_code == 200, made.text
             link = made.json()
             assert link["share_status"] == "active" and link["share_url"] != f"/s/{Q['a_share']}"
             ends = _when(link["share_expires_at"]) - datetime.now(timezone.utc)
-            assert timedelta(days=29, hours=23) < ends <= timedelta(days=30)
+            assert timedelta(days=6, hours=23) < ends <= timedelta(days=7)
             # Idempotent while on.
             assert (await client.post(f"/api/v1/analyses/{Q['analysis']}/share")).json()["share_url"] == link["share_url"]
             public = await client.get(link["share_url"])
@@ -121,7 +121,7 @@ async def test_my_links_list(stores):  # noqa: F811 - the imported fixture
             _act(app, w.users["owner"])
             body = (await client.get("/api/v1/share-links")).json()
             assert body["scope"] == "mine" and body["is_admin"] is False
-            assert body["choices"] == [30, 90, 365, None]
+            assert body["choices"] == [1, 7, 30, 90] and body["default_days"] == 7
             by_id = {item["id"]: item for item in body["links"]}
             assert len(body["links"]) == 6  # P, C, Q: a check link and a record link each
             assert by_id[P["analysis"]]["status"] == "off" and by_id[P["analysis"]]["can_switch_off"] is False

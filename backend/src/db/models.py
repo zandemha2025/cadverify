@@ -731,6 +731,10 @@ class CostDecision(Base):
     share_revoked_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # What the current link shows (migration 0063, ``src.services.supplier_links``):
+    # {include_cost, include_cad, note, quantity}. NULL: a link made before it,
+    # which shows no cost.
+    share_options: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -2398,6 +2402,12 @@ class RfqPackage(Base):
     __table_args__ = (
         Index("ix_rfq_packages_org_created", "org_id", "created_at"),
         Index("ix_rfq_packages_org_status", "org_id", "status"),
+        Index(
+            "ix_rfq_packages_share",
+            "share_short_id",
+            unique=True,
+            postgresql_where=text("share_short_id IS NOT NULL"),
+        ),
         CheckConstraint(
             "status IN ('generated','archived')",
             name="ck_rfq_packages_status",
@@ -2436,6 +2446,17 @@ class RfqPackage(Base):
     items_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     warnings_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    # A package link: the supplier opens the package without signing in
+    # (migration 0063, ``src.services.share_links`` / ``supplier_links``).
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    share_short_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    share_created_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    share_created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    share_expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    share_revoked_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    share_options: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
