@@ -29,6 +29,9 @@ test("deleting says what goes, who may, what stays, and promises nothing about b
   assert.match(text, /It can’t be undone/);
   assert.match(text, /admin can delete the organization/);
   assert.match(text, /without its name or results/);
+  // An org's audit rows lose the actor; usage counts lose the file's fingerprint.
+  assert.match(text, /also without who did them or from where: no email, network address or browser/);
+  assert.match(text, /usage counts, without the files’ fingerprints/);
   assert.match(text, /Backups and the storage provider’s earlier versions of files aren’t changed by it/);
   // No retention period is promised for backups.
   assert.doesNotMatch(text, /\b\d+ days\b/);

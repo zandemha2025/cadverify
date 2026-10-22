@@ -118,7 +118,7 @@ async def _seed_part(session, root: Path, w: World, label: str, org_label: str, 
     """One part with a row in every table a part owns, and its stored files."""
     from src.db.models import (
         Analysis, AuditLog, Batch, BatchItem, CostDecision, GroundTruthRecordRow, Job,
-        Notification, PartContext, PartSignature, PartSummary, RfqPackage, WebhookDelivery,
+        Notification, PartContext, PartSignature, PartSummary, RfqPackage, UsageEvent, WebhookDelivery,
     )
     from src.services import share_links
     from src.services.source_artifact_service import save_source_artifact
@@ -159,6 +159,12 @@ async def _seed_part(session, root: Path, w: World, label: str, org_label: str, 
                  resource_id=a.ulid, file_hash=h, result_summary="pass", detail_json={"file_name": name}),
         AuditLog(user_id=uid, org_id=org, user_email="x", action="decision.created", resource_type="cost_decision",
                  resource_id=d.ulid, detail_json={"filename": name}),
+        # Who did it, from where: the actor's email, network address and browser.
+        AuditLog(user_id=uid, org_id=org, user_email=f"actor-{label}-{w.tag}@example.com", action="share.created",
+                 resource_type="analysis", resource_id=a.share_short_id, ip_address="203.0.113.7",
+                 user_agent=f"Mozilla/5.0 actor-{label}"),
+        UsageEvent(user_id=uid, org_id=org, event_type="analysis", analysis_id=a.id, mesh_hash=h,
+                   face_count=12, duration_ms=1.0),
         WebhookDelivery(batch_id=batch.id, org_id=org, event_type="batch_item.completed",
                         payload_json={"item_ulid": item.ulid, "filename": name}),
         RfqPackage(org_id=org, user_id=uid, title=f"RFQ package - {name}", item_count=1,
@@ -324,6 +330,14 @@ async def test_deleting_a_part_removes_everything_it_owns_and_nothing_else(store
             assert set((await _rows_for(org, part["hash"])).values()) == {1}, part["name"]
         # Actual costs logged by part number only stay.
         assert await _count("SELECT count(*) FROM ground_truth_records WHERE org_id=:o AND part_id='PN-P'", o=A) == 1
+        # Usage counts stay, without the deleted file's fingerprint; other parts and orgs keep theirs.
+        assert await _count("SELECT count(*) FROM usage_events WHERE org_id=:o AND user_id=:u", o=A,
+                            u=w.users["owner"]) == 3
+        for part in (P, C):
+            assert await _count("SELECT count(*) FROM usage_events WHERE mesh_hash=:h AND org_id=:o",
+                                h=part["hash"], o=A) == 0
+        assert await _count("SELECT count(*) FROM usage_events WHERE mesh_hash=:h AND org_id=:o", h=Q["hash"], o=A) == 1
+        assert await _count("SELECT count(*) FROM usage_events WHERE mesh_hash=:h AND org_id=:o", h=P["hash"], o=B) == 1
         # Batch items that produced it go (with their delivery logs); the batch's counters follow.
         assert await _count("SELECT count(*) FROM batch_items WHERE batch_id=:b", b=P["batch"]) == 1
         assert await _count("SELECT total_items FROM batches WHERE id=:b", b=P["batch"]) == 1
@@ -526,6 +540,23 @@ async def test_deleting_the_organization(stores):
                             "AND user_id=:u", o=A, u=w.users["admin"]) == 1
         assert await _count("SELECT count(*) FROM audit_log WHERE detail_json::text LIKE :n", n="%Q-secret%") == 0
         assert await _count("SELECT count(*) FROM audit_log WHERE detail_json::text LIKE :n", n=f"%Acme A {w.tag}%") == 0
+        # The org's audit rows drop who did each thing and from where: email, network address, browser.
+        assert await _count("SELECT count(*) FROM audit_log WHERE user_email LIKE :e", e=f"actor-%-{w.tag}@%") == 1
+        assert await _count("SELECT count(*) FROM audit_log WHERE user_email = :e", e=f"actor-BP-{w.tag}@example.com") == 1
+        assert await _count(
+            "SELECT count(*) FROM audit_log WHERE detail_json->>'deletion_id' = :d AND detail_json->>'redacted' = "
+            "'organization_deleted' AND (user_email <> 'redacted' OR ip_address IS NOT NULL OR user_agent IS NOT NULL)",
+            d=receipt["id"]) == 0
+        assert await _count(
+            "SELECT count(*) FROM audit_log WHERE detail_json->>'deletion_id' = :d AND user_email = 'redacted'",
+            d=receipt["id"]) >= 3
+        assert await _count("SELECT count(*) FROM audit_log WHERE user_agent LIKE 'Mozilla/5.0 actor-%' "
+                            "AND user_agent IN ('Mozilla/5.0 actor-P', 'Mozilla/5.0 actor-C', 'Mozilla/5.0 actor-Q') "
+                            "AND org_id IS NULL") == 0
+        # Usage counts no longer name any of the org's files.
+        assert await _count("SELECT count(*) FROM usage_events WHERE org_id IS NULL AND mesh_hash = ANY(:h)",
+                            h=[w.parts[k]["hash"] for k in ("P", "C", "Q")]) == 0
+        assert await _count("SELECT count(*) FROM usage_events WHERE org_id=:o AND mesh_hash IS NOT NULL", o=B) == 1
         assert await _count("SELECT count(*) FROM data_deletions WHERE org_id=:o AND final_sweep_due_at IS NOT NULL",
                             o=A) == 1
     finally:

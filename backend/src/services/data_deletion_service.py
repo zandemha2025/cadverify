@@ -38,7 +38,8 @@ What stays, and why:
   ``{"redacted": "part_deleted"}``; a ``part.deleted`` row records who deleted
   which SHA-256 and when, and the counts. No file name is kept.
 * ``data_deletions`` keeps the receipt (hash, counts, progress), no file name.
-* ``usage_events`` (metering: event type, time, hash, face count, duration).
+* ``usage_events`` (metering: event type, time, face count, duration); the
+  deleted file's hash is cleared from them.
 * ``trial_checks`` and ``catalog_parts``: the per-account free-check and
   free-catalog ledgers (account id + file hash). Deleting a part never gives a
   free check back; otherwise delete-and-rerun would be unlimited.
@@ -51,7 +52,10 @@ What stays, and why:
 
 Organization deletion removes every row that belongs to the organization (all
 org-scoped tables cascade from ``organizations``), every stored file under the
-org's prefixes, members' memberships and the org's API keys. Members are
+org's prefixes, members' memberships and the org's API keys. Its audit rows
+keep the event and its time only: details, result, and the actor's email,
+network address and browser are dropped. Its usage rows keep their counts
+with no organization and no file hash. Members are
 signed out (their session version is bumped); a member left without an
 organization gets a new empty personal one, as at sign-up. Accounts, billing
 records (Stripe customer/subscription rows and the invoices Stripe keeps) and
@@ -89,6 +93,7 @@ from src.db.models import (
     PartSignature,
     PartSummary,
     RfqPackage,
+    UsageEvent,
     User,
     WebhookDelivery,
 )
@@ -106,6 +111,9 @@ LEASE = timedelta(minutes=5)
 
 PART = "part"
 ORGANIZATION = "organization"
+# What an audit row's actor email becomes when the row is redacted (the
+# column is NOT NULL). The Activity list shows it as the actor.
+REDACTED_EMAIL = "redacted"
 
 
 def now_utc() -> datetime:
@@ -416,7 +424,7 @@ async def part_deletion_preview(
 KEPT_AFTER_PART_DELETE = [
     "A deletion record: who deleted the file with this SHA-256 fingerprint, and when. Not its name or results.",
     "Audit events about the part, with their details removed.",
-    "Usage counts (time, fingerprint, face count) and your free-check count: deleting a part doesn't give a check back.",
+    "Usage counts (time and face count, without the file's fingerprint) and your free-check count: deleting a part doesn't give a check back.",
     "Actual costs logged by part number only, your parts manifest and BOM trees.",
     "Backups and the storage provider's earlier versions of stored files: the application doesn't change them.",
 ]
@@ -426,7 +434,8 @@ KEPT_AFTER_ORG_DELETE = [
     "Plans and billing records: each account's plan and subscription (not cancelled by this; cancel in Plan and billing), and the invoices the payment processor (Stripe) keeps.",
     "Each account's free-check count.",
     "A deletion record: who deleted the organization and when, with counts. Not its name, files or results.",
-    "Audit events, with their details removed.",
+    "Audit events, with their details removed and without who did them or from where (email, network address, browser).",
+    "Usage counts (time and face count), without the files' fingerprints.",
     "Backups and the storage provider's earlier versions of stored files: the application doesn't change them.",
 ]
 
@@ -535,6 +544,9 @@ async def _delete_part_rows(session: AsyncSession, rows: PartRows, deletion_ulid
     await run("part_contexts", delete(PartContext).where(PartContext.org_id == org_id, PartContext.mesh_hash.in_(hashes)))
     await run("part_summaries", delete(PartSummary).where(PartSummary.org_id == org_id, PartSummary.mesh_hash.in_(hashes)))
     await run("part_signatures", delete(PartSignature).where(PartSignature.org_id == org_id, PartSignature.mesh_hash.in_(hashes)))
+    # Usage counts stay; they stop naming the file.
+    await run("usage_events_unhashed", update(UsageEvent).where(
+        UsageEvent.org_id == org_id, UsageEvent.mesh_hash.in_(hashes)).values(mesh_hash=None))
     if rows.decision_ids:
         await run("cost_decisions", delete(CostDecision).where(CostDecision.id.in_(rows.decision_ids)))
     if rows.analysis_ids:
@@ -789,14 +801,25 @@ async def delete_organization(
               {"kind": "orphans", "store": "meshes"}]
     steps.append({"kind": "prefix", "store": "direct-uploads", "value": f"incoming/{org_id}", "optional": True})
 
+    # The org's audit rows keep that something happened and when; not what,
+    # and not who did it or from where (email, network address, browser).
     redacted = await session.execute(
         update(AuditLog)
         .where(AuditLog.org_id == org_id)
         .values(detail_json={"redacted": "organization_deleted", "deletion_id": deletion_ulid, "org_id": org_id},
-                result_summary=None)
+                result_summary=None, user_email=REDACTED_EMAIL, ip_address=None, user_agent=None)
         .execution_options(synchronize_session=False)
     )
     counts["audit_events_redacted"] = int(redacted.rowcount or 0)
+    # Usage counts outlive the organization (its FK is SET NULL) without the
+    # files' hashes. Their links to the org's checks and keys are cleared here,
+    # before the cascade: Postgres would otherwise re-check a row's analysis
+    # link while setting its org to NULL, after that analysis was deleted.
+    kept = await session.execute(
+        update(UsageEvent).where(UsageEvent.org_id == org_id)
+        .values(mesh_hash=None, analysis_id=None, api_key_id=None).execution_options(synchronize_session=False)
+    )
+    counts["usage_events_unhashed"] = int(kept.rowcount or 0)
     # Written without an org FK so the organization's removal leaves it intact.
     session.add(
         AuditLog(
