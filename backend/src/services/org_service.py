@@ -446,9 +446,11 @@ async def _redeemable_invite(
 async def invite_summary(session: AsyncSession, raw_token: str) -> dict:
     """What an invite link is for, shown to its holder before they sign in.
 
-    The organization, the role, who sent it, the invited address and when it
-    expires: what the landing page names so the person can tell the invite is
-    genuine, and what sign-up prefills. Only a pending invite answers; an
+    The organization, the role, the inviter's name, the invited address and
+    when it expires: what the landing page names so the person can tell the
+    invite is genuine, and what sign-up prefills (and binds the account to).
+    No member's address, the inviter's included: anyone the link was forwarded
+    to reads this without signing in. Only a pending invite answers; an
     unknown one is 404 and a used, revoked or expired one 409, with no details.
     Read-only. Who may redeem it is still decided at accept (the invited
     account only).
@@ -471,19 +473,16 @@ async def invite_summary(session: AsyncSession, raw_token: str) -> dict:
     org_name = (
         await session.execute(select(Organization.name).where(Organization.id == inv.org_id))
     ).scalar_one_or_none()
-    inviter = None
+    inviter_name = None
     if inv.created_by is not None:
-        inviter = (
-            await session.execute(
-                select(User.full_name, User.email).where(User.id == inv.created_by)
-            )
-        ).first()
+        inviter_name = (
+            await session.execute(select(User.full_name).where(User.id == inv.created_by))
+        ).scalar_one_or_none()
     return {
         "org_name": org_name,
         "role": inv.role,
         "email": inv.email,
-        "invited_by": inviter.email if inviter else None,
-        "invited_by_name": (inviter.full_name or "").strip() or None if inviter else None,
+        "invited_by_name": (inviter_name or "").strip() or None,
         "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
     }
 

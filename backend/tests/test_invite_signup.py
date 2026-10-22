@@ -107,7 +107,10 @@ async def test_signing_up_from_an_invite_joins_that_org_and_keeps_no_company_nam
             body = r.json()
             assert body["org_name"] == "Kestrel Aero Components, Inc."
             assert body["role"] == "viewer" and body["email"] == f"dana@{domain}"
-            assert body["invited_by"] == f"sam@{domain}" and body["invited_by_name"] == "Sam Okafor"
+            assert body["invited_by_name"] == "Sam Okafor"
+            # The link is public: it names the inviter, never the inviter's address.
+            assert set(body) == {"org_name", "role", "email", "invited_by_name", "expires_at"}
+            assert f"sam@{domain}" not in r.text
             assert r.headers["cache-control"] == "no-store"
             assert (await anon.post("/api/v1/orgs/invites/summary", json={"token": "nope"})).status_code == 404
 
@@ -181,3 +184,98 @@ async def test_a_personal_org_the_person_renamed_or_shares_is_left_alone(_engine
     finally:
         await _cleanup(users, orgs)
         await _engine.dispose_engine()
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_an_invite_summary_names_no_member_address_and_only_a_pending_invite_answers(_engine):
+    """Anyone holding the link reads its summary without signing in, so it says
+    the org, the role, the inviter's name, the invited address and the expiry,
+    and nothing else: no inviter or member address, and nothing at all for an
+    unknown, revoked, used or expired invite."""
+    from src.services.org_service import generate_invite_token
+
+    tag = uuid.uuid4().hex[:8]
+    org = str(ULID())
+    users: list[int] = []
+    try:
+        await _q("INSERT INTO organizations (id, name, slug, created_at) VALUES (:id, :n, :s, now())",
+                 id=org, n=f"Harbor Fab {tag}", s=f"harbor-{tag}")
+        for who, name, role in (("ana", "Ana Ruiz", "admin"), ("ben", None, "member")):
+            rows = await _q(
+                "INSERT INTO users (email, email_lower, auth_provider, full_name, current_org_id) "
+                "VALUES (:e, :e, 'password', :n, :o) RETURNING id",
+                e=f"{who}@harbor{tag}.com", n=name, o=org)
+            users.append(int(rows[0][0]))
+            await _q("INSERT INTO memberships (id, org_id, user_id, org_role, created_at) "
+                     "VALUES (:i, :o, :u, :r, now())", i=str(ULID()), o=org, u=users[-1], r=role)
+        ana, ben = users
+        tokens = {}
+        for state, by, when, revoked in (
+            ("pending", ana, "now() + interval '7 days'", None),
+            ("nameless", ben, "now() + interval '7 days'", None),
+            ("revoked", ana, "now() + interval '7 days'", "now()"),
+            ("expired", ana, "now() - interval '1 minute'", None),
+        ):
+            raw, token_hash = generate_invite_token()
+            tokens[state] = raw
+            await _q(
+                "INSERT INTO org_invites (org_id, email, role, token_hash, created_by, expires_at, revoked_at, created_at) "
+                f"VALUES (:o, :e, 'member', :h, :b, {when}, {revoked or 'NULL'}, now())",
+                o=org, e=f"new-{state}@elsewhere{tag}.com", h=token_hash, b=by)
+
+        async with AsyncClient(transport=ASGITransport(app=_app(None)), base_url="http://t") as anon:
+            r = await anon.post("/api/v1/orgs/invites/summary", json={"token": tokens["pending"]})
+            assert r.status_code == 200, r.text
+            assert r.json()["org_name"] == f"Harbor Fab {tag}" and r.json()["invited_by_name"] == "Ana Ruiz"
+            assert r.json()["email"] == f"new-pending@elsewhere{tag}.com"
+            # An inviter with no name is just not named: their address doesn't stand in.
+            nameless = await anon.post("/api/v1/orgs/invites/summary", json={"token": tokens["nameless"]})
+            assert nameless.status_code == 200 and nameless.json()["invited_by_name"] is None
+            for res in (r, nameless):
+                assert set(res.json()) == {"org_name", "role", "email", "invited_by_name", "expires_at"}
+                assert f"harbor{tag}.com" not in res.text and "new-revoked" not in res.text
+            for state, status in (("revoked", 409), ("expired", 409)):
+                res = await anon.post("/api/v1/orgs/invites/summary", json={"token": tokens[state]})
+                assert res.status_code == status, (state, res.text)
+                assert "Harbor" not in res.text and "@" not in res.text and "Ana" not in res.text
+            for bad in (tokens["pending"][:-1], tokens["pending"] + "x", "x" * 43):
+                res = await anon.post("/api/v1/orgs/invites/summary", json={"token": bad})
+                assert res.status_code == 404 and "Harbor" not in res.text
+            assert (await anon.post("/api/v1/orgs/invites/summary", json={"token": "  "})).status_code == 400
+    finally:
+        await _cleanup(users, [org])
+        await _engine.dispose_engine()
+
+
+def test_the_invite_summary_is_rate_limited_per_visitor(monkeypatch):
+    """30 a minute from one address, then 429 (the token itself is 256 random bits)."""
+    from fastapi import HTTPException
+    from fastapi.testclient import TestClient
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+
+    import src.auth.rate_limit as rl
+    from src.db.engine import get_db_session
+    from src.services import org_service
+
+    monkeypatch.setenv("REDIS_URL", "memory://")
+    monkeypatch.setattr(rl.limiter, "enabled", True)
+    rl.limiter.reset()
+
+    async def _unknown(_session, _token):
+        raise HTTPException(status_code=404, detail="Invite not found or already used.")
+
+    monkeypatch.setattr(org_service, "invite_summary", _unknown)
+    app = _app(None)
+    app.add_exception_handler(RateLimitExceeded, rl.rate_limit_handler)
+    app.add_middleware(SlowAPIMiddleware)
+    app.dependency_overrides[get_db_session] = lambda: None
+    try:
+        client = TestClient(app)
+        for _ in range(30):
+            assert client.post("/api/v1/orgs/invites/summary", json={"token": "guess"}).status_code == 404
+        r = client.post("/api/v1/orgs/invites/summary", json={"token": "guess"})
+        assert r.status_code == 429 and r.headers.get("Retry-After")
+    finally:
+        rl.limiter.reset()
