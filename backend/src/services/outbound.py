@@ -85,12 +85,12 @@ DRIVER_NAMES = frozenset({
     "setup_cost", "nre_cost", "inspection_cost", "consumables_cost",
     "finishing_cost", "plate_removal_cost", "support_removal_cost",
     "stress_relief_cost", "sinter_cost", "finish_machining", "tolerance_class",
-    "tooling_cost", "tooling_per_part", "region_split", "min_charge_floor",
+    "tooling_cost", "tooling_per_part", "region_split", "min_charge_floor", "blank_outside_cost",
 } | {f"spec_{op}_cost" for op in _spec_ops()})
 LINE_ITEMS = frozenset({
     "amortized_fixed", "material", "machine", "labor", "nre", "inspection",
     "consumables", "finishing", "tolerance", "plate_removal", "support_removal",
-    "stress_relief", "sinter", "finish_machining", "min_charge_floor", "tooling",
+    "stress_relief", "sinter", "finish_machining", "min_charge_floor", "tooling", "blank_outside",
 } | {f"spec_{op}" for op in _spec_ops()})
 ASSUMPTION_NAMES = frozenset({
     "labor_rate", "region_labor", "region_material", "region_tooling", "margin",

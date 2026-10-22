@@ -42,6 +42,7 @@ LINE_NAMES: dict = {
     "stress_relief": "Stress relief",
     "support_removal": "Support removal",
     "your_actuals": "Your actuals",
+    "blank_outside": "Blank cut outside",
     ROUNDING_KEY: "Rounding",
     UNACCOUNTED_KEY: "Not in the lines",
 }

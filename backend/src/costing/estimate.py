@@ -235,9 +235,16 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
         Driver("region_tooling", rt, "×", region_prov,
                f"region {region}: tooling ×{rt:g} (offshore toolmaking labor)"),
         Driver("margin", g["margin"], "frac", rates.prov_tag("margin"),
-               "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin" + shop_note),
+               "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"
+               + ("; at 0 the prices are should-costs, what making it costs a shop, not a supplier's "
+                  "quote, which adds its margin (ce-18)" if not g["margin"] else "") + shop_note),
         Driver("overhead", g["overhead"], "frac", rates.prov_tag("overhead"),
-               "indirect burden on conversion cost (machine+labor+setup)" + shop_note),
+               "indirect burden on conversion cost, the work done on the shop floor: machine (and the tools line, a share of it), "
+               "labor, setup, programming, inspection, and finish machining, sintering, metal-printing post "
+               "work or declared hand operations where the process has them; not material, tooling, EDM wire "
+               "or outside finishing; price = cost × (1 + overhead) on those lines"
+               + ("; at 0 none is added, while a supplier's quote carries its overhead" if not g["overhead"] else "")
+               + shop_note),
         Driver("utilization", g["utilization"], "frac", rates.prov_tag("utilization"),
                "machine utilization (idle-recovery on machine cost)" + shop_note),
         Driver("stock_allowance", g["stock_allowance"], "×", rates.prov_tag("stock_allowance"),
@@ -916,12 +923,16 @@ def _build_verification(elig, drivers, options, rates, specs=None):
         if not res:
             continue
         rate = res.get("hourly_rate_usd")
-        if res.get("build_env_mm") or (isinstance(rate, (int, float)) and not isinstance(rate, bool)):
+        if (res.get("build_env_mm") or res.get("blank_outside")
+                or (isinstance(rate, (int, float)) and not isinstance(rate, bool))):
             machine_override_by_pv[pv] = {
                 "hourly_rate_usd": rate,
                 "capital_frac": res.get("capital_frac"),
                 "machine_name": res.get("machine"),
                 **({"build_env_mm": res["build_env_mm"]} if res.get("build_env_mm") else {}),
+                # me-02 (D1): a press brake with no cutting machine in the shop bends
+                # in-house and has the blank cut outside (cost_model prices that line).
+                **({"blank_outside": True} if res.get("blank_outside") else {}),
                 # Persistence does not turn a user declaration into calibration.
                 "provenance": Provenance.USER,
             }

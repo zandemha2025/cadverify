@@ -15,6 +15,7 @@ import {
   methodWhy,
   modelPrice,
   otherQtyNote,
+  shouldCostWords,
   withQuantity,
   materialText,
   METHODS,
@@ -484,4 +485,9 @@ test("where the price comes from: the lines add up to it, with a Rounding line (
   const cl = costLines(cast);
   assert.deepEqual(cl.map((l) => l.name), ["Tooling, shared over 100", "Labor", "Machine", "Material", "Setup, shared over 100"]);
   assert.equal(cl.reduce((s, l) => s + l.value, 0).toFixed(2), "78.23");
+});
+
+test("outside prices say they are should-costs when the rates add no overhead or margin (ce-18)", () => {
+  assert.match(shouldCostWords([{ name: "margin", value: 0 }, { name: "overhead", value: 0 }]), /^Outside prices are should-costs: what making it costs a shop, with no overhead or margin added/);
+  assert.equal(shouldCostWords([{ name: "margin", value: 0.1 }, { name: "overhead", value: 0.15 }]), "Outside prices add 15% overhead and 10% margin from your rates.");
 });

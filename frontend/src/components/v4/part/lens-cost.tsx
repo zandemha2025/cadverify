@@ -22,6 +22,7 @@ import {
   isPriced,
   money,
   otherQtyNote,
+  shouldCostWords,
   priceAt,
   qtyWord,
   trimNum,
@@ -486,7 +487,7 @@ export function CostSheet() {
             <p style={{ margin: "6px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
               {cheapest ? `${days(cheapest.prices.get(p.q)!.lead_time?.low_days, cheapest.prices.get(p.q)!.lead_time?.high_days)} for the cheapest. ` : ""}
               {p.methods.some((m) => m.inHouse && m.prices.has(p.q)) ? "In-house lead time is print time on the machines you declared, with no shipping; your own queue isn’t included. " : ""}
-              Outside lead times are a queue model, not a quote. Model prices, not quotes.
+              Outside lead times are a queue model, not a quote. {shouldCostWords(cost?.assumptions)}
             </p>
             {p.data.key ? <PartActuals partKey={p.data.key} /> : null}
             <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0,1fr)", gap: 10, alignItems: "end", padding: "10px 12px 0" }}>

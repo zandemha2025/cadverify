@@ -527,6 +527,7 @@ const DRIVER_LABEL: Record<string, (q: number, d: CostDriver) => string> = {
   consumables_cost: () => "Tools and coolant",
   tooling_cost: () => "Tooling, the whole tool",
   tooling_per_part: (q) => `Tooling, shared over ${qtyWord(q)}`,
+  blank_outside_cost: () => "Blank cut outside",
   // de-20: a lot priced at the process's order minimum ($300 for wire-arc) says so.
   min_charge_floor: (q) => (q === 1 ? "Order minimum, on one part" : `Order minimum, shared over ${qtyWord(q)}`),
   finish_machining: () => "Finish machining",
@@ -620,6 +621,17 @@ export function costLines(e: CostEstimate | null | undefined): CostLine[] {
     lines.push({ key: ROUNDING_KEY, name: "Rounding", value: f.roundingCents / 100, src: { kind: "typ", label: "Arithmetic" }, how: roundingWords(f), band: "the lines rounded to the cent" });
   }
   return lines;
+}
+
+/** ce-18: what an outside price is. With no overhead or margin on the rates it is a should-cost (what
+ *  making it costs a shop), not a supplier's quote, and it says so; otherwise it says what it adds. */
+export function shouldCostWords(assumptions: readonly { name: string; value: number }[] | null | undefined): string {
+  const v = (n: string) => assumptions?.find((a) => a.name === n)?.value ?? 0;
+  const pct = (x: number) => `${Math.round(x * 1000) / 10}%`;
+  const oh = v("overhead");
+  const mg = v("margin");
+  if (!oh && !mg) return "Outside prices are should-costs: what making it costs a shop, with no overhead or margin added (a supplier’s quote adds both; set yours on Rates).";
+  return `Outside prices add ${pct(oh)} overhead and ${pct(mg)} margin from your rates.`;
 }
 
 /** "2 of 9 from your data": drivers grounded in your file, rates or machines. */

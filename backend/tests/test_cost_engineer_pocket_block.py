@@ -159,3 +159,35 @@ def test_band_is_the_root_sum_square_of_the_line_bands(block):
     from src.costing.confidence import confidence_interval
     ci = confidence_interval(e.unit_cost_usd, assumption_band_pct=e.est_error_band_pct, band_basis=e.band_basis)
     assert round(ci.low_usd, 2) == round(36.6878 * (1 - 0.235), 2) and "no real jobs" in ci.basis
+
+
+# ── ce-18: the lines that weren't explained ───────────────────────────────────
+
+def test_post_process_is_named_and_the_operator_share_is_in_the_formula(block):
+    e = block(100)
+    labor = _driver(e, "labor_cost").source
+    assert labor.startswith("post-process 0.5 hr × $35/hr")
+    assert "hand work and handling allowance (deburr, edge-break, wash, pack and handling between setups)" in labor
+    assert "Gillespie, Hand Deburring, SME 2003" in labor and "set per process on the rate card" in labor
+    machine = _driver(e, "machine_cost").source
+    assert "the operator is 0.35 of it" in machine
+
+
+def test_post_process_hours_set_on_the_rate_card_count_in_house_and_outside():
+    rates = build_rate_card(overrides={"post_hr_part.CNC_3AXIS": 0.15})
+    mat = select_material(PT.CNC_3AXIS, "steel", rates)
+    e = cost_breakdown(PT.CNC_3AXIS, _pocket_block(), mat, "steel", 100, rates, "US")
+    assert e.line_items["labor"] == pytest.approx(0.15 * 35)
+    assert "as set on the rate card" in _driver(e, "labor_cost").source
+
+
+def test_overhead_definition_names_the_lines_it_burdens():
+    from src.costing.estimate import _global_assumptions
+    from src.costing.estimate import EstimateOptions
+
+    rates = build_rate_card()
+    oh = next(d for d in _global_assumptions(rates, EstimateOptions(), "US") if d.name == "overhead")
+    assert oh.source.startswith("indirect burden on conversion cost, the work done on the shop floor: machine (and the tools line")
+    assert "not material, tooling, EDM wire or outside finishing" in oh.source
+    margin = next(d for d in _global_assumptions(rates, EstimateOptions(), "US") if d.name == "margin")
+    assert "should-costs" in margin.source

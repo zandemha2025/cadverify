@@ -295,6 +295,17 @@ def _sheet_cycle(process, drivers, rates: RateCard):
     return cycle, src
 
 
+def _sheet_split(process, drivers, rates: RateCard) -> tuple:
+    """(cut + handling hours, bend hours) of the fabrication cycle: what a cutting
+    machine does and what the press brake does (me-02)."""
+    t = max(drivers.sheet_gauge_mm, 0.1)
+    ref = rates.p(process, "ref_gauge_mm")
+    speed_eff = rates.p(process, "cut_speed_mm_min") * (ref / max(t, ref))
+    cut_hr = (drivers.outline_perimeter_mm / speed_eff) / 60.0
+    bend_hr = int(drivers.bend_count) * rates.p(process, "sec_per_bend") / 3600.0
+    return cut_hr + rates.p(process, "handling_hr"), bend_hr
+
+
 def _formative_cycle(process, drivers, rates: RateCard):
     """Cooling ∝ wall² + shot overhead. Per-shot machine cost is small; tooling
     dominates fixed cost."""
@@ -477,7 +488,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     rm = rates.region_material(region)
     rt = rates.region_tooling(region)
     mgn = 1.0 + margin
-    burden = 1.0 + overhead                   # applied to machine/labor/setup conversion cost
+    # Indirect burden on conversion cost, the work done on the shop floor: machine (and the tools line, a share
+    # of it), labor, setup, programming, inspection, and finish machining, sintering,
+    # metal-printing post work or declared hand operations where the process has them;
+    # not material, tooling, EDM wire or outside finishing; price = cost × (1 + overhead)
+    # on those lines (the rate card and the PDF say the same).
+    burden = 1.0 + overhead
     util = utilization if utilization and utilization > 0 else 1.0
     # Sources must disclose the same multipliers as their displayed values.
     # `margin` is a markup on cost in this model (1 + margin), not gross margin.
@@ -640,6 +656,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     # ---- MACHINE ---------------------------------------------------------
     finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
+    blank_outside_hr = 0.0   # me-02: sheet blank cut outside when the shop has no cutter
     if family == "additive" and print_plan is not None:
         est, placement = print_plan
         machine_hr, n = est.hours_per_part, est.parts_per_plate
@@ -667,6 +684,13 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     elif family == "fabrication":
         machine_hr, cycle_src = _sheet_cycle(process, drivers, rates)
         n = 1
+        if (machine_override or {}).get("blank_outside"):
+            # me-02 (D1): a shop with a press brake and no cutting machine (laser, punch,
+            # plasma, waterjet) bends in-house; the blank is cut outside, its own line below.
+            blank_outside_hr, bend_hr = _sheet_split(process, drivers, rates)
+            machine_hr = bend_hr
+            cycle_src = (f"bends only, on the press brake: {bend_hr * 60:.2f}min; the blank is cut "
+                         f"outside (no laser, punch, plasma or waterjet declared): {cycle_src}")
     elif family == "casting":
         machine_hr, cycle_src = _casting_cycle(process, drivers, material, rates)
         n = 1
@@ -777,7 +801,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         region_mach_note = (f" × region-machine ×{rl_machine:g} (labor {_frac:g} of "
                             f"rate ×{rl:g}, capital global ×1) (typical value, not confirmed by a shop)")
     else:
-        region_mach_note = f" × region-labor ×{rl_machine:g}"
+        # ce-18: the operator share is in the formula: it is the part a region's labor factor moves.
+        region_mach_note = (f" × region ×{rl_machine:g} (the rate is the machine and its operator; "
+                            f"the operator is {rates.g('machine_labor_frac'):g} of it, the share a region's "
+                            f"labor factor moves)")
     # machine-specific override: name the fitted machine, show its OWN rate, and
     # carry its provenance. No override => the card default rate + prov_tag,
     # byte-identical.
@@ -830,6 +857,22 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     f"(typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
+    blank_outside_scaled = 0.0
+    if blank_outside_hr:
+        # An outside shop's cut, at the card's fabrication rate (its laser/punch cell),
+        # bought like outside finishing: region and margin, no in-house overhead.
+        out_rate = rates.p(process, "machine_rate")
+        blank_outside_scaled = blank_outside_hr * out_rate * rl_machine * mgn
+        qm["per_part_usd"] += blank_outside_scaled
+        drivers_out.append(Driver(
+            name="blank_outside_cost", value=round(blank_outside_scaled, 4), unit="$",
+            provenance=rates.prov_tag(f"machine_rate.{process.name}"),
+            source=(f"blank cut outside: cut and handling {blank_outside_hr:.4f} hr × ${out_rate:g}/hr, a "
+                    f"typical outside laser/punch cell rate × region ×{rl_machine:g}{margin_note}; the shop "
+                    f"declares a press brake but no laser, punch, plasma or waterjet "
+                    f"(typical value, not confirmed by a shop)"),
+            error_band_pct=band,
+        ))
     drivers_out.append(Driver(
         # Three significant figures under 0.01 hr: a tiny part's few seconds
         # rounded to 4 decimals read as "0.0 h" of machine time.
@@ -850,6 +893,20 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         support_hr = rates.pget(process, "support_hr_per_cm2") * support_cm2
     elif process == PT.FDM:
         post_hr_part = rates.pget(process, "post_hr_part_unmeasured", post_hr_part)
+    # ce-18 / me-05: a machined part's hand work is named for what it is. The flat
+    # allowance stands in for real non-machine time too (handling between setups,
+    # tool changes), which is why it isn't sized to the deburr alone; the rate card
+    # (post_hr_part.<PROCESS>), a shop or a what-if sets it, in-house and outside alike.
+    machined_note = ""
+    if family == "subtractive":
+        _set = rates.prov_tag(f"post_hr_part.{process.name}") != Provenance.DEFAULT
+        machined_note = (
+            f"; the post-process hours are a hand work and handling allowance (deburr, edge-break, wash, "
+            f"pack and handling between setups), a flat {post_hr_part:g} hr a part, "
+            + ("as set on the rate card" if _set else
+               "typical value, not confirmed by a shop; the hours can be set per process on the rate card")
+            + ". Hand deburring alone is typically 3–10% of machining time (Gillespie, Hand Deburring, "
+              "SME 2003); the allowance also covers handling and non-cut time")
     post_labor = (post_hr_part + support_hr + post_hr_build / n) * labor_rate
     post_labor_learned = post_labor * learn_mult         # touch labor learns (lot average, ce-03)
     labor_scaled = post_labor_learned * rl * mgn * burden
@@ -866,7 +923,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                      f"{learn_note} × region-labor ×{rl:g}{conversion_note}")
     else:
         labor_src = (f"post-process {post_hr_part + support_hr + post_hr_build / n:.6g} hr{support_note} × "
-                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}")
+                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}{machined_note}")
     if family in ("casting", "forging"):
         # Said plainly: this time is per piece and doesn't grow with the part, so at
         # volume a casting or forging twice the size is barely dearer (the metal, which
@@ -1238,6 +1295,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         line_items["consumables"] = round(consumables_scaled, 4)
     if finishing_scaled:
         line_items["finishing"] = round(finishing_scaled, 4)
+    if blank_outside_scaled:
+        line_items["blank_outside"] = round(blank_outside_scaled, 4)
     if tolerance_surcharge:
         line_items["tolerance"] = round(tolerance_surcharge, 4)
     # metal-AM additions (only present for the new families)
