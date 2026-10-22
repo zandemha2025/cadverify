@@ -160,6 +160,11 @@
 /* Cost ranking rows move as one 56px track; keep each to its height. */
 .ob .pv .rank .mr>span:first-child{min-width:0}
 .ob .pv .rank .mr small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Ranked rows sit at fixed 56px steps, so a row may never grow: one line for the name, one for the detail. */
+.ob .pv .rank .mr{height:52px}
+.ob .pv .rank .mr b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* On phones other rows drop the chip under the name; a ranked row can't grow, so its chip keeps its own column. */
+@media (max-width:900px){.ob .pv .rank .mr{grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:7px 10px}.ob .pv .rank .mr .chip{grid-column:2;grid-row:1;justify-self:end}.ob .pv .rank .mr .c{grid-column:3;grid-row:1;min-width:56px}}
 /* Design Studio import, while the imported revision is being checked. */
 .ob .pv .design-note{position:absolute;left:24px;top:200px;width:min(440px,calc(100% - 48px));z-index:5}
 @media (max-width:900px){.ob .pv .design-note{left:16px;top:150px;width:calc(100% - 32px)}}
