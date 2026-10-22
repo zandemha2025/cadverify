@@ -650,3 +650,141 @@ def test_organization_sso_is_exempt(oidc_env, monkeypatch):
 
 
 from tests.test_oidc import oidc_env  # noqa: E402,F401  (fixture)
+
+
+# ── the public challenge routes: a signed challenge, never a session ──────────
+CHALLENGE_ROUTES = (
+    "/auth/two-step/challenge/state",
+    "/auth/two-step/challenge/verify",
+    "/auth/two-step/challenge/setup",
+    "/auth/two-step/challenge/setup/confirm",
+)
+
+
+@requires_pg
+@pytest.mark.asyncio
+async def test_a_burst_of_wrong_codes_is_held_to_the_lock(env, clock):
+    """Guesses sent at once can't slip past the lock: each takes an attempt
+    before its code is compared, so at most LOCK_AFTER are compared before code
+    entry pauses, however many arrive together."""
+    import asyncio
+
+    w = World()
+    try:
+        async with _client() as ac:
+            email = w.email("burst")
+            uid, first = await _signup(ac, email)
+            secret, _codes, _session = await _enrol(ac, first, clock)
+            challenge = (await ac.post("/auth/login", json={"email": email, "password": PASSWORD})).json()["challenge"]
+            right = {totp.code_at_step(secret, clock["step"] + d) for d in (-1, 0, 1)}
+            wrong = next(c for c in (f"{n:06d}" for n in range(1000)) if c not in right)
+            burst = await asyncio.gather(*(
+                ac.post("/auth/two-step/challenge/verify", json={"challenge": challenge, "code": wrong})
+                for _ in range(12)
+            ))
+            codes = [r.json()["detail"]["code"] for r in burst]
+            assert all(r.status_code in (400, 429) for r in burst), [r.text for r in burst]
+            assert codes.count("two_step_code_wrong") <= ts.LOCK_AFTER - 1, codes
+            assert codes.count("two_step_locked") >= 12 - (ts.LOCK_AFTER - 1), codes
+            import src.db.engine as eng
+
+            async with eng.get_session_factory()() as s:
+                failed, locked = (await s.execute(text(
+                    "SELECT failed_attempts, locked_until > now() FROM user_two_step WHERE user_id = :u"), {"u": uid})).first()
+            assert failed == ts.LOCK_AFTER and locked is True
+            # The right code is refused too while it's paused.
+            clock["step"] += 1
+            r = await ac.post("/auth/two-step/challenge/verify", json={"challenge": challenge, "code": totp.code_at_step(secret, clock["step"])})
+            assert r.status_code == 429 and "session" not in r.text
+            assert (await _actions(uid)).count("auth.two_step_locked") == 1
+    finally:
+        await _cleanup(w)
+
+
+@requires_pg
+@pytest.mark.asyncio
+async def test_the_challenge_routes_take_only_a_live_signed_challenge_of_their_purpose(env, clock, monkeypatch):
+    from src.auth.dashboard_session import sign
+
+    w = World()
+    try:
+        async with _client() as ac:
+            email = w.email("only")
+            uid, first = await _signup(ac, email)
+            secret, _codes, session = await _enrol(ac, first, clock)
+            body = {"code": "123456"}
+            # A session (cookie value or a raw signed one) is not a challenge, nor is a tampered one.
+            refused = None
+            for token in (session, sign(uid), "ts1.e30.AAAA" + "A" * 40):
+                for path in CHALLENGE_ROUTES:
+                    r = await ac.post(path, json={"challenge": token, **body}, headers=_cookie(session))
+                    assert r.status_code == 401, (path, r.text)
+                    assert r.json()["detail"]["code"] == "two_step_challenge_invalid"
+                    assert "session" not in r.json() and email not in r.text
+                    refused = refused or r.json()["detail"]
+                    assert r.json()["detail"] == refused
+            # A verify challenge can't set up a new authenticator (or replace this one).
+            challenge = (await ac.post("/auth/login", json={"email": email, "password": PASSWORD})).json()["challenge"]
+            for path in CHALLENGE_ROUTES[2:]:
+                r = await ac.post(path, json={"challenge": challenge, **body})
+                assert r.status_code == 409 and r.json()["detail"]["code"] == "two_step_challenge_purpose"
+            # A setup challenge for an account that already has two-step can't replace it.
+            setup = ts.make_challenge(uid, (await _version(uid)), "setup", "password")
+            r = await ac.post("/auth/two-step/challenge/setup", json={"challenge": setup})
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "two_step_already_on"
+            assert "manual_key" not in r.text
+            # Signing out every session ends the challenge too.
+            r = await ac.post("/auth/sessions/sign-out-others", headers=_cookie(session))
+            assert r.status_code == 200
+            clock["step"] += 1
+            r = await ac.post("/auth/two-step/challenge/verify", json={"challenge": challenge, "code": totp.code_at_step(secret, clock["step"])})
+            assert r.status_code == 401 and r.json()["detail"]["code"] == "two_step_challenge_invalid"
+            # And a challenge older than ten minutes is refused, with the right code.
+            fresh = (await ac.post("/auth/login", json={"email": email, "password": PASSWORD})).json()["challenge"]
+            real = time.time
+            monkeypatch.setattr(ts.time, "time", lambda: real() + ts.CHALLENGE_TTL + 5)
+            r = await ac.post("/auth/two-step/challenge/verify", json={"challenge": fresh, "code": totp.code_at_step(secret, clock["step"])})
+            assert r.status_code == 401 and "session" not in r.json()
+    finally:
+        await _cleanup(w)
+
+
+async def _version(user_id: int) -> int:
+    import src.db.engine as eng
+
+    async with eng.get_session_factory()() as s:
+        return int((await s.execute(text("SELECT session_version FROM users WHERE id = :u"), {"u": user_id})).scalar_one())
+
+
+@pytest.mark.parametrize("path,limit", [
+    ("/auth/two-step/challenge/state", 60),
+    ("/auth/two-step/challenge/verify", 20),
+    ("/auth/two-step/challenge/setup", 20),
+    ("/auth/two-step/challenge/setup/confirm", 20),
+])
+def test_the_challenge_routes_are_rate_limited_per_visitor(monkeypatch, path, limit):
+    from fastapi.testclient import TestClient
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+
+    import src.auth.rate_limit as rl
+    from src.db.engine import get_db_session
+
+    monkeypatch.setenv("REDIS_URL", "memory://")
+    monkeypatch.delenv("PRODUCTION_AUTH_PROXY_REQUIRED", raising=False)
+    monkeypatch.setattr(rl.limiter, "enabled", True)
+    rl.limiter.reset()
+    app = _app()
+    app.state.limiter = rl.limiter
+    app.add_exception_handler(RateLimitExceeded, rl.rate_limit_handler)
+    app.add_middleware(SlowAPIMiddleware)
+    app.dependency_overrides[get_db_session] = lambda: None
+    try:
+        client = TestClient(app)
+        guess = {"challenge": "ts1." + "A" * 40, "code": "123456"}
+        for _ in range(limit):
+            assert client.post(path, json=guess).status_code == 401
+        r = client.post(path, json=guess)
+        assert r.status_code == 429 and r.headers.get("Retry-After")
+    finally:
+        rl.limiter.reset()

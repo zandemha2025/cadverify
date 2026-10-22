@@ -430,11 +430,15 @@ def _locked_error(until: datetime) -> HTTPException:
     )
 
 
-async def _record_failure(session: AsyncSession, user_id: int) -> datetime | None:
-    """Count one wrong code; lock code entry after every LOCK_AFTER in a row.
+async def _take_attempt(session: AsyncSession, user_id: int) -> tuple[int, datetime | None] | None:
+    """Count one attempt before its code is compared; None while code entry is paused.
 
-    Committed at once (its own statement and commit), so a guess that fails
-    still counts even though the request then raises.
+    One statement takes the attempt and, on every LOCK_AFTER-th in a row, the
+    lock with it, and commits at once. Guesses sent together each take their
+    own attempt (the row lock orders them), so no more than LOCK_AFTER are ever
+    compared before the pause, and a guess counts even when its request then
+    fails. A right code gives the count back (and lifts a lock it brought).
+    Returns ``(attempts in a row, locked_until)``.
     """
     row = (
         await session.execute(
@@ -443,7 +447,8 @@ async def _record_failure(session: AsyncSession, user_id: int) -> datetime | Non
                 "locked_until = CASE WHEN (failed_attempts + 1) % :n = 0 "
                 "THEN now() + LEAST(:first * power(2, (failed_attempts + 1) / :n - 1), :max) "
                 "* interval '1 second' ELSE locked_until END, updated_at = now() "
-                "WHERE user_id = :u RETURNING failed_attempts, locked_until"
+                "WHERE user_id = :u AND (locked_until IS NULL OR locked_until <= now()) "
+                "RETURNING failed_attempts, locked_until"
             ),
             {
                 "u": int(user_id),
@@ -453,9 +458,23 @@ async def _record_failure(session: AsyncSession, user_id: int) -> datetime | Non
             },
         )
     ).first()
-    locked_now = None
-    if row is not None and int(row[0]) % LOCK_AFTER == 0 and row[1] is not None:
-        locked_now = row[1]
+    await session.commit()
+    return None if row is None else (int(row[0]), row[1])
+
+
+async def _refuse_paused(session: AsyncSession, user_id: int) -> HTTPException:
+    """The refusal for an account whose code entry is paused (with the real wait)."""
+    row = await load(session, user_id)
+    until = row.locked_until if row is not None and row.locked_until is not None else None
+    return _locked_error(until if until is not None and until > _now() else _now() + LOCK_FIRST)
+
+
+async def _wrong(session: AsyncSession, user_id: int, attempt: tuple[int, datetime | None],
+                 error: HTTPException) -> HTTPException:
+    """A wrong code: the attempt it took already counts. The LOCK_AFTER-th in a
+    row brought the pause; that is audited and is the answer."""
+    attempts, until = attempt
+    if attempts % LOCK_AFTER == 0 and until is not None:
         from src.services.audit_service import append_audit_entry
 
         await append_audit_entry(
@@ -464,10 +483,11 @@ async def _record_failure(session: AsyncSession, user_id: int) -> datetime | Non
             "auth.two_step_locked",
             "user",
             str(user_id),
-            {"failed_attempts": int(row[0]), "locked_until": row[1].isoformat()},
+            {"failed_attempts": attempts, "locked_until": until.isoformat()},
         )
-    await session.commit()
-    return locked_now
+        await session.commit()
+        return _locked_error(until)
+    return error
 
 
 async def prove(
@@ -479,9 +499,11 @@ async def prove(
 ) -> Literal["code", "recovery"]:
     """Check a code or a recovery code for an account with two-step on.
 
-    Locked accounts are refused before anything is compared. A wrong or reused
-    code counts toward the lock. A matching code is spent (its time step can't
-    be used again); a recovery code is marked used. The caller commits.
+    Locked accounts are refused before anything is compared. Each code
+    compared first takes an attempt (:func:`_take_attempt`), so a wrong or
+    reused one counts toward the lock, however many arrive at once. A matching
+    code is spent (its time step can't be used again); a recovery code is
+    marked used; either resets the count. The caller commits.
     """
     row = await load(session, user_id)
     if row is None or not row.enabled or not row.secret_sealed:
@@ -491,6 +513,9 @@ async def prove(
 
     if recovery_code not in (None, ""):
         flat = clean_recovery_code(recovery_code)
+        attempt = await _take_attempt(session, user_id)
+        if attempt is None:
+            raise await _refuse_paused(session, user_id)
         used = None
         if flat is not None:
             used = (
@@ -503,20 +528,23 @@ async def prove(
                 )
             ).first()
         if used is None:
-            await session.rollback()
-            locked = await _record_failure(session, user_id)
-            if locked is not None:
-                raise _locked_error(locked)
-            raise _err(400, "two_step_recovery_wrong", "That recovery code isn't valid or was already used.")
+            raise await _wrong(session, user_id, attempt, _err(
+                400, "two_step_recovery_wrong", "That recovery code isn't valid or was already used."))
         await session.execute(
-            text("UPDATE user_two_step SET failed_attempts = 0, updated_at = now() WHERE user_id = :u"),
+            text("UPDATE user_two_step SET failed_attempts = 0, locked_until = NULL, updated_at = now() "
+                 "WHERE user_id = :u"),
             {"u": int(user_id)},
         )
         return "recovery"
 
     if totp.clean_code(code) is None:
         raise _err(400, "two_step_code_format", "Enter the 6-digit code from your authenticator app.")
+    # Read before an attempt is taken: an unreadable key says "use a recovery
+    # code" without spending the attempts that code needs.
     secret = unseal(row.secret_sealed)
+    attempt = await _take_attempt(session, user_id)
+    if attempt is None:
+        raise await _refuse_paused(session, user_id)
     # The step this code belongs to, if any. Whether it was already spent is
     # decided by the compare-and-set below, so two requests racing with the
     # same code can't both pass.
@@ -526,25 +554,22 @@ async def prove(
         spent = (
             await session.execute(
                 text(
-                    "UPDATE user_two_step SET last_used_step = :s, failed_attempts = 0, updated_at = now() "
+                    "UPDATE user_two_step SET last_used_step = :s, failed_attempts = 0, locked_until = NULL, "
+                    "updated_at = now() "
                     "WHERE user_id = :u AND (last_used_step IS NULL OR last_used_step < :s) RETURNING user_id"
                 ),
                 {"u": int(user_id), "s": step},
             )
         ).first()
     if spent is None:
-        reused = step is not None
-        await session.rollback()
-        locked = await _record_failure(session, user_id)
-        if locked is not None:
-            raise _locked_error(locked)
-        if reused:
-            raise _err(400, "two_step_code_used", "That code was already used. Wait for the next one in the app.")
-        raise _err(
+        if step is not None:
+            raise await _wrong(session, user_id, attempt, _err(
+                400, "two_step_code_used", "That code was already used. Wait for the next one in the app."))
+        raise await _wrong(session, user_id, attempt, _err(
             400,
             "two_step_code_wrong",
             "That code didn't match. Use the newest code in your authenticator app.",
-        )
+        ))
     return "code"
 
 
