@@ -510,3 +510,15 @@ def test_the_answer_counts_and_sums_savings_against_real_prices_only():
     assert (a["make"], a["buy"], a["new_machine"], a["undecided"]) == (2, 1, 1, 2)
     assert (a["saving_usd"], a["saving_parts"], a["make_without_price"], a["with_price"]) == (600.0, 1, 1, 1)
     assert cr.make_or_buy_answer([{"bucket": "in_house"}])["saving_usd"] is None
+
+
+def test_a_machine_shows_the_running_rate_you_set_on_every_row():
+    # oo-11: $85/h set, 35% of it pays for the machine: $55.25/h on every row, not cost ÷ hours.
+    vf2 = cr.machine_entry("Haas VF-2", "cnc_3axis", 3, 85.0, None)
+    assert (vf2["count"], vf2["hourly_rate_usd"], vf2["running_rate_usd"], vf2["capital_frac_set"]) == (3, 85.0, 55.25, False)
+    assert "running_rate_usd" not in cr.machine_entry("Bambu Lab X1C", "fdm")
+    d = _decision("makeable_in_house", estimates=[_est("cnc_3axis", 10, 30.0, cycle=0.25, machine=12.19, owned=True)],
+                  resource={"machine": "Haas VF-2", "process": "cnc_3axis"})
+    r = cr.derive_part_row(item=ITEM, analysis=None, decision=d, meta=None, default_quantity=10,
+                           machines=[vf2, {"name": "Bambu Lab X1C", "process": "fdm"}])
+    assert r["machine_rate_usd"] == 55.25 and r["marginal"] is True

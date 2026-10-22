@@ -692,6 +692,12 @@ def derive_part_row(
         if hours and machine_cost is not None and hours > 0:
             row["machine_rate_usd"] = round(machine_cost / hours, 2)
         row["marginal"] = _driver(est, "owned_in_house") is not None
+        owned_machine = next((m for m in machines if m.get("name") == (row.get("route") or {}).get("machine")
+                              and m.get("running_rate_usd") is not None), None)
+        if row["marginal"] and owned_machine is not None:
+            # The running rate of the machine as you set it, the same on every row
+            # (cost ÷ hours also carries learning at quantity, utilization and margin).
+            row["machine_rate_usd"] = owned_machine["running_rate_usd"]
         material = est.get("material")
         row["material"]["name"] = material
         volume = _num((result.get("geometry") or {}).get("volume_cm3"))
@@ -1102,11 +1108,31 @@ async def _org_machines(session: AsyncSession, org_id: str) -> list[dict]:
     from src.db.models import MachineInstance
 
     rows = (await session.execute(
-        select(MachineInstance.name, MachineInstance.process, MachineInstance.count)
+        select(MachineInstance.name, MachineInstance.process, MachineInstance.count,
+               MachineInstance.hourly_rate_usd, MachineInstance.capital_frac)
         .where(MachineInstance.org_id == org_id)
         .order_by(MachineInstance.name)
     )).all()
-    return [{"name": n, "process": p, "count": max(1, int(c or 1))} for n, p, c in rows]
+    return [machine_entry(n, p, c, r, cf) for n, p, c, r, cf in rows]
+
+
+def machine_entry(name, process, count=1, rate=None, capital_frac=None) -> dict:
+    """A machine as the board names it, with its running rate when you set an hourly rate.
+
+    Running ("marginal") rate: the hourly rate you set, less the share of it that
+    pays for the machine itself (yours, else the rate card's typical share),
+    because a machine you own is already paid for.
+    """
+    from src.costing.rates import build_rate_card
+
+    out = {"name": name, "process": process, "count": max(1, int(count or 1))}
+    if isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0:
+        cf = float(capital_frac) if isinstance(capital_frac, (int, float)) and not isinstance(capital_frac, bool) \
+            else float(build_rate_card().g("machine_capital_frac"))
+        out.update(hourly_rate_usd=round(float(rate), 2), capital_frac=round(cf, 4),
+                   capital_frac_set=isinstance(capital_frac, (int, float)) and not isinstance(capital_frac, bool),
+                   running_rate_usd=round(float(rate) * (1.0 - cf), 2))
+    return out
 
 
 async def _buy_prices(session: AsyncSession, org_id: str, part_keys: Iterable[str]) -> dict[str, dict]:
