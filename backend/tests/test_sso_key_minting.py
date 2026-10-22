@@ -76,7 +76,31 @@ def _oauth_app():
     return app
 
 
-_TOKEN = {"userinfo": {"email": "user@example.com", "sub": "sub-123"}}
+_TOKEN = {
+    "userinfo": {"email": "user@example.com", "sub": "sub-123", "email_verified": True}
+}
+
+
+@pytest.mark.parametrize("verified", [None, False, "false", "yes"])
+def test_google_callback_refuses_an_unverified_email(verified):
+    """Google sign-in never creates or signs into an account on an unverified email."""
+    userinfo = {"email": "user@example.com", "sub": "sub-123"}
+    if verified is not None:
+        userinfo["email_verified"] = verified
+    app = _oauth_app()
+    with patch("src.auth.oauth.oauth") as mock_oauth, patch(
+        "src.auth.oauth.upsert_user", new_callable=AsyncMock, return_value=5
+    ) as mock_upsert:
+        mock_oauth.google.authorize_access_token = AsyncMock(
+            return_value={"userinfo": userinfo}
+        )
+        client = TestClient(app, follow_redirects=False)
+        resp = client.get("/auth/google/callback")
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "oauth_email_unverified"
+    assert "dash_session" not in resp.headers.get("set-cookie", "")
+    mock_upsert.assert_not_called()
 
 
 def test_google_callback_mints_when_no_active_key():

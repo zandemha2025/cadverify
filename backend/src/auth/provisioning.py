@@ -20,6 +20,7 @@ from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import _account_deactivated, _session
 from src.auth.org_context import ensure_personal_org, resolve_org
+from src.auth.sso_org import sso_org_id
 from src.services.audit_service import append_audit_entry
 from src.services.org_saml_service import (
     SamlGroupAssignment,
@@ -135,7 +136,10 @@ async def _federated_user(
 
     A verified email is accepted as bootstrap metadata for a new account. It is
     deliberately *not* sufficient to attach a new subject to an existing user;
-    that requires an authenticated/admin-approved linking workflow.
+    that requires an authenticated/admin-approved linking workflow. The one
+    exception is SAML (see :func:`_saml_may_bind_existing`): the deployment's
+    IdP may bind an account its owning org already holds, or an account SAML
+    itself created before identities were bound.
     """
     provider = identity.provider.strip().lower()
     issuer = identity.issuer.strip().rstrip("/")
@@ -178,13 +182,13 @@ async def _federated_user(
     if not email:
         raise _auth_error(
             400,
-            "oidc_no_email",
+            f"{provider}_no_email",
             "A verified email is required to create a new federated account.",
         )
     if identity.email_verified is not True:
         raise _auth_error(
             403,
-            "oidc_email_unverified",
+            f"{provider}_email_unverified",
             "The identity provider must verify the email before first sign-in.",
         )
 
@@ -193,14 +197,39 @@ async def _federated_user(
     await _lock_key(session, f"email:{email_lower}")
     collision = (
         await session.execute(
-            text("SELECT id FROM users WHERE email_lower = :email_lower FOR UPDATE"),
+            text(
+                "SELECT id, email, is_active, auth_provider FROM users "
+                "WHERE email_lower = :email_lower FOR UPDATE"
+            ),
             {"email_lower": email_lower},
         )
     ).first()
     if collision is not None:
+        if provider == "saml" and await _saml_may_bind_existing(
+            session, user_id=int(collision[0]), auth_provider=str(collision[3] or ""), issuer=issuer
+        ):
+            if collision[2] is False:
+                raise _account_deactivated()
+            await _insert_identity(
+                session,
+                provider=provider,
+                issuer=issuer,
+                subject=subject,
+                user_id=int(collision[0]),
+                email_lower=email_lower,
+            )
+            await append_audit_entry(
+                session,
+                int(collision[0]),
+                "auth.identity_linked",
+                "auth_identity",
+                detail={"provider": provider, "issuer": issuer},
+                user_email=str(collision[1]),
+            )
+            return int(collision[0]), str(collision[1]), False
         raise _auth_error(
             409,
-            "oidc_link_required",
+            f"{provider}_link_required",
             "An account already uses this email. Sign in to that account and approve identity linking.",
         )
 
@@ -223,6 +252,26 @@ async def _federated_user(
     if user is None:
         raise RuntimeError("federated user insert returned no row")
     user_id = int(user[0])
+    await _insert_identity(
+        session,
+        provider=provider,
+        issuer=issuer,
+        subject=subject,
+        user_id=user_id,
+        email_lower=email_lower,
+    )
+    return user_id, email_clean, True
+
+
+async def _insert_identity(
+    session: AsyncSession,
+    *,
+    provider: str,
+    issuer: str,
+    subject: str,
+    user_id: int,
+    email_lower: str,
+) -> None:
     await session.execute(
         text(
             "INSERT INTO auth_identities "
@@ -237,7 +286,49 @@ async def _federated_user(
             "email": email_lower,
         },
     )
-    return user_id, email_clean, True
+
+
+async def _saml_may_bind_existing(
+    session: AsyncSession, *, user_id: int, auth_provider: str, issuer: str
+) -> bool:
+    """Whether a SAML sign-in may bind its NameID to an existing same-email account.
+
+    Only when the account has no identity from this IdP yet (a different NameID
+    already bound to it is never replaced), and either belongs to the org that
+    owns the IdP (``SSO_ORG_ID``) or was created by SAML itself and has never
+    been bound to any SAML identity (accounts from before SAML binding). A
+    password, magic-link or Google account outside the owning org is never
+    taken over: that sign-in gets a 409.
+    """
+    issuers = {
+        str(row[0])
+        for row in (
+            await session.execute(
+                text(
+                    "SELECT issuer FROM auth_identities "
+                    "WHERE user_id = :user_id AND provider = 'saml'"
+                ),
+                {"user_id": user_id},
+            )
+        ).all()
+    }
+    if issuer in issuers:
+        return False
+    if auth_provider == "saml" and not issuers:
+        return True
+    owner = sso_org_id()
+    if owner is None:
+        return False
+    member = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM memberships WHERE user_id = :user_id "
+                "AND org_id = :org_id LIMIT 1"
+            ),
+            {"user_id": user_id, "org_id": owner},
+        )
+    ).first()
+    return member is not None
 
 
 async def _ensure_key(

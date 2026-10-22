@@ -81,6 +81,18 @@ async def google_callback(request: Request):
                 "doc_url": error_doc_url("oauth_no_email"),
             },
         )
+    # Only an address Google itself has verified may create or reach an
+    # account; an unverified one could name someone else's existing account.
+    verified = info.get("email_verified")
+    if not (verified is True or (isinstance(verified, str) and verified.strip().lower() == "true")):
+        raise HTTPException(
+            403,
+            detail={
+                "code": "oauth_email_unverified",
+                "message": "Google has not verified this email address.",
+                "doc_url": error_doc_url("oauth_email_unverified"),
+            },
+        )
     email_norm = normalize_email(email)
     user_id = await upsert_user(email, sub, email_norm, auth_provider="google")
 

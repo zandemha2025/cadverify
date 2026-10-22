@@ -181,7 +181,11 @@ configuration without both HTTPS and the CA path.
 Set `auth.ssoOrgId` (the backend's `SSO_ORG_ID`) to the id of the organization
 that owns the agency IdP. Only that organization can create IdP group mappings
 and only its mappings apply at sign-in, so a mapping in any other organization
-cannot pull IdP users in or make their sign-in ambiguous. A production render fails without the value (or with
+cannot pull IdP users in or make their sign-in ambiguous. SAML signs in to an
+existing account with the same email only when that account is already bound to
+the same IdP NameID, belongs to that organization, or was created by SAML before
+bindings existed; any other match answers `409 saml_link_required` and the
+account is left untouched. A production render fails without the value (or with
 the checked-in `replace-me` placeholder), and a released backend with AUTH_MODE
 saml, oidc or hybrid refuses to start without `SSO_ORG_ID`. For a first install,
 set `none`, sign in, create the organization, then set its id and redeploy.

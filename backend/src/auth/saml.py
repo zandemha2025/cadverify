@@ -23,6 +23,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from src.auth.dashboard_session import clear_session_cookie, set_session_cookie
 from src.auth.provisioning import (
+    FederatedIdentity,
     ProvisionedLogin,
     provision_authenticated_login,
 )
@@ -292,10 +293,29 @@ def _build_auth(request: Request, request_data: dict):
     return AuthClass(request_data, old_settings=settings)
 
 
+def _idp_entity_id(auth) -> str:
+    """The configured IdP entityId: the issuer strict mode requires on assertions."""
+    try:
+        entity_id = (auth.get_settings().get_idp_data() or {}).get("entityId")
+    except Exception:
+        entity_id = None
+    return entity_id.strip() if isinstance(entity_id, str) else ""
+
+
 async def _saml_provision_login(
-    email: str, attributes: dict[str, list[str]] | None = None
+    email: str,
+    attributes: dict[str, list[str]] | None = None,
+    *,
+    issuer: str,
 ) -> ProvisionedLogin:
-    """Provision, group-map, key, and audit a SAML login atomically."""
+    """Provision, group-map, key, and audit a SAML login atomically.
+
+    The sign-in is bound to its IdP identity (issuer + NameID) in
+    ``auth_identities``, like OIDC: it reaches only an account already bound to
+    that identity, a new account, or an existing same-email account the IdP's
+    owning org holds (see ``provisioning._saml_may_bind_existing``); any other
+    existing account answers 409 instead of being signed into.
+    """
     email = email.strip()
     if len(email) > 320 or not _EMAIL_RE.fullmatch(email):
         raise _state_error(
@@ -303,14 +323,29 @@ async def _saml_provision_login(
             "saml_email_invalid",
             "The identity provider did not supply a valid email NameID.",
         )
+    if not issuer or "${" in issuer:
+        raise _state_error(
+            500,
+            "saml_idp_unconfigured",
+            "Enterprise sign-in is not configured with an identity provider entityId.",
+        )
 
     login = await provision_authenticated_login(
         email=email,
         provider="saml",
         key_name="SAML Default",
         default_role="viewer",
+        # The NameID is the IdP-asserted email of a signed assertion; it is the
+        # subject, compared case-insensitively like an email.
+        identity=FederatedIdentity(
+            provider="saml",
+            issuer=issuer,
+            subject=email.lower(),
+            email_verified=True,
+        ),
         group_attributes=attributes,
         group_detail_key="saml_group_assignment",
+        login_detail={"issuer": issuer},
     )
     logger.info("SAML user provisioned: user_id=%d", login.user_id)
     return login
@@ -395,7 +430,9 @@ async def saml_acs(request: Request):
 
     saml_attributes = _extract_saml_attributes(auth)
     try:
-        login = await _saml_provision_login(email, saml_attributes or None)
+        login = await _saml_provision_login(
+            email, saml_attributes or None, issuer=_idp_entity_id(auth)
+        )
     except SamlGroupMappingAmbiguousError as exc:
         logger.warning(
             "SAML group mapping matched multiple orgs org_count=%d", len(exc.org_ids)
