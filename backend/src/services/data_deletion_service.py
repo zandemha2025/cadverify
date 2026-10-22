@@ -273,11 +273,14 @@ class PartRows:
     def share_ids(self) -> list[str]:
         return [r.share_short_id for r in (*self.analyses, *self.decisions) if r.share_short_id]
 
-    def exists(self) -> bool:
+    def has_records(self) -> bool:
         return bool(
             self.analyses or self.decisions or self.summaries or self.contexts
-            or self.signatures or self.actuals or self.source_kept
+            or self.signatures or self.actuals
         )
+
+    def exists(self) -> bool:
+        return self.has_records() or bool(self.source_kept)
 
 
 def _package_refs(package: RfqPackage, hashes: set[str], decision_ulids: set[str]) -> bool:
@@ -619,11 +622,14 @@ async def delete_part(
     all_copies = await fixed_copies(session, org_id, root)
     copies = all_copies if include_copies else []
     rows = await _gather(session, org_id, [root, *copies], lock=True)
-    if not rows.exists():
-        # Already deleted (or never here). The transaction ends with the session.
+    if not rows.has_records():
+        # Already deleted, or an earlier delete of it is still removing its files (a
+        # double click): that deletion's receipt is the answer. The transaction ends
+        # with the session.
         receipt = await _receipt_for(session, org_id, PART, root)
-        if receipt is not None:
+        if receipt is not None and (receipt.status == "removing_files" or not rows.exists()):
             return receipt
+    if not rows.exists():
         raise HTTPException(status_code=404, detail="No part with this fingerprint in your organization.")
     can, why = _deletable_by(rows, user_id, org_role)
     if not can:
