@@ -7,7 +7,11 @@
  *   in a web request; see `lib/api/part-upload.ts`. A file over it is stopped in
  *   the browser with this number instead of after the upload.
  * - From `STORED_CHECK_FROM_MB` (and any `.gz` or `.zip` part, which the worker
- *   unpacks) a check takes that route; smaller files keep the one-request check.
+ *   unpacks) a check takes that route; smaller files keep the one-request check,
+ *   except a STEP or IGES file whose estimated memory is over what the web
+ *   process gives one check (`overWebCheckMemory`, the backend's own model): on a
+ *   2 GB machine that is from about 3 MB. The web process refuses such a file
+ *   (413 CHECK_TOO_LARGE) before parsing it; it goes to the worker instead.
  * - The web request's own limit, `MAX_UPLOAD_MB` (100 MB: backend `routes.py`
  *   `_max_upload_bytes` and `fly.toml`), still applies to the steps that send the
  *   file itself again: a re-check from a file in this tab, fixes, Fit in assembly,
@@ -55,9 +59,48 @@ export function overCadLimitText(sizeBytes: number): string {
   return `${sizeText(sizeBytes)}, over the 2 GB limit for one file`;
 }
 
+/**
+ * The memory one STEP or IGES check needs, by file size: the backend's measured
+ * model (`stored_check_service.STEP_MEMORY_POINTS`, MB of file -> MB added to a
+ * warmed process; IGES is sized like STEP), interpolated, extended at the last
+ * slope, with its 10% headroom. upload-limit.test.ts pins the points to the backend.
+ */
+export const STEP_MEMORY_POINTS: readonly (readonly [number, number])[] = [
+  [0.0, 270.0], [0.036, 275.0], [1.16, 745.0], [4.92, 1531.0], [10.07, 2396.0],
+];
+export const MEMORY_HEADROOM = 1.1;
+
+/**
+ * What the web process gives one check: `CHECK_MEMORY_FRACTION` (0.6) of its
+ * machine's memory, a 2 GB Fly machine in production (fly.toml `[[vm]]`).
+ * A larger web machine only means some files go to the worker that the web
+ * process could have taken; the worker checks them the same way.
+ */
+export const WEB_CHECK_MEMORY_BUDGET_BYTES = Math.floor(0.6 * 2048 * MIB);
+
+export function estimateStepMemoryBytes(sizeBytes: number): number {
+  const x = sizeBytes / MIB;
+  const pts = STEP_MEMORY_POINTS;
+  let mb: number;
+  if (x <= pts[0][0]) mb = pts[0][1];
+  else {
+    let i = pts.findIndex(([px]) => x <= px);
+    if (i < 0) i = pts.length - 1;
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    mb = y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+  }
+  return Math.floor(mb * MEMORY_HEADROOM * MIB);
+}
+
+/** A STEP or IGES file whose check needs more memory than the web process gives one. */
+export function overWebCheckMemory(file: { name: string; size: number }): boolean {
+  return /\.(step|stp|iges|igs)$/i.test(file.name) && estimateStepMemoryBytes(file.size) > WEB_CHECK_MEMORY_BUDGET_BYTES;
+}
+
 /** Whether a check of this file uploads to storage and runs on the worker. */
 export function needsStoredCheck(file: { name: string; size: number }): boolean {
-  return file.size >= STORED_CHECK_FROM_BYTES || isCompressedCad(file.name);
+  return file.size >= STORED_CHECK_FROM_BYTES || isCompressedCad(file.name) || overWebCheckMemory(file);
 }
 
 /** Over what a web request takes (for the steps that send the file again). */

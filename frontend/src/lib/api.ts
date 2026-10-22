@@ -390,6 +390,20 @@ export function getLatestRateLimits(): RateLimits | undefined {
  * Centralized API client — attaches auth headers, extracts rate limits,
  * handles errors (timeout, malformed JSON, 5xx retry, 429 toast, 4xx throw).
  */
+/** An API refusal's HTTP status and code, kept on the thrown Error (the message stays the
+ *  user-facing text), so a caller can act on it: a web check refused as too heavy
+ *  for the web process (413 CHECK_TOO_LARGE) goes to the worker instead. */
+export type HttpError = Error & { status?: number; code?: string | null };
+
+export function withHttpStatus(error: Error, status: number, payload: unknown): HttpError {
+  const e = error as HttpError;
+  e.status = status;
+  const p = payload as { code?: unknown; detail?: { code?: unknown } } | null;
+  const code = typeof p?.detail === "object" && p?.detail ? p.detail.code : p?.code;
+  e.code = typeof code === "string" ? code : null;
+  return e;
+}
+
 const apiClient = {
   async fetch(
     url: string,
@@ -469,9 +483,13 @@ const apiClient = {
       // 4xx (non-429) — no retry
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(
-          apiQuotaMessage(err) || apiProblemDetail(err) ||
-            apiRecoveryMessage({ status: res.status, payload: err, resource }),
+        throw withHttpStatus(
+          new Error(
+            apiQuotaMessage(err) || apiProblemDetail(err) ||
+              apiRecoveryMessage({ status: res.status, payload: err, resource }),
+          ),
+          res.status,
+          err,
         );
       }
 

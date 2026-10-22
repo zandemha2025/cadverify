@@ -12,8 +12,13 @@ import {
   CAD_MAX_MB,
   FORM_MAX_BYTES,
   FORM_MAX_MB,
+  MEMORY_HEADROOM,
+  STEP_MEMORY_POINTS,
   STORED_CHECK_FROM_BYTES,
+  WEB_CHECK_MEMORY_BUDGET_BYTES,
+  estimateStepMemoryBytes,
   needsStoredCheck,
+  overWebCheckMemory,
   overCadLimit,
   overCadLimitText,
   overFormLimit,
@@ -49,7 +54,8 @@ test("a file is over only past the byte the server refuses", () => {
 });
 
 test("big and compressed parts are checked from storage on the worker", () => {
-  assert.equal(needsStoredCheck({ name: "bracket.step", size: 3 * 1024 * 1024 }), false);
+  assert.equal(needsStoredCheck({ name: "bracket.step", size: 2 * 1024 * 1024 }), false);
+  assert.equal(needsStoredCheck({ name: "bracket.stl", size: 5 * 1024 * 1024 }), false);
   assert.equal(needsStoredCheck({ name: "bracket.step", size: STORED_CHECK_FROM_BYTES }), true);
   assert.equal(needsStoredCheck({ name: "bracket.step.gz", size: 1024 }), true);
   assert.equal(needsStoredCheck({ name: "bracket.zip", size: 1024 }), true);
@@ -69,4 +75,37 @@ test("no screen states another upload size for a CAD file", () => {
   walk(join(root, "lib"));
   const stale = files.filter((f) => /up to (100|200) MB|200 \* 1024 \* 1024|Up to \$\{CAD_MAX_MB\} MB/.test(readFileSync(f, "utf8")));
   assert.deepEqual(stale, []);
+});
+
+test("a STEP or IGES file over the web process's memory goes to the worker (the backend's model)", () => {
+  const service = readFileSync(new URL("src/services/stored_check_service.py", backend), "utf8");
+  const pts = service.match(/STEP_MEMORY_POINTS[^=]*=\s*\(([\s\S]*?)\n\)/);
+  assert.ok(pts, "STEP_MEMORY_POINTS in stored_check_service.py");
+  const backendPoints = [...pts![1].matchAll(/\(([\d.]+),\s*([\d.]+)\)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+  assert.deepEqual(backendPoints, STEP_MEMORY_POINTS.map(([x, y]) => [x, y]));
+  assert.match(service, new RegExp(`MEMORY_HEADROOM = ${MEMORY_HEADROOM.toFixed(2)}`));
+  assert.match(service, /IGES_MEMORY_POINTS = STEP_MEMORY_POINTS/);
+  assert.match(service, /os\.getenv\("CHECK_MEMORY_FRACTION", "0\.6"\)/);
+  const fly = readFileSync(new URL("fly.toml", backend), "utf8");
+  assert.match(fly, /\[\[vm\]\]\s*\n\s*memory = "2gb"/);
+  assert.equal(WEB_CHECK_MEMORY_BUDGET_BYTES, Math.floor(0.6 * 2048 * 1024 * 1024));
+
+  // The same numbers the backend's _interp gives (MB of file -> MB, times 1.1).
+  const MB = 1024 * 1024;
+  assert.equal(estimateStepMemoryBytes(0), Math.floor(270 * 1.1 * MB));
+  assert.equal(estimateStepMemoryBytes(1.16 * MB), Math.floor(745 * 1.1 * MB));
+  const five = 1531 + ((2396 - 1531) * (5 - 4.92)) / (10.07 - 4.92);
+  assert.equal(estimateStepMemoryBytes(5 * MB), Math.floor(five * 1.1 * MB));
+  const twenty = 2396 + ((2396 - 1531) * (20 - 10.07)) / (10.07 - 4.92);
+  assert.equal(estimateStepMemoryBytes(20 * MB), Math.floor(twenty * 1.1 * MB));
+
+  // On a 2 GB machine: about 3 MB of STEP or IGES is the most a web check holds.
+  assert.equal(overWebCheckMemory({ name: "asm.step", size: 2.5 * MB }), false);
+  assert.equal(overWebCheckMemory({ name: "asm.step", size: 3.2 * MB }), true);
+  assert.equal(overWebCheckMemory({ name: "asm.STP", size: 5 * MB }), true);
+  assert.equal(overWebCheckMemory({ name: "plate.igs", size: 4 * MB }), true);
+  assert.equal(overWebCheckMemory({ name: "plate.iges", size: 1 * MB }), false);
+  // STL is sized by triangles on the server; the 20 MB rule and the server's 413 cover it.
+  assert.equal(overWebCheckMemory({ name: "mesh.stl", size: 15 * MB }), false);
+  assert.equal(needsStoredCheck({ name: "asm.step", size: 5 * MB }), true);
 });

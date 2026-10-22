@@ -23,12 +23,15 @@ import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 import { putCachedMesh } from "./mesh-cache";
 import { fetchAssemblyAnalysisV4, probeAssemblyV4 } from "./api";
 import { markWorkSeen, registerWork } from "../work/work-bar";
+import { startStoredCheck } from "./stored-check";
 import { R } from "../routes";
 
 export type Failure =
   | { kind: "quota"; message: string }
   | { kind: "phone"; message: string }
   | { kind: "interrupted"; message: string }
+  /** Too heavy for the web process (413): handed to the worker's check, ``storedId`` (stored-check.ts). */
+  | { kind: "worker"; message: string; storedId: number }
   | { kind: "unreadable"; title: string; detail: string; problem: "open" | "unreadable" | "unsupported" | "geometry" | "refused"; retry: boolean };
 
 export interface PreviewState {
@@ -229,6 +232,19 @@ export function retryAssemblyAnalysis(id: number) {
   void runAssembly(id);
 }
 
+/**
+ * The web process refused the file as more than it can hold in memory (413
+ * CHECK_TOO_LARGE): the same file goes to the worker's check instead (uploaded
+ * to storage, sized against the worker's own memory), and this session hands
+ * over to it. Nothing was charged for the refused request.
+ */
+function handToWorker(id: number, message: string) {
+  const s = sessions.get(id);
+  if (!s) return;
+  const storedId = startStoredCheck(s.file, { materialClass: s.materialClass, orientation: s.orientation });
+  patch(id, { status: "failed", finishedAt: Date.now(), opened: true, failure: { kind: "worker", message, storedId } });
+}
+
 async function run(id: number) {
   const s0 = sessions.get(id);
   if (!s0) return;
@@ -253,6 +269,7 @@ async function run(id: number) {
     // The assembly reader only takes solids. A file it can't read as solids (an open
     // shell, surfaces) still goes through the single-part check, which measures it
     // and says exactly what's wrong instead of refusing it unread.
+    if (probe.kind === "refused" && probe.status === 413) return handToWorker(id, probe.detail);
     const readable = probe.kind === "refused" && probe.status != null && [400, 415, 422].includes(probe.status);
     if (probe.kind === "refused" && !readable) {
       const failure = classify(probe.detail);
@@ -299,6 +316,7 @@ async function run(id: number) {
     return;
   }
   window.dispatchEvent(new Event("proofshape:usage-changed"));
+  if (!result.validation && result.validationStatus === 413) return handToWorker(id, result.validationError ?? "Too large for a web check.");
   if (!result.validation) {
     patch(id, { result, status: "failed", finishedAt: Date.now(), failure: classify(result.validationError) });
     return;

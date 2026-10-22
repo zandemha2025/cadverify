@@ -19,7 +19,7 @@ import { partCheckHeaders } from "./check-id.ts";
  * environment is declared, no block is emitted → the walk renders the honest
  * "not evaluated" state, NEVER a fabricated verdict.
  */
-import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
+import { validateFile, withHttpStatus, type HttpError, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
 import { apiProblemDetail, apiQuotaMessage, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
@@ -97,6 +97,10 @@ export interface VerifyResult {
   file: File;
   validation: ValidationResult | null;
   validationError: string | null;
+  /** The refusal's HTTP status and code when the server refused the check (413
+   *  CHECK_TOO_LARGE: too heavy for the web process; the worker can take it). */
+  validationStatus?: number | null;
+  validationCode?: string | null;
   cost: CostReport | null;
   /** set when /validate/cost refused broken geometry (the walk stops at G1). */
   costGeometryInvalid: CostGeometryInvalid | null;
@@ -235,9 +239,13 @@ async function validateOriented(file: File, orientation: string, partCheckId?: s
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(
-      apiQuotaMessage(body) || apiProblemDetail(body) ||
-        apiRecoveryMessage({ status: res.status, payload: body, resource: "verification", retryAfter: res.headers.get("retry-after") }),
+    throw withHttpStatus(
+      new Error(
+        apiQuotaMessage(body) || apiProblemDetail(body) ||
+          apiRecoveryMessage({ status: res.status, payload: body, resource: "verification", retryAfter: res.headers.get("retry-after") }),
+      ),
+      res.status,
+      body,
     );
   }
   if (!body) throw new Error("Unexpected server response");
@@ -258,10 +266,12 @@ export async function runVerification(
   const validationPromise = (input.orientation
     ? validateOriented(input.file, input.orientation, checkId)
     : validateFile(input.file, undefined, undefined, undefined, undefined, checkId)).then(
-    (v) => ({ v, err: null as string | null }),
+    (v) => ({ v, err: null as string | null, status: null as number | null, code: null as string | null }),
     (e) => ({
       v: null as ValidationResult | null,
       err: e instanceof Error ? e.message : "Validation failed",
+      status: (e as HttpError)?.status ?? null,
+      code: (e as HttpError)?.code ?? null,
     })
   );
 
@@ -335,6 +345,8 @@ export async function runVerification(
       file: input.file,
       validation: null,
       validationError: validationOut.err,
+      validationStatus: validationOut.status,
+      validationCode: validationOut.code,
       cost: null,
       costGeometryInvalid: null,
       costError: null,
