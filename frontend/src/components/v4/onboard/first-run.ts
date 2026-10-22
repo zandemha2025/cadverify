@@ -719,6 +719,17 @@ export function resumeCard(i: {
   const e = m && q != null ? (cost?.estimates ?? []).filter((x) => x.process === m[0] && x.quantity === q && !x.environment_excluded).sort((a, b) => a.unit_cost_usd - b.unit_cost_usd)[0] ?? null : null;
   const lab = driver(e, "labor_cost");
   const labRate = laborRate(cost);
+  if (labRate?.yours) {
+    // me-07: the labor rate is already the shop's own; never ask for it again. The part, as it stands.
+    return {
+      k: "Last checked",
+      title: best && e ? `${i.file}: on your ${best}, ${money(e.unit_cost_usd)} each at ${qtyWord(q!)}` : `${i.file}: checked on your machines`,
+      text: e && lab != null ? `At your rates: ${money(lab)} of that is labor at your $${trimNum(labRate.v, 2)}/h.` : "At your rates.",
+      meta: "Re-checking the same file doesn’t use a check",
+      go: { label: "Open the part", href: i.partHref },
+      alt: { label: "Your rates", href: i.hrefs.rates },
+    };
+  }
   return {
     k: "Next: your labor rate",
     title: best && e ? `${i.file}: on your ${best}, ${money(e.unit_cost_usd)} each at ${qtyWord(q!)}` : `${i.file}: checked on your machines`,

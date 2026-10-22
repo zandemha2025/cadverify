@@ -250,6 +250,15 @@ test("Add your machines is never locked before the first check: Your shop takes 
   assert.deepEqual(m.go, { label: "Add machines", href: "/s?add=1" });
 });
 
+test("a labor rate that is already yours is never asked for again (me-07)", () => {
+  const h = { addMachines: "/add", rates: "/r", recheck: "/re" };
+  const yours = { ...NOW_RATED, assumptions: (NOW_RATED.assumptions ?? []).map((a) => (a.name === "labor_rate" ? { ...a, provenance: "SHOP" } : a)) } as typeof NOW_RATED;
+  const c = resumeCard({ file: "bracket.step", partHref: "/p", cost: yours, machines: 4, onMachines: true, addedAfter: false, hrefs: h })!;
+  assert.equal(c.k, "Last checked");
+  assert.notEqual(c.go.label, "Set labor rate");
+  assert.match(c.text, /^At your rates: \$17\.50 of that is labor at your \$35\/h\.$/);
+});
+
 test("pick up where you left off: machines next, then the labor rate", () => {
   const add = resumeCard({ file: "bored-block-mm.iges", partHref: "/p", cost: BEFORE, machines: 0, onMachines: false, hrefs: { addMachines: "/add", rates: "/r", recheck: "/re" } });
   assert.equal(add?.k, "Next: add your machines");
