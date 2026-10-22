@@ -827,6 +827,50 @@ export function refusalTitle(e: RunError): string {
 }
 
 /* ------------------------------------------------------------------ */
+/*  The parts list, read when it's picked (op-04)                      */
+/* ------------------------------------------------------------------ */
+
+export interface NotPricedGroup {
+  column: string;
+  value: string;
+  count: number;
+  rows: number[];
+  parts: string[];
+}
+
+/** The specs a list names that aren't priced, one line per wording: most parts first. */
+export function groupNotPriced(notes: readonly { row: number; part: string | null; column: string; value: string }[]): NotPricedGroup[] {
+  const by = new Map<string, NotPricedGroup>();
+  for (const n of notes) {
+    const key = `${n.column}\u0000${n.value.toLowerCase()}`;
+    const g = by.get(key) ?? { column: n.column, value: n.value, count: 0, rows: [], parts: [] };
+    g.count += 1;
+    g.rows.push(n.row);
+    if (n.part) g.parts.push(n.part);
+    by.set(key, g);
+  }
+  return [...by.values()].sort((a, b) => b.count - a.count || a.column.localeCompare(b.column) || a.value.localeCompare(b.value));
+}
+
+/** "Certification “EN 10204 3.1” · 34 parts: RFS-21019, RFS-21030 and 32 more" */
+export function notPricedLine(g: NotPricedGroup, show = 3): string {
+  const col = g.column.charAt(0).toUpperCase() + g.column.slice(1);
+  const names = g.parts.length ? g.parts : g.rows.map((r) => `row ${r}`);
+  const shown = names.slice(0, show);
+  const more = names.length - shown.length;
+  const list = more > 0 ? `${shown.join(", ")} and ${more} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}` : shown[0] ?? "";
+  return `${col} “${g.value}” · ${g.count} ${g.count === 1 ? "part" : "parts"}${list ? `: ${list}` : ""}`;
+}
+
+/** The problems a run can't start with, from a check or the run's own refusal (`detail.problems`). */
+export function listProblemsOf(detail: Record<string, unknown> | null | undefined): { row: number | null; column: string | null; value: string | null; why: string; accepted: string | null; message: string }[] {
+  const raw = detail?.problems;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((p): p is { row: number | null; column: string | null; value: string | null; why: string; accepted: string | null; message: string } =>
+    !!p && typeof p === "object" && typeof (p as { why?: unknown }).why === "string");
+}
+
+/* ------------------------------------------------------------------ */
 /*  Materials                                                          */
 /* ------------------------------------------------------------------ */
 

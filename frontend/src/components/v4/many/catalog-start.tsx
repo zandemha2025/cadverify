@@ -19,13 +19,16 @@ import { registerWork, removeWork, runKey } from "../work/work-bar";
 import { PILOT_HREF } from "../moments/pilot-gate";
 import { PHONE_WHY, PhoneSteps } from "../moments/phone-gate";
 import { saveBlob } from "./common";
-import { CatalogRunError, startCatalogRun, waitUntilUnpacked, type RunCreated } from "./catalog-api";
+import { CatalogRunError, checkPartsList, startCatalogRun, waitUntilUnpacked, type ListCheck, type ListProblem, type RunCreated } from "./catalog-api";
 import { fetchMachines } from "./many-api";
 import {
   FREE_MAX_ZIP_BYTES,
   MATERIALS,
   allowanceText,
   fitNote,
+  groupNotPriced,
+  listProblemsOf,
+  notPricedLine,
   planFiles,
   refusalTitle,
   sizeText,
@@ -39,12 +42,25 @@ import "./catalog.css";
 
 type Picked = PickedFile & { file: File };
 
+/**
+ * The picked parts list, read once into memory and checked whole (op-04, op-05):
+ * the run sends this copy, so a list edited and picked again is never the stale
+ * file the browser can no longer read (ERR_UPLOAD_FILE_CHANGED).
+ */
+type ListState =
+  | { key: string; s: "reading" }
+  | { key: string; s: "unreadable"; name: string }
+  | { key: string; s: "checked"; copy: File; check: ListCheck }
+  | { key: string; s: "unchecked"; copy: File; why: string };
+
+const listKey = (f: File) => `${f.name}:${f.size}:${f.lastModified}`;
+
 type Phase =
   | { k: "idle" }
   | { k: "packing"; done: number; total: number }
   | { k: "uploading"; frac: number | null }
   | { k: "unpacking"; name: string }
-  | { k: "err"; title: string; message: string; code: string | null; batchId: string | null }
+  | { k: "err"; title: string; message: string; code: string | null; batchId: string | null; problems?: ListProblem[] }
   | { k: "started"; run: RunCreated };
 
 // Quantity is how many you buy a year; current_price is what you pay today (US dollars) for "per" parts
@@ -94,6 +110,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
   const listRef = React.useRef<HTMLInputElement>(null);
   const [files, setFiles] = React.useState<Picked[]>([]);
   const [listFile, setListFile] = React.useState<File | null>(null);
+  const [listState, setListState] = React.useState<ListState | null>(null);
   const [material, setMaterial] = React.useState("");
   const [qty, setQty] = React.useState("100");
   const [over, setOver] = React.useState(false);
@@ -117,11 +134,42 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
   const free = access.kind === "free";
   const plan = planFiles(files, { maxZipBytes: free ? FREE_MAX_ZIP_BYTES : undefined });
   const list = listFile ?? plan.list?.file ?? null;
+
+  // Read the list into memory and check all of it as soon as it's picked, before any upload.
+  React.useEffect(() => {
+    if (!list) {
+      setListState(null);
+      return;
+    }
+    const key = listKey(list);
+    let live = true;
+    setListState({ key, s: "reading" });
+    void (async () => {
+      let copy: File;
+      try {
+        copy = new File([await list.arrayBuffer()], list.name, { type: list.type || "text/csv" });
+      } catch {
+        if (live) setListState({ key, s: "unreadable", name: list.name });
+        return;
+      }
+      try {
+        const check = await checkPartsList(copy, copy.name);
+        if (live) setListState({ key, s: "checked", copy, check });
+      } catch (e) {
+        if (live) setListState({ key, s: "unchecked", copy, why: e instanceof Error ? e.message : "The parts list couldn’t be checked." });
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [list]);
+  const listOk = !list || listState?.s === "unchecked" || (listState?.s === "checked" && listState.check.ok);
+  const listCopy = listState && (listState.s === "checked" || listState.s === "unchecked") ? listState.copy : null;
   const parts = plan.zip ? null : plan.cad.length;
   const qtyVal = /^\d+$/.test(qty.trim()) && Number(qty) >= 1 && Number(qty) <= 10_000_000 ? Number(qty) : null;
   const noneLeft = free && access.usage.remaining === 0;
   const needShop = machines === 0 && !goAhead;
-  const off = busy || !!plan.problem || (!plan.zip && !plan.cad.length) || qtyVal == null || noneLeft || needShop;
+  const off = busy || !!plan.problem || (!plan.zip && !plan.cad.length) || qtyVal == null || noneLeft || needShop || !listOk;
   const note = parts != null ? fitNote(parts, access) : null;
 
   const add = (more: Picked[]) => {
@@ -165,7 +213,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
         zipName = `${folder}.zip`;
       }
       setPhase({ k: "uploading", frac: 0 });
-      let run = await startCatalogRun({ zip, zipName, list, materialClass: material || undefined, quantity: qtyVal }, (frac) => setPhase({ k: "uploading", frac }));
+      let run = await startCatalogRun({ zip, zipName, list: listCopy, materialClass: material || undefined, quantity: qtyVal }, (frac) => setPhase({ k: "uploading", frac }));
       if (run.preparing) {
         // A large ZIP is unpacked on ScaleCAD's worker; the run's parts are known once it's done.
         setPhase({ k: "unpacking", name: zipName });
@@ -192,7 +240,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
         setPhoneStep(true);
         return;
       }
-      setPhase({ k: "err", title: refusalTitle(e2), message: e2.message, code: e2.code, batchId: e2.batchId });
+      setPhase({ k: "err", title: refusalTitle(e2), message: e2.message, code: e2.code, batchId: e2.batchId, problems: listProblemsOf(e2.detail) });
     }
   };
 
@@ -345,11 +393,14 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
               disabled={busy}
               onChange={(e) => {
                 setListFile(e.target.files?.[0] ?? null);
+                // Cleared, so picking the same file again after editing it is a new pick.
+                e.target.value = "";
                 setPhase({ k: "idle" });
               }}
             />
             {list && !listFile ? <span className="fh">Using {list.name} from the files you added.</span> : null}
           </label>
+          {list && listState ? <ListReport state={listState} name={list.name} /> : null}
           <div style={{ marginTop: -4 }}>
             <button
               className="lk"
@@ -444,6 +495,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
               ) : (
                 <span>Nothing was started. Your files are still selected.</span>
               )}
+              {phase.problems?.length ? <ProblemTable problems={phase.problems} /> : null}
             </div>
           ) : null}
           {phase.k === "started" ? (
@@ -465,7 +517,15 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
             {busy ? "Starting…" : parts ? `Check ${parts} ${parts === 1 ? "part" : "parts"}` : plan.zip ? "Check the ZIP" : "Check parts"}
           </button>
           <span className="fh">
-            {needShop ? "Add machines, or choose to run without them" : free ? "A run keeps going if you leave this page" : "Pilot runs take up to 12 parts at a time"}
+            {needShop
+              ? "Add machines, or choose to run without them"
+              : list && listState?.s === "reading"
+                ? "Reading the parts list…"
+                : list && !listOk
+                  ? "Fix the parts list, then pick it again"
+                  : free
+                    ? "A run keeps going if you leave this page"
+                    : "No part limit on the pilot plan. A run keeps going if you leave this page"}
           </span>
         </div>
         {free ? (
@@ -476,5 +536,77 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
       </form>
       )}
     </Sheet>
+  );
+}
+
+/** What the picked parts list says, read whole: every problem in one place, and the specs kept but not priced. */
+function ListReport({ state, name }: { state: ListState; name: string }) {
+  if (state.s === "reading") return <p className="fh" role="status">Reading {name}…</p>;
+  if (state.s === "unreadable")
+    return (
+      <div className="errc" role="alert">
+        <b>{name} can’t be read</b>
+        <span>It changed or moved after it was picked. Pick it again.</span>
+      </div>
+    );
+  if (state.s === "unchecked") return <p className="fh" role="status">{state.why}</p>;
+  const c = state.check;
+  if (!c.ok)
+    return (
+      <div className="errc" role="alert">
+        <b>
+          {c.problems.length === 1 ? "1 cell in the parts list needs a fix" : `${c.problems.length} cells in the parts list need a fix`}
+        </b>
+        <span>Nothing was uploaded. Fix them in {name}, save it, and pick it again.</span>
+        <ProblemTable problems={c.problems} />
+      </div>
+    );
+  const groups = groupNotPriced(c.not_priced.notes);
+  return (
+    <div className="cs-ok" role="status">
+      <span>
+        {name}: {c.rows} {c.rows === 1 ? "row" : "rows"} read
+        {c.with_quantity ? ` · ${c.with_quantity} with a yearly quantity` : ""}
+        {c.with_price ? ` · ${c.with_price} with what you pay today` : ""}
+      </span>
+      {c.not_priced.count ? (
+        <details className="cs-np">
+          <summary>
+            {c.not_priced.count} {c.not_priced.count === 1 ? "spec" : "specs"} kept as written, not priced
+          </summary>
+          <span className="fh">They stay on each part and go with its RFQ; the price leaves them out. The run starts with them.</span>
+          <ul>
+            {groups.map((g) => (
+              <li key={`${g.column}:${g.value}`}>{notPricedLine(g)}</li>
+            ))}
+          </ul>
+          <Link className="lk" href={R.rates}>
+            What ScaleCAD prices
+          </Link>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function ProblemTable({ problems }: { problems: ListProblem[] }) {
+  return (
+    <div className="cs-probs">
+      <ol>
+        {problems.slice(0, 200).map((p, i) => (
+          <li key={i}>
+            <b>
+              {p.row != null ? `Row ${p.row}` : "The list"}
+              {p.column ? ` · ${p.column}` : ""}
+              {p.row != null ? ` · ${p.value ? `“${p.value}”` : "blank"}` : ""}
+            </b>
+            <span>
+              {p.row != null ? p.why.charAt(0).toUpperCase() + p.why.slice(1) : p.message}.{p.accepted ? ` It takes ${p.accepted}.` : ""}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {problems.length > 200 ? <span className="fh">And {problems.length - 200} more.</span> : null}
+    </div>
   );
 }

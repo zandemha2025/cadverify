@@ -96,6 +96,49 @@ function problem(status: number, body: unknown, fallback: string): CatalogRunErr
   return new CatalogRunError(typeof b.message === "string" ? b.message : fallback, status, typeof b.code === "string" ? b.code : null, null);
 }
 
+/** One cell of a parts list a run can't start with: where, what it says, why, and what it takes. */
+export interface ListProblem {
+  row: number | null;
+  column: string | null;
+  value: string | null;
+  why: string;
+  accepted: string | null;
+  message: string;
+}
+
+/** A spec the list names that ScaleCAD keeps as written and doesn't price (it never stops a run). */
+export interface NotPricedSpec {
+  row: number;
+  part: string | null;
+  column: string;
+  value: string;
+  why: string;
+}
+
+/** POST /catalog-runs/parts-list: the whole list read at once, nothing started or stored. */
+export interface ListCheck {
+  ok: boolean;
+  rows: number | null;
+  with_quantity: number | null;
+  with_price: number | null;
+  problems: ListProblem[];
+  not_priced: { count: number; notes: NotPricedSpec[] };
+}
+
+/** Read a picked parts list without uploading the ZIP: every problem in it, at once. */
+export async function checkPartsList(list: Blob, name: string): Promise<ListCheck> {
+  const form = new FormData();
+  form.append("manifest", list, name);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/catalog-runs/parts-list`, { method: "POST", body: form, signal: timedSignal(30_000) });
+  } catch {
+    throw new CatalogRunError("The parts list couldn’t be checked: ScaleCAD wasn’t reached. It is checked again when the run starts.", 0, "network", null);
+  }
+  if (!res.ok) throw problem(res.status, await res.json().catch(() => null), `The parts list couldn’t be checked (${res.status}).`);
+  return (await res.json()) as ListCheck;
+}
+
 export interface StartInput {
   zip: Blob;
   zipName: string;
@@ -151,7 +194,8 @@ function postCatalogRun(input: StartInput, directUploadId: string | null, onProg
       if (xhr.status >= 200 && xhr.status < 300 && body) resolve(body as RunCreated);
       else reject(problem(xhr.status, body, `The run didn’t start (${xhr.status}).`));
     };
-    xhr.onerror = () => reject(new CatalogRunError("The upload didn’t reach ScaleCAD. Check your connection and try again; nothing was started.", 0, "network", null));
+    // A file changed on disk after it was picked fails the same way as a dropped connection (op-05), so say both.
+    xhr.onerror = () => reject(new CatalogRunError("The upload stopped before it reached ScaleCAD; nothing was started. If you changed a file after picking it, pick it again. Otherwise check your connection and try again.", 0, "network", null));
     xhr.send(form);
   });
 }

@@ -29,6 +29,9 @@ import {
   totalsText,
   zipEntryName,
   type BoardRow,
+  groupNotPriced,
+  listProblemsOf,
+  notPricedLine,
 } from "./catalog-model.ts";
 
 const row = (o: Partial<BoardRow>): BoardRow => ({
@@ -309,4 +312,24 @@ test("the running rate says, in its own cell, what you typed and the share left 
     partLine(row({ quantity: 25 }), machines).ownership,
     "Your Haas VF-2 · running rate $48.75/h: $75.00/h you set, less a typical 35% that pays for the machine you already own",
   );
+});
+
+test("a parts list's unpriced specs group by wording, most parts first (op-04)", () => {
+  const notes = [
+    { row: 2, part: "RFS-21019", column: "certification", value: "EN 10204 3.1" },
+    { row: 20, part: "RFS-21047", column: "finish", value: "Black oxide" },
+    { row: 5, part: "RFS-21030", column: "certification", value: "EN 10204 3.1" },
+    { row: 9, part: null, column: "certification", value: "en 10204 3.1" },
+  ];
+  const g = groupNotPriced(notes);
+  assert.deepEqual(g.map((x) => [x.column, x.value, x.count]), [["certification", "EN 10204 3.1", 3], ["finish", "Black oxide", 1]]);
+  assert.equal(notPricedLine(g[0], 1), "Certification “EN 10204 3.1” · 3 parts: RFS-21019 and 1 more");
+  assert.equal(notPricedLine(g[0]), "Certification “EN 10204 3.1” · 3 parts: RFS-21019 and RFS-21030");
+  assert.equal(notPricedLine(g[1]), "Finish “Black oxide” · 1 part: RFS-21047");
+});
+
+test("a run's refusal carries every parts-list problem", () => {
+  const detail = { code: "INVALID_PARTS_LIST", problems: [{ row: 2, column: "quantity", value: "lots", why: "isn't a number", accepted: "a whole number", message: "Row 2: quantity 'lots' isn't a number" }, { nope: 1 }] };
+  assert.equal(listProblemsOf(detail).length, 1);
+  assert.deepEqual(listProblemsOf(null), []);
 });
