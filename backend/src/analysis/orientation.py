@@ -10,7 +10,10 @@ The engine reads the analysed mesh's +Z as up. What depends on it:
 * Molding, casting and forging (the direction the tool opens): walls parallel
   to it need draft (``check_draft_angles``: injection molding and die casting
   1°, sand casting 3°, forging 5°) and anything that blocks the opening is an
-  undercut (``check_undercuts_molding``).
+  undercut (``check_undercuts_molding``). A part checked as drawn whose side
+  walls are all drafted along the file's X or Y is drawn turned: its draft
+  finding is a warning naming that axis, so its verdict and routing don't
+  depend on which way the file lies.
 * CNC setup access (``SETUP_ACCESS_UNVERIFIED``): whether the finding appears
   doesn't depend on it, but the faces it marks are the ones facing away from +Z.
 * The work-area note ``BUILD_REORIENTATION_REQUIRED`` compares the file's own
