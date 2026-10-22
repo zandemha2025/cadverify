@@ -259,6 +259,9 @@ test("the run's answer leads with the saving against what you pay today, or says
   assert.equal(runTitle({ name: null, parts_list: { name: "parts-list.csv" } } as never), "parts-list");
   assert.equal(runTitle({ name: "Ridgeline-bought-parts" } as never), "Ridgeline-bought-parts");
   assert.equal(runTitle(null), "Catalog run");
+  // While the run goes, nothing is decided yet: no "Buy all 0 parts".
+  const going = answerText({ rows: [], has_list: true, answer: { ...answer, make: 0, buy: 0, new_machine: 0, cant_make: 0, not_checked: 0, checking: 6, undecided: 6, saving_usd: null, saving_parts: 0, make_without_price: 0 } } as never)!;
+  assert.equal(going.head, "Checking 6 parts: the answer fills in as each one finishes");
   assert.match(none.missing ?? "", /^No saving yet: it needs what you pay today/);
   const some = answerText({ rows: [], has_list: true, answer: { ...answer, saving_parts: 5, make_without_price: 7 } } as never)!;
   assert.equal(some.head, "Make 12 parts in-house: save $41,200 a year against what you pay today (on the 5 with a current price)");

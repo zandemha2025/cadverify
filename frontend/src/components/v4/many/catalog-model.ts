@@ -440,7 +440,9 @@ export function answerText(board: Board | null): { head: string; sub: string; mi
     const these = a.make === a.saving_parts ? `these ${n(a.make, "part")}` : `${n(a.make, "part")}`;
     head = `Make ${these} in-house: save ${money(a.saving_usd, 0)}${year} against what you pay today${a.make_without_price ? ` (on the ${a.saving_parts} with a current price)` : ""}`;
   } else if (a.make) head = `Make ${n(a.make, "part")} in-house, buy ${a.buy}`;
-  else head = a.parts ? `Buy all ${n(a.buy, "part")} that could be decided` : "No parts yet";
+  else if (a.buy) head = `Buy all ${n(a.buy, "part")} that could be decided`;
+  else if (a.checking) head = `Checking ${n(a.checking, "part")}: the answer fills in as each one finishes`;
+  else head = a.parts ? "No part could be decided yet" : "No parts yet";
   const rest: string[] = [];
   if (a.saving_usd != null && a.saving_parts) rest.push(`Buy ${a.buy}`);
   if (a.new_machine) rest.push(`${a.new_machine} need a new machine`);
