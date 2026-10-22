@@ -1106,15 +1106,13 @@ async def _generate_cost_results_csv(
 
 
 def _csv_escape(value: str) -> str:
-    """Neutralize spreadsheet formulas, then apply RFC-style CSV quoting."""
-    from src.services.cost_decision_service import spreadsheet_safe_cell
+    """One cell of a row joined by hand: formulas neutralized, quoted on a comma, a quote, CR or LF.
 
-    if not value:
-        return ""
-    value = spreadsheet_safe_cell(value)
-    if any(c in value for c in (",", '"', "\n")):
-        return '"' + value.replace('"', '""') + '"'
-    return value
+    The same helper as every other CSV export (``src.services.csv_safe``).
+    """
+    from src.services.csv_safe import csv_field
+
+    return csv_field(value)
 
 
 # ---------------------------------------------------------------------------

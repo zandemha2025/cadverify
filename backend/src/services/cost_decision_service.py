@@ -993,17 +993,13 @@ async def mark_part_decisions_stale(
 def spreadsheet_safe_cell(value):
     """Neutralize formula-capable text while preserving JSON/source records.
 
-    Spreadsheet programs may execute cells beginning with =, +, -, or @ (also
-    after leading whitespace/control characters). Prefixing an apostrophe is the
-    conventional CSV display escape: users see the original text, while the
-    imported cell is data rather than a formula. Numeric values stay numeric.
+    The one guard every CSV export uses (``src.services.csv_safe.safe_cell``):
+    an apostrophe before =, +, - or @ at the start of the cell and at the start
+    of every line inside it. Numeric values stay numeric.
     """
-    if not isinstance(value, str) or not value:
-        return value
-    candidate = value.lstrip(" \t\r\n")
-    if value[0] in "\t\r\n" or candidate.startswith(("=", "+", "-", "@")):
-        return "'" + value
-    return value
+    from src.services.csv_safe import safe_cell
+
+    return safe_cell(value)
 
 
 _GOVERNANCE_COLUMNS = (

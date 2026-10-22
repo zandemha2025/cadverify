@@ -1925,7 +1925,7 @@ def _buy_from(buy: Optional[dict]) -> Optional[str]:
 
 
 def board_csv_rows(board: dict) -> Iterable[str]:
-    from src.services.batch_service import _csv_escape
+    from src.services.csv_safe import csv_field
 
     def f(v: Any) -> str:
         if v is None:
@@ -1934,7 +1934,7 @@ def board_csv_rows(board: dict) -> Iterable[str]:
             return "yes" if v else "no"
         if isinstance(v, float):
             return f"{v:.6g}" if abs(v) < 1e6 else f"{v:.2f}"
-        return _csv_escape(str(v))
+        return csv_field(str(v))
 
     yield CSV_HEADER
     for r in board["rows"]:

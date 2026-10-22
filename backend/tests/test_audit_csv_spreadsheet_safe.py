@@ -65,7 +65,8 @@ async def test_formula_like_audit_cells_are_neutralised():
     assert data[4] == "'@SUM(A1:A9)"
     assert data[5] == "'\t=1+1"
     assert data[6] == "' =evil"
-    assert data[7] == "'\r=x"
+    # Guarded at the start of the cell and again after the line break (src.services.csv_safe).
+    assert data[7] == "'\r'=x"
 
 
 @pytest.mark.asyncio
