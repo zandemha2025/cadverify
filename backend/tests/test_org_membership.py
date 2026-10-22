@@ -345,7 +345,7 @@ async def test_invite_lifecycle():
 
         # ---- accept: creates a membership in the TOKEN's org, not any other --
         async with eng.get_session_factory()() as s:
-            m, inv2, created = await svc.accept_invite(s, invitee, raw)
+            m, inv2, created, _signed_out = await svc.accept_invite(s, invitee, raw)
             await s.commit()
             assert created is True
             assert m.org_id == org_a          # cross-org replay is impossible:
@@ -419,7 +419,7 @@ async def test_invite_lifecycle():
             )
             inv5, raw5 = await svc.create_invite(s, org_a, "admin", f"orgm-{tag}-invitee@example.com", "member", admin)
             await s.commit()
-            m5, _, created5 = await svc.accept_invite(s, invitee, raw5)
+            m5, _, created5, _ = await svc.accept_invite(s, invitee, raw5)
             await s.commit()
             assert created5 is False
             assert m5.org_role == "admin"     # NOT downgraded to the invite's role
@@ -496,7 +496,7 @@ async def test_invite_preview_is_read_only_and_mirrors_accept_refusals():
 
         # ---- preview did not use it up: accept still works, once -------------
         async with eng.get_session_factory()() as s:
-            _, _, created = await svc.accept_invite(s, invitee, raw)
+            _, _, created, _ = await svc.accept_invite(s, invitee, raw)
             await s.commit()
             assert created is True
         async with eng.get_session_factory()() as s:
@@ -770,7 +770,7 @@ async def test_invite_recipient_binding_rejects_normalize_collision():
 
         # COMPLETENESS: the genuinely-invited victim CAN still redeem it.
         async with eng.get_session_factory()() as s:
-            m, _, created = await svc.accept_invite(s, victim, raw)
+            m, _, created, _ = await svc.accept_invite(s, victim, raw)
             await s.commit()
             assert created is True
             assert m.org_role == "admin"
@@ -869,7 +869,7 @@ async def test_invite_recipient_binding_rejects_mirror_normalize_collision():
 
         # COMPLETENESS: the genuinely-invited LEGACY (dotted) victim CAN redeem it.
         async with eng.get_session_factory()() as s:
-            m, _, created = await svc.accept_invite(s, victim, raw)
+            m, _, created, _ = await svc.accept_invite(s, victim, raw)
             await s.commit()
             assert created is True
             assert m.org_role == "admin"

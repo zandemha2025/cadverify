@@ -15,7 +15,8 @@
  * From an invite link (`?invite=`): the card names the organization, the role
  * and who sent it, the invited address is filled in and can't be changed, and
  * there's no free-check pitch, phone number or part to hold. Creating the
- * account accepts the invite, so the person lands in the inviting org.
+ * account accepts the invite and makes that org active, so the person lands
+ * in it (through two-step setup when the org requires it).
  */
 import * as React from "react";
 import Link from "next/link";
@@ -161,8 +162,9 @@ export function V4SignUp({
         // Joined (or not, and the accept page says why).
         const joined = data.invite && typeof data.invite.org_id === "string";
         const after = joined ? inviteNext(new URLSearchParams(asked?.split("?")[1] ?? "").get("next")) ?? `${R.parts}?joined=1` : `/orgs/accept?token=${encodeURIComponent(inviteToken)}`;
-        // The organization requires two-step sign-in: set it up first.
-        window.location.href = data.two_step ? twoStepHref(after) : after;
+        // The organization requires two-step sign-in: set it up first. When the
+        // join ended the session and no setup step came back, sign in again.
+        window.location.href = data.two_step ? twoStepHref(after) : data.signed_out ? `/login?next=${encodeURIComponent(after)}` : after;
         return;
       }
       // The part waits for this account only; the code goes to the number typed above.

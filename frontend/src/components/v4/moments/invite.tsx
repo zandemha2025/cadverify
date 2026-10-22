@@ -11,6 +11,11 @@
  * the invite to the invited account; a signed-out visitor is sent to sign in
  * and back here. If the preview isn't available on this server, the confirm
  * step still shows, without the details.
+ *
+ * The Accept press also makes the org active (`switch`, in the same request;
+ * accepting alone never switches). An org that requires two-step sign-in ends
+ * a session without it at the join: the card then sends the person to sign in
+ * again, set it up, and land in the org.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -18,7 +23,6 @@ import { useSearchParams } from "next/navigation";
 import { apiProblemDetail } from "@/lib/api-recovery";
 import { AuthCard } from "./auth-card";
 import { V4_HOME } from "./landing";
-import { twoStepHref } from "@/components/two-step/href";
 import { R } from "../routes";
 import { switchTo, teamInfo, useTeamSetup } from "../onboard/teammate";
 import { inviteNext } from "./invite-next";
@@ -42,6 +46,7 @@ type State =
   | { kind: "declined"; preview: Preview | null }
   | { kind: "login"; summary: InviteSummary | null }
   | { kind: "joined"; role: string; org: string | null; created: boolean; switched: boolean; switchError: string | null }
+  | { kind: "signin"; role: string; org: string | null }
   | { kind: "failed"; message: string; retry: boolean; otherAccount: boolean };
 
 function role(r: string | null | undefined): string {
@@ -58,9 +63,9 @@ function expiresIn(iso: string | null | undefined): string | null {
   return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
-async function post(path: string, token: string): Promise<{ status: number; data: unknown } | null> {
+async function post(path: string, token: string, extra: Record<string, unknown> = {}): Promise<{ status: number; data: unknown } | null> {
   try {
-    const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
+    const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, ...extra }) });
     return { status: res.status, data: await res.json().catch(() => ({})) };
   } catch {
     return null;
@@ -122,27 +127,24 @@ export function V4InviteAccept() {
     if (busy) return;
     setBusy(true);
     const preview = state.kind === "confirm" ? state.preview : null;
-    const res = await post("/api/proxy/orgs/invites/accept", token);
+    // Pressing Accept is choosing to work there: join and make it the active org (N6).
+    const res = await post("/api/proxy/orgs/invites/accept", token, { switch: true });
     setBusy(false);
     if (!res) return setState({ kind: "failed", message: "Could not reach ScaleCAD.", retry: true, otherAccount: false });
     if (res.status >= 200 && res.status < 300) {
-      const d = res.data as { org_id?: unknown; org_role?: unknown; created?: unknown };
-      // Joining makes it the active organization, so its machines and rates apply right away (N6).
-      const sw = typeof d.org_id === "string" ? await switchTo(d.org_id) : null;
-      // An organization that requires two-step sign-in: set it up before reaching its data.
-      const up = await fetch("/api/auth/two-step/step-up", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-      if (up?.two_step === "setup") {
-        window.location.href = twoStepHref(next ?? `${R.parts}?joined=1`);
-        return;
-      }
+      const d = res.data as { org_id?: unknown; org_role?: unknown; created?: unknown; switched?: unknown; signed_out?: unknown };
+      const joinedRole = String(d.org_role ?? "member");
+      // The org requires two-step sign-in and this account has none: joining ended
+      // the session. Sign in again, set it up, then the org opens (already active).
+      if (d.signed_out === true) return setState({ kind: "signin", role: joinedRole, org: preview?.org_name ?? null });
+      // An API without `switch` in accept: switch with the separate call, as before.
+      const sw = typeof d.switched === "boolean" ? null : typeof d.org_id === "string" ? await switchTo(d.org_id) : null;
       return setState({
         kind: "joined",
-        role: String(d.org_role ?? "member"),
+        role: joinedRole,
         org: preview?.org_name ?? (sw?.ok ? sw.name : null),
         created: Boolean(d.created),
-        switched: !!sw?.ok,
+        switched: d.switched === true || !!sw?.ok,
         switchError: sw && !sw.ok ? sw.message : null,
       });
     }
@@ -151,6 +153,8 @@ export function V4InviteAccept() {
 
   const here = `/orgs/accept?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
   const loginHref = `/login?next=${encodeURIComponent(here)}`;
+  // After a join that ended the session: sign in, set up two-step, then the org.
+  const signInAgainHref = `/login?next=${encodeURIComponent(next ?? `${R.parts}?joined=1`)}`;
   const signupHref = `/signup?invite=${encodeURIComponent(token)}&next=${encodeURIComponent(here)}`;
 
   switch (state.kind) {
@@ -258,7 +262,7 @@ export function V4InviteAccept() {
           note={
             p?.already_member
               ? "Accepting uses up the invite and doesn’t change your role."
-              : `${p?.email ? `Only ${p.email} can accept.` : "Only the invited account can accept."} Nothing changes until you accept.`
+              : `${p?.email ? `Only ${p.email} can accept.` : "Only the invited account can accept."} Nothing changes until you accept. Accepting makes ${org} your active organization.`
           }
         />
       );
@@ -281,6 +285,24 @@ export function V4InviteAccept() {
               Back to the invite
             </button>
           }
+        />
+      );
+    }
+    case "signin": {
+      const org = state.org ?? "the organization";
+      return (
+        <AuthCard
+          label="Sign in again"
+          icon={{ tone: "ok", mark: "✓" }}
+          title={`You joined ${org}`}
+          meta={[`Role: ${role(state.role)}`, "Two-step sign-in required"]}
+          info={[["Next", "Sign in, then set up two-step"]]}
+          actions={
+            <Link className="btn ink" href={signInAgainHref}>
+              Sign in
+            </Link>
+          }
+          note={`${org} requires two-step sign-in for every member, so this session ended. Sign in again and set it up with an authenticator app; then ${org} opens.`}
         />
       );
     }

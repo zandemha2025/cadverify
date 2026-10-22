@@ -161,7 +161,7 @@ async def test_an_org_that_is_still_solo_stays_personal():
         async with eng.get_session_factory()() as s:
             # Dana re-accepting an invite into her own org adds nobody.
             _inv, raw = await svc.create_invite(s, solo, "admin", f"pos-{tag}-dana@example.com", "member", dana)
-            _m, _i, created = await svc.accept_invite(s, dana, raw)
+            _m, _i, created, _signed_out = await svc.accept_invite(s, dana, raw)
             await s.commit()
             assert created is False
             assert await svc.share_org_if_team(s, solo, dana) is False

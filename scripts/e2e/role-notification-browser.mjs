@@ -1319,9 +1319,13 @@ asyncio.run(main())
       path: "/api/proxy/orgs/invites/accept",
       expectedStatus: 200,
       label: "invited account accepts exact token",
-    }, () => candidate.page.goto(appPath(acceptedInvite.link, this.config.appUrl), { waitUntil: "domcontentloaded", timeout: 30_000 }));
-    await candidate.page.getByText("Invitation accepted.", { exact: true }).waitFor({ timeout: 20_000 });
-    await candidate.page.getByText("You joined the organization as member.", { exact: true }).waitFor();
+    }, async () => {
+      // Opening the link changes nothing; the invited person presses Accept.
+      await candidate.page.goto(appPath(acceptedInvite.link, this.config.appUrl), { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await candidate.page.getByRole("button", { name: "Accept invite" }).click({ timeout: 20_000 });
+    });
+    await candidate.page.getByText(/^You joined /).waitFor({ timeout: 20_000 });
+    await candidate.page.getByText(/^Role: Member\./).waitFor();
     this.equal(id, "accept response role", acceptResponse.body?.org_role, "member");
     this.equal(id, "accept response created membership", acceptResponse.body?.created, true);
     await candidate.page.goto("/settings/organization", { waitUntil: "domcontentloaded", timeout: 30_000 });

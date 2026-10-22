@@ -70,6 +70,12 @@ class AcceptBody(BaseModel):
     token: str
 
 
+class AcceptInviteBody(AcceptBody):
+    # The person chose to work there now (the accept button says so): make it
+    # the active organization in the same step. Accepting alone never switches.
+    switch: bool = False
+
+
 class RoleBody(BaseModel):
     role: str
 
@@ -458,14 +464,33 @@ async def invite_summary(
 async def accept_invite(
     request: Request,
     response: Response,
-    body: AcceptBody,
+    body: AcceptInviteBody,
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Accept an invite with the raw token → a membership (single-use, expiry +
     revoke enforced; the token is hash-compared). Accepting never escalates an
-    existing member's role."""
-    membership, invite, created = await svc.accept_invite(
+    existing member's role, and never switches the active organization unless
+    the person asked to (``switch``: the accept button's choice), so opening a
+    link can't move their work into the inviting org by itself.
+
+    ``signed_out``: the org requires two-step and the account has none, so
+    joining ended its sessions (this one included). The next sign-in asks the
+    person to set it up; then the org (active, when they switched) opens."""
+    if body.switch and user.org_id is not None:
+        # Same rule as /switch: an API key stays bound to its issuing org.
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "api_key_org_bound",
+                "message": (
+                    "API keys cannot switch organizations. "
+                    "Use a dashboard session to switch organizations."
+                ),
+                "doc_url": error_doc_url("api_key_org_bound"),
+            },
+        )
+    membership, invite, created, signed_out = await svc.accept_invite(
         session, user.user_id, body.token
     )
     if created:
@@ -477,11 +502,35 @@ async def accept_invite(
             {"org_id": invite.org_id, "role": membership.org_role},
             org_id=invite.org_id,
         )
+    if body.switch:
+        switched = await svc.switch_org(session, user.user_id, invite.org_id)
+        await _emit(
+            session,
+            user.user_id,
+            "org.switched",
+            invite.org_id,
+            {"org_role": switched["org_role"], "via": "invite"},
+            org_id=invite.org_id,
+        )
+    if signed_out:
+        from src.services.audit_service import emit_event
+
+        await emit_event(
+            session,
+            actor_id=user.user_id,
+            action="user.sessions_revoked",
+            resource_type="user",
+            resource_id=str(user.user_id),
+            detail={"revoked_by": user.user_id, "scope": "two_step_setup_required", "org_id": invite.org_id},
+            org_id=invite.org_id,
+        )
     await session.commit()
     return {
         "org_id": membership.org_id,
         "org_role": membership.org_role,
         "created": created,
+        "switched": body.switch,
+        "signed_out": signed_out,
     }
 
 

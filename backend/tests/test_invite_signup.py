@@ -1,7 +1,7 @@
 """Signing up from an invite (live Postgres): the landing page's facts, the join.
 
 it-19 / it-17: the invite link names the org, the inviter and the role before
-sign-in; joining makes that org active; and the invitee doesn't also "own" a
+sign-in; joining from sign-up makes that org active; and the invitee doesn't also "own" a
 company-named org: the personal org sign-up made is "<First name>'s workspace".
 """
 from __future__ import annotations
@@ -123,12 +123,13 @@ async def test_signing_up_from_an_invite_joins_that_org_and_keeps_no_company_nam
         assert personal[0][1] == f"Kestrel{tag} Parts"
         personal_id = personal[0][0]
 
-        # ...and accepting the invite joins the inviting org, makes it active,
-        # and turns that personal org into her own workspace.
+        # ...and accepting the invite joins the inviting org, makes it active
+        # (signing up from the invite is choosing to: the sign-up proxy asks
+        # to switch), and turns that personal org into her own workspace.
         async with AsyncClient(transport=ASGITransport(app=_app(dana)), base_url="http://t") as invitee:
-            r = await invitee.post("/api/v1/orgs/invites/accept", json={"token": token})
+            r = await invitee.post("/api/v1/orgs/invites/accept", json={"token": token, "switch": True})
             assert r.status_code == 200, r.text
-            assert r.json() == {"org_id": org, "org_role": "viewer", "created": True}
+            assert r.json() == {"org_id": org, "org_role": "viewer", "created": True, "switched": True, "signed_out": False}
             listed = (await invitee.get("/api/v1/orgs")).json()
         assert listed["active_org_id"] == org
         names = {o["org_id"]: (o["name"], o["org_role"]) for o in listed["organizations"]}

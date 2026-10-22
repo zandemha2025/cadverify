@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -598,12 +598,51 @@ async def preview_invite(
     }
 
 
+async def end_codeless_session_on_join(session: AsyncSession, user_id: int, org_id: str) -> bool:
+    """Joining an org that requires two-step ends a session that never saw a code.
+
+    The session the person accepts in was made before the org's rule applied to
+    them. When the account has no two-step yet (it now owes "setup"), every one
+    of its sessions ends, as turning the rule on does for existing members
+    (``set_org_policy``): the next sign-in asks them to set it up before the
+    org's data. An account with two-step on signed in with a code and keeps its
+    session; so does one that signs in through single sign-on
+    (``two_step.signs_in_with_single_sign_on``), whose identity provider owns
+    that step. Returns whether the sessions ended. Caller commits.
+    """
+    from src.auth import two_step as ts
+
+    required = (
+        await session.execute(
+            text("SELECT require_two_step FROM organizations WHERE id = :o"), {"o": org_id}
+        )
+    ).scalar_one_or_none()
+    if not required:
+        return False
+    if await ts.sign_in_requirement(session, user_id) != "setup":
+        return False
+    if await ts.signs_in_with_single_sign_on(session, user_id):
+        return False
+    await session.execute(
+        text("UPDATE users SET session_version = session_version + 1 WHERE id = :u"),
+        {"u": int(user_id)},
+    )
+    return True
+
+
 async def accept_invite(
     session: AsyncSession, user_id: int, raw_token: str
-) -> tuple[Membership, OrgInvite, bool]:
+) -> tuple[Membership, OrgInvite, bool, bool]:
     """Redeem a raw token → a membership for ``user_id``. Returns
-    ``(membership, invite, created)`` where ``created`` is False when the user
-    was already a member (in which case the role is NOT escalated).
+    ``(membership, invite, created, signed_out)`` where ``created`` is False
+    when the user was already a member (in which case the role is NOT
+    escalated) and ``signed_out`` is True when joining ended the caller's
+    sessions because the org requires two-step and the account has none
+    (:func:`end_codeless_session_on_join`).
+
+    Accepting never switches the active organization: a link opened by
+    accident must not move the person's next upload into the inviting org.
+    The caller switches only when the person chose to (``switch_org``).
 
     Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, the hash
     compare (the raw token is never stored), AND recipient binding: only the
@@ -638,12 +677,9 @@ async def accept_invite(
     if created:
         # The second member makes a personal org the team's (shared, audited).
         await share_org_if_team(session, inv.org_id, user_id)
-    # Accepting is choosing to work there: the organization becomes active.
-    await session.execute(
-        User.__table__.update().where(User.id == user_id).values(current_org_id=inv.org_id)
-    )
+    signed_out = await end_codeless_session_on_join(session, user_id, inv.org_id)
     await session.flush()
-    return membership, inv, created
+    return membership, inv, created, signed_out
 
 
 # ---------------------------------------------------------------------------
