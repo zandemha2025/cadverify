@@ -73,8 +73,9 @@ def test_deep_sharp_corners_need_the_radius_a_cutter_reaches(tmp_path):
     issue = _milling(_pocket_step(tmp_path / "deep.step", 20.0))["SHARP_INTERNAL_CORNERS"]
     assert issue.required_value == 3.4
     assert issue.message.startswith("4 sharp concave corners between walls (80 mm of edge, the deepest runs 20 mm deep)")
-    assert "at least R3.4" in issue.message
-    assert "R6.7 (a third of the depth)" in issue.fix_suggestion
+    # The radius says its unit (me-04: "at least R2" read with no unit on an inch shop's screen).
+    assert "at least R3.4 mm." in issue.message
+    assert "R6.7 mm (a third of the depth)" in issue.fix_suggestion
     assert issue.citation is not None and "Protolabs Network" in (issue.citation.standard or issue.citation.text or "")
 
 

@@ -36,6 +36,8 @@ import { wbHref } from "../workbench/chrome";
 import { followed, recordedChoice } from "./choice";
 import { PartActuals } from "../validation/part-actuals";
 import { cm3Text, hoursText, massText, materialShort, ownershipOf, routeResources, type RouteResources } from "./resources";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 /** The process the chart and its lines show: one you picked here, else your choice for the part, else ScaleCAD's pick, else the cheapest. */
 export function useChartSel(): Method | null {
@@ -164,6 +166,8 @@ export function CostLayer() {
 
 export function CostLines({ estimate, where }: { estimate: NonNullable<ReturnType<Method["prices"]["get"]>>; where: string }) {
   const [open, setOpen] = React.useState<string | null>(null);
+  // The line formulas in the person's units: in³, in², lb and $/lb when they work in inches (me-04).
+  const { unit } = useUnits();
   // Every line, so they add up to the price above them (ce-01).
   const lines = costLines(estimate);
   const g = groundedCount(estimate);
@@ -191,9 +195,9 @@ export function CostLines({ estimate, where }: { estimate: NonNullable<ReturnTyp
             </button>
             {open === l.key ? (
               <span className="lnhow swap">
-                <span className="num">{howText(l.how)}</span>
+                <span className="num">{inText(howText(l.how), unit)}</span>
                 <br />
-                <span style={{ color: "var(--ink3)" }}>{l.band}</span>
+                <span style={{ color: "var(--ink3)" }}>{inText(l.band, unit)}</span>
               </span>
             ) : null}
           </React.Fragment>
@@ -336,6 +340,7 @@ function insightOf(p: ReturnType<typeof usePart>, fx: ReturnType<typeof useFix>)
 
 export function CostSheet() {
   const p = usePart();
+  const { unit } = useUnits();
   const sel = useChartSel();
   const [toolOpen, setToolOpen] = React.useState(false);
   const [engOpen, setEngOpen] = React.useState(false);
@@ -344,7 +349,6 @@ export function CostSheet() {
   const priced = p.methods.filter((m) => isPriced(m) && m.prices.has(p.q));
   const ranked = [...priced].sort((a, b) => priceAt(a, p.q)! - priceAt(b, p.q)!);
   const order = new Map(ranked.map((m, i) => [m.code, i]));
-  const stable = [...priced].sort((a, b) => a.code.localeCompare(b.code));
   const oq = otherQtyNote(p.methods, p.qs, p.oq);
   const oqRaw = Number.parseInt(p.oq, 10);
   const oqN = Number.isFinite(oqRaw) && oqRaw >= 1 && oqRaw <= 1_000_000 ? oqRaw : null;
@@ -404,8 +408,9 @@ export function CostSheet() {
               <span>price each</span>
             </div>
             <div className="rank" style={{ height: priced.length * 56 }}>
-              {stable.map((m) => {
-                const line = rowLine(m, routeResources(m.prices.get(p.q), vol), m.prices.get(p.q)!.material);
+              {/* me-20: the rows are in price order on the page itself (read aloud, copied, tabbed through), not only drawn in it. */}
+              {ranked.map((m) => {
+                const line = inText(rowLine(m, routeResources(m.prices.get(p.q), vol), m.prices.get(p.q)!.material), unit);
                 return (
                 <button
                   key={m.code}
@@ -489,7 +494,7 @@ export function CostSheet() {
             ) : null}
             <p style={{ margin: "6px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
               {cheapest ? `${days(cheapest.prices.get(p.q)!.lead_time?.low_days, cheapest.prices.get(p.q)!.lead_time?.high_days)} for the cheapest. ` : ""}
-              {p.methods.some((m) => m.inHouse && m.prices.has(p.q)) ? "In-house lead time is print time on the machines you declared, with no shipping; your own queue isn’t included. " : ""}
+              {p.methods.some((m) => m.inHouse && m.prices.has(p.q)) ? "In-house lead time is machine time on the machines you declared, with no shipping; your own queue isn’t included. " : ""}
               Outside lead times are a queue model, not a quote. {shouldCostWords(cost?.assumptions)}
             </p>
             {p.data.key ? <PartActuals partKey={p.data.key} /> : null}

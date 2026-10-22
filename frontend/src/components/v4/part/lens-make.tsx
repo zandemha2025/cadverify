@@ -300,6 +300,8 @@ function problemOfMethod(fx: ReturnType<typeof useFix>, m: Method) {
 function HowJudged() {
   const p = usePart();
   const [open, setOpen] = React.useState(false);
+  // The router's words and figures in the person's unit (me-17: "60 mm long and Ø30 mm" after switching to inches).
+  const { unit } = useUnits();
   const r = p.data.cost?.routing ?? null;
   const v = p.data.validation;
   const cells = featureCells(v?.features);
@@ -324,12 +326,12 @@ function HowJudged() {
       </div>
       {open ? (
         <div className="swap" style={{ margin: "0 12px", display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--ink2)" }}>
-          {r?.reasoning ? <p style={{ margin: 0 }}>{r.reasoning}</p> : null}
+          {r?.reasoning ? <p style={{ margin: 0 }}>{inText(r.reasoning, unit)}</p> : null}
           <div className="kv" style={{ padding: 0 }}>
             {rows.map(([k, val]) => (
               <React.Fragment key={k}>
                 <span>{k}</span>
-                <b className="num">{val}</b>
+                <b className="num">{inText(val, unit)}</b>
               </React.Fragment>
             ))}
           </div>

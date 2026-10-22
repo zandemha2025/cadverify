@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { area, dims, inText, len, lenValue, parseLen, volume } from "./units.ts";
+import { area, dims, inText, len, lenValue, mass, parseLen, volume } from "./units.ts";
 
 test("lengths convert exactly and say their unit", () => {
   assert.equal(len(25.4, "mm"), "25.4 mm");
@@ -42,4 +42,27 @@ test("engine text shows every mm figure in inches, and nothing else changes", ()
   assert.equal(inText("volume 16.387064 cm³", "in"), "volume 1.000 in³");
   assert.equal(inText("needs 1306 mm", "mm"), "needs 1306 mm");
   assert.equal(inText(null, "in"), "");
+});
+
+test("in inches, weights read in lb and prices per kg per lb (me-04)", () => {
+  // 46.6 kg × 2.20462262 = 102.735 lb; 15.2 kg = 33.51 lb; 0.023 kg = 0.0507 lb = 0.81 oz.
+  assert.equal(mass(46.6, "in"), "102.7 lb");
+  assert.equal(mass(15.2, "in"), "33.5 lb");
+  assert.equal(mass(0.023, "in"), "0.81 oz");
+  assert.equal(mass(2.5, "in"), "5.51 lb");
+  assert.equal(mass(46.6, "mm"), "46.6 kg");
+  assert.equal(inText("machine time on your Haas VF-2 · 46.6 kg AISI 4140 · $37.67 each", "in"), "machine time on your Haas VF-2 · 102.7 lb AISI 4140 · $37.67 each");
+  assert.equal(inText("part 40.0kg > machine max 20.0kg", "in"), "part 88.2 lb > machine max 44.1 lb");
+  // $4.00/kg × 0.45359237 = $1.81/lb; $12/m² ÷ 10.7639 = $1.11/ft².
+  assert.equal(inText("0.84 kg × $4.00/kg", "in"), "1.85 lb × $1.81/lb");
+  assert.equal(inText("anodize $12/m² × 0.012 m²", "in"), "anodize $1.11/ft² × 0.13 ft²");
+  // Grams of material read in oz; a density (g/cm³) and an alloy name are left alone.
+  assert.equal(inText("13.6 g of PLA, density 1.24 g/cm³, AlSi10Mg", "in"), "0.48 oz of PLA, density 1.24 g/cm³, AlSi10Mg");
+  assert.equal(inText("46.6 kg AISI 4140", "mm"), "46.6 kg AISI 4140");
+});
+
+test("a corner radius says its unit: R2 in engine text is 2 mm (me-04)", () => {
+  assert.equal(inText("0.472 in deep takes Ø4 mm or more: at least R2.", "in"), "0.472 in deep takes Ø0.157 in or more: at least R0.079 in.");
+  assert.equal(inText("at least R2 mm. R0.7 mm lets a stiffer cutter run", "in"), "at least R0.079 in. R0.028 in lets a stiffer cutter run");
+  assert.equal(inText("Ra 0.8 µm, PA12, R2", "mm"), "Ra 0.8 µm, PA12, R2");
 });

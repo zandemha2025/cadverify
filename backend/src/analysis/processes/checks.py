@@ -1606,10 +1606,10 @@ def check_internal_radii(
         why = (f"{n} sharp concave {word} between walls ({round(corners.length_mm, 1):g} mm of edge, "
                f"{'it runs' if n == 1 else 'the deepest runs'} {round(deepest, 1):g} mm deep): a milling cutter "
                f"leaves its own radius there, and a standard end mill reaches about {END_MILL_REACH_D:g}× its "
-               f"diameter, so {round(deepest, 1):g} mm deep takes Ø{2 * need:g} mm or more: at least R{need:g}. "
+               f"diameter, so {round(deepest, 1):g} mm deep takes Ø{2 * need:g} mm or more: at least R{need:g} mm. "
                f"Applies to {process_phrase(process)}.")
         third = _up_tenth(deepest / 3.0)
-        fix = (f"Add fillets >= {need:g}mm to the inside corners; R{third:g} (a third of the depth) "
+        fix = (f"Add fillets >= {need:g}mm to the inside corners; R{third:g} mm (a third of the depth) "
                f"lets a stiffer cutter run faster. {REACH_CITE}")
         source = REACH_CITE
     else:
@@ -1665,7 +1665,7 @@ def check_tool_reach(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
         region_center=worst["center"],
         measured_value=float(worst["radius_mm"]),
         required_value=need,
-        fix_suggestion=(f"Make the inside corners at least R{need:g} (a Ø{2 * need:g} mm end mill reaches "
+        fix_suggestion=(f"Make the inside corners at least R{need:g} mm (a Ø{2 * need:g} mm end mill reaches "
                         f"{round(max(c['depth_mm'] for c in deep), 1):g} mm at {END_MILL_REACH_D:g}× its diameter). "
                         f"{REACH_CITE}"),
         citation=parse_citation(REACH_CITE),

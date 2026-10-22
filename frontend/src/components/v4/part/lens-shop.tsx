@@ -266,7 +266,7 @@ export function ShopSheet() {
                     {v.tone === "ok" && v.method && !p.costOff ? (
                       (() => {
                         const takes = runLine(routeResources(v.method.prices.get(p.q), vol));
-                        return takes ? <small className="num">{`This part: ${takes} for ${qtyWord(p.q)}`}</small> : null;
+                        return takes ? <small className="num">{inText(`This part: ${takes} for ${qtyWord(p.q)}`, unit)}</small> : null;
                       })()
                     ) : null}
                   </span>

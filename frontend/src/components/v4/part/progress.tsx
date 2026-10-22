@@ -6,6 +6,8 @@ import { dimsText, plural, progressSteps, type Step } from "./model";
 import { chosenLine } from "./pick-words";
 import { readsAsBodies, type CheckSession } from "./store";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
@@ -76,6 +78,8 @@ export function ProgressPanel({
   action?: React.ReactNode;
 }) {
   const m = progressModel(session);
+  // Sizes in the person's unit, like the rest of the part (me-04: "60 × 40 × 20 mm · 37.9 cm³" under an inches header).
+  const { unit } = useUnits();
   const closeRef = React.useRef<HTMLButtonElement>(null);
   const reopenRef = React.useRef<HTMLButtonElement>(null);
   const wasOpen = React.useRef(open);
@@ -132,7 +136,7 @@ export function ProgressPanel({
               <b>{s.t}</b>
               <span>
                 <span className="sr">{s.state === "done" ? "Done: " : s.state === "now" ? "In progress: " : s.state === "bad" ? "Failed: " : s.state === "skip" ? "Skipped: " : "Waiting: "}</span>
-                {s.d}
+                {inText(s.d, unit)}
               </span>
             </span>
           </li>

@@ -19,6 +19,8 @@ import { enginePick, pairAt, pickWhy } from "./choice";
 import { SignOff } from "./signoff";
 import { mustHold, normalizeSpecs } from "./specs";
 import { hoursText, massText, routeResources, runLine } from "./resources";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 import { buyCompareText, buyPriceText, keepBuyingWhy, makeOrBuy, readTypedPrice, saveBuyPrice } from "./buy-price";
 
 const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign", supplier: "Keep buying from our supplier" };
@@ -140,6 +142,7 @@ export function DecideTicket() {
   const p = usePart();
   const { chosen, gov, picked } = useDecideState();
   const resOf = useRouteRes();
+  const { unit } = useUnits();
   if (p.lens !== "decide" || p.interrupted) return null;
   const isSaved = !!gov?.user_disposition && !!chosen && chosen.kind === gov.user_disposition;
   const env = p.data.runEnvironment;
@@ -160,7 +163,7 @@ export function DecideTicket() {
       <span style={{ color: "var(--ink3)", fontSize: 13 }}>{chosen ? `${lead}${chosen.label} · ${chosen.sub.split(" · ").slice(0, 2).join(" · ")}` : "Nothing chosen yet"}</span>
       <span className="big num">{hoursFirst && r ? `${hoursText(r.hoursRun)} machine time` : chosen?.cost != null ? `${money(chosen.cost)} each` : "—"}</span>
       <span style={{ color: "var(--ink2)", fontSize: 13.5 }}>
-        {facts.join(" · ")}{env && (env.sour_service || env.corrosive || env.max_temp_c != null) ? " · for the declared service conditions" : ""}
+        {inText(facts.join(" · "), unit)}{env && (env.sour_service || env.corrosive || env.max_temp_c != null) ? " · for the declared service conditions" : ""}
       </span>
       {isSaved ? <span className="stamp">Recorded on the part&apos;s record</span> : null}
       {isSaved && gov?.approval_status === "approved" ? (

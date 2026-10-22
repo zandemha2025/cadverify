@@ -76,14 +76,49 @@ export function parseLen(text: string, unit: LengthUnit): number | null {
 const RUN = /((?:[-−±]?\d[\d,]*(?:\.\d+)?)(?:\s*(?:×|x|–|-|to)\s*(?:[-−±]?\d[\d,]*(?:\.\d+)?))*)\s?(mm³|mm²|mm\b|cm³|cm²)/g;
 const NUM = /[-−±]?\d[\d,]*(?:\.\d+)?/g;
 
+export const LB_PER_KG = 1 / 0.45359237;
+export const OZ_PER_G = 1 / 28.349523125;
+export const FT2_PER_M2 = 1 / 0.09290304;
+
+/** A weight in kg shown in the unit's system: "46.6 kg", or "102.7 lb" in inches (me-04). */
+export function mass(kg: number | null | undefined, unit: LengthUnit): string {
+  if (kg == null || !Number.isFinite(kg)) return "—";
+  if (unit === "in") {
+    const lb = kg * LB_PER_KG;
+    return lb < 0.1 ? `${trimmed(kg * 1000 * OZ_PER_G, 2)} oz` : `${trimmed(lb, lb < 10 ? 2 : lb < 1000 ? 1 : 0)} lb`;
+  }
+  return kg < 10 ? `${trimmed(kg, 2)} kg` : `${trimmed(kg, 1)} kg`;
+}
+
+const NUMS = "(\\d[\\d,]*(?:\\.\\d+)?)";
+const PER_KG = new RegExp(`\\$${NUMS}\\s?\\/kg\\b`, "g");
+const PER_M2 = new RegExp(`\\$${NUMS}\\s?\\/m²`, "g");
+const KG = new RegExp(`(^|[^/\\w$.,])${NUMS}\\s?kg\\b`, "g");
+const GRAMS = new RegExp(`(^|[^/\\w$.,])${NUMS}\\s?g(?![\\w/])`, "g");
+const M2 = new RegExp(`(^|[^/\\w$.,])${NUMS}\\s?m²`, "g");
+
+function num(s: string): number {
+  return Number(s.replace(/,/g, ""));
+}
+
 /**
  * Engine text with every mm figure shown in inches ("needs 1306 mm, has 1005 mm"
- * → "needs 51.42 in, has 39.57 in"). A no-op in mm. Numbers that aren't lengths
- * (prices, counts, µm roughness) are left as they are.
+ * → "needs 51.42 in, has 39.57 in"), and, in inches, weights in lb (or oz under
+ * a tenth of a pound), prices per kg per lb and per m² per ft² (me-04). A no-op
+ * in mm. Numbers that aren't lengths or weights (prices, counts, µm roughness)
+ * are left as they are.
  */
 export function inText(text: string | null | undefined, unit: LengthUnit): string {
   if (!text || unit === "mm") return text ?? "";
-  return text.replace(RUN, (_all, run: string, u: string) => {
+  const imperial = text
+    .replace(PER_KG, (_a, n: string) => `$${fixed(num(n) / LB_PER_KG, 2)}/lb`)
+    .replace(PER_M2, (_a, n: string) => `$${fixed(num(n) / FT2_PER_M2, 2)}/ft²`)
+    .replace(KG, (_a, pre: string, n: string) => `${pre}${mass(num(n), "in")}`)
+    .replace(GRAMS, (_a, pre: string, n: string) => `${pre}${mass(num(n) / 1000, "in")}`)
+    .replace(M2, (_a, pre: string, n: string) => `${pre}${trimmed(num(n) * FT2_PER_M2, 2)} ft²`)
+    // A corner radius the engine wrote without a unit ("at least R2"): engine figures are mm (me-04).
+    .replace(/\bR(\d+(?:\.\d+)?)(?![\d.]*\s?(?:mm|in\b|″|"))/g, (_a, n: string) => `R${fixed(num(n) / MM_PER_IN, inchDecimals(num(n)))} in`);
+  return imperial.replace(RUN, (_all, run: string, u: string) => {
     const factor = u === "mm" ? MM_PER_IN : u === "mm²" ? MM_PER_IN * MM_PER_IN : u === "mm³" ? MM_PER_IN ** 3 : u === "cm²" ? CM2_PER_IN2 : CM3_PER_IN3;
     const out = run.replace(NUM, (n) => {
       const sign = /^[−±-]/.test(n) ? n[0] : "";
