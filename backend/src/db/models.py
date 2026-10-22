@@ -1529,6 +1529,11 @@ class RateCardVersion(Base):
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Who last changed the draft (0065): its author or last editor can't
+    # approve it while the org has another admin (governance_service.approve).
+    edited_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1944,6 +1949,11 @@ class ShopProfileVersion(Base):
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Who last changed the draft (0065): its author or last editor can't
+    # approve it while the org has another admin (governance_service.approve).
+    edited_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -2015,6 +2025,9 @@ class ChangeRequest(Base):
     decided_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # Set at approval (0065): the reviewer proposed it, wrote the draft or last
+    # edited it. NULL for older decisions (read as: approved by the proposer).
+    self_approved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -2085,6 +2098,11 @@ class MaterialLibraryVersion(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Who last changed the draft (0065): its author or last editor can't
+    # approve it while the org has another admin (governance_service.approve).
+    edited_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

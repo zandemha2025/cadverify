@@ -159,6 +159,7 @@ async def update_shop_profile_draft(
             name=body.name,
             change_note=body.change_note,
             payload=body.payload,
+            edited_by=ctx.user_id,
             slug=body.slug,
         )
     except ValueError as exc:

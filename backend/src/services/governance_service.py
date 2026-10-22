@@ -284,8 +284,7 @@ async def approve(
     SELF-APPROVAL: refused (403 ``self_approval``) when the reviewer proposed it,
     wrote the draft or last edited it, and the org has another admin: anyone may
     propose any draft, so the proposer alone is not who wrote the numbers.
-    Allowed in a single-admin org (and a proposer's approval is labelled
-    ``self_approved``).
+    Allowed in a single-admin org, and recorded as ``self_approved``.
 
     ``effective_from`` (optional, not in the past) schedules the publish, as the
     libraries' direct publish used to; the reviewer picks it.
@@ -308,6 +307,8 @@ async def approve(
     row.status = "approved"
     row.reviewed_by = reviewer_id
     row.decided_at = _now()
+    # Recorded (0065): the reviewer had a hand in it, so no second admin saw it.
+    row.self_approved = hand is not None
     await session.flush()
     return row, published
 
@@ -363,6 +364,15 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt is not None else None
 
 
+def _self_approved(row: ChangeRequest) -> bool:
+    if row.status != "approved":
+        return False
+    recorded = getattr(row, "self_approved", None)
+    if recorded is not None:
+        return bool(recorded)
+    return bool(row.proposed_by is not None and row.proposed_by == row.reviewed_by)
+
+
 def serialize_request(row: ChangeRequest) -> dict:
     return {
         "id": row.id,
@@ -377,7 +387,8 @@ def serialize_request(row: ChangeRequest) -> dict:
         "reviewed_by": row.reviewed_by,
         "created_at": _iso(row.created_at),
         "decided_at": _iso(row.decided_at),
-        # Approved by the person who proposed it (only possible with no other admin).
-        "self_approved": bool(row.status == "approved" and row.proposed_by is not None
-                              and row.proposed_by == row.reviewed_by),
+        # Approved by someone who proposed it, wrote the draft or last edited it
+        # (only possible with no other admin), as recorded at approval (0065);
+        # older decisions: approved by the person who proposed it.
+        "self_approved": _self_approved(row),
     }

@@ -163,6 +163,7 @@ async def test_approve_publishes_and_marks_approved(monkeypatch):
     assert row.status == "approved"
     assert row.reviewed_by == 20
     assert row.decided_at is not None
+    assert row.self_approved is False
 
 
 @pytest.mark.asyncio
@@ -230,6 +231,8 @@ async def test_a_single_admin_approves_their_own_draft(monkeypatch):
     monkeypatch.setattr(rate_library_service, "publish_version", _publish)
     row, pub = await svc.approve(_FakeSession(), "orgA", 1, reviewer_id=20)
     assert row.status == "approved" and pub is published
+    # Recorded, so the list says so later although a member proposed it.
+    assert row.self_approved is True and svc.serialize_request(row)["self_approved"] is True
 
 
 @pytest.mark.asyncio

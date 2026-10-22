@@ -5,8 +5,9 @@ was the change request's PROPOSER. Any org member may propose any draft, so an
 admin could write the numbers, have a member propose them, and publish them
 themselves: the "another admin approves it" rule (ce-13, C2) was bypassed and
 the request was not even labelled self-approved. Approve now also refuses the
-draft's author (``created_by``), for the rate card, supplier rate profiles and
-the material catalog alike; a single-admin org still approves its own drafts.
+draft's author (``created_by``) and its last editor (``edited_by``, 0065), for
+the rate card, supplier rate profiles and the material catalog alike; a
+single-admin org still approves its own drafts, recorded as self-approved.
 
 Skipped unless DATABASE_URL points at Postgres migrated to head.
 """
@@ -143,6 +144,46 @@ async def test_draft_author_cannot_approve_when_another_admin_exists(real_member
         await eng.dispose_engine()
 
 
+async def test_the_last_editor_cannot_approve_either(real_membership_lookup):
+    """Admin A writes the draft, admin B edits it, a member proposes it: neither
+    A nor B may approve it while admin C can; C approves it."""
+    from httpx import ASGITransport, AsyncClient
+
+    import src.db.engine as eng
+
+    org, (writer, editor, third, member) = await _org((("writer", "admin"), ("editor", "admin"),
+                                                       ("third", "admin"), ("member", "member")))
+    app = _app()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+            _act_as(app, writer)
+            draft = (await ac.post("/api/v1/rate-library", json={"name": "Q4 rates"})).json()["id"]
+            _act_as(app, editor)
+            r = await ac.patch(f"/api/v1/rate-library/{draft}", json={"change_note": "labour $58/h"})
+            assert r.status_code == 200, r.text
+            assert r.json()["created_by"] == writer and r.json()["edited_by"] == editor
+            _act_as(app, member)
+            cr = (await ac.post("/api/v1/governance/change-requests",
+                                json={"asset_type": "rate_card", "target_version_id": draft})).json()["id"]
+
+            _act_as(app, editor)
+            r = await ac.post(f"/api/v1/governance/change-requests/{cr}/approve", json={})
+            assert r.status_code == 403 and r.json()["detail"]["message"] == (
+                "You last edited this draft, so another admin approves it. Your organization has 2 other admins."
+            ), r.text
+            _act_as(app, writer)
+            r = await ac.post(f"/api/v1/governance/change-requests/{cr}/approve", json={})
+            assert r.status_code == 403 and r.json()["detail"]["message"].startswith("You wrote this draft"), r.text
+
+            _act_as(app, third)
+            r = await ac.post(f"/api/v1/governance/change-requests/{cr}/approve", json={})
+            assert r.status_code == 200, r.text
+            assert r.json()["change_request"]["self_approved"] is False
+    finally:
+        _invalidate(org)
+        await eng.dispose_engine()
+
+
 async def test_single_admin_org_still_approves_its_own_draft(real_membership_lookup):
     from httpx import ASGITransport, AsyncClient
 
@@ -161,6 +202,10 @@ async def test_single_admin_org_still_approves_its_own_draft(real_membership_loo
             r = await ac.post(f"/api/v1/governance/change-requests/{cr}/approve", json={})
             assert r.status_code == 200, r.text
             assert r.json()["change_request"]["status"] == "approved"
+            # A member proposed it, but the only admin wrote it: no second admin saw it.
+            assert r.json()["change_request"]["self_approved"] is True
+            listed = (await ac.get("/api/v1/governance/change-requests")).json()["change_requests"]
+            assert [x["self_approved"] for x in listed if x["id"] == cr] == [True]
     finally:
         _invalidate(org)
         await eng.dispose_engine()

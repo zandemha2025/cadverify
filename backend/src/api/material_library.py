@@ -188,6 +188,7 @@ async def update_material_catalog_draft(
             name=body.name,
             change_note=body.change_note,
             payload=body.payload,
+            edited_by=ctx.user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

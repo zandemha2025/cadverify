@@ -280,6 +280,7 @@ async def update_draft(
     name: Optional[str] = None,
     change_note: Optional[str] = None,
     payload: Optional[dict] = None,
+    edited_by: Optional[int] = None,
 ) -> MaterialLibraryVersion:
     row = await get_version(session, org_id, version_id)
     if row is None:
@@ -295,6 +296,8 @@ async def update_draft(
         row.name = name
     if change_note is not None:
         row.change_note = change_note
+    if edited_by is not None:
+        row.edited_by = edited_by
     await session.flush()
     return row
 
@@ -428,6 +431,7 @@ def serialize_version(
         "effective_from": _iso(row.effective_from),
         "effective_to": _iso(row.effective_to),
         "created_by": row.created_by,
+        "edited_by": getattr(row, "edited_by", None),
         "created_at": _iso(row.created_at),
         "published_at": _iso(row.published_at),
         # Honest, always-present posture: a governed catalog is DECLARED default
