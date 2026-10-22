@@ -291,6 +291,12 @@ def _turn(mesh: trimesh.Trimesh, R: np.ndarray) -> trimesh.Trimesh:
     vertices = np.asarray(mesh.vertices, dtype=np.float64) @ R.T
     out = trimesh.Trimesh(vertices=vertices, faces=np.asarray(mesh.faces).copy(), process=False)
     out.metadata.update(dict(mesh.metadata or {}))
+    from src.parsers.step_mesher import CAD_NORMALS_KEY
+
+    cad = out.metadata.get(CAD_NORMALS_KEY)
+    if cad is not None:
+        # The B-rep's own face directions turn with the part (same faces, same order).
+        out.metadata[CAD_NORMALS_KEY] = (np.asarray(cad, dtype=np.float64) @ R.T).astype(np.float32)
     return out
 
 
@@ -530,7 +536,7 @@ _BRIDGE_BOXES = 64
 def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total_area: float,
                extra: dict | None = None, facets: tuple[list[np.ndarray], np.ndarray] | None = None,
                volume_mm3: float | None = None) -> dict:
-    from src.analysis.processes.checks import cup_faces, draft_sidewalls, overhang_faces
+    from src.analysis.processes.checks import cup_faces, draft_sidewalls, meets_draft, overhang_faces
     from src.analysis.support import support_regions
 
     o = Orientation.of(R)
@@ -586,7 +592,7 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
     sidewalls, draft = draft_sidewalls(angles)
     drafts = {}
     for proc, need in DRAFT_MIN_DEG.items():
-        flagged = sidewalls[draft < need]
+        flagged = sidewalls[~meets_draft(draft, need)]
         drafts[proc] = {"faces": int(len(flagged)), "area_mm2": round(float(areas[flagged].sum()), 2)}
     down_area = float(areas[normals[:, 2] < -0.8].sum()) if len(normals) else 0.0
     # The same rules the analyzers use for the findings that read the build direction.

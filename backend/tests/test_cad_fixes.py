@@ -290,10 +290,10 @@ def test_can_fix_flags_for_a_step_part_and_after_a_failed_attempt(monkeypatch, t
     result = _analysis_dict(path)
     opts = svc.fix_options(result, ".step")
     by = {g["code"]: g for g in opts["findings"]}
-    # Milling asks for 0.5 mm; ScaleCAD rounds at 1.0 mm at least (still meets it)
-    # because 0.5 mm fillets tessellate creased enough to read as sharp again.
-    assert by["SHARP_INTERNAL_CORNERS"]["can_fix"] and by["SHARP_INTERNAL_CORNERS"]["params"] == {"radius_mm": 1.0}
-    assert by["SHARP_INTERNAL_CORNERS"]["required"]["cnc_3axis"] == 0.5
+    # The pocket is 20 mm deep: milling asks for the radius a standard end mill
+    # reaching that deep leaves (Ø6.7 at 3× its diameter: R3.4), not its smallest 0.5 mm.
+    assert by["SHARP_INTERNAL_CORNERS"]["can_fix"] and by["SHARP_INTERNAL_CORNERS"]["params"] == {"radius_mm": 3.4}
+    assert by["SHARP_INTERNAL_CORNERS"]["required"]["cnc_3axis"] == 3.4
     assert by["MISSING_FILLETS"]["params"] == {"radius_mm": 3.0}, "covers sand casting and forging"
     assert by["INSUFFICIENT_DRAFT"]["can_fix"] is False and "cadquery-ocp" in by["INSUFFICIENT_DRAFT"]["why_not"]
     assert "corners" in opts["families"] and "draft" not in opts["families"]
@@ -563,4 +563,4 @@ def test_no_saved_check_means_no_findings_and_parameters_are_bounded():
     assert svc.fix_options(None, ".step")["findings"] == []
     with pytest.raises(svc.FixRequestError):
         svc.resolve_params(svc.FIXES["drain_holes"], 99.0, {}, ".stl")
-    assert svc.resolve_params(svc.FIXES["fillet_inside_corners"], 0.5, {}, ".step") == {"radius_mm": 0.5}
+    assert svc.resolve_params(svc.FIXES["fillet_inside_corners"], 0.5, {}, ".step") == {"radius_mm": 0.5, "edges": "all"}

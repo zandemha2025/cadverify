@@ -9,6 +9,7 @@ from src.analysis.processes.checks import (
     check_fixture_surfaces,
     check_hole_depth_ratio,
     check_internal_radii,
+    check_tool_reach,
     check_sealed_voids,
     check_setup_access,
     check_wall_thickness,
@@ -31,6 +32,7 @@ class CNC3AxisAnalyzer:
                  cite="Protolabs CNC design guidance: 3-axis machining may use multiple setups."))
         i.extend(check_internal_radii(ctx, 0.5, self.process,
                  cite="Sandvik: smallest end mill 1mm Ø → 0.5mm radius."))
+        i.extend(check_tool_reach(ctx, self.process))
         i.extend(check_wall_thickness(ctx, 0.8, self.process,
                  cite="Thin walls vibrate; 0.8mm min metals."))
         i.extend(check_hole_depth_ratio(ctx, 10.0, self.process))

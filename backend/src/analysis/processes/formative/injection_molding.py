@@ -23,7 +23,7 @@ class InjectionMoldingAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
-        i.extend(check_draft_angles(ctx, 1.0, self.process,
+        i.extend(check_draft_angles(ctx, 1.0, self.process, internal_deg=2.0,
                  cite="Protolabs: 1° min external, 2° internal."))
         i.extend(check_wall_uniformity(ctx, 0.5, 6.0, 2.5, self.process,
                  cite="GE Plastics: 0.5–6mm, ideal 2.5mm for ABS."))

@@ -9,6 +9,7 @@ from src.analysis.processes.checks import (
     check_fixture_surfaces,
     check_hole_depth_ratio,
     check_internal_radii,
+    check_tool_reach,
     check_sealed_voids,
     check_setup_access,
     check_wall_thickness,
@@ -31,6 +32,7 @@ class CNC5AxisAnalyzer:
                  cite="Verify tool and holder clearance through the planned 5-axis motion."))
         i.extend(check_internal_radii(ctx, 0.5, self.process,
                  cite="Sandvik: 1mm end mill → 0.5mm radius min."))
+        i.extend(check_tool_reach(ctx, self.process))
         i.extend(check_wall_thickness(ctx, 0.8, self.process))
         i.extend(check_hole_depth_ratio(ctx, 15.0, self.process))
         i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,

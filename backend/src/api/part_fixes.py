@@ -108,6 +108,10 @@ async def apply_part_fix(
                     "Leave empty for what the part's findings ask for.",
     ),
     processes: Optional[str] = Query(None, description="Comma-separated processes for the re-check."),
+    edges: Optional[str] = Query(None, description="Rounding inside corners: 'corners' (the inside corners a "
+                                                   "milling cutter leaves rounded, the milling finding's) or "
+                                                   "'all' sharp inside edges (casting's fillets). Default: "
+                                                   "'corners' when the part has the milling finding."),
     rule_pack: Optional[str] = Query(None, description="Industry rule pack for the re-check."),
     qty: Optional[str] = Query(None, description="Quantities to price, e.g. 10,1000. "
                                                  "Default: the part's last cost check, else the app's ladder."),
@@ -133,7 +137,7 @@ async def apply_part_fix(
     try:
         result = await svc.apply_fix(
             org_id=org_id, mesh_hash=digest, fix_id=fix_id, value=value,
-            processes=processes, rule_pack=rule_pack, quantities=_quantities(qty),
+            processes=processes, edges=edges, rule_pack=rule_pack, quantities=_quantities(qty),
             material_class=material_class, with_cost=with_cost, user=user, session=session,
         )
     except svc.FixRequestError as exc:

@@ -24,7 +24,7 @@ class ForgingAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
-        i.extend(check_draft_angles(ctx, 5.0, self.process,
+        i.extend(check_draft_angles(ctx, 5.0, self.process, internal_deg=7.0,
                  cite="FIA: 5° external, 7-10° internal."))
         i.extend(check_fillet_requirements(ctx, 3.0, self.process,
                  cite="FIA: 3mm min corner radius for die life."))

@@ -267,7 +267,27 @@ def _exact_turn_deg(curve: int) -> float | None:
     return float(np.degrees(np.arccos(min(1.0, abs(float(np.dot(*normals)))))))
 
 
-def sharp_concave_curves(threshold_deg: float = SHARP_CONCAVE_DEG, uniform: bool = False) -> dict[int, dict]:
+def _cutter_corner_rows(mesh) -> np.ndarray:
+    """Adjacency rows on the inside corners a milling cutter leaves rounded.
+
+    ``context.inside_corners``, the rule ``check_internal_radii`` counts: a
+    pocket's vertical corners, not the edges along its floor (the flat end of
+    the cutter cuts those sharp, so they aren't the corners the finding names).
+    """
+    from src.analysis.context import inside_corners
+
+    diag = float(np.linalg.norm(mesh.extents)) if len(mesh.faces) else 0.0
+    eps = max(1e-4, min(diag * 1e-4, 0.1))
+    found = inside_corners(mesh, np.asarray(mesh.face_normals, dtype=np.float64),
+                           np.asarray(mesh.face_adjacency, dtype=np.int64),
+                           np.asarray(mesh.face_adjacency_angles, dtype=np.float64),
+                           ~np.asarray(mesh.face_adjacency_convex, dtype=bool),
+                           [np.asarray(f, dtype=int) for f in mesh.facets], eps)
+    return np.asarray(found.edges, dtype=np.int64)
+
+
+def sharp_concave_curves(threshold_deg: float = SHARP_CONCAVE_DEG, uniform: bool = False,
+                         corners_only: bool = False) -> dict[int, dict]:
     """B-rep curves the engine would read as sharp inside corners.
 
     A curve qualifies when most of its tessellated edges are concave with face
@@ -276,6 +296,10 @@ def sharp_concave_curves(threshold_deg: float = SHARP_CONCAVE_DEG, uniform: bool
     edges to round -- and its two faces really meet at an angle (exact normals
     differ by more than 5 degrees), so a joint that is already smooth and only
     tessellates creased is never "rounded" again.
+
+    ``corners_only``: only the corners a milling cutter leaves rounded
+    (``_cutter_corner_rows``), so rounding a pocket's corners leaves its floor
+    edges as drawn (a mating part may sit on that floor).
     """
     import trimesh
 
@@ -289,14 +313,18 @@ def sharp_concave_curves(threshold_deg: float = SHARP_CONCAVE_DEG, uniform: bool
         edges = mesh.face_adjacency_edges
         angles = np.degrees(mesh.face_adjacency_angles)
         convex = mesh.face_adjacency_convex
+        corner = None
+        if corners_only:
+            corner = np.zeros(len(edges), dtype=bool)
+            corner[_cutter_corner_rows(mesh)] = True
     finally:
         gmsh.model.mesh.clear()
     stats: dict[int, list[int]] = {}
-    for (a, b), ang, cvx in zip(edges, angles, convex):
+    for row, ((a, b), ang, cvx) in enumerate(zip(edges, angles, convex)):
         curve = line_edges.get((min(a, b), max(a, b)))
         if curve is None:
             continue
-        hit = (not bool(cvx)) and ang > threshold_deg
+        hit = (not bool(cvx)) and ang > threshold_deg and (corner is None or bool(corner[row]))
         s = stats.setdefault(curve, [0, 0, 0.0])
         s[0] += 1
         s[1] += int(hit)
@@ -320,7 +348,14 @@ def sharp_concave_curves(threshold_deg: float = SHARP_CONCAVE_DEG, uniform: bool
 # ---------------------------------------------------------------------------
 
 
-def fillet_inside_corners(data: bytes, suffix: str, radius_mm: float, uniform: bool = False) -> FixOutcome:
+def fillet_inside_corners(data: bytes, suffix: str, radius_mm: float, uniform: bool = False,
+                          corners_only: bool = False) -> FixOutcome:
+    """Round sharp inside edges on a copy.
+
+    ``corners_only`` rounds only the corners a milling cutter leaves rounded (the
+    ones the milling finding counts); otherwise every sharp concave edge
+    (casting's fillets, floor edges included).
+    """
     if suffix not in _BREP_SUFFIXES:
         raise FixRefused("Rounding inside corners needs a STEP or IGES file; an STL has no edges to round.")
     if not (0.05 <= radius_mm <= 25.0):
@@ -329,7 +364,7 @@ def fillet_inside_corners(data: bytes, suffix: str, radius_mm: float, uniform: b
     with _Session(data, suffix) as session:
         vol = _single_volume()
         before = _volume_mm3(vol)
-        curves = sharp_concave_curves(uniform=uniform)
+        curves = sharp_concave_curves(uniform=uniform, corners_only=corners_only)
         if not curves:
             return FixOutcome(False, None, suffix, "No sharp inside corners were found on the B-rep edges.",
                               {"edges_found": 0})
@@ -355,6 +390,7 @@ def fillet_inside_corners(data: bytes, suffix: str, radius_mm: float, uniform: b
     return FixOutcome(True, fixed, out_suffix, None, {
         "format_note": note,
         "edges_rounded": len(tags),
+        "edges": "corners" if corners_only else "all",
         "radius_mm": radius_mm,
         "brep_volume_before_mm3": round(before, 3),
         "brep_volume_after_mm3": round(after, 3),
@@ -709,7 +745,8 @@ def run_fix(fix_id: str, data: bytes, suffix: str, params: dict) -> FixOutcome:
     try:
         uniform = bool(params.get("_uniform_mesh"))
         if fix_id == "fillet_inside_corners":
-            return fillet_inside_corners(data, suffix, float(params["radius_mm"]), uniform)
+            return fillet_inside_corners(data, suffix, float(params["radius_mm"]), uniform,
+                                         corners_only=params.get("edges") == "corners")
         if fix_id == "drain_holes":
             return drain_holes(data, suffix, float(params["diameter_mm"]),
                                int(params.get("per_cavity", 2)), uniform)

@@ -575,22 +575,46 @@ class FixRequestError(Exception):
         self.message = message
 
 
-def resolve_params(spec: FixSpec, given: float | None, result: dict, suffix: str) -> dict:
+_FILLET_EDGES = ("corners", "all")
+
+
+def fillet_edges(result: dict, asked: str | None = None) -> str:
+    """Which edges the corner fix rounds: ``corners`` (the inside corners a milling
+    cutter leaves rounded, the ones the milling finding counts) when the part has
+    that finding, else ``all`` sharp inside edges (casting's fillets)."""
+    if asked is not None:
+        if asked not in _FILLET_EDGES:
+            raise FixRequestError(400, f"edges must be one of {list(_FILLET_EDGES)}.")
+        return asked
+    milled = any(issue.get("code") == "SHARP_INTERNAL_CORNERS" for _p, issue in _iter_findings(result))
+    return "corners" if milled else "all"
+
+
+def resolve_params(spec: FixSpec, given: float | None, result: dict, suffix: str,
+                   edges: str | None = None) -> dict:
     if spec.param is None:
         return {}
+    extra: dict = {}
+    codes = None
+    if spec.id == "fillet_inside_corners":
+        extra["edges"] = fillet_edges(result, edges)
+        if extra["edges"] == "corners":
+            codes = {"SHARP_INTERNAL_CORNERS"}
     if given is not None:
         lo, hi = spec.bounds or (0.0, math.inf)
         if not (math.isfinite(given) and lo <= given <= hi):
             raise FixRequestError(400, f"{spec.param} must be from {lo:g} to {hi:g} {spec.unit}.")
-        return {spec.param: float(given)}
+        return {spec.param: float(given), **extra}
     required = []
     for process, issue in _iter_findings(result):
+        if codes is not None and issue.get("code") not in codes:
+            continue
         fix_id, _why = _fix_for(issue.get("code") or "", issue, suffix, result)
         if fix_id == spec.id:
             req = _required(process, issue)
             if req is not None:
                 required.append(req)
-    return _params_for(spec, required)
+    return {**_params_for(spec, required), **extra}
 
 
 async def apply_fix(
@@ -600,6 +624,7 @@ async def apply_fix(
     fix_id: str,
     value: float | None,
     processes: str | None,
+    edges: str | None = None,
     rule_pack: str | None,
     quantities: list[int] | None,
     material_class: str | None,
@@ -637,7 +662,7 @@ async def apply_fix(
     original = await analysis_service.run_analysis(
         data, original_name, processes, rule_pack, user, session, org_id=org_id)
     assert isinstance(original, dict)
-    params = resolve_params(spec, value, original, suffix)
+    params = resolve_params(spec, value, original, suffix, edges)
     lineage = await read_lineage(org_id, mesh_hash)
 
     base = {

@@ -23,7 +23,7 @@ from src.analysis.process_names import process_phrase
 from src.analysis.citations import parse_citation
 from src.analysis.serialization import format_measurement
 from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
-from src.analysis.context import GeometryContext, fitting_box_dimensions, wall_thickness_tolerance, envelope_nonfit_bound
+from src.analysis.context import DRAFT_TOL_DEG, GeometryContext, fitting_box_dimensions, wall_thickness_tolerance, envelope_nonfit_bound
 from src.analysis.features.base import (
     Feature,
     FeatureKind,
@@ -1089,10 +1089,16 @@ def _undersized_cavity_drain(
 def draft_sidewalls(angles_from_up_deg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Side walls (80–100° from +Z) and their draft, ``|90° - angle from +Z|``.
 
-    Shared by ``check_draft_angles`` and the orientation comparison.
+    The orientation comparison's quick reading (a turned candidate's triangles);
+    a wall meets a rule within ``DRAFT_TOL_DEG`` of it (``meets_draft``).
     """
     sidewall_faces = np.where((angles_from_up_deg > 80) & (angles_from_up_deg < 100))[0]
     return sidewall_faces, np.abs(90.0 - angles_from_up_deg[sidewall_faces])
+
+
+def meets_draft(draft: np.ndarray, need: float | np.ndarray) -> np.ndarray:
+    """A reading meets a draft rule within the file's float noise (3.000° drawn reads 2.999999999°)."""
+    return np.asarray(draft) + DRAFT_TOL_DEG >= need
 
 
 def check_draft_angles(
@@ -1100,37 +1106,58 @@ def check_draft_angles(
     min_draft_deg: float,
     process: ProcessType,
     *,
+    internal_deg: float | None = None,
     cite: str = "",
 ) -> list[Issue]:
-    """Check sidewall faces for sufficient draft relative to Z pull.
+    """Check side walls for the draft the tool needs to release the part along +Z.
 
-    ``measured_value`` is the smallest draft on the flagged faces, rounded to
-    0.1° (never rounded up to the limit it failed). The minimum, not an
-    area-weighted percentile, is the honest single number: draft is
-    ``|90° - angle from +Z|``, so tessellation noise on a straight wall or a
-    vertical bore can only push a face's reading above the true 0°. On the
-    bored block the bore's facets read 0–0.81° (median 0.37°) although the bore
-    is exactly vertical; a percentile would report that spread as draft. Where
-    the minimum errs (a noisy tessellated cone) it errs low, and it is always
-    the reading of a real face.
+    ``min_draft_deg`` is the rule for outside walls; ``internal_deg`` (when the
+    rule has one) for inside walls, the ones facing the part across a gap
+    (``WallDraft.inside``: the box's inside, a bore, a slot), where the part
+    shrinks onto the core. Each wall is read from the B-rep's own surface when
+    the STEP/IGES mesher kept it, else from its triangles with the benefit of
+    their measurement error (``WallDraft.slack``), so a correct model never
+    fails by tessellation.
+
+    ``measured_value`` is the smallest draft on the flagged walls of the rule
+    that binds (the inside rule when inside walls fall short), rounded to 0.1°
+    and never up to the limit it failed. The minimum, not an area-weighted
+    percentile, is the honest single number: tessellation noise on a straight
+    wall or a vertical bore can only push a face's reading above the true 0°.
     """
+    wd = ctx.wall_draft
+    if len(wd.faces) == 0:
+        return []
+    internal = float(internal_deg) if internal_deg is not None else float(min_draft_deg)
+    split = internal != float(min_draft_deg) and bool(wd.inside.any())
+    need = np.where(wd.inside, internal, float(min_draft_deg)) if split else np.full(len(wd.faces), float(min_draft_deg))
+    reading = np.minimum(wd.draft + wd.slack - DRAFT_TOL_DEG, need)
+    fail = ~meets_draft(reading, need)
+    if not fail.any():
+        return []
     areas = ctx.face_areas
-    sidewall_faces, draft = draft_sidewalls(ctx.angles_from_up_deg)
-    if len(sidewall_faces) == 0:
-        return []
-    no_draft = draft < min_draft_deg
-    no_draft_faces = sidewall_faces[no_draft]
-    if len(no_draft_faces) == 0:
-        return []
-    no_draft_area = float(areas[no_draft_faces].sum())
-    total_sidewall_area = float(areas[sidewall_faces].sum())
-    pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
-    flagged_draft = draft[no_draft]
-    smallest = _shown_draft(float(flagged_draft.min()), min_draft_deg)
-    groups = _draft_groups(ctx, no_draft_faces, flagged_draft, min_draft_deg)
-    breakdown = (" (" + ", ".join(f"{name} {value:.1f}°" for name, value in groups) + ")") if groups else ""
+    no_draft_faces = wd.faces[fail]
+    pct = float(areas[no_draft_faces].sum()) / max(float(areas[wd.faces].sum()), 1e-9) * 100
+    groups = _wall_rule_groups(ctx, wd, fail, reading, min_draft_deg, internal) if split else []
+    binding = max((g for g in groups if g["faces"]), key=lambda g: g["need_deg"], default=None)
+    required = binding["need_deg"] if binding else float(min_draft_deg)
+    smallest = binding["measured_deg"] if binding else _shown_draft(float(reading[fail].min()), float(min_draft_deg))
+    if split:
+        breakdown = " (" + "; ".join(
+            f"{g['walls']} walls {g['shown_deg']:.1f}°, need {format_measurement(g['need_deg'])}°"
+            for g in groups if g["walls_present"]) + ")"
+        below = (f"below {min_draft_deg}° draft outside and {internal}° inside"
+                 if any(g["faces"] and g["walls"] == "inside" for g in groups)
+                 and any(g["faces"] and g["walls"] == "outside" for g in groups)
+                 else f"below {required}° draft on {'inside' if binding and binding['walls'] == 'inside' else 'outside'} walls")
+    else:
+        named = _draft_groups(ctx, no_draft_faces, reading[fail], min_draft_deg)
+        breakdown = (" (" + ", ".join(f"{name} {value:.1f}°" for name, value in named) + ")") if named else ""
+        below = f"below {min_draft_deg}° draft"
     pull = _pull_direction(ctx)
     turned = _drafted_file_axis(ctx, min_draft_deg)
+    extra = {"breakdown": [{k: g[k] for k in ("walls", "need_deg", "measured_deg", "faces", "cad_faces")}
+                           for g in groups if g["walls_present"]]} if split else {}
     if turned is not None:
         # Drafted along another file axis: the part is drawn turned, not undrafted.
         axis, least = turned
@@ -1140,7 +1167,7 @@ def check_draft_angles(
             severity=Severity.WARNING,
             message=(
                 f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-                f"below {min_draft_deg}° draft for {process_phrase(process)}. "
+                f"{below} for {process_phrase(process)}. "
                 f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}; "
                 f"the walls are drafted along the file's {axis} (at least {round(least, 1):.1f}°), "
                 "so the part is drawn turned."
@@ -1148,10 +1175,18 @@ def check_draft_angles(
             process=process,
             affected_faces=no_draft_faces.tolist(),
             measured_value=smallest,
-            required_value=min_draft_deg,
+            required_value=required,
             fix_suggestion=f"Check the part turned so the tool opens along the file's {axis}. {cite}".strip(),
             citation=parse_citation(cite),
+            **extra,
         )]
+    if split and len([g for g in groups if g["faces"]]) == 2:
+        add = (f"Add >= {min_draft_deg}° draft to the outside walls and >= {internal}° to the inside walls "
+               f"along the pull direction ({pull})")
+    elif split and binding is not None:
+        add = f"Add >= {required}° draft to the {binding['walls']} walls along the pull direction ({pull})"
+    else:
+        add = f"Add >= {min_draft_deg}° draft to all walls along the pull direction ({pull})"
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         measurement_unit="deg",
@@ -1159,19 +1194,35 @@ def check_draft_angles(
         # The first sentence is the one screens quote; the pull direction follows.
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-            f"below {min_draft_deg}° draft for {process_phrase(process)}. "
+            f"{below} for {process_phrase(process)}. "
             f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}."
         ),
         process=process,
         affected_faces=no_draft_faces.tolist(),
         measured_value=smallest,
-        required_value=min_draft_deg,
+        required_value=required,
         fix_suggestion=(
-            f"Add >= {min_draft_deg}° draft to all walls along the pull direction ({pull}), "
-            f"or check the part turned so the tool opens along its drafted walls. {cite}"
+            f"{add}, or check the part turned so the tool opens along its drafted walls. {cite}"
         ),
         citation=parse_citation(cite),
+        **extra,
     )]
+
+
+def _wall_rule_groups(ctx: GeometryContext, wd, fail: np.ndarray, reading: np.ndarray,
+                      external: float, internal: float) -> list[dict]:
+    """Outside and inside walls, each with its rule, smallest reading and how many fall short."""
+    ids = ctx.cad_face_ids
+    out = []
+    for walls, mask, need in (("outside", ~wd.inside, float(external)), ("inside", wd.inside, float(internal))):
+        short = mask & fail
+        present = bool(mask.any())
+        low = float(reading[short].min()) if short.any() else (float(reading[mask].min()) if present else need)
+        shown = _shown_draft(low, need) if short.any() else round(low, 1) + 0.0
+        cad = int(len(np.unique(ids[wd.faces[short]]))) if ids is not None and short.any() else None
+        out.append({"walls": walls, "need_deg": need, "measured_deg": shown, "shown_deg": shown,
+                    "faces": int(short.sum()), "cad_faces": cad, "walls_present": present})
+    return out
 
 
 def _drafted_file_axis(ctx: GeometryContext, min_draft_deg: float) -> tuple[str, float] | None:
@@ -1183,15 +1234,19 @@ def _drafted_file_axis(ctx: GeometryContext, min_draft_deg: float) -> tuple[str,
     depend on which way the file happens to lie; the finding says which way
     its walls are drafted and stays a warning to check it turned.
     """
+    from src.analysis.context import cad_face_normals
     from src.analysis.orientation import PLACED_UP_KEY
 
     if (ctx.mesh.metadata or {}).get(PLACED_UP_KEY) is not None or not len(ctx.normals):
         return None
+    normals = cad_face_normals(ctx.mesh)
+    if normals is None:
+        normals = ctx.normals
     for name, axis in (("+X", np.array([1.0, 0.0, 0.0])), ("+Y", np.array([0.0, 1.0, 0.0]))):
         with np.errstate(all="ignore"):
-            angles = np.degrees(np.arccos(np.clip(ctx.normals @ axis, -1.0, 1.0)))
+            angles = np.degrees(np.arccos(np.clip(normals @ axis, -1.0, 1.0)))
         faces, draft = draft_sidewalls(angles)
-        if len(faces) and float(draft.min()) >= min_draft_deg:
+        if len(faces) and bool(meets_draft(float(draft.min()), min_draft_deg)):
             return name, float(draft.min())
     return None
 
@@ -1500,6 +1555,25 @@ def check_undercuts_molding(
 # ──────────────────────────────────────────────────────────────
 # Internal corner radii (CNC)
 # ──────────────────────────────────────────────────────────────
+# A standard end mill cuts to about three times its diameter (Protolabs Network
+# CNC design guide: "end mills have limited cutting length, typically 3-4 times
+# their diameter"); long-reach cutters go to about six, slowly. The same guide
+# recommends an inside radius of at least a third of the cavity's depth.
+END_MILL_REACH_D = 3.0
+LONG_REACH_D = 6.0
+REACH_CITE = ("Protolabs Network CNC guide: end mills cut to about 3–4× their diameter; "
+              "inside corner radius ≥ 1/3 of the cavity depth recommended.")
+
+
+def _up_tenth(value: float) -> float:
+    return math.ceil(round(value * 10.0, 6)) / 10.0
+
+
+def reach_radius_mm(depth_mm: float, min_radius_mm: float) -> float:
+    """The smallest corner radius a standard end mill cuts ``depth_mm`` deep (0.1 mm up)."""
+    return max(float(min_radius_mm), _up_tenth(depth_mm / (2.0 * END_MILL_REACH_D)))
+
+
 def check_internal_radii(
     ctx: GeometryContext,
     min_radius_mm: float,
@@ -1513,6 +1587,11 @@ def check_internal_radii(
     a cut (the foot of an L, round a boss, an open step) is cut sharp by the
     flat end of the cutter and isn't counted. Counted in corners, not mesh
     edges, so an STL and a STEP of the same part give the same answer.
+
+    The radius needed follows the depth: the cutter that leaves the corner's
+    radius reaches the corner's full length, and a standard end mill cuts about
+    ``END_MILL_REACH_D`` times its diameter, so a corner 20 mm deep needs a
+    Ø6.7 mm cutter: R3.3 at least, not the smallest end mill's 0.5 mm.
     """
     if len(ctx.concave_mask) == 0 or len(ctx.dihedral_angles_rad) == 0:
         return []
@@ -1520,19 +1599,76 @@ def check_internal_radii(
     if corners.corners == 0:
         return []
     n = corners.corners
+    deepest = corners.deepest_mm
+    need = reach_radius_mm(deepest, min_radius_mm)
+    word = "corner" if n == 1 else "corners"
+    if need > min_radius_mm:
+        why = (f"{n} sharp concave {word} between walls ({round(corners.length_mm, 1):g} mm of edge, "
+               f"{'it runs' if n == 1 else 'the deepest runs'} {round(deepest, 1):g} mm deep): a milling cutter "
+               f"leaves its own radius there, and a standard end mill reaches about {END_MILL_REACH_D:g}× its "
+               f"diameter, so {round(deepest, 1):g} mm deep takes Ø{2 * need:g} mm or more: at least R{need:g}. "
+               f"Applies to {process_phrase(process)}.")
+        third = _up_tenth(deepest / 3.0)
+        fix = (f"Add fillets >= {need:g}mm to the inside corners; R{third:g} (a third of the depth) "
+               f"lets a stiffer cutter run faster. {REACH_CITE}")
+        source = REACH_CITE
+    else:
+        why = (f"{n} sharp concave {word} between walls ({round(corners.length_mm, 1):g} mm of edge): "
+               f"a milling cutter leaves at least its {min_radius_mm}mm radius there. "
+               f"Applies to {process_phrase(process)}.")
+        fix = f"Add fillets >= {min_radius_mm}mm to internal corners. {cite}"
+        source = cite
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
         measurement_unit="mm",
         severity=Severity.WARNING,
+        message=why,
+        process=process,
+        required_value=need,
+        fix_suggestion=fix,
+        citation=parse_citation(source),
+    )]
+
+
+def check_tool_reach(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
+    """Rounded inside corners deeper than the cutter that cuts their radius reaches.
+
+    A corner rounded R0.5 and 20 mm deep is cut by a Ø1 mm end mill at 20× its
+    diameter: standard end mills reach about 3×, long-reach ones about 6×, and
+    past that a shop quotes EDM or asks for a larger radius.
+    """
+    deep = [c for c in ctx.rounded_inside_corners
+            if c["depth_mm"] / (2.0 * c["radius_mm"]) > END_MILL_REACH_D + 1e-9]
+    if not deep:
+        return []
+    worst = max(deep, key=lambda c: c["depth_mm"] / c["radius_mm"])
+    ratio = worst["depth_mm"] / (2.0 * worst["radius_mm"])
+    need = max(reach_radius_mm(c["depth_mm"], 0.0) for c in deep)
+    n = len(deep)
+    beyond = ratio > LONG_REACH_D
+    faces = sorted({int(f) for c in deep for f in c["faces"]})
+    return [Issue(
+        code="TOOL_REACH",
+        measurement_unit="mm",
+        severity=Severity.WARNING,
         message=(
-            f"{n} sharp concave {'corner' if n == 1 else 'corners'} between walls "
-            f"({round(corners.length_mm, 1):g} mm of edge): a milling cutter leaves at least its "
-            f"{min_radius_mm}mm radius there. Applies to {process_phrase(process)}."
+            f"{n} rounded inside {'corner is' if n == 1 else 'corners are'} deeper than a standard end mill "
+            f"reaches: R{format_measurement(worst['radius_mm'])} runs {round(worst['depth_mm'], 1):g} mm deep, so "
+            f"the Ø{format_measurement(2 * worst['radius_mm'])} mm cutter that cuts it reaches {ratio:.0f}× its "
+            f"diameter (standard end mills about {END_MILL_REACH_D:g}×, long-reach about {LONG_REACH_D:g}×)."
+            + (" Past that, most shops quote EDM or ask for a larger radius." if beyond
+               else " A long-reach cutter does it, slowly.")
+            + f" Applies to {process_phrase(process)}."
         ),
         process=process,
-        required_value=min_radius_mm,
-        fix_suggestion=f"Add fillets >= {min_radius_mm}mm to internal corners. {cite}",
-        citation=parse_citation(cite),
+        affected_faces=faces,
+        region_center=worst["center"],
+        measured_value=float(worst["radius_mm"]),
+        required_value=need,
+        fix_suggestion=(f"Make the inside corners at least R{need:g} (a Ø{2 * need:g} mm end mill reaches "
+                        f"{round(max(c['depth_mm'] for c in deep), 1):g} mm at {END_MILL_REACH_D:g}× its diameter). "
+                        f"{REACH_CITE}"),
+        citation=parse_citation(REACH_CITE),
     )]
 
 

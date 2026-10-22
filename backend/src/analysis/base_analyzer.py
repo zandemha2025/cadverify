@@ -67,7 +67,19 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
         is_manifold=is_watertight,  # trimesh: watertight ≈ manifold
         euler_number=int(mesh.euler_number),
         center_of_mass=center_of_mass,
+        cad_face_count=_cad_faces(mesh),
     )
+
+
+def _cad_faces(mesh: trimesh.Trimesh) -> int | None:
+    """The B-rep faces of a STEP/IGES ScaleCAD meshed (the faces its CAD tool shows), else None."""
+    from src.analysis.context import cad_face_count
+
+    try:
+        count = cad_face_count(mesh)
+    except Exception:
+        return None
+    return count or None
 
 
 def check_watertight(mesh: trimesh.Trimesh) -> list[Issue]:

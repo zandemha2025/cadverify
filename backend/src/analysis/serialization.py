@@ -106,6 +106,10 @@ def serialize_issue(
             # affected_face_count, so nothing is silently dropped.
             d["affected_faces_truncated"] = True
 
+    if issue.cad_face_count is not None:
+        d["cad_face_count"] = int(issue.cad_face_count)
+    if issue.breakdown:
+        d["breakdown"] = [dict(part) for part in issue.breakdown]
     if issue.region_center:
         d["region_center"] = [round(c, 2) for c in issue.region_center]
     if issue.measured_value is not None and math.isfinite(issue.measured_value):

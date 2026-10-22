@@ -1138,6 +1138,19 @@ def _preview_faces_max() -> int:
         return 150000
 
 
+def _without_cad_arrays(mesh):
+    """The mesh to export: a GLB writes ``metadata`` into its JSON, and the STEP
+    mesher's per-triangle B-rep arrays would make the preview several MB larger."""
+    from src.parsers.step_mesher import CAD_FACES_KEY, CAD_NORMALS_KEY
+
+    if not any(key in (mesh.metadata or {}) for key in (CAD_FACES_KEY, CAD_NORMALS_KEY)):
+        return mesh
+    lean = mesh.copy(include_cache=True)
+    for key in (CAD_FACES_KEY, CAD_NORMALS_KEY):
+        lean.metadata.pop(key, None)
+    return lean
+
+
 def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tuple[bytes, int, int, bool, str]:
     """Decimate the tessellated shell to the browser budget and export GLB bytes.
 
@@ -1162,7 +1175,7 @@ def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tu
         if reduced is not None and 0 < len(reduced.faces) < original:
             out = reduced
             decimated = True
-    glb = out.export(file_type="glb")
+    glb = _without_cad_arrays(out).export(file_type="glb")
     return bytes(glb), original, int(len(out.faces)), decimated, analysis_mesh_hash(out)
 
 
@@ -2684,6 +2697,8 @@ def _to_response(
                 for c in result.geometry.center_of_mass
             ],
             "units": result.geometry.units,
+            # A STEP/IGES's own faces (its CAD tool's count); "faces" is mesh triangles.
+            **({"cad_faces": result.geometry.cad_face_count} if result.geometry.cad_face_count else {}),
         },
         "segments": [
             {

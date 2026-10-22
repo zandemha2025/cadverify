@@ -404,6 +404,34 @@ class GeometryContext:
             return InsideCorners(0, 0.0, np.empty(0, dtype=np.int64))
 
     @cached_property
+    def rounded_inside_corners(self) -> list[dict[str, Any]]:
+        """Rounded inside corners between walls (see ``rounded_inside_corners``); needs ``features``."""
+        try:
+            return rounded_inside_corners(self.mesh, self.features, self.normals, self.centroids,
+                                          self.face_adjacency, self.scale_eps)
+        except Exception:
+            logger.warning("Rounded inside-corner measurement failed", exc_info=True)
+            return []
+
+    @cached_property
+    def wall_draft(self) -> "WallDraft":
+        """Side walls, their draft and which face the inside of the part (see ``wall_draft``)."""
+        try:
+            return wall_draft(self.mesh, self.normals, self.face_areas, self.centroids,
+                              self.face_adjacency, self.dihedral_angles_rad,
+                              self.angle_error_deg, self.scale_eps)
+        except Exception:
+            logger.warning("Wall draft measurement failed; reading the triangles alone", exc_info=True)
+            faces, draft = _sidewalls_of(self.normals)
+            return WallDraft(faces, draft, np.full(len(faces), DRAFT_TOL_DEG), np.zeros(len(faces), bool),
+                             np.full(len(faces), -1, dtype=np.int64), False, 0)
+
+    @cached_property
+    def cad_face_ids(self) -> np.ndarray | None:
+        """The B-rep face of each triangle, when the STEP/IGES mesher kept it."""
+        return cad_face_ids(self.mesh)
+
+    @cached_property
     def straight_profile_geometry(self):
         """Verify extrusion geometry without treating the file's Z as the wire axis."""
         if self.metadata.get("decimation", {}).get("succeeded") or not self.mesh.is_volume:
@@ -1347,6 +1375,13 @@ class InsideCorners:
     corners: int           # separate corners: runs of connected edges in one direction
     length_mm: float       # their total length along the edge
     edges: np.ndarray      # rows of face_adjacency on those corners
+    # Each corner's length along its edge: how deep the cutter that leaves the
+    # corner's radius has to reach (a pocket's corner runs its full depth).
+    lengths_mm: tuple[float, ...] = ()
+
+    @property
+    def deepest_mm(self) -> float:
+        return max(self.lengths_mm, default=0.0)
 
 
 def inside_corners(mesh: trimesh.Trimesh, normals: np.ndarray, adjacency: np.ndarray,
@@ -1438,8 +1473,259 @@ def inside_corners(mesh: trimesh.Trimesh, normals: np.ndarray, adjacency: np.nda
     from scipy.sparse.csgraph import connected_components
 
     graph = coo_matrix((np.ones(int(keep.sum())), (a[keep], b[keep])), shape=(len(rows), len(rows)))
-    n_corners, _labels = connected_components(graph, directed=False)
-    return InsideCorners(int(n_corners), float(length[rows].sum()), candidates[rows])
+    n_corners, labels = connected_components(graph, directed=False)
+    per_corner = np.bincount(labels, weights=length[rows], minlength=n_corners)
+    return InsideCorners(int(n_corners), float(length[rows].sum()), candidates[rows],
+                         tuple(float(v) for v in per_corner))
+
+
+def rounded_inside_corners(mesh: trimesh.Trimesh, features, normals: np.ndarray, centroids: np.ndarray,
+                           adjacency: np.ndarray, eps: float) -> list[dict[str, Any]]:
+    """Concave fillets a milling cutter's side cuts: neither face they blend can be a floor.
+
+    The same rule as ``inside_corners`` for a sharp corner: a fillet along a
+    pocket's floor is cut by the tip of a ball or bull-nose cutter coming down
+    onto the floor, so its radius says nothing about reach; a fillet in a
+    pocket's vertical corner is the cutter's own radius, and the cutter has to
+    reach the corner's full length. Each: ``radius_mm``, ``depth_mm`` (its
+    length along the corner), ``center``, ``faces``.
+    """
+    from src.analysis.features.base import FeatureKind
+    from src.parsers.step_mesher import CAD_FACE_SHAPES_KEY
+
+    if not len(adjacency):
+        return []
+    n = len(normals)
+    a, b = adjacency[:, 0], adjacency[:, 1]
+    candidates: list[tuple[np.ndarray, float, float]] = []   # (faces, radius, length)
+    ids = cad_face_ids(mesh)
+    shapes = (mesh.metadata or {}).get(CAD_FACE_SHAPES_KEY) if ids is not None else None
+    if shapes:
+        # STEP/IGES: the B-rep names its cylinders, their radius, arc and length. A
+        # corner rounds less than a half turn; a bore (or its half) doesn't count.
+        concave = ~np.asarray(mesh.face_adjacency_convex, dtype=bool)
+        same = ids[a] == ids[b]
+        for index, shape in enumerate(shapes):
+            if not shape or shape["arc_deg"] >= 170.0:
+                continue
+            faces = np.flatnonzero(ids == index)
+            inner = same & (ids[a] == index)
+            if not len(faces) or not inner.any() or concave[inner].mean() < 0.5:
+                continue
+            candidates.append((faces, float(shape["radius_mm"]), float(shape["length_mm"])))
+    else:
+        for f in features or ():
+            meta = f.metadata or {}
+            if (f.kind == FeatureKind.FILLET and f.radius and f.radius > 0 and meta.get("convex") is False
+                    and meta.get("axial_length_mm")):
+                candidates.append((np.asarray(f.face_indices, dtype=np.int64), float(f.radius),
+                                   float(meta["axial_length_mm"])))
+    origins, rays, owner = [], [], []
+    for index, (faces, _radius, _length) in enumerate(candidates):
+        own = normals[faces]
+        axis = np.linalg.svd(own, full_matrices=False)[2][-1]  # a cylinder's normals are square to its axis
+        mine = np.zeros(n, dtype=bool)
+        mine[faces] = True
+        edge = mine[a] ^ mine[b]
+        flank = np.unique(np.where(mine[a[edge]], b[edge], a[edge]))
+        # The faces it blends, across its sides (not the floor or top at its ends).
+        flank = flank[np.abs(normals[flank] @ axis) < 0.3]
+        if len(flank) < 2:
+            continue
+        first = normals[flank[0]]
+        other = normals[flank[int(np.argmin(normals[flank] @ first))]]
+        side = (normals[flank] @ first) >= (normals[flank] @ other)
+        centre = centroids[faces].mean(axis=0)
+        for group in (flank[side], flank[~side]):
+            if not len(group):
+                continue
+            k = group[int(np.argmin(np.linalg.norm(centroids[group] - centre, axis=1)))]
+            origins.append(centroids[k] + normals[k] * eps)
+            rays.append(normals[k])
+            owner.append(index)
+    if not origins:
+        return []
+    escaped = ~np.asarray(mesh.ray.intersects_any(np.asarray(origins), np.asarray(rays)), dtype=bool)
+    floor = np.zeros(len(candidates), dtype=bool)
+    floor[np.asarray(owner)[escaped]] = True
+    seen = np.zeros(len(candidates), dtype=bool)
+    seen[np.asarray(owner)] = True
+    return [{"radius_mm": radius, "depth_mm": length,
+             "center": tuple(float(c) for c in centroids[faces].mean(axis=0)), "faces": faces.tolist()}
+            for (faces, radius, length), is_floor, ok in zip(candidates, floor, seen) if ok and not is_floor]
+
+
+# ── Draft ────────────────────────────────────────────────────────────────────
+# A wall reading within this of a rule meets it. A face a CAD tool drew at
+# exactly 3.000° reads 2.999999999° from the file's floating-point coordinates;
+# no CAD tool shows or takes a draft finer than a thousandth of a degree.
+DRAFT_TOL_DEG = 1e-3
+# Neighbouring triangles turning less than this are facets of one smooth surface
+# (a tessellated cone or bore: 30° between the facets of a 12-sided STL hole);
+# more is an edge between faces.
+_SMOOTH_TURN = math.radians(35.0)
+# Telling inside walls from outside ones: rays from the largest triangles of each
+# smooth wall surface, on the largest surfaces (the rest read as outside walls).
+_WALL_SIDE_RAYS = 3
+_WALL_SIDE_PATCHES = 500
+
+
+@dataclass(frozen=True)
+class WallDraft:
+    """Side walls (80–100° from +Z) and the draft each carries.
+
+    ``draft`` is ``|90° - angle from +Z|`` of the B-rep surface's own normal when
+    the STEP/IGES mesher kept it (``exact``), else of the triangle. ``slack`` is
+    how far below the surface's true draft that reading can sit: the float noise
+    of the file's coordinates, an STL's rounding, and on a tessellated curved
+    surface the facets' own lean (a cone's facet through two of its generators
+    leans ``atan(tan(draft) × cos(turn / 2))``, under its true draft). A wall
+    meets a rule when ``draft + slack`` reaches it: tessellation never fails a
+    correct model. ``inside`` marks walls that face the part across a gap (the
+    inside of a box, a bore, a slot): the core of a mould sits there and the
+    part shrinks onto it, which is why molding and casting rules ask more draft
+    of them.
+    """
+    faces: np.ndarray
+    draft: np.ndarray
+    slack: np.ndarray
+    inside: np.ndarray
+    patch: np.ndarray       # the smooth surface (B-rep face when known) of each wall triangle
+    exact: bool
+    cad_faces: int          # B-rep faces in the solid; 0 when not known
+
+
+def _sidewalls_of(normals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    with np.errstate(all="ignore"):
+        angles = np.degrees(np.arccos(np.clip(np.asarray(normals, dtype=np.float64)[:, 2], -1.0, 1.0)))
+    faces = np.where((angles > 80) & (angles < 100))[0]
+    return faces, np.abs(90.0 - angles[faces])
+
+
+def cad_face_ids(mesh: trimesh.Trimesh) -> np.ndarray | None:
+    """Each triangle's B-rep face (STEP/IGES mesher), or None when not kept or not aligned."""
+    from src.parsers.step_mesher import CAD_FACES_KEY
+
+    ids = (mesh.metadata or {}).get(CAD_FACES_KEY)
+    if ids is None or len(ids) != len(mesh.faces):
+        return None
+    return np.asarray(ids, dtype=np.int64)
+
+
+def cad_face_normals(mesh: trimesh.Trimesh) -> np.ndarray | None:
+    """The B-rep surface's own unit normal at each triangle, or None."""
+    from src.parsers.step_mesher import CAD_NORMALS_KEY
+
+    normals = (mesh.metadata or {}).get(CAD_NORMALS_KEY)
+    if normals is None or len(normals) != len(mesh.faces):
+        return None
+    out = np.asarray(normals, dtype=np.float64)
+    return out if out.ndim == 2 and out.shape[1] == 3 and np.all(np.isfinite(out)) else None
+
+
+def cad_face_count(mesh: trimesh.Trimesh) -> int:
+    from src.parsers.step_mesher import CAD_FACE_COUNT_KEY
+
+    if cad_face_ids(mesh) is None:
+        return 0
+    try:
+        return int((mesh.metadata or {}).get(CAD_FACE_COUNT_KEY) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def wall_draft(mesh: trimesh.Trimesh, normals: np.ndarray, areas: np.ndarray, centroids: np.ndarray,
+               adjacency: np.ndarray, dihedral: np.ndarray, angle_error: np.ndarray | None,
+               eps: float) -> WallDraft:
+    """Side walls, their draft and inside/outside (see ``WallDraft``)."""
+    n = len(normals)
+    ids = cad_face_ids(mesh)
+    exact_normals = cad_face_normals(mesh)
+    exact = exact_normals is not None
+    faces, draft = _sidewalls_of(exact_normals if exact else normals)
+    slack = np.full(len(faces), DRAFT_TOL_DEG)
+    adjacency = np.asarray(adjacency, dtype=np.int64).reshape(-1, 2)
+    dihedral = np.asarray(dihedral, dtype=np.float64)
+    smooth = (dihedral <= _SMOOTH_TURN) if len(dihedral) == len(adjacency) else np.zeros(len(adjacency), bool)
+    if not exact and len(faces):
+        if angle_error is not None and len(angle_error) == n:
+            slack += np.asarray(angle_error, dtype=np.float64)[faces]
+        turn = np.zeros(n)
+        bent = smooth & (dihedral > 1e-9)
+        np.maximum.at(turn, adjacency[bent, 0], dihedral[bent])
+        np.maximum.at(turn, adjacency[bent, 1], dihedral[bent])
+        t = turn[faces]
+        curved = t > 0
+        if curved.any():
+            with np.errstate(all="ignore"):
+                high = np.degrees(np.arctan(np.tan(np.radians(draft[curved])) / np.cos(t[curved] / 2.0)))
+            slack[curved] += np.maximum(np.nan_to_num(high - draft[curved]), 0.0)
+    if ids is not None:
+        patch_of = ids
+    else:
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+
+        side = np.zeros(n, dtype=bool)
+        side[faces] = True
+        keep = smooth & side[adjacency[:, 0]] & side[adjacency[:, 1]] if len(adjacency) else np.zeros(0, bool)
+        graph = coo_matrix((np.ones(int(keep.sum())), (adjacency[keep, 0], adjacency[keep, 1])), shape=(n, n))
+        _count, patch_of = connected_components(graph, directed=False)
+        patch_of = np.asarray(patch_of, dtype=np.int64)
+    patch = patch_of[faces] if len(faces) else np.empty(0, dtype=np.int64)
+    inside = _inside_walls(mesh, faces, patch, normals, areas, centroids, eps)
+    return WallDraft(faces, draft, slack, inside, patch, exact, cad_face_count(mesh))
+
+
+def _inside_walls(mesh, faces, patch, normals, areas, centroids, eps) -> np.ndarray:
+    """Walls that face the part across a gap: a ray out across the pull axis hits it again.
+
+    Decided per smooth wall surface by the triangles nearest its middle (most of
+    them), so a face's few odd triangles, or a ray grazing out past the rim,
+    can't split it. The ray runs level (the wall's direction without its lean
+    along +Z), across the gap the core fills. Outside walls when the shell isn't
+    closed (its normals can't be trusted to point out).
+    """
+    inside = np.zeros(len(faces), dtype=bool)
+    if not len(faces) or not mesh.is_watertight:
+        return inside
+    labels, local = np.unique(patch, return_inverse=True)
+    wall_area = np.asarray(areas, dtype=np.float64)[faces]
+    weight = np.bincount(local, weights=wall_area)
+    chosen = np.argsort(-weight)[:_WALL_SIDE_PATCHES]
+    wanted = np.zeros(len(labels), dtype=bool)
+    wanted[chosen] = True
+    at = np.asarray(centroids, dtype=np.float64)[faces]
+    middle = np.stack([np.bincount(local, weights=wall_area * at[:, k]) for k in range(3)], axis=1)
+    middle /= np.maximum(weight, 1e-300)[:, None]
+    off = np.linalg.norm(at - middle[local], axis=1)
+    order = np.lexsort((off, local))
+    run = local[order]
+    first = np.r_[True, run[1:] != run[:-1]]
+    rank = np.arange(len(order)) - np.maximum.accumulate(np.where(first, np.arange(len(order)), 0))
+    pick = order[(rank < _WALL_SIDE_RAYS) & wanted[run]]
+    if not len(pick):
+        return inside
+    tri = faces[pick]
+    direction = np.asarray(normals, dtype=np.float64)[tri].copy()
+    direction[:, 2] = 0.0
+    level = np.linalg.norm(direction, axis=1)
+    keep = level > 1e-9
+    pick, tri, direction = pick[keep], tri[keep], direction[keep] / level[keep][:, None]
+    if not len(pick):
+        return inside
+    origin = np.asarray(centroids, dtype=np.float64)[tri] + direction * eps
+    if _fast_rays(mesh):
+        batch = _EMBREE_RAY_BATCH
+    else:
+        batch = max(1, _wall_thickness_ray_budget() // max(len(mesh.faces), 1))
+    hits = np.zeros(len(tri), dtype=bool)
+    for start in range(0, len(tri), batch):
+        stop = start + batch
+        hits[start:stop] = np.asarray(mesh.ray.intersects_any(origin[start:stop], direction[start:stop]), dtype=bool)
+    votes = np.bincount(local[pick], weights=hits.astype(float), minlength=len(labels))
+    cast = np.bincount(local[pick], minlength=len(labels))
+    return (votes * 2 > cast)[local]
 
 
 @dataclass(frozen=True)

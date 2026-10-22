@@ -482,6 +482,84 @@ def step_to_trimesh_from_bytes(data: bytes, filename: str = "upload.step") -> tr
             pass
 
 
+# What the B-rep says about each triangle, kept on the mesh's metadata (same face
+# order as ``mesh.faces``). Checks that measure a surface's direction (draft) read
+# the CAD surface's own normal instead of a triangle's, and a finding can count
+# the CAD faces it lies on (the faces a CAD tool shows) instead of triangles.
+# Orientation turns rotate CAD_NORMALS_KEY with the mesh; anything that rebuilds
+# the faces (decimation) drops both, and readers check the length first.
+CAD_FACES_KEY = "cad_face_ids"        # (M,) int32: B-rep face index, 0..K-1
+CAD_NORMALS_KEY = "cad_face_normals"  # (M, 3) float32: the surface's unit normal at the triangle
+CAD_FACE_COUNT_KEY = "cad_face_count"  # K: B-rep faces in the solid
+# Per B-rep face (index 0..K-1), for cylinders: {"radius_mm", "arc_deg", "length_mm"}
+# (an inside corner rounded R0.5 over 90° and 20 mm deep); None for other faces.
+CAD_FACE_SHAPES_KEY = "cad_face_shapes"
+# The last tessellation's B-rep data, read back under ``_GMSH_LOCK`` by ``_run_rung``
+# (``_tessellate_once`` keeps its two-array return).
+_LAST_CAD: dict = {}
+
+
+def _cylinder_shape(tag: int) -> dict | None:
+    """A B-rep cylinder's radius, the arc it spans and its length (frame-free numbers)."""
+    if gmsh.model.getType(2, tag) != "Cylinder":
+        return None
+    lo, hi = gmsh.model.getParametrizationBounds(2, tag)
+    curvature = gmsh.model.getCurvature(2, tag, [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0])
+    k = float(curvature[0]) if len(curvature) else 0.0
+    if not (k > 0 and np.isfinite(k)):
+        return None
+    return {"radius_mm": 1.0 / k, "arc_deg": float(np.degrees(abs(hi[0] - lo[0]))),
+            "length_mm": float(abs(hi[1] - lo[1]))}
+
+
+def _cad_face_data() -> dict | None:
+    """Per-triangle B-rep face index and the surface's exact normal there.
+
+    gmsh lists a surface's triangles entity by entity in the same order as
+    ``getElements(dim=2)``, so the arrays line up with the mesh's faces. The
+    normal is the B-rep surface's own (``getNormal`` at each node's parameters),
+    averaged over the triangle's three nodes: a 3.0° drafted cone reads 3.0° on
+    every triangle, where its facets read 2.6–3.3°. Its sign follows the surface
+    parametrisation, which a draft reading (``|90° - angle from +Z|``) ignores.
+    None when any surface can't be read this way (the mesh is used as before).
+    """
+    ids: list[np.ndarray] = []
+    normals: list[np.ndarray] = []
+    entities = gmsh.model.getEntities(2)
+    shapes: list[dict | None] = []
+    for _dim, tag in entities:
+        try:
+            shapes.append(_cylinder_shape(tag))
+        except Exception:
+            shapes.append(None)
+    for index, (_dim, tag) in enumerate(entities):
+        etypes, _etags, enodes = gmsh.model.mesh.getElements(2, tag)
+        conn = [c for et, c in zip(etypes, enodes) if et == 2]
+        if not conn:
+            continue
+        tri = np.concatenate(conn).astype(np.int64).reshape(-1, 3)
+        node_tags, _coords, uv = gmsh.model.mesh.getNodes(2, tag, includeBoundary=True,
+                                                          returnParametricCoord=True)
+        if len(uv) != 2 * len(node_tags) or not len(node_tags):
+            return None
+        at = np.asarray(gmsh.model.getNormal(tag, uv), dtype=np.float64).reshape(-1, 3)
+        order = np.argsort(node_tags)
+        sorted_tags = np.asarray(node_tags, dtype=np.int64)[order]
+        pos = np.searchsorted(sorted_tags, tri)
+        if np.any(pos >= len(sorted_tags)) or np.any(sorted_tags[np.minimum(pos, len(sorted_tags) - 1)] != tri):
+            return None
+        mean = at[order[pos]].sum(axis=1)
+        length = np.linalg.norm(mean, axis=1)
+        if not np.all(np.isfinite(length)) or np.any(length < 1e-9):
+            return None
+        normals.append((mean / length[:, None]).astype(np.float32))
+        ids.append(np.full(len(tri), index, dtype=np.int32))
+    if not ids:
+        return None
+    return {CAD_FACES_KEY: np.concatenate(ids), CAD_NORMALS_KEY: np.concatenate(normals),
+            CAD_FACE_COUNT_KEY: len(entities), CAD_FACE_SHAPES_KEY: shapes}
+
+
 def _tessellate_once(
     path: str,
     algorithm,
@@ -489,6 +567,7 @@ def _tessellate_once(
     heal: bool,
     *,
     target_diag_segments: int = _TARGET_DIAG_SEGMENTS,
+    cad: dict | None = None,
 ):
     """One full gmsh initialize -> import -> generate(2) -> extract -> finalize
     cycle for a single retry rung. Returns ``(verts Nx3, faces Mx3)``.
@@ -557,6 +636,15 @@ def _tessellate_once(
         if not tris:
             raise ValueError("STEP file contains no surface triangles after tessellation.")
         faces = np.vstack(tris)
+        try:
+            data = _cad_face_data()
+        except Exception:
+            logger.warning("B-rep face data unavailable; using the mesh alone", exc_info=True)
+            data = None
+        if data is not None and len(data[CAD_FACES_KEY]) == len(faces):
+            _LAST_CAD.update(data)
+            if cad is not None:
+                cad.update(data)
         return verts, faces
     finally:
         gmsh.finalize()
@@ -620,12 +708,19 @@ def _run_rung(path: str, idx: int) -> trimesh.Trimesh:
     """
     _name, algorithm, curvature_pts, heal = _MESH_RUNGS[idx]
     with _GMSH_LOCK:                         # serialize the global gmsh context
+        _LAST_CAD.clear()
         verts, faces = _tessellate_once(path, algorithm, curvature_pts, heal)
+        cad = dict(_LAST_CAD)
+        _LAST_CAD.clear()
     # process=True merges coincident vertices -> recovers watertightness on single
     # solids whose faces share edges.
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=True)
     if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
         raise _EmptyMeshError("STEP tessellation yielded an empty mesh.")
+    if cad and len(cad[CAD_FACES_KEY]) == len(mesh.faces):
+        # Merging vertices keeps the faces in order (no validation pass drops any);
+        # fix_normals below only flips windings, which a draft reading ignores.
+        mesh.metadata.update(cad)
     if not mesh.is_winding_consistent:
         # gmsh emits triangles per B-rep surface patch, and patch windings can
         # disagree after the vertex merge — an artifact of OUR tessellation, not
