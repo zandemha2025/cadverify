@@ -355,6 +355,28 @@ async def list_machines(
     return await svc.list_machines(session, org_id, cursor=cursor, limit=limit)
 
 
+@router.get("/load")
+@limiter.limit("120/hour;1000/day")
+async def machine_load(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The hours of work the org's checked parts put on each machine it owns.
+
+    Per machine: parts and machine hours, from each part's newest record and the
+    outcome recorded on it: a recorded "Make in-house" at its quantity, else (no
+    outcome yet) the part at 100 of each when its newest record sorts it onto
+    that machine. Parts recorded another way are only counted. Every hour is the
+    engine's machine time per part × quantity. Org-scoped (403 without an org).
+    """
+    from src.services import machine_load_service
+
+    org_id = await _require_org(session, user)
+    return await machine_load_service.org_machine_load(session, org_id)
+
+
 # ── item routes (path param LAST so /catalog etc. are not captured) ───────────
 @router.get("/{machine_id}")
 @limiter.limit("120/hour;1000/day")

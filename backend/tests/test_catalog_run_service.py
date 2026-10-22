@@ -218,7 +218,7 @@ def test_totals_sum_real_figures_and_say_how_many_they_cover():
     ]
     t = cr.bucket_totals(rows)
     assert t["in_house"] == {"parts": 2, "quantity": 15, "hours": 2.5, "hours_parts": 1, "mass_kg": 1.0,
-                             "mass_parts": 1, "cost_usd": 300.0, "cost_parts": 1}
+                             "mass_parts": 1, "used_kg": None, "used_parts": 0, "cost_usd": 300.0, "cost_parts": 1}
     assert t["cant_make"]["parts"] == 1 and t["cant_make"]["hours"] is None
     assert t["outside"]["parts"] == 0
 
@@ -237,3 +237,68 @@ def test_csv_neutralises_formulas_and_quotes_commas():
     assert row.startswith("\"'=HYPERLINK(\"\"x\"\").stl\",\"A,1\",Make in-house,On your Haas VF-2,")
     assert ",yes,6061-T6 Aluminum,6061,10,0.25,2.5,," in row
     assert "your machine at marginal rate" in row
+
+
+# ── resources first: the material the engine charges for, and each bucket's breakdown ──
+MILL_SRC = ("bounding-box billet 6.00 cm³ (oriented candidate 10×20×30 mm; minimum not certified) × 1.10 stock "
+            "allowance × Mild Steel density 7.85 g/cm³ = 0.0518 kg × $1.5/kg (material-DB unit price) × (1+0.05 scrap)")
+FORGE_SRC = ("billet from bar = net 0.0471 kg (CAD volume 6.00 cm³ × Mild Steel density 7.85 g/cm³) × (1+0.25 "
+             "flash/scale loss) = 0.0589 kg × $1.5/kg (material-DB unit price) × (1+0.05 scrap)")
+
+
+def test_material_used_is_the_mass_the_engine_charges_for():
+    assert cr.material_used_kg({"drivers": [{"name": "material_cost", "source": MILL_SRC}]}) == 0.0518
+    # The net mass named first isn't the one charged.
+    assert cr.material_used_kg({"drivers": [{"name": "material_cost", "source": FORGE_SRC}]}) == 0.0589
+    # The board's SQL slice keeps only the clause; it reads the same.
+    assert cr.material_used_kg({"drivers": [{"name": "material_cost", "source": "= 0.0518 kg × $"}]}) == 0.0518
+    assert cr.material_used_kg({"drivers": [{"name": "material_cost", "source": None}]}) is None
+    assert cr.material_used_kg({"drivers": []}) is None
+    assert cr.material_used_kg(None) is None
+
+
+def test_a_row_carries_the_material_used_next_to_the_part_mass():
+    est = _est("cnc_3axis", 10, 30.0, cycle=0.25, owned=True, material="Mild Steel")
+    est["drivers"].append({"name": "material_cost", "value": 0.08, "unit": "$", "source": MILL_SRC})
+    d = _decision("makeable_in_house", estimates=[est], resource={"machine": "Haas VF-2", "process": "cnc_3axis"})
+    r = _row(d)
+    assert r["material"]["used_kg_each"] == 0.0518 and r["used_kg_total"] == pytest.approx(0.518)
+    assert r["material"]["mass_kg_each"] == pytest.approx(0.785)  # 100 cm³ × 7.85 g/cm³, the part itself
+    line = list(cr.board_csv_rows({"rows": [r]}))[1]
+    assert line.rstrip("\n").endswith(",0.0518,0.518")
+
+
+def _brow(bucket, *, machine=None, process=None, owned=False, hours=None, material=None, used=None, part=None, cap=None):
+    return {"bucket": bucket, "route": {"process": process, "machine": machine, "owned": owned} if process else None,
+            "hours_total": hours, "material": {"name": material}, "used_kg_total": used, "mass_kg_total": part,
+            "capability": cap, "quantity": 10}
+
+
+def test_breakdown_sums_hours_by_machine_material_by_grade_and_what_is_missing():
+    rows = [
+        _brow("in_house", machine="Haas VF-2", process="cnc_3axis", owned=True, hours=2.5, material="6061-T6 Aluminum", used=1.2, part=0.9),
+        _brow("in_house", machine="Haas VF-2", process="cnc_3axis", owned=True, hours=None, material="6061-T6 Aluminum", used=None, part=0.3),
+        _brow("in_house", machine="HP Jet Fusion 5200", process="mjf", owned=True, hours=7.0, material="PA12 (Nylon 12)", used=0.4, part=0.4),
+        _brow("outside", process="fdm", hours=5.0, material="PLA", used=0.1, part=0.2),
+        _brow("outside", process="fdm", hours=1.0, material="PLA", used=0.05, part=0.1),
+        _brow("new_machine", process="cnc_3axis", hours=3.0, material="Delrin (POM)",
+              cap={"process": "cnc_3axis", "gate": "material", "need": "Delrin (POM)", "human": "not qualified for Delrin (POM)"}),
+        _brow("new_machine", process="cnc_3axis", hours=None, material="Delrin (POM)",
+              cap={"process": "cnc_3axis", "gate": "material", "need": "Delrin (POM)", "human": "not qualified for Delrin (POM)"}),
+        _brow("new_machine", process="cnc_turning", material="6061-T6 Aluminum",
+              cap={"process": "cnc_turning", "gate": "envelope", "need": [300, 300], "human": "too long for the work area"}),
+        {"bucket": "cant_make", "route": None, "material": {"name": None}, "capability": None},
+    ]
+    b = cr.bucket_breakdown(rows)
+    ih = b["in_house"]
+    assert [(m["machine"], m["parts"], m["hours"], m["hours_parts"]) for m in ih["machines"]] == [
+        ("HP Jet Fusion 5200", 1, 7.0, 1), ("Haas VF-2", 2, 2.5, 1)]
+    assert [(g["material"], g["parts"], g["used_kg"], g["used_parts"], g["part_kg"]) for g in ih["materials"]] == [
+        ("6061-T6 Aluminum", 2, 1.2, 1, 1.2), ("PA12 (Nylon 12)", 1, 0.4, 1, 0.4)]
+    # Outside, hours sit with the process: no machine of yours is named.
+    assert [(m["machine"], m["process"], m["owned"], m["hours"]) for m in b["outside"]["machines"]] == [(None, "fdm", False, 6.0)]
+    miss = b["new_machine"]["missing"]
+    assert [(g["process"], g["gate"], g["need"], g["parts"], g["hours"]) for g in miss] == [
+        ("cnc_3axis", "material", "Delrin (POM)", 2, 3.0), ("cnc_turning", "envelope", None, 1, None)]
+    assert b["cant_make"] == {"machines": [], "materials": [], "missing": []}
+    assert b["checking"] == {"machines": [], "materials": [], "missing": []}

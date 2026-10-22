@@ -212,6 +212,8 @@ async def test_catalog_run_sorts_parts_on_the_orgs_machines(world):
     assert (pla["part_number"], pla["quantity"], pla["quantity_source"]) == ("BRK-100", 25, "list")
     assert pla["hours_each"] > 0 and pla["hours_total"] == pytest.approx(pla["hours_each"] * 25, rel=1e-3)
     assert pla["material"]["name"] and pla["material"]["mass_kg_each"] > 0
+    # The material the engine charges for (filament printed, with infill) next to the part's own mass.
+    assert pla["material"]["used_kg_each"] > 0 and pla["used_kg_total"] == pytest.approx(pla["material"]["used_kg_each"] * 25, rel=1e-3)
     assert pla["marginal"] is True and pla["unit_cost_usd"] > 0
     assert pla["part_key"] and pla["analysis_id"] and pla["cost_decision_id"]
 
@@ -233,6 +235,12 @@ async def test_catalog_run_sorts_parts_on_the_orgs_machines(world):
     assert totals["in_house"]["parts"] == 2 and totals["new_machine"]["parts"] == 1
     assert totals["in_house"]["hours"] == pytest.approx(pla["hours_total"] + al["hours_total"], rel=1e-3)
     assert totals["not_checked"]["parts"] == 1
+    # Per bucket, hours by machine and material by grade (resources first).
+    by_machine = {m["machine"]: m for m in board["breakdown"]["in_house"]["machines"]}
+    assert set(by_machine) == {"Bambu Lab X1C", "Haas VF-2"}
+    assert by_machine["Bambu Lab X1C"]["hours"] == pytest.approx(pla["hours_total"], rel=1e-6)
+    assert {g["material"] for g in board["breakdown"]["in_house"]["materials"]} == {pla["material"]["name"], al["material"]["name"]}
+    assert board["breakdown"]["new_machine"]["missing"][0]["gate"] == "material"
 
     # The broken file gave its slot back; the three checked parts keep theirs.
     usage = await _usage(uid)

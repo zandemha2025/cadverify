@@ -283,6 +283,21 @@ def _driver(est: Optional[dict], name: str) -> Optional[dict]:
     return None
 
 
+# The mass the engine charges for (stock cut from, material printed with its
+# supports, metal poured), as its material_cost derivation states it:
+# "... = 0.0518 kg × $1.5/kg ...". The board's SQL slice keeps just this clause.
+_USED_KG = re.compile(r"=\s*(\d+(?:\.\d+)?)\s*kg\s*×\s*\$")
+_USED_KG_SQL = "=[[:space:]]*[0-9.]+[[:space:]]*kg[[:space:]]*×[[:space:]]*[$]"
+
+
+def material_used_kg(est: Optional[dict]) -> Optional[float]:
+    """Material the engine charges for per part, from its material_cost derivation; None if it doesn't say."""
+    src = (_driver(est, "material_cost") or {}).get("source")
+    m = _USED_KG.search(src) if isinstance(src, str) else None
+    kg = float(m.group(1)) if m else None
+    return kg if kg is not None and kg > 0 else None
+
+
 def _density(material: Optional[str]) -> Optional[float]:
     if not material:
         return None
@@ -395,10 +410,12 @@ def derive_part_row(
             "name": None,
             "mass_kg_each": None,
             "mass_basis": None,
+            "used_kg_each": None,
         },
         "hours_each": None,
         "hours_total": None,
         "mass_kg_total": None,
+        "used_kg_total": None,
         "unit_cost_usd": None,
         "total_cost_usd": None,
         "price_withheld": None,
@@ -526,6 +543,10 @@ def derive_part_row(
             row["material"]["mass_kg_each"] = round(each, 5)
             row["material"]["mass_basis"] = f"measured volume {volume:g} cm³ × {material} {density:g} g/cm³ (book value)"
             row["mass_kg_total"] = round(each * qty, 4)
+        used = material_used_kg(est)
+        if used is not None:
+            row["material"]["used_kg_each"] = round(used, 5)
+            row["used_kg_total"] = round(used * qty, 4)
         if est.get("dfm_ready", True) and _num(est.get("unit_cost_usd")) is not None:
             row["unit_cost_usd"] = _num(est.get("unit_cost_usd"))
             row["total_cost_usd"] = round(row["unit_cost_usd"] * qty, 2)
@@ -542,7 +563,8 @@ def derive_part_row(
 
 
 def bucket_totals(rows: list[dict]) -> dict:
-    """Per bucket: parts, quantity, machine hours, material kg and cost at quantity.
+    """Per bucket: parts, quantity, machine hours, material kg (the parts' own mass, and
+    the material the engine charges for) and cost at quantity.
 
     Sums only real figures; ``*_parts`` says how many parts each sum covers.
     """
@@ -556,6 +578,7 @@ def bucket_totals(rows: list[dict]) -> dict:
 
         hours, hours_n = total("hours_total")
         mass_vals = [r["mass_kg_total"] for r in sel if _num(r.get("mass_kg_total")) is not None]
+        used, used_n = total("used_kg_total")
         cost, cost_n = total("total_cost_usd")
         out[key] = {
             "parts": len(sel),
@@ -564,8 +587,75 @@ def bucket_totals(rows: list[dict]) -> dict:
             "hours_parts": hours_n,
             "mass_kg": round(sum(mass_vals), 4) if mass_vals else None,
             "mass_parts": len(mass_vals),
+            "used_kg": used,
+            "used_parts": used_n,
             "cost_usd": round(cost, 2) if cost is not None else None,
             "cost_parts": cost_n,
+        }
+    return out
+
+
+def bucket_breakdown(rows: list[dict]) -> dict:
+    """Per bucket, what its parts take, resources first.
+
+    ``machines``: machine hours per machine of yours (in-house), or per process
+    you'd have made outside or need a new machine for (``machine`` None), most
+    hours first. ``materials``: the material the engine charges for, by grade
+    (``used_kg``), with the parts' own mass (``part_kg``) beside it.
+    ``missing`` (needs a new machine): the capability each lacks, by process,
+    gate and need, most parts first. Sums only real figures; each entry says how
+    many parts it covers. Pure.
+    """
+    out: dict[str, dict] = {}
+    for key in BUCKETS + OTHER_BUCKETS:
+        sel = [r for r in rows if r.get("bucket") == key]
+        machines: dict[tuple, dict] = {}
+        materials: dict[str, dict] = {}
+        missing: dict[tuple, dict] = {}
+        for r in sel:
+            route = r.get("route") or {}
+            process = route.get("process") or (r.get("capability") or {}).get("process")
+            owned = bool(route.get("owned"))
+            if process or route.get("machine"):
+                k = (route.get("machine") if owned else None, process)
+                m = machines.setdefault(k, {"machine": k[0], "process": process, "owned": owned,
+                                            "parts": 0, "hours": None, "hours_parts": 0})
+                m["parts"] += 1
+                h = _num(r.get("hours_total"))
+                if h is not None:
+                    m["hours"] = round((m["hours"] or 0.0) + h, 4)
+                    m["hours_parts"] += 1
+            mat = (r.get("material") or {}).get("name")
+            if mat:
+                g = materials.setdefault(mat, {"material": mat, "parts": 0, "used_kg": None, "used_parts": 0,
+                                               "part_kg": None, "part_parts": 0})
+                g["parts"] += 1
+                used = _num(r.get("used_kg_total"))
+                if used is not None:
+                    g["used_kg"] = round((g["used_kg"] or 0.0) + used, 4)
+                    g["used_parts"] += 1
+                part = _num(r.get("mass_kg_total"))
+                if part is not None:
+                    g["part_kg"] = round((g["part_kg"] or 0.0) + part, 4)
+                    g["part_parts"] += 1
+            cap = r.get("capability")
+            if key == "new_machine" and isinstance(cap, dict):
+                need = cap.get("need") if isinstance(cap.get("need"), (str, int, float)) else None
+                k = (cap.get("process"), cap.get("gate"), need if cap.get("gate") == "material" else None)
+                g = missing.setdefault(k, {"process": k[0], "gate": k[1], "need": k[2], "human": cap.get("human"),
+                                           "parts": 0, "hours": None})
+                g["parts"] += 1
+                h = _num(r.get("hours_total"))
+                if h is not None:
+                    g["hours"] = round((g["hours"] or 0.0) + h, 4)
+
+        def by_hours(e: dict) -> tuple:
+            return (-(e.get("hours") or 0.0), -e["parts"], str(e.get("machine") or e.get("process") or ""))
+
+        out[key] = {
+            "machines": sorted(machines.values(), key=by_hours),
+            "materials": sorted(materials.values(), key=lambda g: (-(g["used_kg"] or g["part_kg"] or 0.0), -g["parts"], g["material"])),
+            "missing": sorted(missing.values(), key=lambda g: (-g["parts"], str(g["process"] or ""), str(g["gate"] or ""))),
         }
     return out
 
@@ -598,7 +688,7 @@ def run_meta(batch: Batch) -> dict:
 _BOARD_DECISION_KEYS = ("status", "reason", "verification", "geometry")
 _BOARD_DECISION_BLOCK_KEYS = ("recommendation", "make_now_process")
 _BOARD_ESTIMATE_KEYS = ("process", "quantity", "material", "unit_cost_usd", "dfm_ready", "dfm_blockers")
-_BOARD_DRIVERS = ("cycle_time", "machine_cost", "owned_in_house")
+_BOARD_DRIVERS = ("cycle_time", "machine_cost", "owned_in_house", "material_cost")
 
 
 def _sql_names(names: Iterable[str]) -> str:
@@ -623,7 +713,10 @@ CASE WHEN cost_decisions.result_json IS NULL THEN NULL ELSE
          COALESCE((SELECT jsonb_object_agg(k, v) FROM jsonb_each(e) AS t(k, v)
                    WHERE k IN ({_sql_names(_BOARD_ESTIMATE_KEYS)})), '{{}}'::jsonb)
          || CASE WHEN e ? 'drivers' THEN jsonb_build_object('drivers', COALESCE((
-              SELECT jsonb_agg(jsonb_build_object('name', d -> 'name', 'value', d -> 'value') ORDER BY n) FROM jsonb_array_elements({_sql_array("e -> 'drivers'")}) WITH ORDINALITY AS dd(d, n)
+              SELECT jsonb_agg(jsonb_build_object('name', d -> 'name', 'value', d -> 'value')
+                || CASE WHEN d ->> 'name' = 'material_cost' AND jsonb_typeof(d -> 'source') = 'string'
+                        THEN jsonb_build_object('source', substring(d ->> 'source' from '{_USED_KG_SQL}')) ELSE '{{}}'::jsonb END
+                ORDER BY n) FROM jsonb_array_elements({_sql_array("e -> 'drivers'")}) WITH ORDINALITY AS dd(d, n)
               WHERE d ->> 'name' IN ({_sql_names(_BOARD_DRIVERS)})), '[]'::jsonb))
             ELSE '{{}}'::jsonb END
          ORDER BY i)
@@ -682,6 +775,7 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
         "rows": rows,
         "totals": bucket_totals(rows),
+        "breakdown": bucket_breakdown(rows),
     }
 
 
@@ -698,7 +792,7 @@ BUCKET_WORDS = {
 CSV_HEADER = (
     "file,part_number,bucket,reason,route,machine,owned,material,declared_material,quantity,"
     "machine_hours_each,machine_hours_total,part_mass_kg_each,material_kg_total,"
-    "unit_cost_usd,total_cost_usd,price_note,status,error\n"
+    "unit_cost_usd,total_cost_usd,price_note,status,error,material_used_kg_each,material_used_kg_total\n"
 )
 
 
@@ -728,4 +822,5 @@ def board_csv_rows(board: dict) -> Iterable[str]:
             f(mat.get("name")), f(mat.get("declared")), f(r.get("quantity")),
             f(r.get("hours_each")), f(r.get("hours_total")), f(mat.get("mass_kg_each")), f(r.get("mass_kg_total")),
             f(r.get("unit_cost_usd")), f(r.get("total_cost_usd")), f(note), f(r.get("status")), f(r.get("error")),
+            f(mat.get("used_kg_each")), f(r.get("used_kg_total")),
         ]) + "\n"
