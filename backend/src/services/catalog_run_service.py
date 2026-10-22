@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Analysis, Batch, BatchItem, CostDecision
 from src.services.direct_upload_service import DirectUploadPreparationValidationError
+from src.services.parts_list_specs import SPEC_COLUMN_NAMES, plain_cell, spec_columns
 
 MATERIAL_CLASSES = ("polymer", "aluminum", "steel", "stainless", "titanium")
 MATERIAL_WORDS = {
@@ -154,6 +155,30 @@ _NOT_KNOWN_WORDS = {"-", "--", "—", "–", "n/a", "na", "n.a.", "tbd", "tba", 
 QUANTITY_ACCEPTED = f"a whole number from 1 to {MAX_QUANTITY:,}, or blank for the run's quantity"
 PRICE_ACCEPTED = "a number in US dollars, like 12.40, $1,250.00 or 1,250 / 100; blank when you don't buy it"
 PER_ACCEPTED = "each, or a number of parts, like 100"
+# The longest cell a parts list may hold, and the longest price or "per" cell.
+# Checked before anything else reads a cell, so no cell costs more than a few
+# microseconds to read however it was written.
+MAX_CELL_CHARS = 1_000
+MAX_SHORT_CELL_CHARS = 40
+# "1,250 / 100", "12.40 per C": what follows the last "/" or "per" in a price cell.
+_PER_TAIL = re.compile(r"\s*([0-9,]+|each|ea|pc|c|k)\s*", re.I)
+
+
+def _split_per(s: str) -> Optional[tuple[str, str]]:
+    """``("1,250", "100")`` for "1,250 / 100" or "1,250 per 100", else None.
+
+    The same reading as ``^(.*?)\\s*(?:/|per)\\s*(<per>)\\s*$`` in one pass: only
+    the last "/" or "per" can be followed by nothing but a per token.
+    """
+    low = s.lower()
+    slash, per = low.rfind("/"), low.rfind("per")
+    cut = max(slash, per)
+    if cut < 0:
+        return None
+    m = _PER_TAIL.fullmatch(s, cut + (1 if cut == slash else 3))
+    if m is None:
+        return None
+    return s[:cut].rstrip(), m.group(1)
 
 
 class CellError(ValueError):
@@ -197,15 +222,18 @@ def _not_known(raw: str) -> bool:
 
 def _parse_per(raw: str, row_num: int) -> int:
     """How many parts a listed price buys: "each" is 1, "100" or "per 100" is 100."""
-    t = (raw or "").strip().lower()
-    t = re.sub(r"^(per|/)\s*", "", t).replace(",", "")
+    written = plain_cell(raw)
+    if len(written) > MAX_SHORT_CELL_CHARS:
+        raise CellError(row_num, "per", written[:MAX_SHORT_CELL_CHARS] + "…",
+                        f"is longer than {MAX_SHORT_CELL_CHARS} characters", PER_ACCEPTED)
+    t = re.sub(r"^(per|/)\s*", "", written.lower()).replace(",", "")
     if t in _EACH_WORDS:
         return 1
     if t in ("c", "hundred"):
         return 100
     if t in ("thousand", "k"):
         return 1000
-    if t.isdigit() and 1 <= int(t) <= MAX_QUANTITY:
+    if t.isdecimal() and 1 <= int(t) <= MAX_QUANTITY:
         return int(t)
     raise CellError(row_num, "per", raw.strip(), "must be each or a number of parts, like 100", PER_ACCEPTED)
 
@@ -215,13 +243,16 @@ def _parse_price(raw: str, per_raw: str, row_num: int) -> tuple[Optional[float],
 
     A cell that says the price isn't known ("n/a", "TBD", "quote") is blank.
     """
-    s = (raw or "").strip()
+    s = plain_cell(raw)
     if not s or _not_known(s):
         return None, None
+    if len(s) > MAX_SHORT_CELL_CHARS:
+        raise CellError(row_num, "current price", s[:MAX_SHORT_CELL_CHARS] + "…",
+                        f"is longer than {MAX_SHORT_CELL_CHARS} characters", PRICE_ACCEPTED)
     per_text = per_raw
-    m = re.match(r"^(.*?)\s*(?:/|per)\s*([0-9,]+|each|ea|pc|c|k)\s*$", s, re.I)
-    if m:
-        s, per_text = m.group(1), m.group(2)
+    split = _split_per(s)
+    if split:
+        s, per_text = split
     t = re.sub(r"(?i)usd|us\$|\$", "", s).replace(",", "").replace(" ", "")
     try:
         v = float(t)
@@ -251,7 +282,7 @@ def _parse_qty(raw: str, row_num: int) -> Optional[int]:
         v = float(s)
     except ValueError:
         raise CellError(row_num, "quantity", raw.strip(), "isn't a number", QUANTITY_ACCEPTED)
-    if v != int(v) or not (1 <= v <= MAX_QUANTITY):
+    if not (1 <= v <= MAX_QUANTITY) or v != int(v):  # "inf" and "nan" fail the range first
         raise CellError(row_num, "quantity", raw.strip(), f"must be a whole number from 1 to {MAX_QUANTITY:,}",
                         QUANTITY_ACCEPTED)
     return int(v)
@@ -263,7 +294,8 @@ def _sniff(text: str):
     The header row decides the delimiter when it plainly has one (a quoted
     "Type II anodize, black" further down never makes the sniffer pick another).
     """
-    first = text.split("\n", 1)[0]
+    ends = [i for i in (text.find("\n"), text.find("\r")) if i >= 0]
+    first = text[:min(ends)] if ends else text
     for d in ("\t", ";", ","):
         if first.count(d) >= 1 and all(first.count(o) < first.count(d) for o in ("\t", ";", ",") if o != d):
             return type("Dialect", (csv.excel,), {"delimiter": d})
@@ -271,6 +303,11 @@ def _sniff(text: str):
         return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
         return csv.excel
+
+
+def list_reader(text: str):
+    """A parts list's rows as the csv module reads them, with any line ending (Windows, Unix, old Mac)."""
+    return csv.reader(io.StringIO(text, newline=None), _sniff(text))
 
 
 def parse_parts_list(text: str) -> list[dict]:
@@ -283,14 +320,20 @@ def parse_parts_list(text: str) -> list[dict]:
     plus the class they map to. The whole list is read before anything is
     refused: ``PartsListError`` (a ``ValueError``) carries every cell it can't
     read, each naming its row, column, value, why and what it takes.
+
+    A cell ScaleCAD reads (these columns and the spec columns of
+    ``parts_list_specs``) holds at most ``MAX_CELL_CHARS`` characters; a longer
+    one is a problem in the same report and nothing else in its row is read.
     """
     if text.startswith("﻿"):
         text = text[1:]
-    reader = csv.reader(io.StringIO(text), _sniff(text))
+    reader = list_reader(text)
     try:
         headers = next(reader)
     except StopIteration:
         raise _whole_list_problem("The parts list is empty")
+    except csv.Error:
+        raise _whole_list_problem(f"The parts list's header row has a cell longer than {MAX_CELL_CHARS:,} characters")
     fi = _header_index(headers, _FILE_HEADERS)
     pi = _header_index(headers, _PART_HEADERS)
     if fi is None and pi is None:
@@ -305,13 +348,36 @@ def parse_parts_list(text: str) -> list[dict]:
     def cell(row: list[str], i: Optional[int]) -> str:
         return row[i].strip() if i is not None and i < len(row) and row[i] is not None else ""
 
+    read_columns = [(column, i) for column, i in (
+        ("file", fi), ("part number", pi), ("quantity", qi), ("material", mi), ("description", di),
+        ("current price", ci), ("per", ei),
+        *((SPEC_COLUMN_NAMES[key], i) for key, i in spec_columns(headers).items())) if i is not None]
     rows: list[dict] = []
     problems: list[dict] = []
-    for row_num, row in enumerate(reader, start=2):
+    row_num = 1
+    while True:
+        row_num += 1
+        try:
+            row = next(reader)
+        except StopIteration:
+            break
+        except csv.Error:
+            # The csv reader's own ceiling (a cell of 128 KiB or more): nothing after it is read.
+            message = f"Row {row_num}: a cell is longer than {MAX_CELL_CHARS:,} characters"
+            problems.append({"row": row_num, "column": None, "value": None,
+                             "why": f"a cell is longer than {MAX_CELL_CHARS:,} characters",
+                             "accepted": f"at most {MAX_CELL_CHARS:,} characters a cell", "message": message})
+            break
         if not any((c or "").strip() for c in row):
             continue
         if len(rows) >= MAX_PARTS_LIST_ROWS:
             raise _whole_list_problem(f"The parts list has more than {MAX_PARTS_LIST_ROWS:,} rows")
+        too_long = [CellError(row_num, column, value[:40] + "…", f"is longer than {MAX_CELL_CHARS:,} characters",
+                              f"at most {MAX_CELL_CHARS:,} characters").problem()
+                    for column, i in read_columns if len(value := cell(row, i)) > MAX_CELL_CHARS]
+        if too_long:
+            problems.extend(too_long)
+            continue
         file = cell(row, fi)
         part = cell(row, pi)
         if not file and not part:
@@ -346,6 +412,17 @@ def parse_parts_list(text: str) -> list[dict]:
     if problems:
         raise PartsListError(problems)
     return rows
+
+
+def read_parts_list(text: str) -> list[dict]:
+    """``parse_parts_list`` with each row's specs attached (``parts_list_specs.attach``).
+
+    Pure CPU work over up to the manifest cap: routes run it in a worker thread
+    (``asyncio.to_thread``) so a long list never holds the event loop.
+    """
+    from src.services import parts_list_specs
+
+    return parts_list_specs.attach(parse_parts_list(text), text)
 
 
 def _keys(name: str) -> tuple[str, str]:

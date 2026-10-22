@@ -18,8 +18,6 @@ note.
 """
 from __future__ import annotations
 
-import csv
-import io
 import re
 from typing import Optional
 
@@ -37,7 +35,7 @@ _FINISH_WORDS: tuple = (
     ("anodize_ii", re.compile(r"anodi[sz]|type\s*(ii|2)\b", re.I)),
     ("bead_blast", re.compile(r"bead|blast|grit", re.I)),
     ("passivate", re.compile(r"passivat", re.I)),
-    ("electropolish", re.compile(r"electro\s*-?\s*polish", re.I)),
+    ("electropolish", re.compile(r"electro\s*(?:-\s*)?polish", re.I)),
     ("powder_coat", re.compile(r"powder", re.I)),
     ("plating", re.compile(r"plat(e|ed|ing)\b|electroless|nickel|chrom|zinc|cadmium|e-?coat", re.I)),
     ("as_machined", re.compile(r"as[\s-]*machined|none|bare|no finish", re.I)),
@@ -70,14 +68,19 @@ _NADCAP_WORDS: tuple = (
     ("welding", re.compile(r"weld", re.I)),
     ("measurement_inspection", re.compile(r"measure|inspection", re.I)),
 )
-_RA_CELL = re.compile(r"^\s*(?:ra\s*)?([0-9]*\.?[0-9]+)\s*(µm|um|micron|microns|µin|uin|microinch(?:es)?|µ\"|)\s*(?:ra)?\s*$", re.I)
+# An Ra cell, read with fullmatch on its words with whitespace runs as one space
+# (plain_cell): a number, a unit or none, "Ra" before or after. Each piece
+# matches a bounded run, so reading it is linear in the cell however it is written.
+_RA_CELL = re.compile(r"(?:ra ?)?([0-9]+(?:\.[0-9]+)?|\.[0-9]+) ?(µm|um|micron|microns|µin|uin|microinch(?:es)?|µ\"|) ?(?:ra)?", re.I)
+# The longest Ra cell read as a number; a longer one is kept as a note.
+MAX_RA_CHARS = 40
 
 
 # A colour named after an anodize ("Type II anodize, black") is that anodize's colour.
 _COLOUR = re.compile(r"^(black|clear|natural|red|blue|gold|green|grey|gray|bronze|olive|orange|purple|violet|"
                      r"silver|yellow|dyed|undyed|colou?r\b.*)$", re.I)
-_SPEC_COLUMNS = {"finish": "finish", "ra": "Ra", "heat": "heat treatment", "inspection": "inspection",
-                 "certs": "certifications"}
+SPEC_COLUMN_NAMES = {"finish": "finish", "ra": "Ra", "heat": "heat treatment", "inspection": "inspection",
+                     "certs": "certifications"}
 
 
 def _note(column: str, value: str, why: str) -> dict:
@@ -91,7 +94,7 @@ def _spec_words(raw: str, table: tuple, what: str, row_num: int, notes: Optional
     it raises, naming the row (the single-cell reader's contract).
     """
     out: list[str] = []
-    for phrase in re.split(r"[;,+/]|\bthen\b|\band\b", raw):
+    for phrase in re.split(r"[;,+/]|\bthen\b|\band\b", plain_cell(raw)):
         phrase = phrase.strip()
         if not phrase:
             continue
@@ -110,16 +113,57 @@ def _spec_words(raw: str, table: tuple, what: str, row_num: int, notes: Optional
     return out
 
 
+def plain_cell(raw: Optional[str]) -> str:
+    """A cell's words with each run of spaces, tabs and line breaks read as one space.
+
+    What every matcher here, and the parts list's price reader, reads.
+    """
+    return " ".join((raw or "").split())
+
+
+class _RaError(ValueError):
+    """An Ra cell ScaleCAD can't read as a number, naming the row; ``why`` is the reason alone."""
+
+    def __init__(self, row_num: int, shown: str, why: str):
+        self.shown, self.why = shown, why
+        super().__init__(f"Row {row_num}: Ra '{shown}' {why}")
+
+
+def _paren_split(raw: str) -> tuple[str, list[str]]:
+    """``raw`` without its "(…)" groups, and the text inside each, in one pass.
+
+    The same reading as ``re.sub(r"\\([^)]*\\)", "", raw)`` and
+    ``re.findall(r"\\(([^)]*)\\)", raw)``: a group runs from a "(" to the next ")".
+    """
+    outside: list[str] = []
+    inside: list[str] = []
+    at = 0
+    while True:
+        opened = raw.find("(", at)
+        closed = raw.find(")", opened + 1) if opened >= 0 else -1
+        if closed < 0:
+            break
+        outside.append(raw[at:opened])
+        inside.append(raw[opened + 1:closed])
+        at = closed + 1
+    outside.append(raw[at:])
+    return "".join(outside), inside
+
+
 def _ra_um(raw: str, header_unit: Optional[str], row_num: int) -> tuple[float, str]:
-    m = _RA_CELL.match(raw or "")
+    written = plain_cell(raw)
+    if len(written) > MAX_RA_CHARS:
+        raise _RaError(row_num, written[:MAX_RA_CHARS] + "…",
+                       f"is longer than {MAX_RA_CHARS} characters: write a number with µm or µin")
+    m = _RA_CELL.fullmatch(written)
     if not m:
-        raise ValueError(f"Row {row_num}: Ra '{raw.strip()}' isn't a number with µm or µin")
+        raise _RaError(row_num, written, "isn't a number with µm or µin")
     value = float(m.group(1))
     unit_word = (m.group(2) or "").lower()
     unit = ("uin" if unit_word.startswith(("µin", "uin", "microinch")) or unit_word == 'µ"'
             else "um" if unit_word else header_unit)
     if unit is None:
-        raise ValueError(f"Row {row_num}: Ra '{raw.strip()}' needs a unit: write {raw.strip()} µm or {raw.strip()} µin")
+        raise _RaError(row_num, written, f"needs a unit: write {written} µm or {written} µin")
     from src.costing.part_specs import UM_PER_UIN
 
     return (value * UM_PER_UIN if unit == "uin" else value), unit
@@ -147,19 +191,18 @@ def parse_spec_cells(cells: dict, row_num: int, *, ra_header_unit: Optional[str]
     if cells.get("ra"):
         try:
             specs["ra_um"], specs["ra_unit"] = _ra_um(cells["ra"], ra_header_unit, row_num)
-        except ValueError as exc:
+        except _RaError as exc:
             if not lenient:
                 raise
-            notes.append(_note("Ra", cells["ra"].strip(), "not priced: " + str(exc).split("' ", 1)[-1]))
+            notes.append(_note("Ra", exc.shown, "not priced: " + exc.why))
     if cells.get("heat"):
         specs["heat_treatments"] = _spec_words(cells["heat"], _HEAT_WORDS, "heat treatment", row_num, notes)
     if cells.get("inspection"):
         specs["inspection"] = _spec_words(cells["inspection"], _INSPECTION_WORDS, "inspection", row_num, notes)
     if cells.get("certs"):
-        raw = cells["certs"]
-        specs["certifications"] = _spec_words(re.sub(r"\([^)]*\)", "", raw), _CERT_WORDS, "certification",
-                                              row_num, notes)
-        named = " ".join(re.findall(r"\(([^)]*)\)", raw))
+        outside, inside = _paren_split(cells["certs"])
+        specs["certifications"] = _spec_words(outside, _CERT_WORDS, "certification", row_num, notes)
+        named = " ".join(inside)
         if "nadcap" in specs["certifications"] and named.strip():
             specs["nadcap_processes"] = _spec_words(named, _NADCAP_WORDS, "NADCAP process", row_num, notes)
     specs = {k: v for k, v in specs.items() if v not in ([], None)}
@@ -194,6 +237,15 @@ def parse_spec_cells(cells: dict, row_num: int, *, ra_header_unit: Optional[str]
     return normalize_part_specs(kept) if kept else None
 
 
+def spec_columns(headers: list[str]) -> dict[str, Optional[int]]:
+    """Where each spec column is in a parts list's header row: ``{finish, ra, heat, inspection, certs}`` to an index or None."""
+    from src.services.catalog_run_service import _header_index
+
+    return {key: _header_index(headers, names) for key, names in (
+        ("finish", _FINISH_HEADERS), ("ra", _RA_HEADERS), ("heat", _HEAT_HEADERS),
+        ("inspection", _INSPECTION_HEADERS), ("certs", _CERT_HEADERS))}
+
+
 def attach(rows: list[dict], text: str) -> list[dict]:
     """rows (from parse_parts_list) with part_specs added from the same text.
 
@@ -202,18 +254,16 @@ def attach(rows: list[dict], text: str) -> list[dict]:
     back unchanged. Never raises over a spec cell: what ScaleCAD can't price is
     kept on the row as ``spec_notes`` (``[{column, value, why}]``).
     """
-    from src.services.catalog_run_service import _header_index, _sniff
+    from src.services.catalog_run_service import list_reader
 
     if text.startswith("﻿"):
         text = text[1:]
-    reader = csv.reader(io.StringIO(text), _sniff(text))
+    reader = list_reader(text)
     try:
         headers = next(reader)
     except StopIteration:
         return rows
-    spec_cols = {key: _header_index(headers, names) for key, names in (
-        ("finish", _FINISH_HEADERS), ("ra", _RA_HEADERS), ("heat", _HEAT_HEADERS),
-        ("inspection", _INSPECTION_HEADERS), ("certs", _CERT_HEADERS))}
+    spec_cols = spec_columns(headers)
     if all(i is None for i in spec_cols.values()):
         return rows
     ra_head = headers[spec_cols["ra"]].lower() if spec_cols["ra"] is not None else ""

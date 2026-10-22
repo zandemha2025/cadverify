@@ -307,12 +307,9 @@ async def create_batch(
     parts_list: list[dict] | None = None
     if catalog_run is not None and manifest_bytes is not None:
         try:
-            list_text = _decode_text(manifest_bytes)
-            parts_list = catalog_run_service.parse_parts_list(list_text)
-            # Finish, Ra, heat treatment, inspection and certification columns.
-            from src.services import parts_list_specs
-
-            parts_list = parts_list_specs.attach(parts_list, list_text)
+            # With finish, Ra, heat treatment, inspection and certification columns;
+            # read off the event loop (up to the manifest cap of text).
+            parts_list = await asyncio.to_thread(catalog_run_service.read_parts_list, _decode_text(manifest_bytes))
         except ValueError as exc:
             # Every cell the list can't use, at once ({row, column, value, why, accepted, message}).
             raise HTTPException(
@@ -692,18 +689,15 @@ async def check_parts_list(
         data = await batch_service.read_manifest_upload_bounded(manifest)
     except ManifestTooLargeError as exc:
         raise HTTPException(status_code=413, detail={"code": "BATCH_MANIFEST_TOO_LARGE", "message": str(exc)}) from exc
-    text = _decode_text(data)
     try:
-        rows = catalog_run_service.parse_parts_list(text)
+        # Off the event loop: up to the manifest cap of text, every cell read.
+        rows = await asyncio.to_thread(catalog_run_service.read_parts_list, _decode_text(data))
     except ValueError as exc:
         problems = getattr(exc, "problems", None) or [
             {"row": None, "column": None, "value": None, "why": str(exc), "accepted": None, "message": str(exc)}]
         return {"ok": False, "rows": None, "with_quantity": None, "with_price": None,
                 "problems": problems, "not_priced": {"count": 0, "notes": []},
                 "materials_not_priced": {"count": 0, "groups": []}}
-    from src.services import parts_list_specs
-
-    rows = parts_list_specs.attach(rows, text)
     return {"ok": True, "rows": len(rows),
             "with_quantity": sum(1 for r in rows if r.get("quantity")),
             "with_price": sum(1 for r in rows if r.get("current_price_usd")),
