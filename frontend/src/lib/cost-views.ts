@@ -260,8 +260,9 @@ export function parseCalibration(report: CostReport): CalibrationView {
     display: fmtAssumptionValue(a),
   });
 
+  // A value from the org's published rate card (rate_card set) is "your rates vN", not a shop profile.
   const shopRates = (report.assumptions ?? [])
-    .filter((a) => a.provenance === "SHOP")
+    .filter((a) => a.provenance === "SHOP" && a.rate_card == null)
     .map(toRate);
   const defaultRates = (report.assumptions ?? [])
     .filter((a) => a.provenance === "DEFAULT")

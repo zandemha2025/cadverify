@@ -374,3 +374,5 @@
 /* A price figured at an older rate card than the org's published one (ce-10). */
 .ob .wb-stale{margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;border-radius:12px;background:var(--warn-bg);color:#5C3800;font-size:13.5px}
 .ob .wb-stale b{color:#3D2600;font-weight:600}
+/* The header grows by the banner on desktop, so the tab's body starts below it. */
+@media (min-width:901px){.ob .wb:has(.pagehead .wb-stale) .wb-main{top:210px}}
