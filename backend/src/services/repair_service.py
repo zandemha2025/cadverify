@@ -427,14 +427,8 @@ async def _link_upload_repair(original: bytes, filename: str, repaired: bytes, r
     """Record which checked part an uploaded file's repaired copy came from (best effort)."""
     from src.services import cad_fix_service as fx
 
-    if org_id is None:
-        from src.auth.org_context import resolve_org
-
-        try:
-            org_id = await resolve_org(session, user.user_id)
-        except Exception:
-            logger.warning("could not resolve the organization for a repair link", exc_info=True)
-            return
+    # The route resolves the organization once and passes it, so the link sits
+    # in the same organization as the copy the re-check saved.
     if not org_id:
         return
     suffix = Path(filename or "").suffix.lower().lstrip(".") or "stl"

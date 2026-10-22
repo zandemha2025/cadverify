@@ -48,6 +48,10 @@ async def ledger(monkeypatch):
                 'state text NOT NULL, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), '
                 'PRIMARY KEY (user_id, file_hash))'
             ))
+            # Saved checks, as derived copies and repairs read them (org, account, bytes).
+            await connection.execute(text(
+                'CREATE TABLE analyses (id bigserial PRIMARY KEY, org_id text, user_id bigint, mesh_hash text)'
+            ))
             # Users 1-3 predate email tiers and keep the grandfathered 10-check grant.
             await connection.execute(text(
                 "INSERT INTO users VALUES (1, 'trial', 'one@gmail.com', 10, NULL), "
@@ -55,6 +59,12 @@ async def ledger(monkeypatch):
             ))
         factory = async_sessionmaker(engine, expire_on_commit=False)
         monkeypatch.setattr(vc, 'get_session_factory', lambda: factory)
+
+        async def no_membership(user_id):
+            return None
+
+        # Derived copies look up the caller's organization; tests that need one set it.
+        monkeypatch.setattr('src.auth.models.lookup_org_membership', no_membership)
         yield factory
     finally:
         await engine.dispose()
@@ -426,7 +436,11 @@ def _tools_app(monkeypatch, user_id: int):
     async def generated(*args, **kwargs):
         return _rows()
 
+    async def org(session, user_id):
+        return '01JORGAAAAAAAAAAAAAAAAAAAA'
+
     monkeypatch.setattr('src.auth.rbac.lookup_org_membership', member)
+    monkeypatch.setattr('src.auth.org_context.resolve_org', org)
     monkeypatch.setattr(cad_fix_service, 'apply_fix', fixed)
     monkeypatch.setattr(repair_service, 'repair_mesh', repaired)
     monkeypatch.setattr(design_service, 'create_design', generated)
@@ -439,6 +453,19 @@ def _tools_app(monkeypatch, user_id: int):
 def _cube_stl() -> bytes:
     import trimesh
     return trimesh.creation.box(extents=[10.0, 10.0, 10.0]).export(file_type='stl')
+
+
+def _file_digest(name: str, data: bytes) -> str:
+    """The ledger's identity of an upload: its file name and bytes (enforce_validation_caps)."""
+    import hashlib
+    raw = name.encode()
+    return hashlib.sha256(len(raw).to_bytes(8, 'big') + raw + data).hexdigest()
+
+
+async def _mark_checked(user_id: int, name: str, data: bytes) -> None:
+    check = str(uuid4())
+    assert await vc.reserve_check(user_id, check, _file_digest(name, data), 'analysis')
+    await vc.finish_check(user_id, check, 'analysis', True)
 
 
 async def _run_each_tool(client) -> dict[str, int]:
@@ -459,8 +486,13 @@ async def _run_each_tool(client) -> dict[str, int]:
 
 @pytest.mark.asyncio
 async def test_tools_on_every_plan_admit_a_trial_account_without_a_check(ledger, monkeypatch):
-    """User 1 is on the free trial: each tool runs, and none of them uses a check."""
+    """User 1 is on the free trial: each tool runs, and none of them uses a check.
+
+    The part repaired here is one the account checked (repairing a file it never
+    checked is test_repair_of_a_checked_part_is_free_and_an_unchecked_file_takes_a_check).
+    """
     _fresh_free_limiter(monkeypatch)
+    await _mark_checked(1, 'part.stl', _cube_stl())
     app = _tools_app(monkeypatch, 1)
     before = await vc.user_trial_usage(1)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
@@ -469,9 +501,10 @@ async def test_tools_on_every_plan_admit_a_trial_account_without_a_check(ledger,
         'fix': 200, 'repair': 200, 'fit': 200, 'design': 202, 'revision': 202, 'interpret': 200,
     }, codes
     after = await vc.user_trial_usage(1)
-    assert (after['used'], after['reserved'], after['remaining']) == (before['used'], before['reserved'], before['remaining']) == (0, 0, 10)
+    assert (after['used'], after['reserved'], after['remaining']) == (before['used'], before['reserved'], before['remaining']) == (1, 0, 9)
     async with ledger() as session:
-        assert (await session.execute(text('SELECT count(*) FROM trial_checks'))).scalar_one() == 0
+        # Only the part's own check: the tools recorded no run.
+        assert (await session.execute(text('SELECT count(*) FROM trial_checks'))).scalar_one() == 1
 
 
 @pytest.mark.asyncio
@@ -517,6 +550,7 @@ async def test_the_ceiling_is_on_the_real_routes_and_a_limit_is_not_a_check(ledg
     _fresh_free_limiter(monkeypatch)
     for env in ('FREE_FIX_LIMIT', 'FREE_REPAIR_LIMIT', 'FREE_FIT_LIMIT', 'FREE_DESIGN_LIMIT'):
         monkeypatch.setenv(env, '1/hour')
+    await _mark_checked(1, 'part.stl', _cube_stl())
     app = _tools_app(monkeypatch, 1)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         first = await _run_each_tool(client)
@@ -529,13 +563,183 @@ async def test_the_ceiling_is_on_the_real_routes_and_a_limit_is_not_a_check(ledg
         assert '"code":"free_tool_limit"' in second[tool + ':body'], second
     # Reading a prompt is a local parse: only its route limit applies.
     assert first['interpret'] == second['interpret'] == 200
-    assert (await vc.user_trial_usage(1))['used'] == 0
+    assert (await vc.user_trial_usage(1))['used'] == 1  # the part's own check, nothing more
     # The pilot account (user 3) isn't held to the free ceiling.
     app = _tools_app(monkeypatch, 3)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         for _ in range(2):
             codes = await _run_each_tool(client)
             assert codes['fix'] == codes['repair'] == codes['fit'] == 200 and codes['design'] == 202, codes
+
+
+def _metered_app(user_id: int, paths=('/validate', '/validate/cost', '/validate/preview-mesh', '/validate/repair')):
+    """Metered stand-ins for the CAD routes: the real allowance dependency, no CAD work."""
+    app = FastAPI()
+    router = APIRouter(route_class=vc.MeteredRoute)
+    seen = []
+
+    async def compute(request: Request, _: None = Depends(vc.enforce_validation_caps)):
+        seen.append({'derived_from': getattr(request.state, 'derived_from', None),
+                     'metered': getattr(request.state, 'trial_check', None) is not None})
+        return {'result': 'computed'}
+
+    for path in paths:
+        router.add_api_route(path, compute, methods=['POST'])
+    app.include_router(router)
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=user_id, api_key_id=0, key_prefix='session')
+    return app, seen
+
+
+async def _post(client, path, name, data):
+    return await client.post(path, headers={'x-part-check-id': str(uuid4())}, files={'file': (name, data)})
+
+
+@pytest.mark.asyncio
+async def test_repair_of_a_checked_part_is_free_and_an_unchecked_file_takes_a_check(ledger):
+    import hashlib
+    await _add_user(ledger, 12, 'trial', 'mender@gmail.com')  # personal tier: 3
+    app, _seen = _metered_app(12)
+    a, b, c = b'OPEN SHELL A', b'OPEN SHELL B', b'OPEN SHELL C'
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        # A part the account checked: repairing it, any number of times, is free and records no run.
+        await _mark_checked(12, 'b.stl', b)
+        for _ in range(3):
+            assert (await _post(client, '/validate/repair', 'b.stl', b)).status_code == 200
+        assert (await vc.user_trial_usage(12))['used'] == 1
+        # The same bytes under another name, saved as the account's own check: still free.
+        async with ledger() as session, session.begin():
+            await session.execute(text('INSERT INTO analyses (org_id, user_id, mesh_hash) VALUES (NULL, 12, :h)'),
+                                  {'h': hashlib.sha256(b).hexdigest()})
+        assert (await _post(client, '/validate/repair', 'renamed.stl', b)).status_code == 200
+        # A file it never checked comes back with its full check, so it takes one, once.
+        assert (await _post(client, '/validate/repair', 'a.stl', a)).status_code == 200
+        assert (await _post(client, '/validate/repair', 'a.stl', a)).status_code == 200
+        assert (await vc.user_trial_usage(12))['used'] == 2
+        async with ledger() as session:
+            runs = (await session.execute(text('SELECT count(*) FROM trial_checks WHERE user_id = 12'))).scalar_one()
+        assert runs == 2
+        # The sample is free here too.
+        assert (await _post(client, '/validate/repair', 'sample.stl', _sample_bracket_stl())).status_code == 200
+        # With the allowance spent, an unchecked file is refused and a checked one still repairs.
+        await _complete(12, 1)
+        refused = await _post(client, '/validate/repair', 'c.stl', c)
+        assert refused.status_code == 403 and refused.json()['detail']['code'] == 'user_validation_cap_exceeded'
+        assert (await _post(client, '/validate/repair', 'b.stl', b)).status_code == 200
+    # Pilot accounts never record a run for a repair.
+    pilot_app, _ = _metered_app(3)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=pilot_app), base_url='http://test') as client:
+        assert (await _post(client, '/validate/repair', 'c.stl', c)).status_code == 200
+    async with ledger() as session:
+        assert (await session.execute(text('SELECT count(*) FROM trial_checks WHERE user_id = 3'))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_a_copy_scalecad_made_of_a_checked_part_never_uses_a_check(ledger, monkeypatch, tmp_path):
+    import hashlib
+    from src.services import cad_fix_service as fx
+
+    org, other_org = '01JORGAAAAAAAAAAAAAAAAAAAA', '01JORGBBBBBBBBBBBBBBBBBBBB'
+    monkeypatch.setenv('OBJECT_STORE_BACKEND', 'local')
+    monkeypatch.setenv('OBJECT_STORE_LOCAL_ROOT', str(tmp_path))
+
+    async def member(user_id):
+        return (org, 'member')
+
+    monkeypatch.setattr('src.auth.models.lookup_org_membership', member)
+    await _add_user(ledger, 13, 'trial', 'copier@gmail.com')  # personal tier: 3
+    parent, copy, stray, foreign = b'CHECKED PARENT', b'REPAIRED COPY', b'COPY OF AN UNCHECKED PART', b'OTHER ORG COPY'
+    h = lambda data: hashlib.sha256(data).hexdigest()
+    async with ledger() as session, session.begin():
+        # The parent is a part checked in the organization (by a teammate, user 2).
+        await session.execute(text('INSERT INTO analyses (org_id, user_id, mesh_hash) VALUES (:o, 2, :h)'),
+                              {'o': org, 'h': h(parent)})
+    # Only the server writes these records, next to the copy's stored source.
+    await fx._put_json(fx._record_key(org, h(copy), 'derived-from.json'), {'parent_mesh_hash': h(parent), 'fix': 'mesh_repair'})
+    await fx._put_json(fx._record_key(org, h(stray), 'derived-from.json'), {'parent_mesh_hash': h(b'NEVER CHECKED')})
+    await fx._put_json(fx._record_key(other_org, h(foreign), 'derived-from.json'), {'parent_mesh_hash': h(parent)})
+    app, seen = _metered_app(13)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        async def whole_check(name, data):
+            for path in ('/validate/preview-mesh', '/validate', '/validate/cost'):
+                response = await _post(client, path, name, data)
+                assert response.status_code == 200, (path, response.text)
+
+        # Keeping the copy (and checking it again under any name) uses no check.
+        await whole_check('part-repaired.stl', copy)
+        await whole_check('kept.stl', copy)
+        assert (await vc.user_trial_usage(13))['used'] == 0
+        assert {s['derived_from'] for s in seen} == {h(parent)}
+        async with ledger() as session:
+            assert (await session.execute(text('SELECT count(*) FROM trial_checks WHERE user_id = 13'))).scalar_one() == 0
+        # Changed by one byte, a copy of a part nobody checked, or another org's record: ordinary uploads.
+        await whole_check('edited.stl', copy + b'\n')
+        await whole_check('stray.stl', stray)
+        await whole_check('foreign.stl', foreign)
+        assert (await vc.user_trial_usage(13))['used'] == 3
+        # With the allowance spent, the copy still runs.
+        await whole_check('again.stl', copy)
+
+
+@pytest.mark.asyncio
+async def test_the_upload_repair_links_its_copy_to_the_original(monkeypatch, tmp_path):
+    import hashlib
+    from src.services import cad_fix_service as fx
+    from src.services import repair_service
+
+    org = '01JORGAAAAAAAAAAAAAAAAAAAA'
+    monkeypatch.setenv('OBJECT_STORE_BACKEND', 'local')
+    monkeypatch.setenv('OBJECT_STORE_LOCAL_ROOT', str(tmp_path))
+
+    async def fake_repair(file_bytes, filename, processes, rule_pack, user, session, org_id):
+        return {'repair_applied': True, 'repair_details': {'tier': 'trimesh'}}, b'REPAIRED BYTES'
+
+    async def no_repair(file_bytes, filename, processes, rule_pack, user, session, org_id):
+        return {'repair_applied': False, 'repair_details': {}}, None
+
+    monkeypatch.setattr(repair_service, '_repair', fake_repair)
+    user = AuthedUser(user_id=13, api_key_id=0, key_prefix='session')
+    result = await repair_service.repair_mesh(b'OPEN ORIGINAL', 'bracket.stl', None, None, user, None, org_id=org)
+    assert result['repair_applied'] is True
+    link = await fx.read_lineage(org, hashlib.sha256(b'REPAIRED BYTES').hexdigest())
+    assert link['parent_mesh_hash'] == hashlib.sha256(b'OPEN ORIGINAL').hexdigest()
+    assert link['fix'] == 'mesh_repair' and link['parent_filename'] == 'bracket.stl' and link['created_by_user_id'] == 13
+    # A repair that made nothing links nothing.
+    monkeypatch.setattr(repair_service, '_repair', no_repair)
+    await repair_service.repair_mesh(b'OTHER', 'other.stl', None, None, user, None, org_id=org)
+    assert await fx.read_lineage(org, hashlib.sha256(b'OTHER').hexdigest()) is None
+    # Without an organization there is nowhere to keep a copy, so nothing is linked.
+    monkeypatch.setattr(repair_service, '_repair', fake_repair)
+    await repair_service.repair_mesh(b'NO ORG', 'x.stl', None, None, user, None)
+
+
+@pytest.mark.asyncio
+async def test_fit_previews_reserve_nothing_and_have_their_own_ceiling(ledger, monkeypatch):
+    await _add_user(ledger, 14, 'trial', 'fitter@gmail.com')  # personal tier: 3
+    app, _seen = _metered_app(14)
+    cube = _cube_stl()
+    monkeypatch.setenv('CONTEXT_FIT_ENABLED', '1')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        for name in ('part.stl', 'assembly.stl', 'part.stl'):
+            assert (await client.post('/validate/preview-mesh?purpose=fit', files={'file': (name, cube)})).status_code == 200
+        usage = await vc.user_trial_usage(14)
+        assert (usage['used'], usage['reserved'], usage['remaining']) == (0, 0, 3)
+        # An ordinary preview of the same file still holds its slot, as before.
+        assert (await client.post('/validate/preview-mesh', files={'file': ('part.stl', cube)})).status_code == 200
+        assert (await vc.user_trial_usage(14))['reserved'] == 1
+        # While the server doesn't offer Fit, there are no free previews.
+        monkeypatch.setenv('CONTEXT_FIT_ENABLED', '0')
+        assert (await client.post('/validate/preview-mesh?purpose=fit', files={'file': ('x.stl', cube)})).status_code == 404
+    # On the real route, free accounts have a ceiling on Fit previews, and they never count.
+    _fresh_free_limiter(monkeypatch)
+    monkeypatch.setenv('FREE_FIT_PREVIEW_LIMIT', '2/hour')
+    real = _tools_app(monkeypatch, 14)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=real), base_url='http://test') as client:
+        codes = [(await client.post('/api/v1/validate/preview-mesh?purpose=fit', files={'file': (f'p{n}.stl', cube)})).status_code
+                 for n in range(3)]
+        assert codes == [200, 200, 429], codes
+        assert (await client.post('/api/v1/validate/preview-mesh?purpose=nonsense', files={'file': ('p.stl', cube)})).status_code == 422
+    usage = await vc.user_trial_usage(14)
+    assert (usage['used'], usage['reserved']) == (0, 1)
 
 
 @pytest.mark.asyncio

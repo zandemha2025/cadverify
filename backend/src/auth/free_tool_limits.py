@@ -20,6 +20,7 @@ Ceilings (env-tunable, slowapi syntax, e.g. "10/hour;40/day"):
   design  FREE_DESIGN_LIMIT  20/hour;60/day  one OpenCASCADE generation per design or revision
   catalog FREE_CATALOG_LIMIT 6/hour;20/day   one free catalog run started (src.auth.catalog_allowance)
   recheck FREE_RECHECK_LIMIT 30/hour;150/day one re-check of a part already checked
+  fit_preview FREE_FIT_PREVIEW_LIMIT 20/hour;80/day  one 3D preview in Fit in assembly (two per pair)
 
 The counters share the rate limiter's storage (Redis in released processes)
 and are off whenever the rate limiter is (RATE_LIMIT_DISABLED in dev/test).
@@ -31,7 +32,7 @@ import math
 import os
 import time
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from limits import RateLimitItem, parse_many
 
 from src.auth.rate_limit import limiter
@@ -47,6 +48,7 @@ TOOLS: dict[str, tuple[str, str, str, str]] = {
     "design": ("FREE_DESIGN_LIMIT", "20/hour;60/day", "design or revision", "designs or revisions"),
     "catalog": ("FREE_CATALOG_LIMIT", "6/hour;20/day", "catalog run", "catalog runs"),
     "recheck": ("FREE_RECHECK_LIMIT", "30/hour;150/day", "re-check", "re-checks"),
+    "fit_preview": ("FREE_FIT_PREVIEW_LIMIT", "20/hour;80/day", "Fit in assembly preview", "Fit in assembly previews"),
 }
 
 _WINDOW_WORDS = {"second": "a second", "minute": "a minute", "hour": "an hour", "day": "a day", "month": "a month", "year": "a year"}
@@ -146,4 +148,11 @@ async def limit_free_recheck(user: AuthedUser = Depends(require_api_key)) -> Non
     await _enforce("recheck", user)
 
 
-ALL = (limit_free_fixes, limit_free_repair, limit_free_fit, limit_free_designs, limit_free_catalog_runs, limit_free_recheck)
+async def limit_free_fit_previews(request: Request, user: AuthedUser = Depends(require_api_key)) -> None:
+    """Fit in assembly's 3D previews (preview-mesh ?purpose=fit) reserve no check; this bounds them."""
+    if request.query_params.get("purpose") == "fit":
+        await _enforce("fit_preview", user)
+
+
+ALL = (limit_free_fixes, limit_free_repair, limit_free_fit, limit_free_designs, limit_free_catalog_runs, limit_free_recheck,
+       limit_free_fit_previews)

@@ -19,9 +19,14 @@ Free accounts also have a per-user ceiling on the expensive ones (`backend/src/a
 | ScaleCAD's fixes | `FREE_FIX_LIMIT` | 10 an hour, 40 a day |
 | Mesh repair | `FREE_REPAIR_LIMIT` | 10 an hour, 40 a day |
 | Fit in context | `FREE_FIT_LIMIT` | 10 an hour, 40 a day |
+| Fit in assembly 3D previews | `FREE_FIT_PREVIEW_LIMIT` | 20 an hour, 80 a day |
 | Design Studio generation (design or revision) | `FREE_DESIGN_LIMIT` | 20 an hour, 60 a day |
 
-Reading a Studio prompt is a local parse and has only its route limit. Fit in context's 3D previews use the ordinary preview endpoint, so for a free account each previewed file holds a check slot for up to an hour and then releases it unless that file is checked; measuring the fit uses none.
+Reading a Studio prompt is a local parse and has only its route limit. Fit in assembly's 3D previews (`POST /validate/preview-mesh?purpose=fit`) reserve no check; they are refused (404) while the server doesn't offer Fit (`CONTEXT_FIT_ENABLED`), and free accounts have their own ceiling on them (`FREE_FIT_PREVIEW_LIMIT`, 20 an hour and 80 a day; two per pair). Measuring the fit uses no check.
+
+**Copies ScaleCAD makes never use another check.** A fix or a mesh repair writes a `derived-from.json` record next to the copy's stored source in the organization's store. When a copy's exact bytes come back (keeping a repaired copy, re-checking a downloaded fixed file), the server finds that record and, if the parent is a part checked in the same organization, runs every step without taking or recording a check. Nothing the browser sends can claim it; a copy changed by one byte is an ordinary upload.
+
+**Mesh repair of an uploaded file** (`POST /validate/repair`) is free for a part the account already checked (the same file, or the same bytes under another name) and records no run. A file the account never checked comes back with its full check (the repair runs the analysis on the original), so it takes one check like an upload, once; with the allowance spent it is refused like any new file. Repair of a kept part (`POST /parts/{hash}/repair`) never uses a check.
 
 ## Tools that still need approved access
 

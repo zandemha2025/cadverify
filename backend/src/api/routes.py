@@ -42,7 +42,7 @@ from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_limits import enforce_org_limits
 from src.auth.validation_caps import MeteredRoute, enforce_validation_caps, paid_access_required
-from src.auth.free_tool_limits import limit_free_fit, limit_free_repair
+from src.auth.free_tool_limits import limit_free_fit, limit_free_fit_previews, limit_free_repair
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -1123,11 +1123,12 @@ def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tu
 async def validate_preview_mesh(
     request: Request,
     file: UploadFile = File(...),
-    purpose: str = Query("preview", pattern="^(preview|analysis)$"),
+    purpose: str = Query("preview", pattern="^(preview|analysis|fit)$"),
     units: str = Query("mm", pattern="^(mm|inch)$"),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
+    _fit_preview_limit: None = Depends(limit_free_fit_previews),
     _admission: None = Depends(admit_analysis),
 ):
     """Return a decimated, browser-renderable GLB of the part's REAL tessellated
@@ -1138,7 +1139,9 @@ async def validate_preview_mesh(
     other data call. Zero-egress + mesh-level caveat: see the section header.
     """
     data = await _read_capped(file)
-    parse = _parse_fit_mesh_async if purpose == "preview" else _parse_mesh_async
+    # ``fit``: Fit in assembly's previews, which reserve no check (see
+    # validation_caps); they take the same file kinds as Fit.
+    parse = _parse_fit_mesh_async if purpose in {"preview", "fit"} else _parse_mesh_async
     mesh, suffix = await parse(data, file.filename or "upload")
     from src.costing.units import scale_mesh_to_mm
 
@@ -2460,6 +2463,10 @@ async def validate_repair(
             )
 
     data = await _read_capped(file)
+    from src.auth.org_context import resolve_org
+
+    # One organization for both saved checks and the copy's derived-from link.
+    org_id = await resolve_org(session, user.user_id)
     return await repair_service.repair_mesh(
         file_bytes=data,
         filename=file.filename or "unknown",
@@ -2467,6 +2474,7 @@ async def validate_repair(
         rule_pack=rule_pack,
         user=user,
         session=session,
+        org_id=org_id,
     )
 
 

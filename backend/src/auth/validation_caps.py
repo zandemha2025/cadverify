@@ -22,11 +22,20 @@ A work-email account also has a free catalog run, its own allowance of parts
 The app's own sample part (SAMPLE_PART_SHA256) never uses a check. Neither do
 ScaleCAD's fixes, mesh repair, Fit in context or Design Studio: they are on
 every plan, with per-user ceilings for free accounts (src.auth.free_tool_limits).
+- A copy ScaleCAD made (a fix or a mesh repair) of a part checked in the
+  organization never uses another check: the server knows it by the
+  derived-from record the fix and repair paths write, never by a client flag.
+- Fit in assembly's 3D previews (preview-mesh ?purpose=fit, only while the
+  server offers Fit) reserve nothing; they have their own free-account ceiling.
+- Mesh repair of a part the account already checked is free. Repairing a file
+  it never checked returns that file's full check, so it uses one, like an upload.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -43,7 +52,10 @@ from src.auth.catalog_allowance import catalog_usage, counted_catalog_hashes
 from src.auth.email_tiers import email_tier, tier_checks
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_session_factory
-from src.db.models import BillingAccount, TrialCheck, User
+from src.db.models import Analysis, BillingAccount, TrialCheck, User
+
+logger = logging.getLogger("cadverify.validation_caps")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 # Grant recorded for accounts created before email tiers (migration 0051).
 FREE_CHECKS = 10
@@ -343,15 +355,89 @@ async def finish_check(user_id: int, check_id: str, operation: str, success: boo
         raise _unavailable() from exc
 
 
+async def _needs_new_slot(user_id: int, file_hash: str) -> bool:
+    """A capped account and a file that holds no check yet: the next step would take a slot."""
+    try:
+        async with get_session_factory()() as session:
+            allowance = await _allowance(session, user_id)
+            if allowance.cap is None:
+                return False
+            return not await _file_counted(session, user_id, file_hash, datetime.now(timezone.utc))
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
+
+
+async def _org_of(user: AuthedUser) -> str | None:
+    if user.org_id:
+        return user.org_id
+    from src.auth.models import lookup_org_membership
+
+    membership = await lookup_org_membership(user.user_id)
+    return membership[0] if membership else None
+
+
+async def derived_copy_parent(user: AuthedUser, content_hash: str) -> str | None:
+    """The checked part a ScaleCAD-made copy came from, or None.
+
+    Only the server writes a copy's ``derived-from.json`` (a fix, a mesh repair),
+    next to the copy's own stored source in the organization's store, so the
+    bytes themselves are the proof: nothing the browser sends can claim it. The
+    parent must be a part checked in the same organization.
+    """
+    org_id = await _org_of(user)
+    if not org_id or not _SHA256.fullmatch(content_hash):
+        return None
+    from src.services.cad_fix_service import read_lineage
+
+    try:
+        link = await read_lineage(org_id, content_hash)
+    except Exception:
+        # An unreadable record charges like any upload rather than failing the check.
+        logger.warning("derived-from record unreadable for org=%s hash=%s", org_id, content_hash[:12], exc_info=True)
+        return None
+    parent = str((link or {}).get("parent_mesh_hash") or "").lower()
+    if not _SHA256.fullmatch(parent) or parent == content_hash:
+        return None
+    try:
+        async with get_session_factory()() as session:
+            row = (await session.execute(
+                select(Analysis.id).where(Analysis.org_id == org_id, Analysis.mesh_hash == parent).limit(1)
+            )).first()
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
+    return parent if row is not None else None
+
+
+async def _account_checked_bytes(user_id: int, content_hash: str) -> bool:
+    """The account has a saved check of these exact bytes (under any file name)."""
+    try:
+        async with get_session_factory()() as session:
+            row = (await session.execute(
+                select(Analysis.id).where(Analysis.user_id == user_id, Analysis.mesh_hash == content_hash).limit(1)
+            )).first()
+    except SQLAlchemyError as exc:
+        raise _unavailable() from exc
+    return row is not None
+
+
 async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(require_api_key)) -> None:
     # Reuse the route's bounded upload policy without buffering another copy.
     from src.api.routes import _max_upload_bytes
 
     path = request.url.path
-    if path.endswith(("/fit", "/repair")):
-        # Fit in context and mesh repair are on every plan and never use a
-        # check: neither checks a part. Their per-user ceilings are
-        # src.auth.free_tool_limits plus the route limits.
+    if path.endswith("/fit"):
+        # Fit in assembly is on every plan and never uses a check: it measures
+        # a pair, it doesn't check a part. Its per-user ceiling is
+        # src.auth.free_tool_limits plus the route limit.
+        return
+    if path.endswith("/preview-mesh") and request.query_params.get("purpose") == "fit":
+        # Fit in assembly's own 3D previews: free like Fit, with their own
+        # free-account ceiling (free_tool_limits.limit_free_fit_previews), and
+        # only while this server offers Fit at all.
+        from src.services.fit_service import context_fit_enabled
+
+        if not context_fit_enabled():
+            raise HTTPException(status_code=404, detail="Not found")
         return
     if ((path.endswith("/assembly") and request.query_params.get("format", "json").lower() != "json")
             or request.query_params.get("segmentation") == "sam3d"):
@@ -400,6 +486,19 @@ async def enforce_validation_caps(request: Request, user: AuthedUser = Depends(r
         # them takes, reserves or records a check (whatever its file name).
         request.state.sample_part = True
         return
+    needs_slot = await _needs_new_slot(user.user_id, digest.hexdigest())
+    if needs_slot:
+        parent = await derived_copy_parent(user, content.hexdigest())
+        if parent:
+            # A copy ScaleCAD made of a part checked in this organization.
+            request.state.derived_from = parent
+            return
+    if operation == "repair":
+        # Mesh repair (POST /validate/repair) of a part the account already
+        # checked never uses a check, and records no run. A file it never
+        # checked comes back with its full check, so it takes one like an upload.
+        if not needs_slot or await _account_checked_bytes(user.user_id, content.hexdigest()):
+            return
     reserved = await reserve_check(user.user_id, check_id, digest.hexdigest(), operation)
     if reserved:
         request.state.trial_check = (user.user_id, reserved, operation)
