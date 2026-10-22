@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bucketDef, cheaperToBuy, costLabel, orderedBuckets, reasonOf, wallTooThin, type MakeRow } from "./makeability.ts";
+import { bucketDef, cheaperToBuy, cheaperToBuyText, costLabel, orderedBuckets, reasonOf, wallTooThin, type MakeRow } from "./makeability.ts";
 
 const row = (o: Partial<MakeRow> & { verdict?: string | null; gap?: unknown }): MakeRow =>
   ({
@@ -59,6 +59,8 @@ test("on your machines names your machine and prices at the part's quantity (oo-
   assert.equal(reasonOf(r, machines), "Haas VF-2 · Mild Steel");
   assert.equal(costLabel(r), "$38.92 at 40");
   assert.equal(cheaperToBuy(r), true);
+  assert.equal(cheaperToBuyText(r), "Cheaper to buy at 40");
+  assert.equal(cheaperToBuyText(row({ ...r, at_quantity: { ...r.at_quantity!, buy_price: { usd_each: 4, source: "you" } } })), "Cheaper to buy at 40 (your price)");
   const keep = row({ at_quantity: { qty: 100, basis: "record", in_house: true, owned: { process: "cnc_3axis", machine: "Haas VF-2", material: "6061-T6 Aluminum", usd: 20 } } });
   assert.equal(cheaperToBuy(keep), false);
   const out = row({ verdict: "makeable_outsource_only", at_quantity: { qty: 25, basis: "record", in_house: false, process: "sls", usd: 12.5 } });

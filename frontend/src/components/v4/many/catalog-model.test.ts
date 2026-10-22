@@ -19,6 +19,7 @@ import {
   fitNote,
   hoursText,
   machineLine,
+  money,
   massText,
   materialLine,
   partLine,
@@ -277,4 +278,10 @@ test("counts: files in, parts out, machines as Your shop counts them, the list's
   assert.equal(scopedRows(board).length, 54);
   assert.equal(unlistedRows(board).length, 2);
   assert.deepEqual(runningRateLines(board), ["Haas VF-2: $85.00/h you set, less 35% that pays for the machine itself (a typical share; set yours in Your shop): $55.25/h"]);
+});
+
+test("money reads a negative as minus dollars, never $-3", () => {
+  assert.equal(money(-2.8, 0), "−$3");
+  assert.equal(money(-0.001, 2), "$0.00");
+  assert.equal(money(7023.5, 0), "$7,024");
 });

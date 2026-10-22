@@ -291,9 +291,15 @@ export function NotificationsScreen() {
                 })}
               </div>
               <div style={{ display: "flex", gap: 8, padding: "10px 12px", flexWrap: "wrap" }}>
-                <Link className="btn ink sm" href={g.isPart ? R.records : R.changes}>
-                  {g.isPart ? "Open records" : "Open changes"}
-                </Link>
+                {g.kind === "Catalog run finished" && items[0] ? (
+                  <Link className="btn ink sm" href={notificationHref(items[0])}>
+                    Open the run
+                  </Link>
+                ) : (
+                  <Link className="btn ink sm" href={g.isPart ? R.records : R.changes}>
+                    {g.isPart ? "Open records" : "Open changes"}
+                  </Link>
+                )}
                 <button className="btn sm" type="button" disabled={busy === "group" || !items.length} onClick={() => void actAll(items.map((i) => i.id), view === "dismissed" ? "restore" : "dismiss")}>
                   {busy === "group" ? "Working…" : `${view === "dismissed" ? "Restore" : "Dismiss"} all ${items.length}`}
                 </button>

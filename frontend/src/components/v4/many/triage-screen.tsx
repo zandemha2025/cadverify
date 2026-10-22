@@ -24,7 +24,7 @@ import { useCatalogAccess } from "./catalog-access";
 import { CapabilitySheet, type Ranking } from "./capability-sheet";
 import { ToolingSheet } from "./tooling-sheet";
 import { fetchBucket, fetchMachines, fetchRollup, type Rollup } from "./many-api";
-import { bucketDef, cheaperToBuy, costLabel, countOf, isStale, orderedBuckets, reasonOf, wallTooThin, type Machine, type MakeRow } from "./makeability";
+import { bucketDef, cheaperToBuy, cheaperToBuyText, costLabel, countOf, isStale, orderedBuckets, reasonOf, wallTooThin, type Machine, type MakeRow } from "./makeability";
 import { listBatches } from "@/lib/api/batch";
 
 export const TRIAGE_GATE = {
@@ -260,21 +260,6 @@ export function TriageScreen() {
             <span>Loading</span>
           )}
         </p>
-        <p className="tr-scope">
-          Every part checked in this organization, by what your machines can make: one row per part at its latest check, single checks and catalog runs together.
-          {" "}
-          {lastRun ? (
-            <>
-              Whether to make or buy, by cost and against what you pay, is on the run:{" "}
-              <Link className="lk" href={R.batch(lastRun.id)}>
-                {lastRun.name}
-              </Link>
-              .
-            </>
-          ) : (
-            "Whether to make or buy, by cost, is on a catalog run’s page."
-          )}
-        </p>
         <div className="hrow">
           <nav className="subnav" aria-label="Many parts">
             {tabs.map((t) => (
@@ -309,6 +294,21 @@ export function TriageScreen() {
       </div>
 
       <Content>
+          <p className="tr-scope">
+            Every part checked in this organization, by what your machines can make: one row per part at its latest check, single checks and catalog runs together.
+            {" "}
+            {lastRun ? (
+              <>
+                Whether to make or buy, by cost and against what you pay, is on the run:{" "}
+                <Link className="lk" href={R.batch(lastRun.id)}>
+                  {lastRun.name}
+                </Link>
+                .
+              </>
+            ) : (
+              "Whether to make or buy, by cost, is on a catalog run’s page."
+            )}
+          </p>
         {rollErr && !roll ? (
           <Panel>
             <Empty
@@ -437,7 +437,7 @@ export function TriageScreen() {
                             <small>{reasonOf(r, machines)}</small>
                           </span>
                           <span className="flags">
-                            {cheaperToBuy(r) ? <span className="flag f-stale">Cheaper to buy at {r.at_quantity!.qty.toLocaleString("en-US")}</span> : null}
+                            {cheaperToBuy(r) ? <span className="flag f-stale">{cheaperToBuyText(r)}</span> : null}
                             {wallTooThin(r) ? <span className="flag f-wall">Wall too thin</span> : null}
                             {isStale(r) ? <span className="flag f-stale">Out of date</span> : null}
                           </span>

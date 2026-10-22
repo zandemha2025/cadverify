@@ -48,3 +48,12 @@ def test_an_in_house_part_without_a_priced_side_still_names_the_machine():
               "verification": {"resource": {"process": "cnc_3axis", "machine": "Haas VF-2"}}}
     r = route_at_quantity(result, None)
     assert r["owned"] == {"process": "cnc_3axis", "machine": "Haas VF-2", "material": None, "usd": None}
+
+
+def test_what_you_pay_today_decides_make_or_buy_on_the_tab_too():
+    # The engine keeps the part in-house at 100 ($20.00 on your VF-2), but you pay $12.00: buy.
+    r = route_at_quantity(RESULT, 100, {"usd_each": 12.0, "source": "parts_list"})
+    assert r["in_house"] is False and r["buy_price"] == {"usd_each": 12.0, "source": "parts_list"}
+    # You pay $45.00 at 40: the engine would buy sheet metal at $5.74, but against your price, make it.
+    r = route_at_quantity(RESULT, 40, {"usd_each": 45.0, "source": "you"})
+    assert r["in_house"] is True

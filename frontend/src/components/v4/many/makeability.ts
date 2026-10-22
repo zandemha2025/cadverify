@@ -41,6 +41,8 @@ export interface AtQuantity {
   usd?: number | null;
   machine?: string | null;
   dfm_ready?: boolean;
+  /** What you pay today, when the part has a price: it decides make or buy, as on a catalog run. */
+  buy_price?: { usd_each: number; source: string | null } | null;
 }
 
 export interface GapEntry {
@@ -223,6 +225,12 @@ export function reasonOf(row: MakeRow, machines?: readonly Machine[] | null): st
 export function cheaperToBuy(row: MakeRow): boolean {
   const a = row.at_quantity;
   return !!a && !!a.owned?.process && a.in_house === false && (row.makeability?.verdict === "makeable_in_house" || row.makeability?.verdict === "makeable_with_secondary_op");
+}
+
+/** "Cheaper to buy at 200", saying when it's against your own price. */
+export function cheaperToBuyText(row: MakeRow): string {
+  const a = row.at_quantity!;
+  return `Cheaper to buy at ${a.qty.toLocaleString("en-US")}${a.buy_price ? " (your price)" : ""}`;
 }
 
 /** "$19.54 at 10", "Withheld", or "—". At the part's own quantity when the row carries it. Never invents a figure. */

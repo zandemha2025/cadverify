@@ -163,7 +163,7 @@
 .ob .trow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
 .ob .trow > .btn{margin-right:6px}
 .ob .trow .lrow .flags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.ob .tr-scope{margin:8px 0 0;max-width:820px;font-size:13px;line-height:1.45;color:var(--ink2)}
+.ob .tr-scope{margin:0 4px 10px;max-width:860px;font-size:13px;line-height:1.45;color:var(--ink2)}
 @media (max-width:640px){
 .ob .trow{grid-template-columns:minmax(0,1fr)}
 .ob .trow > .btn{justify-self:start;margin:0 0 6px 66px}

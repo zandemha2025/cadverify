@@ -1645,7 +1645,8 @@ async def build_makeability_bucket_page(
     return {"rows": rows, "next_cursor": next_cursor}
 
 
-def route_at_quantity(result_json: dict, annual_volume: Optional[int]) -> Optional[dict]:
+def route_at_quantity(result_json: dict, annual_volume: Optional[int],
+                      buy_price: Optional[dict] = None) -> Optional[dict]:
     """The part's route and price at its own quantity, from its saved decision.
 
     The quantity is the part's declared yearly volume when the record priced it
@@ -1678,6 +1679,18 @@ def route_at_quantity(result_json: dict, annual_volume: Optional[int]) -> Option
                         "material": inside.get("material"), "usd": inside.get("unit_cost_usd")}
     out.update(process=r.get("process"), material=r.get("material"), usd=r.get("unit_cost_usd"),
                machine=r.get("machine"), dfm_ready=r.get("dfm_ready", True))
+    each = (buy_price or {}).get("usd_each") if isinstance(buy_price, dict) else None
+    if isinstance(each, (int, float)) and not isinstance(each, bool) and each > 0 and \
+            isinstance(inside.get("unit_cost_usd"), (int, float)):
+        # What you pay today decides, as on a catalog run (a current price never
+        # changes the engine's figures, only make against buy).
+        from src.costing.decision import prefer_in_house
+
+        low = inside.get("low_usd") if isinstance(inside.get("low_usd"), (int, float)) else inside["unit_cost_usd"]
+        pick, _basis = prefer_in_house({"unit_cost_usd": inside["unit_cost_usd"], "low_usd": low, "lead_low_days": None},
+                                       {"unit_cost_usd": float(each), "lead_high_days": None})
+        out["in_house"] = pick == "in_house"
+        out["buy_price"] = {"usd_each": float(each), "source": buy_price.get("source")}
     return out
 
 
@@ -1699,13 +1712,14 @@ async def _routes_at_quantity(session: AsyncSession, org_id: str, page) -> dict:
         decisions = {u: j for u, j in (await session.execute(
             select(CostDecision.ulid, literal_column(slice_sql, type_=JSONB))
             .where(CostDecision.org_id == org_id, CostDecision.ulid.in_(ulids)))).all()}
-        volumes = {h: v for h, v in (await session.execute(
-            select(PartContext.mesh_hash, PartContext.annual_volume)
+        contexts = {h: (v, p) for h, v, p in (await session.execute(
+            select(PartContext.mesh_hash, PartContext.annual_volume, PartContext.buy_price)
             .where(PartContext.org_id == org_id, PartContext.mesh_hash.in_(list(ids))))).all()}
     except Exception:
         logger.warning("routes at quantity unavailable for org %s", org_id, exc_info=True)
         return {}
-    return {h: route_at_quantity(decisions.get(u) or {}, volumes.get(h)) for h, u in ids.items() if u in decisions}
+    return {h: route_at_quantity(decisions.get(u) or {}, *(contexts.get(h) or (None, None)))
+            for h, u in ids.items() if u in decisions}
 
 
 async def build_capability_investment(

@@ -281,7 +281,8 @@ export function massText(kg: number | null | undefined): string {
 
 export function money(n: number | null | undefined, digits = 2): string {
   if (!finite(n)) return "—";
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  const v = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return `${n < 0 && v.replace(/[0.,]/g, "") !== "" ? "−" : ""}$${v}`;
 }
 
 export function procName(p: string | null | undefined): string {
