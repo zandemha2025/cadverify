@@ -225,14 +225,25 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
             b_est = _confidence_of(b_body, _PROC)
             assert b_est is not None, [e["process"] for e in b_body["estimates"]]
             # With NO calibration the served CI is EXACTLY the residual_model=None
-            # path: recompute it and assert byte-for-byte equality + validated False.
+            # path: recompute it and assert every number and label is equal +
+            # validated False. The basis sentence is the engine's own wording of
+            # the rolled-up band (ce-02), so assert what it must say: the served
+            # band value, that it is the root-sum-square of the line bands, and
+            # that no real jobs stand behind it yet.
             ref = confidence_interval(
                 b_est["unit_cost_usd"],
                 assumption_band_pct=b_est["est_error_band_pct"],
                 residual_provider=None, process=_PROC,
             ).to_dict()
-            assert b_est["confidence"] == ref
+            served = dict(b_est["confidence"])
+            basis = served.pop("basis")
+            ref.pop("basis")
+            assert served == ref
             assert b_est["confidence"]["validated"] is False
+            assert b_est["confidence"]["method"] == "assumption-band"
+            assert basis.startswith(f"±{b_est['est_error_band_pct']:g}%"), basis
+            assert "root-sum-square of each line's band" in basis, basis
+            assert basis.endswith("no real jobs behind it yet"), basis
 
             # ============ RECALIBRATE (org A) ============
             _act_as(app, a1)
