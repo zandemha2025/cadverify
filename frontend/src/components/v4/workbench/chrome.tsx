@@ -18,11 +18,12 @@ import { cx } from "../ui";
 import { newPartText, rateChips } from "./derive";
 import { attachFile, getWb, recost, resetSession, useShops, useWb } from "./session";
 import { shortSource } from "./words";
+import { LEGACY_WORKBENCH, tabOf, tabUrlName, wbHref, type WbTab } from "./cost-url";
 
 /* ---- tabs and links ------------------------------------------------ */
 
-/** Internal tab ids. "routing" is the old DFM tab: it now opens the part page's problem list. */
-export type WbTab = "decision" | "routing" | "glass" | "compare" | "history";
+// The address of each tab lives in cost-url.ts (pure, tested): /app/part/{key}/cost?tab=…
+export { tabOf, wbHref, type WbTab } from "./cost-url";
 
 export const WB_TABS: { tab: WbTab; label: string }[] = [
   { tab: "decision", label: "Summary" },
@@ -31,27 +32,8 @@ export const WB_TABS: { tab: WbTab; label: string }[] = [
   { tab: "history", label: "History" },
 ];
 
-/** What a tab is called in the address bar. Older names (decision, glass, routing) still open the same view. */
-const URL_NAME: Record<WbTab, string> = { decision: "summary", routing: "dfm", glass: "lines", compare: "compare", history: "history" };
-const FROM_URL: Record<string, WbTab> = { summary: "decision", decision: "decision", lines: "glass", glass: "glass", dfm: "routing", routing: "routing", compare: "compare", history: "history" };
-
-/** The tab a `?tab=` value names (current or older spelling), or null. */
-export function tabOf(v: string | null): WbTab | null {
-  return v ? FROM_URL[v] ?? null : null;
-}
-
 export function isTab(v: string | null): boolean {
   return tabOf(v) != null;
-}
-
-/** A cost breakdown URL. Extra params (proc, q, decision) ride along for deep links. */
-export function wbHref(tab: WbTab | null, part: string | null, extra?: Record<string, string | number | null | undefined>): string {
-  const p = new URLSearchParams();
-  if (tab) p.set("tab", URL_NAME[tab]);
-  if (part) p.set("part", part);
-  for (const [k, v] of Object.entries(extra ?? {})) if (v != null && v !== "") p.set(k, String(v));
-  const qs = p.toString();
-  return qs ? `${R.workbench}?${qs}` : R.workbench;
 }
 
 /** Same-page moves (tab, selection) use the history API so the session stays mounted; others route. */
@@ -111,7 +93,7 @@ export function rememberTab(tab: WbTab): void {
   if (tab === "routing") return;
   tabMem = tab;
   try {
-    window.localStorage.setItem(TAB_KEY, URL_NAME[tab]);
+    window.localStorage.setItem(TAB_KEY, tabUrlName(tab));
   } catch {
     /* storage blocked: remembered for this tab only */
   }
@@ -281,7 +263,7 @@ function NeedFileHost({ children }: { children: React.ReactNode }) {
                   pendingNew = ask.other;
                   setAsk(null);
                   resetSession();
-                  nav(R.workbench);
+                  nav(LEGACY_WORKBENCH);
                 }}
               >
                 Open it as a new part
@@ -473,7 +455,7 @@ function NewPartButton() {
               onClick={() => {
                 setOpen(false);
                 resetSession();
-                nav(R.workbench);
+                nav(LEGACY_WORKBENCH);
               }}
             >
               Cost another file

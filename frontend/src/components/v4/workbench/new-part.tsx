@@ -22,6 +22,7 @@ import { Failed, Loading, cx } from "../ui";
 import { DEFAULT_FORM, formProblem, formToOptions, cavProblem, qtyParts, qtyProblem, type FormDraft } from "./derive";
 import { beginPart, getWb, retryBegin, useWb } from "./session";
 import { WbLink, lastTab, takeNewPartFile, wbHref, useWbNav } from "./chrome";
+import { LEGACY_WORKBENCH } from "./cost-url";
 import { COMPLEXITY_OPTIONS, MATERIAL_OPTIONS, REGION_OPTIONS, methodName, money, qtyListText, qtyText, whenText } from "./words";
 
 type ErrKind = "timeout" | "qty" | "type" | "geom" | "quota" | "unreadable";
@@ -259,7 +260,7 @@ export function NewPart() {
   };
   // An issue link opens that problem where every problem lives: on the part page.
   const issueCode = issue ? issue.split("|")[0] : null;
-  const openHref = s.key ? wbHref(lastTab(), s.key) : R.workbench;
+  const openHref = s.key ? wbHref(lastTab(), s.key) : LEGACY_WORKBENCH;
   const problemHref = s.key && issueCode ? `${R.part(s.key)}?problem=${encodeURIComponent(familyOf(issueCode).id)}` : null;
 
   return (

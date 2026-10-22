@@ -2,12 +2,12 @@
 
 /**
  * Cost breakdown (boards F3, F5, F7 to F9): the detail behind a part's Cost
- * view, four tabs onto the same engine report. `?tab=` picks the tab (summary |
- * lines | compare | history; the older decision and glass still work),
- * `?part=<mesh hash>` the part; without a part it's the F9 cold start. The old
- * DFM tab (`?tab=routing` or `dfm`) opens the part page's problem list, so a
- * part's problems live in one place. Tab moves use the history API, so the
- * session (file, results, overrides, scenarios) stays mounted.
+ * view, four tabs onto the same engine report, at /app/part/{key}/cost under
+ * the part. `?tab=` picks the tab (summary | lines | compare | history; the
+ * older decision and glass still work); without a part it's the F9 cold start.
+ * The old DFM tab (`?tab=routing` or `dfm`) opens the part page's problem list,
+ * so a part's problems live in one place. Tab moves use the history API, so
+ * the session (file, results, overrides, scenarios) stays mounted.
  */
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -40,10 +40,9 @@ function Frame({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
-function Inner() {
+function Inner({ part }: { part: string | null }) {
   const sp = useSearchParams();
   const tabParam = sp.get("tab");
-  const part = sp.get("part");
   const decisionId = sp.get("decision");
   const qParam = sp.get("q");
   const s = useWb();
@@ -164,10 +163,11 @@ function Inner() {
   );
 }
 
-export function Workbench() {
+/** `part`: the mesh hash from the path (/app/part/{key}/cost); null on the cold start. */
+export function Workbench({ part }: { part: string | null }) {
   return (
     <WbProviders>
-      <Inner />
+      <Inner part={part} />
     </WbProviders>
   );
 }

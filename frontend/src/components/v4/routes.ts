@@ -10,6 +10,8 @@ export const R = {
   notices: "/app/notices",
   part: (key: string) => `/app/part/${encodeURIComponent(key)}`,
   partHistory: (key: string) => `/app/part/${encodeURIComponent(key)}/history`,
+  /** The part's cost breakdown (it used to be /app/make/workbench?part=…, which redirects here). */
+  cost: (key: string) => `/app/part/${encodeURIComponent(key)}/cost`,
   parts: "/app/parts",
   records: "/app/parts/records",
   record: (id: string) => `/app/parts/records/${encodeURIComponent(id)}`,
@@ -26,7 +28,6 @@ export const R = {
   bom: "/app/many/bom",
   studio: "/app/make",
   fit: "/app/make/fit",
-  workbench: "/app/make/workbench",
   photo: "/app/make/photo",
   shop: "/app/shop",
   rates: "/app/shop/rates",
@@ -100,7 +101,7 @@ export const TABS: Record<Exclude<NavSection, "home">, { label: string; href: st
 
 /** Which top-bar section a pathname belongs to. A part's cost breakdown belongs with the part, under Parts. */
 export function sectionOf(pathname: string): NavSection {
-  if (pathname.startsWith("/app/parts") || pathname.startsWith("/app/part/") || pathname.startsWith("/app/check") || pathname.startsWith(R.workbench)) return "parts";
+  if (pathname.startsWith("/app/parts") || pathname.startsWith("/app/part/") || pathname.startsWith("/app/check")) return "parts";
   if (pathname.startsWith("/app/many")) return "many";
   if (pathname.startsWith("/app/make")) return "make";
   if (pathname.startsWith("/app/shop")) return "shop";
