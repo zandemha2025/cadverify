@@ -1,11 +1,12 @@
 """arq-based implementation of the JobQueue protocol."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import inspect
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from arq.connections import ArqRedis, RedisSettings, create_pool
 from sqlalchemy import select
@@ -30,12 +31,31 @@ _JOB_TYPE_TO_TASK: dict[str, str] = {
 }
 
 
+def job_serializer(payload: Any) -> bytes:
+    """Encode an arq job or result record as JSON.
+
+    Jobs carry ids (job ulids, delivery ids), so JSON holds every payload; the
+    worker never unpickles bytes it reads from Redis. Result values that are not
+    JSON types (a datetime in a task's summary) are stored as their text.
+    """
+    return json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
+
+
+def job_deserializer(raw: bytes) -> Any:
+    """Decode a JSON arq record; anything else (a pickle) raises."""
+    return json.loads(raw)
+
+
 async def get_arq_pool() -> ArqRedis:
     """Return (and lazily create) the arq Redis connection pool."""
     global _pool
     if _pool is None:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        _pool = await create_pool(RedisSettings.from_dsn(redis_url))
+        _pool = await create_pool(
+            RedisSettings.from_dsn(redis_url),
+            job_serializer=job_serializer,
+            job_deserializer=job_deserializer,
+        )
     return _pool
 
 

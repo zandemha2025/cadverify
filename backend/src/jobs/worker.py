@@ -22,7 +22,7 @@ from src.jobs.batch_tasks import (
     sweep_orphaned_batches,
 )
 from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
-from src.jobs.arq_backend import reconcile_queued_jobs
+from src.jobs.arq_backend import job_deserializer, job_serializer, reconcile_queued_jobs
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.design_tasks import run_design_generation_job
 from src.jobs.data_deletion_tasks import run_data_deletion, sweep_data_deletions
@@ -194,6 +194,10 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))
+    # The same JSON encoding as the API's enqueue pool (arq_backend): a payload
+    # that is not JSON, such as a pickle, fails to decode and never runs.
+    job_serializer = job_serializer
+    job_deserializer = job_deserializer
     max_jobs = 12
     # 10 min per-job ceiling (SAM-07). arq wraps every job in
     # asyncio.wait_for(task, job_timeout) and CANCELS it at the deadline, so no
