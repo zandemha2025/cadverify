@@ -123,7 +123,41 @@ async def _read_capped(file: UploadFile) -> bytes:
             )
     if not buf:
         raise HTTPException(status_code=400, detail="Empty file uploaded")
-    return bytes(buf)
+    data = bytes(buf)
+    refuse_over_memory_budget(data, file.filename or "")
+    return data
+
+
+# Where a file too heavy for a web request can still be sent: the big-file
+# check, which uploads to storage and sizes the file on the worker.
+BIG_FILE_CHECK = {"upload": "/api/v1/uploads/multipart", "check": "/api/v1/checks"}
+
+
+def refuse_over_memory_budget(data: bytes, filename: str) -> None:
+    """413 CHECK_TOO_LARGE when checking ``data`` needs more memory than this
+    process gives one check (the worker's measured model and budget, and its
+    message). A big file checked on the worker is sized there instead.
+    """
+    from src.config import check_limits
+    from src.services import stored_check_service as sizing
+
+    if check_limits.current() is not None or not sizing.sized_format(filename):
+        return
+    need, basis = sizing.estimate_memory_bytes_for_data(data, filename)
+    budget = sizing.check_memory_budget_bytes()
+    if need <= budget:
+        return
+    logger.info("Refused a web check over the memory budget: need %d, budget %d", need, budget)
+    raise HTTPException(
+        status_code=413,
+        detail={
+            "code": "CHECK_TOO_LARGE",
+            "message": sizing.too_heavy_message(need, basis, budget),
+            "memory": {"need_bytes": need, "budget_bytes": budget},
+            "big_file_check": dict(BIG_FILE_CHECK),
+            "doc_url": error_doc_url("CHECK_TOO_LARGE"),
+        },
+    )
 
 
 def _parse_setup(data: bytes, filename: str):

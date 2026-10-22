@@ -139,9 +139,11 @@ async def ingest_assembly(
     filename = file.filename or "upload.step"
     key = (assembly_key or "").strip() or filename
 
-    # Reuse the live assembly extraction path (security gate + pool + honest 400s).
-    from src.api.routes import _extract_assembly_async
+    # Reuse the live assembly extraction path (memory and security gates, pool,
+    # honest 400s).
+    from src.api.routes import _extract_assembly_async, refuse_over_memory_budget
 
+    refuse_over_memory_budget(data, filename)
     model = await _extract_assembly_async(data, filename)
     try:
         summary = await svc.ingest_assembly(session, org_id, key, model)

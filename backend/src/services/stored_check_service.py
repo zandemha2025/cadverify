@@ -153,6 +153,11 @@ def _stl_triangles(path: str, size: int) -> tuple[Optional[int], bool]:
             head = fh.read(84)
     except OSError:
         return None, False
+    return _stl_triangles_from_head(head, size)
+
+
+def _stl_triangles_from_head(head: bytes, size: int) -> tuple[Optional[int], bool]:
+    """``_stl_triangles`` from the file's first 84 bytes and its size."""
     if len(head) >= 84:
         count = int.from_bytes(head[80:84], "little")
         if 84 + 50 * count == size:
@@ -166,11 +171,20 @@ def _stl_triangles(path: str, size: int) -> tuple[Optional[int], bool]:
 def estimate_memory_bytes(path: str, filename: str) -> tuple[int, dict[str, Any]]:
     """Peak memory one check of this file needs, from its format and size (no parse)."""
     size = os.path.getsize(path)
+    return _estimate(size, filename, lambda: _stl_triangles(path, size))
+
+
+def estimate_memory_bytes_for_data(data: bytes, filename: str) -> tuple[int, dict[str, Any]]:
+    """The same estimate for a file already in memory (a web request's upload)."""
+    return _estimate(len(data), filename, lambda: _stl_triangles_from_head(data[:84], len(data)))
+
+
+def _estimate(size: int, filename: str, stl_triangles) -> tuple[int, dict[str, Any]]:
     suffix = os.path.splitext(filename.lower())[1]
     kind = _KIND.get(suffix, "step")
     basis: dict[str, Any] = {"format": kind, "bytes": size}
     if kind == "stl":
-        triangles, binary = _stl_triangles(path, size)
+        triangles, binary = stl_triangles()
         if not binary or triangles is None:
             kind = "stl_ascii"
             triangles = max(1, size // ASCII_STL_BYTES_PER_TRIANGLE)
@@ -181,6 +195,11 @@ def estimate_memory_bytes(path: str, filename: str) -> tuple[int, dict[str, Any]
         need_mb = _interp(MEMORY_MODEL[kind], size / 1024**2)
     basis["headroom"] = MEMORY_HEADROOM
     return int(need_mb * MEMORY_HEADROOM * 1024**2), basis
+
+
+def sized_format(filename: str) -> bool:
+    """Whether the memory model covers this file's format (STL, STEP, IGES)."""
+    return os.path.splitext(filename.lower())[1] in _KIND
 
 
 def largest_checkable_bytes(kind: str, budget: Optional[int] = None) -> int:
