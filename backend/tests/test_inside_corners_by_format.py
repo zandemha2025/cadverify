@@ -51,12 +51,13 @@ def _pocket_block():
 
 @pytest.mark.parametrize("fine", [False, True], ids=["one edge per corner", "finely tessellated"])
 def test_pocket_and_box_corners_are_counted_as_corners(fine):
-    for part, expected_length in ((_cup(), 4 * 28.0), (_pocket_block(), 4 * 20.0)):
+    for part, depth in ((_cup(), 28.0), (_pocket_block(), 20.0)):
         mesh = _fine(part) if fine else part
         issues = _corners(mesh)
         assert [i.code for i in issues] == ["SHARP_INTERNAL_CORNERS"]
         assert issues[0].message.startswith("4 sharp concave corners between walls")
-        assert f"({expected_length:g} mm of edge)" in issues[0].message
+        # Four corners, each the depth of the box or pocket; the radius follows that depth.
+        assert f"({4 * depth:g} mm of edge, the deepest runs {depth:g} mm deep)" in issues[0].message
 
 
 @pytest.mark.parametrize("fine", [False, True], ids=["one edge per corner", "finely tessellated"])
