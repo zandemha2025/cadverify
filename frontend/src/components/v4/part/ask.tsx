@@ -8,6 +8,10 @@ import { R } from "../routes";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
 import { useFix } from "../fix/ctx";
+import { machineAnswer, machineQuestion } from "./at-machine";
+import { useMachineFacts } from "./at-machine-section";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 import {
   REFUSAL,
   driversAnswer,
@@ -30,6 +34,14 @@ export function AskDock() {
   // The same problem list the page counts (R3: "Problems N · M stop a process").
   const problems = useFix().set.problems;
   const [ans, setAns] = React.useState<{ key: Key; a: Answer | null; loading?: boolean } | null>(null);
+  // Setups and sizes at the machine (me-16), and every answer in the person's unit (me-17).
+  const facts = useMachineFacts();
+  const { unit } = useUnits();
+  // A new answer comes into view above the fixed view bar on phones (me-17; .answer has the scroll margin).
+  const answerRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (ans?.a && answerRef.current && window.matchMedia?.("(max-width:900px)").matches) answerRef.current.scrollIntoView({ block: "nearest" });
+  }, [ans]);
   const atQ = p.qs.includes(1000) ? 1000 : p.qs[p.qs.length - 1] ?? p.q;
   const noCost = p.interrupted || p.costOff || p.checking || !p.data.cost;
 
@@ -76,6 +88,8 @@ export function AskDock() {
     e.preventDefault();
     const q = String(new FormData(e.currentTarget).get("q") ?? "").trim();
     if (!q) return;
+    // "How many setups on the lathe, and what are the step diameters?" gets those facts, not a verdict card.
+    if (machineQuestion(q) && facts) return setAns({ key: "typed", a: machineAnswer(facts) });
     const r = routeAsk(q, p.methods);
     const qq = r.kind === "routes" ? nearestComputed(p.qs, r.qty, p.q) : p.q;
     let a: Answer | null = null;
@@ -103,10 +117,10 @@ export function AskDock() {
   return (
     <>
       {ans ? (
-        <div className="note swap answer" role="region" aria-label="Answer" aria-live="polite">
+        <div ref={answerRef} className="note swap answer" role="region" aria-label="Answer" aria-live="polite">
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className={cx("src", a?.tag === "Computed" ? "s-file" : "s-typ")}>{ans.loading ? "Computing" : a?.tag}</span>
-            <b style={{ fontSize: 14 }}>{ans.loading ? "Saved decisions" : a?.title}</b>
+            <b style={{ fontSize: 14 }}>{ans.loading ? "Saved decisions" : inText(a?.title, unit)}</b>
             <button type="button" className="btn sm ghost" aria-label="Dismiss" onClick={() => setAns(null)} style={{ marginLeft: "auto", width: 28, height: 28, padding: 0 }}>
               ✕
             </button>
@@ -114,11 +128,11 @@ export function AskDock() {
           {ans.loading ? <span style={{ color: "var(--ink3)", fontSize: 13 }}>Loading the saved decisions…</span> : null}
           {a?.rows.map((r, i) => (
             <span key={i} className="num ar">
-              <span style={{ color: "var(--ink2)" }}>{r.k}</span>
-              <b style={{ fontWeight: 600 }}>{r.v}</b>
+              <span style={{ color: "var(--ink2)" }}>{inText(r.k, unit)}</span>
+              <b style={{ fontWeight: 600 }}>{inText(r.v, unit)}</b>
             </span>
           ))}
-          {a ? <span style={{ fontSize: 13 }}>{a.text}</span> : null}
+          {a ? <span style={{ fontSize: 13 }}>{inText(a.text, unit)}</span> : null}
           {a?.link ? (
             <span>
               <Link className="btn sm" href={a.link.href}>

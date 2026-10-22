@@ -34,6 +34,7 @@ import { useChoice } from "./choose";
 import { outsideName, problemsFigure, rowNote } from "./pick-words";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
+import { AtMachine } from "./at-machine-section";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -358,6 +359,7 @@ export function MakeSheet() {
           <div className="swap">
             {!p.checking ? <Identity /> : null}
             {!p.checking && !p.costOff ? <PickNote ch={ch} /> : null}
+            {!p.checking ? <AtMachine /> : null}
             {!p.data.validation && !p.data.cost ? (
               <Loading rows={6} label="Checking the ways to make it" />
             ) : (

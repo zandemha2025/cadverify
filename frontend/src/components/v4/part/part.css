@@ -135,7 +135,10 @@
 .ob .pv .askchips{display:flex;gap:6px;padding:0 12px 6px;overflow-x:auto;scrollbar-width:none}
 .ob .pv .askchips .btn{height:28px;padding:0 10px;font-size:12.5px;flex:none}
 .ob .pv .answer{margin:0 12px 8px;max-height:300px;overflow:auto;box-shadow:0 -8px 24px rgba(20,24,31,.06)}
-.ob .pv .answer .ar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;font-size:13px;border-top:1px solid rgba(20,24,31,.08);padding-top:4px}
+.ob .pv .answer .ar{display:grid;grid-template-columns:minmax(min-content,1fr) auto;gap:10px;font-size:13px;border-top:1px solid rgba(20,24,31,.08);padding-top:4px}
+.ob .pv .answer .ar b{min-width:0;text-align:right;overflow-wrap:anywhere}
+/* me-17: the fixed view bar covered the bottom of the answer; it scrolls clear of the bar. */
+.ob .pv .answer{scroll-margin-bottom:96px}
 .ob .pv .ask input{flex:1;min-width:0;border:0;outline-offset:4px;background:transparent;font-size:14px;color:var(--ink)}
 .ob .pv .mr[aria-disabled="true"]{cursor:default}
 .ob .pv .hist-thumb{width:180px;height:180px;border-radius:14px;background:#F4F5F7;position:relative;overflow:hidden}
