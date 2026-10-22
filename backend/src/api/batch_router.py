@@ -274,14 +274,16 @@ async def create_batch(
         try:
             validate_outbound_url(webhook_url)
         except UnsafeURLError as exc:
+            # What the host resolved to stays in the server log, never in the answer.
+            logger.info("webhook_url refused for user %s: %s", user.user_id, exc.detail)
             raise HTTPException(
                 status_code=400,
                 detail={
                     "code": "webhook_url_rejected",
-                    "message": f"webhook_url rejected: {exc}",
+                    "message": f"This address can't receive webhooks: {exc}.",
                     "doc_url": error_doc_url("webhook_url_rejected"),
                 },
-            )
+            ) from None
 
     # Manifests are intentionally small metadata, not another bulk-upload
     # channel. Read both input modes through one authoritative cap before the
