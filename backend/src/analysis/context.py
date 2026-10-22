@@ -2149,15 +2149,58 @@ def _compute_wall_thickness(
         twin_upper = np.full(n, np.inf) if upper_bounds is not None else None
         other = _cast_inward_rays_batched(mesh, twin + normals * eps, directions, eps, source_face_idx,
                                           source_points=twin, upper_bounds=twin_upper)
-        if upper_bounds is None:
-            return np.minimum(out, other)
-        proved, twin_proved = np.isfinite(upper_bounds), np.isfinite(twin_upper)
-        take = np.where(proved | twin_proved,
-                        twin_proved & (~proved | (twin_upper < upper_bounds)),
-                        other < out)
-        out[take] = other[take]
-        upper_bounds[take] = twin_upper[take]
+        _keep_better_reading(out, upper_bounds, other, twin_upper)
+    _remeasure_unread_faces(mesh, normals, eps, np.flatnonzero(~np.isfinite(out)), out, upper_bounds)
     return out
+
+
+# Three more points on a face, one toward each corner. As a set they don't
+# depend on the order of the triangle's vertices, so a mirrored file (which
+# reverses that order) re-measures from the same points.
+_REMEASURE_WEIGHTS = ((2 / 3, 1 / 6, 1 / 6), (1 / 6, 2 / 3, 1 / 6), (1 / 6, 1 / 6, 2 / 3))
+
+
+def _keep_better_reading(out, upper, other, other_upper) -> None:
+    """Keep, per face, the thinner reading of two, a proved one before an unproved one."""
+    if upper is None:
+        np.minimum(out, other, out=out)
+        return
+    proved, other_proved = np.isfinite(upper), np.isfinite(other_upper)
+    take = np.where(proved | other_proved, other_proved & (~proved | (other_upper < upper)), other < out)
+    out[take] = other[take]
+    upper[take] = other_upper[take]
+
+
+def _remeasure_unread_faces(mesh, normals, eps, faces, out, upper_bounds) -> None:
+    """Cast again, from three other points, the faces whose ray gave no reading.
+
+    A ray whose first hit is a face it runs almost along is dropped (it slipped
+    out past an edge, see ``_GRAZING_COS``). On a curved wall the angle changes
+    with where the ray meets it, so a ray that met a bore near its tangent line
+    grazes only within a few hundredths of a millimetre of it: on a finely meshed
+    STEP of a 10 mm block with a 1 mm bore, 628 small flat facets whose centre lay
+    in that band read nothing, and the part got a "faces gave no reading" note its
+    coarser STL never had. From another point on the same facet the ray meets the
+    bore at a steeper angle, or misses it, and reads the wall. A facet that
+    slipped out past an edge runs along the same plane from every point (one
+    direction, one exit face), so it still reads nothing, as it should.
+    """
+    if len(faces) == 0:
+        return
+    triangles = mesh.triangles[faces]
+    face_normals = normals[faces]
+    best = np.full(len(faces), np.inf)
+    best_upper = np.full(len(faces), np.inf) if upper_bounds is not None else None
+    for weights in _REMEASURE_WEIGHTS:
+        points = np.einsum("ijk,j->ik", triangles, weights)
+        upper = np.full(len(faces), np.inf) if upper_bounds is not None else None
+        reading = _cast_inward_rays_batched(mesh, points + face_normals * eps, -face_normals, eps,
+                                            np.asarray(faces, dtype=np.int64), source_points=points,
+                                            upper_bounds=upper)
+        _keep_better_reading(best, best_upper, reading, upper)
+    out[faces] = best
+    if upper_bounds is not None:
+        upper_bounds[faces] = best_upper
 
 
 def _cast_inward_rays_batched(
@@ -2300,11 +2343,12 @@ def _compute_wall_thickness_sampled(
     )
     if upper_bounds is not None:
         upper_bounds[sample_idx] = sampled_upper
+    thickness[sample_idx] = sampled_thickness
+    _remeasure_unread_faces(mesh, normals, eps, sample_idx[~np.isfinite(sampled_thickness)],
+                            thickness, upper_bounds)
+    sampled_thickness = thickness[sample_idx]
     if not np.any(np.isfinite(sampled_thickness)):
         return thickness
-
-    # Assign sampled values
-    thickness[sample_idx] = sampled_thickness
 
     # Propagate to unsampled faces via KDTree nearest-neighbor
     unsampled_mask = np.ones(n, dtype=bool)

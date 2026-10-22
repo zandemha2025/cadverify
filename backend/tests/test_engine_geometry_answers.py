@@ -290,3 +290,38 @@ def test_moving_a_stepped_shaft_keeps_its_uneven_walls_finding():
     a, b = _ctx(_stl(shaft)), _ctx(_stl(moved))
     for process in ("injection_molding", "die_casting", "sand_casting"):
         assert ("NON_UNIFORM_WALLS" in _codes(a, process)) == ("NON_UNIFORM_WALLS" in _codes(b, process)), process
+
+
+# ── Round 14: a wall reading doesn't depend on how finely a file is meshed ──
+def _bored_block_split_beside_the_bore():
+    """A 10 x 10 x 30 mm block with a 1 mm bore down its middle, its sides split
+    in narrow strips beside the bore's tangent lines, as a fine STEP mesh splits
+    them (a strip's centre ray meets the bore within 0.02 mm of its tangent)."""
+    cuts = [0, 4.49, 4.53, 5.47, 5.51, 10]
+    block = _union(*[_box((10, b - a, 30), at=(0, a, 0)) for a, b in zip(cuts, cuts[1:])])
+    bore = trimesh.creation.cylinder(radius=0.5, height=40, sections=128)
+    bore.apply_translation((5, 5, 15))
+    return _diff(block, bore)
+
+
+@pytest.mark.parametrize("as_stl", [False, True])
+def test_a_ray_meeting_a_bore_near_its_tangent_is_measured_from_another_point(as_stl):
+    part = _bored_block_split_beside_the_bore()
+    ctx = _ctx(_stl(part) if as_stl else part)
+    assert np.isfinite(ctx.wall_thickness).all()
+    assert np.min(ctx.wall_thickness) == pytest.approx(4.5, abs=0.01)
+    assert "WALL_THICKNESS_PRECISION" not in _codes(ctx, "fdm")
+
+
+def test_a_face_with_no_reading_beside_a_read_face_on_its_surface_is_no_gap():
+    from src.analysis.processes.checks import _unread_gaps
+
+    ctx = _ctx(_box((10, 10, 10)))
+    top = next(f for f in ctx.facet_groups if ctx.normals[f[0]][2] > 0.99)
+    measured = np.ones(len(ctx.wall_thickness), dtype=bool)
+    ctx.wall_thickness[top[0]] = np.inf          # its twin on the same flat face reads the wall
+    assert not _unread_gaps(ctx, measured).any()
+    ctx.wall_thickness[top] = np.inf             # the whole face unread: a gap the note must name
+    assert _unread_gaps(ctx, measured).sum() == len(top)
+    issue = next(i for i in _issues(ctx, "fdm") if i.code == "WALL_THICKNESS_PRECISION")
+    assert issue.severity == Severity.INFO and f"{len(top)} of those gave no reading" in issue.message

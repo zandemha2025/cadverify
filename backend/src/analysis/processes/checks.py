@@ -54,6 +54,30 @@ def _wall_measured(ctx: GeometryContext) -> np.ndarray:
     return np.asarray(sampled, dtype=bool)
 
 
+def _unread_gaps(ctx: GeometryContext, measured: np.ndarray) -> np.ndarray:
+    """Measured faces that gave no reading and have no read face beside them on the same surface.
+
+    A small facet at a bore's rim, tilted by tessellation, sends its ray out
+    through the end face it runs almost along, and reads nothing (see
+    ``context._GRAZING_COS``). The bore face next to it, under 30 degrees away,
+    reads the same wall, so no wall there goes unmeasured. Only a face with no
+    such neighbour is a gap. (Counting every rim facet gave a finely meshed STEP
+    a "gave no reading" note its STL, whose bore runs end to end in one row of
+    triangles, never had.)
+    """
+    wt = ctx.wall_thickness
+    unread = measured & ~np.isfinite(wt)
+    adjacency, angles = ctx.face_adjacency, ctx.dihedral_angles_rad
+    if not unread.any() or len(adjacency) == 0 or len(angles) != len(adjacency):
+        return unread
+    read = measured & np.isfinite(wt)
+    a, b = adjacency[angles <= np.radians(30.0)].T
+    covered = np.zeros(len(wt), dtype=bool)
+    covered[a[read[b]]] = True
+    covered[b[read[a]]] = True
+    return unread & ~covered
+
+
 def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_mm: float) -> list[Issue]:
     """Say when a wall reading can't settle the limit, and only then.
 
@@ -103,7 +127,7 @@ def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_
     # Only faces with no reading at all are left out: a ray that slipped past
     # an edge or met nothing. (Counting unproved readings here made the note
     # come and go with where the part sits, as float32 steps grow.)
-    unsettled = int((measured & ~np.isfinite(wt)).sum())
+    unsettled = int(_unread_gaps(ctx, measured).sum())
     copied = int(len(wt) - measured.sum())
     if unsettled == 0 and copied == 0:
         return []
