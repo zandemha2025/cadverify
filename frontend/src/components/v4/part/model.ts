@@ -13,6 +13,7 @@ import type { OwnedMachine } from "@/lib/verify/machine-api";
 import type { FitFailure, PerRouteFit } from "@/lib/verify/verification";
 import { gapText, readVerification } from "../../../lib/verify/verification.ts";
 import { onceAndEach, unitCostAt } from "../../../lib/qty-model.ts";
+import { ROUNDING_KEY, footLines, lineDriver, roundingWords } from "../../../lib/cost-lines.ts";
 import { MACHINE_KIND, processLabel } from "../process-names.ts";
 
 /* ── formatting ─────────────────────────────────────────────────────────── */
@@ -581,22 +582,44 @@ export function opWord(op: string): string {
   return OP_WORD[op] ?? op.replace(/_/g, " ");
 }
 
+function driverLine(d: CostDriver, q: number, value: number): CostLine {
+  const src = srcOf(d.provenance, d.rate_card);
+  return {
+    key: d.name,
+    name: driverLabel(d, q),
+    value,
+    src,
+    how: d.source,
+    band: `${d.error_band_pct != null ? `±${trimNum(d.error_band_pct, 0)}%` : "no stated band"} · ${d.rate_card != null ? `rate from your rates v${d.rate_card}` : src.kind === "yours" ? "your value" : src.kind === "file" ? "measured from your file" : "typical value"}`,
+  };
+}
+
+/** The lines that make up one estimate's price, largest first, each with its own derivation
+ *  (ce-01): the engine's summing lines rounded to the cent, then a Rounding line when they
+ *  need one to add up to the price shown. Keys are the lines' driver names. */
 export function costLines(e: CostEstimate | null | undefined): CostLine[] {
   if (!e) return [];
-  return e.drivers
-    .filter((d) => d.unit === "$" && Number.isFinite(d.value))
-    .sort((a, b) => b.value - a.value)
-    .map((d) => {
-      const src = srcOf(d.provenance, d.rate_card);
-      return {
-        key: d.name,
-        name: driverLabel(d, e.quantity),
-        value: d.value,
-        src,
-        how: d.source,
-        band: `${d.error_band_pct != null ? `±${trimNum(d.error_band_pct, 0)}%` : "no stated band"} · ${d.rate_card != null ? `rate from your rates v${d.rate_card}` : src.kind === "yours" ? "your value" : src.kind === "file" ? "measured from your file" : "typical value"}`,
-      };
-    });
+  const items = e.line_items ?? {};
+  if (!Object.keys(items).length) {
+    // An estimate without its lines (older shapes): its dollar drivers, as they are.
+    return e.drivers
+      .filter((d) => d.unit === "$" && Number.isFinite(d.value))
+      .sort((a, b) => b.value - a.value)
+      .map((d) => driverLine(d, e.quantity, d.value));
+  }
+  const f = footLines(items, e.unit_cost_usd);
+  const byName = new Map(e.drivers.map((d) => [d.name, d]));
+  const lines = f.lines
+    .map((l) => {
+      const d = byName.get(lineDriver(l.key));
+      if (d) return driverLine(d, e.quantity, l.cents / 100);
+      return { key: l.key, name: l.key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()), value: l.cents / 100, src: { kind: "typ" as const, label: "Typical" }, how: "", band: "no stated band" };
+    })
+    .sort((a, b) => b.value - a.value);
+  if (f.roundingCents && f.isRounding) {
+    lines.push({ key: ROUNDING_KEY, name: "Rounding", value: f.roundingCents / 100, src: { kind: "typ", label: "Arithmetic" }, how: roundingWords(f), band: "the lines rounded to the cent" });
+  }
+  return lines;
 }
 
 /** "2 of 9 from your data": drivers grounded in your file, rates or machines. */
@@ -1057,7 +1080,7 @@ export function routesAnswer(methods: Method[], q: number): Answer | null {
     const b = ranked[1].prices.get(q)!;
     const la = new Map(costLines(a).map((l) => [l.key, l]));
     let best: { name: string; da: number; db: number } | null = null;
-    for (const lb of costLines(b)) {
+    for (const lb of costLines(b).filter((l) => l.key !== ROUNDING_KEY)) {
       const l = la.get(lb.key);
       const da = l?.value ?? 0;
       if (!best || Math.abs(lb.value - da) > Math.abs(best.db - best.da)) best = { name: lb.name, da, db: lb.value };

@@ -458,3 +458,30 @@ test("Why this verdict? counts the problems the page lists, never 'no problems f
   assert.doesNotMatch(a.text, /no problems found/);
   assert.match(verdictAnswer(methods, f.validation, f.cost, []).text, /No problems found on this part\.$/);
 });
+
+test("where the price comes from: the lines add up to it, with a Rounding line (ce-01)", () => {
+  // Her pocket block, 3-axis at 100: 0.70 + 17.50 + 15.69 + 0.52 + 1.23 + 0.78 + 0.26 = 36.68 against $36.69.
+  const d = (name: string, value: number, unit = "$") => ({ name, value, unit, provenance: "DEFAULT", source: `${name} formula`, error_band_pct: 40 });
+  const e = {
+    process: "cnc_3axis", material: "Mild Steel", quantity: 100, unit_cost_usd: 36.69,
+    line_items: { nre: 0.7, labor: 17.5, machine: 15.6934, material: 0.5222, inspection: 1.225, consumables: 0.7847, amortized_fixed: 0.2625 },
+    drivers: [d("material_cost", 0.5222), d("machine_cost", 15.6934), d("cycle_time", 0.2092, "hr"), d("labor_cost", 17.5),
+      d("setup_cost", 0.2625), d("nre_cost", 0.7), d("inspection_cost", 1.225), d("consumables_cost", 0.7847)],
+  } as unknown as CostEstimate;
+  const lines = costLines(e);
+  assert.deepEqual(lines.map((l) => [l.key, l.value]), [
+    ["labor_cost", 17.5], ["machine_cost", 15.69], ["inspection_cost", 1.23], ["consumables_cost", 0.78],
+    ["nre_cost", 0.7], ["material_cost", 0.52], ["setup_cost", 0.26], ["rounding", 0.01],
+  ]);
+  assert.equal(lines.reduce((s, l) => s + Math.round(l.value * 100), 0), 3669);
+  assert.match(lines.at(-1)!.how, /unrounded they add to \$36\.6878, which is \$36\.69/);
+  // A whole tool ("$/tool") is never a line; the tool's share a part is.
+  const cast = {
+    ...e, quantity: 100, unit_cost_usd: 78.23,
+    line_items: { amortized_fixed: 0.35, material: 0.8557, machine: 3.5229, labor: 21.0, tooling: 52.5 },
+    drivers: [d("setup_cost", 0.35), d("material_cost", 0.8557), d("machine_cost", 3.5229), d("labor_cost", 21), d("tooling_cost", 5250, "$/tool"), d("tooling_per_part", 52.5)],
+  } as unknown as CostEstimate;
+  const cl = costLines(cast);
+  assert.deepEqual(cl.map((l) => l.name), ["Tooling, shared over 100", "Labor", "Machine", "Material", "Setup, shared over 100"]);
+  assert.equal(cl.reduce((s, l) => s + l.value, 0).toFixed(2), "78.23");
+});

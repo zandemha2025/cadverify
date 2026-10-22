@@ -160,9 +160,10 @@ export function CostLayer() {
   );
 }
 
-export function CostLines({ estimate, where, max = 12 }: { estimate: NonNullable<ReturnType<Method["prices"]["get"]>>; where: string; max?: number }) {
+export function CostLines({ estimate, where }: { estimate: NonNullable<ReturnType<Method["prices"]["get"]>>; where: string }) {
   const [open, setOpen] = React.useState<string | null>(null);
-  const lines = costLines(estimate).slice(0, max);
+  // Every line, so they add up to the price above them (ce-01).
+  const lines = costLines(estimate);
   const g = groundedCount(estimate);
   const note = biggestTypicalNote(estimate, where);
   if (!lines.length) return null;
