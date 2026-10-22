@@ -38,6 +38,7 @@ import { AfterFixView } from "../fix/after-fix";
 import { OrientChip, OrientTool } from "../orient/panel";
 import { useOrientView } from "../orient/state";
 import { DeletePartButton } from "../datacontrol/delete-part";
+import { BodiesChip, BodiesSheet, bodyHighlight, useBodies } from "./bodies";
 import { day } from "../datacontrol/words";
 import "./part.css";
 import { UnitSwitch } from "../units/unit-switch";
@@ -174,9 +175,13 @@ export function PartView({
   const fx = useFixController({ data, methods, qs, q, selCode: sel?.code ?? null, has3d, faceAligned, controller, xray, setXray, onOpen: () => setLens("make"), toast, sourceKept });
   const fixOn = !!fx.value.view && !checking;
   const ov = useOrientView(data.key);
-  const highlight = fixOn ? fx.highlight : lensHighlight;
+  // A file of several bodies: body by body, each lit on the part.
+  const bodies = useBodies(data, { sourceKept, qs, checking });
+  const bodiesOn = !!bodies?.open && !fixOn;
+  const highlight = fixOn ? fx.highlight : bodiesOn ? bodyHighlight(bodies, faceAligned) : lensHighlight;
   const pickLens = (l: Lens) => {
     if (fx.value.view) fx.value.close();
+    bodies?.setOpen(false);
     setLens(l);
   };
   const openAllRef = React.useRef(fx.value.openAll);
@@ -350,6 +355,7 @@ export function PartView({
                 </>
               ) : null}
             </span>
+            {bodies ? <BodiesChip b={bodies} /> : null}
             <span className="chips">
               {data.key ? (
                 <span
@@ -494,6 +500,8 @@ export function PartView({
             <ProblemSheet />
           ) : fixOn && fx.value.view?.kind === "all" ? (
             <AllProblemsSheet />
+          ) : bodiesOn && bodies ? (
+            <BodiesSheet b={bodies} qs={qs} aligned={faceAligned} has3d={has3d} />
           ) : lens === "make" ? (
             <MakeSheet />
           ) : lens === "cost" ? (
@@ -505,13 +513,13 @@ export function PartView({
           ) : (
             <DecideSheet />
           )}
-          {fixOn ? null : <AskDock />}
+          {fixOn || bodiesOn ? null : <AskDock />}
         </aside>
 
         <nav className="dial" aria-label="Questions about this part">
           <span className="ind" style={{ transform: `translateX(${li * 100}%)` }} aria-hidden="true" />
           {LENSES.map(([k, label, sub]) => (
-            <button key={k} type="button" className={cx(k === lens && "on")} aria-pressed={k === lens} onClick={() => pickLens(k)}>
+            <button key={k} type="button" className={cx(k === lens && !bodiesOn && "on")} aria-pressed={k === lens && !bodiesOn} onClick={() => pickLens(k)}>
               {label}
               <small>{sub}</small>
             </button>

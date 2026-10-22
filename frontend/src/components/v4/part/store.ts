@@ -16,6 +16,7 @@ import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { computeMeshHash } from "@/lib/verify/part-context";
 import { fetchPreviewMesh } from "@/lib/verify/preview-mesh";
 import { isAssemblyCandidate } from "@/lib/verify/assembly";
+import { closedBodies, isMultiBody } from "@/lib/verify/bodies";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
 import { retryVerificationCost, runVerification, type VerifyResult } from "@/lib/verify/run";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
@@ -78,6 +79,17 @@ export interface CheckSession {
   opened?: boolean;
 }
 
+/**
+ * A file of several bodies the part page reads body by body: closed bodies (even
+ * when, as one mesh, they share edges and so aren't one closed solid), or a
+ * STEP/IGES file, whose product tree holds each part as a closed solid of its own.
+ */
+export function readsAsBodies(v: ValidationResult | null | undefined, fileName: string): boolean {
+  const pt = v?.part_type;
+  if (!isMultiBody(pt)) return false;
+  return closedBodies(pt) || /\.(step|stp|iges|igs)$/i.test(fileName);
+}
+
 let nextId = 1;
 const sessions = new Map<number, CheckSession>();
 const byKey = new Map<string, number>();
@@ -111,7 +123,7 @@ const workKey = (id: number) => `check:${id}`;
 function syncWork(s: CheckSession) {
   if (s.opened && s.status !== "running") return markWorkSeen(workKey(s.id));
   const name = s.sample ? "the sample bracket" : s.file.name;
-  const handed = !!s.key && s.validation?.geometry.is_watertight === true;
+  const handed = !!s.key && (s.validation?.geometry.is_watertight === true || readsAsBodies(s.validation, s.file.name));
   const href = handed ? R.part(s.key!) : R.check;
   const item = s.status === "running"
     ? { label: `Checking ${name}`, detail: s.validation ? "Measured · pricing" : "Measuring", state: "running" as const }
@@ -289,7 +301,8 @@ async function run(id: number) {
     patch(id, { result, status: "failed", finishedAt: Date.now(), failure: classify(result.validationError) });
     return;
   }
-  const open = !result.validation.geometry.is_watertight || !!result.costGeometryInvalid;
+  // Several bodies are checked body by body, not stopped as an open shell.
+  const open = !readsAsBodies(result.validation, file.name) && (!result.validation.geometry.is_watertight || !!result.costGeometryInvalid);
   patch(id, { result, validation: result.validation, key: result.meshHash ?? key, status: open ? "stopped" : "done", finishedAt: Date.now() });
   // The material changed while the first price ran: price again in it.
   const s1 = sessions.get(id);

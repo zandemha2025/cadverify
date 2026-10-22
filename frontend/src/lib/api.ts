@@ -10,6 +10,7 @@ import {
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
+import type { PartType } from "./verify/bodies";
 import { createReconstructionSubmissionId } from "./reconstruction-id";
 import { track } from "./analytics";
 
@@ -164,6 +165,8 @@ export interface ValidationResult {
     provenance: "USER";
     note: string;
   };
+  /** What the file holds: one solid, or several bodies and what kind of set (checks since part types). */
+  part_type?: PartType;
 }
 
 export interface Material {

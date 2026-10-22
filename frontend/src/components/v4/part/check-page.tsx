@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { sampleBracketFile } from "@/lib/verify/sample-cad";
 import { takePendingFile } from "../pending-file";
 import { R } from "../routes";
-import { markCheckOpened, resumableSession, startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
+import { markCheckOpened, readsAsBodies, resumableSession, startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
 import { StartScreen } from "./start";
 import { OutOfChecks } from "./blocked";
 import { DesignImportBanner, PhoneGateView } from "../moments";
@@ -123,14 +123,15 @@ export function CheckPage() {
     };
   }, [begin]);
 
-  // Hand over to the part page once the first answer lands on a closed solid.
+  // Hand over to the part page once the first answer lands on a closed solid, or on a
+  // file of several bodies the part page reads body by body.
   React.useEffect(() => {
     if (!session?.key) return;
     const v = session.validation;
-    if (v && v.geometry.is_watertight && (session.status === "running" || session.status === "done")) {
+    if (v && (v.geometry.is_watertight || readsAsBodies(v, session.file.name)) && (session.status === "running" || session.status === "done")) {
       router.replace(R.part(session.key));
     }
-  }, [session?.key, session?.validation, session?.status, router]);
+  }, [session?.key, session?.validation, session?.status, session?.file.name, router]);
 
   if (stored != null) return <StoredCheckView id={stored} onPick={(file) => begin(file)} onRetried={setStored} />;
   const designBanner = design ? <DesignImportBanner state={design.state} name={design.name} revision={design.revision} detail={design.detail} onDismiss={design.state === "done" ? () => setDesign(null) : undefined} /> : null;
