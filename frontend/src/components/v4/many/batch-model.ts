@@ -251,13 +251,18 @@ export function notCheckedLine(c: RunCounts): string | null {
   return c.notChecked ? `${num(c.notChecked)} ${c.notChecked === 1 ? "part wasn’t" : "parts weren’t"} checked` : null;
 }
 
-/** The run's line in the work bar, the same wherever it's registered: checked of total, and how far along (every file). */
+/**
+ * The run's line in the work bar, the same wherever it's registered: the head
+ * of the run's breakdown (checked of the list's parts; the bar is too narrow
+ * for the rest, which the run page and a stopped run's line say), and how far
+ * along every file is.
+ */
 export function runWork(c: RunCounts): { label: string; detail: string; progress: number | null } {
   const all = c.total + c.unlisted;
   const done = c.checked + c.notChecked + c.unlistedChecked + c.unlistedNotChecked;
   return {
     label: `Checking ${num(c.total)} ${c.total === 1 ? "part" : "parts"}`,
-    detail: `${num(c.checked)} of ${num(c.total)} checked${c.unlisted ? ` · ${unlistedWords(c.unlisted)}` : ""}`,
+    detail: `${num(c.checked)} of ${num(c.total)} checked`,
     progress: all ? done / all : null,
   };
 }

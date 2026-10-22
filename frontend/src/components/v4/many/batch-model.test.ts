@@ -181,7 +181,7 @@ test("the work bar and the run page say the same thing about a run, and it only 
   assert.deepEqual(a, { label: "Checking 298 parts", detail: "6 of 298 checked", progress: 8 / 298 });
   // With a parts list: the list's parts, and the files it doesn't name said apart; the bar covers every file.
   const listed = runWork(runCounts({ ...P({ total_items: 298 }), run_counts: { total: 296, checked: 6, not_checked: 2, to_go: 288, checking: 4, unlisted: 2, unlisted_checked: 1, unlisted_not_checked: 0, unlisted_to_go: 1 } } as never));
-  assert.deepEqual(listed, { label: "Checking 296 parts", detail: "6 of 296 checked · 2 files aren’t on your parts list", progress: 9 / 298 });
+  assert.deepEqual(listed, { label: "Checking 296 parts", detail: "6 of 296 checked", progress: 9 / 298 });
   const b = runWork(runCounts(null, [{ item_id: "A", bucket: "in_house" }, { item_id: "B", bucket: "checking" }]));
   assert.deepEqual(b, { label: "Checking 2 parts", detail: "1 of 2 checked", progress: 0.5 });
 });
