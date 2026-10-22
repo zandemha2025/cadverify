@@ -15,7 +15,16 @@ import { cx } from "../ui";
 import type { RateCardState } from "./common";
 import type { MachineLoad, RecordSummary } from "./shop-api";
 import { useUnits } from "../units/use-units";
-import { envelopeOf, hoursShort, loadRows, longDate, machineName, machineStatus, perHour, plain, procName, procShort, shortWhen } from "./shop-derive";
+import { envelopeOf, hoursShort, kindName, loadRows, longDate, machineName, machineStatus, perHour, plain, procName, shortWhen } from "./shop-derive";
+import { SHEET_CLASSES, thickRowsFrom, weightIn, weightUnit } from "./machine-kinds";
+import type { LengthUnit } from "../units/units";
+
+/** "Steel 0.25 in · Stainless 0.1875 in": the thickest sheet a sheet-metal machine bends or cuts, by material. */
+function thickText(m: OwnedMachine, unit: LengthUnit): string | null {
+  const rows = thickRowsFrom(m.material_thickness_map, unit);
+  const bits = SHEET_CLASSES.filter(([k]) => rows[k]).map(([k, label]) => `${label} ${rows[k]} ${unit}`);
+  return bits.length ? bits.join(" · ") : null;
+}
 
 const ENCLOSURE_TEXT: Record<string, string> = { none: "Open", enclosed: "Closed, not heated", heated: "Heated chamber" };
 
@@ -104,14 +113,16 @@ export function MachineSheet({
 
   const matching = (records ?? []).filter((r) => r.make_now_process === m.process);
   const prn = printerRows(m);
-  const kgText = m.max_workpiece_kg != null ? plain(m.max_workpiece_kg) : "—";
+  // Weights in the person's unit too: lb when they work in inches (me-04).
+  const kgText = m.max_workpiece_kg != null ? weightIn(m.max_workpiece_kg, unit) : "—";
+  const wu = weightUnit(unit);
 
   return (
     <>
       <div className="top">
         <h2 className="stitle">{name}</h2>
         <p className="smeta">
-          {procShort(m.process)} · ×{m.count ?? 1} ·{" "}
+          {kindName(m)} · ×{m.count ?? 1} ·{" "}
           <span className={cx("chip", st.rated ? "st-user" : "st-norate")} style={{ height: 20 }}>
             <i aria-hidden="true" />
             {st.label}
@@ -124,14 +135,14 @@ export function MachineSheet({
             <small>{m.hourly_rate_usd != null ? "yours" : "card rate used"}</small>
           </div>
           <div className="fig">
-            <span>{env?.label === "Swing × between centers" ? "Swing × length" : "Work area"}</span>
+            <span>{env?.label === "Swing × between centers" ? "Swing × length" : env?.label === "Press brake" ? "Bend length" : env?.label === "Bed" ? "Bed" : "Work area"}</span>
             <b className={cx("num", !env && "t")}>{env ? env.fig : "Not declared"}</b>
             {env ? <small>{env.unit}</small> : null}
           </div>
           <div className="fig">
             <span>Max part</span>
             <b className={cx("num", m.max_workpiece_kg == null && "t")}>{m.max_workpiece_kg != null ? kgText : "Not set"}</b>
-            {m.max_workpiece_kg != null ? <small>kg</small> : null}
+            {m.max_workpiece_kg != null ? <small>{wu}</small> : null}
           </div>
         </div>
       </div>
@@ -201,10 +212,16 @@ export function MachineSheet({
           <b className="num">{env ? env.text : "Not declared"}</b>
           <span>Materials</span>
           <b>{m.materials?.length ? m.materials.join(", ") : "Not declared"}</b>
+          {m.process === "sheet_metal" ? (
+            <>
+              <span>Thickest sheet</span>
+              <b className="num">{thickText(m, unit) ?? "Not declared"}</b>
+            </>
+          ) : null}
           <span>Count</span>
           <b className="num">{m.count ?? 1}</b>
           <span>Max workpiece</span>
-          <b className="num">{m.max_workpiece_kg != null ? `${kgText} kg` : "Not set"}</b>
+          <b className="num">{m.max_workpiece_kg != null ? `${kgText} ${wu}` : "Not set"}</b>
           <span>Capital fraction</span>
           <b className="num">{m.capital_frac != null ? `${capitalPercentText(m.capital_frac)}%` : "Rate card default"}</b>
           {typeof cap.axes === "number" ? (

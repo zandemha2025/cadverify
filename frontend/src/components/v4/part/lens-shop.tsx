@@ -64,9 +64,13 @@ export function ShopLayer() {
   const swing = typeof caps?.swing_dia === "number" ? caps.swing_dia : null;
   const between = typeof caps?.between_centers === "number" ? caps.between_centers : null;
   let drawing: React.ReactNode = null;
+  const bendLen = caps?.sheet_kind === "press_brake" && typeof caps?.max_bend_length_mm === "number" ? caps.max_bend_length_mm : null;
   if (m && part && m.process === "cnc_turning" && swing && between) {
     // A lathe is drawn as a lathe (me-08): the chuck, the swing over the bed and the length between centres.
     drawing = <LatheDrawing name={m.name} swing={swing} between={between} part={part} />;
+  } else if (m && part && bendLen) {
+    // A press brake as a press brake (me-02): its bed, with the part to scale on it.
+    drawing = <BrakeDrawing name={m.name} bend={bendLen} part={part} />;
   } else if (m && env && part) {
     const [W, D, H] = env;
     const sc = Math.min(470 / ((W + D) * C30), 400 / ((W + D) * S30 + H));
@@ -156,6 +160,38 @@ function LatheDrawing({ name, swing, between, part }: { name: string; swing: num
       ))}
       <span style={{ position: "absolute", left: 661, top: 360, transform: "translateX(-50%)", fontSize: 12.5, color: "var(--ink2)", whiteSpace: "nowrap" }}>
         Your part, Ø{len(dia, unit)} × {len(length, unit)}, magnified. It is drawn to true scale in the {name}’s chuck.
+      </span>
+    </>
+  );
+}
+
+/** Front view of a press brake: ram and bed over the bend length, with the part to scale on the bed. */
+function BrakeDrawing({ name, bend, part }: { name: string; bend: number; part: [number, number, number] }) {
+  const { unit } = useUnits();
+  const longest = Math.max(...part);
+  const sc = 600 / bend;
+  const x0 = 120;
+  const x1 = x0 + bend * sc;
+  const bedTop = 600;
+  const pw = Math.max(longest * sc, 2);
+  const ph = Math.max(Math.min(...part) * sc, 2);
+  const px = (x0 + x1) / 2 - pw / 2;
+  const pc: [number, number] = [px + pw / 2, bedTop - ph / 2];
+  return (
+    <>
+      <svg width="948" height="944" viewBox="0 0 948 944" role="img" aria-label={`${name}: ${len(bend, unit, 0)} bend length, with the part, ${len(longest, unit)} at its longest, drawn to scale on the bed`} style={{ position: "absolute", left: 0, top: 0 }}>
+        <rect x={x0} y={bedTop - 150} width={x1 - x0} height={60} rx="4" fill="#E3E7EC" stroke="#5F656E" strokeWidth="1.6" />
+        <path d={`M${x0} ${bedTop - 90} L${x1} ${bedTop - 90} L${(x0 + x1) / 2 + 30} ${bedTop - 64} L${(x0 + x1) / 2 - 30} ${bedTop - 64} Z`} fill="#AEB5BE" />
+        <rect x={x0} y={bedTop} width={x1 - x0} height={70} rx="4" fill="#E3E7EC" stroke="#5F656E" strokeWidth="1.6" />
+        <rect x={px} y={bedTop - ph} width={pw} height={ph} fill="#141414" />
+        <line x1={pc[0]} y1={pc[1]} x2={661 - 118 * 0.7} y2={226 + 118 * 0.7} stroke="#141414" strokeWidth="1.2" strokeDasharray="3 4" />
+        <circle cx="661" cy="226" r="118" fill="none" stroke="#141414" strokeOpacity="0.28" strokeWidth="1.2" />
+      </svg>
+      <span className="num" style={{ position: "absolute", left: (x0 + x1) / 2, top: bedTop + 96, transform: "translate(-50%, -50%)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)", whiteSpace: "nowrap" }}>
+        {len(bend, unit, 0)} bend length
+      </span>
+      <span style={{ position: "absolute", left: 661, top: 360, transform: "translateX(-50%)", fontSize: 12.5, color: "var(--ink2)", whiteSpace: "nowrap" }}>
+        Your part, {len(longest, unit)} at its longest, magnified. It is drawn to true scale on the {name}’s bed.
       </span>
     </>
   );
@@ -251,7 +287,7 @@ export function ShopSheet() {
             )}
             {views.length ? (
               <p style={{ margin: "6px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
-                {dims ? `Part ${dims}, measured from the file. ` : ""}Fit checks work area, weight and declared materials, from this check.
+                {dims ? `Part ${dims}, measured from the file. ` : ""}Fit checks work area (a press brake: bend length, press force and thickest sheet), weight and declared materials, from this check.
               </p>
             ) : null}
             {changed ? (

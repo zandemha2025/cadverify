@@ -57,13 +57,27 @@ test("envelope reads the keys the API stores, lathe swing first", () => {
 
 test("work areas and lathe sizes read in the person's unit; the drawing stays in mm", () => {
   const inch = envelopeOf(vf2, "in")!;
-  assert.equal(inch.text, "30.00 × 15.98 × 20.00 in");
-  assert.equal(inch.fig, "30.00×15.98×20.00");
+  // Inches without trailing zeros (me-22: "120.0 × 48.00 × 12.00 in").
+  assert.equal(inch.text, "30 × 15.98 × 20 in");
+  assert.equal(inch.fig, "30×15.98×20");
   assert.equal(inch.unit, "in");
   assert.deepEqual([inch.w, inch.d, inch.h], [762, 406, 508], "the drawing's extents stay in mm");
   assert.equal(envelopeOf(vf2, "mm")?.fig, "762×406×508");
-  assert.equal(envelopeOf({ process: "cnc_turning", capabilities: { swing_dia: 254, between_centers: 533 } }, "in")?.text, "Ø10.00 × 20.98 in");
+  assert.equal(envelopeOf({ process: "cnc_turning", capabilities: { swing_dia: 254, between_centers: 533 } }, "in")?.text, "Ø10 × 20.98 in");
   assert.equal(envelopeOf({ process: "fdm", capabilities: { x: 256, y: 256, z: 256 } }, "in")?.text, "10.08 × 10.08 × 10.08 in");
+  assert.equal(envelopeOf({ process: "sheet_metal", capabilities: { x: 3048, y: 1219.2, z: 304.8 } }, "in")?.text, "120 × 48 × 12 in");
+});
+
+test("a press brake reads as its bend length and press force, a cutter as its bed (me-02)", () => {
+  const brake = envelopeOf({ process: "sheet_metal", capabilities: { sheet_kind: "press_brake", max_bend_length_mm: 3048, tonnage_t: 100 } }, "in")!;
+  assert.equal(brake.text, "120 in bend length · 110.23 US tons");
+  assert.equal(brake.label, "Press brake");
+  assert.equal(envelopeOf({ process: "sheet_metal", capabilities: { sheet_kind: "press_brake", max_bend_length_mm: 3048, tonnage_t: 100 } }, "mm")?.text, "3048 mm bend length · 100 t");
+  const laser = envelopeOf({ process: "sheet_metal", capabilities: { sheet_kind: "laser", bed_x: 3048, bed_y: 1524 } }, "in")!;
+  assert.equal(laser.text, "120 × 60 in");
+  assert.equal(laser.label, "Bed");
+  assert.equal(tileSub({ name: "Amada", process: "sheet_metal", count: 1, hourly_rate_usd: 70, max_workpiece_kg: 22.679619, capabilities: { sheet_kind: "press_brake" } }, "in"), "Press brake · ×1 · $70/h · 50 lb max");
+  assert.equal(tileSub({ name: "Old", process: "sheet_metal", count: 1, hourly_rate_usd: null, max_workpiece_kg: 23, capabilities: {} }), "Sheet-metal machine · ×1 · no rate · 23 kg max");
 });
 
 test("the machine form shows sizes in inches and saves millimetres, exactly as they were when unchanged", () => {

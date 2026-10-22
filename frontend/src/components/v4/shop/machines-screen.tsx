@@ -357,7 +357,7 @@ function MachineTile({ m, on, onPick, load }: { m: OwnedMachine; on: boolean; on
   return (
     <button type="button" className={cx("mt", on && "on", load !== undefined && "has-ld")} onClick={onPick} aria-pressed={on}>
       <b>{machineName(m)}</b>
-      <small>{tileSub(m)}</small>
+      <small>{tileSub(m, unit)}</small>
       {load !== undefined ? <small className={cx("mt-ld num", !load?.parts && "none")}>{loadTile(load)}</small> : null}
       {box ? (
         <svg height="128" viewBox="0 0 300 150" aria-hidden="true">

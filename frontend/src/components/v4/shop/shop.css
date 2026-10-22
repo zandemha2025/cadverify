@@ -102,7 +102,7 @@
 .ob .shp .xbtn:focus-visible{outline:2px solid var(--file)}
 @media (hover:hover) and (pointer:fine){.ob .shp .xbtn:hover{background:rgba(20,24,31,.06)}}
 @media (max-width:640px){.ob .shp .pagehead > div:first-child{flex-direction:column}.ob .shp .pagehead > div:first-child > div:last-child{justify-content:flex-start!important}}
-@media (max-width:900px){.ob .shp .mgrid,.ob .shp .g2{grid-template-columns:1fr}
+@media (max-width:900px){.ob .shp .mgrid,.ob .shp .g2,.ob .shp .g3.stack{grid-template-columns:1fr}
 .ob .shp .dlg{left:16px;right:16px;top:16px;width:auto;max-width:none;max-height:calc(100dvh - 32px);transform:none}
 @starting-style{.ob .shp .dlg{opacity:0;transform:translateY(8px) scale(.98)}}}
 
