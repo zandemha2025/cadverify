@@ -54,6 +54,7 @@ from src.api.data_control import parts_router as data_control_parts_router
 from src.api.data_control import router as data_control_router
 from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
+from src.api.actuals import router as actuals_router
 from src.api.manifest import router as manifest_router
 from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
@@ -545,6 +546,9 @@ app.include_router(
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]
 )
+# Your actuals (validation moment): mapped import, accuracy against your actuals,
+# calibration apply/undo, and the pilot report.
+app.include_router(actuals_router, prefix="/api/v1/actuals", tags=["actuals"])
 # Parts-manifest bulk onboarding (Aramco GAP 3): declared inventory registry +
 # honest geometry-coverage headline — a THIRD part identity (declared part_id),
 # separate from geometry-derived catalog parts and cost records.

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pilot report{% if r.organization %} - {{ r.organization }}{% endif %}</title>
+  <style>
+    @page { size: A4; margin: 1.5cm 1.4cm 1.8cm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #141414; font-size: 9.5px; line-height: 1.4; }
+    h1 { font-size: 19px; margin: 0 0 2px 0; font-weight: 600; }
+    h2 { font-size: 12px; margin: 16px 0 5px 0; font-weight: 600; border-bottom: 1px solid #141414; padding-bottom: 3px; }
+    .sub { color: #555; margin: 0 0 10px 0; }
+    .figs { display: table; width: 100%; border-collapse: separate; border-spacing: 6px 0; margin: 0 -6px 4px; }
+    .fig { display: table-cell; border: 1px solid #d9dce1; border-radius: 6px; padding: 6px 8px; width: 20%; }
+    .fig span { display: block; color: #555; font-size: 8.5px; }
+    .fig b { display: block; font-size: 15px; font-weight: 600; margin-top: 1px; }
+    .fig small { color: #666; font-size: 8px; }
+    table { border-collapse: collapse; width: 100%; margin: 3px 0 6px 0; }
+    th, td { border-bottom: 1px solid #e3e6ea; padding: 3px 4px; text-align: left; vertical-align: top; }
+    th { color: #555; font-weight: 600; font-size: 8.5px; border-bottom: 1px solid #b9bec6; }
+    .num { text-align: right; white-space: nowrap; }
+    .muted { color: #666; }
+    .note { margin: 4px 0; padding: 6px 8px; background: #f5f6f8; border-radius: 4px; }
+    .warn { background: #fff7e0; }
+    ul.caveats { margin: 4px 0 0 0; padding-left: 14px; }
+    ul.caveats li { margin: 1px 0; }
+    .footer { position: fixed; bottom: -12mm; left: 0; right: 0; padding-top: 4px; border-top: 1px solid #d9dce1; color: #777; font-size: 8px; }
+    .avoid-break { page-break-inside: avoid; }
+  </style>
+</head>
+<body>
+  <h1>Pilot report</h1>
+  <p class="sub">
+    {% if r.organization %}<strong>{{ r.organization }}</strong> &middot; {% endif %}
+    {% if r.scope.kind == 'run' %}Catalog run of {{ (r.scope.created_at or '')[:10] }}{% if r.scope.parts_list and r.scope.parts_list.name %}, parts list {{ r.scope.parts_list.name }}{% endif %}
+    {% else %}Every part checked, at {{ r.scope.quantity }} of each{% endif %}
+    &middot; {{ r.generated_at[:10] }}
+  </p>
+
+  <div class="figs">
+    <div class="fig"><span>Parts</span><b>{{ r.parts }}</b>{% if r.other %}<small>{{ r.other.values() | sum }} not sorted</small>{% endif %}</div>
+    {% for b in r.buckets %}
+    <div class="fig"><span>{{ b.label }}</span><b>{{ b.parts or 0 }}</b>{% if b.hours %}<small>{{ b.hours | hours }} machine time</small>{% endif %}</div>
+    {% endfor %}
+  </div>
+
+  <h2>Sorted</h2>
+  <table>
+    <thead><tr><th>Where</th><th class="num">Parts</th><th class="num">Quantity</th><th class="num">Machine time</th><th class="num">Material</th><th class="num">Cost at quantity</th></tr></thead>
+    <tbody>
+    {% for b in r.buckets %}
+      <tr>
+        <td>{{ b.label }}</td>
+        <td class="num">{{ b.parts or 0 }}</td>
+        <td class="num">{{ '{:,}'.format(b.quantity or 0) }}</td>
+        <td class="num">{{ b.hours | hours }}{% if b.hours and b.hours_parts != b.parts %} <span class="muted">({{ b.hours_parts }} parts)</span>{% endif %}</td>
+        <td class="num">{{ b.mass_kg | kg }}{% if b.mass_kg and b.mass_parts != b.parts %} <span class="muted">({{ b.mass_parts }} parts)</span>{% endif %}</td>
+        <td class="num">{{ b.cost_usd | money }}{% if b.cost_usd and b.cost_parts != b.parts %} <span class="muted">({{ b.cost_parts }} parts)</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if r.other %}<p class="muted">Not sorted: {% for k, v in r.other.items() %}{{ v }} {{ {'not_sorted': 'checked without a machine verdict', 'not_checked': "couldn't be checked", 'checking': 'still checking'}[k] }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+
+  <h2>What making in-house takes</h2>
+  {% if r.in_house.parts %}
+  <p>{{ r.in_house.parts }} {{ 'part' if r.in_house.parts == 1 else 'parts' }} on your machines: {{ r.in_house.hours | hours }} of machine time and {{ r.in_house.mass_kg | kg }} of material at the quantities checked.</p>
+  {% if r.in_house.machines %}
+  <table class="avoid-break">
+    <thead><tr><th>Machine</th><th>Method</th><th class="num">Parts</th><th class="num">Machine time</th></tr></thead>
+    <tbody>
+    {% for m in r.in_house.machines %}
+      <tr><td>{{ m.machine }}</td><td>{{ m.process | proc }}</td><td class="num">{{ m.parts }}</td><td class="num">{{ m.hours | hours }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% else %}
+  <p class="muted">No part sorted to your machines.</p>
+  {% endif %}
+
+  <h2>Biggest wins</h2>
+  {% if r.wins %}
+  <table class="avoid-break">
+    <thead><tr><th>Part</th><th>On</th><th class="num">Quantity</th><th class="num">In-house each</th><th class="num">Cheapest outside each</th><th class="num">Difference at quantity</th></tr></thead>
+    <tbody>
+    {% for w in r.wins %}
+      <tr>
+        <td>{{ w.file_name }}{% if w.part_number %} <span class="muted">{{ w.part_number }}</span>{% endif %}</td>
+        <td>{{ w.machine or (w.process | proc) }}</td>
+        <td class="num">{{ '{:,}'.format(w.quantity) }}</td>
+        <td class="num">{{ w.in_house_each | money }}</td>
+        <td class="num">{{ w.outside_each | money }} <span class="muted">{{ w.outside_process | proc }}</span></td>
+        <td class="num">{{ w.saving_total | money }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Your machine at its marginal rate against the cheapest outside route, both ScaleCAD estimates at the same quantity.</p>
+  {% else %}
+  <p class="muted">No in-house part has both an in-house and an outside price to compare.</p>
+  {% endif %}
+
+  <h2>Decisions recorded</h2>
+  {% if r.decisions %}
+  <table>
+    <thead><tr><th>Part</th><th>Decision</th><th>By</th><th>Date</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for d in r.decisions %}
+      <tr>
+        <td>{{ d.file_name }}{% if d.part_number %} <span class="muted">{{ d.part_number }}</span>{% endif %}</td>
+        <td>{{ d.decision }}{% if d.process %} <span class="muted">{{ d.process | proc }}</span>{% endif %}</td>
+        <td>{{ d.by or 'Not recorded' }}</td>
+        <td>{{ (d.at or '')[:10] }}</td>
+        <td>{{ d.note or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No decision recorded on these parts yet.</p>
+  {% endif %}
+
+  <h2>Checked against your actuals</h2>
+  {% set a = r.accuracy %}
+  {% if a.parts %}
+  <p>
+    {% if a.hours.n %}Machine hours: median error {{ a.hours.median_abs_pct }}% on {{ a.hours.parts }} {{ 'part' if a.hours.parts == 1 else 'parts' }}, worst {{ a.hours.worst_pct | pct }}{% if a.hours.with_range %}; {{ a.hours.inside }} of {{ a.hours.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
+    {% if a.cost.n %}Cost per part: median error {{ a.cost.median_abs_pct }}% on {{ a.cost.parts }} {{ 'part' if a.cost.parts == 1 else 'parts' }}, worst {{ a.cost.worst_pct | pct }}{% if a.cost.with_range %}; {{ a.cost.inside }} of {{ a.cost.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
+  </p>
+  {% if a.per_process %}
+  <table class="avoid-break">
+    <thead><tr><th>Method</th><th class="num">Hours: actuals</th><th class="num">Median</th><th class="num">Worst</th><th class="num">In range</th><th class="num">Cost: actuals</th><th class="num">Median</th><th class="num">Worst</th><th class="num">In range</th></tr></thead>
+    <tbody>
+    {% for p in a.per_process %}
+      <tr>
+        <td>{{ p.process | proc }}</td>
+        <td class="num">{{ p.hours.n }}</td>
+        <td class="num">{% if p.hours.n %}{{ p.hours.median_abs_pct }}%{% else %}—{% endif %}</td>
+        <td class="num">{{ p.hours.worst_pct | pct }}</td>
+        <td class="num">{% if p.hours.with_range %}{{ p.hours.inside }} of {{ p.hours.with_range }}{% else %}—{% endif %}</td>
+        <td class="num">{{ p.cost.n }}</td>
+        <td class="num">{% if p.cost.n %}{{ p.cost.median_abs_pct }}%{% else %}—{% endif %}</td>
+        <td class="num">{{ p.cost.worst_pct | pct }}</td>
+        <td class="num">{% if p.cost.with_range %}{{ p.cost.inside }} of {{ p.cost.with_range }}{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Error is ScaleCAD's estimate against your actual: +10% means ScaleCAD said 10% more. A method needs {{ a.min_per_method }} actuals before its figure says much.</p>
+  {% endif %}
+  {% endif %}
+  {% if r.calibration %}
+  <div class="note">Calibration in effect: applied {{ (r.calibration.applied_at or '')[:10] }}{% if r.calibration.applied_by %} by {{ r.calibration.applied_by }}{% endif %}, for {% for p, f in r.calibration.factors.items() %}{{ p | proc }}{% if f.hours %} (machine time × {{ f.hours }}){% endif %}{% if f.cost %} (cost × {{ f.cost }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</div>
+  {% endif %}
+  <div class="note{% if not a.enough %} warn{% endif %}">
+    <ul class="caveats">
+    {% for c in r.caveats %}<li>{{ c }}</li>{% endfor %}
+    </ul>
+  </div>
+
+  <div class="footer">ScaleCAD pilot report &middot; {{ r.generated_at[:16] | replace('T', ' ') }} UTC &middot; engine estimates and your own numbers, not quotes</div>
+</body>
+</html>

@@ -1258,6 +1258,10 @@ async def _run_cost_item(session, batch, item) -> dict:
         }
 
     result_dict = report_to_dict(report)
+    # The org's calibration from its own actuals (if one is applied); unchanged otherwise.
+    from src.services.calibration_service import apply_org_calibration
+
+    result_dict = await apply_org_calibration(session, cal_org_id, result_dict)
 
     # ---- persist (dedup-safe: reuse the existing row on conflict) -----------
     # persist_cost_decision keys on (org_id, user_id, mesh_hash, params_hash) and

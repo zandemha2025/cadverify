@@ -28,7 +28,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
@@ -100,8 +100,12 @@ class GroundTruthIn(BaseModel):
         description="Engine ProcessType id, e.g. cnc_3axis, sls, injection_molding.",
     )
     quantity: int = Field(..., ge=1, description="Order quantity for this quote.")
-    actual_unit_cost_usd: float = Field(
-        ..., gt=0, description="The KNOWN real per-unit cost / quote."
+    actual_unit_cost_usd: Optional[float] = Field(
+        None, gt=0,
+        description=(
+            "The KNOWN real per-unit cost / quote. May be omitted when "
+            "actual_machine_hours (per part) is given: an hours-only actual."
+        ),
     )
     material_class: str = Field(
         "polymer", description="polymer|aluminum|steel|stainless|titanium"
@@ -128,7 +132,7 @@ class GroundTruthIn(BaseModel):
         None, description="Invoice/quote date when known (YYYY-MM-DD)."
     )
     actual_machine_hours: Optional[float] = Field(
-        None, ge=0, description="Observed machine hours from the real job."
+        None, ge=0, description="Observed machine hours per part from the real job."
     )
     actual_setup_hours: Optional[float] = Field(
         None, ge=0, description="Observed setup hours from the real job."
@@ -162,6 +166,21 @@ class GroundTruthIn(BaseModel):
         None, description="Explicit STL path; else resolved from part_id under parts_dir."
     )
     notes: str = ""
+    part_number: Optional[str] = Field(
+        None, max_length=200, description="The customer's own part number, as given."
+    )
+    machine: Optional[str] = Field(
+        None, max_length=200, description="The machine the job ran on, as given."
+    )
+
+    @model_validator(mode="after")
+    def _cost_or_hours(self):
+        if self.actual_unit_cost_usd is None and not self.actual_machine_hours:
+            raise ValueError(
+                "Give a cost per part (actual_unit_cost_usd), machine hours per part "
+                "(actual_machine_hours), or both."
+            )
+        return self
 
 
 async def _require_org(session: AsyncSession, user: AuthedUser) -> str:

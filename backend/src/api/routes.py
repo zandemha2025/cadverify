@@ -2152,6 +2152,10 @@ async def _run_cost_decision(
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
         result_dict = report_to_dict(report)
+    # The org's calibration from its own actuals (if one is applied); unchanged otherwise.
+    from src.services.calibration_service import apply_org_calibration
+
+    result_dict = await apply_org_calibration(session, cal_org_id, result_dict)
     if placed is not None:
         # The record says which way the part was turned for this price.
         result_dict = dict(result_dict)
