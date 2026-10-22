@@ -20,6 +20,7 @@ import { backendUrl } from "@/lib/api-base";
 import { getSessionToken } from "@/lib/session";
 import { prepareProxyRequestBody } from "@/lib/proxy-request-body";
 import { e2eFaultHeaders } from "@/lib/e2e-fault-headers";
+import { shouldRecompress, variesByEncoding } from "@/lib/proxy-compression";
 
 export const dynamic = "force-dynamic";
 
@@ -165,7 +166,17 @@ async function handle(
   // empty ReadableStream through anyway makes Chromium report ERR_ABORTED even
   // though the mutation succeeded (observed on Design Studio archive).
   const noBody = method === "HEAD" || [204, 205, 304].includes(res.status);
-  return new Response(noBody ? null : res.body, {
+  // Fetch decoded the API's gzip; send it on compressed again when the browser takes
+  // gzip (buyer-15: a part's record and analysis were 839 KB uncompressed on a phone).
+  // Its length is the compressed one, so no Content-Length; caches key on the encoding.
+  if (variesByEncoding(res.headers.get("content-type"))) relayed.append("vary", "Accept-Encoding");
+  const gzip = !noBody && !!res.body && shouldRecompress(req.headers.get("accept-encoding"), res.headers);
+  if (gzip) {
+    relayed.set("content-encoding", "gzip");
+    relayed.delete("content-length");
+  }
+  const body = noBody ? null : gzip && res.body ? res.body.pipeThrough(new CompressionStream("gzip")) : res.body;
+  return new Response(body, {
     status: res.status,
     headers: relayed,
   });
