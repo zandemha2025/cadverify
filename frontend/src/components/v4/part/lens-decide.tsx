@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/ui/auth-provider";
 import { createRfqPackage, downloadRfqPackage, shareCostDecision } from "@/lib/api";
 import { R } from "../routes";
+import { day } from "../datacontrol/words";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
 import { days, decideOptions, methodName, money, qtyWord, shortId, type DecideOption } from "./model";
@@ -162,7 +163,8 @@ export function DecideSheet() {
       const r = await shareCostDecision(id);
       const url = new URL(r.share_url, window.location.origin).toString();
       await navigator.clipboard?.writeText(url).catch(() => undefined);
-      p.toast({ text: "Share link copied. View only, no sign-in needed.", link: { label: "Preview", href: r.share_url } });
+      const ends = (r as { share_expires_at?: string | null }).share_expires_at;
+      p.toast({ text: `Share link copied. View only, no sign-in needed. ${ends ? `It ends ${day(ends)}.` : "It has no end date."}`, link: { label: "Share links", href: R.links } });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "The share link wasn't made.");
     } finally {

@@ -31,7 +31,8 @@
 .ob .dc-seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,24,31,.1)}
 .ob .dc-seg button:focus-visible{outline:2px solid var(--file);outline-offset:1px}
 @media (max-width:720px){
-.ob .dc-back{padding:12px;align-items:end}
+.ob .dc-back{padding:12px 12px 88px;align-items:center}
+.ob .dc-dlg{max-height:calc(100dvh - 112px)}
 .ob .dc-row{grid-template-columns:minmax(0,1fr) auto;row-gap:4px}
 .ob .dc-row.th{display:none}
 .ob .dc-row .acts{grid-column:1 / -1;justify-content:flex-start}
