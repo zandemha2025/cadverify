@@ -259,7 +259,7 @@ export function DecideSheet() {
       : chosen.kind === "inhouse"
         ? { text: `make it on your ${inHouseName}, then log the hours and cost so the estimate is checked against the job.`, link: "Log a finished job", href: R.actuals }
         : chosen.kind === "outside"
-          ? { text: "download the supplier package below and send it for quotes. ScaleCAD doesn’t send it." }
+          ? { text: "download the RFQ package below, or share a link, and send it for quotes. ScaleCAD doesn’t send it." }
           : chosen.kind === "acquire"
             ? { text: "weigh the machine against your other parts.", link: "Parts it would unlock", href: R.triage }
             : { text: "fix what blocks it (see Make), then check the revised file." };

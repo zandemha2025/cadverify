@@ -474,7 +474,7 @@ function Builder({
           </div>
           <div className="fig">
             <span>CAD</span>
-            <b className="num">{!cad ? "—" : chosen.length && cadKept + cadMissing < chosen.length ? "…" : `${cadKept} of ${chosen.length}`}</b>
+            <b className="num">{!cad || !chosen.length ? "—" : cadKept + cadMissing < chosen.length ? "…" : `${cadKept} of ${chosen.length}`}</b>
             <small>{cad ? "files ScaleCAD kept" : "Not included"}</small>
           </div>
           <div className="fig">

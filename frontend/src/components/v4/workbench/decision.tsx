@@ -4,7 +4,7 @@
  * F5 · Decision: the order-quantity slider (log 1 to a whole decade), cost
  * each by quantity on log scales, the pick at that quantity, the tooling
  * crossover, re-cost with new inputs, and the saved decision's exports,
- * supplier package and share link. Between costed quantities the numbers are
+ * RFQ package and share link. Between costed quantities the numbers are
  * read off the app's breakeven curves and labelled "About".
  */
 import * as React from "react";

@@ -403,7 +403,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           ))}
           {canEdit ? (
             <Link className="btn sm" href={`${R.packages}?pick=${encodeURIComponent(detail.id)}`}>
-              Supplier package
+              RFQ package
             </Link>
           ) : null}
           <Link className="btn sm" href={`${R.compare}?a=${encodeURIComponent(detail.id)}`}>
