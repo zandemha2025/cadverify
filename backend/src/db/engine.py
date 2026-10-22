@@ -114,7 +114,14 @@ def get_engine():
         # able to size the pool to their deployment instead of a hardcoded 5.
         url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
         kwargs = {"pool_pre_ping": True}
-        if not url.startswith("sqlite"):
+        if os.getenv("DB_POOL", "").strip().lower() == "null":
+            # Tests (tests/conftest.py) run every async test on its own event
+            # loop; a pooled asyncpg connection is bound to the loop that opened
+            # it, so the test suite keeps no connections between uses.
+            from sqlalchemy.pool import NullPool
+
+            kwargs = {"poolclass": NullPool}
+        elif not url.startswith("sqlite"):
             # F-CAP-1: pool_size bumped 5 -> 10 (the /validate family holds a
             # session for the whole 30-80s analysis, and 5+10 overflow=15 was
             # too tight under real concurrency; see admission.py for the

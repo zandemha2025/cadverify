@@ -27,6 +27,11 @@ import trimesh
 # RuntimeWarning subclass), which is correctly fatal under the release policy.
 import alembic  # noqa: F401
 
+# Every async test runs on its own event loop, and a pooled asyncpg connection
+# belongs to the loop that opened it; without this a test that leaves the app's
+# shared pool open breaks a later Postgres test ("attached to a different loop").
+os.environ.setdefault("DB_POOL", "null")
+
 from src.auth.require_api_key import AuthedUser
 from src.auth.redis_util import (
     close_registered_redis_clients as _close_registered_redis_clients_impl,
