@@ -3,6 +3,7 @@
 /** X10: the check's progress, stage by stage, from the real responses as they land. */
 import * as React from "react";
 import { dimsText, plural, progressSteps, type Step } from "./model";
+import { chosenLine } from "./pick-words";
 import { readsAsBodies, type CheckSession } from "./store";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 
@@ -33,9 +34,18 @@ function bodySteps(s: CheckSession, steps: Step[]): Step[] {
   ];
 }
 
+/** "Process chosen" names the same pick the part page opens with (ScaleCAD’s pick), never the router's usual route. */
+function onePick(s: CheckSession, steps: Step[]): Step[] {
+  const line = chosenLine(s.result?.cost ?? null);
+  return steps.map((x) => {
+    if (x.t === "Process chosen" && x.state === "done" && line) return { ...x, d: line };
+    return x;
+  });
+}
+
 export function progressModel(s: CheckSession) {
   const r = s.result;
-  const steps: Step[] = bodySteps(s, progressSteps({
+  const steps: Step[] = onePick(s, bodySteps(s, progressSteps({
     fileName: s.file.name,
     sample: s.sample,
     validation: s.validation ?? r?.validation ?? null,
@@ -43,7 +53,7 @@ export function progressModel(s: CheckSession) {
     costError: r ? r.costError : null,
     geometryInvalid: s.status === "stopped" ? r?.costGeometryInvalid?.message ?? "not a closed solid" : null,
     done: s.status !== "running",
-  }));
+  })));
   const running = s.status === "running";
   const stopped = s.status === "stopped";
   const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;

@@ -43,7 +43,7 @@ export function SharedCheck({ data }: { data: SharedAnalysis }) {
             </h2>
             <p className="smeta">Manufacturability check · {longDate(d.created_at)} · view only{linkEnds(data)}</p>
             <Figs>
-              <Fig k="Best fit for the shape" v={d.best_process ? wayName(d.best_process) : "None found"} />
+              <Fig k="Highest design score" v={d.best_process ? wayName(d.best_process) : "None found"} />
               <Fig k="Can make it" v={`${f.can} of ${f.total}`} sub="processes, with checks" tone={f.can ? "ok" : undefined} />
               <Fig k="Can't as drawn" v={String(f.cant)} sub="processes" tone={f.cant ? "bad" : undefined} />
             </Figs>

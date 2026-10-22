@@ -147,7 +147,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
             <small>{g ? (g.is_watertight ? "Watertight" : "Not watertight") : "—"}</small>
           </div>
           <div className="fig">
-            <span>Best fit for the shape</span>
+            <span>Highest design score</span>
             <b className="t">{best ? way(best).replace(/ \(([^)]+)\)$/, "") : "None"}</b>
             <small>{best ? (/ \(([^)]+)\)$/.exec(way(best))?.[1] ?? "By shape") : "No process passes"}</small>
           </div>

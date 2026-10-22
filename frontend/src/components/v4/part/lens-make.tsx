@@ -17,7 +17,6 @@ import {
   methodSub,
   methodWhy,
   money,
-  overallWords,
   plural,
   priceAt,
   priceMeta,
@@ -31,6 +30,7 @@ import { notListedKind, problemForIssue } from "../fix/problems";
 import { pairAt, pickWhy, recordedChoice, enginePick } from "./choice";
 import { featureCells } from "../workbench/derive";
 import { useChoice } from "./choose";
+import { problemsFigure, rowNote } from "./pick-words";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
 
@@ -222,7 +222,7 @@ function Fixes() {
   );
 }
 
-export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: string; figs: FigItem[] } {
+export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: string }[]): { title: string; meta: string; figs: FigItem[] } {
   const v = p.data.validation;
   const cls = p.data.cost?.material_class ?? null;
   if (p.interrupted) return { title: "Check interrupted", meta: "Nothing computed · the file is kept", figs: [{ k: "Processes", v: "Not checked", tone: "warn" }, { k: "File", v: "Kept", s: "no re-export needed" }] };
@@ -233,9 +233,10 @@ export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: s
       title: "Checking",
       meta: `Shape and walls, then ${v ? v.process_scores.length : 21} processes, then prices · about 30 s`,
       figs: [
+        // The design-rule best so far, not a pick: ScaleCAD's pick comes with the prices.
         v && gp
-          ? { k: "Best fit for the shape", v: gp.name, s: `${gp.short} · DFM ${gp.dfm ?? "—"} · analysis ${(v.analysis_time_ms / 1000).toFixed(1)} s` }
-          : { k: "Best fit for the shape", v: "Measuring…" },
+          ? { k: "Highest design score", v: gp.name, s: `${gp.short} · DFM ${gp.dfm ?? "—"} · the pick comes with prices` }
+          : { k: "Highest design score", v: "Measuring…" },
         { k: "Processes checked", v: v ? `${v.process_scores.length} of ${v.process_scores.length}` : "Waiting" },
         { k: "Priced", v: "Pricing…", s: "arrives with the record" },
       ],
@@ -244,7 +245,8 @@ export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: s
   const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn").length;
   const env = envLine(p.data.runEnvironment);
   const figs: FigItem[] = [{ k: "Can make", v: `${can} of ${singles.length}`, s: "processes", tone: can ? "ok" : "bad" }];
-  const fixesFig: FigItem = { k: "Suggested fixes", v: String(v?.priority_fixes?.length ?? 0), s: overallWords(v?.overall_verdict) };
+  // The same count as the problem list below (not the engine's per-process fixes and overall verdict).
+  const fixesFig: FigItem = problemsFigure(problems);
   const meta = `${classLabel(cls)} · ${env ?? "no service conditions set"}`;
   const c = cheapestAt(p.methods, p.q);
   // Your choice, else ScaleCAD's pick, next to the other side when a machine of yours can make it.
@@ -280,12 +282,9 @@ export function makeTop(p: ReturnType<typeof usePart>): { title: string; meta: s
   return { title: "Ways to make it", meta, figs };
 }
 
-/** "your choice" / "ScaleCAD's pick" after a row's sub line. */
+/** "your choice" / "ScaleCAD's pick" after a row's sub line: one pick; the design best and the usual route are evidence. */
 function rowTag(m: Method, ch: ReturnType<typeof useChoice>): string {
-  if (m.members.length !== 1) return "";
-  if (ch.choice?.process === m.code) return " · your choice";
-  if (!ch.choice && ch.pick?.process === m.code) return " · ScaleCAD’s pick";
-  return "";
+  return rowNote(m, ch.choice?.process ?? null, ch.pick?.process ?? null);
 }
 
 /** The problem a process's row stands for: its own finding, else the first one that stops it. */
@@ -341,7 +340,7 @@ export function MakeSheet() {
   const p = usePart();
   const fx = useFix();
   const ch = useChoice();
-  const top = makeTop(p);
+  const top = makeTop(p, fx.set.problems);
   const pricing = p.checking && !p.data.cost;
   const rows = makeRows(p.rows, p.q);
   return (
@@ -383,7 +382,7 @@ export function MakeSheet() {
                       <span>
                         <b>{m.name}</b>
                         <small>
-                          {methodSub(m)}
+                          {methodSub({ ...m, geometryPick: false, routePick: false })}
                           {rowTag(m, ch)}
                         </small>
                       </span>
