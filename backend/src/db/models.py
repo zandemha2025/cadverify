@@ -64,6 +64,12 @@ class Organization(Base):
     """
 
     __tablename__ = "organizations"
+    __table_args__ = (
+        CheckConstraint(
+            "signoff_role IS NULL OR signoff_role IN ('member', 'admin')",
+            name="ck_organizations_signoff_role",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(
         Text, primary_key=True, default=lambda: str(ULID())
@@ -73,6 +79,10 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
+    # Who may sign off a recorded make-or-buy decision (migration 0056): the
+    # organization role ``member`` or ``admin``. NULL keeps the default: anyone
+    # who can record an outcome can sign it off.
+    signoff_role: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # relationships
     teams: Mapped[List[Team]] = relationship(
@@ -282,6 +292,9 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     signup_metadata: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, server_default="{}")
+    # Per-user settings that follow the person across devices (migration 0056),
+    # e.g. {"length_unit": "in"}. Validated by ``user_preferences_service``.
+    preferences: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, server_default="{}")
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     notion_page_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     crm_sync_after: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
@@ -1544,6 +1557,12 @@ class PartContext(Base):
     # inferred. {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service,
     # medium, standard}. NULL → no environment declared (gate is a no-op).
     service_environment: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    # Declared part specs (migration 0056): USER-declared, never inferred.
+    # {finishes, ra_um, ra_unit, heat_treatments, inspection, certifications,
+    # nadcap_processes} — see ``src.costing.part_specs``. NULL → none declared.
+    part_specs: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB, nullable=True
     )
     # BOM-rollup linkage (customer-context Slice 3, migration 0037): the OPTIONAL
