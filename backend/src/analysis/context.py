@@ -1011,6 +1011,13 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
         shared = outline(i, i).intersection(outline(j, i))
         if shared.is_empty or shared.area < 0.5 * min(outline(i, i).area, outline(j, i).area):
             continue
+        # A plate is wider than it is thick in every direction; two opposite
+        # facet strips of a tessellated cylinder face each other across its
+        # diameter but are slivers, not a plate.
+        box = np.asarray(shapely.minimum_rotated_rectangle(shared).exterior.coords)[:4]
+        sides = np.linalg.norm(np.diff(np.vstack([box, box[:1]]), axis=0), axis=1)
+        if len(sides) < 2 or float(sides.min()) < thickness:
+            continue
         plate_of_facet[i] = min(plate_of_facet.get(i, np.inf), thickness)
         plate_of_facet[j] = min(plate_of_facet.get(j, np.inf), thickness)
         measured.append((i, j, thickness, shared, u, v))

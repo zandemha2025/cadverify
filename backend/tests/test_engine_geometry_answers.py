@@ -220,6 +220,18 @@ def test_a_real_rib_is_measured_and_judged():
     assert "20mm tall" in molding.message
 
 
+def test_a_faceted_shaft_has_no_ribs():
+    """Opposite facet strips of a tessellated cylinder face each other across it: slivers, not plates."""
+    parts = [trimesh.creation.cylinder(radius=r, height=h, sections=256) for r, h in ((15, 30), (10, 40), (5, 20))]
+    z = 0.0
+    for p, (_r, h) in zip(parts, ((15, 30), (10, 40), (5, 20))):
+        p.apply_translation((0, 0, z + h / 2))
+        z += h
+    ctx = _ctx(_stl(_union(*parts)))
+    assert ctx.ribs == []
+    assert "RIB_RULES_CHECK" not in _codes(ctx, "injection_molding")
+
+
 def test_fins_on_a_heat_sink_are_ribs_and_the_gaps_between_them_are_not_plates():
     base = _box((100, 60, 4))
     fins = [_box((1.5, 60, 20), at=(5 + i * 6, 0, 4)) for i in range(15)]
