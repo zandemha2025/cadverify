@@ -10,7 +10,7 @@
  */
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import type { CostDriver, CostOptions } from "@/lib/api";
+import type { CostDriver, CostEstimate, CostOptions } from "@/lib/api";
 import { canOverrideDriver, costOverrideError, driverOverrideKey, driverRateLabel, driverRateUnit, parseDriverRate } from "@/lib/cost-views";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { Empty, cx } from "../ui";
@@ -33,7 +33,8 @@ import {
 import { addScenario, recost, useWb } from "./session";
 import { WbHead, useNeedFile, useToast, useWbNav, wbHref } from "./chrome";
 import { baseMeta, useShopName } from "./decision";
-import { assumptionName, assumptionValue, driverName, money, qtyListText, qtyText } from "./words";
+import { assumptionName, assumptionValue, driverName, money, qtyListText, qtyText, signedMoney } from "./words";
+import { lineDriver } from "@/lib/cost-lines";
 import type { TabProps } from "./workbench";
 
 type Edit = { row: string; key: string; vname: string; label: string; unit: string; draft: string; err: string };
@@ -91,6 +92,23 @@ function Editor({ edit, setEdit, apply }: { edit: Edit; setEdit: (e: Edit | null
       ) : null}
     </>
   );
+}
+
+/** ce-02: the band named for what it is. A band measured on real jobs is an "80% band" (the
+ *  range that held 8 in 10 of them); an assumption band is a range rolled up from the line
+ *  bands, never a "confidence" or a "data quality" score. */
+function bandTitle(conf: CostEstimate["confidence"] | null, band: number | null): string {
+  if (conf?.method === "measured-residual") return `${Math.round(conf.level * 100)}% band`;
+  return band != null ? `Range ±${band}%` : "Range";
+}
+
+function bandSub(conf: CostEstimate["confidence"] | null): string {
+  if (!conf) return "No band on this estimate";
+  if (conf.method === "measured-residual") {
+    const of10 = Math.round(conf.level * 10);
+    return `${of10} in 10 of ${conf.n_samples} real job${conf.n_samples === 1 ? "" : "s"} fell inside it${conf.validated ? "" : " · stand-in records, not validated"}`;
+  }
+  return "Rolled up from the line bands · assumption-based, not checked against real jobs";
 }
 
 export function GlassTab({ part, qty }: TabProps) {
@@ -328,9 +346,9 @@ export function GlassTab({ part, qty }: TabProps) {
               </div>
               <div className="sig">
                 {lines.map((l) => (
-                  <React.Fragment key={l.label}>
-                    <span>{l.label}</span>
-                    <b className="num vchg">{money(l.v)}</b>
+                  <React.Fragment key={l.key}>
+                    <span style={l.rounding ? { color: "var(--ink3)" } : undefined}>{l.label}</span>
+                    <b className="num vchg">{l.rounding ? signedMoney(l.v) : money(l.v)}</b>
                   </React.Fragment>
                 ))}
                 <span className="t">Sum of the lines</span>
@@ -339,11 +357,12 @@ export function GlassTab({ part, qty }: TabProps) {
                   {sum.coherent ? " = unit cost ✓" : ` ≠ ${unit}`}
                 </b>
               </div>
+              {sum.note ? <p style={{ margin: "0 16px 14px", color: "var(--ink3)", fontSize: 12.5 }}>{sum.note}</p> : null}
             </section>
             <section className="panel" aria-labelledby="gb-conf">
               <div className="ph">
-                <h2 id="gb-conf">{conf ? `Confidence ${Math.round(conf.level * 100)}%` : "Range"}</h2>
-                <span>{conf ? (conf.validated ? "Validated" : "Assumption-based, not validated") : "No confidence band on this estimate"}</span>
+                <h2 id="gb-conf">{bandTitle(conf, band)}</h2>
+                <span>{bandSub(conf)}</span>
               </div>
               {lo != null && hi != null ? (
                 <>
@@ -557,16 +576,17 @@ export function GlassTab({ part, qty }: TabProps) {
                     </span>
                     <span />
                   </li>
-                  {drivers.map((d) => {
-                    const p = provOf(d.provenance, d.rate_card);
+                  {lines.map((l) => {
+                    const d = l.rounding ? null : drivers.find((x) => x.name === lineDriver(l.key)) ?? null;
+                    const p = provOf(d?.provenance ?? "DEFAULT", d?.rate_card);
                     return (
-                      <li className="lnn" key={d.name}>
+                      <li className="lnn" key={l.key}>
                         <i style={{ background: p.kind === "typ" ? "#fff" : p.color, borderColor: p.color }} />
                         <span>
-                          <b>{driverName(d.name)}</b>
-                          <small>{p.label}</small>
+                          <b>{l.label}</b>
+                          <small>{l.rounding ? "Lines rounded to the cent" : p.label}</small>
                         </span>
-                        <b className="num">{driverValue(d)}</b>
+                        <b className="num">{l.rounding ? signedMoney(l.v) : money(l.v)}</b>
                       </li>
                     );
                   })}
@@ -602,14 +622,14 @@ export function GlassTab({ part, qty }: TabProps) {
                   ))}
                 </div>
                 <div className="gh">
-                  <span>Data quality</span>
-                  <span>{conf ? `${Math.round(conf.level * 100)}%` : "—"}</span>
+                  <span>{bandTitle(conf, band)}</span>
+                  <span>{band != null ? `±${band}%` : "—"}</span>
                 </div>
                 <div className={cx("band", conf?.validated && "val")} style={{ margin: "6px 12px 4px" }} aria-hidden="true">
                   <i />
                 </div>
                 <p style={{ margin: "4px 12px 8px", color: "var(--ink2)", fontSize: 13 }}>
-                  {conf ? `${conf.validated ? "Validated" : "Assumption-based, not validated"} · ${conf.n_samples} real job${conf.n_samples === 1 ? "" : "s"} behind it` : "No confidence band on this estimate"}
+                  {conf ? `${bandSub(conf)} · ${conf.n_samples} real job${conf.n_samples === 1 ? "" : "s"} behind it` : "No band on this estimate"}
                 </p>
                 <div className="note">
                   <b>Your file</b>

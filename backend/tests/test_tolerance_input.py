@@ -90,8 +90,10 @@ def test_standard_and_omitted_byte_identical():
     # standard adds NO tolerance line item and NO tolerance driver
     assert "tolerance" not in std.line_items
     assert _driver(std, "tolerance_class") is None
-    # the reported band equals the untouched family band (no widening)
-    assert std.est_error_band_pct == rates.band_pct(PT.CNC_3AXIS)
+    # the reported band is the lines' own bands rolled up (ce-02), with no tolerance widening
+    from src.costing.confidence import rolled_up_band
+    assert std.est_error_band_pct == rolled_up_band(std.line_items, std.drivers, std.unit_cost_usd)[0]
+    assert "tolerance" not in (std.band_basis or "")
 
 
 # ── 2) monotonic in BOTH cost and band width (CNC) ──────────────────────────

@@ -762,10 +762,22 @@ class SpecSession:
         if isinstance(qm, dict):
             qm = {**qm, "specs": list(qm.get("specs") or [])
                   + [{k: round(v, 6) for k, v in ln.qty_term.items()} for ln in lines if ln.qty_term]}
+        drivers = list(est.drivers) + [ln.driver for ln in lines]
+        # ce-02: the band rolls up again with the spec lines in it (a declared
+        # tolerance's added points stay).
+        from src.costing.confidence import rolled_up_band
+
+        before, _ = rolled_up_band(est.line_items, est.drivers, est.unit_cost_usd)
+        after, basis = rolled_up_band(items, drivers, unit)
+        band, band_basis = est.est_error_band_pct, est.band_basis
+        if before and after:
+            band = round(after + (est.est_error_band_pct - before), 1)
+            band_basis = basis + (est.band_basis[est.band_basis.index(", + "):]
+                                  if est.band_basis and ", + " in est.band_basis else "")
         est2 = replace(est, line_items=items, unit_cost_usd=unit,
                        fixed_cost_usd=round(fixed, 4),
                        variable_cost_usd=round(unit - fixed / max(1, est.quantity), 4),
-                       drivers=list(est.drivers) + [ln.driver for ln in lines], qty_model=qm)
+                       drivers=drivers, qty_model=qm, est_error_band_pct=band, band_basis=band_basis)
         est2.assert_sums()
         if lt is None:
             return est2, None

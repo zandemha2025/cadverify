@@ -733,7 +733,8 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
         point_usd = point_usd * calibration.factor_for(est.process)
     ci = confidence_interval(
         point_usd, assumption_band_pct=est.est_error_band_pct,
-        residual_provider=residual_model, process=est.process, level=ci_level)
+        residual_provider=residual_model, process=est.process, level=ci_level,
+        band_basis=getattr(est, "band_basis", None))
     d = {
         "process": est.process,
         "material": est.material,

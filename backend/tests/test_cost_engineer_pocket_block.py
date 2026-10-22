@@ -138,3 +138,24 @@ def test_forging_die_is_its_own_line():
     # $30,000 die ÷ 10,000 = $3.00; setup 3 h × $35 ÷ 10,000 = $0.0105 (was one $3.01 "setup" line)
     assert e.line_items["tooling"] == pytest.approx(3.0)
     assert e.line_items["amortized_fixed"] == pytest.approx(0.0105)
+
+
+# ── ce-02: the ± band rolls up from the line bands ────────────────────────────
+
+def test_band_is_the_root_sum_square_of_the_line_bands(block):
+    """ce-02: "root-sum-square ≈ $8.6 = ±23%", not a flat ±50%.
+
+        machine ±50% × 15.69, labor ±20% × 17.50, setup ±20% × 0.26, programming ±40% × 0.70,
+        inspection ±40% × 1.23, tools ±40% × 0.78, material ±5% × 0.52
+        √(7.85² + 3.50² + 0.05² + 0.28² + 0.49² + 0.31² + 0.03²) = $8.62 = 23.5% of $36.69
+    """
+    import math
+    e = block(100)
+    rss = math.sqrt((15.69375 * .5) ** 2 + (17.5 * .2) ** 2 + (0.2625 * .2) ** 2 + (0.7 * .4) ** 2
+                    + (1.225 * .4) ** 2 + (0.784688 * .4) ** 2 + (0.5222 * .05) ** 2)
+    assert rss == pytest.approx(8.62, abs=0.005)
+    assert e.est_error_band_pct == pytest.approx(100 * rss / 36.6878, abs=0.05) == pytest.approx(23.5, abs=0.05)
+    assert "root-sum-square" in e.band_basis and "±$8.62 on $36.69" in e.band_basis
+    from src.costing.confidence import confidence_interval
+    ci = confidence_interval(e.unit_cost_usd, assumption_band_pct=e.est_error_band_pct, band_basis=e.band_basis)
+    assert round(ci.low_usd, 2) == round(36.6878 * (1 - 0.235), 2) and "no real jobs" in ci.basis

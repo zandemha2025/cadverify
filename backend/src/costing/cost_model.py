@@ -1276,6 +1276,18 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             error_band_pct=None,
         ))
 
+    # ---- the price's ± band, rolled up from the lines' own bands (ce-02) ----
+    # Root-sum-square of line × line band, not one flat family band; a declared
+    # tolerance still widens it by its points.
+    from src.costing.confidence import rolled_up_band
+
+    rolled, band_basis = rolled_up_band(line_items, drivers_out, unit_cost)
+    if not rolled:
+        rolled, band_basis = band, f"±{band:g}%, the process family's stated band"
+    reported_band = round(rolled + tol_band_add, 1)
+    if tol_band_add:
+        band_basis += f", + {tol_band_add:g} points for the declared '{tolerance_class}' tolerance"
+
     # ---- decision split (clean asymptotic fixed/var for crossover §6) ---
     # E-now #3/#4: NRE is a one-time cost (→ fixed, like tooling); consumables,
     # per-part inspection/finishing and the asymptotic per-lot inspection/finishing
@@ -1335,6 +1347,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         owned_in_house=owned_here,
         material_mass=material_mass,
         qty_model=qtymod.finish(qm),
+        band_basis=band_basis,
     )
     est.assert_sums()
     return est

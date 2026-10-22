@@ -233,15 +233,18 @@ def test_ded_machine_scales_with_deposited_mass_over_rate():
 
 
 def test_ded_waam_carry_the_widest_band():
-    """DED/WAAM are the most geometry/shop-specific ⇒ the widest error band of the six."""
+    """DED/WAAM are the most geometry/shop-specific ⇒ the widest line band of the six. (The
+    price's band rolls up from its lines since ce-02, so it is the family's line band that
+    is widest; the deposition line carries it.)"""
     rc, d, mat = build_rate_card(), _drivers(), _ti()
-    bands = {p: cost_breakdown(p, d, mat, "titanium", 100, rc, "US").est_error_band_pct
-             for p in METAL_AM_PROCESSES}
+    bands = {p: rc.band_pct(p) for p in METAL_AM_PROCESSES}
     ded_band = bands[PT.DED]
     assert bands[PT.WAAM] == ded_band
     for p in (PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET):
         assert ded_band >= bands[p], f"DED band {ded_band} should be widest vs {p.name}"
     assert ded_band > bands[PT.DMLS]
+    ded = cost_breakdown(PT.DED, d, mat, "titanium", 100, rc, "US")
+    assert next(x for x in ded.drivers if x.name == "machine_cost").error_band_pct == ded_band
 
 
 def test_powder_price_not_silently_inflated():

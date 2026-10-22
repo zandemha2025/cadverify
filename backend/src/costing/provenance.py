@@ -76,7 +76,7 @@ class CostEstimate:
     variable_cost_usd: float        # per-unit costs with asymptotic full-lot setup allocation
     drivers: list[Driver]           # every line item, each tagged
     line_items: dict                # {"amortized_fixed":.., "material":.., "machine":.., "labor":..}
-    est_error_band_pct: float       # rolled-up band (dominant cost line)
+    est_error_band_pct: float       # ± band: root-sum-square of the lines' own bands (band_basis says how)
     dfm_ready: bool = True          # engine DFM verdict != "fail"
     dfm_verdict: str = "pass"       # engine verdict: pass | issues | fail
     dfm_score: float = 1.0
@@ -98,6 +98,8 @@ class CostEstimate:
     # at any quantity is the model's own (src.costing.quantity_model). None on
     # estimates built without it.
     qty_model: Optional[dict] = None
+    # ce-02: how est_error_band_pct was rolled up from the lines' own bands, in words.
+    band_basis: Optional[str] = None
 
     def assert_sums(self, tol: float = 0.01) -> None:
         """Hard invariant (gate G3): unit cost == sum of line items, or it is a bug."""
