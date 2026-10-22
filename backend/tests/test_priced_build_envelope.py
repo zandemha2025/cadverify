@@ -136,7 +136,8 @@ def test_body_diagonal_bar_fit_uses_the_same_height_in_dfm_inventory_and_price()
     envelope = (250, 250, 250)
     assert fitting_box_dimensions((12, 12, 400), envelope) == pytest.approx(oracle)
     assert fitting_box_dimensions((12, 12, 400), (200, 200, 200)) is None
-    rates = build_rate_card()
+    # The price nests on the same 250 mm cube the DFM check and the machine use.
+    rates = build_rate_card({"build_env_mm.FDM": envelope})
     material = select_material(PT.FDM, "polymer", rates)
     machine = MachineCap(process="fdm", name="Body diagonal fixture", max_workpiece_kg=5,
                          materials=("polymer",), hourly_rate_usd=10,

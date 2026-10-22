@@ -157,7 +157,7 @@ def test_bigger_than_the_common_size_is_a_warning_and_bigger_than_every_machine_
     big = fdm((400, 400, 400))
     issue = next(i for i in big.issues if i.code == "EXCEEDS_BUILD_VOLUME")
     assert big.verdict != "fail" and issue.severity.value == "warning"
-    assert "250 x 250 x 250mm build size" in issue.message
+    assert "300 x 300 x 350mm build size" in issue.message
     assert "Stratasys F900" in issue.message or "BigRep ONE" in issue.message
     huge = fdm((2000, 1200, 1100))
     assert huge.verdict == "fail"

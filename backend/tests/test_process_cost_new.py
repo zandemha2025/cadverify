@@ -200,8 +200,10 @@ _POLY = dict(name="PA12 (Nylon 12)", density=1.01, cost_per_kg=60.0)
 
 # process -> (material spec, material_class, expected unit_cost, expected line_items)
 GOLDEN = {
-    PT.FDM: (_POLY, "polymer", 25.0123,
-             {"amortized_fixed": 0.4375, "material": 1.9998, "machine": 15.4, "labor": 7.175}),
+    # FDM updated for the shared 300 x 300 x 350 mm build size (src/profiles/envelopes.py):
+    # the plate holds more parts, so per-build setup and the Z climb spread further.
+    PT.FDM: (_POLY, "polymer", 24.7332,
+             {"amortized_fixed": 0.35, "material": 1.9998, "machine": 15.2667, "labor": 7.1167}),
     PT.SLA: (_POLY, "polymer", 56.9677,
              {"amortized_fixed": 1.575, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
     PT.DLP: (_POLY, "polymer", 14.0563,

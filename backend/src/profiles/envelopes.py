@@ -13,7 +13,10 @@ from __future__ import annotations
 from src.analysis.models import ProcessType as PT
 
 COMMON_ENVELOPE_MM: dict[PT, tuple[float, float, float]] = {
-    PT.FDM: (250, 250, 250),
+    # A mid-format printer (e.g. Prusa XL 360 x 360 x 360, Creality K2 Plus 350 x 350 x 350).
+    # The FDM check used it before this table, and the trap corpus is built on it: a 299 mm block
+    # fits, a 300.1 x 290 x 300 part fits turned. The price nests on it too.
+    PT.FDM: (300, 300, 350),
     PT.SLA: (145, 145, 185),
     PT.DLP: (192, 120, 245),
     PT.SLS: (340, 340, 600),
