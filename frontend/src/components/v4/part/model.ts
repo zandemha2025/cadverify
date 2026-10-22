@@ -13,7 +13,7 @@ import type { OwnedMachine } from "@/lib/verify/machine-api";
 import type { FitFailure, PerRouteFit } from "@/lib/verify/verification";
 import { gapText, readVerification } from "../../../lib/verify/verification.ts";
 import { onceAndEach, unitCostAt } from "../../../lib/qty-model.ts";
-import { ROUNDING_KEY, footLines, lineDriver, roundingWords } from "../../../lib/cost-lines.ts";
+import { ROUNDING_KEY, foldedTooling, footLines, lineDriver, roundingWords } from "../../../lib/cost-lines.ts";
 import { MACHINE_KIND, processLabel } from "../process-names.ts";
 
 /* ── formatting ─────────────────────────────────────────────────────────── */
@@ -655,9 +655,15 @@ export function costLines(e: CostEstimate | null | undefined): CostLine[] {
   }
   const f = footLines(items, e.unit_cost_usd);
   const byName = new Map(e.drivers.map((d) => [d.name, d]));
+  const folded = foldedTooling(e);
   const lines = f.lines
     .map((l) => {
       const d = byName.get(lineDriver(l.key));
+      if (d && folded && l.key === "amortized_fixed") {
+        // Priced before tooling was its own line: this one holds the setup and the tool's share.
+        const tool = byName.get("tooling_cost");
+        return { ...driverLine(d, e.quantity, l.cents / 100), name: `Setup and tooling, shared over ${qtyWord(e.quantity)}`, how: `${d.source}; ${tool?.source ?? ""} ÷ ${qtyWord(e.quantity)}` };
+      }
       if (d) return driverLine(d, e.quantity, l.cents / 100);
       return { key: l.key, name: l.key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()), value: l.cents / 100, src: { kind: "typ" as const, label: "Typical" }, how: "", band: "no stated band" };
     })

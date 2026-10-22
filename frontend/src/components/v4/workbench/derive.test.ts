@@ -449,3 +449,12 @@ test("ce-20: a change at the edge of 100% keeps a decimal", () => {
   assert.equal(changeText(-99.97).text, "−99.97%");
   assert.equal(changeText(12).text, "+12%");
 });
+
+test("a record priced before tooling was its own line names its folded setup line (ce-04)", () => {
+  const e = { ...report().estimates[0], unit_cost_usd: 78.23,
+    line_items: { labor: 21.0, machine: 3.5229, material: 0.8557, amortized_fixed: 52.85 },
+    drivers: [{ name: "tooling_cost", value: 5250, unit: "$", provenance: "DEFAULT", source: "pattern", error_band_pct: 55 }] };
+  assert.equal(lineRows(e as never).find((r) => r.key === "amortized_fixed")!.label, "Setup and tooling, spread");
+  const now = { ...e, line_items: { labor: 21.0, machine: 3.5229, material: 0.8557, amortized_fixed: 0.35, tooling: 52.5 } };
+  assert.equal(lineRows(now as never).find((r) => r.key === "amortized_fixed")!.label, "Setup");
+});

@@ -25,7 +25,7 @@ import { deriveBreakeven, recommendAt, unitCostAt, type Breakeven, type ProcessC
 import { flattenIssues, issueProcesses } from "../../../lib/dfm-scope.ts";
 import { parseCalibration } from "../../../lib/cost-views.ts";
 import { openingQty } from "../part/model.ts";
-import { ROUNDING_KEY, footLines, roundingWords } from "../../../lib/cost-lines.ts";
+import { ROUNDING_KEY, footLines, foldedTooling, roundingWords } from "../../../lib/cost-lines.ts";
 import {
   assumptionName,
   assumptionValue,
@@ -691,7 +691,12 @@ export function methodsAt(report: CostReport, qty: number): MethodChoice[] {
  *  to the unit cost when they don't on their own (ce-01, lib/cost-lines.ts). */
 export function lineRows(e: CostEstimate): { key: string; label: string; v: number; rounding?: boolean }[] {
   const f = footLines(e.line_items, e.unit_cost_usd);
-  const rows: { key: string; label: string; v: number; rounding?: boolean }[] = f.lines.map((l) => ({ key: l.key, label: lineName(l.key), v: l.cents / 100 }));
+  const folded = foldedTooling(e);
+  const rows: { key: string; label: string; v: number; rounding?: boolean }[] = f.lines.map((l) => ({
+    key: l.key,
+    label: folded && l.key === "amortized_fixed" ? "Setup and tooling, spread" : lineName(l.key),
+    v: l.cents / 100,
+  }));
   if (f.roundingCents && f.isRounding) rows.push({ key: ROUNDING_KEY, label: "Rounding", v: f.roundingCents / 100, rounding: true });
   return rows;
 }

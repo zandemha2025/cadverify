@@ -31,6 +31,13 @@ export function lineDriver(key: string): string {
   return LINE_DRIVER[key] ?? `${key}_cost`;
 }
 
+/** A record priced before tooling became its own line (ce-04): its "amortized_fixed" holds the
+ *  setup and the tool's share together, and must be named so. */
+export function foldedTooling(e: { line_items?: Record<string, number> | null; drivers?: readonly { name: string }[] | null }): boolean {
+  const items = e.line_items ?? {};
+  return "amortized_fixed" in items && !("tooling" in items) && (e.drivers ?? []).some((d) => d.name === "tooling_cost");
+}
+
 export interface FootedLine {
   key: string;
   /** The line's own value as the engine keeps it (four decimals). */

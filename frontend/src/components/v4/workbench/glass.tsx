@@ -110,6 +110,8 @@ function bandSub(conf: CostEstimate["confidence"] | null): string {
     const of10 = Math.round(conf.level * 10);
     return `${of10} in 10 of ${conf.n_samples} real job${conf.n_samples === 1 ? "" : "s"} fell inside it${conf.validated ? "" : " · stand-in records, not validated"}`;
   }
+  // A record priced before ce-02 carries the process family's flat band: say that, not "rolled up".
+  if (!/root-sum-square/.test(conf.basis ?? "")) return "The process family’s stated band · assumption-based, not checked against real jobs";
   return "Rolled up from the line bands · assumption-based, not checked against real jobs";
 }
 

@@ -10,7 +10,7 @@
  */
 import type { CostDecisionDetail, CostDecisionSummary, CostEstimate, CostReport } from "@/lib/api";
 import { OUTCOMES, VERDICT, materialClass, money, num, way, wayLower, type OutcomeKey, type Tone } from "./words.ts";
-import { ROUNDING_KEY, footLines, lineDriver, roundingWords } from "../../../lib/cost-lines.ts";
+import { ROUNDING_KEY, foldedTooling, footLines, lineDriver, roundingWords } from "../../../lib/cost-lines.ts";
 
 /* ── reading the result ─────────────────────────────────────────────────── */
 
@@ -390,6 +390,7 @@ export function costLines(e: CostEstimate | null | undefined): CostLine[] {
   const byName = new Map((e.drivers ?? []).map((d) => [d.name, d]));
   const out: CostLine[] = f.lines.map((l) => {
     const d = byName.get(lineDriver(l.key));
+    if (d && l.key === "amortized_fixed" && foldedTooling(e)) return { ...asLine(d, l.cents / 100), label: "Setup and tooling" };
     return d ? asLine(d, l.cents / 100) : { key: l.key, label: driverLabel(l.key), usd: l.cents / 100, src: "typ", srcLabel: "Typical", source: "" };
   });
   if (f.roundingCents && f.isRounding) out.push({ key: ROUNDING_KEY, label: "Rounding", usd: f.roundingCents / 100, src: "typ", srcLabel: "Arithmetic", source: roundingWords(f) });
