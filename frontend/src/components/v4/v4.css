@@ -273,5 +273,9 @@
 /* A page head with no right sheet spans the width (desktop only; phones already span it). */
 @media (min-width:901px){.ob .pagehead.wide{right:24px}}
 
+/* Desktop: Content starts under the page head as it is drawn (ui.tsx measures it into --head-end), so a
+   head that wraps never covers the first line of content; never above the page's own offset. */
+@media (min-width:901px){.ob .content[data-under-head]{top:max(var(--content-top,132px),var(--head-end,0px))}}
+
 /* Keyboard hints (↑ ↓ move, ↵ open, esc) only on screens with a keyboard and a pointer (buyer-16). */
 @media (hover:none) and (pointer:coarse){.kb-only{display:none !important}}

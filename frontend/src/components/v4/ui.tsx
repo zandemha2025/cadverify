@@ -8,6 +8,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { headEnd } from "./page-head";
 
 type Tone = "ok" | "warn" | "bad" | "unk";
 
@@ -116,9 +117,46 @@ export function PageHead({
 }
 
 /** The scrolling area under a PageHead. `full` spans the width; otherwise a right sheet owns the last 500px. */
+/**
+ * Keeps a page's content under its page head as the head is drawn (desktop):
+ * the content sits at a fixed offset, and a head that wraps would run over its
+ * first line. Measures the page head of the same page (World, the Account
+ * frame and every area's wrapper alike) and sets `--head-end` on the content;
+ * v4.css applies it on desktop only (phones flow the head and the content).
+ */
+function useUnderHead(ref: React.RefObject<HTMLDivElement | null>) {
+  const watched = React.useRef<{ head: HTMLElement; ro: ResizeObserver } | null>(null);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const head = el.closest(".world")?.querySelector<HTMLElement>(".pagehead") ?? null;
+    if (watched.current?.head === head) return;
+    watched.current?.ro.disconnect();
+    watched.current = null;
+    if (!head) {
+      el.style.removeProperty("--head-end");
+      return;
+    }
+    const place = () => el.style.setProperty("--head-end", `${headEnd(head.offsetTop, head.offsetHeight)}px`);
+    const ro = new ResizeObserver(place);
+    ro.observe(head);
+    place();
+    watched.current = { head, ro };
+  });
+  React.useEffect(
+    () => () => {
+      watched.current?.ro.disconnect();
+      watched.current = null;
+    },
+    [],
+  );
+}
+
 export function Content({ children, full, top }: { children: React.ReactNode; full?: boolean; top?: number }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  useUnderHead(ref);
   return (
-    <div className={cx("content", full && "full")} style={top != null ? { top } : undefined}>
+    <div ref={ref} className={cx("content", full && "full")} data-under-head="" style={top != null ? ({ "--content-top": `${top}px` } as React.CSSProperties) : undefined}>
       {children}
     </div>
   );
