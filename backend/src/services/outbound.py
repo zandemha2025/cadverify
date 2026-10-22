@@ -136,6 +136,7 @@ _CLAUSES = (
 _PRIVATE_WORDS = re.compile(
     r"\bown(?:s|ed)?\b|in[- ]house|marginal|calibrat|\bactuals\b|your actual|\bsunk\b"
     r"|fitted machine|declared envelope|envelope of '|machine '|\[shop:|\bshop '"
+    r"|work area declared|declared for '|running[- ]cost rate|already paid for"
     r"|your (?:machine|shop|building|printer|rate|queue)"
     r"|×\s?\d+(?:\.\d+)? (?:markup|overhead)\b|÷\s?\d+(?:\.\d+)? utilization",
     re.I,
@@ -147,6 +148,10 @@ ENGINE_PHRASES = (
     "slicer-calibrated",
     "calibrated against PrusaSlicer",
 )
+# How the engine names a machine of the shop's in a price line, old and new
+# wording ("fitted machine 'X'", "machine 'X', at its declared rate", "work
+# area declared for 'X'", "USER-declared envelope of 'X'").
+_MACHINE_MARKS = ("fitted machine", "machine '", "declared for '", "envelope of '")
 _RATE_FIGURE = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)\s?/\s?(?:hr|h|hour|kg)\b", re.I)
 
 
@@ -363,8 +368,12 @@ def _priced_in_house(est: dict, in_house_routes: set) -> bool:
     if isinstance(cap, dict) and (cap.get("in_house") or cap.get("machine")):
         return True
     for d in est.get("drivers") or []:
-        if isinstance(d, dict) and (d.get("name") == "owned_in_house"
-                                    or "fitted machine" in str(d.get("source") or "")):
+        if not isinstance(d, dict):
+            continue
+        source = str(d.get("source") or "")
+        # A machine of the shop's named in the price, or its declared work area.
+        if d.get("name") == "owned_in_house" or any(
+                mark in source for mark in _MACHINE_MARKS):
             return True
     return False
 

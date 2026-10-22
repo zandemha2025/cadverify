@@ -358,7 +358,10 @@ async def test_rfq_package_names_the_route_bought_outside(shop_result, monkeypat
     line = next(csv.DictReader(io.StringIO(files["line-items.csv"].decode())))
     assert (line["requested_process"], line["requested_quantity"]) == ("mjf", "100")
     report = next(b for n, b in files.items() if n.endswith("/should-cost-report.pdf")).decode()
-    assert "Requested:</strong> mjf / PA12 (Nylon 12) / quantity 100" in report
+    # The report names the process in plain words (the shared process names).
+    from src.analysis.process_names import process_label
+
+    assert f"Requested:</strong> {process_label('mjf')} / PA12 (Nylon 12) / quantity 100" in report
     for name, body in files.items():
         assert_nothing_private(body, name)
 
