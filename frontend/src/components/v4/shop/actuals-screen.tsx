@@ -349,7 +349,7 @@ function LogJob({
         <label className="field">
           Method
           <select aria-label="Method" value={f.process} onChange={(e) => set("process", e.target.value)} {...inv("process")}>
-            <option value="">Pick a method</option>
+            <option value="">Pick a process</option>
             {owned.length ? (
               <optgroup label="Your machines">
                 {owned.map((p) => (

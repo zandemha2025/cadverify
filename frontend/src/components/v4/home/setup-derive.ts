@@ -79,19 +79,19 @@ export function setupChecklist(i: SetupInput): Step[] {
     steps.push({ key: "programs", title: "Programs and yearly volume", detail, chip: i.programs.programs > 0 ? "Done" : "Optional", tone: i.programs.programs > 0 ? "done" : "unk", go: { label: "Open programs", href: R.programs } });
   }
 
-  if (i.records == null) steps.push({ key: "actuals", title: "Real costs", detail: "Needs records", chip: "Unknown", tone: f.records ? "bad" : "unk" });
-  else if (!hasRecord) steps.push({ key: "actuals", title: "Real costs", detail: "After your first checked part", chip: "Locked", tone: "lock" });
-  else if (i.actuals == null) steps.push({ key: "actuals", title: "Real costs", detail: f.actuals ? "Real costs not loaded" : "Checking real costs", chip: "Unknown", tone: f.actuals ? "bad" : "unk" });
+  if (i.records == null) steps.push({ key: "actuals", title: "Actual costs", detail: "Needs records", chip: "Unknown", tone: f.records ? "bad" : "unk" });
+  else if (!hasRecord) steps.push({ key: "actuals", title: "Actual costs", detail: "After your first checked part", chip: "Locked", tone: "lock" });
+  else if (i.actuals == null) steps.push({ key: "actuals", title: "Actual costs", detail: f.actuals ? "Actual costs not loaded" : "Checking actual costs", chip: "Unknown", tone: f.actuals ? "bad" : "unk" });
   else {
     const n = i.actuals;
     steps.push({
       key: "actuals",
-      title: "Real costs",
+      title: "Actual costs",
       detail: `${n} logged · recalibration needs ${RECALIBRATE_MIN} · measured range needs ${HELD_OUT_MIN} held out per method`,
       sub: "Logging works on every plan. Recalibration is pilot only.",
       chip: n >= RECALIBRATE_MIN ? "Done" : n > 0 ? "Partly" : "Optional",
       tone: n >= RECALIBRATE_MIN ? "done" : n > 0 ? "part" : "unk",
-      go: { label: "Add real costs", href: R.actuals },
+      go: { label: "Add actual costs", href: R.actuals },
     });
   }
 

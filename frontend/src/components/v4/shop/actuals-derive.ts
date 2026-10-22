@@ -1,5 +1,5 @@
 /**
- * Pure helpers for Real costs (board S2): the recalibration floors, the
+ * Pure helpers for Actual costs (board S2): the recalibration floors, the
  * per-method calibration rows, the "Log a job" form, and the range shown for
  * one part. Floors mirror the backend: groundtruth_service.MIN_REAL_RECORDS and
  * costing/groundtruth.MIN_RESIDUALS (a test reads both from the Python source).
@@ -146,7 +146,7 @@ function hours(v: string, label: string, errors: JobErrors, key: keyof JobForm):
 export function parseJob(f: JobForm): { ok: true; body: GroundTruthIn } | { ok: false; errors: JobErrors } {
   const errors: JobErrors = {};
   if (!f.part.trim()) errors.part = "Pick a part.";
-  if (!f.process) errors.process = "Pick a method.";
+  if (!f.process) errors.process = "Pick a process.";
   const q = f.quantity.trim();
   if (!/^\d+$/.test(q) || Number(q) < 1) errors.quantity = "Whole number, 1 or more.";
   const c = f.cost.trim().replace(/^\$/, "");

@@ -33,7 +33,7 @@ export const PILOT_INCLUDES = [
   "Batch runs",
   "Assemblies",
   "Photo to 3D",
-  "Recalibration from real costs",
+  "Recalibration from actual costs",
 ];
 
 /** Where the pilot is requested and planned (public site pages). */

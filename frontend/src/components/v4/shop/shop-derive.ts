@@ -1,7 +1,7 @@
 /**
  * Pure helpers for the Your shop screens (boards O9, S1, S2, S3): method names,
  * machine status and envelope, the work-area drawing, the rate card in effect,
- * shop operations, and the record/provenance counts the Rates and Real costs
+ * shop operations, and the record/provenance counts the Rates and Actual costs
  * pages show. No fetching here; every number comes from the caller's API data.
  */
 import { processLabel } from "../process-names.ts";

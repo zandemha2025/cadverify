@@ -142,4 +142,4 @@ export function PilotPlanCard({ includes, note = "Pro adds checks only. Pilot to
 }
 
 /** Tools that still need the pilot plan (backend require_paid_access). Fixes, repair, Fit in assembly and Design Studio are on every plan. */
-export const PILOT_INCLUDES = ["Photo to 3D", "Batch runs", "Assemblies", "Recalibration from real costs"];
+export const PILOT_INCLUDES = ["Photo to 3D", "Batch runs", "Assemblies", "Recalibration from actual costs"];

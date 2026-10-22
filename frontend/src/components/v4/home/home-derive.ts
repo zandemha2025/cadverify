@@ -450,7 +450,7 @@ export function setupSteps(input: HomeInput, failed: { records?: boolean; machin
       meta: `${input.actuals} logged`,
       state: input.actuals > 0 ? "done" : "optional",
       pct: input.actuals > 0 ? 100 : 0,
-      act: { label: input.actuals > 0 ? "Real costs" : "Log a job", href: R.actuals },
+      act: { label: input.actuals > 0 ? "Actual costs" : "Log a job", href: R.actuals },
     };
 
   return [check, machines, programs, actuals];

@@ -431,7 +431,7 @@ export function DecideSheet() {
               </span>
             </div>
             <div className="gh" style={{ marginTop: 8 }}>
-              <span>Real costs</span>
+              <span>Actual costs</span>
               <span />
             </div>
             <div className="note" style={{ marginTop: 2 }}>

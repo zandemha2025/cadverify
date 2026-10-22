@@ -1,4 +1,4 @@
-// Rates and Real costs read their saved records in ONE request per screen load.
+// Rates and Actual costs read their saved records in ONE request per screen load.
 // They used to read up to 16 records one by one, against a 60/hour per-route
 // limit, so browsing between the two screens hit it within minutes.
 import { test } from "node:test";
@@ -42,7 +42,7 @@ test("the screens' records come from one latest-per-part request", async () => {
   assert.equal(body.details.length, 1);
 });
 
-test("Rates, Real costs, Changes and Machines make no per-record reads on load", () => {
+test("Rates, Actual costs, Changes and Machines make no per-record reads on load", () => {
   for (const name of ["rates-screen.tsx", "actuals-screen.tsx", "changes-screen.tsx", "machines-screen.tsx"]) {
     const src = readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
     assert.match(src, /usePartRecords\((12|6)\)/, name);

@@ -427,7 +427,7 @@ function CsvSheet({ connector, onRun, toast }: { connector: IntegrationConnector
           </div>
           <p style={{ margin: "0 12px 8px", color: "var(--ink2)", fontSize: 13.5 }}>
             {connector.description}
-            {realCosts ? " Imported as real costs in Your shop." : " Parts appear in Parts."}
+            {realCosts ? " Imported as actual costs in Your shop." : " Parts appear in Parts."}
           </p>
           <div style={{ display: "flex", gap: 8, padding: "4px 12px 10px", flexWrap: "wrap" }}>
             {connector.template_endpoint ? (
@@ -467,7 +467,7 @@ function CsvSheet({ connector, onRun, toast }: { connector: IntegrationConnector
             </span>
           </div>
           <p style={{ margin: "10px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
-            {mode === "dry_run" ? "Dry run saves nothing." : realCosts ? "Saves matched records as real costs. Run a dry run first." : "Saves matched parts. Run a dry run first."}
+            {mode === "dry_run" ? "Dry run saves nothing." : realCosts ? "Saves matched records as actual costs. Run a dry run first." : "Saves matched parts. Run a dry run first."}
           </p>
           <div style={{ padding: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button className="btn ink" type="button" aria-disabled={!file || running} onClick={() => void run()}>
@@ -479,7 +479,7 @@ function CsvSheet({ connector, onRun, toast }: { connector: IntegrationConnector
             <div className="confirm" role="alertdialog" aria-label="Import" style={{ margin: "0 12px" }}>
               <b>Import {file.name}?</b>
               <span>
-                {realCosts ? "Matched records are saved as real costs." : "Matched parts are saved and existing ones updated."} Run a dry run first to see errors by line.
+                {realCosts ? "Matched records are saved as actual costs." : "Matched parts are saved and existing ones updated."} Run a dry run first to see errors by line.
               </span>
               <span style={{ display: "flex", gap: 8 }}>
                 <button className="btn ink sm" type="button" onClick={() => void run()} autoFocus>

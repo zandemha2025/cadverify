@@ -1,4 +1,4 @@
-/* Your shop: Machines and printers (O9), Rates (S1), Real costs (S2), Changes to
+/* Your shop: Machines and printers (O9), Rates (S1), Actual costs (S2), Changes to
    review (S3). Board-local classes, every selector scoped under .ob .shp so they
    can't leak into, or pick up, another area's same-named board classes. */
 

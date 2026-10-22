@@ -2,7 +2,7 @@
  * Same-origin calls the Your shop screens need beyond the existing helpers in
  * lib/verify (machine-api, rate-api, calibration-api): shop operations, one
  * logged job, rate-card drafts sent for review, and the saved records the Rates
- * and Real costs pages read their numbers from.
+ * and Actual costs pages read their numbers from.
  */
 import { API_BASE } from "@/lib/api-base";
 
@@ -174,7 +174,7 @@ export function getRecord(id: string): Promise<RecordDetail> {
 /**
  * The newest saved record per part, newest first, in ONE request
  * (GET /cost-decisions/latest-per-part): a summary for every part, and for the
- * newest `detailLimit` parts the fields Rates and Real costs read (assumptions,
+ * newest `detailLimit` parts the fields Rates and Actual costs read (assumptions,
  * material class, the decision's pick, the estimates at `headline_qty`). One
  * call per screen load instead of a per-record read for each part.
  */

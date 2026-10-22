@@ -476,7 +476,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
               <span>Range at {num(q)}</span>
               <b className="num">
                 {range.text}
-                {range.pct != null ? ` · ±${range.pct}%` : ""}, {range.validated ? `from ${range.n} real costs` : "no real costs yet"}
+                {range.pct != null ? ` · ±${range.pct}%` : ""}, {range.validated ? `from ${range.n} actual costs` : "no real costs yet"}
               </b>
             </>
           ) : null}

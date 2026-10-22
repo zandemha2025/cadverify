@@ -189,7 +189,7 @@ export function PilotGate({
           <span>Imports and BOM preview</span>
           <span>Fit in assembly</span>
           <span>Assemblies and file repair</span>
-          <span>Recalibration from real costs</span>
+          <span>Recalibration from actual costs</span>
         </div>
         <div style={{ display: "flex", gap: 8, padding: 12, flexWrap: "wrap" }}>
           <Link className="btn ink" href="/pilot#pilot">

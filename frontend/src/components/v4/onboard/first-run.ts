@@ -645,9 +645,9 @@ export function firstSteps(i: FirstStepsInput): FirstStep[] {
       go: { label: "Open programs", href: i.hrefs.programs },
     });
 
-  if (!has) steps.push({ key: "actuals", title: "Real costs", detail: "After your first checked part", chip: "Locked", tone: "lock" });
-  else if (i.actuals == null) steps.push({ key: "actuals", title: "Real costs", detail: f.actuals ? "Real costs didn’t load" : "Checking real costs", chip: "Unknown", tone: f.actuals ? "bad" : "unk" });
-  else steps.push({ key: "actuals", title: "Real costs", detail: `${i.actuals} logged · a method’s range turns measured after 3 held-out jobs`, chip: i.actuals >= 8 ? "Done" : i.actuals > 0 ? "Partly" : "Optional", tone: i.actuals >= 8 ? "done" : i.actuals > 0 ? "part" : "unk", go: { label: "Add real costs", href: i.hrefs.actuals } });
+  if (!has) steps.push({ key: "actuals", title: "Actual costs", detail: "After your first checked part", chip: "Locked", tone: "lock" });
+  else if (i.actuals == null) steps.push({ key: "actuals", title: "Actual costs", detail: f.actuals ? "Actual costs didn’t load" : "Checking actual costs", chip: "Unknown", tone: f.actuals ? "bad" : "unk" });
+  else steps.push({ key: "actuals", title: "Actual costs", detail: `${i.actuals} logged · a process’s range turns measured after 3 held-out jobs`, chip: i.actuals >= 8 ? "Done" : i.actuals > 0 ? "Partly" : "Optional", tone: i.actuals >= 8 ? "done" : i.actuals > 0 ? "part" : "unk", go: { label: "Add real costs", href: i.hrefs.actuals } });
 
   if (i.members == null) steps.push({ key: "team", title: "Team", detail: f.members ? "Team didn’t load" : "Checking team", chip: "Optional", tone: "unk", go: { label: "Invite", href: i.hrefs.team } });
   else steps.push({ key: "team", title: "Team", detail: i.members <= 1 ? `1 member · you${nm ? " · invited people get these machines and rates" : ""}` : `${pl(i.members, "member")}`, chip: i.members > 1 ? "Done" : "Optional", tone: i.members > 1 ? "done" : "unk", go: { label: "Invite", href: i.hrefs.team } });

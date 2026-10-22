@@ -316,7 +316,7 @@ export function PhotoScreen() {
                 <b>Reconstruction is part of the pilot plan</b>
                 <span>Your plan covers single-part checks. No photo has been uploaded.</span>
               </div>
-              <PilotPlanCard includes={["Photo to 3D", "Batch runs", "Assemblies", "Recalibration from real costs"]} />
+              <PilotPlanCard includes={["Photo to 3D", "Batch runs", "Assemblies", "Recalibration from actual costs"]} />
             </>
           ) : phase === "upload" ? (
             <div className="swap">
