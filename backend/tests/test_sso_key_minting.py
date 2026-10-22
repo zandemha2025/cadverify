@@ -117,10 +117,17 @@ def test_google_callback_mints_when_no_active_key():
         "src.auth.oauth.get_user_session_version",
         new_callable=AsyncMock,
         return_value=0,
-    ):
+    ), patch(
+        "src.services.audit_service.log_action", new_callable=AsyncMock
+    ) as audit:
         mock_oauth.google.authorize_access_token = AsyncMock(return_value=_TOKEN)
         client = TestClient(app, follow_redirects=False)
         resp = client.get("/auth/google/callback")
+    # The sign-in row names where it came from, never Google's tokens.
+    audit.assert_awaited_once_with(
+        user_id=5, user_email="user@example.com", action="auth.login", resource_type="session",
+        detail={"auth_provider": "google"}, ip_address="testclient", user_agent="testclient",
+    )
 
     assert resp.status_code == 303
     assert "new=1" in resp.headers["location"]
@@ -145,10 +152,17 @@ def test_google_callback_skips_when_key_exists():
         "src.auth.oauth.get_user_session_version",
         new_callable=AsyncMock,
         return_value=0,
-    ):
+    ), patch(
+        "src.services.audit_service.log_action", new_callable=AsyncMock
+    ) as audit:
         mock_oauth.google.authorize_access_token = AsyncMock(return_value=_TOKEN)
         client = TestClient(app, follow_redirects=False)
         resp = client.get("/auth/google/callback")
+    # The sign-in row names where it came from, never Google's tokens.
+    audit.assert_awaited_once_with(
+        user_id=5, user_email="user@example.com", action="auth.login", resource_type="session",
+        detail={"auth_provider": "google"}, ip_address="testclient", user_agent="testclient",
+    )
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "/settings/developer"
@@ -204,6 +218,9 @@ def test_magic_verify_mints_when_no_active_key():
         provider="magic_link",
         key_name="Default",
         default_role="analyst",
+        # Where the sign-in came from (TestClient's peer and browser).
+        ip_address="testclient",
+        user_agent="testclient",
     )
 
 
@@ -236,4 +253,7 @@ def test_magic_verify_skips_when_key_exists():
         provider="magic_link",
         key_name="Default",
         default_role="analyst",
+        # Where the sign-in came from (TestClient's peer and browser).
+        ip_address="testclient",
+        user_agent="testclient",
     )

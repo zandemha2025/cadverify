@@ -61,3 +61,11 @@ export function requestClientIp(
       return null;
   }
 }
+
+/** The browser's User-Agent, forwarded on auth requests so a sign-in's audit
+ *  row names the person's browser rather than this server's fetch client.
+ *  Informational only (never authority); at most 500 characters. */
+export function requestUserAgent(req: Pick<Request, "headers">): Record<string, string> {
+  const ua = (req.headers.get("user-agent") || "").trim().slice(0, 500);
+  return ua ? { "user-agent": ua } : {};
+}

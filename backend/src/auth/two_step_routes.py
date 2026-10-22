@@ -35,7 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import two_step as ts
-from src.auth.client_ip import client_ip, require_auth_proxy_if_enabled
+from src.auth.client_ip import client_ip, client_user_agent, require_auth_proxy_if_enabled
 from src.auth.dashboard_session import require_dashboard_session, sign
 from src.auth.rate_limit import limiter
 from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role
@@ -126,7 +126,7 @@ async def _audit(session: AsyncSession, request: Request | None, user_id: int, a
         user_email=email,
         org_id=org_id,
         ip_address=client_ip(request) if request is not None else None,
-        user_agent=((request.headers.get("user-agent") or "")[:500] or None) if request is not None else None,
+        user_agent=client_user_agent(request),
     )
 
 

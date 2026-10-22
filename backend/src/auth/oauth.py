@@ -119,6 +119,23 @@ async def google_callback(request: Request):
         )
         return resp
 
+    # The sign-in row: where it came from (the browser comes back from Google
+    # straight to the API, so the verified proxy IP or else the direct peer) and
+    # the browser. Never Google's tokens or subject. A sign-in that owes a
+    # two-step code is recorded when the code is checked (two_step_routes).
+    from src.auth.client_ip import client_ip, client_user_agent
+    from src.services.audit_service import log_action
+
+    await log_action(
+        user_id=user_id,
+        user_email=email_norm,
+        action="auth.login",
+        resource_type="session",
+        detail={"auth_provider": "google"},
+        ip_address=client_ip(request),
+        user_agent=client_user_agent(request),
+    )
+
     # Mint a key only when the account has none active (S3). A returning user
     # keeps their existing key(s) — logging in must not spawn a fresh key nor
     # attempt a one-time reveal of a secret we can no longer show.

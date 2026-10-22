@@ -414,8 +414,13 @@ async def provision_authenticated_login(
     group_attributes: dict[str, list[str]] | None = None,
     group_detail_key: str | None = None,
     login_detail: dict[str, Any] | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> ProvisionedLogin:
-    """Provision and audit one successful authentication in one commit."""
+    """Provision and audit one successful authentication in one commit.
+
+    ``ip_address`` / ``user_agent`` (the verified proxy IP and the browser, from
+    ``client_ip`` / ``client_user_agent``) go on the ``auth.login`` row."""
     async with _session()() as session:
         try:
             if identity is not None:
@@ -478,6 +483,8 @@ async def provision_authenticated_login(
                 detail=detail,
                 user_email=stored_email,
                 org_id=effective_org_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
             )
             version_row = (
                 await session.execute(

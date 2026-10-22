@@ -3,7 +3,7 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 
-import { requestClientIp } from "./auth-proxy-ip";
+import { requestClientIp, requestUserAgent } from "./auth-proxy-ip";
 
 const CLIENT_IP_HEADER = "x-cadverify-client-ip";
 const TIMESTAMP_HEADER = "x-cadverify-proxy-timestamp";
@@ -37,10 +37,13 @@ export function signedAuthProxyHeaders(
     req,
     process.env.AUTH_PROXY_CLIENT_IP_SOURCE || "auto",
   );
+  // The browser's User-Agent goes with every auth request, signed or not: the
+  // sign-in audit row names the browser (never authority).
+  const browser = requestUserAgent(req);
   // Local development intentionally works without the production-only shared
   // secret. Production startup and promotion gates require it and prove the
   // signed handshake end to end.
-  if (!secret || !ip) return {};
+  if (!secret || !ip) return browser;
   if (!backendPath.startsWith("/")) {
     throw new Error("Auth proxy backend path must be absolute");
   }
@@ -50,6 +53,7 @@ export function signedAuthProxyHeaders(
     .update(payload)
     .digest("base64url");
   return {
+    ...browser,
     [CLIENT_IP_HEADER]: ip,
     [TIMESTAMP_HEADER]: timestamp,
     [SIGNATURE_HEADER]: signature,

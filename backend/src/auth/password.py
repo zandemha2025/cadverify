@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.client_ip import (
     client_ip,
+    client_user_agent,
     require_auth_proxy_if_enabled,
     require_verified_proxy,
 )
@@ -547,12 +548,18 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
 
     from src.services.audit_service import log_action
 
+    # Where the sign-in came from, as two-step completions record it: the
+    # verified proxy IP (else the direct peer) and the browser. Never the
+    # password or the session.
     await log_action(
         user_id=user_id,
         user_email=email,
         action="auth.login",
         resource_type="user",
         resource_id=str(user_id),
+        detail={"auth_provider": "password"},
+        ip_address=client_ip(request),
+        user_agent=client_user_agent(request),
     )
     return {
         "user": {"id": user_id, "email": email, "role": role},

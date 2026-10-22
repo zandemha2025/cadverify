@@ -33,7 +33,7 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from src.auth.client_ip import client_ip, require_auth_proxy_if_enabled
+from src.auth.client_ip import client_ip, client_user_agent, require_auth_proxy_if_enabled
 from src.auth.dashboard_session import session_cookie_domain, set_session_cookie, sign
 from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
@@ -280,8 +280,9 @@ def _dashboard_url(path: str) -> str:
     return f"{os.environ['DASHBOARD_ORIGIN'].rstrip('/')}{path}"
 
 
-async def _consume(token: str) -> MagicLogin:
-    """Atomically consume a token and provision its user/session once."""
+async def _consume(token: str, request: Request | None = None) -> MagicLogin:
+    """Atomically consume a token and provision its user/session once. The
+    sign-in row records where it came from (``request``), never the token."""
     email_norm = _verify(token)
     if email_norm is None:
         raise _err(400, "magic_link_invalid", "Magic link invalid or expired.")
@@ -314,6 +315,8 @@ async def _consume(token: str) -> MagicLogin:
             provider="magic_link",
             key_name="Default",
             default_role="analyst",
+            ip_address=client_ip(request) if request is not None else None,
+            user_agent=client_user_agent(request),
         )
         if login.key_token is None:
             return MagicLogin(
@@ -450,7 +453,7 @@ async def magic_exchange(
 ) -> dict:
     """Exchange a one-time token without putting a session in browser JS."""
     require_auth_proxy_if_enabled(request)
-    result = await _consume(body.token)
+    result = await _consume(body.token, request)
     response.headers["Cache-Control"] = "no-store"
     if result.challenge is not None:
         return {
@@ -486,6 +489,7 @@ async def _owes_two_step(token: str) -> bool:
 
 @router.get("/magic/verify")
 async def magic_verify(
+    request: Request,
     token: str = Query(..., min_length=32, max_length=4096),
 ):
     """Compatibility for pre-deploy ``?token=`` emails.
@@ -510,7 +514,7 @@ async def magic_verify(
             status_code=303,
         )
 
-    result = await _consume(token)
+    result = await _consume(token, request)
     resp = RedirectResponse(
         url=_dashboard_url(result.redirect), status_code=303
     )
