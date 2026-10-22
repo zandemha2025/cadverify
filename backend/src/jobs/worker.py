@@ -27,6 +27,8 @@ from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.design_tasks import run_design_generation_job
 from src.jobs.data_deletion_tasks import run_data_deletion, sweep_data_deletions
 from src.jobs.tasks import run_sam3d_job
+from src.jobs.stored_check_tasks import run_stored_check
+from src.services.stored_check_service import STORED_CHECK_JOB_TIMEOUT_SECONDS
 from src.config.production import assert_production_operations
 from src.services.customer_sync import sync_customer_accounts
 
@@ -131,6 +133,9 @@ class WorkerSettings:
         run_reconstruction_job,
         run_design_generation_job,
         run_data_deletion,
+        # A big file checked from its stored upload: its own ceiling, one try
+        # (a retry would re-download and re-parse the whole file).
+        func(run_stored_check, timeout=STORED_CHECK_JOB_TIMEOUT_SECONDS, max_tries=1),
     ]
     # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
     # Runs every 5 minutes and once at worker startup as a backstop.

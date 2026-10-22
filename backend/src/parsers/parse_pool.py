@@ -80,7 +80,13 @@ class _RungTimeout(Exception):
 
 def _budget_sec() -> float:
     """Total analysis budget to split across rungs (mirrors routes._analysis_
-    timeout_sec; the route's outer wait_for enforces the same total as a 504)."""
+    timeout_sec; the route's outer wait_for enforces the same total as a 504).
+    A big file checked on the worker carries its own (src.config.check_limits)."""
+    from src.config import check_limits
+
+    larger = check_limits.current()
+    if larger is not None:
+        return larger.budget_sec
     try:
         return max(0.1, float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60")))
     except ValueError:
@@ -91,7 +97,12 @@ def _rung_caps(budget: float, n_rungs: int) -> list[float]:
     """Per-rung wall-clock caps. rung 0 gets min(0.4*budget, 25s); the recovery
     rungs evenly share 0.5*budget. Sum < budget so the honest 400 (all rungs
     failed) beats the route's total-budget 504."""
-    rung0 = min(_RUNG0_FRACTION * budget, _RUNG0_CAP_MAX, budget)
+    # A big file's own budget (src.config.check_limits) lifts the fixed rung-0
+    # ceiling: a large assembly can need more than 25 s on its first rung.
+    from src.config import check_limits
+
+    cap_max = _RUNG0_CAP_MAX if check_limits.current() is None else max(_RUNG0_CAP_MAX, _RUNG0_FRACTION * budget)
+    rung0 = min(_RUNG0_FRACTION * budget, cap_max, budget)
     caps = [rung0]
     rest = n_rungs - 1
     if rest > 0:

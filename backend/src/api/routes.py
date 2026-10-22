@@ -75,7 +75,15 @@ _CHUNK = 1024 * 1024  # 1 MiB
 
 
 def _max_upload_bytes() -> int:
-    """Read limit lazily so tests can override via monkeypatch."""
+    """Read limit lazily so tests can override via monkeypatch.
+
+    A big file checked on the worker carries its own (src.config.check_limits).
+    """
+    from src.config import check_limits
+
+    larger = check_limits.current()
+    if larger is not None:
+        return larger.max_bytes
     try:
         mb = int(os.getenv("MAX_UPLOAD_MB", "100"))
     except ValueError:
@@ -84,7 +92,15 @@ def _max_upload_bytes() -> int:
 
 
 def _analysis_timeout_sec() -> float:
-    """Read ANALYSIS_TIMEOUT_SEC lazily so tests can override via monkeypatch."""
+    """Read ANALYSIS_TIMEOUT_SEC lazily so tests can override via monkeypatch.
+
+    A big file checked on the worker carries its own (src.config.check_limits).
+    """
+    from src.config import check_limits
+
+    larger = check_limits.current()
+    if larger is not None:
+        return larger.budget_sec
     try:
         return max(0.1, float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60")))
     except ValueError:

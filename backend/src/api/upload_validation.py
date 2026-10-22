@@ -24,7 +24,15 @@ def _positive_env_int(name: str, default: int) -> int:
 
 
 def _max_triangles() -> int:
-    """Read MAX_TRIANGLES lazily so tests can override via monkeypatch."""
+    """Read MAX_TRIANGLES lazily so tests can override via monkeypatch.
+
+    A big file checked on the worker carries its own (src.config.check_limits).
+    """
+    from src.config import check_limits
+
+    larger = check_limits.current()
+    if larger is not None:
+        return larger.max_triangles
     return _positive_env_int("MAX_TRIANGLES", 2_000_000)
 
 

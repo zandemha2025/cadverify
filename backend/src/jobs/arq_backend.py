@@ -26,6 +26,7 @@ _JOB_TYPE_TO_TASK: dict[str, str] = {
     "sam3d": "run_sam3d_job",
     "reconstruction": "run_reconstruction_job",
     "design_generation": "run_design_generation_job",
+    "stored_check": "run_stored_check",
 }
 
 
@@ -205,7 +206,7 @@ async def reconcile_queued_jobs(ctx: dict) -> dict[str, int]:
                 select(Job.ulid, Job.job_type)
                 .where(
                     Job.status == "queued",
-                    Job.job_type.in_(("sam3d", "reconstruction")),
+                    Job.job_type.in_(("sam3d", "reconstruction", "stored_check")),
                     Job.created_at <= cutoff,
                 )
                 .order_by(Job.created_at.asc())
