@@ -1118,7 +1118,23 @@ def check_wall_uniformity(
             fix_suggestion="Confirm the thickest section in the source CAD; a STEP export carries exact coordinates.",
         ))
     # The thin end of the ratio: proved readings, plus binary-STL readings whose
-    if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max_lower > 2.0 * t_min_upper + 3.0 * tolerance:
+    # hit sits too near a triangle edge to prove, taken at face value within
+    # coordinate rounding. Proofs fail far more often on a part far from the
+    # origin (larger float32 steps), so proved readings alone made this warning
+    # depend on where the part sits: moving a stepped shaft 1.2 m dropped it.
+    # This is a "may increase warping risk" warning, not a hard limit.
+    thin_end, thin_reading = t_min_upper, t_min
+    if not ctx.metadata.get("decimation", {}).get("succeeded"):
+        error = float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+        measured = np.isfinite(wt) & _wall_measured(ctx)
+        estimate = np.where(np.isfinite(upper), upper, wt + 4.0 * error + tolerance)
+        estimate = np.where(measured, estimate, np.inf)
+        if len(estimate) and np.isfinite(estimate.min()) and estimate.min() < thin_end:
+            index = int(np.argmin(estimate))
+            thin_end, thin_reading = float(estimate[index]), float(wt[index])
+    if (t_max > 0 and np.isfinite(thin_reading) and thin_reading > 0
+            and t_max_lower > 2.0 * thin_end + 3.0 * tolerance):
+        t_min = thin_reading
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
             measurement_unit="ratio",

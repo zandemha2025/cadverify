@@ -244,3 +244,27 @@ def test_a_turned_recheck_uses_that_orientation_for_the_pull_and_says_so():
     assert all("the file's +X" in i.message for i in undercut)
 
 
+# ── M16: moving or mirroring a part changes no finding ───────────────────────
+def test_mirroring_a_wedge_reads_the_same_walls():
+    wedge = trimesh.creation.extrude_polygon(
+        __import__("shapely.geometry", fromlist=["Polygon"]).Polygon([(0, 0), (30, 0), (30, 4), (0, 2)]), 20)
+    mirrored = wedge.copy()
+    mirrored.apply_transform(np.diag([-1.0, 1.0, 1.0, 1.0]))
+    a, b = _ctx(_stl(wedge)), _ctx(_stl(mirrored))
+    assert np.min(a.wall_thickness) == pytest.approx(np.min(b.wall_thickness), abs=1e-4)
+    for process in ("injection_molding", "waam", "fdm"):
+        assert _codes(a, process) == _codes(b, process), process
+
+
+def test_moving_a_stepped_shaft_keeps_its_uneven_walls_finding():
+    parts = [trimesh.creation.cylinder(radius=r, height=h, sections=256) for r, h in ((15, 30), (10, 40), (5, 20))]
+    z = 0.0
+    for p, (_r, h) in zip(parts, ((15, 30), (10, 40), (5, 20))):
+        p.apply_translation((0, 0, z + h / 2))
+        z += h
+    shaft = _union(*parts)
+    moved = shaft.copy()
+    moved.apply_translation((1234.5, -567.8, 250.0))
+    a, b = _ctx(_stl(shaft)), _ctx(_stl(moved))
+    for process in ("injection_molding", "die_casting", "sand_casting"):
+        assert ("NON_UNIFORM_WALLS" in _codes(a, process)) == ("NON_UNIFORM_WALLS" in _codes(b, process)), process

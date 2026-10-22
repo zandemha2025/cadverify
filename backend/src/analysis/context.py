@@ -1240,11 +1240,12 @@ def sheet_envelope_dimensions(outline, envelope) -> tuple[float, float]:
     return best
 
 
-def _wall_sample_points(mesh: trimesh.Trimesh) -> np.ndarray:
+def _wall_sample_points(mesh: trimesh.Trimesh, *, reversed_order: bool = False) -> np.ndarray:
     if mesh.metadata.get("coordinate_error"):
         # Symmetric CAD centroid rays often hit an export diagonal exactly.
         # A fixed interior barycentric point avoids that common ambiguous hit.
-        return np.einsum("ijk,j->ik", mesh.triangles, [1 / 2, 1 / 3, 1 / 6])
+        weights = [1 / 6, 1 / 3, 1 / 2] if reversed_order else [1 / 2, 1 / 3, 1 / 6]
+        return np.einsum("ijk,j->ik", mesh.triangles, weights)
     return np.asarray(mesh.triangles_center)
 
 
@@ -1312,7 +1313,26 @@ def _compute_wall_thickness(
     origins = centroids + normals * eps  # do not step past a thin opposite wall
     directions = -normals
     source_face_idx = np.arange(n, dtype=np.int64)
-    return _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx, upper_bounds=upper_bounds)
+    out = _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx, upper_bounds=upper_bounds)
+    if mesh.metadata.get("coordinate_error") and _fast_rays(mesh):
+        # The off-centre sample point follows the order of the triangle's
+        # vertices, and mirroring a part reverses that order: one point gave a
+        # mirrored 46-degree trap a 1.98 mm wall where the original read 2.95 mm.
+        # Measuring from the point and its reversed twin and keeping the
+        # thinner (proved first) reading gives a mirrored file the same walls.
+        twin = _wall_sample_points(mesh, reversed_order=True)
+        twin_upper = np.full(n, np.inf) if upper_bounds is not None else None
+        other = _cast_inward_rays_batched(mesh, twin + normals * eps, directions, eps, source_face_idx,
+                                          source_points=twin, upper_bounds=twin_upper)
+        if upper_bounds is None:
+            return np.minimum(out, other)
+        proved, twin_proved = np.isfinite(upper_bounds), np.isfinite(twin_upper)
+        take = np.where(proved | twin_proved,
+                        twin_proved & (~proved | (twin_upper < upper_bounds)),
+                        other < out)
+        out[take] = other[take]
+        upper_bounds[take] = twin_upper[take]
+    return out
 
 
 def _cast_inward_rays_batched(
