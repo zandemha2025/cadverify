@@ -74,7 +74,7 @@ export function SharedCost({ data }: { data: SupplierPart }) {
             ) : (
               <p className="sp-line">Not included with this link. Ask the buyer for it.</p>
             )}
-            {data.cost ? <CostEstimate cost={data.cost} /> : null}
+            {data.cost ? <CostEstimate cost={data.cost} quantity={data.quantity} /> : null}
           </div>
         </aside>
       </main>
@@ -83,8 +83,9 @@ export function SharedCost({ data }: { data: SupplierPart }) {
 }
 
 /** Our cost estimate, only when the buyer included it with the link. */
-function CostEstimate({ cost }: { cost: NonNullable<SupplierPart["cost"]> }) {
-  const qty = listQty(cost);
+function CostEstimate({ cost, quantity }: { cost: NonNullable<SupplierPart["cost"]>; quantity: number | null }) {
+  // At the quantity the supplier is asked for when it was priced; else where the record lists.
+  const qty = quantity != null && cost.quantities.includes(quantity) ? quantity : listQty(cost);
   const ways = wayRows(cost, qty);
   const range = pickRange(cost, qty);
   const cross = crossoverLine(cost);
