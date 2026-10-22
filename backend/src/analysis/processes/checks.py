@@ -151,7 +151,7 @@ def check_wall_thickness(
                     measurement_unit="mm",
                     severity=Severity.WARNING,
                     message=(
-                        f"{len(soft_faces)} faces ({pct:.1f}%) below {warn_below_mm}mm for "
+                        f"{len(soft_faces)} mesh triangles ({pct:.1f}%) below {warn_below_mm}mm for "
                         f"{process_phrase(process)}. Thinnest: {format_measurement(thinnest, warn_below_mm)}mm. "
                         f"{warn_note}".rstrip()
                     ),
@@ -174,7 +174,8 @@ def check_wall_thickness(
         measurement_unit="mm",
         severity=sev,
         message=(
-            f"{len(thin_faces)} faces ({pct:.1f}%) below {min_wall_mm}mm "
+            # Mesh triangles, not the faces a CAD tool shows (op-15): a flat plate's dozen faces are ~88,000 here.
+            f"{len(thin_faces)} mesh triangles ({pct:.1f}%) below {min_wall_mm}mm "
             f"min wall for {process_phrase(process)}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
         ),
         process=process,

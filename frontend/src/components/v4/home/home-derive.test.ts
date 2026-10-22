@@ -87,7 +87,7 @@ test("queue order and content come from real signals", () => {
   assert.deepEqual(q.map((i) => i.key), ["stale", "design", "capability", "out", "rates", "review", "actuals"]);
   const design = q.find((i) => i.key === "design")!;
   assert.equal(design.title, "shell.stl needs a design change");
-  assert.equal(design.short, "24 faces below 1.5 mm min wall · thinnest 0.5 mm");
+  assert.equal(design.short, "Walls down to 0.5 mm, under the 1.5 mm min wall for metal deposition (DED) (24 mesh triangles)");
   assert.equal(design.act.label, "See why, on the part");
   const review = q.find((i) => i.key === "review")!;
   assert.equal(review.title, "1 records not reviewed");
@@ -187,7 +187,13 @@ test("filter round-trips through the URL and rejects junk", () => {
 test("words", () => {
   assert.equal(wayName("cnc_turning"), "Turning");
   assert.equal(wayName("new_process"), "New process");
-  assert.equal(tidyReason("24 faces (100.0%) below 1.5mm min wall for ded. Thinnest: 0.5mm."), "24 faces below 1.5 mm min wall · thinnest 0.5 mm");
+  assert.equal(tidyReason("24 faces (100.0%) below 1.5mm min wall for ded. Thinnest: 0.5mm."), "Walls down to 0.5 mm, under the 1.5 mm min wall for metal deposition (DED) (24 mesh triangles)");
+  // op-15: the engine counts mesh triangles, not CAD faces; the thinnest wall leads, as the engine wrote it.
+  assert.equal(
+    tidyReason("88058 mesh triangles (97.0%) below 0.8mm min wall for 3-axis milling. Thinnest: 0.364mm."),
+    "Walls down to 0.364 mm, under the 0.8 mm min wall for 3-axis milling (88,058 mesh triangles)",
+  );
+  assert.equal(tidyReason("12 mesh triangles (3.1%) below 1.2mm for FDM printing. Thinnest: 0.7999mm. Thin walls may warp."), "Walls down to 0.7999 mm, under the 1.2 mm recommended for FDM printing (12 mesh triangles)");
   assert.equal(sizeText([20, 15.2, 6.04]), "20 × 15 × 6 mm");
   assert.equal(shortWhen("2026-10-17T05:00:00", new Date("2026-10-18T12:00:00")), "Oct 17");
 });

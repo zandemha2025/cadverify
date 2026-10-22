@@ -77,3 +77,20 @@ export function money(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+/** The wall check's sentence ("88060 mesh triangles (97.0%) below 0.8mm min wall for 3-axis milling. Thinnest: 0.364mm.";
+ * "faces" in records before op-15), as backend analysis/serialization.wall_words reads it. */
+const WALL_SENTENCE = /^\s*(\d+) (?:mesh triangles|faces) \(\d+(?:\.\d+)?%\) below (\d+(?:\.\d+)?)\s?mm( min wall)? for ([^.]+?)\.\s*Thinnest:\s*(\d+(?:\.\d+)?)\s?mm\b/i;
+
+/**
+ * The wall check in plain words, the thinnest wall first, its numbers as the engine wrote them (op-15):
+ * "Walls down to 0.364 mm, under the 0.8 mm min wall for 3-axis milling (88,060 mesh triangles)". Null for any other sentence.
+ */
+export function wallWords(text: string | null | undefined): string | null {
+  const m = WALL_SENTENCE.exec(text ?? "");
+  if (!m) return null;
+  const [, n, need, minWall, process, thinnest] = m;
+  const named = wayName(process); // older records name the method by its code ("ded")
+  const how = /^[a-z0-9_]+$/.test(process) && named ? named.charAt(0).toLowerCase() + named.slice(1) : process;
+  return `Walls down to ${thinnest} mm, under the ${need} mm ${minWall ? "min wall" : "recommended"} for ${how} (${Number(n).toLocaleString("en-US")} mesh triangles)`;
+}

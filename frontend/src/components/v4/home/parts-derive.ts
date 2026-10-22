@@ -5,7 +5,7 @@
  * return; an absent value stays absent ("Not checked", "—"), never invented.
  */
 import type { Bucket, FitGap, Makeability, PartRow } from "./model.ts";
-import { money, wayName } from "./words.ts";
+import { money, wallWords, wayName } from "./words.ts";
 
 /** The verdict groups the Machines filter offers. */
 export type VerdictKey = "in" | "design" | "machine" | "out" | "outside" | "unknown" | "invalid";
@@ -68,9 +68,14 @@ export function gapLine(g: FitGap | null | undefined): string {
   return human ? human[0].toUpperCase() + human.slice(1) : "";
 }
 
-/** "24 faces (100.0%) below 1.5mm min wall for ded. Thinnest: 0.5mm." → "24 faces below 1.5 mm min wall · thinnest 0.5 mm". */
+/**
+ * An engine reason in plain words. The wall check leads with the thinnest wall, its numbers as the engine wrote them:
+ * "Walls down to 0.5 mm, under the 1.5 mm min wall for metal deposition (DED) (24 mesh triangles)". Others lose the share and the method code.
+ */
 export function tidyReason(reason: string | null | undefined): string {
   if (!reason) return "";
+  const wall = wallWords(reason);
+  if (wall) return wall;
   return reason
     .replace(/\s*\(\d+(\.\d+)?%\)/g, "")
     .replace(/(\d)mm\b/g, "$1 mm")

@@ -26,6 +26,7 @@ Design notes (the four findings-API fixes this file carries):
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Optional, Sequence
 
 from src.analysis.models import Citation, Issue
@@ -35,6 +36,30 @@ from src.analysis.models import Citation, Issue
 # reconstructable, yet bounded so worst-case response size stays sane. Override
 # only with a matching update to the truncation contract below.
 MAX_SERIALIZED_AFFECTED_FACES = 2000
+
+
+# The wall check's sentence ("88060 mesh triangles (97.0%) below 0.8mm min wall for
+# 3-axis milling. Thinnest: 0.364mm."; "faces" in records made before op-15).
+_WALL_SENTENCE = re.compile(
+    r"^\s*(\d+) (?:mesh triangles|faces) \(\d+(?:\.\d+)?%\) below (\d+(?:\.\d+)?)\s?mm( min wall)? "
+    r"for ([^.]+?)\.\s*Thinnest:\s*(\d+(?:\.\d+)?)\s?mm\b", re.I)
+
+
+def wall_words(text: Optional[str]) -> Optional[str]:
+    """The wall check's sentence in plain words, the thinnest wall first (op-15):
+    "Walls down to 0.364 mm, under the 0.8 mm min wall for 3-axis milling (88,060
+    mesh triangles)". Numbers as the engine wrote them, so a 0.7999 mm wall never
+    reads as 0.8. None for any other sentence. Mirrors frontend ``tidyReason``."""
+    m = _WALL_SENTENCE.match(text or "")
+    if not m:
+        return None
+    n, need, min_wall, process, thinnest = m.groups()
+    if re.fullmatch(r"[a-z0-9_]+", process):  # older records name the method by its code ("ded")
+        from src.analysis.process_names import process_phrase
+
+        process = process_phrase(process) or process
+    rule = "min wall" if min_wall else "recommended"
+    return f"Walls down to {thinnest} mm, under the {need} mm {rule} for {process} ({int(n):,} mesh triangles)"
 
 
 def format_measurement(value: float, reference: float | None = None) -> str:

@@ -6,6 +6,7 @@
  * of their own instead of being folded into a known one.
  */
 import { PROCESS_NAME, processLabel } from "../process-names.ts";
+import { wallWords } from "../home/words.ts";
 
 export type Tone = "ok" | "warn" | "bad" | "unk";
 
@@ -208,9 +209,9 @@ export function reasonOf(row: MakeRow, machines?: readonly Machine[] | null): st
     case "environment_excluded":
       return "Ruled out by its service conditions";
     case "not_makeable": {
-      if (entry) return firstSentence(entry.human ?? gapPhrase(entry, gap?.process, machines));
+      if (entry) return wallWords(entry.human) ?? firstSentence(entry.human ?? gapPhrase(entry, gap?.process, machines));
       const c = unitCost(row);
-      if (c?.reason) return firstSentence(c.reason);
+      if (c?.reason) return wallWords(c.reason) ?? firstSentence(c.reason);
       return "No route makes it as drawn";
     }
     case null:

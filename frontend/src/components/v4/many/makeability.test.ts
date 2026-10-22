@@ -37,7 +37,7 @@ test("reasons read the route, the gap and the DFM blocker, never invent one", ()
   assert.equal(reasonOf(dfm, machines), "11 faces under 0.8 mm");
   assert.equal(wallTooThin(dfm), true);
   const withheld = row({ verdict: "not_makeable", unit_cost: { qty: 10, usd: null, withheld: true, withheld_reason: "24 faces (100.0%) below 1.5mm min wall for ded. Thinnest: 0.5mm." } });
-  assert.equal(reasonOf(withheld), "24 faces (100.0%) below 1.5mm min wall for ded");
+  assert.equal(reasonOf(withheld), "Walls down to 0.5 mm, under the 1.5 mm min wall for metal deposition (DED) (24 mesh triangles)");
   assert.equal(wallTooThin(withheld), true);
   assert.equal(reasonOf(row({ verdict: null })), "Not checked against your machines");
   assert.equal(reasonOf(row({ verdict: "something_new" })), "Something new");
