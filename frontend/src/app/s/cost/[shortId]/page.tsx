@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SharedCost } from "@/components/v4/home/shared-cost";
 import { SharedOff } from "@/components/v4/home/shared-frame";
 import type { SupplierPart } from "@/components/v4/home/supplier-view";
-import { readPublicShare } from "@/components/v4/datacontrol/api";
+import { readPublicShare } from "@/components/v4/datacontrol/public-share";
 import { day } from "@/components/v4/datacontrol/words";
 
 /**

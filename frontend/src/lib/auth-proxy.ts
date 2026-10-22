@@ -3,7 +3,7 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 
-import { requestClientIp, requestUserAgent } from "./auth-proxy-ip";
+import { requestClientIp, requestUserAgent, type IncomingHeaders } from "./auth-proxy-ip";
 
 const CLIENT_IP_HEADER = "x-cadverify-client-ip";
 const TIMESTAMP_HEADER = "x-cadverify-proxy-timestamp";
@@ -28,8 +28,12 @@ function proxySecret(): Buffer | null {
   return decoded;
 }
 
+/**
+ * Sign the visitor's IP for one backend path. `req` is the incoming browser
+ * request (a route handler's Request, or a server page's method and headers).
+ */
 export function signedAuthProxyHeaders(
-  req: Request,
+  req: IncomingHeaders & { method: string },
   backendPath: string,
 ): Record<string, string> {
   const secret = proxySecret();

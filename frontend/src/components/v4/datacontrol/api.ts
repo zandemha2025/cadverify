@@ -1,9 +1,10 @@
 /**
  * Calls for deleting a part, the organization or your account, and for share links that end.
- * Signed-in calls go through the same-origin authed proxy (`API_BASE`); the
- * public share reads go to the backend's public routes.
+ * Signed-in calls go through the same-origin authed proxy (`API_BASE`). The
+ * share pages' public read is server-only, in ./public-share.ts (it signs the
+ * visitor's IP).
  */
-import { API_BASE, browserOrBackendUrl } from "@/lib/api-base";
+import { API_BASE } from "@/lib/api-base";
 import type { AccountPreview, ExpiryChoice, LinkStatus, OrgPreview, PartPreview, Receipt } from "./words";
 
 export class DataApiError extends Error {
@@ -141,29 +142,4 @@ export async function switchOffLink(kind: LinkKind, id: string): Promise<void> {
 
 export function listLinks(scope: "mine" | "org"): Promise<ShareLinkList> {
   return call<ShareLinkList>(`/share-links?scope=${scope}`);
-}
-
-/* ── the public page's read ──────────────────────────────────────────────── */
-
-export type PublicShare<T> =
-  | { ok: true; data: T }
-  | { ok: false; reason: "expired" | "off" | "missing" | "error"; endedAt: string | null };
-
-/** A shared link's payload, or why it can't be shown (410 ended / switched off, 404 unknown). */
-export async function readPublicShare<T>(path: `/s/${string}`): Promise<PublicShare<T>> {
-  let res: Response;
-  try {
-    res = await fetch(browserOrBackendUrl(path), { cache: "no-store" });
-  } catch {
-    return { ok: false, reason: "error", endedAt: null };
-  }
-  if (res.ok) return { ok: true, data: (await res.json()) as T };
-  type Ended = { code?: string; ended_at?: string | null };
-  const body = (await res.json().catch(() => null)) as (Ended & { detail?: Ended }) | null;
-  const code = body?.code ?? body?.detail?.code;
-  const endedAt = body?.ended_at ?? body?.detail?.ended_at ?? null;
-  if (res.status === 410 && code === "share_expired") return { ok: false, reason: "expired", endedAt };
-  if (res.status === 410) return { ok: false, reason: "off", endedAt };
-  if (res.status === 404) return { ok: false, reason: "missing", endedAt: null };
-  return { ok: false, reason: "error", endedAt: null };
 }

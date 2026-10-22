@@ -3,9 +3,13 @@
  * the role, who sent it, the invited address and when it expires. Same-origin
  * POST (the token stays out of URLs and logs) relayed to the API's public
  * invite summary; no session needed, because the emailed link is the secret.
+ * The API limits that summary per visitor IP, so the call signs the visitor's
+ * IP (security review R4, F3); unsigned, every visitor would share this web
+ * server's one bucket.
  */
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
+import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 import { crossSiteRefusal } from "@/lib/same-origin-request";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +22,11 @@ export async function POST(req: Request) {
   if (!token || token.length > 512) {
     return NextResponse.json({ detail: { message: "The link is missing its code." } }, { status: 400, headers: { "cache-control": "no-store" } });
   }
+  const backendPath = "/api/v1/orgs/invites/summary";
   try {
-    const res = await fetch(backendUrl("/api/v1/orgs/invites/summary"), {
+    const res = await fetch(backendUrl(backendPath), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...signedAuthProxyHeaders(req, backendPath) },
       body: JSON.stringify({ token }),
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),

@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Box } from "lucide-react";
-import { fetchSharedAnalysis } from "@/lib/api";
 import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
 import { UI_V4 } from "@/lib/ui-v4-flag";
 import { SharedCheck } from "@/components/v4/home/shared-check";
 import { SharedOff } from "@/components/v4/home/shared-frame";
 import { linkOffWords } from "@/components/v4/home/states";
-import { readPublicShare } from "@/components/v4/datacontrol/api";
+import { readPublicShare } from "@/components/v4/datacontrol/public-share";
 import { day } from "@/components/v4/datacontrol/words";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,8 +32,10 @@ export async function generateMetadata({
   params: Promise<{ shortId: string }>;
 }): Promise<Metadata> {
   const { shortId } = await params;
-  try {
-    const data = await fetchSharedAnalysis(shortId);
+  // The same signed read as the page (the visitor's IP, not this server's).
+  const res = await readPublicShare<SharedAnalysis>(`/s/${shortId}`);
+  if (res.ok) {
+    const data = res.data;
     const processCount = data.process_scores?.length ?? 0;
     return {
       title: `${data.filename} - DFM Analysis`,
@@ -47,9 +48,8 @@ export async function generateMetadata({
       twitter: { card: "summary" },
       robots: { index: false, follow: false },
     };
-  } catch {
-    return { title: "Shared Analysis - ScaleCAD", robots: { index: false, follow: false } };
   }
+  return { title: "Shared Analysis - ScaleCAD", robots: { index: false, follow: false } };
 }
 
 /* ------------------------------------------------------------------ */
