@@ -162,6 +162,58 @@ export function proPrice(price: ProPrice | null | undefined): { amount: string; 
   return { amount, per };
 }
 
+// ── API keys ───────────────────────────────────────────────────────────────
+export type KeyScopeName = "read" | "read_write";
+export type KeyExpiryDays = 30 | 90 | 365 | null;
+export const KEY_EXPIRY_CHOICES: { value: KeyExpiryDays; label: string }[] = [
+  { value: 30, label: "In 30 days" },
+  { value: 90, label: "In 90 days" },
+  { value: 365, label: "In 365 days" },
+  { value: null, label: "Never" },
+];
+/** New keys expire in 90 days unless the person picks otherwise. */
+export const KEY_EXPIRY_DEFAULT: KeyExpiryDays = 90;
+
+export function scopeName(scope: string | null | undefined): string {
+  return scope === "read" ? "Read only" : "Read and write";
+}
+
+/** The access choices one person may give a key: a viewer's keys are read only. */
+export function scopeChoices(orgRole: string | null | undefined): { value: KeyScopeName; label: string; disabled: boolean }[] {
+  const viewer = orgRole === "viewer";
+  return [
+    { value: "read", label: "Read only", disabled: false },
+    { value: "read_write", label: "Read and write", disabled: viewer },
+  ];
+}
+
+type KeyLike = { revoked_at: string | null; expires_at?: string | null; expired?: boolean; scope?: string; effective_scope?: string };
+
+export function keyExpired(k: KeyLike, now: Date = new Date()): boolean {
+  if (k.expired) return true;
+  const d = parse(k.expires_at);
+  return d !== null && d.getTime() <= now.getTime();
+}
+
+/** "Never", "Jan 20, 2027" or "Expired Oct 1, 2026". */
+export function keyExpiryLabel(k: KeyLike, now: Date = new Date()): string {
+  if (!k.expires_at) return "Never";
+  return keyExpired(k, now) ? `Expired ${dateLabel(k.expires_at)}` : dateLabel(k.expires_at);
+}
+
+export function keyStatus(k: KeyLike, now: Date = new Date()): { tone: "ok" | "warn" | "unk"; label: string } {
+  if (k.revoked_at) return { tone: "unk", label: "Revoked" };
+  if (keyExpired(k, now)) return { tone: "warn", label: "Expired" };
+  return { tone: "ok", label: "Active" };
+}
+
+/** Access as enforced, with the reason when it is narrower than chosen. */
+export function keyAccessLabel(k: KeyLike): string {
+  const effective = k.effective_scope ?? k.scope;
+  if (effective === "read" && k.scope === "read_write") return "Read only (viewer)";
+  return scopeName(effective);
+}
+
 // ── audit log ──────────────────────────────────────────────────────────────
 const ACTION: Record<string, string> = {
   "auth.signup": "Signed up",

@@ -331,6 +331,17 @@ async def _saml_may_bind_existing(
     return member is not None
 
 
+# A sign-in mints an API key only where it can show the secret once: the
+# email-link sign-in lands on the developer page with it. A SAML or OIDC
+# sign-in has nowhere to show it, and a key nobody received must not stay
+# live, so those never mint one; people make keys in Account, API and keys.
+_KEY_SHOWING_PROVIDERS = frozenset({"magic_link"})
+# A key minted at sign-in gets the same least-privilege defaults as one made on
+# the API page: read only, expiring in 90 days.
+_LOGIN_KEY_SCOPE = "read"
+_LOGIN_KEY_DAYS = 90
+
+
 async def _ensure_key(
     session: AsyncSession,
     *,
@@ -356,8 +367,9 @@ async def _ensure_key(
         await session.execute(
             text(
                 "INSERT INTO api_keys "
-                "(user_id, org_id, name, prefix, hmac_index, secret_hash) "
-                "VALUES (:user_id, :org_id, :name, :prefix, :hmac_index, :secret_hash) "
+                "(user_id, org_id, name, prefix, hmac_index, secret_hash, scope, expires_at) "
+                "VALUES (:user_id, :org_id, :name, :prefix, :hmac_index, :secret_hash, "
+                ":scope, now() + make_interval(days => :days)) "
                 "RETURNING id"
             ),
             {
@@ -367,6 +379,8 @@ async def _ensure_key(
                 "prefix": prefix,
                 "hmac_index": hmac_index(token),
                 "secret_hash": secret_hash,
+                "scope": _LOGIN_KEY_SCOPE,
+                "days": _LOGIN_KEY_DAYS,
             },
         )
     ).first()
@@ -379,7 +393,12 @@ async def _ensure_key(
         "api_key.created",
         "api_key",
         str(key_id),
-        {"key_prefix": prefix, "provisioned_with_login": True},
+        {
+            "key_prefix": prefix,
+            "provisioned_with_login": True,
+            "scope": _LOGIN_KEY_SCOPE,
+            "expires_in_days": _LOGIN_KEY_DAYS,
+        },
         org_id=org_id,
     )
     return key_id, prefix, token
@@ -428,12 +447,14 @@ async def provision_authenticated_login(
             # ``current_org_id`` before this read; an existing multi-org user
             # without group claims retains their already-selected live org.
             effective_org_id = await resolve_org(session, user_id) or org_id
-            key_id, key_prefix, key_token = await _ensure_key(
-                session,
-                user_id=user_id,
-                org_id=effective_org_id,
-                key_name=key_name,
-            )
+            key_id = key_prefix = key_token = None
+            if provider in _KEY_SHOWING_PROVIDERS:
+                key_id, key_prefix, key_token = await _ensure_key(
+                    session,
+                    user_id=user_id,
+                    org_id=effective_org_id,
+                    key_name=key_name,
+                )
             if created:
                 await append_audit_entry(
                     session,

@@ -95,7 +95,8 @@ async def test_oidc_subject_binding_is_immutable_and_audit_atomic(monkeypatch):
             group_detail_key="oidc_group_assignment",
         )
 
-        assert first.created is True and first.key_token
+        # An SSO sign-in mints no API key (nowhere to show its secret).
+        assert first.created is True and first.key_token is None
         assert second.created is False and second.key_token is None
         assert first.user_id == second.user_id
 
@@ -114,7 +115,7 @@ async def test_oidc_subject_binding_is_immutable_and_audit_atomic(monkeypatch):
         )
         counts = {r["action"]: int(r["n"]) for r in actions}
         assert counts["user.provisioned"] == 1
-        assert counts["api_key.created"] == 1
+        assert "api_key.created" not in counts
         assert counts["auth.login"] == 2
 
         with pytest.raises(HTTPException) as collision:
@@ -204,9 +205,13 @@ async def test_oidc_first_link_requires_verified_email_and_audit_failure_rolls_b
 
 
 @pytest.mark.asyncio
-async def test_sso_keys_follow_active_org_and_remain_manageable(monkeypatch):
-    """A returning SSO user receives and manages a key in the mapped org."""
-    from src.auth.keys_api import list_keys, revoke_key, rotate_key
+async def test_sso_sign_in_mints_no_key_and_keys_made_later_follow_the_active_org(monkeypatch):
+    """A SAML/OIDC sign-in has nowhere to show a secret, so it mints no key.
+
+    Keys the person makes on the API page live in the org that was active,
+    and stay listed and manageable when a group mapping moves them.
+    """
+    from src.auth.keys_api import CreateIn, create_key, list_keys, revoke_key, rotate_key
 
     monkeypatch.setenv("API_KEY_PEPPER", base64.b64encode(b"r" * 32).decode())
     tag = uuid.uuid4().hex[:12]
@@ -227,11 +232,13 @@ async def test_sso_keys_follow_active_org_and_remain_manageable(monkeypatch):
             identity=identity,
             group_detail_key="oidc_group_assignment",
         )
-        assert first.key_id is not None
+        assert first.key_id is None and first.key_token is None
+        assert await _fetch("SELECT 1 FROM api_keys WHERE user_id=$1", first.user_id) == []
         personal_org_row = await _fetch(
             "SELECT current_org_id FROM users WHERE id=$1", first.user_id
         )
         personal_org_id = str(personal_org_row[0]["current_org_id"])
+        personal_key = await create_key(CreateIn(name="personal"), Response(), user_id=first.user_id)
 
         await _execute(
             "INSERT INTO organizations (id, name, slug, created_at) "
@@ -257,19 +264,17 @@ async def test_sso_keys_follow_active_org_and_remain_manageable(monkeypatch):
             group_attributes={"groups": [group_value]},
             group_detail_key="oidc_group_assignment",
         )
-        assert second.key_id is not None
-        assert second.key_id != first.key_id
+        assert second.key_id is None
         assert second.group_assignment.org_id == mapped_org_id
-
         current = await _fetch(
             "SELECT current_org_id FROM users WHERE id=$1", first.user_id
         )
         assert str(current[0]["current_org_id"]) == mapped_org_id
-        active_keys = await list_keys(user_id=first.user_id)
-        assert [key.id for key in active_keys] == [second.key_id]
 
-        rotated = await rotate_key(second.key_id, Response(), user_id=first.user_id)
-        assert rotated["id"] != second.key_id
+        mapped_key = await create_key(CreateIn(name="mapped"), Response(), user_id=first.user_id)
+        assert [key.id for key in await list_keys(user_id=first.user_id)] == [mapped_key["id"]]
+        rotated = await rotate_key(mapped_key["id"], Response(), user_id=first.user_id)
+        assert rotated["id"] != mapped_key["id"]
         revoked = await revoke_key(rotated["id"], user_id=first.user_id)
         assert revoked.status_code == 204
 
@@ -279,7 +284,32 @@ async def test_sso_keys_follow_active_org_and_remain_manageable(monkeypatch):
             first.user_id,
         )
         personal_keys = await list_keys(user_id=first.user_id)
-        assert [key.id for key in personal_keys] == [first.key_id]
+        assert [key.id for key in personal_keys] == [personal_key["id"]]
+    finally:
+        _reset_engine()
+        await _cleanup(email.lower())
+        _reset_engine()
+
+
+@pytest.mark.asyncio
+async def test_email_link_sign_in_mints_one_read_only_key_that_expires(monkeypatch):
+    monkeypatch.setenv("API_KEY_PEPPER", base64.b64encode(b"m" * 32).decode())
+    email = f"magic-key-{uuid.uuid4().hex[:12]}@example.com"
+    _reset_engine()
+    try:
+        first = await provision_authenticated_login(
+            email=email, provider="magic_link", key_name="Default", default_role="analyst"
+        )
+        assert first.key_id is not None and first.key_token.startswith("cv_live_")
+        rows = await _fetch(
+            "SELECT scope, expires_at - created_at AS life FROM api_keys WHERE id=$1",
+            first.key_id,
+        )
+        assert rows[0]["scope"] == "read" and rows[0]["life"].days == 90
+        again = await provision_authenticated_login(
+            email=email, provider="magic_link", key_name="Default", default_role="analyst"
+        )
+        assert again.key_id is None
     finally:
         _reset_engine()
         await _cleanup(email.lower())

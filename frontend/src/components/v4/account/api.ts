@@ -94,8 +94,26 @@ export async function getPlatformUsers(): Promise<PlatformUser[]> {
 }
 
 // ── API keys ───────────────────────────────────────────────────────────────
-export type ApiKey = { id: number; name: string; prefix: string; created_at: string; last_used_at: string | null; revoked_at: string | null };
+export type KeyScope = "read" | "read_write";
+export type ApiKey = {
+  id: number;
+  name: string;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  /** As chosen; keys made before scopes existed read "read_write". */
+  scope?: KeyScope;
+  /** As enforced: a viewer's key is "read" whatever `scope` says. */
+  effective_scope?: KeyScope;
+  expires_at?: string | null;
+  expired?: boolean;
+};
+/** A key in the org admin's list: who owns it and their role in the org (null once they left). */
+export type OrgApiKey = ApiKey & { owner_user_id: number; owner_email: string | null; owner_role: OrgRole | null; yours: boolean };
 export const getKeys = () => call<ApiKey[]>("/keys");
+/** Every key in the active org; org admins only (403 otherwise). */
+export const getOrgKeys = () => call<{ org_id: string; org_name: string | null; keys: OrgApiKey[] }>("/keys/org");
 export const renameKey = (id: number, name: string) => call<{ id: number; name: string }>(`/keys/${id}`, { method: "PATCH", body: { name } });
 export const revokeKey = (id: number) => call<null>(`/keys/${id}`, { method: "DELETE" });
 
