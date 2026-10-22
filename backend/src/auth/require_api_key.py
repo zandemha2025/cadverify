@@ -4,10 +4,13 @@ from __future__ import annotations
 from src.config.public_urls import error_doc_url
 
 import asyncio
+import logging
+import time
 
 from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel
 
+from src.auth import verified_keys
 from src.auth.dashboard_session import COOKIE_NAME, unsign_payload
 from src.auth.hashing import hmac_index, verify_token
 from src.auth.models import (
@@ -154,6 +157,39 @@ async def _session_owner_state(user_id: int):
         return None, True
 
 
+logger = logging.getLogger("cadverify.auth")
+
+# A key's last_used_at is written at most once a minute per process, in the
+# background; a write that fails (a busy pool) is logged and dropped, never
+# raised. The tasks are kept until they end (the loop holds them only weakly).
+TOUCH_EVERY_S = 60.0
+_TOUCHED_MAX = 4096
+_touched: dict[int, float] = {}
+_touch_tasks: set[asyncio.Task] = set()
+_now = time.monotonic
+
+
+async def _touch_quietly(api_key_id: int) -> None:
+    try:
+        await touch_last_used(api_key_id)
+    except Exception as exc:
+        logger.warning("api_key_last_used_not_recorded key_id=%s error=%s", api_key_id, type(exc).__name__)
+
+
+def _touch_soon(api_key_id: int) -> None:
+    now = _now()
+    last = _touched.get(api_key_id)
+    if last is not None and now - last < TOUCH_EVERY_S:
+        return
+    _touched[api_key_id] = now
+    if len(_touched) > _TOUCHED_MAX:
+        for k in [k for k, t in _touched.items() if now - t >= TOUCH_EVERY_S]:
+            del _touched[k]
+    task = asyncio.get_running_loop().create_task(_touch_quietly(api_key_id))
+    _touch_tasks.add(task)
+    task.add_done_callback(_touch_tasks.discard)
+
+
 async def require_api_key(
     request: Request,
     authorization: str | None = Header(None),
@@ -201,10 +237,13 @@ async def require_api_key(
                 "doc_url": error_doc_url("server_config"),
             },
         )
+    # The row is read on every request (its session is closed before the secret
+    # is checked), so every refusal below applies at once. Only the Argon2 check
+    # of the secret is remembered, briefly, and it runs off the event loop.
     row = await lookup_api_key(idx)
     if row is None or row.revoked_at is not None:
         raise _401("auth_invalid", "Invalid or revoked API key")
-    if not verify_token(row.secret_hash, token):
+    if not await verified_keys.verified(row.id, row.secret_hash, token, verify_token):
         raise _401("auth_invalid", "Invalid or revoked API key")
     # §39: an API key owned by a deactivated account is refused. is_active +
     # role ride the ``lookup_api_key`` JOIN, so this is no extra round trip.
@@ -255,7 +294,7 @@ async def require_api_key(
         scope=scope,
     )
     request.state.authed_user = user
-    asyncio.create_task(touch_last_used(row.id))
+    _touch_soon(row.id)
     method = (getattr(request, "method", None) or "GET").upper()
     if scope == SCOPE_READ and method not in READ_METHODS:
         # Every route that takes a key authenticates here, so a read-only key
