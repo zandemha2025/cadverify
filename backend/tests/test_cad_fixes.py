@@ -66,6 +66,25 @@ def _sealed_box_step(tmp_path: Path) -> bytes:
     return path.read_bytes()
 
 
+def _pocket_block_step(tmp_path: Path) -> bytes:
+    """An 80 x 60 x 30 mm block with a 60 x 40 x 20 mm pocket open at the top, made with OCC."""
+    import gmsh
+
+    path = tmp_path / "pocket-block.step"
+    gmsh.initialize(interruptible=False)
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("pocket")
+        outer = gmsh.model.occ.addBox(0, 0, 0, 80, 60, 30)
+        pocket = gmsh.model.occ.addBox(10, 10, 10, 60, 40, 21)
+        gmsh.model.occ.cut([(3, outer)], [(3, pocket)])
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(path))
+    finally:
+        gmsh.finalize()
+    return path.read_bytes()
+
+
 def _unsewn_box_step(tmp_path: Path) -> bytes:
     """A box exported as six loose faces with micrometre gaps: no solid in the file."""
     import gmsh
@@ -147,12 +166,27 @@ def test_drain_holes_refuse_parts_without_a_sealed_cavity():
 def test_fillet_rounds_the_inside_corners_and_the_recheck_clears_them():
     raw = (ASSETS / "plate-with-boss.step").read_bytes()
     before = _findings(raw, "plate-with-boss.step")
-    assert {"SHARP_INTERNAL_CORNERS", "MISSING_FILLETS"} <= _codes(before)
+    # Casting and molding want the boss's foot rounded. A milling cutter's flat
+    # end cuts that foot sharp (the plate is the floor of the cut), so milling
+    # has no inside corner to flag there.
+    assert "MISSING_FILLETS" in _codes(before)
+    assert "SHARP_INTERNAL_CORNERS" not in _codes(before)
     out = bf.run_fix("fillet_inside_corners", raw, ".step", {"radius_mm": 1.0})
     assert out.applied, out.reason
     assert out.details["edges_rounded"] == 4
     assert out.details["brep_volume_after_mm3"] > out.details["brep_volume_before_mm3"]
     after = _findings(out.data, "plate-with-boss-rounded.step")
+    assert not {"SHARP_INTERNAL_CORNERS", "MISSING_FILLETS"} & _codes(after)
+
+
+def test_fillet_rounds_a_pockets_corners_and_milling_clears_them(tmp_path):
+    raw = _pocket_block_step(tmp_path)
+    before = _findings(raw, "pocket-block.step")
+    # The pocket's four corners between walls are milling's inside corners.
+    assert ("SHARP_INTERNAL_CORNERS", "cnc_3axis") in before
+    out = bf.run_fix("fillet_inside_corners", raw, ".step", {"radius_mm": 1.0})
+    assert out.applied, out.reason
+    after = _findings(out.data, "pocket-block-rounded.step")
     assert not {"SHARP_INTERNAL_CORNERS", "MISSING_FILLETS"} & _codes(after)
 
 
@@ -247,11 +281,13 @@ def test_can_fix_flags_for_an_stl_with_a_sealed_cavity():
     assert opts["can_fix_count"] == 1
 
 
-def test_can_fix_flags_for_a_step_part_and_after_a_failed_attempt(monkeypatch):
+def test_can_fix_flags_for_a_step_part_and_after_a_failed_attempt(monkeypatch, tmp_path):
     from src.fixes import draft_ocp
 
     monkeypatch.setattr(draft_ocp, "available", lambda: False)
-    result = _analysis_dict(ASSETS / "plate-with-boss.step")
+    path = tmp_path / "pocket-block.step"
+    path.write_bytes(_pocket_block_step(tmp_path))
+    result = _analysis_dict(path)
     opts = svc.fix_options(result, ".step")
     by = {g["code"]: g for g in opts["findings"]}
     # Milling asks for 0.5 mm; ScaleCAD rounds at 1.0 mm at least (still meets it)

@@ -126,7 +126,16 @@ def _drops(mesh: trimesh.Trimesh, faces: np.ndarray, centroids, normals, eps: fl
 
 
 def _anchor_segments(mesh: trimesh.Trimesh, region: np.ndarray, centroids, tol: float) -> np.ndarray:
-    """Boundary edges of the region where the part continues below it (2D segments)."""
+    """Boundary edges of the region where the part continues below it (2D segments).
+
+    The face across the edge carries the span when it runs down from the edge:
+    its direction away from the edge, in its own plane and square to the edge,
+    points more than 30 degrees below horizontal (a wall under the span). That
+    reads the same however finely the wall is meshed: a STEP's wall triangles
+    along the edge are a fraction of a millimetre tall, so their centres sit
+    closer to the edge than any distance test allows, while an STL's one wall
+    triangle reaches the bed.
+    """
     adj = mesh.face_adjacency
     edges = mesh.face_adjacency_edges
     inside = np.zeros(len(mesh.faces), dtype=bool)
@@ -135,9 +144,16 @@ def _anchor_segments(mesh: trimesh.Trimesh, region: np.ndarray, centroids, tol: 
     boundary = a_in ^ b_in
     other = np.where(a_in, adj[:, 1], adj[:, 0])[boundary]
     e = edges[boundary]
-    v = mesh.vertices
-    mid_z = (v[e[:, 0], 2] + v[e[:, 1], 2]) / 2
-    down = centroids[other, 2] < mid_z - tol
+    v = np.asarray(mesh.vertices, dtype=np.float64)
+    p0, p1 = v[e[:, 0]], v[e[:, 1]]
+    run = p1 - p0
+    run /= np.maximum(np.linalg.norm(run, axis=1), 1e-300)[:, None]
+    corners = np.asarray(mesh.faces)[other]
+    third = np.where((corners != e[:, :1]) & (corners != e[:, 1:]), corners, -1).max(axis=1)
+    away = v[np.maximum(third, 0)] - (p0 + p1) / 2
+    away -= np.einsum("ij,ij->i", away, run)[:, None] * run
+    reach = np.linalg.norm(away, axis=1)
+    down = (third >= 0) & (reach > 0) & (away[:, 2] < -np.sin(np.radians(30.0)) * reach)
     seg = np.stack([v[e[down, 0], :2], v[e[down, 1], :2]], axis=1)
     return seg
 
@@ -228,7 +244,7 @@ def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm:
     angles, centroids, areas, normals = m["angles"], m["centroids"], m["areas"], m["normals"]
     diag = float(m["bbox_diag"])
     tol = max(0.1, diag * 1e-3)
-    marked = overhang_faces(angles, centroids, diag, limit_deg)
+    marked = overhang_faces(angles, centroids, diag, limit_deg, m.get("angle_error_deg"))
     if not len(marked):
         return out
     eps = max(1e-4, min(diag * 1e-4, 0.1))

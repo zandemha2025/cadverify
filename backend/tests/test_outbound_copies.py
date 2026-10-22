@@ -62,13 +62,30 @@ def assert_nothing_private(blob, where: str) -> None:
 
 
 # ── the shop's record ─────────────────────────────────────────────────────────
+def _shop_part():
+    """A plastic bracket the shop's own printer makes cheapest at 10: the holed
+    L bracket of test_in_house_preference with a thicker upright. (That bracket
+    is one 5 mm gauge, so it reads as bent sheet and routes to sheet metal.)"""
+    import trimesh
+
+    plate = trimesh.creation.box(extents=[60, 40, 5])
+    plate.apply_translation([0, 0, 2.5])
+    upright = trimesh.creation.box(extents=[60, 8, 30])
+    upright.apply_translation([0, 16, 15])
+    m = trimesh.boolean.union([plate, upright], engine="manifold")
+    for x in (-18, 18):
+        hole = trimesh.creation.cylinder(radius=3, height=20, sections=48)
+        hole.apply_translation([x, -5, 2.5])
+        m = trimesh.boolean.difference([m, hole], engine="manifold")
+    return m
+
+
 @pytest.fixture(scope="module")
 def shop_result():
     from src.costing import EstimateOptions, estimate_decision, report_to_dict
     from src.costing.makeability import MachineCap
     from src.services.calibration_service import overlay
     from tests.test_costing_model import _analyze
-    from tests.test_in_house_preference import _bracket
 
     inventory = (
         MachineCap(process="fdm", name=MACHINES[0], count=2, max_workpiece_kg=None,
@@ -80,7 +97,7 @@ def shop_result():
                    hourly_rate_usd=CNC_RATE, capital_frac=None, materials=("aluminum",),
                    capabilities={"x": 500, "y": 400, "z": 400}),
     )
-    result, mesh, feats = _analyze(_bracket())
+    result, mesh, feats = _analyze(_shop_part())
     opts = EstimateOptions(
         quantities=[10, 100, 1000], inventory=inventory,
         rate_overrides={"labor_rate": LABOR, "machine_rate.SLA": SLA_RATE, "margin": MARGIN},
@@ -300,8 +317,8 @@ async def _built_package(shop_result, monkeypatch, *, disposition="inhouse"):
 async def _zip_files(package, monkeypatch) -> dict[str, bytes]:
     from src.services.cost_pdf_service import render_cost_html
 
-    async def _html_pdf(decision, gov=None):  # the report's HTML, so its words can be read
-        return render_cost_html(decision, gov).encode()
+    async def _html_pdf(decision, gov=None, length_unit="mm"):  # the report's HTML, so its words can be read
+        return render_cost_html(decision, gov, length_unit).encode()
 
     monkeypatch.setattr(rfq, "cached_cost_pdf", _html_pdf)
     monkeypatch.setattr(rfq, "_supplier_brief_pdf",

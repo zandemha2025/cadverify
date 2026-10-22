@@ -417,12 +417,15 @@ def placed_measures(placed: trimesh.Trimesh) -> dict[str, np.ndarray | float]:
         angles = np.degrees(np.arccos(cos_z))
     extents = placed.extents
     diag = 0.0 if extents is None or len(placed.faces) == 0 else float(np.linalg.norm(np.asarray(extents, dtype=np.float64)))
+    from src.analysis.context import rounding_angle_error_deg
+
     return {
         "normals": normals,
         "angles": angles,
         "centroids": np.asarray(placed.triangles_center, dtype=np.float64),
         "areas": np.asarray(placed.area_faces, dtype=np.float64),
         "bbox_diag": diag,
+        "angle_error_deg": rounding_angle_error_deg(placed),
     }
 
 
@@ -456,7 +459,8 @@ def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = No
     m = measures if measures is not None else placed_measures(mesh)
     angles, centroids, areas, normals = m["angles"], m["centroids"], m["areas"], m["normals"]
     diag = float(m["bbox_diag"])
-    widest = overhang_faces(angles, centroids, diag, min(limits.values()))
+    error = m.get("angle_error_deg")
+    widest = overhang_faces(angles, centroids, diag, min(limits.values()), error)
     if len(widest) == 0:
         return out
     plate = float(mesh.bounds[0][2])
@@ -486,7 +490,7 @@ def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = No
     in_cast = np.zeros(len(widest), dtype=bool)
     in_cast[cast] = True
     for proc, limit in limits.items():
-        faces = overhang_faces(angles, centroids, diag, limit)
+        faces = overhang_faces(angles, centroids, diag, limit, error)
         if len(faces) == 0:
             continue
         mask = np.isin(widest, faces)
@@ -537,7 +541,7 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
     on_plate = (z <= float(z.min()) + z_tol) & (angles >= 175.0) if len(z) else np.zeros(0, bool)
     support = {}
     for proc, limit in OVERHANG_LIMIT_DEG.items():
-        faces = overhang_faces(angles, centroids, float(m["bbox_diag"]), limit)
+        faces = overhang_faces(angles, centroids, float(m["bbox_diag"]), limit, m.get("angle_error_deg"))
         support[proc] = {"faces": int(len(faces)), "area_mm2": round(float(areas[faces].sum()), 2)}
     for proc, est in support_estimate(placed, OVERHANG_LIMIT_DEG, measures=m).items():
         support[proc]["volume_cm3"] = round(est["volume_mm3"] / 1000.0, 3)

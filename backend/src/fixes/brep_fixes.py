@@ -12,10 +12,10 @@ What is here, and why only this (measured in the round-6 spike on the repo's
 real parts, see ``cad_fix_service`` for the numbers):
 
 * ``fillet_inside_corners``: B-rep (STEP/IGES). Finds the B-rep edges whose
-  tessellation the engine reads as sharp concave edges (same definition as
-  ``check_internal_radii`` / ``check_fillet_requirements``: concave, normals
-  turning more than 30 degrees) and rounds them with OpenCASCADE's fillet at
-  the radius the rule asks for.
+  tessellation the engine reads as sharp concave edges (concave, normals
+  turning more than 30 degrees: every edge ``check_internal_radii`` and
+  ``check_fillet_requirements`` can flag) and rounds them with OpenCASCADE's
+  fillet at the radius the rule asks for.
 * ``drain_holes``: B-rep and STL. A sealed cavity (an inner shell of the
   solid, or an inner watertight body of a mesh) gets a drain hole from its
   lowest point (file -Z is the build direction) and a vent from its highest
@@ -39,8 +39,9 @@ from typing import Any
 
 import numpy as np
 
-# Engine definition of a sharp inside corner (check_internal_radii): a concave
-# mesh edge whose face normals turn by more than 30 degrees.
+# Engine definition of a sharp inside edge (context.inside_corners and
+# check_fillet_requirements start from it): a concave mesh edge whose face
+# normals turn by more than 30 degrees.
 SHARP_CONCAVE_DEG = 30.0
 _BREP_SUFFIXES = (".step", ".stp", ".iges", ".igs")
 _STEP_STAMP = re.compile(rb"(FILE_NAME\('[^']*',')\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(')")

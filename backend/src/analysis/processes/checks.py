@@ -192,13 +192,19 @@ def check_wall_thickness(
 # Overhangs
 # ──────────────────────────────────────────────────────────────
 def overhang_faces(angles_from_up_deg: np.ndarray, centroids: np.ndarray, bbox_diag: float,
-                   max_angle_deg: float) -> np.ndarray:
+                   max_angle_deg: float, angle_error_deg: np.ndarray | None = None) -> np.ndarray:
     """Faces whose angle from +Z exceeds 90 + max_angle_deg, except those resting on the plate.
 
     Shared by ``check_overhangs`` and the orientation comparison
     (``src.analysis.orientation``) so both mark exactly the same faces.
+    ``angle_error_deg`` (``rounding_angle_error_deg``): a face past the limit
+    only by its source-coordinate rounding doesn't exceed it, so a face drawn
+    at exactly the limit reads the same wherever the file places the part.
     """
-    oh_mask = angles_from_up_deg > 90.0 + max_angle_deg
+    limit = 90.0 + max_angle_deg
+    if angle_error_deg is not None and len(angle_error_deg) == len(angles_from_up_deg):
+        limit = limit + angle_error_deg
+    oh_mask = angles_from_up_deg > limit
     # Faces resting ON the build plate need no supports: exclude near-flat
     # downward faces whose centroid sits at the part's z-minimum (scale-aware
     # tolerance so micro and macro parts both behave).
@@ -225,7 +231,8 @@ def bridged_overhang_faces(ctx: GeometryContext, max_angle_deg: float, oh_faces:
         est = support_regions(
             ctx.mesh, max_angle_deg, keep_regions=True, columns=False,
             measures={"angles": ctx.angles_from_up_deg, "centroids": ctx.centroids,
-                      "areas": ctx.face_areas, "normals": ctx.normals, "bbox_diag": ctx.bbox_diag},
+                      "areas": ctx.face_areas, "normals": ctx.normals, "bbox_diag": ctx.bbox_diag,
+                      "angle_error_deg": ctx.angle_error_deg},
         )
     except Exception:  # pragma: no cover - defensive: shapely/trimesh on a broken mesh
         logger.warning("bridge test failed; every overhanging face stays marked", exc_info=True)
@@ -255,7 +262,8 @@ def check_overhangs(
     """
     if max_angle_deg >= 90.0:
         return []  # self-supporting process
-    oh_faces = overhang_faces(ctx.angles_from_up_deg, ctx.centroids, ctx.bbox_diag, max_angle_deg)
+    oh_faces = overhang_faces(ctx.angles_from_up_deg, ctx.centroids, ctx.bbox_diag, max_angle_deg,
+                              ctx.angle_error_deg)
     if len(oh_faces) == 0:
         return []
     est, span_faces = None, 0
@@ -515,9 +523,14 @@ def _larger_machine_that_fits(ctx: GeometryContext, process: ProcessType, dims, 
             if all(a <= b + tolerance for a, b in zip(part, sorted(env))):
                 return name, env
         return None
+    # The enclosure is padded for source-coordinate rounding (a binary STL's
+    # float32 coordinates). A part that only overlaps a larger machine's work
+    # area within that rounding takes the machine as a STEP of it does: a
+    # 400 mm cube fits a 400 mm machine from either file.
+    rounding = 4.0 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
     enclosing, _basis = ctx.enclosing_box
     for name, env in envs:
-        caps = tuple(c + tolerance for c in env)
+        caps = tuple(c + tolerance + rounding for c in env)
         if (fitting_box_dimensions(enclosing, caps) is not None
                 or fitting_box_dimensions(enclosing, caps, ctx.enclosing_cylinder) is not None):
             return name, env
@@ -1117,6 +1130,28 @@ def check_draft_angles(
     groups = _draft_groups(ctx, no_draft_faces, flagged_draft, min_draft_deg)
     breakdown = (" (" + ", ".join(f"{name} {value:.1f}°" for name, value in groups) + ")") if groups else ""
     pull = _pull_direction(ctx)
+    turned = _drafted_file_axis(ctx, min_draft_deg)
+    if turned is not None:
+        # Drafted along another file axis: the part is drawn turned, not undrafted.
+        axis, least = turned
+        return [Issue(
+            code="INSUFFICIENT_DRAFT",
+            measurement_unit="deg",
+            severity=Severity.WARNING,
+            message=(
+                f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
+                f"below {min_draft_deg}° draft for {process_phrase(process)}. "
+                f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}; "
+                f"the walls are drafted along the file's {axis} (at least {round(least, 1):.1f}°), "
+                "so the part is drawn turned."
+            ),
+            process=process,
+            affected_faces=no_draft_faces.tolist(),
+            measured_value=smallest,
+            required_value=min_draft_deg,
+            fix_suggestion=f"Check the part turned so the tool opens along the file's {axis}. {cite}".strip(),
+            citation=parse_citation(cite),
+        )]
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         measurement_unit="deg",
@@ -1137,6 +1172,28 @@ def check_draft_angles(
         ),
         citation=parse_citation(cite),
     )]
+
+
+def _drafted_file_axis(ctx: GeometryContext, min_draft_deg: float) -> tuple[str, float] | None:
+    """("+X" or "+Y", smallest draft) when every side wall along that file axis has the draft.
+
+    Only for a part checked as drawn (no orientation chosen): the check reads
+    the file's +Z as the direction the tool opens, so a drafted cover drawn
+    lying on its side reads as undrafted. Its routing and verdict shouldn't
+    depend on which way the file happens to lie; the finding says which way
+    its walls are drafted and stays a warning to check it turned.
+    """
+    from src.analysis.orientation import PLACED_UP_KEY
+
+    if (ctx.mesh.metadata or {}).get(PLACED_UP_KEY) is not None or not len(ctx.normals):
+        return None
+    for name, axis in (("+X", np.array([1.0, 0.0, 0.0])), ("+Y", np.array([0.0, 1.0, 0.0]))):
+        with np.errstate(all="ignore"):
+            angles = np.degrees(np.arccos(np.clip(ctx.normals @ axis, -1.0, 1.0)))
+        faces, draft = draft_sidewalls(angles)
+        if len(faces) and float(draft.min()) >= min_draft_deg:
+            return name, float(draft.min())
+    return None
 
 
 def _pull_direction(ctx: GeometryContext) -> str:
@@ -1450,20 +1507,27 @@ def check_internal_radii(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    """Flag sharp concave edges that tools can't reach."""
+    """Sharp inside corners between walls, where a milling cutter leaves its radius.
+
+    ``GeometryContext.inside_corners``: a corner whose face can be the floor of
+    a cut (the foot of an L, round a boss, an open step) is cut sharp by the
+    flat end of the cutter and isn't counted. Counted in corners, not mesh
+    edges, so an STL and a STEP of the same part give the same answer.
+    """
     if len(ctx.concave_mask) == 0 or len(ctx.dihedral_angles_rad) == 0:
         return []
-    sharp = ctx.concave_mask & (ctx.dihedral_angles_rad > np.radians(30))
-    sharp_count = int(np.sum(sharp))
-    if sharp_count < 10:
+    corners = ctx.inside_corners
+    if corners.corners == 0:
         return []
+    n = corners.corners
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
         measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
-            f"{sharp_count} sharp concave edges — tool radius {min_radius_mm}mm "
-            f"cannot reach. Applies to {process_phrase(process)}."
+            f"{n} sharp concave {'corner' if n == 1 else 'corners'} between walls "
+            f"({round(corners.length_mm, 1):g} mm of edge): a milling cutter leaves at least its "
+            f"{min_radius_mm}mm radius there. Applies to {process_phrase(process)}."
         ),
         process=process,
         required_value=min_radius_mm,

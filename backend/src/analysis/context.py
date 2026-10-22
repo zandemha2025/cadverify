@@ -388,6 +388,22 @@ class GeometryContext:
             return []
 
     @cached_property
+    def angle_error_deg(self) -> np.ndarray | None:
+        """Per-face normal uncertainty from source rounding, degrees (None: exact)."""
+        return rounding_angle_error_deg(self.mesh)
+
+    @cached_property
+    def inside_corners(self) -> "InsideCorners":
+        """Inside corners a rotating cutter leaves rounded (see ``inside_corners``)."""
+        try:
+            return inside_corners(self.mesh, self.normals, self.face_adjacency,
+                                  self.dihedral_angles_rad, self.concave_mask,
+                                  self.facet_groups, self.scale_eps)
+        except Exception:
+            logger.warning("Inside-corner measurement failed", exc_info=True)
+            return InsideCorners(0, 0.0, np.empty(0, dtype=np.int64))
+
+    @cached_property
     def straight_profile_geometry(self):
         """Verify extrusion geometry without treating the file's Z as the wire axis."""
         if self.metadata.get("decimation", {}).get("succeeded") or not self.mesh.is_volume:
@@ -495,9 +511,61 @@ class GeometryContext:
                 heights = vertices @ axis
                 # Only the actual planar base is exempt. A percentage band
                 # near the bottom can contain a real pocket or closed cavity.
-                if np.all(heights[mesh.faces[downward]] <= heights.min() + tol):
+                above = downward & ~np.all(heights[mesh.faces] <= heights.min() + tol, axis=1)
+                # Nor is a facet of a round wall leaning by tessellation alone.
+                if above.any() and np.all(np.abs(self.normals[above] @ axis) <= _TESSELLATED_LEAN_SIN):
+                    above[above] = ~self._tessellation_lean(np.flatnonzero(above), axis)
+                if not above.any():
                     return True
         return False
+
+    @cached_property
+    def _smooth_adjacency(self) -> tuple[np.ndarray, np.ndarray]:
+        """(rows of face_adjacency turning at most 30 degrees, every adjacency's edge length)."""
+        edges = np.asarray(self.mesh.face_adjacency_edges)
+        vertices = np.asarray(self.mesh.vertices)
+        lengths = np.linalg.norm(vertices[edges[:, 0]] - vertices[edges[:, 1]], axis=1) if len(edges) else np.empty(0)
+        smooth = np.flatnonzero(self.dihedral_angles_rad <= math.radians(30.0)) if len(edges) else np.empty(0, dtype=int)
+        return smooth, lengths
+
+    def _tessellation_lean(self, faces: np.ndarray, axis: np.ndarray) -> np.ndarray:
+        """Which of ``faces`` (leaning down from ``axis``) lean by tessellation only.
+
+        A round wall's facets lean both ways, so over the whole wall they cancel:
+        the wall's area times its normal along the axis sums to its projected
+        area, which is zero for a straight bore or a turned diameter (up to the
+        sliver between its two rim polygons) and the ring between the rims for
+        a taper. A face qualifies when it leans less than
+        ``_TESSELLATED_LEAN_SIN`` and belongs to a smooth side-wall surface
+        (faces within that lean, joined across edges turning at most 30
+        degrees) whose projected area is no more negative than its boundary
+        length times a thousandth of the part's diagonal. A taper overhanging
+        its rim by more than that, or a ledge, stays a downward face.
+        """
+        if not len(faces):
+            return np.zeros(0, dtype=bool)
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+
+        along = self.normals @ axis
+        wall = np.abs(along) <= _TESSELLATED_LEAN_SIN
+        if not wall[faces].any():
+            return np.zeros(len(faces), dtype=bool)
+        adjacency = self.face_adjacency
+        smooth, lengths = self._smooth_adjacency
+        a, b = adjacency[smooth, 0], adjacency[smooth, 1]
+        joined = wall[a] & wall[b]
+        n = len(self.normals)
+        graph = coo_matrix((np.ones(int(joined.sum())), (a[joined], b[joined])), shape=(n, n))
+        _count, label = connected_components(graph, directed=False)
+        net = np.bincount(label[wall], weights=(self.face_areas * along)[wall], minlength=_count)
+        # Boundary of each wall surface: adjacencies leaving it (another surface or a non-wall face).
+        ea, eb = adjacency[:, 0], adjacency[:, 1]
+        leaves = (label[ea] != label[eb]) | (wall[ea] != wall[eb])
+        rim = (np.bincount(label[ea[leaves & wall[ea]]], weights=lengths[leaves & wall[ea]], minlength=_count)
+               + np.bincount(label[eb[leaves & wall[eb]]], weights=lengths[leaves & wall[eb]], minlength=_count))
+        allowed = rim * self.bbox_diag * _TESSELLATED_LEAN_OF_PART
+        return wall[faces] & (net[label[faces]] >= -allowed[label[faces]])
 
     @cached_property
     def z_release_blocked(self) -> np.ndarray | None:
@@ -1076,6 +1144,13 @@ _MAX_NESTING_SHELLS = 64
 # Largest normal tilt (radians) a convexity or setup proof forgives as source
 # rounding: 1 µm over a metre, far below any machined feature.
 _ROUNDING_TILT_CAP = 1e-6
+# The facets of a tessellated round wall (a bore, a turned diameter) lean off
+# square to its axis: a facet between nodes at different heights and angles
+# cuts the chord, a few degrees either way in a STEP mesh. Such a wall is a
+# wall for the setup proof (GeometryContext._tessellation_lean); a taper or a
+# ledge that really overhangs is not.
+_TESSELLATED_LEAN_SIN = math.sin(math.radians(15.0))
+_TESSELLATED_LEAN_OF_PART = 1e-3
 
 
 def shell_nesting_depths(bodies: list[trimesh.Trimesh]) -> list[int] | None:
@@ -1164,6 +1239,25 @@ def wall_thickness_tolerance(mesh: trimesh.Trimesh, eps: float) -> float:
     return max(eps * 1e-6, float(np.spacing(magnitude)) * 8)
 
 
+# An angle check (overhang) forgives at most this much source rounding: a
+# sliver whose rounded normal is less certain keeps the strict test.
+_ROUNDING_ANGLE_CAP_DEG = 0.1
+
+
+def rounding_angle_error_deg(mesh: trimesh.Trimesh) -> np.ndarray | None:
+    """How far each face's direction can be off from source-coordinate rounding.
+
+    A binary STL rounds every coordinate to float32; moving a part 1 m away
+    from the origin rounds it ~100x coarser, which tilts a small triangle by a
+    few thousandths of a degree. Degrees per face, capped at
+    ``_ROUNDING_ANGLE_CAP_DEG``; None for a mesh without rounding.
+    """
+    error = float((mesh.metadata or {}).get("coordinate_error", 0.0))
+    if not error or not np.isfinite(error) or len(mesh.faces) == 0:
+        return None
+    return np.minimum(np.degrees(_normal_precision(mesh, error)), _ROUNDING_ANGLE_CAP_DEG)
+
+
 def _normal_precision(mesh: trimesh.Trimesh, error: float) -> np.ndarray:
     """Euclidean unit-normal change when each triangle vertex moves <= error."""
     if not error:
@@ -1227,6 +1321,125 @@ def _straight_through(mesh, caps, heights, low, high, gauge, tol, normal, leanin
     distance = np.linalg.norm(a + t[..., None] * ab - point, axis=2)
     allowed = _SAGITTA_PER_CHORD * np.sqrt(length2) + tol
     return bool(np.all((distance <= allowed).any(axis=1)))
+
+
+# ── Inside corners a rotating cutter can't make sharp ─────────────────────
+# A concave edge whose face normals turn by more than this is a sharp inside
+# edge (src.fixes.brep_fixes.SHARP_CONCAVE_DEG rounds the same edges).
+_SHARP_TURN = math.radians(30.0)
+# The facets of a tessellated curve (a round hole, a boss) meet at concave
+# edges too: 360/n degrees apart for an n-sided hole, 30-35 degrees between
+# the facets of a 6 mm hole in a coarse STL. A facet with two or more concave
+# edges turning between 5 and 50 degrees is part of a curved surface, not a
+# corner: an octagon or finer reads as round, a hexagon as six corners.
+_CURVE_FACET_TURN = (math.radians(5.0), math.radians(50.0))
+# A flat-ended cutter coming straight down onto a face (its floor) cuts the
+# corner sharp when the other face stands square to that floor or leans back
+# from it; a face leaning over the floor by more than this is an undercut.
+_FLOOR_SQUARE = math.sin(math.radians(5.0))
+# Edges of one corner run in one direction (within this) and share vertices.
+_CORNER_RUN_COS = math.cos(math.radians(20.0))
+
+
+@dataclass(frozen=True)
+class InsideCorners:
+    """Inside corners where a milling cutter leaves its own radius."""
+    corners: int           # separate corners: runs of connected edges in one direction
+    length_mm: float       # their total length along the edge
+    edges: np.ndarray      # rows of face_adjacency on those corners
+
+
+def inside_corners(mesh: trimesh.Trimesh, normals: np.ndarray, adjacency: np.ndarray,
+                   turn: np.ndarray, concave: np.ndarray, facet_groups, eps: float) -> InsideCorners:
+    """Inside corners a rotating cutter leaves rounded, whatever the tessellation.
+
+    A milling cutter is round: where two walls meet along its axis it leaves its
+    radius in the corner. The same corner comes out sharp when one of its faces
+    can be the floor of the cut: the flat end of the cutter comes straight down
+    onto that face, with the other face square to it or leaning back (the foot
+    of an L bracket's upright, the underside of a bridge, round a boss, an open
+    step cut from its side). A sharp concave edge counts only when neither face
+    can be that floor: the corners of a pocket or the inside of a box. A face
+    can be the floor when a ray from it, just beside the edge, leaves the part
+    along its normal (the part is re-fixtured for each such face).
+
+    Counted in corners (connected runs of edges in one direction) and their
+    length, so a STEP tessellated finely along an edge and an STL with one
+    triangle edge per corner give the same answer.
+    """
+    empty = InsideCorners(0, 0.0, np.empty(0, dtype=np.int64))
+    count = len(adjacency)
+    if count == 0 or len(turn) != count or len(concave) != count:
+        return empty
+    sharp = concave & (turn > _SHARP_TURN)
+    if not sharp.any():
+        return empty
+    n_faces = len(mesh.faces)
+    # 1. Facets of tessellated curves, counted per planar facet (a strip of a
+    #    coarse cylinder is often two coplanar triangles).
+    group = np.arange(n_faces)
+    for gid, faces in enumerate(facet_groups):
+        group[np.asarray(faces, dtype=int)] = n_faces + gid
+    ga, gb = group[adjacency[:, 0]], group[adjacency[:, 1]]
+    low, high = _CURVE_FACET_TURN
+    curve_like = concave & (turn > low) & (turn <= high) & (ga != gb)
+    per_group = np.zeros(n_faces + len(facet_groups), dtype=np.int64)
+    np.add.at(per_group, ga[curve_like], 1)
+    np.add.at(per_group, gb[curve_like], 1)
+    on_curve = curve_like & (per_group[ga] >= 2) & (per_group[gb] >= 2)
+    candidates = np.flatnonzero(sharp & ~on_curve)
+    if not len(candidates):
+        return empty
+    # 2. Can either face be the floor of a cut?
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    edge_vertices = np.asarray(mesh.face_adjacency_edges)[candidates]
+    p0, p1 = vertices[edge_vertices[:, 0]], vertices[edge_vertices[:, 1]]
+    middle = (p0 + p1) / 2.0
+    run = p1 - p0
+    length = np.linalg.norm(run, axis=1)
+    direction = run / np.maximum(length, 1e-300)[:, None]
+    floor_ok = np.zeros(len(candidates), dtype=bool)
+    origins, rays, owners = [], [], []
+    for side in (0, 1):
+        floor = adjacency[candidates, side]
+        other = adjacency[candidates, 1 - side]
+        square = np.einsum("ij,ij->i", normals[floor], normals[other]) >= -_FLOOR_SQUARE
+        corners_of = np.asarray(mesh.faces)[floor]
+        third = np.where((corners_of != edge_vertices[:, :1]) & (corners_of != edge_vertices[:, 1:]),
+                         corners_of, -1).max(axis=1)
+        inward = vertices[np.maximum(third, 0)] - middle
+        inward -= np.einsum("ij,ij->i", inward, direction)[:, None] * direction
+        reach = np.linalg.norm(inward, axis=1)
+        usable = square & (third >= 0) & (reach > 0)
+        step = np.minimum(0.25 * reach, 0.5) / np.maximum(reach, 1e-300)
+        origin = middle + inward * step[:, None] + normals[floor] * eps
+        origins.append(origin[usable])
+        rays.append(normals[floor][usable])
+        owners.append(np.flatnonzero(usable))
+    origins_all = np.vstack(origins)
+    if len(origins_all):
+        blocked = np.asarray(mesh.ray.intersects_any(origins_all, np.vstack(rays)), dtype=bool)
+        floor_ok[np.concatenate(owners)[~blocked]] = True
+    need = ~floor_ok & (length > 0)
+    if not need.any():
+        return empty
+    # 3. Corners: edges sharing a vertex and running the same way.
+    rows = np.flatnonzero(need)
+    ends = edge_vertices[rows]
+    incidence = np.concatenate([np.stack([ends[:, 0], np.arange(len(rows))], axis=1),
+                                np.stack([ends[:, 1], np.arange(len(rows))], axis=1)])
+    incidence = incidence[np.argsort(incidence[:, 0], kind="stable")]
+    same = incidence[1:, 0] == incidence[:-1, 0]
+    first = np.r_[True, ~same]
+    leader = np.maximum.accumulate(np.where(first, np.arange(len(incidence)), 0))
+    a, b = incidence[leader, 1], incidence[:, 1]
+    keep = (a != b) & (np.abs(np.einsum("ij,ij->i", direction[rows][a], direction[rows][b])) >= _CORNER_RUN_COS)
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    graph = coo_matrix((np.ones(int(keep.sum())), (a[keep], b[keep])), shape=(len(rows), len(rows)))
+    n_corners, _labels = connected_components(graph, directed=False)
+    return InsideCorners(int(n_corners), float(length[rows].sum()), candidates[rows])
 
 
 @dataclass(frozen=True)
@@ -1327,21 +1540,30 @@ def _bent_along(mesh: trimesh.Trimesh, face: int) -> "BentSheet | None":
     from shapely.ops import unary_union
 
     normals = mesh.face_normals
-    extrusion = flat_sheet_geometry(mesh, normal_face=face)
-    if extrusion is None:
-        return None
-    (width, _, _), _hull, precision = extrusion
     normal = normals[face]
+    extrusion = flat_sheet_geometry(mesh, normal_face=face)
     vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
     heights = vertices @ normal
-    low = float(heights.min())
+    low, high = float(heights.min()), float(heights.max())
+    if extrusion is not None:
+        (width, _, _), _hull, precision = extrusion
+    else:
+        # Not a straight extrusion along the bend lines: maybe a bent sheet with
+        # holes or cut-outs through it (checked below, once the strip is known).
+        width, precision = high - low, 2.0 * float(mesh.metadata.get("coordinate_error", 0.0))
     tol = max(1e-4, 1e-6 * float(np.linalg.norm(mesh.extents))) + precision
-    caps = (np.abs(normals @ normal) > 1 - 1e-6) & np.all(np.abs(heights[mesh.faces] - low) <= tol, axis=1)
-    if not caps.any():
-        return None
     rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
     flat = (vertices @ rotation.T)[:, :2]
+    aligned = np.abs(normals @ normal) > 1 - 1e-6
+    caps = aligned & np.all(np.abs(heights[mesh.faces] - low) <= tol, axis=1)
+    if not caps.any():
+        return None
     profile = unary_union([Polygon(flat[f]) for f in mesh.faces[caps]]).buffer(0)
+    if extrusion is None:
+        top = aligned & np.all(np.abs(heights[mesh.faces] - high) <= tol, axis=1)
+        if not top.any():
+            return None
+        profile = unary_union([profile, unary_union([Polygon(flat[f]) for f in mesh.faces[top]]).buffer(0)]).buffer(0)
     if profile.geom_type != "Polygon" or len(profile.interiors):
         return None
     area, perimeter = float(profile.area), float(profile.length)
@@ -1360,7 +1582,78 @@ def _bent_along(mesh: trimesh.Trimesh, face: int) -> "BentSheet | None":
     bends, radius = _profile_bends(profile, gauge)
     if bends == 0:
         return None  # a flat strip is a flat sheet; flat_sheet_geometry reads it
+    if extrusion is None and not _cut_through_strip(mesh, normal, rotation, low, high, profile, gauge, tol):
+        return None
     return BentSheet(float(gauge), float(width), float(developed), int(bends), float(radius), float(precision))
+
+
+_STRIP_SECTIONS = 24
+
+
+def _cut_through_strip(mesh, normal, rotation, low, high, profile, gauge, tol) -> bool:
+    """The part is the strip ``profile`` swept along ``normal``, less cut-outs through the sheet.
+
+    Holes in a flange, slots and notches are cut straight through the sheet,
+    so every section across the bend lines is the strip with pieces taken out
+    across its gauge: inside the strip, each piece still the full gauge thick
+    (a blind pocket or a boss leaves a thinner or a thicker piece), and the
+    whole strip somewhere along it. Sections at ``_STRIP_SECTIONS`` heights;
+    every vertex must lie in the swept strip too.
+    """
+    from shapely import contains_xy
+    from shapely.ops import unary_union
+
+    center = mesh.bounds.mean(axis=0)
+    flat_all = ((np.asarray(mesh.vertices) - center) @ rotation.T)[:, :2]
+    if not np.all(contains_xy(profile.buffer(tol + 1e-3 * gauge), flat_all[:, 0], flat_all[:, 1])):
+        return False
+    full = False
+    for t in np.linspace(0.0, 1.0, _STRIP_SECTIONS + 2)[1:-1]:
+        origin = center + normal * (low + t * (high - low))
+        try:
+            lines = trimesh.intersections.mesh_plane(mesh, normal, origin)
+        except Exception:
+            return False
+        if not len(lines):
+            return False
+        segments = ((np.asarray(lines) - center) @ rotation.T)[:, :, :2]
+        try:
+            polygons = trimesh.load_path(segments).polygons_full
+        except Exception:
+            return False
+        section = unary_union([p for p in polygons if p is not None and p.area > 0])
+        if section.is_empty:
+            return False
+        if section.difference(profile.buffer(tol + 1e-3 * gauge)).area > 1e-3 * profile.area:
+            return False
+        edge = profile.exterior.buffer(tol + 1e-3 * gauge)
+        for piece in getattr(section, "geoms", [section]):
+            if (piece.geom_type != "Polygon" or len(piece.interiors) or piece.buffer(-0.45 * gauge).is_empty
+                    or not piece.buffer(-0.625 * gauge).is_empty):
+                return False
+            # Where the piece leaves the strip's outline it was cut straight
+            # across the sheet: one gauge from side to side (a pocket's floor
+            # runs along the sheet instead).
+            cut = piece.exterior.difference(edge)
+            lines = [line for line in getattr(cut, "geoms", [cut]) if not line.is_empty and line.length > 0]
+            if not lines:
+                continue
+            # One cut end may come back in pieces (a tessellated hole wall grazes
+            # the outline): the lines within a tenth of a gauge are one end.
+            ends = unary_union([line.buffer(0.1 * gauge) for line in lines])
+            for blob in getattr(ends, "geoms", [ends]):
+                inside = [line for line in lines if blob.intersects(line)]
+                total = sum(line.length for line in inside)
+                if total < 0.05 * gauge:
+                    continue
+                points = np.vstack([np.asarray(line.coords) for line in inside])
+                if len(points) > 3:
+                    points = points[ConvexHull(points).vertices] if np.ptp(points, axis=0).min() > 0 else points
+                span = float(np.max(np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)))
+                if total > 1.5 * gauge or span < 0.9 * gauge:
+                    return False
+        full = full or section.area >= (1.0 - 1e-3) * profile.area
+    return full
 
 
 def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] | None:
