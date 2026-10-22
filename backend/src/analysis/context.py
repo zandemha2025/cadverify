@@ -914,17 +914,18 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
     vertices = np.asarray(mesh.vertices, dtype=np.float64)
     center = vertices.mean(axis=0)
     triangles = np.asarray(mesh.faces)
-    # Edge (sorted vertex pair) -> concave? for every sharp mesh edge.
-    adjacency_edges = np.sort(np.asarray(mesh.face_adjacency_edges), axis=1)
+    # Mesh edges as sorted vertex pairs, looked up by one integer key.
+    n_vertices = np.int64(len(vertices))
+    adjacency_edges = np.sort(np.asarray(mesh.face_adjacency_edges, dtype=np.int64), axis=1)
+    adjacency_keys = adjacency_edges[:, 0] * n_vertices + adjacency_edges[:, 1]
+    key_order = np.argsort(adjacency_keys)
+    sorted_keys = adjacency_keys[key_order]
     sharp = np.asarray(mesh.face_adjacency_angles) > np.radians(30.0)
-    concave_edge = {(int(a), int(b)): not bool(convex) for (a, b), convex, s in
-                    zip(adjacency_edges, mesh.face_adjacency_convex, sharp) if s}
+    convex_flags = np.asarray(mesh.face_adjacency_convex, dtype=bool)
+    adjacency_faces = np.asarray(mesh.face_adjacency, dtype=np.int64)
     face_facet = np.full(len(triangles), -1, dtype=np.int64)
     for index, facet in enumerate(facets):
         face_facet[facet] = index
-    edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for (a, b), (fa, fb) in zip(adjacency_edges, np.asarray(mesh.face_adjacency)):
-        edge_faces[(int(a), int(b))] = [int(fa), int(fb)]
 
     info = []
     for index, facet in enumerate(facets):
@@ -934,8 +935,17 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
         edges = np.sort(np.concatenate([triangles[facet][:, [0, 1]], triangles[facet][:, [1, 2]],
                                         triangles[facet][:, [2, 0]]]), axis=1)
         unique, counts = np.unique(edges, axis=0, return_counts=True)
-        boundary = [tuple(int(v) for v in e) for e in unique[counts == 1]]
-        info.append((normal, offset, boundary))
+        boundary = unique[counts == 1]
+        # Each boundary edge's mesh adjacency: sharp and concave (a root),
+        # sharp and convex (a free edge), or neither (smooth, not counted).
+        keys = boundary[:, 0] * n_vertices + boundary[:, 1]
+        slot = np.clip(np.searchsorted(sorted_keys, keys), 0, max(len(sorted_keys) - 1, 0))
+        found = len(sorted_keys) > 0
+        match = (sorted_keys[slot] == keys) if found else np.zeros(len(keys), dtype=bool)
+        adjacency = key_order[slot]
+        is_sharp = match & sharp[adjacency] if found else match
+        concave = is_sharp & ~convex_flags[adjacency] if found else match
+        info.append((normal, offset, boundary, concave, is_sharp & ~concave, adjacency))
 
     def frame(normal):
         u = np.cross(normal, [1.0, 0.0, 0.0])
@@ -947,14 +957,13 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
     polygons: dict[tuple[int, int], Any] = {}
 
     def outline(index, owner):
-        """Facet ``index`` drawn in the plane frame of facet ``owner``."""
+        """Facet ``index`` drawn in the plane frame of facet ``owner``, from its boundary edges."""
         key = (index, owner)
         if key not in polygons:
             u, v = frame(info[owner][0])
-            pts = vertices[triangles[facets[index]]] - center
-            tri2d = np.stack([pts @ u, pts @ v], axis=-1)
-            pieces = shapely.polygons(tri2d)
-            polygons[key] = shapely.union_all(pieces[shapely.area(pieces) > 0]).buffer(0)
+            pts = vertices[info[index][2]] - center
+            segments = np.stack([pts @ u, pts @ v], axis=-1)
+            polygons[key] = shapely.build_area(shapely.multilinestrings(segments)).buffer(0)
         return polygons[key]
 
     def extent(index, owner):
@@ -964,9 +973,9 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
 
     plates = []
     for i in range(len(facets)):
-        n_i, d_i, _ = info[i]
+        n_i, d_i = info[i][:2]
         for j in range(i + 1, len(facets)):
-            n_j, d_j, _ = info[j]
+            n_j, d_j = info[j][:2]
             if float(n_i @ n_j) > -_RIB_PARALLEL_COS:
                 continue
             thickness = d_i + d_j  # n_j ~ -n_i: plane i at d_i, plane j at -d_j along n_i
@@ -1005,16 +1014,12 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
         rooted = set()
         neighbours = set()
         for k in (i, j):
-            for edge in info[k][2]:
-                flag = concave_edge.get(edge)
-                if flag is None:
-                    continue
-                if flag:
-                    roots.append(edge)
-                    rooted.add(k)
-                    neighbours.update(int(face_facet[f]) for f in edge_faces.get(edge, []))
-                else:
-                    free += 1
+            _normal, _offset, boundary, concave, convex, adjacency = info[k]
+            free += int(convex.sum())
+            if concave.any():
+                rooted.add(k)
+                roots.extend(boundary[concave].tolist())
+                neighbours.update(int(f) for f in face_facet[adjacency_faces[adjacency[concave]].reshape(-1)])
         # A rib stands on a face that carries on past both of its sides (a T):
         # both of its faces meet that face in a concave edge. A free plate has
         # no root (a web); an L (bracket legs, a cap on a post) roots only one
