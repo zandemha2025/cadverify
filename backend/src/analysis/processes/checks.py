@@ -97,7 +97,12 @@ def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_
             ),
             fix_suggestion="Confirm these walls in the source CAD; a STEP export carries exact coordinates.",
         )]
-    unsettled = int(measured.sum() - stable.sum())
+    # Readings that sit too near a triangle edge to prove are still readings,
+    # within coordinate rounding, and none is near the limit (checked above).
+    # Only faces with no reading at all are left out: a ray that slipped past
+    # an edge or met nothing. (Counting unproved readings here made the note
+    # come and go with where the part sits, as float32 steps grow.)
+    unsettled = int((measured & ~np.isfinite(wt)).sum())
     copied = int(len(wt) - measured.sum())
     if unsettled == 0 and copied == 0:
         return []
@@ -105,7 +110,7 @@ def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_
         code="WALL_THICKNESS_PRECISION", severity=Severity.INFO, process=process,
         message=(
             f"Walls measured on {int(measured.sum())} of {len(wt)} faces"
-            + (f"; {unsettled} of those gave no stable reading (the ray met an edge or nothing) and are left out"
+            + (f"; {unsettled} of those gave no reading (the ray slipped past an edge or met nothing) and are left out"
                if unsettled else "")
             + ". "
             + (f"The other {copied} faces take the nearest measured face's value. " if copied else "")
