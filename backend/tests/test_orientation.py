@@ -327,3 +327,18 @@ def test_region_centres_come_back_in_file_coordinates():
     assert np.array(oh.region_center) == pytest.approx(file_centroids, abs=1e-9)
     placed_centroids = o.apply(mesh).triangles_center[oh.affected_faces[:50]].mean(axis=0)
     assert not np.allclose(placed_centroids, file_centroids)
+
+
+
+def test_the_comparisons_resin_figure_is_the_cost_paths_own():
+    # Round 7: the resin pad follows the part's outline; the comparison's one-part SLA figure
+    # reads the same pad the price does (a ring lying flat: its pad leaves the hole open).
+    from src.costing.print_model import placed_features, resin_estimate
+
+    ring = trimesh.creation.annulus(r_min=10, r_max=20, height=5, sections=256)
+    flat = [c for c in orientation_options(ring)["candidates"] if c["height_mm"] == pytest.approx(5.0)]
+    assert flat
+    for c in flat:
+        placed = Orientation.of(c["rotation"]).apply(ring)
+        want = resin_estimate(placed_features(placed), 1).material_cm3
+        assert c["print"]["sla"]["material_cm3"] == pytest.approx(want, abs=0.011), c["id"]

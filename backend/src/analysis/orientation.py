@@ -564,7 +564,7 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
                       # [x0, y0, z0, x1, y1, z1]: the 3D view leaves them uncoloured.
                       "bridge_boxes": boxes}
     # One part printed this way, on its own (the price nests a plate: see the cost view).
-    from src.costing.print_model import FDM, PrintFeatures, fdm_estimate, layer_profile, resin_estimate
+    from src.costing.print_model import FDM, PrintFeatures, fdm_estimate, layer_profile, pad_area_cm2, resin_estimate
 
     nz = normals[:, 2] if len(normals) else np.empty(0)
     perimeter, section = layer_profile(placed, FDM["layer_mm"])
@@ -576,6 +576,7 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
         fdm_need_cm2=fdm.area_mm2 / 100.0, fdm_column_cm3=fdm.column_mm3 / 1000.0, fdm_bridges=fdm.bridges,
         resin_column_cm3=float(support["sla"]["volume_cm3"]),
         layer_perimeter_mm=tuple(perimeter.round(4)), layer_area_mm2=tuple(section.round(4)),
+        pad_cm2=pad_area_cm2(placed),
     )
     f1, r1 = fdm_estimate(feats, 1), resin_estimate(feats, 1)
     printed = {"fdm": {"hours_one": round(f1.hours_per_part, 3), "material_cm3": round(f1.material_cm3, 2),
