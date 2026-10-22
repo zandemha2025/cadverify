@@ -772,6 +772,10 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
     if getattr(est, "material_mass", None):
         # Mass and density as fields: readers stop parsing "= X kg × $Y/kg".
         d["material_mass"] = dict(est.material_mass)
+    if getattr(est, "qty_model", None):
+        # ce-06: how each line moves with the quantity, so the price at any other
+        # quantity is the model's own (src.costing.quantity_model.unit_cost_at).
+        d["qty_model"] = est.qty_model
     return d
 
 

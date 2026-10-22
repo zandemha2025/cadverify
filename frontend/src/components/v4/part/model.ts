@@ -12,6 +12,7 @@ import type { CostDriver, CostEstimate, CostReport, Issue, ProcessScore, Validat
 import type { OwnedMachine } from "@/lib/verify/machine-api";
 import type { FitFailure, PerRouteFit } from "@/lib/verify/verification";
 import { gapText, readVerification } from "../../../lib/verify/verification.ts";
+import { onceAndEach, unitCostAt } from "../../../lib/qty-model.ts";
 import { MACHINE_KIND, processLabel } from "../process-names.ts";
 
 /* ── formatting ─────────────────────────────────────────────────────────── */
@@ -674,23 +675,18 @@ export function chartModel(methods: Method[], qs: number[], q: number, selected:
   return { width, height: 400, x, y, gridY, gridX, lines, crossoverX, qFromX };
 }
 
-/** Price between two computed quantities, log-log interpolated. Labelled, never decided on. */
-export function interpolate(m: Method, qs: number[], target: number): number | null {
+/** The model's own price for a method at ``target`` parts (ce-06): read from the structure
+ *  kept with its priced estimates (fixed ÷ quantity + each part's lines, with the same
+ *  learning), never a line drawn between two priced quantities. Null when the record was
+ *  priced before the model was kept: then only "Price N" gives a number. */
+export function modelPrice(m: Method, qs: number[], target: number): { value: number; est: CostEstimate } | null {
   const pts = qs.filter((qq) => m.prices.has(qq));
-  if (!pts.length) return null;
-  const exact = m.prices.get(target);
-  if (exact) return exact.unit_cost_usd;
-  if (target <= pts[0]) return m.prices.get(pts[0])!.unit_cost_usd;
-  if (target >= pts[pts.length - 1]) return m.prices.get(pts[pts.length - 1])!.unit_cost_usd;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    if (target >= a && target <= b) {
-      const va = m.prices.get(a)!.unit_cost_usd;
-      const vb = m.prices.get(b)!.unit_cost_usd;
-      const t = (Math.log(target) - Math.log(a)) / (Math.log(b) - Math.log(a));
-      return Math.exp(Math.log(va) * (1 - t) + Math.log(vb) * t);
-    }
+  if (!pts.length || !(target >= 1)) return null;
+  const near = [...pts].sort((a, b) => Math.abs(Math.log(a / target)) - Math.abs(Math.log(b / target)));
+  for (const q of near) {
+    const est = m.prices.get(q)!;
+    const value = unitCostAt(est, target);
+    if (value != null) return { value, est };
   }
   return null;
 }
@@ -721,23 +717,27 @@ export function otherQtyNote(methods: Method[], qs: number[], raw: string): { on
   const n = Number.parseInt(raw, 10);
   const computed = `Computed at ${qs.map(qtyWord).join(", ").replace(/, ([^,]*)$/, " and $1")}.`;
   if (!(n > 0) || qs.includes(n)) return { on: false, text: computed, value: null };
+  const workable = methods.filter(isWorkable);
   let best: Method | null = null;
-  let bestV = Infinity;
-  for (const m of methods.filter(isWorkable)) {
-    const v = interpolate(m, qs, n);
-    if (v != null && v < bestV) {
+  let bestP: { value: number; est: CostEstimate } | null = null;
+  for (const m of workable) {
+    const p = modelPrice(m, qs, n);
+    if (p && (!bestP || p.value < bestP.value)) {
       best = m;
-      bestV = v;
+      bestP = p;
     }
   }
-  if (!best) return { on: true, text: "Nothing priced.", value: null };
-  const max = qs[qs.length - 1];
-  const min = qs[0];
-  const lo = [...qs].reverse().find((qq) => qq < n);
-  const hi = qs.find((qq) => qq > n);
-  const where =
-    n > max ? `, held at the ${qtyWord(max)} price.` : n < min ? `, held at the ${qtyWord(min)} price.` : `, read between the prices at ${qtyWord(lo!)} and ${qtyWord(hi!)}, not computed.`;
-  return { on: true, text: `≈ ${money(bestV)} each by ${best.name.toLowerCase()}${where}`, value: bestV };
+  if (!best || !bestP) {
+    const priced = workable.some((m) => qs.some((qq) => m.prices.has(qq)));
+    return { on: true, text: priced ? `Not priced at ${qtyWord(n)} yet: this record was priced before ScaleCAD kept its model, so there is no number to show.` : "Nothing priced.", value: null };
+  }
+  // The words add up: what the order pays once, shared over n, plus what each part adds.
+  const model = bestP.est.qty_model!;
+  const c = (bestP.est as { calibration?: { cost_factor?: number | null } | null }).calibration?.cost_factor;
+  const once = onceAndEach(model, n).once * (typeof c === "number" && c > 0 ? c : 1);
+  const each = bestP.value - once / n;
+  const split = once > 0 ? `: ${money(once)} once for the order ÷ ${qtyWord(n)} + ${money(each)} a part` : "";
+  return { on: true, text: `${money(bestP.value)} each by ${best.name.toLowerCase()} at ${qtyWord(n)}, from the model's own lines${split}.`, value: bestP.value };
 }
 
 /* ── machines (Shop lens) ──────────────────────────────────────────────── */

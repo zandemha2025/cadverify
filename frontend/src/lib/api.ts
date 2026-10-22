@@ -11,6 +11,7 @@ import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
 import type { PartType } from "./verify/bodies";
+import type { CostQtyModel } from "./qty-model";
 import { createReconstructionSubmissionId } from "./reconstruction-id";
 import { track } from "./analytics";
 
@@ -961,6 +962,9 @@ export interface CostEstimate {
   /** The material as fields (absent on older records): the part's own mass (CAD volume × density),
    *  the mass the price is charged on (stock, printed with supports, poured), density and $/kg. */
   material_mass?: CostMaterialMass;
+  /** How each line moves with the quantity (absent on records priced before it was kept):
+   *  the model's own price at any other quantity, see lib/qty-model.ts (ce-06). */
+  qty_model?: CostQtyModel;
 }
 
 export interface CostMaterialMass {

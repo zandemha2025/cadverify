@@ -94,6 +94,10 @@ class CostEstimate:
     # density), used_kg (what the price is charged on), density_g_cm3, usd_per_kg.
     # None on estimates built without it.
     material_mass: Optional[dict] = None
+    # ce-06: the cost lines sorted by how they move with the quantity, so the price
+    # at any quantity is the model's own (src.costing.quantity_model). None on
+    # estimates built without it.
+    qty_model: Optional[dict] = None
 
     def assert_sums(self, tol: float = 0.01) -> None:
         """Hard invariant (gate G3): unit cost == sum of line items, or it is a bug."""

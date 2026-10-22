@@ -25,6 +25,7 @@ import os
 from src.analysis.models import ProcessType
 from src.analysis.process_names import process_label
 from src.costing.drivers import basis_words, build_orientation, parts_per_build
+from src.costing import quantity_model as qtymod
 from src.costing.learning import learning_words, lot_average_factor
 from src.costing.provenance import TYPICAL, CostEstimate, Driver, Provenance
 from src.costing.rates import (
@@ -73,6 +74,16 @@ def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
     floor = rates.g("learning_floor")
     mult = lot_average_factor(rate, ref_qty, floor, qty)
     return mult, learning_words(rate, ref_qty, floor, qty, mult)
+
+
+def _learning_params(family, ref_qty, rates: RateCard):
+    """The curve touch labor follows on this route at any quantity, or None."""
+    if os.getenv("CADVERIFY_CNC_LEARNING", "1") == "0" or family not in _LEARNING_FAMILIES:
+        return None
+    rate = rates.g("learning_rate")
+    if not rate or rate >= 1.0 or ref_qty <= 0:
+        return None
+    return {"rate": float(rate), "first_lot": float(ref_qty), "floor": float(rates.g("learning_floor"))}
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -590,6 +601,9 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             price_note = f"{price_note}; ×{pmult:g} powder price adjustment"
     material_cost = input_mass * price_per_kg * (1.0 + scrap)
     material_scaled = material_cost * rm * mgn
+    # ce-06: the price at any quantity from the model's own structure (quantity_model).
+    qm = qtymod.new()
+    qm["per_part_usd"] += material_scaled
     # The same figures as fields, so a reader never parses the derivation text:
     # the part's own mass (CAD volume × density), the material the price is
     # charged on (stock cut from, printed with supports, poured), its density and
@@ -709,6 +723,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     per_plate = lot_raw == "build"
     n_setups = max(1.0, qty / lot_size) if per_plate else 1.0
     learn_mult, learn_src = _learning_multiplier(family, qty, lot_size, rates)
+    qm["learning"] = _learning_params(family, lot_size, rates)
 
     # formative: a multi-cavity tool makes n_cavities parts per machine cycle
     cav_div = n_cavities if family == "formative" else 1
@@ -750,6 +765,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # ce-03: the machine's cycle is paced by its program and doesn't learn; only touch
     # labor (post-process hand work, in-process inspection) does (src.costing.learning).
     machine_scaled = machine_cost * rl_machine * mgn * burden   # E-now #2: labor-only region scaling
+    qm["machine_usd"] += machine_scaled
     owned_note = (f" × (1-{cap_frac:g}) on a machine you own: running cost only, the "
                   f"machine is already paid for (typical value, not confirmed by a shop)") if owned_here else ""
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
@@ -837,6 +853,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     post_labor = (post_hr_part + support_hr + post_hr_build / n) * labor_rate
     post_labor_learned = post_labor * learn_mult         # touch labor learns (lot average, ce-03)
     labor_scaled = post_labor_learned * rl * mgn * burden
+    qm["learning_usd" if qm["learning"] else "per_part_usd"] += post_labor * rl * mgn * burden
     support_note = ""
     if process == PT.FDM and print_plan is not None:
         support_note = (f" + support removal {rates.pget(process, 'support_hr_per_cm2'):g}hr/cm² × "
@@ -873,6 +890,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # ---- SETUP per lot (weakness #8) ------------------------------------
     setup_per_unit = setup_hr * labor_rate * n_setups / qty
     setup_scaled = setup_per_unit * rl * mgn * burden
+    _setup_once = setup_hr * labor_rate * rl * mgn * burden
+    if per_plate:
+        qm["per_plate"].append({"lot_usd": _setup_once, "parts": lot_size})
+    else:
+        qm["once_usd"] += _setup_once
     drivers_out.append(Driver(
         name="setup_cost", value=round(setup_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"),
@@ -896,6 +918,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # removes both lines (byte-identical old cost).
     nre_scaled = 0.0
     inspection_scaled = 0.0
+    _tol_terms: list = []   # inspection and finishing terms: a declared tolerance scales them
     fai_hr_order = 0.0   # first-article hours this order pays once (see the fixed split)
     if family == "subtractive" and os.getenv("CADVERIFY_CNC_NRE", "1") != "0":
         nre_hr = rates.pget(process, "nre_hr")
@@ -905,6 +928,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             nre_total = nre_hr * labor_rate * rl * mgn * burden      # one-time
             nre_scaled = nre_total / qty                              # amortized per unit
             extra_fixed += nre_total
+            qm["once_usd"] += nre_total
             drivers_out.append(Driver(
                 name="nre_cost", value=round(nre_scaled, 4), unit="$",
                 provenance=rates.prov_tag(f"nre_hr.{process.name}"),
@@ -919,6 +943,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         insp_hr_per_unit = fai_per_unit + inspect_part
         if insp_hr_per_unit > 0:
             inspection_scaled = insp_hr_per_unit * labor_rate * rl * mgn * burden
+            _fai_once = fai_hr * labor_rate * rl * mgn * burden
+            _tol_terms.append(("plate" if per_plate else "once", _fai_once))
+            _tol_terms.append(("learn" if qm["learning"] else "part",
+                               inspect_hr_part * labor_rate * rl * mgn * burden))
             extra_variable += ((fai_hr / lot_size if per_plate else 0.0) + inspect_part) * labor_rate * rl * mgn * burden
             drivers_out.append(Driver(
                 name="inspection_cost", value=round(inspection_scaled, 4), unit="$",
@@ -937,6 +965,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         if perishable_frac > 0:
             consumables_scaled = machine_scaled * perishable_frac
             extra_variable += consumables_scaled
+            qm["per_part_usd"] += consumables_scaled
             drivers_out.append(Driver(
                 name="consumables_cost", value=round(consumables_scaled, 4), unit="$",
                 provenance=Provenance.DEFAULT,
@@ -952,6 +981,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             # commodity consumable: regional material scaling + margin, no overhead burden
             consumables_scaled = edm_cut_hr * wire_per_hr * rm * mgn
             extra_variable += consumables_scaled
+            qm["per_part_usd"] += consumables_scaled
             drivers_out.append(Driver(
                 name="consumables_cost", value=round(consumables_scaled, 4), unit="$",
                 provenance=Provenance.DEFAULT,
@@ -973,6 +1003,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         fin_lot_per_unit = fin_lot * n_setups / qty
         finishing_per_unit = fin_lot_per_unit + fin_part
         finishing_scaled = finishing_per_unit * rl * mgn             # outsourced invoice: regional service + margin (no internal overhead burden)
+        _tol_terms.append(("plate" if per_plate else "once", fin_lot * rl * mgn))
+        _tol_terms.append(("part", fin_part * rl * mgn))
         extra_variable += ((fin_lot / lot_size if per_plate else 0.0) + fin_part) * rl * mgn
         if not per_plate:
             extra_fixed += fin_lot * rl * mgn                         # one finishing lot for the order
@@ -999,6 +1031,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             comp_cost = comp_hr * labor_rate * rl * mgn * burden
             metal_post_items[line_key] = round(comp_cost, 4)
             extra_variable += comp_cost
+            qm["per_part_usd"] += comp_cost
             drivers_out.append(Driver(
                 name=drv_name, value=round(comp_cost, 4), unit="$",
                 provenance=Provenance.DEFAULT,
@@ -1014,6 +1047,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         sinter_cost = sinter_per_part_hr * sinter_rate
         sinter_scaled = sinter_cost * rl_machine * mgn * burden   # furnace = machine-like conversion
         extra_variable += sinter_scaled
+        qm["per_part_usd"] += sinter_scaled
         drivers_out.append(Driver(
             name="sinter_cost", value=round(sinter_scaled, 4), unit="$",
             provenance=Provenance.DEFAULT,
@@ -1042,6 +1076,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         ded_finish_scaled = per_part + once / qty
         extra_variable += per_part
         extra_fixed += once
+        qm["per_part_usd"] += per_part
+        qm["once_usd"] += once
         drivers_out.append(Driver(
             name="finish_machining", value=round(ded_finish_scaled, 4), unit="$",
             provenance=Provenance.DEFAULT,
@@ -1074,6 +1110,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         tol_base = finish_machine_scaled + inspection_scaled + finishing_scaled
         tolerance_surcharge = tol_base * (tol_cost_mult - 1.0)
         extra_variable += tolerance_surcharge          # per-unit conversion cost
+        qm["per_part_usd"] += finish_machine_scaled * (tol_cost_mult - 1.0)
         drivers_out.append(Driver(
             name="tolerance_class", value=round(tol_cost_mult, 4), unit="×",
             provenance=Provenance.USER,
@@ -1160,6 +1197,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         tooling_cost = 0.0
 
     tooling_amort_scaled = (tooling_cost / qty) * rt * mgn
+    qm["once_usd"] += tooling_cost * rt * mgn
+    # Inspection and finishing, × the declared tolerance's factor where it applies.
+    _tf = tol_cost_mult if tolerance_surcharge else 1.0
+    for _kind, _usd in _tol_terms:
+        if _kind == "plate":
+            qm["per_plate"].append({"lot_usd": _usd * _tf, "parts": lot_size})
+        else:
+            qm[{"once": "once_usd", "learn": "learning_usd", "part": "per_part_usd"}[_kind]] += _usd * _tf
 
     # ---- assemble (base 4 keys + E-now #3/#4 lines when they apply) ------
     # Extra keys (nre/inspection/consumables/finishing) are added ONLY when
@@ -1203,6 +1248,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # M17: one minimum per order, not per production lot: DED/WAAM lots are 10
     # parts, so a $300 minimum per lot held every quantity at $30 a part or more.
     order_min = rates.min_charge(process)
+    qm["order_min_usd"] = float(order_min)
     floor_per_unit = order_min / qty if qty else 0.0
     if floor_per_unit > unit_cost:
         delta = floor_per_unit - unit_cost
@@ -1274,6 +1320,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         dfm_blocker_details=dfm_blocker_details,
         owned_in_house=owned_here,
         material_mass=material_mass,
+        qty_model=qtymod.finish(qm),
     )
     est.assert_sums()
     return est

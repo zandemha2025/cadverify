@@ -524,6 +524,9 @@ class SpecLine:
     variable_usd: float    # per part, asymptotic
     lead_days: float
     driver: Driver
+    # How the line moves with the quantity (src.costing.quantity_model): an outside
+    # service's {"min_usd", "per_part_usd"} or labor hours' {"once_usd", "per_part_usd"}.
+    qty_term: Optional[dict] = None
 
 
 @dataclass
@@ -665,6 +668,7 @@ def price_route(rs: RouteSpecs, *, rates, region: str, qty: int, area_cm2: float
             fixed = max(0.0, p["lot_usd"] - per_order) * rl * mgn
             variable = p["per_m2_usd"] * area_m2 * rl * mgn
             unit = order / q * rl * mgn
+            term = {"min_usd": p["lot_usd"] * rl * mgn, "per_part_usd": variable}
             how = (f"{label}: the greater of the ${p['lot_usd']:g} lot minimum and "
                    f"${p['per_m2_usd']:g}/m² × {area_m2:.4f} m² × {q} parts = ${order:,.2f} ÷ {q} "
                    f"= ${order / q:.2f}/part × region ×{rl:g}{markup} ({origin})")
@@ -677,6 +681,7 @@ def price_route(rs: RouteSpecs, *, rates, region: str, qty: int, area_cm2: float
             fixed = max(0.0, p["lot_usd"] - per_order) * rl * mgn
             variable = p["per_kg_usd"] * mass_kg * rl * mgn
             unit = order / q * rl * mgn
+            term = {"min_usd": p["lot_usd"] * rl * mgn, "per_part_usd": variable}
             how = (f"{label}: the greater of the ${p['lot_usd']:g} furnace-load minimum and "
                    f"${p['per_kg_usd']:g}/kg × {mass_kg:.3f} kg × {q} parts = ${order:,.2f} ÷ {q} "
                    f"= ${order / q:.2f}/part × region ×{rl:g}{markup} ({origin})")
@@ -687,6 +692,7 @@ def price_route(rs: RouteSpecs, *, rates, region: str, qty: int, area_cm2: float
             fixed = p.get("hr_per_order", 0.0) * rate
             variable = per_part_hr * rate
             unit = hours * rate / q
+            term = {"once_usd": fixed, "per_part_usd": variable}
             bits = []
             if p.get("hr_per_order"):
                 bits.append(f"{p['hr_per_order']:g} h per order")
@@ -704,7 +710,7 @@ def price_route(rs: RouteSpecs, *, rates, region: str, qty: int, area_cm2: float
                      provenance=prov, source=how, error_band_pct=50.0)
         lines.append(SpecLine(key=f"spec_{op}", op=op, label=label, unit_usd=round(unit, 4),
                               fixed_usd=round(fixed, 4), variable_usd=round(variable, 4),
-                              lead_days=float(lead), driver=drv))
+                              lead_days=float(lead), driver=drv, qty_term=term))
     return lines
 
 
@@ -752,10 +758,14 @@ class SpecSession:
             items[ln.key] = ln.unit_usd
         unit = round(sum(items.values()), 4)
         fixed = est.fixed_cost_usd + sum(ln.fixed_usd for ln in lines)
+        qm = est.qty_model
+        if isinstance(qm, dict):
+            qm = {**qm, "specs": list(qm.get("specs") or [])
+                  + [{k: round(v, 6) for k, v in ln.qty_term.items()} for ln in lines if ln.qty_term]}
         est2 = replace(est, line_items=items, unit_cost_usd=unit,
                        fixed_cost_usd=round(fixed, 4),
                        variable_cost_usd=round(unit - fixed / max(1, est.quantity), 4),
-                       drivers=list(est.drivers) + [ln.driver for ln in lines])
+                       drivers=list(est.drivers) + [ln.driver for ln in lines], qty_model=qm)
         est2.assert_sums()
         if lt is None:
             return est2, None

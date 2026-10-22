@@ -9,11 +9,11 @@ import {
   fixesOf,
   groundedCount,
   groupUnpriced,
-  interpolate,
   issueKind,
   machineViews,
   makeRows,
   methodWhy,
+  modelPrice,
   otherQtyNote,
   withQuantity,
   materialText,
@@ -22,6 +22,8 @@ import {
   routeAsk,
   biggestTypicalNote,
 } from "./model.ts";
+import type { Method } from "./model.ts";
+import type { CostEstimate } from "@/lib/api";
 
 type AnyObj = Record<string, unknown>;
 
@@ -182,18 +184,34 @@ test("cost lines come from the dollar drivers, largest first, with provenance", 
   assert.match(note.title, /^Labor is half of the in-house cost/);
 });
 
-test("other quantities interpolate between computed points and say so", () => {
+test("other quantities: no straight line between priced points; no model, no number (ce-06)", () => {
   const f = fixture();
   const methods = buildMethods(f);
-  const dlp = methods.find((m) => m.code === "dlp")!;
-  assert.equal(interpolate(dlp, [1, 10, 100], 10), 7.32);
-  const mid = interpolate(dlp, [1, 10, 100], 31.62)!;
-  assert.ok(mid < 7.32 && mid > 6.37);
+  // This record was priced before the model was kept: no quick number at all.
   const note = otherQtyNote(methods, [1, 10, 100], "50");
   assert.equal(note.on, true);
-  assert.match(note.text, /read between the prices at 10 and 100, not computed\./);
+  assert.equal(note.value, null);
+  assert.match(note.text, /^Not priced at 50 yet/);
+  assert.doesNotMatch(note.text, /≈|between/);
   assert.equal(otherQtyNote(methods, [1, 10, 100], "10").on, false);
   assert.match(otherQtyNote(methods, [1, 10, 100], "").text, /Computed at 1, 10 and 100\./);
+});
+
+test("other quantities: the model's own price, with the words that add up to it (ce-06)", () => {
+  // The cost engineer's pocket block, steel, 3-axis at v0 rates, priced at 1 and 100.
+  const qty_model = {
+    v: 1, once_usd: 113.75, per_part_usd: 1.306914, machine_usd: 15.693375, learning_usd: 18.55,
+    learning: { rate: 0.9, first_lot: 100, floor: 0.25 }, per_plate: [], order_min_usd: 90, specs: [],
+  };
+  const est = (q: number, unit: number) => ({ process: "cnc_3axis", material: "Mild Steel", quantity: q, unit_cost_usd: unit, qty_model }) as unknown as CostEstimate;
+  const m = { code: "cnc_3axis", name: "3-axis milling", verdict: "ok", excludedReason: null, prices: new Map([[1, est(1, 149.3)], [100, est(100, 36.69)]]) } as unknown as Method;
+  assert.equal(modelPrice(m, [1, 100], 25)!.value.toFixed(2), "40.10");
+  // Beyond the last priced quantity it is still the model, not the 100-off price held flat.
+  assert.equal(modelPrice(m, [1, 100], 10000)!.value.toFixed(2), "27.84");
+  const note = otherQtyNote([m], [1, 100], "25");
+  assert.equal(note.value!.toFixed(2), "40.10");
+  // $113.75 ÷ 25 = $4.55, + $35.55 = $40.10
+  assert.equal(note.text, "$40.10 each by 3-axis milling at 25, from the model's own lines: $113.75 once for the order ÷ 25 + $35.55 a part.");
 });
 
 test("a typed quantity is priced by the model: it joins the quantities the engine computes (de-18)", () => {
