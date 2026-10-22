@@ -97,7 +97,18 @@ _jinja_env.filters["pdf_text"] = _pdf_text
 _jinja_env.filters["process_name"] = _process_name
 
 
-def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None) -> dict:
+def _units(text, unit="mm"):
+    """Engine text in the person's length unit (mm figures → in when chosen)."""
+    from src.services.length_units import in_text
+
+    return in_text(text, unit)
+
+
+_jinja_env.filters["units"] = _units
+
+
+def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None,
+                           length_unit: str = "mm") -> dict:
     """Assemble the Jinja render context from a persisted CostDecision.
 
     ``outbound`` makes the supplier's copy (RFQ package): ``decision.result_json``
@@ -105,9 +116,18 @@ def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None)
     ``outbound.rfq_governance`` (review status, out of date, requested route), so
     the report carries no approvers, recorded outcome, notes or file hash.
     """
+    from src.services import length_units as lu
     from src.services.cost_decision_service import governance_fields
 
+    unit = length_unit if length_unit in ("mm", "in") else "mm"
+    geo = (decision.result_json or {}).get("geometry") or {}
     return {
+        "length_unit": unit,
+        "geo_text": {
+            "volume": lu.volume_cm3(geo.get("volume_cm3"), unit),
+            "area": lu.area_cm2(geo.get("surface_area_cm2"), unit),
+            "bbox": lu.dims(geo.get("bbox_mm"), unit),
+        },
         "filename": decision.filename,
         "file_type": decision.file_type,
         "label": decision.label,
@@ -121,14 +141,15 @@ def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None)
     }
 
 
-def render_cost_html(decision: CostDecision, outbound: dict | None = None) -> str:
+def render_cost_html(decision: CostDecision, outbound: dict | None = None,
+                     length_unit: str = "mm") -> str:
     """Render the cost report template to HTML (no WeasyPrint dependency).
 
     Exposed so tests can assert on rendered content without the system PDF
     libraries, and reused by the sync PDF renderer below.
     """
     template = _jinja_env.get_template("cost_report.html")
-    return template.render(**build_cost_pdf_context(decision, outbound))
+    return template.render(**build_cost_pdf_context(decision, outbound, length_unit))
 
 
 def _render_cost_pdf_sync(decision: CostDecision, html_str: str | None = None) -> bytes:
@@ -158,7 +179,8 @@ async def generate_cost_pdf(decision: CostDecision, html_str: str | None = None)
     return pdf_bytes
 
 
-async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None) -> bytes:
+async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None,
+                          length_unit: str = "mm") -> bytes:
     """Return this decision's cost-report PDF, rendering ONCE and caching bytes.
 
     Content-addressed: the cache key embeds a fingerprint of the rendered HTML,
@@ -167,7 +189,7 @@ async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None) 
     hot path for BOTH the single-PDF download and every RFQ-package item, so a
     package download streams stored bytes with no per-request WeasyPrint render.
     """
-    html_str = render_cost_html(decision, outbound)
+    html_str = render_cost_html(decision, outbound, length_unit)
     key = _cache_key(decision.ulid, _fingerprint(html_str))
     store = _pdf_store()
     try:
@@ -227,7 +249,10 @@ async def get_or_generate_cost_pdf(
     if decision is None:
         raise HTTPException(status_code=404, detail="Cost decision not found")
 
-    pdf_bytes = await cached_cost_pdf(decision)
+    # Lengths in the person's unit (mm or in), the same as their screens.
+    from src.services.length_units import length_unit_for
+
+    pdf_bytes = await cached_cost_pdf(decision, length_unit=await length_unit_for(session, user_id))
     return pdf_bytes, decision.filename
 
 

@@ -111,15 +111,25 @@
   <h2>Geometry</h2>
   {% set geo = result.get('geometry', {}) %}
   <table>
-    <thead><tr><th>Volume (cm&sup3;)</th><th>Surface area (cm&sup2;)</th><th>Bounding box (mm)</th><th>Watertight</th><th>Faces</th></tr></thead>
+    <thead><tr><th>Volume</th><th>Surface area</th><th>Bounding box</th><th>Watertight</th><th>Faces</th></tr></thead>
     <tr>
-      <td class="num">{{ geo.get('volume_cm3', 'N/A') }}</td>
-      <td class="num">{{ geo.get('surface_area_cm2', 'N/A') }}</td>
-      <td>{{ geo.get('bbox_mm', []) | join(' × ') }}</td>
+      <td class="num">{{ geo_text.volume }}</td>
+      <td class="num">{{ geo_text.area }}</td>
+      <td>{{ geo_text.bbox }}</td>
       <td>{{ 'Yes' if geo.get('watertight') else 'No' }}</td>
       <td class="num">{{ geo.get('face_count', 'N/A') | format_number }}</td>
     </tr>
   </table>
+
+  <!-- Part specs (declared on the part; present only when declared) -->
+  {% set specs = result.get('specs') %}
+  {% if specs and specs.get('summary') %}
+  <h2>Part specs</h2>
+  <ul>
+    {% for line in specs.get('summary') %}<li>{{ line | pdf_text }}</li>{% endfor %}
+  </ul>
+  {% if specs.get('excluded_processes') %}<p class="muted">Ruled out by these specs: {% for pv in specs.get('excluded_processes') %}{{ pv | process_name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+  {% endif %}
 
   <!-- Routing -->
   {% set routing = result.get('routing') %}
@@ -128,7 +138,7 @@
   <p>
     Recommended process: <strong>{{ routing.get('recommended_process') | process_name }}</strong>
     (archetype: {{ routing.get('archetype') }}, confidence {{ routing.get('confidence') }})
-    {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') }}</span>{% endif %}
+    {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') | units(length_unit) }}</span>{% endif %}
   </p>
   {% endif %}
 
@@ -303,7 +313,7 @@
           <td>{{ d.get('name') }}</td>
           <td class="num">{% if d.get('value') is none %}hidden{% else %}{{ d.get('value') }} {{ d.get('unit') }}{% endif %}</td>
           <td><span class="prov prov-{{ d.get('provenance') }}">{{ d.get('provenance') }}</span></td>
-          <td class="src">{{ d.get('source') }}</td>
+          <td class="src">{{ d.get('source') | units(length_unit) }}</td>
         </tr>
         {% endfor %}
       </table>
@@ -333,7 +343,7 @@
       <td>{{ a.get('name') }}</td>
       <td class="num">{% if a.get('value') is none %}hidden{% else %}{{ a.get('value') }}{% endif %}</td>
       <td>{{ a.get('unit') }}</td>
-      <td class="src">{{ a.get('source') }}</td>
+      <td class="src">{{ a.get('source') | units(length_unit) }}</td>
       <td><span class="prov prov-{{ a.get('provenance') }}">{{ a.get('provenance') }}</span></td>
     </tr>
     {% endfor %}
@@ -346,7 +356,7 @@
   {% if notes %}
   <h3>Notes</h3>
   <ul style="margin:3px 0;">
-    {% for n in notes %}<li>{{ n }}</li>{% endfor %}
+    {% for n in notes %}<li>{{ n | units(length_unit) }}</li>{% endfor %}
   </ul>
   {% endif %}
 
