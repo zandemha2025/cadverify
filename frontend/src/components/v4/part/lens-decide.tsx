@@ -14,8 +14,28 @@ import { putDisposition, reloadDecision } from "./api";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { useMachineViews } from "./lens-shop";
 import { enginePick, pairAt, pickWhy } from "./choice";
+import { hoursText, massText, routeResources, runLine } from "./resources";
 
 const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
+
+/** What an outcome's route takes at its quantity (machine time, material), from the engine's estimate for that process. */
+function useRouteRes() {
+  const p = usePart();
+  const cost = p.data.cost;
+  return React.useCallback(
+    (route: { process: string; quantity: number; material?: string | null } | null | undefined) => {
+      if (!route) return null;
+      const m = p.methods.find((x) => x.code === route.process);
+      let e = m?.prices.get(route.quantity) ?? null;
+      // The route's own material when the record priced it in more than one.
+      if (route.material && e && e.material !== route.material) {
+        e = (cost?.estimates ?? []).find((x) => x.process === route.process && x.quantity === route.quantity && x.material === route.material && !x.environment_excluded) ?? e;
+      }
+      return routeResources(e, cost?.geometry?.volume_cm3 ?? null);
+    },
+    [p.methods, cost],
+  );
+}
 
 function useOptions() {
   const p = usePart();
@@ -75,16 +95,28 @@ export function useDecideState() {
 export function DecideTicket() {
   const p = usePart();
   const { chosen, gov, picked } = useDecideState();
+  const resOf = useRouteRes();
   if (p.lens !== "decide" || p.interrupted) return null;
   const isSaved = !!gov?.user_disposition && !!chosen && chosen.kind === gov.user_disposition;
   const env = p.data.runEnvironment;
   const lead = !isSaved && chosen && chosen.id === picked?.id && !p.decidePick ? "ScaleCAD’s pick · " : "";
+  // On your machine the run's machine time leads and the running cost follows; outside, the price leads.
+  const r = chosen?.cost != null ? resOf(chosen.route) : null;
+  const hoursFirst = chosen?.kind === "inhouse" && r?.hoursRun != null;
+  const facts = [p.q === 1 ? "1 part" : `${qtyWord(p.q)} parts`];
+  if (hoursFirst && r && chosen) {
+    if (r.kgRun != null) facts.push(`${massText(r.kgRun)} ${r.grade}`);
+    facts.push(`${money(chosen.cost)} each`);
+  } else if (r) {
+    if (r.hoursRun != null) facts.push(`${hoursText(r.hoursRun)} machine time`);
+    if (r.kgRun != null) facts.push(`${massText(r.kgRun)} ${r.grade}`);
+  }
   return (
     <div className="ticket">
       <span style={{ color: "var(--ink3)", fontSize: 13 }}>{chosen ? `${lead}${chosen.label} · ${chosen.sub.split(" · ").slice(0, 2).join(" · ")}` : "Nothing chosen yet"}</span>
-      <span className="big num">{chosen?.cost != null ? `${money(chosen.cost)} each` : "—"}</span>
+      <span className="big num">{hoursFirst && r ? `${hoursText(r.hoursRun)} machine time` : chosen?.cost != null ? `${money(chosen.cost)} each` : "—"}</span>
       <span style={{ color: "var(--ink2)", fontSize: 13.5 }}>
-        {p.q === 1 ? "1 part" : `${qtyWord(p.q)} parts`}{env && (env.sour_service || env.corrosive || env.max_temp_c != null) ? " · for the declared service conditions" : ""}
+        {facts.join(" · ")}{env && (env.sour_service || env.corrosive || env.max_temp_c != null) ? " · for the declared service conditions" : ""}
       </span>
       {isSaved ? <span className="stamp">Recorded on the part&apos;s record</span> : null}
     </div>
@@ -96,6 +128,7 @@ export function DecideSheet() {
   const { user } = useAuth();
   const { opts, gov, chosen, picked, setPick } = useDecideState();
   const views = useMachineViews();
+  const resOf = useRouteRes();
   const [note, setNote] = React.useState<string>(gov?.disposition_note ?? "");
   const [noteDirty, setNoteDirty] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -192,10 +225,17 @@ export function DecideSheet() {
   if (pair && !p.costOff) {
     // The engine's own comparison: the cheapest route on a machine of yours next to the cheapest outside one.
     const mine = pair.in_house;
-    figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(mine.unit_cost_usd), s: `${mine.machine ?? methodName(mine.process)} · ${days(mine.lead_low_days, mine.lead_high_days)}${pair.pick === "in_house" ? " · ScaleCAD’s pick" : ""}`, tone: "ok" });
+    const mr = resOf({ process: mine.process, quantity: p.q, material: mine.material });
+    const pickNote = pair.pick === "in_house" ? " · ScaleCAD’s pick" : "";
+    if (mr?.hoursRun != null) {
+      const mat = mr.kgRun != null ? ` · ${massText(mr.kgRun)} ${mr.grade}` : "";
+      figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: hoursText(mr.hoursRun), s: `machine time on your ${mine.machine ?? methodName(mine.process)}${mat} · ${money(mine.unit_cost_usd)} each · ${days(mine.lead_low_days, mine.lead_high_days)}${pickNote}`, tone: "ok" });
+    } else figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(mine.unit_cost_usd), s: `${mine.machine ?? methodName(mine.process)} · ${days(mine.lead_low_days, mine.lead_high_days)}${pickNote}`, tone: "ok" });
     if (pair.outside) figs.push({ k: "Cheapest outside", v: money(pair.outside.unit_cost_usd), s: `${methodName(pair.outside.process)} · ${days(pair.outside.lead_low_days, pair.outside.lead_high_days)}${pair.pick === "outside" ? " · ScaleCAD’s pick" : ""}` });
   } else {
-    if (ih) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(ih.cost), s: ih.name });
+    const ihr = ih ? resOf({ process: ih.process, quantity: p.q }) : null;
+    if (ih && ihr?.hoursRun != null) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: hoursText(ihr.hoursRun), s: `machine time on your ${ih.name}${ihr.kgRun != null ? ` · ${massText(ihr.kgRun)} ${ihr.grade}` : ""} · ${money(ih.cost)} each` });
+    else if (ih) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(ih.cost), s: ih.name });
     else figs.push({ k: "In-house", v: "None", s: p.data.machines.length ? "nothing of yours can make it" : "no machines declared", tone: "bad" });
     if (out?.cost != null) figs.push({ k: "Cheapest outside", v: money(out.cost), s: out.sub.split(" · ")[0] });
   }
@@ -248,6 +288,7 @@ export function DecideSheet() {
               {opts.map((o) => {
                 const on = chosen?.id === o.id;
                 const off = o.off || offAt;
+                const takes = o.cost != null && !p.costOff ? runLine(resOf(o.route), { grade: false }) : null;
                 return (
                   <button
                     key={o.id}
@@ -273,6 +314,7 @@ export function DecideSheet() {
                         {o.sub}
                         {picked?.id === o.id && !offAt ? " · ScaleCAD’s pick" : ""}
                       </small>
+                      {takes ? <small className="num">{`${takes} for ${qtyWord(o.route?.quantity ?? p.q)}`}</small> : null}
                     </span>
                     <span />
                     <span className="c num">{p.costOff || o.cost == null ? "" : money(o.cost)}</span>
