@@ -47,7 +47,7 @@ def test_straight_walled_box_measures_zero_draft():
     assert issue.code == "INSUFFICIENT_DRAFT" and issue.severity == Severity.ERROR
     assert issue.measured_value == 0.0 and math.copysign(1.0, issue.measured_value) == 1.0
     assert issue.required_value == 1.0 and issue.measurement_unit == "deg"
-    assert issue.message.endswith("Smallest draft: 0.0°.")
+    assert issue.message.endswith("Smallest draft: 0.0°. The tool opens along the file's +Z.")
     out = serialize_issue(issue)
     assert out["measured_value"] == 0.0 and out["required_value"] == 1.0
     assert out["measurement_unit"] == "deg"
@@ -85,7 +85,8 @@ def test_shown_draft_rounds_to_a_tenth_but_never_up_to_the_limit():
 
 def test_no_features_keeps_the_single_value():
     issue = _draft(_ctx(trimesh.creation.box(extents=[20.0, 15.0, 10.0]), features=False), 1.0)
-    assert issue.message.endswith("Smallest draft: 0.0°.")
+    # The single value, then the pull direction the check assumed.
+    assert issue.message.endswith("Smallest draft: 0.0°. The tool opens along the file's +Z.")
 
 
 def test_bored_block_reports_zero_draft_for_walls_and_bore():
@@ -101,7 +102,7 @@ def test_bored_block_reports_zero_draft_for_walls_and_bore():
                            (ProcessType.SAND_CASTING, 3.0), (ProcessType.FORGING, 5.0)):
         issue = next(i for i in scores[process].issues if i.code == "INSUFFICIENT_DRAFT")
         assert issue.measured_value == 0.0 and issue.required_value == limit
-        assert issue.message.endswith("Smallest draft: 0.0° (outer walls 0.0°, bore 0.0°).")
+        assert issue.message.endswith("Smallest draft: 0.0° (outer walls 0.0°, bore 0.0°). The tool opens along the file's +Z.")
         seen[process] = issue
     # The bore's facets spread 0–0.8° from tessellation; the reading is still 0.0.
     assert len(seen[ProcessType.INJECTION_MOLDING].affected_faces) > 100_000
