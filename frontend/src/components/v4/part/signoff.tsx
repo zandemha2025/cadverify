@@ -85,7 +85,7 @@ export function SignOff({ id, gov, onChange }: { id: string | null; gov: CostDec
   const stale = !!gov.is_stale;
   const can = !!r?.can_sign_off;
   // The quantity the outcome was recorded at: what the sign-off is for (op-08).
-  const at = gov.disposition_basis?.quantity ? ` · at ${gov.disposition_basis.quantity.toLocaleString("en-US")} parts` : "";
+  const at = gov.disposition_basis?.quantity ? ` · at ${gov.disposition_basis.quantity.toLocaleString("en-US")} ${gov.disposition_basis.quantity === 1 ? "part" : "parts"}` : "";
 
   const run = async (method: "POST" | "DELETE") => {
     setBusy(true);

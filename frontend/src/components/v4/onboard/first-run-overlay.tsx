@@ -203,7 +203,8 @@ export function FirstRun() {
             </button>
           </span>
         </aside>
-      ) : card === "chip" ? (
+      ) : card === "chip" && p.lens !== "cost" ? (
+        // On Cost the chip sat on the chart's legend (ce-20); the cost sheet says "No machines yet" there.
         <button className="btn sm nb-shopchip" type="button" onClick={() => key && openShopSheet(key)}>
           Your shop: not set up · Add machines
         </button>

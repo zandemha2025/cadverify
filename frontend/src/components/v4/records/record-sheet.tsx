@@ -198,7 +198,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
 
         {err ? (
           <p className="err2" role="alert">
-            Nothing changed: {err}
+            {/^nothing changed/i.test(err) ? err : `Not saved. ${err}`}
           </p>
         ) : null}
 

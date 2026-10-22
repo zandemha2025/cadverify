@@ -346,7 +346,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
                   value={qToPos(q, max)}
                   onChange={(e) => setQty(posToQ(Number(e.target.value), max))}
                   aria-label="Order quantity"
-                  aria-valuetext={`${qtyText(q)} parts`}
+                  aria-valuetext={`${qtyText(q)} ${q === 1 ? "part" : "parts"}`}
                 />
                 <div className="qt num" aria-hidden="true">
                   {decadeTicks(max).map((t) => (
@@ -427,7 +427,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
         <div className="top">
           <h2 className="stitle">{at ? `Make by ${at.name}` : "No make-now pick"}</h2>
           <p className="smeta">
-            {at ? `${at.curve.material} · ${qtyText(q)} parts · ${at.ready ? "can make as drawn" : "needs a design change"}` : "No process clears the part’s conditions in this run"}
+            {at ? `${at.curve.material} · ${qtyText(q)} ${q === 1 ? "part" : "parts"} · ${at.ready ? "can make as drawn" : "needs a design change"}` : "No process clears the part’s conditions in this run"}
           </p>
           {at ? (
             <div className="figs" aria-live="polite">

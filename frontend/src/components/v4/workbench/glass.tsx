@@ -526,7 +526,7 @@ export function GlassTab({ part, qty, setQty }: TabProps) {
               <div>
                 <h2 className="stitle">Details</h2>
                 <p className="smeta">
-                  {procLabel} · {qLabel} parts · {unit} each
+                  {procLabel} · {qLabel} {q === 1 ? "part" : "parts"} · {unit} each
                 </p>
               </div>
               <button
