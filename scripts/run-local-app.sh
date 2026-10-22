@@ -52,6 +52,7 @@ export NEXT_PUBLIC_BUILD_SHA="${NEXT_PUBLIC_BUILD_SHA:-$PROOFSHAPE_BUILD_ID}"
 export ACCEPTING_NEW_ANALYSES=true   # kill-switch OPEN -> analyses accepted
 export LABELING_ENABLED=1            # main.py broadens CORS to localhost:3000
 export RATE_LIBRARY_ENABLED=1        # enterprise governed rate cards are active
+export SCIM_ENABLED="${SCIM_ENABLED:-1}"  # serve /scim/v2 like an SSO deployment (password mode leaves it unmounted)
 export SIGNUP_RATE_LIMIT_DISABLED=1  # local proof runs create many throwaway accounts
 export DATABASE_URL="${DATABASE_URL:-postgresql://cadverify:localdev@localhost:5432/cadverify}"
 # Container defaults use /data/blobs, which is not writable on a normal macOS
