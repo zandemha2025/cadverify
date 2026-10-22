@@ -22,6 +22,7 @@ const checks = [
   ["regulated boundary startup guard enabled", (manifest.match(/name: PRODUCTION_REGULATED_BOUNDARY_REQUIRED\s*\n\s*value: ["']?1["']?/g) || []).length >= 2],
   ["cryptographic secret quality gate enabled", (manifest.match(/name: PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED\s*\n\s*value: ["']?1["']?/g) || []).length >= 2],
   ["remote reconstruction disabled", /name: RECONSTRUCTION_BACKEND\s*\n\s*value: ["']?local["']?/.test(manifest) && /name: RECONSTRUCTION_ALLOW_REMOTE_EGRESS\s*\n\s*value: ["']?0["']?/.test(manifest)],
+  ["import from a link disabled", (manifest.match(/name: LINK_IMPORT_ENABLED\s*\n\s*value: ["']?0["']?/g) || []).length >= 2 && !/name: LINK_IMPORT_ENABLED\s*\n\s*value: ["']?1["']?/.test(manifest)],
   ["external Sentry sink overridden empty", (manifest.match(/name: SENTRY_DSN\s*\n\s*value: ["']{2}/g) || []).length >= 2],
   ["S3 object store selected", /name: OBJECT_STORE_BACKEND\s*\n\s*value: ["']?s3["']?/.test(manifest)],
   ["TLS ingress rendered", /^\s*tls:$/m.test(manifest)],

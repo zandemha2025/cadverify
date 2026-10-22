@@ -44,6 +44,10 @@ reconstruction:
   backend: local
   allowRemoteEgress: false
 
+# The worker never fetches customer-supplied links on the regulated plane.
+linkImport:
+  enabled: false
+
 saml:
   enabled: true
   existingSecret: cadverify-saml

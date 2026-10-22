@@ -2,6 +2,8 @@
 
 Stages, written to the job row as they start (``result_json.stage``):
 
+    fetching   a part imported from a share link: fetch it to local disk under the
+               link rules (``link_import``), its size and SHA-256 taken as it streams
     verifying  download the stored object to local disk, checking size and SHA-256
     unpacking  a .gz or one-part ZIP, bomb-safe (``part_archive``)
     sizing     estimate the memory the check needs; refuse honestly when over budget
@@ -153,6 +155,7 @@ async def _claim(job_ulid: str) -> Optional[tuple[dict, SimpleNamespace]]:
         if upload is None or upload.status not in ("attached", "preparing"):
             job.status = "failed"
             job.completed_at = _now()
+            job.params_json = _without_sealed_link(job.params_json)
             job.result_json = {**(job.result_json or {}), "stage": "failed", "error": {
                 "code": "UPLOAD_GONE", "message": "The uploaded file is no longer stored. Upload it again to check it."}}
             await session.commit()
@@ -183,6 +186,7 @@ async def _finish(job_ulid: str, *, ok: bool, result: dict, error: Optional[_Fai
         merged.pop("analysis_row_id", None)
         job.result_json = merged
         params = job.params_json or {}
+        job.params_json = _without_sealed_link(params)
         upload = (await session.execute(
             select(DirectUpload).where(
                 DirectUpload.ulid == params.get("direct_upload_id"), DirectUpload.org_id == job.org_id,
@@ -194,6 +198,84 @@ async def _finish(job_ulid: str, *, ok: bool, result: dict, error: Optional[_Fai
                 session, upload, ok=ok,
                 error_code=error.code if error else None, error_message=error.message if error else None,
             )
+
+
+def _without_sealed_link(params: Optional[dict]) -> Optional[dict]:
+    from src.services.stored_check_service import without_sealed_link
+
+    return without_sealed_link(params)
+
+
+async def _forget_sealed_link(job_ulid: str) -> None:
+    """Drop the sealed link from the job row: read once, never kept."""
+    from src.services.stored_check_service import LINK_SEALED_PARAM
+
+    async with get_session_factory()() as session:
+        await session.execute(
+            text("UPDATE jobs SET params_json = params_json - CAST(:k AS text) WHERE ulid = :u"),
+            {"k": LINK_SEALED_PARAM, "u": job_ulid},
+        )
+        await session.commit()
+
+
+async def _fetch_link(job_ulid: str, params: dict, upload: SimpleNamespace, progress: "_Progress", result: dict) -> tuple[str, str]:
+    """The ``fetching`` stage: the linked file to local disk, then its upload row and job updated."""
+    from src.services import direct_upload_service as uploads
+    from src.services import link_import
+    from src.services.stored_check_service import LINK_SEALED_PARAM
+
+    sealed = params.get(LINK_SEALED_PARAM)
+    await _forget_sealed_link(job_ulid)
+    label = (params.get("link") or {}).get("label") or "the link"
+    await progress.stage("fetching", fetching_from=label)
+    if not link_import.link_import_enabled():
+        raise _Failed("LINK_IMPORT_OFF", "Import from a link is off on this server. Nothing was charged.")
+    try:
+        plan = link_import.plan_link(link_import.open_sealed_url(sealed))
+    except (link_import.LinkRefused, link_import.LinkFetchError) as exc:
+        raise _Failed(exc.code, f"{exc.message} Nothing was charged.") from None
+
+    def on_bytes(done: int, total: Optional[int]) -> None:
+        progress.total = total or 0
+        progress.bytes_done(done)
+
+    try:
+        fetched = await link_import.fetch_to_file(plan, max_bytes=uploads.part_max_size_bytes(), on_bytes=on_bytes)
+    except link_import.LinkFetchError as exc:
+        raise _Failed(exc.code, f"{exc.message} Nothing was charged.") from None
+    try:
+        name = link_import.choose_filename(params.get("given_filename"), fetched.filename, plan.filename_hint)
+        async with get_session_factory()() as session:
+            row = (await session.execute(
+                select(DirectUpload).where(DirectUpload.ulid == upload.ulid, DirectUpload.org_id == upload.org_id).with_for_update()
+            )).scalars().first()
+            if row is None:
+                raise _Failed("UPLOAD_GONE", "The link's upload record is gone. Paste the link again. Nothing was charged.")
+            await uploads.record_link_fetched(session, row, size_bytes=fetched.size, sha256=fetched.sha256, filename=name)
+            import json
+
+            await session.execute(
+                text("UPDATE jobs SET params_json = params_json || CAST(:p AS jsonb) WHERE ulid = :u"),
+                {"p": json.dumps({"filename": name, "size_bytes": fetched.size}), "u": job_ulid},
+            )
+            await session.commit()
+    except link_import.LinkFetchError as exc:
+        _unlink(fetched.path)
+        raise _Failed(exc.code, f"{exc.message} Nothing was charged.") from None
+    except BaseException:
+        _unlink(fetched.path)
+        raise
+    result["fetched_bytes"] = fetched.size
+    await _patch(job_ulid, fetched_bytes=fetched.size)
+    logger.info("link fetched for %s: %d bytes from %s", job_ulid, fetched.size, fetched.final_host)
+    return fetched.path, name
+
+
+def _unlink(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 async def _owned_processes(session, org_id: str) -> Optional[str]:
@@ -262,15 +344,20 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
     op: Optional[str] = None
     user = AuthedUser(user_id=meta["user_id"], api_key_id=0, key_prefix="worker", role="analyst", org_id=meta["org_id"])
     try:
-        # -- verifying ---------------------------------------------------
-        await progress.stage("verifying")
-        progress.total = int(upload.expected_size_bytes)
-        try:
-            path = await asyncio.to_thread(uploads.download_to_bounded_tempfile, upload, progress.bytes_done)
-        except uploads.DirectUploadError as exc:
-            raise _Failed(exc.code, exc.message) from exc
-        paths.append(path)
-        name = upload.filename
+        if params.get("source") == svc.SOURCE_LINK:
+            # -- fetching (a share link) ---------------------------------
+            path, name = await _fetch_link(job_ulid, params, upload, progress, result)
+            paths.append(path)
+        else:
+            # -- verifying -----------------------------------------------
+            await progress.stage("verifying")
+            progress.total = int(upload.expected_size_bytes)
+            try:
+                path = await asyncio.to_thread(uploads.download_to_bounded_tempfile, upload, progress.bytes_done)
+            except uploads.DirectUploadError as exc:
+                raise _Failed(exc.code, exc.message) from exc
+            paths.append(path)
+            name = upload.filename
 
         # -- unpacking ---------------------------------------------------
         if compression_of(name) != "none":

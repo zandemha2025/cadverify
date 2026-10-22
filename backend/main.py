@@ -31,6 +31,7 @@ from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
 from src.api.uploads import router as uploads_router
+from src.api.link_import import router as link_import_router
 from src.api.checks import router as checks_router
 from src.api.jobs_router import router as jobs_router
 from src.api.reconstruct_router import router as reconstruct_router
@@ -482,6 +483,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(batch_router)
+# Before the uploads router, whose GET /{direct_upload_id} would take "from-link".
+app.include_router(link_import_router)
 app.include_router(uploads_router)
 # Big files: a part uploaded straight to storage, checked on the worker.
 app.include_router(checks_router)

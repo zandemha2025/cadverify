@@ -4,12 +4,18 @@ The public API deals only in opaque ``direct_upload_id`` values. Bucket names,
 provider upload IDs, and object keys are generated and retained server-side.
 Every lifecycle read is scoped to the caller's active organization.
 
-Two purposes:
+Two purposes uploaded by the browser:
 
 * ``batch_zip``: a batch's ZIP, prepared into batch items on the worker.
 * ``part``: one CAD file (STEP, IGES or STL; gzipped, or alone in a ZIP) of up
   to ``part_max_size_bytes()`` (2 GiB by default, on every plan), checked on the
   worker from the stored object (``src.services.stored_check_service``).
+
+And one the worker fetches: ``link``, a part imported from a share link
+(``src.services.link_import``). Its row reserves the organization's upload
+admission (the part cap until the size is known) and is taken by its check
+from the start; the bytes go straight to the worker's disk, so nothing is
+stored under its key.
 
 Transport: on S3 the browser PUTs each part to a presigned S3 URL. On the local
 backend (development, staging; never a released process) it PUTs each part to
@@ -52,6 +58,8 @@ logger = logging.getLogger("cadverify.direct_upload_service")
 
 PURPOSE_BATCH_ZIP = "batch_zip"
 PURPOSE_PART = "part"
+# Not a multipart purpose: a link's row is made by POST /uploads/from-link only.
+PURPOSE_LINK = "link"
 ALLOWED_PURPOSES = frozenset({PURPOSE_BATCH_ZIP, PURPOSE_PART})
 ALLOWED_BATCH_ZIP_CONTENT_TYPES = frozenset(
     {"application/zip", "application/x-zip-compressed"}
@@ -483,6 +491,9 @@ def _object_key(org_id: str, upload_ulid: str, purpose: str = PURPOSE_BATCH_ZIP,
         raise RuntimeError("invalid organization identifier for direct-upload storage")
     if not _SAFE_SCOPE_COMPONENT.fullmatch(upload_ulid):
         raise RuntimeError("invalid direct-upload identifier for object storage")
+    if purpose == PURPOSE_LINK:
+        # Reserved under the same layout; a fetched link's bytes are never stored here.
+        return f"incoming/{org_id}/{upload_ulid}/link"
     if purpose == PURPOSE_PART:
         suffix = part_suffix(filename or "")
         if suffix is None:
@@ -531,6 +542,31 @@ def serialize(
         integrity_status = "verified"
     elif upload.error_code == "DIRECT_UPLOAD_CHECKSUM_MISMATCH":
         integrity_status = "failed"
+    if upload.purpose == PURPOSE_LINK:
+        # A link's size and SHA-256 are known once fetched; until then its row
+        # holds the admission reservation and a placeholder, not facts.
+        fetched = upload.checksum_verified_at is not None
+        return {
+            "direct_upload_id": upload.ulid,
+            "purpose": upload.purpose,
+            "status": upload.status,
+            "filename": upload.filename,
+            "content_type": upload.content_type,
+            "size_bytes": upload.actual_size_bytes if fetched else None,
+            "actual_size_bytes": upload.actual_size_bytes,
+            "checksum_algorithm": "sha256",
+            "checksum_sha256": upload.expected_checksum_sha256 if fetched else None,
+            "checksum_verified_at": _serialize_timestamp(upload.checksum_verified_at),
+            "integrity_status": integrity_status,
+            "expires_at": _serialize_timestamp(upload.expires_at),
+            "completed_at": _serialize_timestamp(upload.completed_at),
+            "can_abort": False,
+            "error": (
+                {"code": upload.error_code, "message": upload.error_message}
+                if upload.error_code
+                else None
+            ),
+        }
     return {
         "direct_upload_id": upload.ulid,
         "purpose": upload.purpose,
@@ -899,6 +935,9 @@ async def _get_owned_upload(
 
 
 async def _cleanup_provider_state(upload: DirectUpload) -> None:
+    if upload.purpose == PURPOSE_LINK:
+        validate_owned_object_key(upload)
+        return  # nothing was stored for a link
     store = _require_s3_store()
     validate_owned_object_key(upload)
     if upload.status in {"initiated", "completing"}:
@@ -1647,6 +1686,8 @@ async def lock_completed_part_for_check(
 ) -> DirectUpload:
     """Lock a completed part upload in the caller's org before a check is started on it."""
     upload = await _get_owned_upload(session, user_id, upload_ulid, for_update=True)
+    if upload.purpose == PURPOSE_LINK:
+        return upload  # taken by its own check when it was made; that check is answered
     if upload.purpose != PURPOSE_PART:
         raise _error(
             409,
@@ -1704,8 +1745,107 @@ async def finish_part_upload(
     await session.commit()
 
 
+LINK_PLACEHOLDER_SHA256 = "0" * 64
+
+
+async def reserve_link_upload(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    org_id: str,
+    filename: str,
+    request_fingerprint: str,
+    idempotency_key: str | None,
+    plan: str | None = None,
+) -> tuple[DirectUpload, bool]:
+    """The row a link import holds while the worker fetches and checks it.
+
+    Admitted like a direct upload (the organization's count and bytes, under
+    its row lock), reserving ``part_max_size_bytes()`` until the fetch knows the
+    size. Taken by its check at once (``attached``). The caller adds the
+    check's job and commits. Returns ``(upload, replayed)``: the same
+    Idempotency-Key with the same link returns the upload already made.
+    """
+    if idempotency_key is not None:
+        key_hash = _validate_idempotency_key(idempotency_key)
+    else:
+        key_hash = hashlib.sha256(f"link:{ULID()}".encode("ascii")).hexdigest()
+    await _lock_org_upload_admission(session, org_id)
+    existing = await _idempotent_upload(session, org_id=org_id, idempotency_key_hash=key_hash)
+    if existing is not None:
+        if existing.purpose != PURPOSE_LINK or not hmac.compare_digest(existing.request_fingerprint, request_fingerprint):
+            raise _error(
+                409,
+                "DIRECT_UPLOAD_IDEMPOTENCY_CONFLICT",
+                "Idempotency-Key was already used with different upload parameters.",
+            )
+        return existing, True
+    reserved = part_max_size_bytes()
+    await _enforce_upload_admission(session, org_id=org_id, requested_size_bytes=reserved, plan=plan)
+    upload_ulid = str(ULID())
+    now = _now()
+    upload = DirectUpload(
+        ulid=upload_ulid,
+        org_id=org_id,
+        user_id=user_id,
+        idempotency_key_hash=key_hash,
+        request_fingerprint=request_fingerprint,
+        purpose=PURPOSE_LINK,
+        status="attached",
+        filename=filename,
+        content_type="application/octet-stream",
+        expected_size_bytes=reserved,
+        expected_checksum_sha256=LINK_PLACEHOLDER_SHA256,
+        part_size_bytes=DEFAULT_PART_SIZE_BYTES,
+        part_count=1,
+        object_key=_object_key(org_id, upload_ulid, PURPOSE_LINK),
+        multipart_upload_id=PURPOSE_LINK,
+        expires_at=now + timedelta(seconds=upload_ttl_seconds()),
+        attached_at=now,
+    )
+    session.add(upload)
+    await session.flush()
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="direct_upload.link_reserved",
+        resource_type="direct_upload",
+        resource_id=upload.ulid,
+        detail={"purpose": PURPOSE_LINK, "reserved_bytes": reserved},
+        org_id=org_id,
+    )
+    return upload, False
+
+
+async def record_link_fetched(
+    session: AsyncSession,
+    upload: DirectUpload,
+    *,
+    size_bytes: int,
+    sha256: str,
+    filename: str,
+) -> None:
+    """A link's bytes arrived on the worker: its real size, SHA-256 and name.
+
+    The admission reservation drops from the part cap to the real size.
+    """
+    now = _now()
+    upload.filename = filename
+    upload.content_type = part_content_type(filename)
+    upload.expected_size_bytes = size_bytes
+    upload.actual_size_bytes = size_bytes
+    upload.expected_checksum_sha256 = sha256
+    upload.checksum_verified_at = now
+    upload.completed_at = now
+    await session.commit()
+
+
 async def delete_incoming_object(upload: DirectUpload) -> None:
     validate_owned_object_key(upload)
+    if upload.purpose == PURPOSE_LINK:
+        return  # a link's bytes went to the worker's disk, never to this store
     store = _require_s3_store()
     try:
         await asyncio.to_thread(store.delete, upload.object_key)
@@ -1766,13 +1906,13 @@ async def sweep_expired_and_unclean_uploads(
                         # A part whose check never finished (its worker died):
                         # its object goes after PART_CHECK_ABANDON_AFTER.
                         and_(
-                            DirectUpload.purpose == PURPOSE_PART,
+                            DirectUpload.purpose.in_([PURPOSE_PART, PURPOSE_LINK]),
                             DirectUpload.status.in_(["attached", "preparing"]),
                             DirectUpload.attached_at <= now - PART_CHECK_ABANDON_AFTER,
                             DirectUpload.storage_cleaned_at.is_(None),
                         ),
                         and_(
-                            DirectUpload.purpose == PURPOSE_PART,
+                            DirectUpload.purpose.in_([PURPOSE_PART, PURPOSE_LINK]),
                             DirectUpload.status == "consumed",
                             DirectUpload.storage_cleaned_at.is_(None),
                         ),
@@ -1829,7 +1969,7 @@ async def sweep_expired_and_unclean_uploads(
 
         prior_status = upload.status
         upload.storage_cleaned_at = now
-        if upload.purpose == PURPOSE_PART and prior_status in {"attached", "preparing"}:
+        if upload.purpose in (PURPOSE_PART, PURPOSE_LINK) and prior_status in {"attached", "preparing"}:
             upload.status = "failed"
             upload.terminal_at = now
             upload.error_code = "DIRECT_UPLOAD_CHECK_ABANDONED"
@@ -1883,6 +2023,7 @@ __all__ = [
     "DirectUploadError",
     "DirectUploadPreparationValidationError",
     "PURPOSE_BATCH_ZIP",
+    "PURPOSE_LINK",
     "PURPOSE_PART",
     "attach_to_check",
     "expected_part_bytes",
@@ -1908,7 +2049,9 @@ __all__ = [
     "mark_attachment_enqueue_failed",
     "mark_storage_cleaned",
     "preparation_error",
+    "record_link_fetched",
     "refresh_part_urls",
+    "reserve_link_upload",
     "serialize",
     "sweep_expired_and_unclean_uploads",
     "validate_owned_object_key",

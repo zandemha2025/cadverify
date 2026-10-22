@@ -191,6 +191,12 @@ reconstruction:
   backend: local
   allowRemoteEgress: false
 
+linkImport:
+  # Import a part from a Google Drive, Dropbox, OneDrive/SharePoint or S3 share
+  # link: the worker fetches it over HTTPS from the provider's public hosts.
+  # Regulated production must keep it off (the chart refuses to render it on).
+  enabled: true
+
 observability:
   otel:
     enabled: false

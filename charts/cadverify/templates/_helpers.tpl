@@ -270,6 +270,9 @@ single-replica workloads).
     {{- if .Values.reconstruction.allowRemoteEgress -}}
       {{- fail "regulated production prohibits remote reconstruction egress" -}}
     {{- end -}}
+    {{- if .Values.linkImport.enabled -}}
+      {{- fail "regulated production keeps import from a link off (linkImport.enabled=false)" -}}
+    {{- end -}}
     {{- if ne .Values.ingress.className "nginx" -}}
       {{- fail "the regulated baseline requires the reviewed nginx ingress class" -}}
     {{- end -}}

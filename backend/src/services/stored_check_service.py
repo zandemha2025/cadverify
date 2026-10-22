@@ -13,6 +13,11 @@ keeps the file as the organization's source for the part.
 Progress lives in the job row's ``result_json`` (``stage``, ``progress``) and
 is read by ``GET /api/v1/checks/{id}``.
 
+A part imported from a share link (``POST /api/v1/uploads/from-link``,
+``start_link_check``) is the same job with ``params.source = "link"``: its
+first stage is ``fetching`` (``src.services.link_import``) instead of
+``verifying``, then it continues as above.
+
 The check takes a check from the account's allowance exactly as an upload of
 the same file would (the same file identity: name and bytes), reserved on the
 worker once the bytes are known; the sample and ScaleCAD-made copies are free
@@ -37,8 +42,13 @@ logger = logging.getLogger("cadverify.stored_check")
 
 JOB_TYPE = "stored_check"
 MATERIAL_CLASSES = ("polymer", "aluminum", "steel", "stainless", "titanium")
-# "repairing": a big kept part's mesh repair (src.services.kept_part_jobs).
-STAGES = ("queued", "verifying", "unpacking", "sizing", "measuring", "pricing", "repairing", "done", "failed")
+# "repairing": a big kept part's mesh repair (src.services.kept_part_jobs);
+# "fetching": a part imported from a share link (src.services.link_import).
+STAGES = ("queued", "fetching", "verifying", "unpacking", "sizing", "measuring", "pricing", "repairing", "done", "failed")
+SOURCE_LINK = "link"
+# The full link, sealed (connector-credential key), on a link job's params only
+# until the worker reads it; the query of a share or presigned link is a secret.
+LINK_SEALED_PARAM = "link_url_sealed"
 _QTY = re.compile(r"^\d{1,7}(,\d{1,7}){0,11}$")
 
 
@@ -337,6 +347,7 @@ async def fail_stalled_checks(session: AsyncSession, *, limit: int = 50) -> int:
         job.completed_at = datetime.now(timezone.utc)
         job.result_json = {**(job.result_json or {}), "stage": "failed",
                            "error": {"code": "CHECK_INTERRUPTED", "message": STALLED_MESSAGE, "charged": False}}
+        job.params_json = without_sealed_link(job.params_json)
         ended += 1
         upload = (await session.execute(select(DirectUpload).where(
             DirectUpload.ulid == (job.params_json or {}).get("direct_upload_id"), DirectUpload.org_id == job.org_id,
@@ -346,6 +357,13 @@ async def fail_stalled_checks(session: AsyncSession, *, limit: int = 50) -> int:
             await uploads.finish_part_upload(session, upload, ok=False, error_code="CHECK_INTERRUPTED", error_message=STALLED_MESSAGE)
     await session.commit()
     return ended
+
+
+def without_sealed_link(params: Optional[dict]) -> Optional[dict]:
+    """The params with a link's sealed URL dropped (once read, or once the check ended)."""
+    if not params or LINK_SEALED_PARAM not in params:
+        return params
+    return {k: v for k, v in params.items() if k != LINK_SEALED_PARAM}
 
 
 def _status_fields(job: Job, params: dict, result: dict, key: Optional[str]) -> dict[str, Any]:
@@ -360,9 +378,13 @@ def _status_fields(job: Job, params: dict, result: dict, key: Optional[str]) -> 
         "part_bytes": result.get("part_bytes"),
         "material_class": params.get("material_class"),
         "mesh_hash": key,
-        # What it is: a big file's check ("check", from an upload), or a kept
-        # part's re-price or repair ("recheck" / "repair", from the kept file).
+        # What it is: a big file's check ("check", from an upload, or from a
+        # share link: "link"), or a kept part's re-price or repair ("recheck" /
+        # "repair", from the kept file).
         "source": params.get("source") or "upload",
+        # A link's provider, its name and host (never the link itself).
+        "link": params.get("link"),
+        "fetched_bytes": result.get("fetched_bytes"),
         "action": params.get("action") or "check",
         "summary": result.get("summary"),
         "part_url": (f"/app/part/{result.get('open_hash') or key}" if key and job.status == "done" else None),
@@ -448,6 +470,87 @@ async def start_check(
     )
     await session.commit()
     return job, True
+
+
+async def start_link_check(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    org_id: str,
+    link: Any,
+    sealed_url: str,
+    filename: Optional[str],
+    options: dict[str, Any],
+    idempotency_key: Optional[str],
+    plan: Optional[str],
+) -> tuple[Job, DirectUpload, bool]:
+    """A check of the part a share link points at: its upload row and job, in one transaction.
+
+    ``link`` is the ``link_import.LinkPlan``. The upload row reserves the
+    organization's admission (``direct_upload_service.reserve_link_upload``,
+    whose errors propagate); the job carries the provider, host and path, and
+    the sealed link for the worker. Returns ``(job, upload, created)``.
+    """
+    import hashlib
+    import json
+
+    from src.services import direct_upload_service as uploads
+
+    opts = _validated_options(options)
+    fingerprint = hashlib.sha256(json.dumps(
+        {"purpose": uploads.PURPOSE_LINK, "host": link.host, "path": link.path, "filename": filename or "", **opts},
+        sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    shown = filename or link.filename_hint
+    upload, replayed = await uploads.reserve_link_upload(
+        session, user_id=user_id, org_id=org_id, filename=shown or "linked-file",
+        request_fingerprint=fingerprint, idempotency_key=idempotency_key, plan=plan,
+    )
+    if replayed:
+        existing = (await session.execute(
+            select(Job).where(
+                Job.org_id == upload.org_id,
+                Job.job_type == JOB_TYPE,
+                Job.params_json["direct_upload_id"].astext == upload.ulid,
+            ).limit(1)
+        )).scalars().first()
+        await session.commit()
+        if existing is not None:
+            return existing, upload, False
+        raise StoredCheckError(409, "DIRECT_UPLOAD_NOT_AVAILABLE", "That link's check is no longer available. Paste the link again.")
+    job = Job(
+        ulid=str(ULID()),
+        user_id=user_id,
+        org_id=upload.org_id,
+        job_type=JOB_TYPE,
+        status="queued",
+        params_json={
+            "direct_upload_id": upload.ulid,
+            "source": SOURCE_LINK,
+            "filename": shown,
+            "given_filename": filename,
+            "size_bytes": None,
+            "link": link.public(),
+            "link_path": link.path,
+            LINK_SEALED_PARAM: sealed_url,
+            **opts,
+        },
+        result_json={"stage": "queued", "progress": None},
+    )
+    session.add(job)
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="stored_check.started",
+        resource_type="job",
+        resource_id=job.ulid,
+        detail={"direct_upload_id": upload.ulid, "source": SOURCE_LINK, "provider": link.provider, "host": link.host},
+        org_id=upload.org_id,
+    )
+    await session.commit()
+    return job, upload, True
 
 
 async def enqueue(job: Job) -> None:
