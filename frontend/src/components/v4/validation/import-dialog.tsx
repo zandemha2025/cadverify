@@ -243,8 +243,8 @@ export function ImportDialog({ file, onClose, onImported }: { file: File; onClos
             </div>
             <div className="val-map">
               <p className="val-grp">What these numbers are</p>
-              <div className="field">
-                <span className="seg" role="radiogroup" aria-label="What these numbers are">
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <span className="seg" role="radiogroup" aria-label="What these numbers are" style={{ width: "fit-content", maxWidth: "100%", whiteSpace: "nowrap" }}>
                   {(
                     [
                       ["bought", "What we paid a supplier"],

@@ -100,7 +100,8 @@ def test_her_po_receipts_import_as_supplier_invoices_and_a_kind_cell_still_wins(
             "RFS-21039,Apex Machining,PO-4412,09/02/2026,250,34.10,work order\n")
     table = svc.read_table("receipts.csv", text.encode())
     m = svc.Mapping.from_json(None, table)
-    m.columns["quantity"] = table.headers.index("Qty Received")
+    # ERP receipts say "Qty Received": read as the quantity without being pointed at it.
+    assert m.columns["quantity"] == table.headers.index("Qty Received")
     m.process_map[""] = "cnc_3axis"
     index = svc.PartIndex([svc.PartRef(key="h" * 64, file_name="RFS-21039.step", record_id="r1",
                                        part_numbers={"RFS-21039"})])
