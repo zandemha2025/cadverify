@@ -264,12 +264,14 @@ def test_error_is_estimate_over_actual_with_range_coverage():
     assert c["hours"]["inside"] is False and c["cost"]["inside"] is False
 
 
-def test_cost_between_priced_quantities_and_not_outside_them():
+def test_cost_at_an_unpriced_quantity_is_never_a_line_between_two_prices():
+    """ce-15: without the record's quantity model, an unpriced quantity isn't compared
+    (it used to be graded against a log-log line ScaleCAD never computed)."""
     rec = _record(_est("cnc_3axis", 10, 100.0, 2.0), _est("cnc_3axis", 1000, 10.0, 2.0))
     c = acc.compare(_actual("k", q=100, cost=31.62), rec)
-    assert c["cost"]["estimate"] == pytest.approx(31.6228, abs=1e-3) and c["cost"]["basis"] == "between"
+    assert c["cost"] is None and "priced 10, 1,000; this order was 100" in c["note"]
     c = acc.compare(_actual("k", q=5000, cost=9.0, hours=2.0), rec)
-    assert c["cost"] is None and "priced 10 to 1,000" in c["note"]
+    assert c["cost"] is None and "priced 10, 1,000" in c["note"]
     assert c["hours"] is not None                                        # hours per part still compared
 
 

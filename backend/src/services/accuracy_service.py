@@ -5,7 +5,18 @@ actual machine hours per part and cost per part with what ScaleCAD estimated
 for that part, method and quantity on the part's newest record:
 
 * error % = estimate / actual - 1 (the same sign as the ground-truth residual:
-  "+7%" means ScaleCAD said 7% more than the job really took);
+  "+7%" means ScaleCAD said 7% more than the job really took); each row carries
+  the arithmetic on the numbers it shows (``shown``), so a reader can redo it;
+* the cost at the actual's own quantity: the record's price when that quantity
+  was priced, else the record's own quantity model (``quantity_model``: what the
+  order pays once over the quantity, plus what each part adds, with the same
+  learning), never a line drawn between two priced quantities (ce-15). A record
+  without the model isn't compared at an unpriced quantity, and says so;
+* the rate card: a record priced at an older card than the org's published one
+  (``rate_card_basis``) isn't graded on cost; the row says which cards, so v0
+  and v1 prices never mix in one median (ce-11);
+* the setup, labor and inspection hours entered with an actual, next to the
+  hours each line of the record states (ce-11);
 * whether the actual fell inside the range ScaleCAD stated (hours: the cycle
   time's stated band; cost: the record's confidence range);
 * per method and overall: how many parts, the median error (by size) and the
@@ -84,10 +95,69 @@ def raw_view(est: dict) -> dict:
     }
 
 
-def _interp(qa: float, va: float, qb: float, vb: float, q: float) -> float:
-    """Log-log between two priced quantities, as the part page's Other quantity does."""
-    t = (math.log(q) - math.log(qa)) / (math.log(qb) - math.log(qa))
-    return math.exp(math.log(va) * (1 - t) + math.log(vb) * t)
+def _money(x: float) -> str:
+    return f"${x:,.2f}"
+
+
+def _pct(x: float) -> str:
+    return f"{'−' if x < 0 else '+'}{abs(x):.1f}%"
+
+
+def shown(est: float, actual: float, unit: str) -> dict:
+    """What a row prints and its arithmetic on exactly those printed numbers (ce-12):
+    cost in cents, hours in minutes to 2 decimals (hours from 2 h up, in hours to
+    2 decimals). The % is computed from the printed numbers, so a calculator
+    gives the same."""
+    if unit == "usd":
+        e, a = round(est, 2), round(actual, 2)
+        fe, fa = _money(e), _money(a)
+    else:
+        big = max(est, actual) >= 2.0
+        k = 1.0 if big else 60.0
+        e, a = round(est * k, 2), round(actual * k, 2)
+        u = "h" if big else "min"
+        fe, fa = f"{e:,.2f} {u}", f"{a:,.2f} {u}"
+    err = (e / a - 1.0) * 100.0 if a > 0 else None
+    return {
+        "estimate": fe,
+        "actual": fa,
+        "error": _pct(err) if err is not None else None,
+        "formula": f"{fe} ÷ {fa} − 1 = {_pct(err)}" if err is not None else None,
+    }
+
+
+_NUM = r"(\d+(?:\.\d+)?)"
+
+
+def stated_hours(est: dict) -> dict:
+    """The hours each labor line of a record states, read off its own arithmetic:
+    setup for the order, programming for the order, labor (post-process) a part
+    with its learning, inspection a part. A line that doesn't state them is left out."""
+    import re
+
+    out: dict = {}
+    by = {d.get("name"): str(d.get("source") or "") for d in est.get("drivers") or [] if isinstance(d, dict)}
+    src = by.get("setup_cost", "")
+    m = re.search(rf"setup {_NUM}\s?hr .*?= {_NUM} plates", src)
+    if m:
+        out["setup_order"] = float(m.group(1)) * float(m.group(2))
+    else:
+        m = re.search(rf"setup {_NUM}\s?hr\b", src)
+        if m:
+            out["setup_order"] = float(m.group(1))
+    m = re.search(rf"NRE {_NUM}\s?hr\b", by.get("nre_cost", ""))
+    if m:
+        out["programming_order"] = float(m.group(1))
+    src = by.get("labor_cost", "")
+    m = re.search(rf"≈ {_NUM}\s?hr\b", src) or re.search(rf"post-process {_NUM}\s?hr\b", src)
+    if m:
+        h = float(m.group(1))
+        lm = re.search(rf"× {_NUM} learning", src)
+        out["labor_part"] = h * (float(lm.group(1)) if lm else 1.0)
+    m = re.search(rf"= {_NUM}\s?hr × \$", by.get("inspection_cost", ""))
+    if m:
+        out["inspection_part"] = float(m.group(1))
+    return out
 
 
 @dataclass
@@ -99,11 +169,12 @@ class EstimateAt:
     cost: Optional[float]
     cost_low: Optional[float]
     cost_high: Optional[float]
-    cost_basis: Optional[str]          # exact | between | None
+    cost_basis: Optional[str]          # exact | model | None
     cost_note: Optional[str]
     priced: list[int]
     calibrated: bool
     material: Optional[str]
+    hours_stated: dict = field(default_factory=dict)   # stated_hours of the estimate used
 
 
 def estimate_at(result_json: dict, process: str, quantity: int) -> Optional[EstimateAt]:
@@ -111,17 +182,23 @@ def estimate_at(result_json: dict, process: str, quantity: int) -> Optional[Esti
 
     Hours per part come from the estimate at that quantity, else the nearest
     priced quantity (machine time per part doesn't depend on the order size).
-    Cost per part depends on it: exact when that quantity was priced, between
-    two priced quantities when it falls inside them, and not compared outside.
+    Cost per part depends on it: exact when that quantity was priced, else the
+    record's own quantity model at that quantity (``quantity_model.model_at``,
+    before any calibration, like every number here). A record without the model
+    isn't compared at an unpriced quantity.
     """
-    ests = [e for e in (result_json or {}).get("estimates") or [] if e.get("process") == process]
-    views = sorted((raw_view(e) for e in ests if isinstance(e.get("quantity"), (int, float))),
-                   key=lambda v: v["quantity"])
+    from src.costing import quantity_model
+
+    ests = [e for e in (result_json or {}).get("estimates") or [] if e.get("process") == process
+            and isinstance(e.get("quantity"), (int, float))]
+    pairs = sorted(((raw_view(e), e) for e in ests), key=lambda p: p[0]["quantity"])
+    views = [v for v, _ in pairs]
     if not views:
         return None
     q = max(1, int(quantity))
     exact = next((v for v in views if v["quantity"] == q), None)
     near = exact or min(views, key=lambda v: abs(math.log(max(1, v["quantity"])) - math.log(q)))
+    near_est = next(e for v, e in pairs if v is near)
     hours = near["hours"]
     band = near["hours_band_pct"]
     h_lo = hours * (1 - band / 100.0) if hours is not None and band is not None else None
@@ -134,24 +211,28 @@ def estimate_at(result_json: dict, process: str, quantity: int) -> Optional[Esti
     if exact and exact["cost"] and exact["cost"] > 0:
         cost, c_lo, c_hi, basis = exact["cost"], exact["cost_low"], exact["cost_high"], "exact"
     else:
-        lo = [v for v in views if v["quantity"] < q and (v["cost"] or 0) > 0]
-        hi = [v for v in views if v["quantity"] > q and (v["cost"] or 0) > 0]
-        if lo and hi:
-            a, b = lo[-1], hi[0]
-            cost = _interp(a["quantity"], a["cost"], b["quantity"], b["cost"], q)
-            if a["cost_low"] and b["cost_low"] and a["cost_high"] and b["cost_high"]:
-                c_lo = _interp(a["quantity"], a["cost_low"], b["quantity"], b["cost_low"], q)
-                c_hi = _interp(a["quantity"], a["cost_high"], b["quantity"], b["cost_high"], q)
-            basis = "between"
-            note = f"between the {int(a['quantity']):,} and {int(b['quantity']):,} prices"
+        model = near_est.get("qty_model")
+        unit = quantity_model.unit_cost_at({"qty_model": model}, q) if isinstance(model, dict) else None
+        if unit is not None and unit > 0:
+            cost, basis = unit, "model"
+            once, per = quantity_model.fixed_and_variable(model, q)
+            note = (f"ScaleCAD's model at {q:,}: {_money(once)} once ÷ {q:,} + {_money(per)} a part "
+                    f"= {_money(unit)} (this record priced {', '.join(f'{p:,}' for p in priced)})")
+            # The stated range keeps its width: the band of the nearest priced quantity.
+            if near["cost"] and near["cost_low"] and near["cost_high"]:
+                c_lo = unit * near["cost_low"] / near["cost"]
+                c_hi = unit * near["cost_high"] / near["cost"]
         else:
-            note = f"ScaleCAD priced {priced[0]:,} to {priced[-1]:,}; this order was {q:,}"
+            note = (f"ScaleCAD priced {', '.join(f'{p:,}' for p in priced)}; this order was {q:,}. "
+                    f"Price {q:,} on the part to compare it")
     return EstimateAt(hours=hours, hours_low=h_lo, hours_high=h_hi, machine_cost=near["machine_cost"],
                       cost=cost, cost_low=c_lo, cost_high=c_hi, cost_basis=basis, cost_note=note,
-                      priced=priced, calibrated=near["calibrated"], material=near["material"])
+                      priced=priced, calibrated=near["calibrated"], material=near["material"],
+                      hours_stated=stated_hours(exact and next(e for v, e in pairs if v is exact) or near_est))
 
 
-def _metric(actual: Optional[float], est: Optional[float], low: Optional[float], high: Optional[float]) -> Optional[dict]:
+def _metric(actual: Optional[float], est: Optional[float], low: Optional[float], high: Optional[float],
+            unit: str = "usd") -> Optional[dict]:
     if actual is None or est is None or actual <= 0 or est <= 0:
         return None
     err = est / actual - 1.0
@@ -163,12 +244,43 @@ def _metric(actual: Optional[float], est: Optional[float], low: Optional[float],
         "high": round(high, 6) if high is not None else None,
         "error_pct": round(err * 100.0, 2),
         "inside": inside,
+        "shown": shown(est, actual, unit),
     }
 
 
-def compare(actual: dict, record: Optional[dict]) -> dict:
+# The hours an actual can carry beyond machine time, against the line that states them.
+HOUR_LINES = (
+    ("setup", "actual_setup_hours", "setup_order", "Setup, for the order"),
+    ("labor", "actual_labor_hours", "labor_part", "Labor a part"),
+    ("inspection", "actual_inspection_hours", "inspection_part", "Inspection a part"),
+)
+
+
+def hour_lines(actual: dict, stated: dict) -> list[dict]:
+    """Each of setup, labor and inspection hours the actual carries, next to the
+    record's stated hours for that line (or why not compared)."""
+    out = []
+    for key, field_name, stated_key, label in HOUR_LINES:
+        a = _num(actual.get(field_name))
+        if a is None:
+            continue
+        e = stated.get(stated_key)
+        row = {"line": key, "label": label, "actual": a, "estimate": e}
+        m = _metric(a, e, None, None, unit="hours") if e is not None else None
+        if m is not None:
+            row.update({"error_pct": m["error_pct"], "shown": m["shown"]})
+        else:
+            row["note"] = ("ScaleCAD has no hours on this line for this method" if e is None
+                           else "Not compared: zero hours")
+        out.append(row)
+    return out
+
+
+def compare(actual: dict, record: Optional[dict], rates: Optional[dict] = None) -> dict:
     """One actual against its part's newest record. ``actual`` is a ground-truth public row
-    (plus ``part_key``); ``record`` is ``{id, filename, label, created_at, result_json}``."""
+    (plus ``part_key``); ``record`` is ``{id, filename, label, created_at, result_json}``;
+    ``rates`` is the record's ``rate_card_basis.basis`` (which card priced it, which is in
+    effect), None when unknown."""
     base = {
         "id": actual.get("id"),
         "part_key": actual.get("evidence_sha256"),
@@ -185,6 +297,8 @@ def compare(actual: dict, record: Optional[dict]) -> dict:
         "cost": None,
         "note": None,
         "calibrated_record": False,
+        "rates": rates,
+        "hour_lines": [],
     }
     if record is None:
         base["note"] = "The part this actual matched is no longer in ScaleCAD"
@@ -194,14 +308,24 @@ def compare(actual: dict, record: Optional[dict]) -> dict:
         base["note"] = "ScaleCAD didn't price this method for this part"
         return base
     base["calibrated_record"] = est.calibrated
-    base["hours"] = _metric(_num(actual.get("actual_machine_hours")), est.hours, est.hours_low, est.hours_high)
-    cost = _metric(_num(actual.get("actual_unit_cost_usd")), est.cost, est.cost_low, est.cost_high)
+    base["hours"] = _metric(_num(actual.get("actual_machine_hours")), est.hours, est.hours_low, est.hours_high,
+                            unit="hours")
+    base["hour_lines"] = hour_lines(actual, est.hours_stated)
+    stale_rates = bool(rates and rates.get("out_of_date"))
+    cost = None if stale_rates else _metric(_num(actual.get("actual_unit_cost_usd")), est.cost, est.cost_low,
+                                            est.cost_high)
     if cost is not None:
         cost["basis"] = est.cost_basis
+        if est.cost_basis == "model":
+            cost["basis_note"] = est.cost_note
     base["cost"] = cost
     base["machine_cost_each"] = est.machine_cost
     notes = []
-    if _num(actual.get("actual_unit_cost_usd")) and cost is None and est.cost_note:
+    if _num(actual.get("actual_unit_cost_usd")) and stale_rates:
+        base["rates_excluded"] = True
+        notes.append(f"Cost not compared: {rates['text']} Re-check the part to compare at "
+                     f"v{rates['current']}")
+    elif _num(actual.get("actual_unit_cost_usd")) and cost is None and est.cost_note:
         notes.append(f"Cost not compared: {est.cost_note}")
     if _num(actual.get("actual_machine_hours")) and base["hours"] is None:
         notes.append("Hours not compared: ScaleCAD has no machine time for this method")
@@ -244,6 +368,8 @@ def summarize(rows: list[dict]) -> dict:
         c["enough"] = c["n"] >= MIN_PER_METHOD
         per.append({"process": p, "hours": h, "cost": c})
     compared = [r for r in real if r.get("hours") or r.get("cost")]
+    excluded = [r for r in real if r.get("rates_excluded")]
+    cards = sorted({(r.get("rates") or {}).get("priced") for r in real if r.get("cost") and r.get("rates")} - {None})
     return {
         "parts": len({r.get("part_key") for r in compared}),
         "actuals": len(real),
@@ -256,6 +382,10 @@ def summarize(rows: list[dict]) -> dict:
         "hours": _stats(real, "hours"),
         "cost": _stats(real, "cost"),
         "per_process": per,
+        # Cost rows left out because their record predates the org's published rates (ce-11),
+        # and the rate cards the compared costs were priced at (one, unless a record is unknown).
+        "rates_excluded": len(excluded),
+        "rates_priced": cards,
     }
 
 
@@ -425,7 +555,22 @@ async def comparisons(session: AsyncSession, org_id: str, scope: Scope) -> list[
                                                 GroundTruthRecordRow.id.desc()))).scalars().all()
     actuals = [row_to_public(r) for r in rows]
     records = await latest_records(session, org_id, {a["evidence_sha256"] for a in actuals})
-    return [compare(a, records.get(a["evidence_sha256"])) for a in actuals]
+    from datetime import datetime as _dt
+
+    from src.services import rate_card_basis
+    from src.services.rate_library_service import rate_library_enabled
+
+    card_rows = await rate_card_basis.org_rate_rows(session, org_id) if records else []
+    enabled = rate_library_enabled()
+
+    def _rates(rec: Optional[dict]) -> Optional[dict]:
+        if rec is None:
+            return None
+        made = _dt.fromisoformat(rec["created_at"]) if rec.get("created_at") else None
+        return rate_card_basis.basis(rec.get("result_json") or {}, made, card_rows, enabled=enabled)
+
+    return [compare(a, records.get(a["evidence_sha256"]), _rates(records.get(a["evidence_sha256"])))
+            for a in actuals]
 
 
 async def accuracy(session: AsyncSession, org_id: str, scope: Scope) -> dict:
