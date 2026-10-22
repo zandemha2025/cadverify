@@ -132,3 +132,45 @@ async def test_an_api_key_cant_delete_the_organization(stores):
         assert await _count("SELECT count(*) FROM organizations WHERE id=:o", o=w.orgs["A"]) == 1
     finally:
         await _cleanup(w)
+
+
+async def test_a_webhook_during_the_cancel_doesnt_block_the_delete(stores, monkeypatch):
+    """Stripe may send customer.subscription.deleted before it answers the cancel."""
+    import asyncio
+
+    import asyncpg
+    from httpx import ASGITransport, AsyncClient
+
+    from src.services import account_deletion_service as ads
+
+    w = await _world(stores)
+    await _live_plan(w, "admin")
+
+    async def cancel_with_webhook(sub_id: str, key: str) -> None:
+        # What the webhook handler does to the row, in its own connection; it
+        # must not have to wait for the delete's transaction.
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            await asyncio.wait_for(
+                conn.execute(
+                    "UPDATE billing_accounts SET status='canceled' WHERE stripe_subscription_id=$1", sub_id
+                ),
+                timeout=5,
+            )
+        finally:
+            await conn.close()
+
+    monkeypatch.setattr(ads, "cancel_subscription_at_stripe", cancel_with_webhook)
+    app = _app()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            _act(app, w.users["admin"])
+            r = await client.post("/api/v1/orgs/current/delete", json={"confirm_name": f"Acme A {w.tag}"})
+            assert r.status_code == 200, r.text
+            assert r.json()["removed"]["pro_plan_cancelled"] is True
+        assert await _count("SELECT count(*) FROM organizations WHERE id=:o", o=w.orgs["A"]) == 0
+        assert await _count("SELECT count(*) FROM billing_accounts WHERE user_id=:u AND status='canceled'",
+                            u=w.users["admin"]) == 1
+    finally:
+        await _drop_billing(w)
+        await _cleanup(w)

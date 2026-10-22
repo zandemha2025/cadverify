@@ -901,7 +901,11 @@ async def delete_organization(
     if not keep_plan:
         from src.services import account_deletion_service as ads
 
-        billing = await ads._billing(session, user_id, lock=True)
+        # No row lock while Stripe is called: Stripe's own
+        # customer.subscription.deleted webhook updates this row, and it must
+        # not wait on this transaction (a webhook sent before Stripe answers
+        # would otherwise hold the cancel until it times out).
+        billing = await ads._billing(session, user_id)
         if ads._live_subscription(billing):
             cancel = cancel_subscription or ads.cancel_subscription_at_stripe
             await cancel(billing.stripe_subscription_id, f"org-delete-{deletion_ulid}")
