@@ -21,6 +21,7 @@ import { mustHold, normalizeSpecs } from "./specs";
 import { hoursText, massText, routeResources, runLine } from "./resources";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { buyCompareText, buyPriceText, keepBuyingWhy, makeOrBuy, readTypedPrice, saveBuyPrice } from "./buy-price";
 
 const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign", supplier: "Keep buying from our supplier" };
@@ -186,6 +187,7 @@ export function DecideSheet() {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [askW, setAskW] = React.useState(false);
+  const readOnly = useReadOnly("record a part's decision");
   const groupRef = React.useRef<HTMLDivElement>(null);
   const id = p.data.decisionId;
   React.useEffect(() => {
@@ -442,6 +444,7 @@ export function DecideSheet() {
                 </span>
                 <textarea
                   maxLength={1000}
+                  disabled={!!readOnly}
                   value={note}
                   placeholder="In-house for the first 10 while we compare binder jetting. Revisit at 100."
                   onChange={(e) => {
@@ -450,10 +453,14 @@ export function DecideSheet() {
                   }}
                 />
               </label>
+              {readOnly ? <ReadOnlyLine line={readOnly} style={{ margin: 0 }} /> : null}
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <button className="btn ink" type="button" onClick={() => void record()} disabled={saveOff}>
-                  {busy === "save" ? "Recording…" : saveLabel}
-                </button>
+                {/* it-15: a viewer isn't offered Record decision (make it outside, in-house, buy); the line above says why. */}
+                {readOnly ? null : (
+                  <button className="btn ink" type="button" onClick={() => void record()} disabled={saveOff}>
+                    {busy === "save" ? "Recording…" : saveLabel}
+                  </button>
+                )}
                 <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>
                   Owner {owner}
                   {crossover ? ` · look again at ${qtyWord(Math.round(crossover))} parts` : ""}
@@ -530,6 +537,7 @@ export function DecideSheet() {
  */
 function BuyPriceBlock({ make }: { make: { usd: number; machine: string } | null }) {
   const p = usePart();
+  const viewer = useReadOnly();
   const stored = p.data.context?.buy_price ?? null;
   const [editing, setEditing] = React.useState(false);
   const [price, setPrice] = React.useState("");
@@ -573,7 +581,7 @@ function BuyPriceBlock({ make }: { make: { usd: number; machine: string } | null
           <b>What you pay today</b>
           <small>{buyPriceText(stored) ?? "No price yet. With one, make or buy and the saving use it instead of an outside model price."}</small>
         </span>
-        {key && !editing ? (
+        {key && !editing && !viewer ? (
           <button className="btn sm" type="button" onClick={() => setEditing(true)}>
             {stored ? "Change" : "Add a price"}
           </button>

@@ -290,7 +290,7 @@ export function ShopSheet() {
                   {mine ? "Prices, lead time and next steps on this part follow it." : `In-house, ${priceMeta(m.method, p.q)?.replace(/^Could be /, "could be ") ?? ""}.`}
                 </span>
                 <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {mine ? (
+                  {ch.readOnly ? null : mine ? (
                     <button className="btn sm ghost" type="button" disabled={!!ch.busy} onClick={() => void ch.backToPick()}>
                       {ch.busy === "back" ? "Going back…" : "Back to ScaleCAD’s pick"}
                     </button>

@@ -35,6 +35,7 @@ import {
   type SpecsDraft,
 } from "./specs";
 import { savePartSpecs } from "./specs-api";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { useUnits } from "../units/use-units";
 
 function Pick({ label, options, values, onToggle, derived }: { label: string; options: [string, string][]; values: string[]; onToggle: (v: string) => void; derived?: string[] }) {
@@ -72,6 +73,9 @@ export function SpecsSection() {
   const exclusions = specExclusions(p.data.cost?.estimates);
   const derived = derivedNadcap(parsed.specs);
   const set = (patch: Partial<SpecsDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  // it-15/it-16: a viewer reads the specs; the controls are off and one line says why, never a Save that's refused.
+  const ro = useReadOnly("change a part's specs");
+  const roCheck = useReadOnly("re-check parts");
 
   const save = async () => {
     if (!key || parsed.errors.length || !dirty) return;
@@ -106,7 +110,9 @@ export function SpecsSection() {
           <b>The prices on this page used {hasSpecs(p.data.cost?.specs?.declared) ? "the previous specs" : "no specs"}</b>
           <span>Methods, prices and machine fit update when the part is checked again with the saved specs.</span>
           <span>
-            {p.canRecheck ? (
+            {roCheck ? (
+              <ReadOnlyLine line={roCheck} style={{ margin: 0 }} />
+            ) : p.canRecheck ? (
               <button className="btn sm ink" type="button" disabled={!!running} aria-live="polite" onClick={() => p.recheck()}>
                 {running ? recheckingLabel(running.seconds) : "Re-verify with saved specs"}
               </button>
@@ -117,6 +123,7 @@ export function SpecsSection() {
           {running ? <span style={{ color: "var(--ink2)", fontSize: 12.5 }}>{running.worker ? "On ScaleCAD’s worker, which has more time" : "From the file kept with this part"} · no check used</span> : null}
         </div>
       ) : null}
+      <fieldset disabled={!!ro} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <Pick label="Surface finish" options={FINISHES} values={draft.finishes} onToggle={(v) => set({ finishes: toggle(draft.finishes, v, "finishes") })} />
       <div className="ra-row">
         <label className="field">
@@ -177,6 +184,10 @@ export function SpecsSection() {
           {parsed.errors.join(" ")}
         </p>
       ) : null}
+      </fieldset>
+      {ro ? (
+        <ReadOnlyLine line={ro} style={{ margin: "0 12px 4px" }} />
+      ) : (
       <div style={{ display: "flex", gap: 8, padding: "0 12px 4px", alignItems: "center", flexWrap: "wrap" }}>
         {clearing ? (
           <ConfirmButton className="btn ink sm" label="Clear specs" question="Clear this part's saved specs?" confirmLabel="Clear" onConfirm={save} disabled={busy || !key} />
@@ -190,8 +201,9 @@ export function SpecsSection() {
             Undo changes
           </button>
         ) : null}
-        <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{dirty ? "Saved to this part’s record; prices change when you re-check" : "No changes"}</span>
+        <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{dirty ? "Not saved yet. Saving keeps them with this part; prices change when you re-check" : "No changes"}</span>
       </div>
+      )}
       {err ? (
         <p role="alert" style={{ margin: "4px 12px 0", color: "var(--bad)", fontSize: 12.5 }}>
           {err}

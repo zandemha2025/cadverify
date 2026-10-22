@@ -26,6 +26,7 @@ import { MATERIAL_CLASS_LABEL, cheapestAt, money, priceAt, qtyWord } from "./mod
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { SpecsSection } from "./specs-section";
 import { normalizeSpecs, specLines } from "./specs";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 
 const CLASSES: [string, string][] = [
   ["polymer", "Plastic"],
@@ -93,6 +94,9 @@ export function UseSheet() {
   const [err, setErr] = React.useState<string | null>(null);
   const [pendMat, setPendMat] = React.useState<string | null>(null);
   const radios = React.useRef<HTMLDivElement>(null);
+  // it-15/it-16: a viewer reads the conditions; the form and its Save aren't offered, one line says why.
+  const ro = useReadOnly("change a part's conditions");
+  const roCheck = useReadOnly("re-check parts");
   React.useEffect(() => setDraft(storedDraft), [storedDraft]);
   const parsed = serviceEnvironmentFromDraft(draft);
   const dirty = !sameDraft(draft, storedDraft);
@@ -150,7 +154,9 @@ export function UseSheet() {
                 <b>The verdict on this page used the previous conditions</b>
                 <span>Methods, prices and machine fit update when the part is checked again with the saved conditions.</span>
                 <span>
-                  {p.canRecheck ? (
+                  {roCheck ? (
+                    <ReadOnlyLine line={roCheck} style={{ margin: 0 }} />
+                  ) : p.canRecheck ? (
                     <button className="btn sm ink" type="button" disabled={!!running} aria-live="polite" onClick={() => p.recheck()}>
                       {running ? recheckingLabel(running.seconds) : "Re-verify with saved conditions"}
                     </button>
@@ -170,31 +176,31 @@ export function UseSheet() {
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 10, padding: "4px 12px 6px" }}>
               <label className="field">
                 Hottest, °C
-                <input type="text" inputMode="decimal" value={draft.max_temp_c} placeholder="°C" onChange={(e) => set("max_temp_c", e.target.value)} />
+                <input type="text" inputMode="decimal" disabled={!!ro} value={draft.max_temp_c} placeholder="°C" onChange={(e) => set("max_temp_c", e.target.value)} />
               </label>
               <label className="field">
                 Coldest, °C
-                <input type="text" inputMode="decimal" value={draft.min_temp_c} placeholder="°C" onChange={(e) => set("min_temp_c", e.target.value)} />
+                <input type="text" inputMode="decimal" disabled={!!ro} value={draft.min_temp_c} placeholder="°C" onChange={(e) => set("min_temp_c", e.target.value)} />
               </label>
               <label className="field">
                 Pressure, bar
-                <input type="text" inputMode="decimal" value={draft.pressure_bar} placeholder="bar" onChange={(e) => set("pressure_bar", e.target.value)} />
+                <input type="text" inputMode="decimal" disabled={!!ro} value={draft.pressure_bar} placeholder="bar" onChange={(e) => set("pressure_bar", e.target.value)} />
               </label>
               <label className="field">
                 Standard
-                <input type="text" value={draft.standard} placeholder="for example NACE MR0175" onChange={(e) => set("standard", e.target.value)} />
+                <input type="text" disabled={!!ro} value={draft.standard} placeholder="for example NACE MR0175" onChange={(e) => set("standard", e.target.value)} />
               </label>
               <label className="field" style={{ gridColumn: "1 / -1" }}>
                 Medium
-                <input type="text" value={draft.medium} placeholder="for example sour gas (H2S), seawater" onChange={(e) => set("medium", e.target.value)} />
+                <input type="text" disabled={!!ro} value={draft.medium} placeholder="for example sour gas (H2S), seawater" onChange={(e) => set("medium", e.target.value)} />
               </label>
             </div>
             <div style={{ display: "flex", gap: 8, padding: "2px 12px 8px", flexWrap: "wrap", alignItems: "center" }}>
               <span className="seg" role="group" aria-label="Service">
-                <button type="button" className={cx(draft.sour_service && "on")} aria-pressed={draft.sour_service} onClick={() => set("sour_service", !draft.sour_service)}>
+                <button type="button" className={cx(draft.sour_service && "on")} aria-pressed={draft.sour_service} disabled={!!ro} onClick={() => set("sour_service", !draft.sour_service)}>
                   Sour gas, H₂S
                 </button>
-                <button type="button" className={cx(draft.corrosive && "on")} aria-pressed={draft.corrosive} onClick={() => set("corrosive", !draft.corrosive)}>
+                <button type="button" className={cx(draft.corrosive && "on")} aria-pressed={draft.corrosive} disabled={!!ro} onClick={() => set("corrosive", !draft.corrosive)}>
                   Corrosive
                 </button>
               </span>
@@ -207,6 +213,9 @@ export function UseSheet() {
                 {parsed.errors.join(" ")}
               </p>
             ) : null}
+            {ro ? (
+              <ReadOnlyLine line={ro} style={{ margin: "0 12px 4px" }} />
+            ) : (
             <div style={{ display: "flex", gap: 8, padding: "0 12px 4px", alignItems: "center", flexWrap: "wrap" }}>
               {clearing ? (
                 <ConfirmButton className="btn ink sm" label="Clear conditions" question="Clear this part's saved conditions?" confirmLabel="Clear" onConfirm={save} disabled={busy || !key} />
@@ -220,8 +229,10 @@ export function UseSheet() {
                   Undo changes
                 </button>
               ) : null}
-              <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{dirty ? "Saved to this part’s record; the shown verdict changes when you re-check" : "No changes"}</span>
+              {/* it-16: said before saving, so it never reads as done next to a refusal. */}
+              <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{dirty ? "Not saved yet. Saving keeps them with this part; the verdict changes when you re-check" : "No changes"}</span>
             </div>
+            )}
             {err ? (
               <p role="alert" style={{ margin: "4px 12px 0", color: "var(--bad)", fontSize: 12.5 }}>
                 {err}
@@ -271,12 +282,14 @@ export function UseSheet() {
                       <b>{name}</b>
                       <small>{checked ? (c ? `This check · ${c.name.toLowerCase()} cheapest` : "This check · nothing priced") : "Not checked for this part yet"}</small>
                     </span>
-                    <span className="c num">{checked ? (c ? `from ${money(priceAt(c, p.q))}` : "—") : "Re-check"}</span>
+                    <span className="c num">{checked ? (c ? `from ${money(priceAt(c, p.q))}` : "—") : roCheck ? "—" : "Re-check"}</span>
                   </button>
                 );
               })}
             </div>
-            {pendMat ? (
+            {pendMat && roCheck ? (
+              <ReadOnlyLine line={roCheck} style={{ margin: "8px 12px 0" }} />
+            ) : pendMat ? (
               <div style={{ display: "flex", gap: 8, padding: "8px 12px 0", alignItems: "center", flexWrap: "wrap" }}>
                 <button className="btn ink sm" type="button" disabled={!p.canRecheck} onClick={() => p.recheck({ materialClass: pendMat })}>
                   Re-check in {(MATERIAL_CLASS_LABEL[pendMat] ?? pendMat).toLowerCase()}

@@ -53,6 +53,7 @@ import {
 } from "./orient";
 import { closeOrient, openOrient, patchOrient, useOrient, type OrientRecheck } from "./state";
 import "./orient.css";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 
 /** The orientation of the result on screen (identity for the file's own). */
 function useShown(): Mat {
@@ -134,6 +135,7 @@ const TURNS: { axis: "x" | "y" | "z"; text: string; title: string }[] = [
 ];
 
 export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: string | null) => void; canRecheck: boolean }) {
+  const readOnly = useReadOnly("re-check parts");
   const p = usePart();
   const fx = useFix();
   const key = p.data.key;
@@ -267,7 +269,10 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
           <span>{facts ? [facts.main, facts.sub].filter(Boolean).join(" · ") : options0.s === "loading" ? "Measuring…" : "Re-check to measure it this way."}</span>
           {here && process ? <span>{flags ? `Findings this way: ${flags}.` : "None of the findings that depend on orientation, this way."}</span> : null}
           <span>{priceBasis(opts) ?? PRICES_LINE}</span>
-          {canRecheck ? (
+          {readOnly ? (
+            // it-15: a viewer compares the ways it could sit; re-checking it is a member's.
+            <ReadOnlyLine line={readOnly} style={{ margin: 0 }} />
+          ) : canRecheck ? (
             <span className="or-actions">
               <button className="btn ink sm" type="button" disabled={atShown || p.checking} onClick={() => go(target)}>
                 Re-check in this orientation

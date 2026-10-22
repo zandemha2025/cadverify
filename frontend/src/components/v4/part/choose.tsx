@@ -12,6 +12,7 @@ import { usePart } from "./ctx";
 import { putDisposition } from "./api";
 import { chooseBody, enginePick, followed, pairAt, recordedChoice, type Choice } from "./choice";
 import { isWorkable, methodName, shortId, type Method } from "./model";
+import { useReadOnly } from "../read-only";
 
 export function useChoice() {
   const p = usePart();
@@ -23,9 +24,11 @@ export function useChoice() {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const id = p.data.decisionId;
+  // it-15: a viewer isn't offered "Make it this way" (or the way back); the server would refuse it.
+  const readOnly = useReadOnly("choose how a part is made");
 
   /** Whether "Make it this way" can be offered for a process at the current quantity. */
-  const canChoose = (m: Method): boolean => !!id && !p.costOff && m.members.length === 1 && isWorkable(m) && m.prices.has(p.q);
+  const canChoose = (m: Method): boolean => !readOnly && !!id && !p.costOff && m.members.length === 1 && isWorkable(m) && m.prices.has(p.q);
 
   const makeThisWay = async (m: Method) => {
     const e = m.prices.get(p.q);
@@ -73,5 +76,5 @@ export function useChoice() {
     if (earlierMethod && canKeep) await makeThisWay(earlierMethod);
   };
 
-  return { choice, pick, pair, follow, canChoose, makeThisWay, backToPick, busy, err, earlier, earlierMethod, canKeep, keepEarlier };
+  return { choice, pick, pair, follow, canChoose, makeThisWay, backToPick, busy, err, earlier, earlierMethod, canKeep, keepEarlier, readOnly };
 }

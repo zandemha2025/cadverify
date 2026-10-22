@@ -69,3 +69,12 @@ test("a price that ran out of time is said plainly and retried with more time (m
   assert.equal(ranOutOfTime("Could not tessellate this part: gmsh cannot mesh a periodic surface in the geometry (all 3 mesh strategies failed)."), false);
   assert.equal(ranOutOfTime(null), false);
 });
+
+test("a viewer's refused save reads as the viewer line, never a status code (it-16)", async () => {
+  const { viewerRefusal } = await import("./plain-errors.ts");
+  assert.equal(viewerRefusal(403, { code: "insufficient_org_role", message: "Requires member" }, "change a part's specs"), "Viewers can't change a part's specs. Ask an admin for Member access.");
+  assert.equal(viewerRefusal(403, null, "change a part's specs"), "Viewers can't change a part's specs. Ask an admin for Member access.");
+  // Another 403 (a kill switch, a plan limit) keeps its own words.
+  assert.equal(viewerRefusal(403, { code: "plan_limit", message: "Upgrade" }, "x"), null);
+  assert.equal(viewerRefusal(500, null, "x"), null);
+});

@@ -478,9 +478,11 @@ function ChooseRow({ m, ch }: { m: Method; ch: ReturnType<typeof useChoice> }) {
       {mine ? (
         <>
           <span style={{ color: "var(--ok)", fontWeight: 600, fontSize: 13 }}>✓ Your choice, {where}</span>
-          <button className="btn sm ghost" type="button" disabled={!!ch.busy} onClick={() => void ch.backToPick()}>
-            {ch.busy === "back" ? "Going back…" : "Back to ScaleCAD’s pick"}
-          </button>
+          {ch.readOnly ? null : (
+            <button className="btn sm ghost" type="button" disabled={!!ch.busy} onClick={() => void ch.backToPick()}>
+              {ch.busy === "back" ? "Going back…" : "Back to ScaleCAD’s pick"}
+            </button>
+          )}
         </>
       ) : (
         <button className="btn sm ink" type="button" disabled={!!ch.busy} onClick={() => void ch.makeThisWay(m)} title={`Save ${m.name.toLowerCase()} ${where} as the way to make this part. Prices, lead time and next steps follow it.`}>

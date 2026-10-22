@@ -17,6 +17,7 @@ import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { isMultiBody } from "@/lib/verify/bodies";
 import { shopChangeText, shopChangedSince, type ShopChange } from "./shop-change";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 
 export interface FigItem {
   k: string;
@@ -141,15 +142,16 @@ export function useShopChange(): ShopChange | null {
 function ShopNotice() {
   const p = usePart();
   const c = useShopChange();
+  const ro = useReadOnly("re-check parts");
   if (!c) return null;
   return (
     <div className="note swap" role="status" style={{ marginTop: 8 }}>
       <b>{shopChangeText(c)}</b>
       <span>
-        The answer on this page predates it.{" "}
-        {p.canRecheck ? "Re-check works it out again on the machines you have now, from the file kept with this part. No check used." : "Drop the file on the part to check it on the machines you have now."}
+        The answer on this page predates it.{ro ? "" : " "}
+        {ro ? "" : p.canRecheck ? "Re-check works it out again on the machines you have now, from the file kept with this part. No check used." : "Drop the file on the part to check it on the machines you have now."}
       </span>
-      {p.canRecheck ? (
+      {ro ? <ReadOnlyLine line={ro} style={{ margin: 0 }} /> : p.canRecheck ? (
         <span>
           <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
             Re-check
@@ -164,12 +166,13 @@ function ShopNotice() {
 function RatesNotice() {
   const p = usePart();
   const text = p.checking || p.interrupted ? null : ratesNote(p.data.decision);
+  const ro = useReadOnly("re-check parts");
   if (!text) return null;
   return (
     <div className="note swap" role="status" style={{ marginTop: 8 }}>
       <b>{text}</b>
-      <span>{p.canRecheck ? "Re-cost prices it again from the file kept with this part, at your rates now. No check used." : "Drop the file on the part to price it at your rates now."}</span>
-      {p.canRecheck ? (
+      {ro ? <ReadOnlyLine line={ro} style={{ margin: 0 }} /> : <span>{p.canRecheck ? "Re-cost prices it again from the file kept with this part, at your rates now. No check used." : "Drop the file on the part to price it at your rates now."}</span>}
+      {!ro && p.canRecheck ? (
         <span>
           <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
             Re-cost

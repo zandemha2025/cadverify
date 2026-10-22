@@ -7,7 +7,22 @@
  * Pure, for node --test.
  */
 
+import { viewerWriteLine } from "../viewer-access.ts";
+
 export type ErrorPlace = "recheck" | "view" | "cost";
+
+/**
+ * A save the server refused because the person is a viewer (403), in the
+ * viewer's one line (it-16: "The specs weren't saved (403)."), else null.
+ */
+export function viewerRefusal(status: number, detail: unknown, what: string): string | null {
+  if (status !== 403) return null;
+  const d = detail && typeof detail === "object" ? (detail as { code?: unknown; message?: unknown }) : null;
+  const code = typeof d?.code === "string" ? d.code : "";
+  const text = typeof detail === "string" ? detail : typeof d?.message === "string" ? d.message : "";
+  if (code && code !== "insufficient_org_role" && !/viewer/i.test(text)) return null;
+  return viewerWriteLine(what);
+}
 
 export interface PlainError {
   text: string;

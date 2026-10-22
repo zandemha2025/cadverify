@@ -2,6 +2,7 @@
 import { API_BASE } from "@/lib/api-base";
 import type { PartContext } from "@/lib/verify/part-context-read";
 import type { PartSpecs } from "./specs";
+import { viewerRefusal } from "./plain-errors";
 
 export interface SaveSpecsResult {
   ok: boolean;
@@ -13,6 +14,8 @@ export interface SaveSpecsResult {
 
 function detailText(body: unknown, status: number): string {
   const d = (body as { detail?: unknown } | null)?.detail;
+  const viewer = viewerRefusal(status, d, "change a part's specs");
+  if (viewer) return viewer;
   if (typeof d === "string") return d;
   if (d && typeof d === "object" && typeof (d as { message?: unknown }).message === "string") return (d as { message: string }).message;
   return `The specs weren't saved (${status}).`;
