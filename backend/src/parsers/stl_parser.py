@@ -17,6 +17,29 @@ def binary_stl_triangle_count(data: bytes) -> int | None:
     return count if 84 + count * 50 == len(data) else None
 
 
+# Window size for the ASCII facet count: the scan lowercases one window at a
+# time, so its memory stays bounded however large the file is.
+_ASCII_SCAN_CHUNK = 1 << 20
+_VERTEX = b"vertex"
+
+
+def ascii_stl_facet_count(data: bytes) -> int:
+    """Facets trimesh's ASCII reader would build from ``data``.
+
+    trimesh reads one vertex per ``vertex`` keyword (any letter case) and three
+    vertices per facet, so this is that keyword count divided by three. The
+    count runs over fixed-size windows instead of decoding the whole file.
+    """
+    step = max(1, int(_ASCII_SCAN_CHUNK))
+    tail = len(_VERTEX) - 1
+    total = 0
+    for start in range(0, len(data), step):
+        # The window runs ``tail`` bytes past its share, so a keyword that
+        # starts in this share is seen whole and counted here exactly once.
+        total += data[start:start + step + tail].lower().count(_VERTEX)
+    return total // 3
+
+
 def parse_stl(file_path: str | Path) -> trimesh.Trimesh:
     """Load an STL file and return a trimesh object.
 
