@@ -12,7 +12,9 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
 import { R } from "./routes";
 import { cx } from "./ui";
-import { findParts, findRecords, type SearchPart } from "./palette-search";
+import { findParts, findRecords, looksLikeQuestion, searchWords, type SearchPart } from "./palette-search";
+
+export { searchWords };
 
 export type PaletteItem = {
   id: string;
@@ -243,6 +245,8 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
   };
 
   if (!open) return null;
+  const words = searchWords(extra);
+  const answers = extra.some((e) => e.answer);
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
       <button type="button" tabIndex={-1} aria-hidden="true" onClick={close} style={{ position: "absolute", inset: 0, border: 0, padding: 0, background: "rgba(237,239,242,.55)", backdropFilter: "blur(2px)", cursor: "default" }} />
@@ -257,12 +261,12 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
             autoFocus
             type="text"
             value={query}
-            aria-label="Search parts, records, machines and tools, or ask"
+            aria-label={words.box}
             aria-controls="v4-pal-res"
             aria-activedescendant={flat.length ? `v4-pal-${cur}` : undefined}
             role="combobox"
             aria-expanded="true"
-            placeholder="Search parts, records, machines and tools, or ask"
+            placeholder={words.box}
             onChange={(e) => {
               setQuery(e.target.value);
               setSel(-1);
@@ -326,14 +330,26 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
               })}
             </div>
           ))}
-          {flat.length === 0 ? <p style={{ padding: "24px 16px", color: "var(--ink3)", textAlign: "center", fontSize: 14 }}>No matches for “{query}”</p> : null}
+          {flat.length === 0 ? (
+            <p style={{ padding: "24px 16px", color: "var(--ink3)", textAlign: "center", fontSize: 14 }}>
+              No matches for “{query}”
+              {looksLikeQuestion(query) ? (
+                <>
+                  <br />
+                  {answers
+                    ? "Questions are answered about the part you have open: its cheapest price, which of your machines can make it, why a process can’t."
+                    : "Search finds parts, records, machines and tools by name; it doesn’t answer questions. Open a part to ask about it."}
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         {/* Keyboard hints only where there is a keyboard (buyer-16: they showed on a phone). */}
-        <div className={cx(!extra.some((e) => e.answer) && "kb-only")} style={{ display: "flex", gap: 16, padding: "10px 16px", borderTop: "1px solid var(--rule)", color: "var(--ink3)", fontSize: 12, flexWrap: "wrap" }}>
+        <div className={cx(!answers && "kb-only")} style={{ display: "flex", gap: 16, padding: "10px 16px", borderTop: "1px solid var(--rule)", color: "var(--ink3)", fontSize: 12, flexWrap: "wrap" }}>
           <span className="kb-only">↑ ↓ move</span>
           <span className="kb-only">↵ open</span>
           <span className="kb-only">esc close</span>
-          {extra.some((e) => e.answer) ? <span>Answers use this part&apos;s results only</span> : null}
+          {answers ? <span>Answers use this part&apos;s results only</span> : null}
         </div>
       </section>
     </div>

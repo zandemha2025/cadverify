@@ -67,3 +67,18 @@ export function findRecords(recs: SearchRecord[], query: string, max = 4): Found
       return { id: `r-${r.id}`, label: r.filename, sub: `Cost record #${r.id.slice(-6)} · ${day}${latest}${r.approval_status === "approved" ? " · approved" : " · not reviewed"}`, href: `/app/parts/records/${encodeURIComponent(r.id)}` };
     });
 }
+
+/**
+ * What the search box says it does (op-14). It answers questions only where a page registers answers (the part
+ * page: its own results); elsewhere it searches, and says only that.
+ */
+export function searchWords(items: readonly { answer?: unknown }[]): { button: string; box: string } {
+  return items.some((i) => i.answer)
+    ? { button: "Search, or ask about this part", box: "Search parts, records, machines and tools, or ask about this part" }
+    : { button: "Search parts and tools", box: "Search parts, records, machines and tools" };
+}
+
+/** A question typed into search ("which of my machines would be overloaded…"): said what search does, not just "No matches". */
+export function looksLikeQuestion(q: string): boolean {
+  return /\?\s*$/.test(q) || /^(who|what|which|when|where|why|how|can|could|does|do|is|are|will|would|should)\b/i.test(q.trim());
+}

@@ -16,7 +16,7 @@ import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
 import { CHOICES_EVENT, choicesSummary, readChoices, type PrivacyChoices } from "@/lib/privacy-choices";
 import { NAV, R, GO_KEYS, sectionOf } from "./routes";
 import { setPendingFile } from "./pending-file";
-import { Palette, PaletteProvider, usePalette } from "./palette";
+import { Palette, PaletteProvider, searchWords, usePalette } from "./palette";
 import { cx } from "./ui";
 import { WorkBar } from "./work/work-bar";
 import { checkBlockedLine } from "./viewer-access";
@@ -195,7 +195,8 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <button className="find" type="button" onClick={() => palette.setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
-            Search parts and tools, or ask<span className="kbd" aria-hidden="true">⌘K</span>
+            {searchWords(palette.extra).button}
+            <span className="kbd" aria-hidden="true">⌘K</span>
           </button>
           <span title={checkBlocked ?? undefined} style={{ marginLeft: 8, display: "inline-flex" }}>
             <button className="btn go sm" type="button" onClick={pickFile} disabled={!!checkBlocked} aria-describedby={checkBlocked ? "v4-check-blocked" : undefined}>
