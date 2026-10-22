@@ -23,3 +23,29 @@ test("loginHrefForReturnPath encodes the protected destination", () => {
   );
   assert.equal(loginHrefForReturnPath("https://attacker.example"), "/login");
 });
+
+test("safeLocalPath rejects paths that collapse into another site after parsing", () => {
+  for (const raw of [
+    "/.//evil.example",
+    "/..//evil.example",
+    "/%2e//evil.example",
+    "/a/..//evil.example",
+    "/./\\evil.example",
+    "/.//evil.example/path?x=1#y",
+  ]) {
+    const out = safeLocalPath(raw);
+    assert.equal(out, "/verify", raw);
+    assert.equal(new URL(out, "https://scalecad.ai").origin, "https://scalecad.ai", raw);
+  }
+  assert.equal(loginHrefForReturnPath("/.//evil.example"), "/login");
+});
+
+test("the magic-link page uses the shared return-path check", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../app/(auth)/magic/verify/magic-verify-client.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /import \{ safeLocalPath \} from "@\/lib\/safe-return-path"/);
+  assert.doesNotMatch(source, /function safeLocalPath/);
+});

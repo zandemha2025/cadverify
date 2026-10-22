@@ -3,18 +3,8 @@
 import * as React from "react";
 import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
+import { safeLocalPath } from "@/lib/safe-return-path";
 
-function safeLocalPath(raw: unknown): string {
-  if (typeof raw !== "string") return "/verify";
-  try {
-    const base = new URL("https://cadverify.invalid");
-    const parsed = new URL(raw, base);
-    if (parsed.origin !== base.origin || !raw.startsWith("/")) return "/verify";
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return "/verify";
-  }
-}
 
 export function MagicVerifyClient() {
   const [token, setToken] = React.useState<string | null>(null);
