@@ -420,6 +420,62 @@ async def revoke_invite(
     return svc.serialize_invite(inv)
 
 
+# ── who may sign off a make-or-buy decision ──────────────────────────────────
+class SignoffBody(BaseModel):
+    # "member" (members and admins, the default) | "admin" (admins only); null
+    # returns to the default.
+    signoff_role: Optional[str] = None
+
+
+async def _signoff_payload(session: AsyncSession, org_id: str, ctx: OrgAuthContext) -> dict:
+    from src.services import signoff_service as so
+
+    role = await so.get_role(session, org_id)
+    return {
+        "signoff_role": role,
+        "label": so.ROLE_WORDS[role],
+        "your_org_role": ctx.org_role,
+        "can_sign_off": so.may_sign_off(ctx.org_role, role, is_superadmin=ctx.is_superadmin),
+        "can_change": ctx.is_superadmin or ctx.org_role == "admin",
+    }
+
+
+@router.get("/signoff")
+@limiter.limit("240/hour;2000/day")
+async def get_signoff_setting(
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Who may sign off a recorded make-or-buy decision in the caller's org."""
+    org_id = await _ctx_org(ctx, session)
+    return await _signoff_payload(session, org_id, ctx)
+
+
+@router.put("/signoff", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;300/day")
+async def set_signoff_setting(
+    request: Request,
+    response: Response,
+    body: SignoffBody,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Set who may sign off decisions (org admins only). Existing sign-offs stay."""
+    from src.services import signoff_service as so
+
+    org_id = await _ctx_org(ctx, session)
+    try:
+        role = await so.set_role(session, org_id, body.signoff_role)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await _emit(session, ctx.user_id, "org.signoff_role_changed", org_id,
+                {"org_id": org_id, "signoff_role": role}, org_id=org_id)
+    await session.commit()
+    return await _signoff_payload(session, org_id, ctx)
+
+
 # ── members ───────────────────────────────────────────────────────────────────
 @router.get("/members")
 @limiter.limit("120/hour;1000/day")

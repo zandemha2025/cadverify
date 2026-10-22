@@ -54,6 +54,11 @@ class DeclareContextBody(BaseModel):
     bom_assembly_key: Optional[str] = None
     bom_child_ref: Optional[str] = None
     bom_roots_per_year: Optional[StrictInt] = None
+    # Declared part specs (src.costing.part_specs): {finishes, ra_um, ra_unit,
+    # heat_treatments, inspection, certifications, nadcap_processes}. USER-declared;
+    # validated in the service (unknown fields/values are a 400). Explicit null or
+    # {} clears them.
+    part_specs: Optional[dict] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:
@@ -115,6 +120,9 @@ async def declare_part_context(
     byte-identical to a full refetch (never a drifted, client-invented rollup).
     """
     org_id = await _require_org(session, user.user_id)
+    import copy
+
+    before = copy.deepcopy(svc.engine_inputs(await svc.get_context(session, org_id, mesh_hash)))
     try:
         row = await svc.upsert_context(
             session,
@@ -125,8 +133,20 @@ async def declare_part_context(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    # A change to what the engine reads (specs, service conditions) makes this
+    # part's saved decisions, and any sign-off on them, out of date. Said plainly
+    # on the record; the saved numbers are never edited.
+    reasons = svc.changed_input_reasons(before, svc.engine_inputs(row))
+    marked = 0
+    if reasons:
+        from src.services import cost_decision_service
+
+        marked = await cost_decision_service.mark_part_decisions_stale(
+            session, org_id, mesh_hash, reason=reasons[0])
     await session.commit()
     payload = await _context_payload(session, org_id, row)
+    if reasons:
+        payload["decisions_marked_stale"] = marked
     # Recompute AFTER commit so the delta reflects the persisted write (same code
     # path as the read endpoint — the client patches its state from this verbatim).
     payload["portfolio_delta"] = await catalog_svc.portfolio_delta(

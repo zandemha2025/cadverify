@@ -279,7 +279,7 @@ async def recalibrate_ground_truth(
     """
     org_id = await _require_org(session, user)
     try:
-        return await svc.recalibrate_org(session, org_id)
+        summary = await svc.recalibrate_org(session, org_id)
     except svc.InsufficientGroundTruth as exc:
         raise HTTPException(
             status_code=422,
@@ -290,6 +290,13 @@ async def recalibrate_ground_truth(
                 "min_real": exc.min_real,
             },
         )
+    # Saved decisions (and their sign-offs) were priced before this calibration.
+    from src.services import cost_decision_service
+
+    await cost_decision_service.mark_org_decisions_stale(
+        session, org_id, reason=cost_decision_service.CALIBRATION_STALE_REASON)
+    await session.commit()
+    return summary
 
 
 @router.get("/import/template", response_class=PlainTextResponse)

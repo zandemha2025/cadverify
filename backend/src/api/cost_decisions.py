@@ -204,8 +204,29 @@ async def get_cost_decision(
         "quantities": d.quantities or [],
         **share_links.fields(d),
         **svc.governance_fields(d),
+        **(await _signoff_fields(session, d)),
         "result": d.result_json,
     }
+
+
+async def _signoff_fields(session: AsyncSession, d) -> dict:
+    """The sign-off as people see it: who, when, the note, and whether it's out of date."""
+    from src.services import signoff_service as so
+
+    gov = svc.governance_fields(d)
+    names = await so.names_for(session, [gov.get("approved_by_user_id")])
+    return {"signoff": so.signoff_view(gov, names)}
+
+
+async def _require_signoff_role(session: AsyncSession, d, user: AuthedUser) -> None:
+    """403 unless the caller's org role clears the org's sign-off rule."""
+    from src.services import signoff_service as so
+
+    role = await so.get_role(session, d.org_id)
+    org_role = await so.org_role_of(session, d.org_id, user.user_id)
+    if not so.may_sign_off(org_role, role, is_superadmin=user.role == Role.superadmin.value):
+        raise HTTPException(status_code=403, detail={"code": "signoff_role_required",
+                                                     "message": so.refusal(role)})
 
 
 @router.put("/{decision_id}/disposition")
@@ -246,11 +267,23 @@ async def approve_cost_decision(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Approve/sign off a saved decision without changing its engine artifact."""
+    """Approve/sign off a saved decision without changing its engine artifact.
+
+    Who may sign off is the organization's rule (``/orgs/signoff``). A record
+    that is out of date can't be signed off: what it was computed from changed.
+    """
+    d = await svc.get_owned(session, decision_id, user.user_id)
+    await _require_signoff_role(session, d, user)
+    if svc.governance_fields(d).get("is_stale"):
+        raise HTTPException(status_code=409, detail={
+            "code": "decision_stale",
+            "message": "This record is out of date: what it was computed from changed. "
+                       "Check the part again, then sign off the new record."})
     d = await svc.approve_owned(session, decision_id, user.user_id, note=body.note)
     return {
         "id": d.ulid,
         **svc.governance_fields(d),
+        **(await _signoff_fields(session, d)),
     }
 
 
@@ -264,10 +297,13 @@ async def reopen_cost_decision_approval(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Reopen approval/signoff while keeping the saved decision immutable."""
+    d = await svc.get_owned(session, decision_id, user.user_id)
+    await _require_signoff_role(session, d, user)
     d = await svc.reopen_owned(session, decision_id, user.user_id)
     return {
         "id": d.ulid,
         **svc.governance_fields(d),
+        "signoff": None,
     }
 
 

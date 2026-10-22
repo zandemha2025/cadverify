@@ -209,6 +209,11 @@ async def apply_calibration(
 
     await emit_event(session, user.user_id, "calibration.applied", "org_calibration", row.ulid,
                      {"org_id": org_id, "factors": row.factors}, org_id=org_id)
+    # Saved decisions (and their sign-offs) were priced before this calibration.
+    from src.services import cost_decision_service
+
+    await cost_decision_service.mark_org_decisions_stale(
+        session, org_id, reason=cost_decision_service.CALIBRATION_STALE_REASON)
     await session.commit()
     return {"applied": await _calibration_public(session, org_id),
             "history": await cal.public_history(session, org_id)}
@@ -230,6 +235,10 @@ async def undo_calibration(
 
     await emit_event(session, user.user_id, "calibration.undone", "org_calibration", row.ulid,
                      {"org_id": org_id}, org_id=org_id)
+    from src.services import cost_decision_service
+
+    await cost_decision_service.mark_org_decisions_stale(
+        session, org_id, reason=cost_decision_service.CALIBRATION_STALE_REASON)
     await session.commit()
     return {"undone": row.ulid, "in_effect": await _calibration_public(session, org_id),
             "history": await cal.public_history(session, org_id)}

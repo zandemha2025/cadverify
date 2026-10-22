@@ -43,6 +43,10 @@ DECLARED_FIELDS = (
     "bom_assembly_key",
     "bom_child_ref",
     "bom_roots_per_year",
+    # Declared part specs (migration 0056; ``src.costing.part_specs``): surface
+    # finish + Ra, heat treatment, inspection, required certifications. Stored
+    # normalized; NULL / absent → nothing declared, the engine is a no-op.
+    "part_specs",
 )
 _POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume", "bom_roots_per_year")
 
@@ -117,6 +121,10 @@ def validate_context(fields: dict) -> None:
     # The declared service environment (machine-inventory §6) — USER-declared,
     # never inferred. Validated when present; absent → the gate is a no-op.
     validate_service_environment(fields.get("service_environment"))
+    # Declared part specs: unknown fields/values are rejected (never dropped).
+    from src.costing.part_specs import validate_part_specs
+
+    validate_part_specs(fields.get("part_specs"))
 
 
 def annualized_cost(
@@ -186,6 +194,10 @@ async def upsert_context(
     ``created_by`` is stamped on insert.
     """
     validate_context(fields)
+    if "part_specs" in fields:
+        from src.costing.part_specs import normalize_part_specs
+
+        fields = {**fields, "part_specs": normalize_part_specs(fields.get("part_specs"))}
     row = await get_context(session, org_id, mesh_hash)
     if row is None:
         row = PartContext(
@@ -240,4 +252,26 @@ def serialize_context(row: Any) -> dict:
         val = getattr(row, key, None)
         if val is not None:
             out[key] = val
+    # Declared part specs: surfaced ONLY when declared (byte-identical otherwise).
+    specs = getattr(row, "part_specs", None)
+    if specs:
+        out["part_specs"] = specs
     return out
+
+
+# What a check's verdict depends on, from the declared context: a change to
+# either makes earlier saved decisions for the part out of date.
+ENGINE_INPUT_FIELDS = (("part_specs", "part_specs_changed"),
+                       ("service_environment", "conditions_changed"))
+
+
+def engine_inputs(row: Any) -> dict:
+    """The declared values the cost engine reads, for a before/after comparison."""
+    if row is None:
+        return {k: None for k, _ in ENGINE_INPUT_FIELDS}
+    return {k: (getattr(row, k, None) or None) for k, _ in ENGINE_INPUT_FIELDS}
+
+
+def changed_input_reasons(before: dict, after: dict) -> list:
+    """Stale reasons for the engine inputs that changed (in a stable order)."""
+    return [reason for key, reason in ENGINE_INPUT_FIELDS if (before or {}).get(key) != (after or {}).get(key)]

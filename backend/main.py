@@ -593,6 +593,8 @@ app.include_router(billing_webhook_router, prefix="/billing")
 # SMS phone verification for free accounts (Twilio Verify); gating is opt-in
 # via SMS_VERIFICATION_REQUIRED.
 app.include_router(phone_router, prefix="/api/v1/account/phone", tags=["account"])
+from src.api.preferences import router as preferences_router  # noqa: E402
+app.include_router(preferences_router, prefix="/api/v1/account/preferences", tags=["account"])
 # SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
 # than under /api/v1 so Okta/Entra can target it directly.
 app.include_router(scim_router)

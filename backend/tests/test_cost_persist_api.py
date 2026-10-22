@@ -398,7 +398,24 @@ def test_detail_owner_ok(client, real_result_json):
     assert body["user_disposition"] is None
 
 
-def test_approve_and_reopen_cost_decision(client, real_result_json):
+def _member_may_sign_off(monkeypatch):
+    """The mocked session has no membership row; state the org's sign-off rule."""
+    from src.services import signoff_service
+
+    async def _role(*_a, **_k):
+        return "member"
+
+    monkeypatch.setattr(signoff_service, "get_role", _role)
+    monkeypatch.setattr(signoff_service, "org_role_of", _role)
+
+    async def _names(*_a, **_k):
+        return {}
+
+    monkeypatch.setattr(signoff_service, "names_for", _names)
+
+
+def test_approve_and_reopen_cost_decision(client, real_result_json, monkeypatch):
+    _member_may_sign_off(monkeypatch)
     cl, app = client
     dec = _make_decision("01APPROVE000000000000000A", real_result_json, user_id=42)
     _override(app, _session_returning(scalar_one=dec), user_id=42)
@@ -425,8 +442,9 @@ def test_approve_and_reopen_cost_decision(client, real_result_json):
 
 
 def test_approval_note_boundary_is_exact_and_overflow_is_rejected(
-    client, real_result_json
+    client, real_result_json, monkeypatch
 ):
+    _member_may_sign_off(monkeypatch)
     cl, app = client
     dec = _make_decision("01APPROVELIMIT000000000000A", real_result_json, user_id=42)
     _override(app, _session_returning(scalar_one=dec), user_id=42)

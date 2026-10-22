@@ -204,6 +204,13 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             assert r2.status_code == 422 and "Nothing new" in r2.json()["detail"]["message"]
             assert applied["factors"]["cnc_3axis"]["hours"] == pytest.approx(TRUE_RATIO, abs=1e-3)
             assert applied["applied_by"].startswith("act-") and applied["applied_at"]
+            # Saved decisions priced before the calibration say they're out of date;
+            # the other organization's don't.
+            async with eng.get_session_factory()() as s:
+                marks = (await s.execute(select(CostDecision.org_id, CostDecision.stale_reason))).all()
+            assert [m for m in marks if m[0] == org_a]
+            assert all(m[1] == "calibration_changed" for m in marks if m[0] == org_a)
+            assert all(m[1] is None for m in marks if m[0] == org_b)
 
             # ---- the next estimate for org A carries it; org B's doesn't
             r = await ac.post("/api/v1/validate/cost", data={"qty": "1,100"},

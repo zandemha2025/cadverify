@@ -611,6 +611,9 @@ def _inhouse_disposition_error(result_json: dict, estimate: dict | None) -> str 
             or estimate.get("dfm_verdict") == "fail" or estimate.get("environment_excluded")
             or estimate.get("dfm_blockers")):
         return "Make in-house is unavailable while the selected route is blocked by DFM. Record Redesign, Make outside, or Acquire capability, or verify revised CAD that passes route DFM."
+    if estimate.get("spec_excluded"):
+        return ("This route can't meet the part's declared specs. "
+                + (estimate.get("spec_exclusion_reason") or "")).strip()
     fit = ((result_json.get("verification") or {}).get("per_route") or {}).get(estimate["process"]) or {}
     if fit.get("verdict") not in ("makeable_in_house", "makeable_with_secondary_op"):
         return "Owned-machine fit is not verified for this route. Declare a fitting machine and re-verify before recording Make in-house."
@@ -627,6 +630,10 @@ def _chosen_route_error(disposition: str, estimate: dict) -> str | None:
     """
     if estimate.get("environment_excluded"):
         return "The declared service conditions rule out this route. Choose a route that survives them."
+    if estimate.get("spec_excluded") and disposition in ("inhouse", "outside"):
+        return ("This route can't meet the part's declared specs: "
+                + (estimate.get("spec_exclusion_reason") or "see its findings")
+                + " Choose a route that meets them, or record Redesign.")
     if disposition == "outside" and (
         estimate.get("dfm_ready") is not True
         or estimate.get("dfm_verdict") == "fail"
@@ -784,6 +791,43 @@ async def mark_org_decisions_stale(
         update(CostDecision)
         .where(
             CostDecision.org_id == org_id,
+            CostDecision.created_at < when,
+            CostDecision.stale_at.is_(None),
+        )
+        .values(stale_at=when, stale_reason=reason)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+# stale_reasons for a decision whose part's declared inputs changed after it was
+# computed (the part context PUT), or whose organization applied or undid a
+# calibration of its estimates (the actuals calibration routes).
+PART_SPECS_STALE_REASON = "part_specs_changed"
+CONDITIONS_STALE_REASON = "conditions_changed"
+CALIBRATION_STALE_REASON = "calibration_changed"
+
+
+async def mark_part_decisions_stale(
+    session: AsyncSession,
+    org_id: str,
+    mesh_hash: str,
+    *,
+    reason: str,
+    stale_at: Optional[datetime] = None,
+) -> int:
+    """Mark the org's saved decisions for ONE part stale (its declared inputs changed).
+
+    Additive like ``mark_org_decisions_stale``: the saved artifact is never
+    edited, and a decision already marked keeps its first reason. A signed-off
+    decision keeps its sign-off; the stale marker says plainly that what it was
+    signed off on has since changed.
+    """
+    when = stale_at or datetime.now(timezone.utc)
+    result = await session.execute(
+        update(CostDecision)
+        .where(
+            CostDecision.org_id == org_id,
+            CostDecision.mesh_hash == mesh_hash,
             CostDecision.created_at < when,
             CostDecision.stale_at.is_(None),
         )
