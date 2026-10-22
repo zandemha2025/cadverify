@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KG_PER_LB, T_PER_US_TON, backToBase, forceIn, mergeSheetCapabilities, sheetKindName, sheetKindOf, thickMapToSave, thickRowsFrom, weightIn } from "./machine-kinds.ts";
+import { KG_PER_LB, T_PER_US_TON, backToBase, readingsLine, forceIn, mergeSheetCapabilities, sheetKindName, sheetKindOf, thickMapToSave, thickRowsFrom, weightIn } from "./machine-kinds.ts";
 
 test("a sheet-metal machine says what it is; one that never said reads as a sheet-metal machine (me-02)", () => {
   assert.equal(sheetKindOf({ sheet_kind: "press_brake" }), "press_brake");
@@ -53,4 +53,15 @@ test("choosing a kind replaces the work-area box with the kind's own fields", ()
   assert.deepEqual(mergeSheetCapabilities({ sheet_kind: "press_brake", tonnage_t: 100 }, "laser", { bedX: 3000, bedY: 1500 }), { sheet_kind: "laser", bed_x: 3000, bed_y: 1500 });
   // No kind chosen (an older machine kept as it was): nothing changes.
   assert.deepEqual(mergeSheetCapabilities(amada, null, {}), amada);
+});
+
+test("a save says how it read the grades it had no price of their own for (me-01)", () => {
+  const line = readingsLine([
+    { typed: "6061", as: "6061-T6 Aluminum", note: null },
+    { typed: "303", as: "304 Stainless", note: "ScaleCAD has no 303 price; read as 304 Stainless, the closest stainless it prices" },
+    { typed: "316", as: "SS316L", note: "316 is read as 316L (SS316L), the 316 stainless ScaleCAD prices" },
+  ]);
+  assert.equal(line, "Materials read as 303 → 304 Stainless, 316 → SS316L. ScaleCAD has no 303 price; read as 304 Stainless, the closest stainless it prices. 316 is read as 316L (SS316L), the 316 stainless ScaleCAD prices.");
+  assert.equal(readingsLine([{ typed: "6061", as: "6061-T6 Aluminum", note: null }]), null);
+  assert.equal(readingsLine(undefined), null);
 });

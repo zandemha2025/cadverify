@@ -114,7 +114,7 @@ const MATERIAL_HINT: Record<string, [string, string]> = {
 };
 const METAL_HINT: [string, string] = [
   "6061, 316L, PP",
-  "Comma-separated: a class (aluminum, steel, stainless, titanium, polymer), a grade (6061-T6 Aluminum, SS316L) or a shorthand (6061, 7075, 304, 316L, PP, 4130, 4140).",
+  "Comma-separated: a class (aluminum, steel, stainless, titanium, polymer) or the grades you cut (6061-T6, 7075, 303, 304, 316, 17-4 PH, 4140, 1018, Delrin). A grade ScaleCAD has no price of its own for is read as the closest one it prices, and saving says which.",
 ];
 
 const ENCLOSURE_LABELS: [PrinterText["enclosure"], string][] = [

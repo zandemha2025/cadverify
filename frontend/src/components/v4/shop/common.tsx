@@ -30,13 +30,13 @@ export function ShopWorld({ label, children }: { label: string; children: React.
 /*  Toast                                                              */
 /* ------------------------------------------------------------------ */
 
-export function useToast(): [React.ReactNode, (text: string) => void] {
+export function useToast(): [React.ReactNode, (text: string, ms?: number) => void] {
   const [text, setText] = React.useState("");
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const show = React.useCallback((t: string) => {
+  const show = React.useCallback((t: string, ms = 4000) => {
     setText(t);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setText(""), 4000);
+    timer.current = setTimeout(() => setText(""), ms);
   }, []);
   React.useEffect(
     () => () => {

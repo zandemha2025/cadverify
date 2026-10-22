@@ -341,7 +341,8 @@ async def create_machine(
     )
     await session.commit()
     response.status_code = 201
-    return svc.machine_to_public(row)
+    # How each typed material was read (me-01: "303" saved as 304 Stainless says so).
+    return {**svc.machine_to_public(row), "material_readings": svc.material_readings(body.model_dump().get("materials"), row.process)}
 
 
 @router.get("")
@@ -435,7 +436,7 @@ async def patch_machine(
         session, user.user_id, org_id, "machine.updated", row.ulid
     )
     await session.commit()
-    return svc.machine_to_public(row)
+    return {**svc.machine_to_public(row), "material_readings": svc.material_readings(fields.get("materials"), row.process)}
 
 
 @router.delete("/{machine_id}", dependencies=[Depends(require_kill_switch_open)])

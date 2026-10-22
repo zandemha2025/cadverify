@@ -263,6 +263,48 @@ _MATERIAL_ALIASES: dict[str, str] = {
     "4140": "AISI 4140",
 }
 
+# Grades a job shop writes the way it orders bar stock (me-01: 303, 316, 17-4 PH
+# refused), keyed like ``_mkey`` (case, spaces and punctuation ignored). Each maps
+# to the registry material it is priced as; the ones ScaleCAD has no price of
+# their own for say so (``material_readings``), never silently.
+_GRADE_ALIASES: dict[str, tuple[str, Optional[str]]] = {
+    "6061t6": ("6061-T6 Aluminum", None),
+    "6061t651": ("6061-T6 Aluminum", None),
+    "7075t6": ("7075-T6 Aluminum", None),
+    "7075t651": ("7075-T6 Aluminum", None),
+    "316": ("SS316L", "316 is read as 316L (SS316L), the 316 stainless ScaleCAD prices"),
+    "316ss": ("SS316L", "316 is read as 316L (SS316L), the 316 stainless ScaleCAD prices"),
+    "316stainless": ("SS316L", "316 is read as 316L (SS316L), the 316 stainless ScaleCAD prices"),
+    "303": ("304 Stainless", "ScaleCAD has no 303 price; read as 304 Stainless, the closest stainless it prices"),
+    "303ss": ("304 Stainless", "ScaleCAD has no 303 price; read as 304 Stainless, the closest stainless it prices"),
+    "303stainless": ("304 Stainless", "ScaleCAD has no 303 price; read as 304 Stainless, the closest stainless it prices"),
+    "174": ("17-4 PH SS", "ScaleCAD prices 17-4 PH for binder jetting and investment casting; on a mill or lathe a stainless part is priced in the grades it lists"),
+    "174ph": ("17-4 PH SS", "ScaleCAD prices 17-4 PH for binder jetting and investment casting; on a mill or lathe a stainless part is priced in the grades it lists"),
+    "174phss": ("17-4 PH SS", "ScaleCAD prices 17-4 PH for binder jetting and investment casting; on a mill or lathe a stainless part is priced in the grades it lists"),
+    "1018": ("Mild Steel", "1018 is read as Mild Steel, the low-carbon steel ScaleCAD prices"),
+    "1020": ("Mild Steel", "1020 is read as Mild Steel, the low-carbon steel ScaleCAD prices"),
+    "a36": ("Mild Steel", "A36 is read as Mild Steel, the low-carbon steel ScaleCAD prices"),
+}
+
+
+def material_readings(materials: Any, process: Optional[str] = None) -> list[dict]:
+    """How each declared material was read, where it isn't stored as typed:
+    ``{"typed", "as", "note"}`` (note None for a plain spelling such as 6061 →
+    6061-T6 Aluminum). Unknown entries are refused elsewhere, not listed here."""
+    out: list[dict] = []
+    for m in materials or ():
+        if not isinstance(m, str) or not m.strip():
+            continue
+        canon, _problem = _resolve_material(m, process)
+        if canon is None or canon == m.strip():
+            continue
+        grade = _GRADE_ALIASES.get(_mkey(m))
+        note = grade[1] if grade and grade[0] == canon else None
+        if note and canon in _method_materials(process) and canon == "17-4 PH SS":
+            note = None  # a binder-jet printer prices 17-4 PH itself
+        out.append({"typed": m.strip(), "as": canon, "note": note})
+    return out
+
 # Material names as a machine's own method uses them. The same word means a
 # different registry material on a different machine: a filament printer's
 # "Nylon" is the registry's Nylon (PA6), a powder printer's is PA12 or PA11.
@@ -388,6 +430,9 @@ def _resolve_material(name: str, process: Optional[str] = None) -> tuple[Optiona
     alias = _MATERIAL_ALIASES.get(low)
     if alias is not None:
         return alias, None
+    grade = _GRADE_ALIASES.get(key)
+    if grade is not None:
+        return grade[0], None
     prof = get_material_by_name(stripped)
     if prof is not None:
         return prof.name, None

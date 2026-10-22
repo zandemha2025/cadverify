@@ -26,6 +26,7 @@ import { MachineDialog } from "./machine-dialog";
 import { MachineSheet } from "./machine-sheet";
 import { downloadText, getMachineLoad, getShopCapabilities, putShopCapabilities, type MachineLoad, type ShopLoad } from "./shop-api";
 import { SpecCaps } from "./spec-caps";
+import { readingsLine, type MaterialReading } from "./machine-kinds";
 import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, opSavedNote, tileSub, toggleOp } from "./shop-derive";
 import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
 import { useUnits } from "../units/use-units";
@@ -178,7 +179,9 @@ export function MachinesScreen() {
     setQuery(m.id);
     recs.reload();
     reloadLoad();
-    showToast(`${mode === "add" ? "Added" : "Saved"} ${machineName(m)}. Older decisions are marked for re-costing.`);
+    // me-01: a grade read as another material says so where the person saved it.
+    const read = readingsLine((m as OwnedMachine & { material_readings?: MaterialReading[] }).material_readings);
+    showToast(`${mode === "add" ? "Added" : "Saved"} ${machineName(m)}. ${read ? `${read} ` : ""}Older decisions are marked for re-costing.`, read ? 12000 : 4000);
   };
 
   // A viewer sees the shop's machines but can't change them: Add and Import are off, with the reason.

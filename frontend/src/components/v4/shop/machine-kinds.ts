@@ -175,3 +175,18 @@ export function parsePositive(raw: string, label: string): { value: number | nul
   if (!DECIMAL.test(t) || !(Number(t) > 0) || !Number.isFinite(Number(t))) return { value: null, error: `${label} must be a number above 0.` };
   return { value: Number(t) };
 }
+
+/** How the server read each typed material (me-01), from the save's response. */
+export interface MaterialReading {
+  typed: string;
+  as: string;
+  note: string | null;
+}
+
+/** "Materials read as 303 → 304 Stainless, 316 → SS316L. ScaleCAD has no 303 price; …": only the readings worth saying. */
+export function readingsLine(rs: readonly MaterialReading[] | null | undefined): string | null {
+  const said = (rs ?? []).filter((r) => r.note);
+  if (!said.length) return null;
+  const notes = [...new Set(said.map((r) => r.note as string))].map((n) => (n.endsWith(".") ? n : `${n}.`));
+  return `Materials read as ${said.map((r) => `${r.typed} → ${r.as}`).join(", ")}. ${notes.join(" ")}`;
+}
