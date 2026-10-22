@@ -312,10 +312,10 @@ export function StudioScreen() {
       setDesigns((cur) => [d, ...(cur ?? []).filter((x) => x.id !== d.id)]);
       setSelectedId(d.id);
       setView(d.current_revision);
-      setEditingId(null);
-      setForm({ ...DEFAULT_DESIGN_FORM });
-      setPrompt("");
-      setInterp(INTERPRET_IDLE);
+      // de-25: the form keeps what was just generated, ready for the next revision (it snapped
+      // back to the default plate and looked like the inputs were gone).
+      setEditingId(d.id);
+      setForm(formFromDesign(d));
       toast(`Generating revision ${d.current_revision}. You can leave this page.`);
     } catch (e) {
       if (e instanceof DesignApiError && e.design) {

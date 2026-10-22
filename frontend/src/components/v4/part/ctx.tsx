@@ -84,7 +84,8 @@ export interface PartCtxValue {
   canTurn: boolean;
   patchData: (p: Partial<PartData>) => void;
   /** Run the check again: from the file in memory, or ask for it. */
-  recheck: (opts?: { materialClass?: string }) => void;
+  /** Price it again from the kept file: in another material, or at a quantity the user typed (computed, not interpolated). */
+  recheck: (opts?: { materialClass?: string; qty?: number }) => void;
   canRecheck: boolean;
   retryPrices: () => void;
   pickFile: () => void;

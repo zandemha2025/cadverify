@@ -103,6 +103,8 @@ export type DesignInterpretation =
       name: string;
       plan: DesignPlan;
       assumptions: string[];
+      /** Features the description asked for that the template has no setting for ("fillets or rounded edges"). */
+      not_applied?: string[];
       message: string;
     }
   | {

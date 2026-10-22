@@ -67,10 +67,12 @@ export function useFix(): FixCtxValue {
   return v;
 }
 
-/** The quantities K4 toggles between: 10, 1,000 and 10,000 where the check priced them. */
-export function allQuantities(qs: number[]): number[] {
+/** The quantities K4 toggles between: the page's own first, with 10, 1,000 and 10,000 where
+ *  the check priced them (de-07: All problems ranked at 1,000 while the page showed 100). */
+export function allQuantities(qs: number[], q: number | null = null): number[] {
   const want = [10, 1000, 10000].filter((n) => qs.includes(n));
-  return want.length ? want : qs.slice(0, 3);
+  const list = want.length ? want : qs.slice(0, 3);
+  return q != null && qs.includes(q) ? [...new Set([q, ...list])].sort((a, b) => a - b) : list;
 }
 
 /** The method K1 opens on: asked for, else the page's pick, else the cheapest one this fix unlocks. */
@@ -163,7 +165,7 @@ export function useFixController(args: {
     if (v) opened.current();
   }, []);
 
-  const qAll = allQuantities(qs);
+  const qAll = allQuantities(qs, q);
   const allQty = view?.kind === "all" && view.q != null && qAll.includes(view.q) ? view.q : qAll.includes(q) ? q : qAll[0] ?? q;
   const ranked = React.useMemo(() => rankProblems(set, methods, allQty), [set, methods, allQty]);
   const [only, setOnly] = useProblemFilter(data.key, set.processes);

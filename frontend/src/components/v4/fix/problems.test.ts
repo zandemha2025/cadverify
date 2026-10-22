@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { alternativeOf, appliesTo, buildProblems, callout, findProblem, fixText, forProcessLine, methodHead, notListedKind, pickMethod, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
 import { canFixLine, fixRoute, studioParam, studioValueProblem, whoFixes, type FixOrigin } from "./capabilities.ts";
+import { cadPath as cadSteps, withDraftAngles } from "./cad-tools.ts";
 import { enclosureCostOnly, shellCost, shellValidation } from "./fixtures.test-data.ts";
 
 const shell = () => buildProblems({ validation: shellValidation(), cost: shellCost() });
@@ -28,8 +29,9 @@ test("errors come first, the most-blocking first", () => {
 
 test("where lines read the engine's own counts", () => {
   const set = shell();
-  assert.equal(findProblem(set, "thin")!.where, "Every wall · 24 of 24 faces");
-  assert.equal(findProblem(set, "draft")!.where, "Side walls · 100% of side-wall area · 16 faces");
+  // An STL has no faces but its triangles: counted as such (de-03).
+  assert.equal(findProblem(set, "thin")!.where, "Every wall · 24 of 24 mesh triangles");
+  assert.equal(findProblem(set, "draft")!.where, "Side walls · 100% of side-wall area · 16 mesh triangles");
   assert.equal(findProblem(set, "drain")!.where, "Sealed cavity · 6,859 mm³");
   assert.equal(findProblem(set, "corners")!.where, "12 sharp inside corners");
   assert.equal(findProblem(set, "flat")!.where, "761 mm² flat, facing down");
@@ -195,3 +197,41 @@ test("Show problems for one process: only what it reported, whole-file problems 
   if (bodies.universal) assert.match(forProcessLine(bodies, "fdm", "Filament printing (FDM/FFF)")!, /every process, filament printing \(FDM\/FFF\) too$/);
 });
 
+
+test("a STEP's problems count its own faces, and the draft card states both rules (de-02, de-03, np-18)", () => {
+  const v = shellValidation();
+  v.geometry = { ...v.geometry, faces: 247114, cad_faces: 11 };
+  for (const ps of v.process_scores) {
+    for (const i of ps.issues) {
+      if (i.code === "INSUFFICIENT_DRAFT" && ps.process === "injection_molding") {
+        Object.assign(i, {
+          affected_face_count: 169370, cad_face_count: 8, measured_value: 0, required_value: 2, measurement_unit: "deg",
+          breakdown: [
+            { walls: "outside", need_deg: 1, measured_deg: 0, faces: 90000, cad_faces: 4 },
+            { walls: "inside", need_deg: 2, measured_deg: 0, faces: 79370, cad_faces: 4 },
+          ],
+        });
+      }
+      if (i.code === "OVERHANG") Object.assign(i, { measured_value: 46, required_value: ps.process === "sla" ? 19 : 45, measurement_unit: "deg", message: `2 faces (8.3%) exceed ${ps.process === "sla" ? 19 : 45}.0° overhang threshold.` });
+    }
+  }
+  const set = buildProblems({ validation: v, cost: null });
+  const draft = findProblem(set, "draft")!;
+  assert.match(draft.where, /· 8 of 11 faces$/);
+  const im = pickMethod(draft, "injection_molding", null)!;
+  assert.deepEqual(problemFigs(draft, im, 8).map((f) => [f.k, f.v]), [["Measured", "0.0°"], ["Needs", "1° out · 2° in"], ["Short by", "2°"]]);
+  assert.match(fixText(draft, im, null).fix, /^Add at least 1° of draft to the outside walls and 2° to the inside walls/);
+  // The overhang row reads the part's own angle, never resin printing's 19° limit.
+  const over = findProblem(set, "overhang")!;
+  assert.doesNotMatch(over.where, /19°/);
+  assert.match(over.where, /steepest 46° past vertical$/);
+  // Supports are the printer's setup, not a CAD change.
+  assert.equal(whoFixes(over, { fileType: "step", open: false, studio: null, server: null }, false).label, "At the shop");
+});
+
+test("the CAD steps give the draft angles the check asks for", () => {
+  const steps = withDraftAngles(cadSteps("solidworks", "draft").steps, 1, 2);
+  assert.ok(steps.some((x) => x.includes("Draft Angle: 1° (the outside walls’ rule)")));
+  assert.ok(steps.some((x) => x.includes("at 2° (the inside walls’ rule)")));
+  assert.ok(steps.every((x) => !/the (outside|inside) angle/.test(x)));
+});

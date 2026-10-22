@@ -32,7 +32,9 @@ const FAMILIES: FamilyDef[] = [
   { id: "draft", codes: ["INSUFFICIENT_DRAFT"], title: "Side walls need draft", place: "Side walls" },
   { id: "drain", codes: ["TRAPPED_VOLUME"], title: "Sealed cavity, no drain holes", place: "Sealed cavity" },
   { id: "corners", codes: ["SHARP_INTERNAL_CORNERS", "MISSING_FILLETS"], title: "Sharp inside corners", place: "Inside corners" },
-  { id: "overhang", codes: ["OVERHANG"], title: "Overhangs need support", place: "Faces pointing down" },
+  { id: "reach", codes: ["TOOL_REACH"], title: "Corners deeper than a cutter reaches", place: "Inside corners" },
+  // Supports are the printer's setup (or turn the part): nothing in the design has to change.
+  { id: "overhang", codes: ["OVERHANG"], title: "Overhangs need support", place: "Faces pointing down", noChange: "shop" },
   { id: "undercut", codes: ["UNDERCUT_MOLDING", "UNDERCUT"], title: "Undercuts", place: "Undercut faces" },
   { id: "thick", codes: ["THICK_WALL", "TOO_THICK_SHEET", "SHRINKAGE_RISK"], title: "Thick sections", place: "Thick sections" },
   { id: "flat", codes: ["CUPPING_RISK", "RESIDUAL_STRESS_RISK"], title: "Large flat area", place: "Flat faces", noChange: "shop" },
@@ -199,7 +201,10 @@ export interface Problem {
   /** Warning findings across methods (each method's finding counts once). */
   warnCount: number;
   faces: number[];
+  /** Mesh triangles the findings flag. */
   faceCount: number | null;
+  /** The CAD faces those triangles lie on (a STEP or IGES; null for an STL). */
+  cadFaceCount: number | null;
   region: [number, number, number] | null;
   scope: "localized" | "whole_part";
   kind: Kind | null;
@@ -265,6 +270,7 @@ export function buildProblems(input: { validation: ValidationResult | null; cost
 
   const all = [...processes];
   const totalFaces = validation?.geometry?.faces ?? cost?.geometry?.face_count ?? null;
+  const totalCad = validation?.geometry?.cad_faces ?? null;
   const problems: Problem[] = [];
   for (const { fam, entries: es } of groups.values()) {
     const sorted = [...es].sort((a, b) => (SEV[a.issue.severity] ?? 3) - (SEV[b.issue.severity] ?? 3));
@@ -305,6 +311,7 @@ export function buildProblems(input: { validation: ValidationResult | null; cost
     const faceIssue = withFaces[0]?.issue ?? null;
     const faces = (faceIssue?.affected_faces_sample ?? []).filter((n) => Number.isInteger(n) && n >= 0);
     const faceCount = es.reduce<number | null>((m, e) => (e.issue.affected_face_count != null && (m == null || e.issue.affected_face_count > m) ? e.issue.affected_face_count : m), null);
+    const cadFaceCount = es.reduce<number | null>((m, e) => (e.issue.cad_face_count != null && (m == null || e.issue.cad_face_count > m) ? e.issue.cad_face_count : m), null);
     const regionIssue = es.find((e) => e.issue.region_center && e.issue.region_center.length === 3)?.issue ?? null;
     const scope = es.some((e) => e.issue.scope === "localized" || (e.issue.affected_faces_sample?.length ?? 0) > 0 || !!e.issue.region_center) ? "localized" : "whole_part";
     const p: Problem = {
@@ -321,13 +328,14 @@ export function buildProblems(input: { validation: ValidationResult | null; cost
       warnCount,
       faces,
       faceCount: faceCount ?? (faces.length || null),
+      cadFaceCount,
       region: regionIssue?.region_center ?? null,
       scope,
       kind: issueKind(primary.code) ?? (fam.id === "open" ? null : issueKind(faceIssue?.code ?? "")),
       noChange: fam.noChange ?? null,
       where: "",
     };
-    p.where = whereLine(p, totalFaces);
+    p.where = whereLine(p, totalFaces, totalCad);
     problems.push(p);
   }
   problems.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1) || b.blocks.length - a.blocks.length || b.warnCount - a.warnCount || a.title.localeCompare(b.title));
@@ -359,23 +367,32 @@ function notListedLine(skipped: Map<NotListedKind, Set<string>>): string | null 
 }
 
 /** Where on the part, from the engine's own counts and message. */
-export function whereLine(p: Pick<Problem, "id" | "primary" | "faceCount" | "scope" | "methods">, totalFaces: number | null): string {
+/** "8 of 11 faces" (a STEP's own faces, as its CAD tool counts them) or "169,370 mesh triangles". */
+export function facesText(p: Pick<Problem, "faceCount" | "cadFaceCount">, totalFaces: number | null, totalCad: number | null = null): string | null {
+  if (p.cadFaceCount != null) return totalCad ? `${n0(p.cadFaceCount)} of ${n0(totalCad)} faces` : `${n0(p.cadFaceCount)} ${p.cadFaceCount === 1 ? "face" : "faces"}`;
+  if (p.faceCount == null) return null;
+  return totalFaces ? `${n0(p.faceCount)} of ${n0(totalFaces)} mesh triangles` : `${n0(p.faceCount)} mesh ${p.faceCount === 1 ? "triangle" : "triangles"}`;
+}
+
+export function whereLine(p: Pick<Problem, "id" | "primary" | "faceCount" | "scope" | "methods"> & { cadFaceCount?: number | null }, totalFaces: number | null, totalCad: number | null = null): string {
   const msg = p.primary.message ?? "";
   const fc = p.faceCount;
+  const fp = { faceCount: fc, cadFaceCount: p.cadFaceCount ?? null };
   switch (p.id) {
     case "open": {
       const e = numIn(msg, /has\s+(\d[\d,]*)\s+boundary edges/);
       return e != null ? `${n0(e)} open edges` : "Not a closed solid";
     }
     case "thin": {
-      if (fc != null && totalFaces) return fc >= totalFaces ? `Every wall · ${n0(fc)} of ${n0(totalFaces)} faces` : `${n0(fc)} of ${n0(totalFaces)} faces`;
-      if (fc != null) return `${n0(fc)} faces`;
+      const every = fp.cadFaceCount != null ? !!totalCad && fp.cadFaceCount >= totalCad : fc != null && !!totalFaces && fc >= totalFaces;
+      const f = facesText(fp, totalFaces, totalCad);
+      if (f) return every ? `Every wall · ${f}` : f;
       const t = p.methods.find((m) => m.measured != null)?.measured;
       return t != null ? `Thinnest wall ${t.toFixed(1)} mm` : "Whole part";
     }
     case "draft": {
       const pct = numIn(msg, /\(([\d.]+)% of sidewall area\)/);
-      return [pct != null ? `Side walls · ${trimNum(pct, 1)}% of side-wall area` : "Side walls", fc != null ? `${n0(fc)} faces` : null].filter(Boolean).join(" · ");
+      return [pct != null ? `Side walls · ${trimNum(pct, 1)}% of side-wall area` : "Side walls", facesText(fp, null, totalCad)].filter(Boolean).join(" · ");
     }
     case "drain": {
       const v = numIn(msg, /\(([\d,.]+)\s?mm³\)/);
@@ -386,8 +403,11 @@ export function whereLine(p: Pick<Problem, "id" | "primary" | "faceCount" | "sco
       return e != null ? `${n0(e)} sharp inside corners` : "Inside corners";
     }
     case "overhang": {
-      const a = numIn(msg, /exceed\s+([\d.]+)°/);
-      return fc != null ? `${n0(fc)} faces${a != null ? ` past ${trimNum(a, 1)}°` : ""}` : "Faces pointing down";
+      // The part's own steepest overhang (degrees past vertical), not one process's limit:
+      // each process allows a different angle (FDM 45°, resin 19°), and the rows below say which.
+      const steep = p.methods.reduce<number | null>((m, x) => (x.measured != null && (m == null || x.measured > m) ? x.measured : m), null);
+      const f = facesText(fp, null, totalCad);
+      return f ? `${f}${steep != null ? ` · steepest ${trimNum(steep, 0)}° past vertical` : ""}` : "Faces pointing down";
     }
     case "flat": {
       const area = numIn(msg, /\(([\d,.]+)\s?mm²/);
@@ -401,9 +421,11 @@ export function whereLine(p: Pick<Problem, "id" | "primary" | "faceCount" | "sco
       const b = numIn(msg, /(\d[\d,]*)\s+disconnected/);
       return b != null ? `Whole part · ${b} disconnected bodies` : "Whole part";
     }
-    default:
-      if (fc != null) return `${n0(fc)} faces`;
+    default: {
+      const f = facesText(fp, null, totalCad);
+      if (f) return f;
       return p.scope === "whole_part" ? "Whole part" : "On the part";
+    }
   }
 }
 
@@ -444,7 +466,8 @@ export function measuredFig(p: Problem, m: ProblemMethod | null): ProblemFig {
   const v = m?.measured ?? p.primary.measured_value ?? null;
   const unit = m?.unit ?? p.primary.measurement_unit ?? null;
   if (v != null) return { k: "Measured", v: measure(v, unit)!, s: p.id === "thin" ? "thinnest wall" : p.id === "thick" ? "thickest section" : "on the part", tone: (m?.severity ?? p.severity) === "error" ? "bad" : "warn" };
-  return { k: "Faces", v: p.faceCount != null ? n0(p.faceCount) : "—", s: p.where.split(" · ")[0].toLowerCase() };
+  if (p.cadFaceCount != null) return { k: "Faces", v: n0(p.cadFaceCount), s: p.where.split(" · ")[0].toLowerCase() };
+  return { k: "Triangles", v: p.faceCount != null ? n0(p.faceCount) : "—", s: p.where.split(" · ")[0].toLowerCase() };
 }
 
 /** "1°", "0.8 mm", "45°" for a required value in the engine's unit. */
@@ -465,15 +488,19 @@ export function problemFigs(p: Problem, m: ProblemMethod | null, pricedOf: numbe
   }
   const figs: ProblemFig[] = [measuredFig(p, m)];
   const nt = m ? needText(m) : null;
-  if (m && nt) figs.push({ k: m.dir === "max" ? "Allows" : "Needs", v: m.dir === "max" ? `${nt} at most` : nt, s: `for ${lower(m.name)}` });
+  const rules = p.id === "draft" ? draftRules(m) : null;
+  if (m && rules && rules.inside !== rules.outside) figs.push({ k: "Needs", v: `${trimNum(rules.outside, 1)}° out · ${trimNum(rules.inside, 1)}° in`, s: `for ${lower(m.name)}: outside and inside walls` });
+  else if (m && nt) figs.push({ k: m.dir === "max" ? "Allows" : "Needs", v: m.dir === "max" ? `${nt} at most` : nt, s: `for ${lower(m.name)}` });
   else if (m) figs.push({ k: "For", v: m.name, s: m.severity === "error" ? "can’t as drawn" : "check first" });
   const g = m ? gap(m) : null;
   if (m && g != null && (m.unit === "mm" || m.unit === "deg" || m.unit === "percent")) {
     const v = m.unit === "mm" ? `${g.toFixed(1)} mm` : m.unit === "deg" ? `${trimNum(g, 1)}°` : `${trimNum(g, 1)}%`;
     const s = p.id === "thin" ? (p.where.startsWith("Every wall") ? "every wall" : "thinnest wall") : p.id === "draft" ? "smallest draft" : m.dir === "max" ? "past the limit" : "below the minimum";
     figs.push({ k: m.dir === "max" ? "Over by" : "Short by", v, s, tone: "bad" });
-  } else if (p.faceCount != null && figs[0].k !== "Faces") {
-    figs.push({ k: "Faces", v: n0(p.faceCount), s: p.id === "draft" ? "side-wall faces" : "flagged" });
+  } else if (p.cadFaceCount != null && figs[0].k !== "Faces") {
+    figs.push({ k: "Faces", v: n0(p.cadFaceCount), s: p.id === "draft" ? "side faces" : "flagged" });
+  } else if (p.faceCount != null && figs[0].k !== "Faces" && figs[0].k !== "Triangles") {
+    figs.push({ k: "Triangles", v: n0(p.faceCount), s: p.id === "draft" ? "on side walls" : "flagged" });
   }
   return figs.slice(0, 3);
 }
@@ -571,6 +598,15 @@ export function fixText(p: Problem, m: ProblemMethod | null, alternative: string
   if (p.id === "draft" && m?.need != null) {
     const others = p.methods.filter((x) => x.code !== m.code && x.need != null && x.need !== m.need).map((x) => `${lower(x.name)} ${trimNum(x.need!, 1)}°`);
     const alt = [alternative ? tidy(alternative) : null, others.length ? `Others need: ${joinWords(others)}.` : null].filter(Boolean).join(" ");
+    const r = draftRules(m);
+    if (r && r.inside !== r.outside) {
+      const short = (m.issue.breakdown ?? []).filter((b) => b.faces > 0).map((b) => b.walls);
+      const which = short.length === 1 ? `the ${short[0]} walls` : null;
+      const fix = which
+        ? `Add at least ${trimNum(short[0] === "inside" ? r.inside : r.outside, 1)}° of draft to ${which}, along the file’s Z axis, the pull direction the check uses. The ${short[0] === "inside" ? "outside" : "inside"} walls meet their ${trimNum(short[0] === "inside" ? r.outside : r.inside, 1)}°.`
+        : `Add at least ${trimNum(r.outside, 1)}° of draft to the outside walls and ${trimNum(r.inside, 1)}° to the inside walls (a bore, the inside of a box), along the file’s Z axis, the pull direction the check uses.`;
+      return { fix, alt: alt || null };
+    }
     return { fix: `Add at least ${trimNum(m.need, 1)}° of draft to the side walls, along the file’s Z axis, the pull direction the check uses.`, alt: alt || null };
   }
   const src = m?.issue ?? p.primary;
@@ -578,6 +614,16 @@ export function fixText(p: Problem, m: ProblemMethod | null, alternative: string
   const rest = tidy((src.fix_suggestion ?? "").slice(firstSentence(src.fix_suggestion ?? "").length));
   const alt = [rest || null, alternative ? tidy(alternative) : null].filter(Boolean).join(" ");
   return { fix, alt: alt || null };
+}
+
+/** A draft rule's two angles, outside and inside walls (the engine's breakdown), or null for one rule. */
+export function draftRules(m: ProblemMethod | null): { outside: number; inside: number } | null {
+  const b = m?.issue.breakdown;
+  if (!b?.length) return null;
+  const outside = b.find((x) => x.walls === "outside")?.need_deg;
+  const inside = b.find((x) => x.walls === "inside")?.need_deg;
+  if (outside == null && inside == null) return null;
+  return { outside: outside ?? inside!, inside: inside ?? outside! };
 }
 
 /** The engine's "Alternative: …" for this problem, from the priority list. */

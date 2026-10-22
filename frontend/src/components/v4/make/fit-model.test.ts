@@ -24,6 +24,10 @@ import {
   seatingLine,
   seatingWord,
   translation,
+  mul4,
+  movedPoint,
+  placedMatrices,
+  serverNudge,
 } from "./fit-model.ts";
 
 const cap = (over: Partial<{ enabled: boolean; paid_access: boolean; can_submit: boolean }>) => ({
@@ -98,8 +102,8 @@ test("seating words", () => {
   assert.equal(seatMeta("auto"), "Seated automatically");
   assert.equal(seatingLine(null), "Results withheld until this pair is checked.");
   assert.equal(seatingLine(base), "Shared CAD frame: both files keep their own coordinates.");
-  assert.equal(seatingLine({ seating: { ...base.seating, manual_nudge_mm: [0, 0, 2] } }), "Position set by you.");
-  assert.equal(seatingLine({ seating: { ...base.seating, method: "auto_planar", manual_nudge_mm: [1, 0, 0] } }), "Automatically aligned, then offset by you.");
+  assert.equal(seatingLine({ seating: { ...base.seating, manual_nudge_mm: [0, 0, 2] } }), "Your part moved by you.");
+  assert.equal(seatingLine({ seating: { ...base.seating, method: "auto_planar", manual_nudge_mm: [1, 0, 0] } }), "Automatically aligned, then your part moved by you.");
   assert.match(seatingLine({ seating: { ...base.seating, method: "auto_planar", accepted: false } }), /Couldn’t seat this/);
   assert.equal(seatingWord(null), "—");
   assert.equal(seatingWord({ seating: { ...base.seating, method: "auto_planar" } }), "Aligned");
@@ -134,4 +138,19 @@ test("the hint beside Check fit", () => {
   assert.equal(goHint({ ...s, hasFiles: false }), "Add both files");
   assert.equal(goHint({ ...s, nudgeBad: true }), "Fix the offsets first");
   assert.equal(goHint({ ...s, changed: true }), "Inputs changed since the last check");
+});
+
+test("the move fields move your part: the server's assembly offset goes the other way (de-26)", () => {
+  // Lifting the block 2.6 mm onto the floor is the floor dropping 2.6 mm under it.
+  assert.deepEqual(serverNudge([0, 0, 2.6]), [0, 0, -2.6]);
+  assert.deepEqual(serverNudge([0, 0, 0]), [0, 0, 0]);
+  // The view draws the part moved and the assembly where seating put it.
+  const seat = translation([5, 0, 0]);
+  const measured = mul4(translation([0, 0, -2.6]), seat); // what the server returns as the assembly's transform
+  const placed = placedMatrices([0, 0, 2.6], measured);
+  assert.deepEqual(placed.part, translation([0, 0, 2.6]));
+  assert.deepEqual(placed.context!.map((r) => r.map((v) => Math.round(v * 1e9) / 1e9)), seat);
+  assert.deepEqual(movedPoint([1, 2, 3], [0, 0, 2.6]), [1, 2, 5.6]);
+  // Nothing moved: no extra transform on the part.
+  assert.equal(placedMatrices([0, 0, 0], null).part, null);
 });

@@ -147,3 +147,19 @@ test("ownership: owned at running cost, a machine of yours that doesn't fit, or 
   const unc = ownershipOf({ code: "cnc_3axis", inHouse: null, fit: null }, null, shop);
   assert.deepEqual([unc.kind, unc.v, unc.machine], ["unconfirmed", "Can't confirm", "Haas VF-2"]);
 });
+
+test("machine time is the hours the machine line charges: learning shortens it at volume (de-19)", () => {
+  const e = est("cnc_3axis", "6061-T6", 1000, [
+    { name: "cycle_time", value: 0.4013, unit: "hr" },
+    { name: "learning_curve", value: 0.705, unit: "×" },
+    { name: "machine_cost", value: 21.21 },
+  ]);
+  const r = routeResources(e, 96)!;
+  assert.ok(Math.abs(r.hoursEach! - 0.4013 * 0.705) < 1e-9);
+  assert.equal(r.hoursFirstLot, 0.4013);
+  assert.ok(Math.abs(r.hoursRun! - 0.4013 * 0.705 * 1000) < 1e-6);
+  // No learning at this quantity: the cycle as it is, and no first-lot figure.
+  const one = routeResources(est("cnc_3axis", "6061-T6", 1, [{ name: "cycle_time", value: 0.4013, unit: "hr" }]), 96)!;
+  assert.equal(one.hoursEach, 0.4013);
+  assert.equal(one.hoursFirstLot, null);
+});

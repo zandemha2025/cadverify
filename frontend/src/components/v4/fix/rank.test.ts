@@ -20,10 +20,11 @@ test("ranked at 10: new lowest prices first (cheapest first), then warnings clea
       ["drain", 0, "$7.50 each"],
       ["thin", 0, "$36.18 each"],
       ["draft", 0, "$601.82 each"],
-      ["overhang", 2, "3 warnings"],
       ["corners", 2, "3 warnings"],
       ["undercut", 2, "2 warnings"],
       ["bodies", 2, "1 warning"],
+      // np-18: supports are the printer's setup (or turn the part), not a design change.
+      ["overhang", 3, "Setup"],
       ["flat", 3, "Setup"],
       ["round", 3, "No change"],
     ],
@@ -32,7 +33,7 @@ test("ranked at 10: new lowest prices first (cheapest first), then warnings clea
   assert.deepEqual(drain.added.map((m) => m.code).sort(), ["dlp", "mjf", "sla"]);
   assert.equal(drain.sub, "Nylon powder printing (MJF) becomes possible; also DLP $8.28, SLA $9.09");
   assert.equal(r[1].sub, "3-axis milling becomes possible; also 5-axis milling $46.78");
-  assert.equal(r[3].sub, "Clears it for Resin printing (SLA), resin printing (DLP) and filament printing");
+  assert.equal(r.find((u) => u.problem.id === "overhang")!.sub, "Orientation or setup at the shop, not the design");
   // Filament and nylon powder (SLS) need both the wall and drain holes.
   assert.deepEqual(drain.partial.map((x) => x.m.code).sort(), ["fdm", "sls"]);
   assert.equal(r.find((u) => u.problem.id === "round")!.sub, "The lathe needs a round part");
@@ -61,15 +62,15 @@ test("a method that's cheaper than today's best is a new lowest price; a dearer 
 test("places are numbered by their best-ranked problem; the whole part comes last", () => {
   const { set, methods } = shell();
   const places = placesOf(rankProblems(set, methods, 10));
-  assert.deepEqual(places.map((p) => [p.n, p.name]), [["1", "Sealed cavity"], ["2", "Walls"], ["3", "Side walls"], ["4", "Faces pointing down"], ["5", "Undercut faces"], ["·", "Whole part"]]);
+  assert.deepEqual(places.map((p) => [p.n, p.name]), [["1", "Sealed cavity"], ["2", "Walls"], ["3", "Side walls"], ["4", "Undercut faces"], ["5", "Faces pointing down"], ["·", "Whole part"]]);
   assert.deepEqual(places.at(-1)!.ids, ["corners", "bodies", "flat", "round"]);
 });
 
-test("K1's unlocks: at the engine's own if-redesigned quantity when the fix unlocks tooling", () => {
+test("K1's unlocks: at the page's quantity, even when the fix unlocks tooling (de-07)", () => {
   const { set, methods, cost } = shell();
   const draft = set.problems.find((p) => p.id === "draft")!;
   const thin = set.problems.find((p) => p.id === "thin")!;
-  assert.equal(unlockQty(draft, set, methods, cost, 10, cost.quantities), 10000);
+  assert.equal(unlockQty(draft, set, methods, cost, 10, cost.quantities), 10);
   assert.equal(unlockQty(thin, set, methods, cost, 10, cost.quantities), 10);
   const u = rankProblems(set, methods, 10).find((x) => x.problem.id === "thin")!;
   const { rows, foot } = unlockRows(u, { cost, methodsTotal: 12, picked: "cnc_3axis", repairable: false });

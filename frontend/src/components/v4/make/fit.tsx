@@ -2,7 +2,7 @@
 
 /**
  * Fit in assembly (board F2): your part and the assembly it goes into, seated in
- * their shared CAD frame or automatically, nudged in X/Y/Z, then measured on the
+ * their shared CAD frame or automatically, your part moved in X/Y/Z, then measured on the
  * server: the exact collision volume and the closest sampled gap, with the
  * assembly as a see-through ghost and the measured overlap drawn in 3D.
  *
@@ -36,6 +36,9 @@ import {
   needsUnits,
   nudgeInvalid,
   nudgeValues,
+  movedPoint,
+  placedMatrices,
+  serverNudge,
   resolveAccess,
   seatMeta,
   seatingLine,
@@ -167,7 +170,8 @@ function FitTool({
     setErr(null);
     setResult(null);
     try {
-      const r = await measureContextFit(files.part!, files.context!, seating, nudgeValues(nudge), units);
+      // The fields move your part; the server's offset moves the assembly, so it goes the other way.
+      const r = await measureContextFit(files.part!, files.context!, seating, serverNudge(nudgeValues(nudge)), units);
       if (id !== run.current) return;
       setResult(r);
       setChanged(false);
@@ -186,10 +190,15 @@ function FitTool({
   const markers: StageMarker[] = [];
   if (pv && usable) {
     const tz = result?.clearance.tight_zone;
+    // Your part drawn where you moved it; the assembly where seating put it (de-26). A checked
+    // result is drawn with the move it was measured with; before a check, the fields as typed.
+    const move: [number, number, number] = result ? serverNudge((result.seating.manual_nudge_mm ?? [0, 0, 0]) as [number, number, number]) : !nudgeBad ? nudgeValues(nudge) : [0, 0, 0];
+    const placed = placedMatrices(move, result ? result.seating.transform : seating === "shared_frame" ? translation([0, 0, 0]) : null);
     layers.push({
       key: "part",
       source: { kind: "glb-url", url: pv.part.url },
       look: "solid",
+      matrix: placed.part,
       paint: result && view === "gap" && paint && tz && tz.part_a_faces.length ? { faces: tz.part_a_faces, color: "#2E6BE6" } : null,
     });
     if (!hide)
@@ -197,16 +206,15 @@ function FitTool({
         key: "context",
         source: { kind: "glb-url", url: pv.context.url },
         look: "ghost",
-        // Before a check the ghost follows the shared frame plus your nudge, the same transform the server applies.
-        matrix: result ? result.seating.transform : seating === "shared_frame" && !nudgeBad ? translation(nudgeValues(nudge)) : null,
+        matrix: placed.context,
       });
     const region = result?.collision.region;
     if (result && view === "col" && result.collision.intersects && region) {
       const g = region.render_geometry;
-      if (g.available && g.data) layers.push({ key: "overlap", source: { kind: "glb-b64", data: g.data }, look: "overlap", frame: false });
-      else markers.push({ key: "overlap-c", at: region.region_center, color: "#D92D20" });
+      if (g.available && g.data) layers.push({ key: "overlap", source: { kind: "glb-b64", data: g.data }, look: "overlap", frame: false, matrix: placed.measured });
+      else markers.push({ key: "overlap-c", at: movedPoint(region.region_center, move), color: "#D92D20" });
     }
-    if (result && view === "gap" && tz?.region_center) markers.push({ key: "gap-c", at: tz.region_center, color: "#2E6BE6" });
+    if (result && view === "gap" && tz?.region_center) markers.push({ key: "gap-c", at: movedPoint(tz.region_center, move), color: "#2E6BE6" });
   }
   const frameKey = pv ? `${pv.part.url}|${hide ? "" : pv.context.url}|${result ? JSON.stringify(result.seating.transform) : "pre"}` : "none";
 
@@ -399,12 +407,12 @@ function FitTool({
             <div className="nudge">
               {(["X", "Y", "Z"] as const).map((axis, i) => (
                 <label className="field" key={axis}>
-                  Nudge {axis}
+                  Move your part {axis}, mm
                   <input
                     type="text"
                     inputMode="decimal"
                     value={nudge[i]}
-                    aria-label={`${axis} nudge mm`}
+                    aria-label={`Move your part along ${axis}, mm`}
                     aria-invalid={bad[i]}
                     onChange={(e) => {
                       clear();

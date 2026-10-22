@@ -37,7 +37,9 @@ export function FixStage({ has3d, part = "stage" }: { has3d: boolean; part?: "st
       P.id === "open"
         ? `Red: the mesh’s open edges${/\d/.test(P.where) ? ` · the check counted ${P.where.replace(/ open edges$/, "")}` : ""}`
         : lit
-          ? `Lit: ${P.faceCount != null ? `${n0(P.faceCount)} ${P.faceCount === 1 ? "face" : "faces"}` : "the faces"} the check flagged${P.faceCount != null && P.faceCount > shownN && shownN > 0 ? `, ${n0(shownN)} shown` : ""}`
+          ? P.cadFaceCount != null
+            ? `Lit: the ${P.cadFaceCount === 1 ? "face" : `${n0(P.cadFaceCount)} faces`} the check flagged${P.faceCount != null && P.faceCount > shownN && shownN > 0 ? ` (${n0(shownN)} of their ${n0(P.faceCount)} mesh triangles shown)` : ""}`
+            : `Lit: ${P.faceCount != null ? `${n0(P.faceCount)} mesh ${P.faceCount === 1 ? "triangle" : "triangles"}` : "the faces"} the check flagged${P.faceCount != null && P.faceCount > shownN && shownN > 0 ? `, ${n0(shownN)} shown` : ""}`
           : P.faces.length && has3d
             ? "Not lit: this 3D view isn’t the mesh the check measured"
             : P.region

@@ -230,7 +230,13 @@ export function costTop(p: ReturnType<typeof usePart>, sel: Method | null): { ti
   const own = ownershipOf(sel, r, p.data.machines, d?.tooling_process === sel.code ? d.crossover_qty : null);
   const figs: FigItem[] = [];
   const many = p.q > 1 ? ` for ${qtyWord(p.q)}` : "";
-  figs.push({ k: "Machine time", v: r?.hoursEach != null ? hoursText(r.hoursEach) : "Not estimated", s: r?.hoursEach != null ? `each${r.hoursRun != null && p.q > 1 ? ` · ${hoursText(r.hoursRun)}${many}` : ""}` : undefined });
+  figs.push({
+    k: "Machine time",
+    v: r?.hoursEach != null ? hoursText(r.hoursEach) : "Not estimated",
+    s: r?.hoursEach != null
+      ? `each${r.hoursFirstLot != null ? " on average" : ""}${r.hoursRun != null && p.q > 1 ? ` · ${hoursText(r.hoursRun)}${many}` : ""}${r.hoursFirstLot != null ? ` · ${hoursText(r.hoursFirstLot)} each on the first lot, shorter with practice` : ""}`
+      : undefined,
+  });
   figs.push({
     k: "Material",
     v: r?.kgEach != null ? massText(r.kgEach) : e.material,
@@ -336,6 +342,8 @@ export function CostSheet() {
   const order = new Map(ranked.map((m, i) => [m.code, i]));
   const stable = [...priced].sort((a, b) => a.code.localeCompare(b.code));
   const oq = otherQtyNote(p.methods, p.qs, p.oq);
+  const oqRaw = Number.parseInt(p.oq, 10);
+  const oqN = Number.isFinite(oqRaw) && oqRaw >= 1 && oqRaw <= 1_000_000 ? oqRaw : null;
   const fx = useFix();
   const insight = cost ? insightOf(p, fx) : null;
   const d = cost?.decision ?? null;
@@ -353,13 +361,20 @@ export function CostSheet() {
   const annualRes = annual != null && p.qs.includes(annual) && cheapestAt(p.methods, annual) ? routeResources(cheapestAt(p.methods, annual)!.prices.get(annual), vol) : null;
   return (
     <>
-      <SheetTop {...top} sure="cost" />
+      <SheetTop {...top} sure="cost" route={sel?.code ?? null} />
       <div className="scroll">
         <RunNotice />
         {p.askedQty != null && cost ? (
           <p className="note" role="status">
             <span>
-              This check priced {p.qs.map(qtyWord).join(", ")}, not {qtyWord(p.askedQty)}. Showing {qtyWord(p.q)}, the nearest. Enter {qtyWord(p.askedQty)} in Other quantity below for a model estimate between the priced points.
+              This check priced {p.qs.map(qtyWord).join(", ")}, not {qtyWord(p.askedQty)}. Showing {qtyWord(p.q)}, the nearest.{" "}
+              {p.canRecheck ? (
+                <button className="btn sm" type="button" disabled={p.checking} onClick={() => p.recheck({ qty: p.askedQty! })}>
+                  Price {qtyWord(p.askedQty)}
+                </button>
+              ) : (
+                `Drop the file on the part to price ${qtyWord(p.askedQty)}.`
+              )}
             </span>
           </p>
         ) : null}
@@ -477,8 +492,17 @@ export function CostSheet() {
                 Other quantity
                 <input type="number" min={1} step={1} inputMode="numeric" placeholder="250" value={p.oq} onChange={(e) => p.setOq(e.target.value)} />
               </label>
-              <span className="num" style={{ fontSize: 12.5, color: "var(--ink2)", paddingBottom: 9 }} aria-live="polite">
-                {oq.text}
+              <span className="num" style={{ fontSize: 12.5, color: "var(--ink2)", paddingBottom: 9, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} aria-live="polite">
+                <span>{oq.text}</span>
+                {oq.on && oqN != null ? (
+                  p.canRecheck ? (
+                    <button className="btn sm ink" type="button" disabled={p.checking} onClick={() => p.recheck({ qty: oqN })}>
+                      {p.checking ? `Pricing ${qtyWord(oqN)}…` : `Price ${qtyWord(oqN)}`}
+                    </button>
+                  ) : (
+                    <span>Drop the file on the part to price {qtyWord(oqN)}.</span>
+                  )
+                ) : null}
               </span>
             </div>
             {insight ? (

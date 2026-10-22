@@ -16,7 +16,10 @@ import { track } from "./analytics";
 
 export interface GeometryInfo {
   vertices: number;
+  /** Mesh triangles (an STL's own, or the ones ScaleCAD meshed a STEP/IGES into). */
   faces: number;
+  /** A STEP/IGES's own faces, the count its CAD tool shows (absent for an STL). */
+  cad_faces?: number;
   volume_mm3: number;
   surface_area_mm2: number;
   bounding_box_mm: [number, number, number];
@@ -72,6 +75,19 @@ export interface Issue {
   /** "localized" when the finding has faces or a region center; "whole_part"
    *  when it is honestly unlocalizable (no faked location). */
   scope?: "localized" | "whole_part";
+  /** The CAD faces the affected triangles lie on (STEP/IGES only). */
+  cad_face_count?: number;
+  /** Per-rule parts of one finding (draft: outside and inside walls, each with its rule). */
+  breakdown?: IssueRulePart[];
+}
+
+export interface IssueRulePart {
+  walls: "outside" | "inside";
+  need_deg: number;
+  measured_deg: number;
+  /** mesh triangles short of the rule (0: these walls meet it) */
+  faces: number;
+  cad_faces?: number | null;
 }
 
 export interface Segment {

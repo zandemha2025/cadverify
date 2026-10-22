@@ -46,7 +46,7 @@ export function AllProblemsSheet() {
   const { only, setOnly } = fx;
   if (!v) return null;
   const q = fx.allQty;
-  const qs = allQuantities(p.qs);
+  const qs = allQuantities(p.qs, p.q);
   const all = fx.ranked;
   const ranked = fx.shown;
   const places = placesOf(ranked);

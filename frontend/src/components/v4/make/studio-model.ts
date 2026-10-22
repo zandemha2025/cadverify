@@ -110,12 +110,15 @@ export const INTERPRET_IDLE: InterpretView = {
 
 /** The status line under the description box, in the server's own words. */
 export function interpretView(result: DesignInterpretation): InterpretView {
-  if (result.status === "ready")
+  if (result.status === "ready") {
+    // de-24: what the description asked for that the template can't draw is said, not dropped.
+    const skipped = result.not_applied ?? [];
     return {
-      tone: "ok",
-      label: `Ready: ${kindLabel(result.kind)}`,
+      tone: skipped.length ? "warn" : "ok",
+      label: skipped.length ? `Ready, without ${skipped.join(" or ")}: ${kindLabel(result.kind)}` : `Ready: ${kindLabel(result.kind)}`,
       text: ["Local rules, no AI", ...result.assumptions].join(" · "),
     };
+  }
   return { tone: "warn", label: "Needs input", text: result.message };
 }
 

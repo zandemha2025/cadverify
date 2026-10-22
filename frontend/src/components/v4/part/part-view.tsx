@@ -80,7 +80,7 @@ export function PartView({
   /** A quantity from the link (?qty=N): shown at that quantity, or the nearest one the check priced. */
   initialQty?: number | null;
   canRecheck: boolean;
-  onRecheck: (opts?: { materialClass?: string }) => void;
+  onRecheck: (opts?: { materialClass?: string; qty?: number }) => void;
   onRetryPrices: () => void;
   onDropFile?: (file: File) => void;
   /** Ask for the 3D preview again (same file, same check) after it failed. */
@@ -98,12 +98,26 @@ export function PartView({
   const [asked, setAsked] = React.useState<number | null>(initialQty);
   const startQty = (list: number[]) => (asked != null ? nearestComputed(list, asked, defaultQty(list)) : defaultQty(list));
   const [q, setQState] = React.useState<number>(() => startQty(qs));
+  // Whether the person chose the quantity (picked it here); until then the page follows the
+  // default for the quantities priced (np-19: the check handed over before prices, so the page
+  // fixed on 1 from an empty list and stayed there once 1 was priced).
+  const [chosen, setChosen] = React.useState(false);
+  // A quantity asked for (a link's ?qty=, or one just priced from Other quantity) is shown once priced.
   React.useEffect(() => {
-    if (qs.length && !qs.includes(q)) setQState(startQty(qs));
+    if (initialQty != null) setAsked(initialQty);
+  }, [initialQty]);
+  React.useEffect(() => {
+    if (asked != null && qs.includes(asked) && q !== asked) {
+      setQState(asked);
+      return;
+    }
+    if (!qs.length) return;
+    if (!qs.includes(q) || (!chosen && asked == null && q !== startQty(qs))) setQState(startQty(qs));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qs, q]);
+  }, [qs, q, asked, chosen]);
   const setQ = React.useCallback((n: number) => {
     setAsked(null);
+    setChosen(true);
     setQState(n);
   }, []);
   const [oq, setOq] = React.useState("");
@@ -274,6 +288,7 @@ export function PartView({
   const { unit } = useUnits();
   const dims = bbox && bbox.length ? unitDims(bbox, unit) : dimsText(bbox);
   const faces = g?.faces ?? data.cost?.geometry.face_count ?? null;
+  const cadFaces = g?.cad_faces ?? null;
   // Several closed bodies: their volume, and "4 closed bodies" rather than "not watertight".
   const bodiesClosed = !!bodies && bodies.pt.all_closed === true && !bodies.pt.provisional;
   const volume = bodiesClosed
@@ -283,7 +298,7 @@ export function PartView({
   const tightWord = bodiesClosed ? `${bodies!.pt.body_count} closed bodies` : watertight == null ? null : watertight ? "watertight" : "not watertight";
   const hudMeta = interrupted
     ? "Not checked yet · 3D preview drawn from the file"
-    : [dims, volume != null ? unitVolume(volume, unit) : null, tightWord, has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
+    : [dims, volume != null ? unitVolume(volume, unit) : null, tightWord, has3d ? (cadFaces ? `${cadFaces.toLocaleString("en-US")} faces, ${faces ? `${faces.toLocaleString("en-US")} mesh triangles` : "meshed"}` : faces ? `real shell, ${faces.toLocaleString("en-US")} mesh triangles` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
         .filter(Boolean)
         .join(" · ") || (checking ? "Measuring…" : "");
   const ctx = data.context;

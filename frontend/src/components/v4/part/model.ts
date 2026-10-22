@@ -133,7 +133,7 @@ export function issueKind(code: string): Kind | null {
   const c = code.toUpperCase();
   if (/THIN_WALL|THIN_BOSS|TOO_THIN|FRAGILE|SMALL_FEATURES|WALL_THICKNESS/.test(c)) return "thin";
   if (/OVERHANG|CUPPING|TRAPPED_VOLUME|RESIDUAL_STRESS|REORIENTATION/.test(c)) return "support";
-  if (/SETUP_ACCESS|DEEP_HOLE|SHARP_INTERNAL|HIGH_LD|FIXTURE|^UNDERCUT$/.test(c)) return "reach";
+  if (/SETUP_ACCESS|DEEP_HOLE|SHARP_INTERNAL|TOOL_REACH|HIGH_LD|FIXTURE|^UNDERCUT$/.test(c)) return "reach";
   if (/DRAFT|UNDERCUT_MOLDING/.test(c)) return "draft";
   return null;
 }
@@ -283,7 +283,7 @@ export function buildMethods(input: PartInputs): Method[] {
       fit,
       geometryPick: validation?.best_process === code,
       routePick: cost?.routing?.recommended_process === code,
-      material: anyPrice?.material ?? ps?.recommended_material ?? null,
+      material: materialText(code, info, anyPrice?.material ?? null, cost?.material_class ?? null, !!cost),
       bestOf: best != null && score === best ? scores.size : null,
     });
   }
@@ -294,14 +294,17 @@ const VERDICT_ORDER: Verdict[] = ["ok", "warn", "unk", "bad", "out"];
 
 /** Collapse unpriced metal-only methods the board shows as one row (plastic parts). */
 export function groupUnpriced(methods: Method[]): Method[] {
+  // Grouped only with the same verdict (de-10): "Casting and forging, 3 ways · Can make" read
+  // as all three when only die casting could, and sand casting and forging were blocked.
   const groups: Record<string, Method[]> = {};
   const rest: Method[] = [];
   for (const m of methods) {
     const g = METHODS[m.code]?.group;
-    if (g && m.prices.size === 0 && m.verdict !== "out") (groups[g] ??= []).push(m);
+    if (g && m.prices.size === 0 && m.verdict !== "out") (groups[`${g}␟${m.verdict}`] ??= []).push(m);
     else rest.push(m);
   }
-  for (const [g, members] of Object.entries(groups)) {
+  for (const [key, members] of Object.entries(groups)) {
+    const g = key.split("␟")[0];
     if (members.length < 2) {
       rest.push(...members);
       continue;
@@ -310,7 +313,7 @@ export function groupUnpriced(methods: Method[]): Method[] {
     const scores = members.map((m) => m.score).filter((s): s is number => s != null);
     rest.push({
       ...members[0],
-      code: `group:${g}`,
+      code: Object.keys(groups).filter((k) => k.startsWith(`${g}␟`) && groups[k].length > 1).length > 1 ? `group:${g}:${members[0].verdict}` : `group:${g}`,
       name: g === "metalprint" ? `Metal printing, ${members.length} ways` : `Casting and forging, ${members.length} ways`,
       short: members.map((m) => (g === "metalprint" ? m.short : m.name)).join(", "),
       members: members.map((m) => m.code),
@@ -394,13 +397,31 @@ export function makeRows(methods: Method[], q: number): MakeRow[] {
   return rows;
 }
 
-/** "DLP · Standard Resin · on your Haas VF-2 · best fit for the shape" */
+const PLASTIC_ONLY = new Set(["fdm", "sla", "dlp", "sls", "mjf", "injection_molding"]);
+
+/**
+ * The material a method's row names: the grade it is priced in, in the page's material class.
+ * One material story per page (de-06, np-17): a process that can't run that class says so
+ * ("can’t run plastic", or the metal it is priced in and why) instead of naming the first alloy
+ * on its list (Inconel 718 on a plastic box); an unpriced row names no grade.
+ */
+export function materialText(code: string, info: MethodInfo, priced: string | null, cls: string | null, hasCost: boolean): string | null {
+  const metal = !!info.metalOnly || code === "sheet_metal";
+  const word = cls ? (MATERIAL_CLASS_LABEL[cls] ?? cls).toLowerCase() : null;
+  const cannot = !!cls && ((metal && cls === "polymer") || (PLASTIC_ONLY.has(code) && cls !== "polymer"));
+  if (priced) return cannot ? `${priced}, can’t run ${word}` : priced;
+  if (!hasCost) return null;
+  return cannot ? `can’t run ${word}` : null;
+}
+
+/** "DLP · Standard Resin · on your Haas VF-2 · highest design score" */
 export function methodSub(m: Method): string {
   if (m.members.length > 1) return m.short;
   const parts = [m.short];
   if (m.material) parts.push(m.material);
   if (m.inHouse) parts.push(`on your ${m.inHouse}`);
-  if (m.geometryPick) parts.push("best fit for the shape");
+  // "ScaleCAD's pick" is the one pick on the part page; the design-rule best is a score.
+  if (m.geometryPick) parts.push("highest design score");
   else if (m.routePick) parts.push("typical for the shape");
   return parts.join(" · ");
 }
@@ -471,11 +492,12 @@ export function srcOf(provenance: string | null | undefined): { kind: SrcKind; l
   return { kind: "typ", label: "Typical" };
 }
 
-const DRIVER_LABEL: Record<string, (q: number) => string> = {
+const DRIVER_LABEL: Record<string, (q: number, d: CostDriver) => string> = {
   labor_cost: () => "Labor",
   nre_cost: (q) => `Programming, shared over ${qtyWord(q)}`,
   inspection_cost: () => "Inspection",
-  setup_cost: (q) => `Setup, shared over ${qtyWord(q)}`,
+  // A machine is set up once for the order; a printer once per plate (the engine's source says which).
+  setup_cost: (q, d) => (/per plate/.test(d.source ?? "") ? "Setup, one per plate" : `Setup, shared over ${qtyWord(q)}`),
   machine_cost: () => "Machine",
   material_cost: () => "Material",
   consumables_cost: () => "Tools and coolant",
@@ -505,7 +527,7 @@ const DRIVER_LABEL: Record<string, (q: number) => string> = {
 
 function driverLabel(d: CostDriver, q: number): string {
   const f = DRIVER_LABEL[d.name];
-  if (f) return f(q);
+  if (f) return f(q, d);
   return d.name.replace(/_cost$/, "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
@@ -666,6 +688,28 @@ export function interpolate(m: Method, qs: number[], target: number): number | n
   return null;
 }
 
+/** The quantities to price with ``n`` added (the engine prices at most ``max``): the one
+ *  whose neighbours sit closest together without it (in ratio) gives way, never the
+ *  first, the last or ``n``. */
+export function withQuantity(qs: number[], n: number, max = 6): number[] {
+  const out = [...new Set([...qs.filter((x) => x > 0), Math.round(n)])].sort((a, b) => a - b);
+  while (out.length > max) {
+    let drop = -1;
+    let best = Infinity;
+    for (let i = 1; i < out.length - 1; i++) {
+      if (out[i] === Math.round(n)) continue;
+      const gap = Math.log(out[i + 1] / out[i - 1]);
+      if (gap < best) {
+        best = gap;
+        drop = i;
+      }
+    }
+    if (drop < 0) break;
+    out.splice(drop, 1);
+  }
+  return out;
+}
+
 export function otherQtyNote(methods: Method[], qs: number[], raw: string): { on: boolean; text: string; value: number | null } {
   const n = Number.parseInt(raw, 10);
   const computed = `Computed at ${qs.map(qtyWord).join(", ").replace(/, ([^,]*)$/, " and $1")}.`;
@@ -685,7 +729,7 @@ export function otherQtyNote(methods: Method[], qs: number[], raw: string): { on
   const lo = [...qs].reverse().find((qq) => qq < n);
   const hi = qs.find((qq) => qq > n);
   const where =
-    n > max ? `, held at the ${qtyWord(max)} price.` : n < min ? `, held at the ${qtyWord(min)} price.` : `, between ${qtyWord(lo!)} and ${qtyWord(hi!)}. Decide at a computed quantity.`;
+    n > max ? `, held at the ${qtyWord(max)} price.` : n < min ? `, held at the ${qtyWord(min)} price.` : `, read between the prices at ${qtyWord(lo!)} and ${qtyWord(hi!)}, not computed.`;
   return { on: true, text: `≈ ${money(bestV)} each by ${best.name.toLowerCase()}${where}`, value: bestV };
 }
 
@@ -932,7 +976,7 @@ export function progressSteps(p: ProgressInput): Step[] {
   if (p.sample) {
     return [
       { t: "Read and measure the shape", d: v ? measuredLine(v) : "Reading the shape now…", state: v ? "done" : "now" },
-      { t: `Compare ${v ? v.process_scores.length : 21} ways to make it`, d: v ? `${methodName(v.best_process)} is the best fit for the shape` : "Waiting", state: v ? "done" : "wait" },
+      { t: `Compare ${v ? v.process_scores.length : 21} ways to make it`, d: v ? `${methodName(v.best_process)} has the highest design score` : "Waiting", state: v ? "done" : "wait" },
       { t: "Price it and list what’s uncertain", d: p.cost ? `${p.cost.estimates.length} prices · ${p.cost.saved ? `record ${shortId(p.cost.saved.id)}` : "not saved"}` : p.costError ? "Didn’t finish" : v ? "Pricing now…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" },
     ];
   }
@@ -1003,7 +1047,7 @@ export function verdictAnswer(methods: Method[], validation: ValidationResult | 
   const blocked = singles.filter((m) => m.verdict === "bad").map((m) => m.name);
   const gp = singles.find((m) => m.geometryPick);
   const rows = [{ k: "Can make", v: `${can.length} of ${singles.length} processes` }];
-  if (gp) rows.push({ k: "Best fit for the shape", v: `${gp.name}, DFM ${gp.score?.toFixed(1) ?? "—"}` });
+  if (gp) rows.push({ k: "Highest design score", v: `${gp.name}, DFM ${gp.score?.toFixed(1) ?? "—"}` });
   if (cost?.routing) rows.push({ k: "Typical for the shape", v: `${methodName(cost.routing.recommended_process)}, confidence ${cost.routing.confidence.toFixed(1)}` });
   if (blocked.length) rows.push({ k: "Blocked", v: joinWords([...new Set(blocked)].slice(0, 4)) });
   const fixes = validation?.priority_fixes?.length ?? 0;

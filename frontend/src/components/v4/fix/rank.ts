@@ -203,17 +203,13 @@ export interface UnlockRow {
 }
 
 /** The quantity worth showing: the engine's own "if redesigned" quantity when it unlocks tooling, else q. */
-export function unlockQty(p: Problem, set: ProblemSet, methods: Method[], cost: CostReport | null, q: number, qs: number[]): number {
-  const d = cost?.decision;
-  if (!d?.tooling_process) return q;
-  const u = unlockOf(p, set, methods, q);
-  if (!u.added.some((m) => m.code === d.tooling_process)) return q;
-  const red = Object.entries(d.if_redesigned ?? {})
-    .filter(([, v]) => v && v.process === d.tooling_process)
-    .map(([k]) => Number(k))
-    .filter((n) => qs.includes(n))
-    .sort((a, b) => a - b);
-  return red.length ? red[red.length - 1] : q;
+/** The quantity a problem's unlock is priced at: the page's own (de-07). One quantity
+ *  drives the price, the problem costs and the fix savings on a part page; a fix that
+ *  unlocks tooling shows its price at that quantity, and the user changes the quantity
+ *  to see it at volume. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function unlockQty(_p: Problem, _set: ProblemSet, _methods: Method[], _cost: CostReport | null, q: number, _qs: number[]): number {
+  return q;
 }
 
 function band(m: Method, q: number): string | null {

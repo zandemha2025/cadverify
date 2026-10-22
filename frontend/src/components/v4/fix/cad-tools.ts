@@ -55,3 +55,15 @@ export function cadPath(tool: CadToolId, problemId: string): CadPath {
   if (!set || !set.verified) return { steps: [], feature: set?.feature ?? null, sources: [], verified: false, noFix: false, help: set?.source ?? null };
   return { steps: [...set.steps, ...expSteps], feature: set.feature, sources: [set.source, ...expSrc], verified: true, noFix: false, help: null };
 }
+
+/** The draft steps with the angles the check asks for, in place of "the outside angle" and
+ *  "the inside angle" (de-02): 1° outside and 2° inside for molding, say. */
+export function withDraftAngles(steps: string[], outside: number | null, inside: number | null): string[] {
+  const deg = (v: number) => `${Number.isInteger(v) ? v : Number(v.toFixed(1))}°`;
+  return steps.map((s) => {
+    let out = s;
+    if (outside != null) out = out.replace(/the outside angle/g, `${deg(outside)} (the outside walls’ rule)`);
+    if (inside != null) out = out.replace(/the inside angle/g, `${deg(inside)} (the inside walls’ rule)`);
+    return out;
+  });
+}

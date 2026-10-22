@@ -38,6 +38,9 @@ export interface SureInput {
   env: ServiceEnvironment | null;
   methods: Method[];
   q: number;
+  /** The route the view above shows (the cost view's selected process), so the range and the
+   *  inputs counted are that route's, not the cheapest one's (de-19: ±50% over ±55%). */
+  route?: string | null;
 }
 
 function hasEnv(env: ServiceEnvironment | null | undefined): boolean {
@@ -65,9 +68,10 @@ function conditionsItem(i: SureInput): SureItem {
   return hasEnv(i.env) ? { kind: "yours", k: "Conditions", v: "the service conditions you set" } : { kind: "typ", k: "Conditions", v: "none set: checked at room temperature, no chemicals or pressure" };
 }
 
-/** The price shown at q: the cheapest priced process. */
+/** The price shown at q: the route the view shows, else the cheapest priced process. */
 function headline(i: SureInput): { m: Method; e: CostEstimate } | null {
-  const m = cheapestAt(i.methods, i.q);
+  const shown = i.route ? i.methods.find((x) => x.code === i.route && x.prices.has(i.q)) ?? null : null;
+  const m = shown ?? cheapestAt(i.methods, i.q);
   const e = m?.prices.get(i.q) ?? null;
   return m && e ? { m, e } : null;
 }

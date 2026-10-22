@@ -147,3 +147,18 @@ test("a draft outside 0 to 10° is named in degrees", () => {
   assert.equal(fieldProblem({ ...DEFAULT_DESIGN_FORM, kind: "bracket", draftAngle: Number.NaN }), null);
   assert.equal(fieldProblem({ ...enc, wallThickness: 60 }), "Wall must be 0.5 to 50 mm.");
 });
+
+test("a requested feature the template can't draw is said in the ready line (de-24)", () => {
+  const ready = interpretView({
+    status: "ready",
+    kind: "enclosure",
+    name: "Open enclosure 80 × 60 × 40 mm",
+    plan: { kind: "enclosure", width_mm: 80, depth_mm: 60, height_mm: 40, wall_thickness_mm: 2.5 },
+    assumptions: ["Not applied: the open enclosure template has no setting for fillets or rounded edges. Add them in your CAD tool after downloading the STEP."],
+    not_applied: ["fillets or rounded edges"],
+    message: "Safe dimensions extracted.",
+  } as never);
+  assert.equal(ready.tone, "warn");
+  assert.match(ready.label, /^Ready, without fillets or rounded edges: /);
+  assert.match(ready.text, /Not applied: the open enclosure template has no setting for fillets/);
+});

@@ -84,6 +84,36 @@ export function translation([x, y, z]: [number, number, number]): number[][] {
   ];
 }
 
+/** Row-major 4×4 product a·b. */
+export function mul4(a: number[][], b: number[][]): number[][] {
+  return a.map((row) => b[0].map((_, j) => row.reduce((s, v, k) => s + v * b[k][j], 0)));
+}
+
+/**
+ * "Move your part" (de-26): the fields move your part, as their labels say. The server's
+ * nudge moves the assembly, so it is sent the opposite way (the same relative position:
+ * the overlap and the gap are the same numbers), and the view draws your part moved and
+ * the assembly where seating put it. Everything the server measured in your part's own
+ * frame (the overlap, the tight zone) moves with your part.
+ */
+export function serverNudge(move: [number, number, number]): [number, number, number] {
+  return move.map((v) => (v === 0 ? 0 : -v)) as [number, number, number];
+}
+
+export function placedMatrices(move: [number, number, number], assembly: number[][] | null): { part: number[][] | null; context: number[][] | null; measured: number[][] | null } {
+  const moved = move.some((v) => v !== 0);
+  const t = translation(move);
+  return {
+    part: moved ? t : null,
+    context: assembly ? (moved ? mul4(t, assembly) : assembly) : null,
+    measured: moved ? t : null,
+  };
+}
+
+export function movedPoint(p: [number, number, number], move: [number, number, number]): [number, number, number] {
+  return [p[0] + move[0], p[1] + move[1], p[2] + move[2]];
+}
+
 export type Seating = "shared_frame" | "auto";
 
 export function seatMeta(seating: Seating): string {
@@ -95,7 +125,7 @@ export function seatingLine(result: Pick<FitResult, "seating"> | null): string {
   if (!result) return "Results withheld until this pair is checked.";
   const nudged = (result.seating.manual_nudge_mm ?? []).some((v) => v !== 0);
   if (nudged)
-    return result.seating.accepted && result.seating.method !== "shared_frame" ? "Automatically aligned, then offset by you." : "Position set by you.";
+    return result.seating.accepted && result.seating.method !== "shared_frame" ? "Automatically aligned, then your part moved by you." : "Your part moved by you.";
   if (result.seating.method === "shared_frame") return "Shared CAD frame: both files keep their own coordinates.";
   return result.seating.accepted ? "Automatically aligned surfaces. Check orientation and fit." : "Couldn’t seat this with confidence. Shared frame kept; nudge to adjust.";
 }

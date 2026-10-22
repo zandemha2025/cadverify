@@ -61,8 +61,11 @@ export function cm3Text(v: number | null | undefined): string {
 export interface RouteResources {
   process: string;
   quantity: number;
-  /** Machine hours per part (the estimate's cycle_time driver). */
+  /** Machine hours per part at this quantity: the cycle_time driver, times the learning
+   *  curve when the price applies one (the same hours the machine line charges). */
   hoursEach: number | null;
+  /** The first lot's hours per part when learning shortens them at this quantity, else null. */
+  hoursFirstLot: number | null;
   /** Machine hours for the run: per part × quantity. */
   hoursRun: number | null;
   /** The grade the route is priced in ("PA12 (Nylon 12)"). */
@@ -114,7 +117,11 @@ export function routeResources(e: CostEstimate | null | undefined, partCm3: numb
   if (!e) return null;
   const q = e.quantity;
   const cycle = driver(e, "cycle_time");
-  const hoursEach = cycle && cycle.unit === "hr" && finite(cycle.value) && cycle.value >= 0 ? cycle.value : null;
+  const first = cycle && cycle.unit === "hr" && finite(cycle.value) && cycle.value >= 0 ? cycle.value : null;
+  // de-19: the machine line charges the cycle times the learning curve; the hours shown are the same.
+  const learn = driver(e, "learning_curve");
+  const mult = learn && finite(learn.value) && learn.value > 0 && learn.value < 1 ? learn.value : null;
+  const hoursEach = first != null && mult != null ? first * mult : first;
   const mat = materialOf(e);
   const vol = finite(partCm3) && partCm3 > 0 ? partCm3 : null;
   const cm3Each = mat.kg != null && mat.density != null ? (mat.kg * 1000) / mat.density : null;
@@ -122,6 +129,7 @@ export function routeResources(e: CostEstimate | null | undefined, partCm3: numb
     process: e.process,
     quantity: q,
     hoursEach,
+    hoursFirstLot: mult != null ? first : null,
     hoursRun: hoursEach != null ? hoursEach * q : null,
     grade: e.material,
     kgEach: mat.kg,

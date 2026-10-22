@@ -98,3 +98,15 @@ test("Nothing to say before anything is measured or priced", () => {
   assert.equal(sureOf("make", input({ validation: null, cost: null, methods: [] })), null);
   assert.equal(sureOf("cost", input({ cost: null, methods: [] })), null);
 });
+
+test("Cost: the range and inputs are the shown route's, the one the header prices (de-19)", () => {
+  const i = input();
+  const est2 = { ...i.cost!.estimates[0], process: "cnc_3axis", unit_cost_usd: 20, est_error_band_pct: 55, confidence: { ...i.cost!.estimates[0].confidence!, half_width_pct: 55, low_usd: 9, high_usd: 31 } };
+  const cost = { ...i.cost!, estimates: [...i.cost!.estimates, est2] };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const methods = buildMethods({ validation: i.validation as any, cost: cost as any, machines: [] });
+  const cheapest = sureOf("cost", { ...i, cost: cost as never, methods })!;
+  assert.match(cheapest.line!, /^±50%/);
+  const shown = sureOf("cost", { ...i, cost: cost as never, methods, route: "cnc_3axis" })!;
+  assert.match(shown.line!, /^±55%/);
+});

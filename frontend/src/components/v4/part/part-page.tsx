@@ -17,6 +17,7 @@ import { keptToastLine } from "./kept-job-model";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
+import { qtyWord, withQuantity } from "./model";
 import { PartView, type MeshSource } from "./part-view";
 import { ProgressPanel } from "./progress";
 import { PartUrlSync } from "./url-sync";
@@ -143,9 +144,12 @@ export function PartPage({ partKey }: { partKey: string }) {
   const shownOrientation = session ? session.orientation : orientationParam(matOf(recordOf(data?.validation) ?? recordOf(data?.cost)));
   const storedRunning = stored?.s === "running";
   const recheck = React.useCallback(
-    (opts?: { materialClass?: string; orientation?: string | null }) => {
+    (opts?: { materialClass?: string; orientation?: string | null; qty?: number }) => {
       const materialClass = opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer";
-      if (file) {
+      // A quantity typed in Other quantity is priced by the model from the kept file (no check used),
+      // then shown: the page, the problem costs and the fix savings all move to it.
+      const qty = opts?.qty != null ? withQuantity(data?.cost?.quantities ?? [], opts.qty) : null;
+      if (file && !(qty && kept === true)) {
         setQuotaClosed(false);
         startCheck(file, {
           materialClass,
@@ -157,12 +161,13 @@ export function PartPage({ partKey }: { partKey: string }) {
       // No file in this browser: price it again from the kept file. The decision is saved like an
       // upload's, so reloading the part shows it.
       if (kept !== true || storedRunning) return;
-      const what = materialClass !== (data?.cost?.material_class ?? "polymer") ? `in ${MATERIAL_WORD[materialClass] ?? materialClass}` : "with your machines and conditions";
+      const what = qty ? `at ${qtyWord(opts!.qty!)}` : materialClass !== (data?.cost?.material_class ?? "polymer") ? `in ${MATERIAL_WORD[materialClass] ?? materialClass}` : "with your machines and conditions";
       setStored({ s: "running", what });
       const onWorker = (stage: string) => setStored((cur) => (cur?.s === "running" ? { ...cur, worker: stage } : cur));
-      void recheckStored(partKey, { materialClass, qty: data?.cost?.quantities, owned: ownedProcessesFrom(saved?.machines ?? []), orientation: shownOrientation, onWorker })
+      void recheckStored(partKey, { materialClass, qty: qty ?? data?.cost?.quantities, owned: ownedProcessesFrom(saved?.machines ?? []), orientation: shownOrientation, onWorker })
         .then(() => {
           setStored({ s: "done", what });
+          if (qty) setAskedQty(opts!.qty!);
           setReload((n) => n + 1);
         })
         .catch((e: unknown) => setStored({ s: "error", msg: e instanceof Error ? e.message : "The re-check didn’t finish.", limit: e instanceof RecheckError && e.limit }));

@@ -15,6 +15,9 @@ import {
   makeRows,
   methodWhy,
   otherQtyNote,
+  withQuantity,
+  materialText,
+  METHODS,
   progressSteps,
   routeAsk,
   biggestTypicalNote,
@@ -177,9 +180,18 @@ test("other quantities interpolate between computed points and say so", () => {
   assert.ok(mid < 7.32 && mid > 6.37);
   const note = otherQtyNote(methods, [1, 10, 100], "50");
   assert.equal(note.on, true);
-  assert.match(note.text, /between 10 and 100\. Decide at a computed quantity\./);
+  assert.match(note.text, /read between the prices at 10 and 100, not computed\./);
   assert.equal(otherQtyNote(methods, [1, 10, 100], "10").on, false);
   assert.match(otherQtyNote(methods, [1, 10, 100], "").text, /Computed at 1, 10 and 100\./);
+});
+
+test("a typed quantity is priced by the model: it joins the quantities the engine computes (de-18)", () => {
+  // The engine prices six quantities at most: the one closest to a neighbour gives way.
+  assert.deepEqual(withQuantity([1, 100, 1000, 2000, 5000, 10000], 10), [1, 10, 100, 1000, 5000, 10000]);
+  assert.deepEqual(withQuantity([1, 100, 1000], 10), [1, 10, 100, 1000]);
+  assert.deepEqual(withQuantity([1, 10, 100], 10), [1, 10, 100]);
+  // The first, the last and the asked quantity always stay.
+  assert.deepEqual(withQuantity([1, 2, 5, 10, 20, 50], 100000), [1, 2, 5, 20, 50, 100000]);
 });
 
 test("the chart places quantities on a log axis and snaps drags to computed points", () => {
@@ -331,4 +343,40 @@ test("a whole-file error (an open shell) stops every method, even one whose own 
   const ms = buildMethods({ validation: validation as never, cost: null, machines: [] });
   assert.deepEqual(ms.map((m) => m.verdict), ["bad", "bad"]);
   assert.match(ms[0].blockedReason!, /boundary edges/);
+});
+
+test("setup reads once per plate when printing, shared over the order on a machine (de-19)", () => {
+  const plate = { name: "setup_cost", value: 0.05, unit: "$", provenance: "DEFAULT", source: "setup 0.25hr × $35/hr per plate × 100/40 parts a plate = 2.5 plates (at least one) ÷ 100", error_band_pct: 20 };
+  const order = { ...plate, source: "setup 0.75hr × $35/hr once for the order ÷ 1000" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lines = (d: any, q: number) => costLines({ drivers: [d], quantity: q, unit_cost_usd: 1 } as any).map((l) => l.name);
+  assert.deepEqual(lines(plate, 100), ["Setup, one per plate"]);
+  assert.deepEqual(lines(order, 1000), ["Setup, shared over 1,000"]);
+});
+
+test("one material story per page: a process that can't run the page's class says so (de-06, np-17)", () => {
+  const info = (code: string) => METHODS[code];
+  // Priced in plastic: the grade; never the first alloy on the process's list.
+  assert.equal(materialText("cnc_3axis", info("cnc_3axis"), "Delrin (POM)", "polymer", true), "Delrin (POM)");
+  assert.equal(materialText("wire_edm", info("wire_edm"), null, "polymer", true), "can’t run plastic");
+  assert.equal(materialText("investment_casting", info("investment_casting"), null, "polymer", true), "can’t run plastic");
+  assert.equal(materialText("sheet_metal", info("sheet_metal"), "5052 Aluminum (Sheet)", "polymer", true), "5052 Aluminum (Sheet), can’t run plastic");
+  // Turning isn't priced (the part isn't round): no grade named, the row's verdict says why.
+  assert.equal(materialText("cnc_turning", info("cnc_turning"), null, "polymer", true), null);
+  assert.equal(materialText("injection_molding", info("injection_molding"), null, "aluminum", true), "can’t run aluminum");
+  // Not priced yet: nothing named.
+  assert.equal(materialText("forging", info("forging"), null, null, false), null);
+});
+
+test("a grouped row speaks for every member: casting and forging split by verdict (de-10)", () => {
+  const f = fixture();
+  const methods = buildMethods(f);
+  const like = (code: string, verdict: "ok" | "bad", score: number) => ({ ...methods[0], code, name: METHODS[code].name, short: METHODS[code].short, prices: new Map(), verdict, score, scoreRange: [score, score] as [number, number], members: [code] });
+  const rows = groupUnpriced([like("die_casting", "ok", 0.8), like("sand_casting", "bad", 0), like("forging", "bad", 0)]);
+  const die = rows.find((m) => m.code === "die_casting")!;
+  assert.equal(die.verdict, "ok");
+  const blocked = rows.find((m) => m.code === "group:cast")!;
+  assert.equal(blocked.verdict, "bad");
+  assert.deepEqual(blocked.members, ["sand_casting", "forging"]);
+  assert.equal(blocked.name, "Casting and forging, 2 ways");
 });

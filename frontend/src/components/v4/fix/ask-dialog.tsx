@@ -17,11 +17,11 @@ import { usePart } from "../part/ctx";
 import { money, qtyWord, trimNum } from "../part/model";
 import { computeMeshHash } from "@/lib/verify/part-context";
 import { useSession } from "../part/store";
-import { useFix } from "./ctx";
-import { fixText, pickMethod, ruleOf, type Problem, type ProblemMethod } from "./problems";
+import { defaultMethod, useFix } from "./ctx";
+import { draftRules, fixText, ruleOf, type Problem, type ProblemMethod } from "./problems";
 import { blockersByMethod, unlockOf, unlockQty } from "./rank";
 import { fixRoute, studioValueProblem, type StudioParam } from "./capabilities";
-import { CAD_TOOLS, cadPath } from "./cad-tools";
+import { CAD_TOOLS, cadPath, withDraftAngles } from "./cad-tools";
 import type { CadToolId } from "./cad-steps";
 import { markStudioDone, startRepair, startServerFix, startStudioRevision, useFixRun, type RepairRun, type ServerRun, type StudioRun } from "./runs";
 import { newCheckLine } from "./all-sheet";
@@ -875,11 +875,17 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
       /* a convenience only */
     }
   };
-  const m = fx.problem?.id === P.id ? fx.method : pickMethod(P, null, null);
+  // The method the problem is open for, else the page's pick: its rule and source
+  // (Protolabs for molding), not the first method in the list (NADCA, die casting).
+  const m = fx.problem?.id === P.id ? fx.method : defaultMethod(P, fx.set, p.methods, p.q, fx.only, p.sel?.code ?? null);
   const f = fixText(P, m, null);
   const rule = ruleOf(P, m);
   const t = CAD_TOOLS.find((x) => x.id === tool) ?? CAD_TOOLS[0];
-  const path = cadPath(t.id, P.id);
+  const rawPath = cadPath(t.id, P.id);
+  const rules = P.id === "draft" ? draftRules(m) : null;
+  const path = P.id === "draft" && m?.need != null
+    ? { ...rawPath, steps: withDraftAngles(rawPath.steps, rules?.outside ?? m.need, rules?.inside ?? m.need) }
+    : rawPath;
   const uq = unlockQty(P, fx.set, p.methods, p.data.cost, p.q, p.qs);
   const u = unlockOf(P, fx.set, p.methods, uq);
   const best = u.best;

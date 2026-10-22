@@ -23,7 +23,7 @@ export interface FigItem {
   tone?: "ok" | "warn" | "bad";
 }
 
-export function SheetTop({ title, meta, figs, sure }: { title: string; meta: string; figs: FigItem[]; sure?: SureLens }) {
+export function SheetTop({ title, meta, figs, sure, route = null }: { title: string; meta: string; figs: FigItem[]; sure?: SureLens; route?: string | null }) {
   // Lengths in the figures follow the person's unit (mm or in); the engine's numbers stay in mm.
   const { unit } = useUnits();
   return (
@@ -39,7 +39,7 @@ export function SheetTop({ title, meta, figs, sure }: { title: string; meta: str
           </div>
         ))}
       </div>
-      {sure ? <SureLine lens={sure} /> : null}
+      {sure ? <SureLine lens={sure} route={route} /> : null}
     </div>
   );
 }
@@ -48,13 +48,13 @@ const SURE_SRC: Record<string, string> = { file: "Your file", yours: "Yours", ty
 const SURE_TO = { rates: R.rates, actuals: R.actuals, machines: `${R.shop}?add=1`, conditions: null } as const;
 
 /** "How sure is this?": what the answer above rests on, one line by default and the detail one click away. */
-function SureLine({ lens }: { lens: SureLens }) {
+function SureLine({ lens, route = null }: { lens: SureLens; route?: string | null }) {
   const p = usePart();
   const [open, setOpen] = React.useState(false);
   const id = React.useId();
   const sure = React.useMemo(
-    () => (p.checking || p.interrupted ? null : sureOf(lens, { validation: p.data.validation, cost: p.data.cost, machines: p.data.machines, env: p.data.runEnvironment, methods: p.methods, q: p.q })),
-    [lens, p.checking, p.interrupted, p.data.validation, p.data.cost, p.data.machines, p.data.runEnvironment, p.methods, p.q],
+    () => (p.checking || p.interrupted ? null : sureOf(lens, { validation: p.data.validation, cost: p.data.cost, machines: p.data.machines, env: p.data.runEnvironment, methods: p.methods, q: p.q, route })),
+    [lens, p.checking, p.interrupted, p.data.validation, p.data.cost, p.data.machines, p.data.runEnvironment, p.methods, p.q, route],
   );
   if (!sure) return null;
   const to = sure.next ? SURE_TO[sure.next.to] : null;
