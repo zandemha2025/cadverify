@@ -5,18 +5,8 @@ import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-fram
 import { authErrorMessage } from "@/lib/api-recovery";
 import { twoStepHref } from "@/components/two-step/href";
 import { browserPendingPartStore, peekPendingPart } from "@/lib/pending-part";
-
-function safeLocalPath(raw: unknown): string {
-  if (typeof raw !== "string") return "/verify";
-  try {
-    const base = new URL("https://cadverify.invalid");
-    const parsed = new URL(raw, base);
-    if (parsed.origin !== base.origin || !raw.startsWith("/")) return "/verify";
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return "/verify";
-  }
-}
+// The one post-sign-in path check (it refuses what normalises to another site).
+import { safeLocalPath } from "@/lib/safe-return-path";
 
 export function MagicVerifyClient() {
   const [token, setToken] = React.useState<string | null>(null);

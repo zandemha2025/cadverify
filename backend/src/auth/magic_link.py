@@ -25,7 +25,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from functools import lru_cache
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import redis.asyncio as aioredis
 import resend
@@ -63,9 +63,22 @@ _NEXT_RE = re.compile(r"^/(?![/\\])[A-Za-z0-9\-._~/?=&%]{0,511}$")
 
 
 def _safe_next(raw: object) -> str:
+    """A plain local path, or "" (the link then carries no ``next``).
+
+    The web page runs ``next`` through the WHATWG URL parser, which removes dot
+    segments and decodes ``%2e``: ``/.//evil.example`` and ``/a/..//x`` become
+    ``//evil.example``, another site. So "//", a backslash or a dot segment
+    anywhere in the path, raw or percent-decoded, refuses the value.
+    """
     # Direct (non-HTTP) callers pass FastAPI's Form() default object.
     value = raw.strip() if isinstance(raw, str) else ""
-    return value if _NEXT_RE.match(value) else ""
+    if not _NEXT_RE.match(value):
+        return ""
+    path = value.split("?", 1)[0]
+    for form in (path, unquote(path)):
+        if "//" in form or "\\" in form or any(seg in (".", "..") for seg in form.split("/")):
+            return ""
+    return value
 
 
 def _err(status: int, code: str, message: str) -> HTTPException:
