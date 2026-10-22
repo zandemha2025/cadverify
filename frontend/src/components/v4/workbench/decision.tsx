@@ -16,7 +16,8 @@ import {
   exportCostCsv,
   exportCostJson,
 } from "@/lib/api";
-import { deriveBreakeven } from "@/lib/breakeven";
+import { chartScaleNote, deriveBreakeven } from "@/lib/breakeven";
+import { processName } from "../process-names";
 import { fileExt } from "@/lib/cad-file";
 import { parseCalibration } from "@/lib/cost-views";
 import { R } from "../routes";
@@ -374,7 +375,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
         <section className="panel chart" aria-labelledby="ch-h">
           <div className="ph">
             <h2 id="ch-h">Cost each by quantity</h2>
-            <span>Log scales · approximate between costed quantities</span>
+            <span>{chartScaleNote(be?.curves ?? [], processName)}</span>
           </div>
           {chart ? (
             <div ref={chartBox}>

@@ -442,3 +442,26 @@ test("a curve whose estimate carries the model is priced by it between and beyon
   assert.equal(unitCostAt({ ...c, model: null }, 2500).toFixed(2), "35.60");
   assert.equal(unitCostAt(c, 2500).toFixed(2), "30.32");
 });
+
+/* ---- (g) the chart says what its curves are (C1) ------------------------------ */
+
+test("the chart's note says the model's own price where the curves carry the model, and keeps the caution otherwise", async () => {
+  const { chartScaleNote } = await import("./breakeven.ts");
+  const qty_model = {
+    v: 1, once_usd: 113.75, per_part_usd: 1.306914, machine_usd: 15.693375, learning_usd: 18.55,
+    learning: { rate: 0.9, first_lot: 100, floor: 0.25 }, per_plate: [], order_min_usd: 90, specs: [],
+  };
+  const base: ProcessCurve = {
+    process: "cnc_3axis", material: "Mild Steel", fixedAmort: 113.75, variablePerUnit: 35.55, dfmReady: true,
+    leadLow: null, leadHigh: null, points: [{ qty: 1, unit: 149.3 }, { qty: 100, unit: 36.69 }], model: null,
+  };
+  const modeled = { ...base, model: { qty_model } as unknown as CostEstimate };
+  assert.equal(chartScaleNote([modeled, { ...modeled, process: "fdm" }]), "Log scales · the model’s own price at every quantity");
+  assert.equal(chartScaleNote([base]), "Log scales · approximate between costed quantities");
+  assert.equal(chartScaleNote([]), "Log scales · approximate between costed quantities");
+  // Some curves carry it, some don't: each said as it is.
+  assert.equal(
+    chartScaleNote([modeled, { ...base, process: "sheet_metal" }], (p) => (p === "sheet_metal" ? "Sheet metal" : p)),
+    "Log scales · the model’s own price at every quantity; Sheet metal approximate between costed quantities",
+  );
+});

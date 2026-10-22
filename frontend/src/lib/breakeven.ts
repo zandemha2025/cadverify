@@ -49,6 +49,26 @@ export interface Recommendation {
   dfmReady: boolean;
 }
 
+/** A curve priced by the model's own structure at every quantity (its estimate carries `qty_model`). */
+export function isModeled(c: ProcessCurve): boolean {
+  return !!c.model && modelUnitCostAt(c.model, 1) != null;
+}
+
+/**
+ * The cost-by-quantity chart's note (C1): a record whose curves carry the
+ * model (`qty_model`) is the model's own price at every quantity; an older one
+ * is interpolated between the costed quantities, which is approximate. When
+ * only some curves carry it, the others are named.
+ */
+export function chartScaleNote(curves: readonly ProcessCurve[], name: (process: string) => string = (p) => p): string {
+  const rough = curves.filter((c) => !isModeled(c));
+  if (!curves.length || rough.length === curves.length) return "Log scales · approximate between costed quantities";
+  if (!rough.length) return "Log scales · the model’s own price at every quantity";
+  const names = [...new Set(rough.map((c) => name(c.process)))];
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  return `Log scales · the model’s own price at every quantity; ${list} approximate between costed quantities`;
+}
+
 /** unit cost of a curve at quantity q. */
 export function unitCostAt(c: ProcessCurve, q: number): number {
   if (q <= 0) return Infinity;
