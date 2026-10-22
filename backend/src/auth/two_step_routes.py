@@ -14,6 +14,7 @@ Account › Security (dashboard session):
   POST /auth/two-step/disable        current code or recovery code
   POST /auth/two-step/recovery-codes current code -> ten new codes
   POST /auth/sessions/sign-out-others
+  POST /auth/two-step/step-up        joined an org that requires it: session -> setup challenge
 
 Organization rule (dashboard session, org admin to change):
   GET  /auth/two-step/org            the rule, and (admins) who has it on
@@ -255,6 +256,30 @@ async def new_recovery_codes(body: ProveIn, request: Request, response: Response
     await _audit(session, request, user_id, "auth.two_step_recovery_codes_replaced", {"proved_with": used}, email=email)
     await session.commit()
     return {"recovery_codes": codes, "status": await ts.status(session, user_id)}
+
+
+@router.post("/two-step/step-up")
+@limiter.limit("30/minute")
+async def step_up(request: Request, response: Response, user_id: int = Depends(require_dashboard_session), session: AsyncSession = Depends(get_db_session)) -> dict:
+    """A session that now owes two-step setup becomes a setup challenge.
+
+    Joining an organization that requires two-step (sign-up from an invite, or
+    accepting one while signed in) happens inside a session made before the
+    rule applied to this person. When the account has no two-step yet, every
+    one of its sessions ends here and a setup challenge is returned, so the
+    organization's data is reached only after setting it up. An account that
+    already has two-step (or owes nothing) keeps its session: it signed in with
+    a code, or through single sign-on, which is exempt.
+    """
+    require_auth_proxy_if_enabled(request)
+    _no_store(response)
+    if await ts.sign_in_requirement(session, user_id) != "setup":
+        return {"two_step": None}
+    version = await _bump_version(session, user_id)
+    email, _role, _active, _v = await _user(session, user_id)
+    await _audit(session, request, user_id, "user.sessions_revoked", {"revoked_by": user_id, "scope": "two_step_setup_required"}, email=email)
+    await session.commit()
+    return {"two_step": "setup", "challenge": ts.make_challenge(user_id, version, "setup", "password")}
 
 
 @router.post("/sessions/sign-out-others")

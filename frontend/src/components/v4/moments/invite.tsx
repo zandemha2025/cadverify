@@ -18,6 +18,7 @@ import { useSearchParams } from "next/navigation";
 import { apiProblemDetail } from "@/lib/api-recovery";
 import { AuthCard } from "./auth-card";
 import { V4_HOME } from "./landing";
+import { twoStepHref } from "@/components/two-step/href";
 import { R } from "../routes";
 import { switchTo, teamInfo, useTeamSetup } from "../onboard/teammate";
 import { inviteNext } from "./invite-next";
@@ -128,6 +129,14 @@ export function V4InviteAccept() {
       const d = res.data as { org_id?: unknown; org_role?: unknown; created?: unknown };
       // Joining makes it the active organization, so its machines and rates apply right away (N6).
       const sw = typeof d.org_id === "string" ? await switchTo(d.org_id) : null;
+      // An organization that requires two-step sign-in: set it up before reaching its data.
+      const up = await fetch("/api/auth/two-step/step-up", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (up?.two_step === "setup") {
+        window.location.href = twoStepHref(next ?? `${R.parts}?joined=1`);
+        return;
+      }
       return setState({
         kind: "joined",
         role: String(d.org_role ?? "member"),

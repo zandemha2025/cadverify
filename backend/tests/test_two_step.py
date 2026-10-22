@@ -521,6 +521,22 @@ async def test_org_rule_signs_out_members_and_sets_them_up_at_next_sign_in(env, 
             # Next time, a code.
             r = await ac.post("/auth/login", json={"email": member_email, "password": PASSWORD})
             assert r.json()["two_step"] == "verify"
+            # Step-up leaves a session alone once two-step is on.
+            r = await ac.post("/auth/two-step/step-up", headers=_cookie(member_s))
+            assert r.json() == {"two_step": None}
+
+            # Someone who joins the org later (sign-up from an invite) is stepped up
+            # before reaching its data: their fresh session ends, a setup challenge comes back.
+            late_email = w.email("late")
+            late, late_s = await _signup(ac, late_email)
+            assert (await ac.post("/auth/two-step/step-up", headers=_cookie(late_s))).json() == {"two_step": None}
+            async with eng.get_session_factory()() as s:
+                await s.execute(text("INSERT INTO memberships (id, org_id, user_id, org_role) VALUES (:i, :o, :u, 'viewer')"), {"i": uuid.uuid4().hex, "o": org, "u": late})
+                await s.commit()
+            r = await ac.post("/auth/two-step/step-up", headers=_cookie(late_s))
+            assert r.status_code == 200 and r.json()["two_step"] == "setup"
+            assert ts.read_challenge(r.json()["challenge"]).purpose == "setup"
+            assert (await ac.get("/protected", headers=_cookie(late_s))).status_code == 401
     finally:
         await _cleanup(w)
 

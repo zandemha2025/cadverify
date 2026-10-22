@@ -12,7 +12,8 @@
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
-import { setSession } from "@/lib/session";
+import { clearSession, setSession } from "@/lib/session";
+import { isChallenge, setTwoStepChallenge } from "@/lib/two-step-cookie";
 import { crossSiteRefusal } from "@/lib/same-origin-request";
 
 export const dynamic = "force-dynamic";
@@ -52,8 +53,11 @@ export async function POST(req: Request) {
     }
     await setSession(data.session);
     const invite = inviteToken ? await acceptInvite(data.session, inviteToken) : undefined;
+    // Joining an organization that requires two-step sign-in: set it up before
+    // reaching its data (the new session ends; a setup challenge replaces it).
+    const twoStep = invite && "org_id" in invite ? await stepUp(req, data.session) : null;
     return NextResponse.json(
-      { user: data.user, ...(invite ? { invite } : {}) },
+      { user: data.user, ...(invite ? { invite } : {}), ...(twoStep ? { two_step: twoStep } : {}) },
       { headers: { "cache-control": "no-store" } },
     );
   } catch (err) {
@@ -91,5 +95,25 @@ async function acceptInvite(session: string, token: string): Promise<InviteOutco
     return { error: message ?? "The invite wasn’t accepted." };
   } catch {
     return { error: "Couldn’t reach ScaleCAD to accept the invite." };
+  }
+}
+
+/** "setup" when the organization just joined requires two-step and the account has none. */
+async function stepUp(req: Request, session: string): Promise<"setup" | null> {
+  const path = "/auth/two-step/step-up";
+  try {
+    const res = await fetch(backendUrl(path), {
+      method: "POST",
+      headers: { Cookie: `dash_session=${session}`, ...signedAuthProxyHeaders(req, path) },
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = (await res.json().catch(() => ({}))) as { two_step?: unknown; challenge?: unknown };
+    if (!res.ok || data.two_step !== "setup" || !isChallenge(data.challenge)) return null;
+    await setTwoStepChallenge(data.challenge);
+    await clearSession();
+    return "setup";
+  } catch {
+    return null;
   }
 }

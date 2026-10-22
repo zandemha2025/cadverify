@@ -12,8 +12,8 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 import { crossSiteRefusal } from "@/lib/same-origin-request";
-import { getSessionToken, setSession } from "@/lib/session";
-import { clearTwoStepChallenge, getTwoStepChallenge } from "@/lib/two-step-cookie";
+import { clearSession, getSessionToken, setSession } from "@/lib/session";
+import { clearTwoStepChallenge, getTwoStepChallenge, isChallenge, setTwoStepChallenge } from "@/lib/two-step-cookie";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +38,8 @@ const ACTIONS: Record<string, Action> = {
   "recovery-codes": { path: "/auth/two-step/recovery-codes", methods: ["POST"], auth: "session" },
   org: { path: "/auth/two-step/org", methods: ["GET", "PUT"], auth: "session" },
   "sign-out-others": { path: "/auth/sessions/sign-out-others", methods: ["POST"], auth: "session" },
+  // Joined an org that requires two-step: the session ends and becomes a setup challenge.
+  "step-up": { path: "/auth/two-step/step-up", methods: ["POST"], auth: "session" },
 };
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -104,6 +106,12 @@ async function handle(req: Request, ctx: { params: Promise<{ action: string }> }
     delete data.session;
   }
   if (spec.finishes) await clearTwoStepChallenge();
+  if (action === "step-up" && isChallenge(data.challenge)) {
+    // The backend ended this session; keep the challenge server-side only.
+    await setTwoStepChallenge(data.challenge);
+    await clearSession();
+    delete data.challenge;
+  }
   return NextResponse.json(data, { headers: NO_STORE });
 }
 

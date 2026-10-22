@@ -7,7 +7,7 @@ import { mock, test } from "node:test";
 const sessionStub =
   "data:text/javascript,export const jar={session:null,token:'live-session-token-0123456789abcdef'};" +
   "export async function setSession(t){jar.session=t};export async function getSessionToken(){return jar.token};" +
-  "export async function setRevealOnce(){}";
+  "export async function setRevealOnce(){};export async function clearSession(){jar.session='cleared'}";
 const challengeStub =
   "data:text/javascript,export const jar={challenge:null,cleared:0};" +
   "export function isChallenge(v){return typeof v==='string'&&v.startsWith('ts1.')&&v.length>=16};" +
@@ -184,5 +184,29 @@ test("a cross-site page can't drive the two-step actions", async () => {
     assert.equal(fetchMock.mock.callCount(), 0);
   } finally {
     fetchMock.mock.restore();
+  }
+});
+
+test("step-up: joining an org that requires two-step swaps the session for a setup challenge", async () => {
+  session.jar.session = null;
+  challenge.jar.challenge = null;
+  const fetchMock = mock.method(globalThis, "fetch", async () => Response.json({ two_step: "setup", challenge: CHALLENGE }));
+  try {
+    const res = await twoStep.POST(req("/api/auth/two-step/step-up"), { params: Promise.resolve({ action: "step-up" }) });
+    assert.deepEqual(await res.json(), { two_step: "setup" });
+    assert.equal(challenge.jar.challenge, CHALLENGE);
+    assert.equal(session.jar.session, "cleared");
+  } finally {
+    fetchMock.mock.restore();
+  }
+  // Nothing owed: the session stays.
+  session.jar.session = null;
+  const keep = mock.method(globalThis, "fetch", async () => Response.json({ two_step: null }));
+  try {
+    const res = await twoStep.POST(req("/api/auth/two-step/step-up"), { params: Promise.resolve({ action: "step-up" }) });
+    assert.deepEqual(await res.json(), { two_step: null });
+    assert.equal(session.jar.session, null);
+  } finally {
+    keep.mock.restore();
   }
 });

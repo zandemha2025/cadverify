@@ -30,6 +30,7 @@ import { CAD_ACCEPT, takePendingFile } from "../pending-file";
 import { Chip } from "../ui";
 import { AuthCard, CardField } from "./auth-card";
 import { SignupDataNote } from "@/components/site/signup-data-note";
+import { twoStepHref } from "@/components/two-step/href";
 import { adoptTyped } from "./early-typing";
 import { tierHint } from "./email-tier";
 import { V4_HOME, V4_SIGNUP_HOME, afterSignup, v4Landing } from "./landing";
@@ -160,7 +161,8 @@ export function V4SignUp({
         // Joined (or not, and the accept page says why).
         const joined = data.invite && typeof data.invite.org_id === "string";
         const after = joined ? inviteNext(new URLSearchParams(asked?.split("?")[1] ?? "").get("next")) ?? `${R.parts}?joined=1` : `/orgs/accept?token=${encodeURIComponent(inviteToken)}`;
-        window.location.href = after;
+        // The organization requires two-step sign-in: set it up first.
+        window.location.href = data.two_step ? twoStepHref(after) : after;
         return;
       }
       // The part waits for this account only; the code goes to the number typed above.
