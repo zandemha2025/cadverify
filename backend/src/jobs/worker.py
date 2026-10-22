@@ -42,6 +42,12 @@ assert_production_operations()
 
 async def startup(ctx: dict) -> None:
     """Worker startup: load SAM-3D model into memory and init DB."""
+    # First: a default thread pool sized for every blocking call the worker can
+    # have running, so a DB host lookup never queues behind parses (executor.py).
+    from src.jobs.executor import install_worker_executor
+
+    install_worker_executor(asyncio.get_running_loop())
+
     from src.segmentation.sam3d.config import SAM3DConfig
     from src.segmentation.sam3d.pipeline import _get_backbone
 
