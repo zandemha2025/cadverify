@@ -102,13 +102,20 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
     if (value !== "yes" && "reb2b" in window) location.reload();
   }
   if (!ready) return null;
+  // Inside the app the choice lives in the account menu (Analytics: Allow / Off, with Privacy details),
+  // so nothing floats over the work. Until someone chooses there, analytics stays off, as if declined.
+  const inApp = !!path && (path === "/app" || path.startsWith("/app/"));
   return <>
     {visitorTracking && <Script id="scalecad-rb2b" nonce={nonce} strategy="afterInteractive">{RB2B_SCRIPT}</Script>}
+    {inApp ? null : choice === null ? (
     <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-4 left-4 right-4 sm:right-auto z-50 max-w-sm rounded-xl border border-black/15 bg-white p-4 text-sm text-black shadow-lg">
-    {choice === null ? <>
       <p>Allow analytics, masked public-page recordings and RB2B business visitor identification for sales follow-up? Passwords and CAD content are excluded. <a href="/privacy" className="underline">Privacy details</a></p>
       <div className="mt-3 flex gap-3"><button type="button" onClick={() => choose("yes")} className="rounded bg-black px-3 py-2 text-white">Allow analytics</button><button type="button" onClick={() => choose("no")} className="rounded border px-3 py-2">Decline</button></div>
-    </> : <button type="button" onClick={() => setChoice(null)}>Analytics preferences</button>}
     </aside>
+    ) : (
+    <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-3 left-3 z-50">
+      <button type="button" onClick={() => setChoice(null)} className="rounded-full border border-black/15 bg-white/90 px-3 py-1.5 text-xs text-black shadow-sm">Analytics preferences</button>
+    </aside>
+    )}
   </>;
 }
