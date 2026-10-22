@@ -112,7 +112,7 @@ export function pipeline(status: string, version: number | null): Stage[] {
   ];
 }
 
-export const ASSET_NAMES: Record<string, string> = { rate_card: "Rate card", shop_profile: "Supplier rate profile" };
+export const ASSET_NAMES: Record<string, string> = { rate_card: "Rate card", shop_profile: "Supplier rate profile", material_catalog: "Material catalog" };
 
 /** "you", the member's email, or "a former member". */
 export function personName(id: number | null, me: number | null, emails: Map<number, string>): string {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { diffCard, initials, noteLines, personName, pipeline } from "./changes-derive.ts";
+import { ASSET_NAMES, diffCard, initials, noteLines, personName, pipeline } from "./changes-derive.ts";
 import type { Assumption } from "./shop-api.ts";
 
 const v0: Assumption[] = [
@@ -88,4 +88,8 @@ test("ce-13 / ce-17: a draft takes overhead and margin as percents, machine rate
   const bad = applyDraft(payload, { ...form, overhead: "1500" }, (p) => p);
   assert.equal(bad.ok, false);
   if (!bad.ok) assert.match(bad.errors.overhead, /percent, 0 to 300/);
+});
+
+test("every asset that goes through review has a name, material catalogs included (C2)", () => {
+  assert.deepEqual(ASSET_NAMES, { rate_card: "Rate card", shop_profile: "Supplier rate profile", material_catalog: "Material catalog" });
 });

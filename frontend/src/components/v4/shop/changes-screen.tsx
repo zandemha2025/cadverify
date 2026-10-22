@@ -119,7 +119,7 @@ export function ChangesScreen() {
             Approver <b>{admins != null && admins > 1 ? "Another admin" : "Admins"}</b>
           </>,
           <>
-            Covers <b>Rate card, supplier rate profiles</b>
+            Covers <b>Rate card, supplier rate profiles, material catalogs</b>
           </>,
         ]}
         tabs={TABS.shop.map((t) => (t.href === R.changes && reqs && waiting.length ? { ...t, count: waiting.length } : t))}
@@ -216,7 +216,7 @@ export function ChangesScreen() {
       <Sheet label="How review works" style={{ bottom: 20 }}>
         <div className="top">
           <h2 className="stitle">Review rules</h2>
-          <p className="smeta">Rate card · supplier rate profiles</p>
+          <p className="smeta">Rate card · supplier rate profiles · material catalogs</p>
         </div>
         <div className="scroll">
           <div className="step">
@@ -267,12 +267,12 @@ export function ChangesScreen() {
             <b>Pins its version</b>
           </div>
           <div className="note">
-            <b>Known gaps</b>
+            <b>Who approves</b>
             <span>
               {admins != null && admins > 1
                 ? "A proposer can’t approve their own change: another admin does."
                 : "With one admin, their own changes are approved by them and marked self-approved. Add a second admin to separate proposing from approving."}{" "}
-              Material catalogs aren&apos;t reviewed, and an admin can still publish a rate card directly through the API.
+              Rate cards, supplier rate profiles and material catalogs are published only by an approval here, in the app and through the API.
             </span>
           </div>
         </div>

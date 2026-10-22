@@ -1,9 +1,11 @@
 """Governance change-request API (W4 governance zone, MVP).
 
 The management + review surface for the "change request -> review -> publish"
-flow over the governed rate-card and shop-profile libraries. A member PROPOSES a
-DRAFT version for review; an org admin APPROVES it (which publishes the draft via
-the library's existing publish path) or REJECTS it (the draft stays a draft).
+flow over the governed rate-card, shop-profile and material-catalog libraries. A
+member PROPOSES a DRAFT version for review; an org admin APPROVES it (which
+publishes the draft via the library's existing publish path) or REJECTS it (the
+draft stays a draft). Approval is the only way a governed version is published:
+the libraries' own publish routes refuse with 403 ``review_required`` (C2).
 
 Tenancy: ORG-SCOPED. Reads resolve the caller's org (``resolve_org``); every row
 is filtered by ``org_id`` so a caller never sees or decides another org's change
@@ -18,6 +20,7 @@ decorators exactly.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -55,6 +58,11 @@ class RejectBody(BaseModel):
     note: str = ""
 
 
+class ApproveBody(BaseModel):
+    # When the approved version takes effect (not in the past); now when omitted.
+    effective_from: Optional[datetime] = None
+
+
 async def _write_org(ctx: OrgAuthContext, session: AsyncSession) -> str:
     """The org a governance action writes to: the membership org (or, for a
     superadmin with no membership, their resolved org). 400 if none."""
@@ -70,6 +78,8 @@ def _published_stale_reason(asset_type: str, published) -> str:
     published."""
     if asset_type == svc.ASSET_SHOP_PROFILE:
         return f"shop_profile_published:{getattr(published, 'slug', '')}:v{published.version}"
+    if asset_type == svc.ASSET_MATERIAL_CATALOG:
+        return f"material_library_published:v{published.version}"
     return f"rate_library_published:v{published.version}"
 
 
@@ -153,12 +163,18 @@ async def approve_change_request(
     request: Request,
     response: Response,
     request_id: int,
+    body: Optional[ApproveBody] = None,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Approve a PROPOSED request — PUBLISHES the target draft (admin)."""
+    """Approve a PROPOSED request — PUBLISHES the target draft (admin). An
+    optional ``effective_from`` schedules when it takes effect."""
     org_id = await _write_org(ctx, session)
-    row, published = await svc.approve(session, org_id, request_id, ctx.user_id)
+    row, published = await svc.approve(
+        session, org_id, request_id, ctx.user_id,
+        effective_from=body.effective_from if body is not None else None,
+    )
+    self_approved = bool(svc.serialize_request(row)["self_approved"])
     lib = svc._library_for(row.asset_type)
     # Approval publishes through the library's own path, so older decisions go
     # stale exactly as on a direct publish (same txn, same reason).
@@ -180,7 +196,8 @@ async def approve_change_request(
     await emit_event(
         session, ctx.user_id, "governance.approved", "change_request", str(row.id),
         {"org_id": org_id, "asset_type": row.asset_type,
-         "published_version_id": getattr(published, "id", None)},
+         "published_version_id": getattr(published, "id", None),
+         "self_approved": self_approved},
         org_id=org_id,
     )
     # Approval PUBLISHES the target draft through the library's own path — record
@@ -189,7 +206,8 @@ async def approve_change_request(
         session, ctx.user_id, "library.version_published", row.asset_type,
         str(getattr(published, "id", "")),
         {"org_id": org_id, "library": row.asset_type, "via": "governance",
-         "version": getattr(published, "version", None)},
+         "version": getattr(published, "version", None),
+         "self_approved": self_approved},
         org_id=org_id,
     )
     await session.commit()

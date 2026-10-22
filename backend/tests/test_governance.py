@@ -135,8 +135,8 @@ async def test_approve_publishes_and_marks_approved(monkeypatch):
     async def _get_request(session, org_id, rid):
         return cr
 
-    async def _publish(session, org_id, vid):
-        calls["publish"] = (org_id, vid)
+    async def _publish(session, org_id, vid, *, effective_from=None):
+        calls["publish"] = (org_id, vid, effective_from)
         return published
 
     monkeypatch.setattr(svc, "get_request", _get_request)
@@ -144,7 +144,7 @@ async def test_approve_publishes_and_marks_approved(monkeypatch):
 
     row, pub = await svc.approve(_FakeSession(), "orgA", 1, reviewer_id=20)
     # Governance delegated to the REAL publish path with the target draft's id.
-    assert calls["publish"] == ("orgA", 7)
+    assert calls["publish"] == ("orgA", 7, None)
     assert pub is published
     assert row.status == "approved"
     assert row.reviewed_by == 20
@@ -159,7 +159,7 @@ async def test_approve_aborts_if_publish_fails(monkeypatch):
     async def _get_request(session, org_id, rid):
         return cr
 
-    async def _publish(session, org_id, vid):
+    async def _publish(session, org_id, vid, *, effective_from=None):
         raise HTTPException(status_code=409, detail="version already published")
 
     monkeypatch.setattr(svc, "get_request", _get_request)
