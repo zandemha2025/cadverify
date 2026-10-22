@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import cost_decision_service
@@ -225,7 +225,7 @@ async def put_shop_capabilities(
     request: Request,
     response: Response,
     body: ShopCapabilitiesBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Declare (upsert) the org's shop-level secondary ops. Idempotent per org.
@@ -261,7 +261,7 @@ async def import_machines(
     request: Request,
     response: Response,
     file: Optional[UploadFile] = File(None),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Bulk-import an org's owned machines from a CSV.
@@ -315,7 +315,7 @@ async def create_machine(
     request: Request,
     response: Response,
     body: MachineBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Declare one owned machine. A malformed capability field or an unknown field
@@ -403,7 +403,7 @@ async def patch_machine(
     response: Response,
     machine_id: str,
     body: MachinePatchBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Patch a machine's fields (org-scoped). Only supplied keys change; the merged
@@ -431,7 +431,7 @@ async def delete_machine(
     request: Request,
     response: Response,
     machine_id: str,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Delete one owned machine (org-scoped). 404 when no such machine."""

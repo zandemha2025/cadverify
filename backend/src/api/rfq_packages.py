@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import rfq_package_service as svc
@@ -43,7 +43,7 @@ async def create_rfq_package(
     request: Request,
     response: Response,
     body: CreateRfqPackageBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     package = await svc.create_package(

@@ -44,7 +44,7 @@ from src.auth.org_limits import enforce_org_limits
 from src.auth.validation_caps import MeteredRoute, enforce_validation_caps, paid_access_required
 from src.auth.free_tool_limits import limit_free_fit, limit_free_fit_previews, limit_free_repair
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, org_role_allows_writes, require_org_checker, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.costing.units import mesh_source_units
 from src.db.engine import get_db_session
@@ -851,7 +851,7 @@ async def validate_file(
             "says which orientation it used."
         ),
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -1007,10 +1007,8 @@ async def validate_fit_capability(user: AuthedUser = Depends(require_role(Role.v
     from src.services.fit_service import context_fit_enabled
 
     paid_access = True
-    try:
-        can_submit = Role(user.role).rank >= Role.analyst.rank
-    except ValueError:
-        can_submit = False
+    # The same rule POST /validate/fit enforces: platform analyst and org member.
+    can_submit = await org_role_allows_writes(user)
     enabled = context_fit_enabled()
     return {
         "enabled": enabled,
@@ -1033,7 +1031,7 @@ async def validate_fit(
     nudge_x_mm: float = Query(0.0, allow_inf_nan=False),
     nudge_y_mm: float = Query(0.0, allow_inf_nan=False),
     nudge_z_mm: float = Query(0.0, allow_inf_nan=False),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _free_limit: None = Depends(limit_free_fit),
@@ -1175,7 +1173,7 @@ async def validate_preview_mesh(
     file: UploadFile = File(...),
     purpose: str = Query("preview", pattern="^(preview|analysis|fit)$"),
     units: str = Query("mm", pattern="^(mm|inch)$"),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _fit_preview_limit: None = Depends(limit_free_fit_previews),
@@ -1382,7 +1380,7 @@ async def validate_assembly(
         "each part is costed at annual = per-assembly-count × this (labelled "
         "user-declared); unset => costed at the per-assembly FACT count only.",
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -1462,7 +1460,7 @@ async def validate_quick(
     request: Request,
     response: Response,
     file: UploadFile = File(...),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -1496,7 +1494,7 @@ async def validate_demo(
             "responses lean."
         ),
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -2394,7 +2392,7 @@ async def validate_cost(
                     "Unset => the file's own axes. Same file: no extra check. "
                     "The decision records the orientation it used.",
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -2470,7 +2468,7 @@ async def validate_cost_demo(
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -2504,7 +2502,7 @@ async def validate_repair(
         None,
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     _validation_cap: None = Depends(enforce_validation_caps),
     _free_limit: None = Depends(limit_free_repair),

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rate_limit import limiter
 from src.auth.validation_caps import effective_plan, paid_access_required
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_checker, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import direct_upload_service as service
@@ -132,7 +132,7 @@ async def initiate_multipart_upload(
         str | None,
         Header(alias="Idempotency-Key"),
     ] = None,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     plan: str | None = Depends(require_upload_access),
 ):
@@ -205,7 +205,7 @@ async def put_relayed_part(
     response: Response,
     direct_upload_id: str,
     part_number: int,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
 ):
     """One part of an upload, through the API (local backend only; S3 takes parts directly).
@@ -253,7 +253,7 @@ async def put_relayed_part(
 async def refresh_multipart_part_urls(
     direct_upload_id: str,
     body: RefreshPartURLsBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
@@ -273,7 +273,7 @@ async def refresh_multipart_part_urls(
 async def complete_multipart_upload(
     direct_upload_id: str,
     body: CompleteMultipartBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
@@ -292,7 +292,7 @@ async def complete_multipart_upload(
 @router.post("/{direct_upload_id}/abort")
 async def abort_multipart_upload(
     direct_upload_id: str,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
 ):
     try:

@@ -179,6 +179,112 @@ def require_org_role(min_role: OrgRole):
     return _check
 
 
+_org_member_gate = require_org_role(OrgRole.member)
+
+
+async def _org_name(org_id: str) -> Optional[str]:
+    from sqlalchemy import text
+
+    from src.auth.models import _session
+
+    async with _session()() as s:
+        row = (
+            await s.execute(
+                text("SELECT name FROM organizations WHERE id = :id"), {"id": org_id}
+            )
+        ).first()
+    return str(row[0]) if row and row[0] else None
+
+
+async def _read_only_refusal(user: AuthedUser, action: str) -> HTTPException:
+    """The plain 403 an org viewer (or a member-less account) gets for a write."""
+    org_id = org_name = org_role = None
+    try:
+        membership = await lookup_org_membership(user.user_id)
+        if membership is not None:
+            org_id, org_role = membership
+            org_name = await _org_name(org_id)
+    except Exception:  # the refusal stands even if the name can't be read
+        pass
+    if org_role in ("member", "admin"):
+        # Not a viewer: a bearer key issued by another org than the active one.
+        return HTTPException(
+            403,
+            detail={
+                "code": "api_key_org_mismatch",
+                "message": (
+                    "This API key was issued in another organization than your "
+                    "active one. Use a key issued for the active organization."
+                ),
+                "doc_url": error_doc_url("api_key_org_mismatch"),
+            },
+        )
+    if org_role is None:
+        message = (
+            "Your account isn't a member of an organization. Ask an admin for "
+            f"member access to {action}."
+        )
+    else:
+        message = (
+            f"You're a viewer in {org_name or 'this organization'}: you can open "
+            f"its parts and records. Ask an admin for member access to {action}."
+        )
+    return HTTPException(
+        403,
+        detail={
+            "code": "org_member_required",
+            "message": message,
+            "org_id": org_id,
+            "org_name": org_name,
+            "org_role": org_role,
+            "doc_url": error_doc_url("org_member_required"),
+        },
+    )
+
+
+def _org_member_write_gate(action: str):
+    """Platform ``analyst`` AND org role ``member`` or above in the active org.
+
+    An org ``viewer`` keeps every read but cannot check, import, edit, run or
+    share anything; the refusal names the org and says what to ask for.
+    Platform superadmins keep the ``require_org_role`` bypass.
+    """
+
+    async def _gate(user: AuthedUser = Depends(require_role(Role.analyst))) -> AuthedUser:
+        try:
+            await _org_member_gate(user)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if detail.get("code") != "insufficient_org_role":
+                raise
+            raise await _read_only_refusal(user, action) from exc
+        return user
+
+    return _gate
+
+
+# The one gate for routes that change or publish an organization's data, and
+# its twin for routes that check a new part (same rule, the refusal says
+# "check new parts"). Tests that bypass auth on the main app override both.
+require_org_writer = _org_member_write_gate("change them")
+require_org_checker = _org_member_write_gate("check new parts")
+
+
+async def org_role_allows_writes(user: AuthedUser) -> bool:
+    """Whether ``user`` would clear :data:`require_org_writer` (for capability probes)."""
+    try:
+        rank = Role(user.role).rank
+    except ValueError:
+        return False
+    if rank < Role.analyst.rank:
+        return False
+    try:
+        await _org_member_gate(user)
+    except HTTPException:
+        return False
+    return True
+
+
 def require_role_and_org_role(min_role: Role, min_org_role: OrgRole):
     """Require both product capability and active-tenant mutation authority.
 

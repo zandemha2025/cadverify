@@ -168,6 +168,7 @@ def _apply_auth_bypass(app) -> None:
     """
     from unittest.mock import AsyncMock, MagicMock
 
+    from src.auth.rbac import require_org_checker, require_org_writer
     from src.auth.require_api_key import AuthedUser, require_api_key
     from src.db.engine import get_db_session
 
@@ -203,7 +204,65 @@ def _apply_auth_bypass(app) -> None:
     for dependency in free_tool_limits.ALL:
         app.dependency_overrides[dependency] = lambda: None
     app.dependency_overrides[require_api_key] = _fake_user
+    # The tenant-write gates read org membership from the database; the bypass
+    # treats whoever authenticated as an org member, as before the gates
+    # existed. Authentication itself still runs (a test that drops the
+    # require_api_key override gets the real 401).
+    from fastapi import Depends
+
+    async def _authenticated_member(user: AuthedUser = Depends(require_api_key)) -> AuthedUser:
+        return user
+
+    app.dependency_overrides[require_org_writer] = _authenticated_member
+    app.dependency_overrides[require_org_checker] = _authenticated_member
     app.dependency_overrides[get_db_session] = _fake_db_session
+
+
+@pytest.fixture(autouse=True)
+def _fake_test_users_are_org_members(monkeypatch):
+    """A made-up test user (no ``users`` row) counts as a member of a test org.
+
+    Org-data writes require org role member or above (``require_org_writer`` /
+    ``require_org_checker``). Many route tests authenticate as a fake user id
+    with no database rows; before the gate those callers were implicitly
+    members of their own org. A real user row keeps the real answer (a
+    viewer, a removed member, nobody), and a test that patches
+    ``src.auth.rbac.lookup_org_membership`` itself replaces this fallback.
+    The lookup uses its own short-lived connection so no pooled connection is
+    carried across the per-test event loops.
+    """
+    from src.auth import rbac
+
+    url = os.environ.get("DATABASE_URL", "")
+
+    async def _lookup(user_id: int):
+        if not url.startswith("postgresql"):
+            return ("test-org", "member")
+        import asyncpg
+
+        try:
+            conn = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
+        except Exception:
+            return ("test-org", "member")
+        try:
+            row = await conn.fetchrow(
+                "SELECT m.org_id, m.org_role FROM memberships m WHERE m.user_id = $1 "
+                "ORDER BY (m.org_id IS NOT DISTINCT FROM "
+                "(SELECT current_org_id FROM users WHERE id = $1)) DESC, "
+                "m.created_at ASC, m.id ASC LIMIT 1",
+                user_id,
+            )
+            if row is not None:
+                return (row[0], row[1])
+            if await conn.fetchval("SELECT 1 FROM users WHERE id = $1", user_id):
+                return None
+        except Exception:
+            pass
+        finally:
+            await conn.close()
+        return ("test-org", "member")
+
+    monkeypatch.setattr(rbac, "lookup_org_membership", _lookup)
 
 
 @pytest.fixture(autouse=True)
@@ -258,6 +317,10 @@ def _bypass_api_key_auth(monkeypatch):
             sys.modules["main"].app.dependency_overrides.pop(
                 require_api_key, None
             )
+            from src.auth.rbac import require_org_checker, require_org_writer
+
+            for gate in (require_org_writer, require_org_checker):
+                sys.modules["main"].app.dependency_overrides.pop(gate, None)
             sys.modules["main"].app.dependency_overrides.pop(
                 get_db_session, None
             )

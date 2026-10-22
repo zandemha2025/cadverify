@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import caller_org_subquery
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import CostDecision
@@ -236,7 +236,7 @@ async def set_cost_decision_disposition(
     body: DispositionBody,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Persist a human sourcing outcome, or withdraw it with ``null``.
@@ -383,7 +383,7 @@ async def create_cost_share(
     request: Request,
     response: Response,
     body: Optional[ShareOptions] = None,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Share a cost decision — a public short URL (/s/cost/...) that ends.
@@ -401,7 +401,7 @@ async def revoke_cost_share(
     decision_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Switch the link off now (its maker or an org admin). It then says so (410)."""

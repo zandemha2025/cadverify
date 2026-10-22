@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.auth.validation_caps import require_paid_access
 from src.db.engine import get_db_session
@@ -117,7 +117,7 @@ async def import_actuals(
     file: UploadFile = File(...),
     mapping: Optional[str] = Form(None),
     choices: Optional[str] = Form(None),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     org_id = await _org(session, user)
@@ -197,7 +197,7 @@ async def apply_calibration(
     request: Request,
     response: Response,
     body: ApplyIn,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     org_id = await _org(session, user)
@@ -224,7 +224,7 @@ async def apply_calibration(
 async def undo_calibration(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     org_id = await _org(session, user)

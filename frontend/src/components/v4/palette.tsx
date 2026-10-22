@@ -92,7 +92,7 @@ const GO: [string, string, string, string?, string[]?][] = [
   ["Notifications", "Inbox", R.notifications],
 ];
 
-export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; onShortcuts: () => void }) {
+export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPickFile: () => void; onShortcuts: () => void; checkBlocked?: string | null }) {
   const { open, setOpen, extra, currentPart } = usePalette();
   const { signOut } = useAuth();
   const router = useRouter();
@@ -129,7 +129,7 @@ export function Palette({ onPickFile, onShortcuts }: { onPickFile: () => void; o
   const hit = (...xs: (string | undefined)[]) => !q || xs.some((x) => x?.toLowerCase().includes(q));
 
   const actions: PaletteItem[] = [
-    { id: "a-check", group: "Actions", label: "Check a part", sub: "Open a STEP, STL or IGES file", run: onPickFile, words: "upload verify cad file" },
+    { id: "a-check", group: "Actions", label: "Check a part", sub: checkBlocked ?? "Open a STEP, STL or IGES file", run: onPickFile, words: "upload verify cad file" },
     { id: "a-sample", group: "Actions", label: "Run the sample", sub: "Sample bracket · real engine output · no check used", href: `${R.check}?sample=1`, words: "example demo bracket" },
     { id: "a-setup", group: "Actions", label: "Set up your organization", sub: "Machines, rates, conditions, programs, team", href: R.setup, words: "guide checklist onboarding start here" },
     { id: "a-machine", group: "Actions", label: "Add a machine", sub: "Opens the add form", href: `${R.shop}?add=1`, words: "printer import floor" },

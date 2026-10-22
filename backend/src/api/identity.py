@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import batch_service
@@ -69,7 +69,7 @@ async def confirm_identity(
     request: Request,
     response: Response,
     body: ConfirmIdentityBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Confirm (or correct) a part's identity in the caller's org corpus.
@@ -254,7 +254,7 @@ async def onboard_library(
     files: Optional[List[UploadFile]] = File(None),
     zip: Optional[UploadFile] = File(None),
     mapping: Optional[UploadFile] = File(None),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Bulk-onboard a customer's part library into the org identity corpus.

@@ -50,7 +50,7 @@ from src.auth.free_tool_limits import limit_free_catalog_runs
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import caller_org_subquery
 from src.auth.org_limits import enforce_org_limits
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session, get_session_factory
 from src.db.models import Analysis, Batch, BatchItem, DirectUpload
@@ -185,7 +185,7 @@ async def _reserve_catalog_run(session: AsyncSession, user_id: int, batch: Batch
 @router.post("/batch", status_code=202)
 async def create_batch(
     request: Request,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
     file: Optional[UploadFile] = File(None),
     direct_upload_id: Optional[str] = Form(None),
@@ -702,7 +702,7 @@ async def create_batch(
 @router.post("/catalog-runs", status_code=202, dependencies=[Depends(require_kill_switch_open)])
 async def create_catalog_run(
     request: Request,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
     file: Optional[UploadFile] = File(None, description="ZIP of CAD files (STL, STEP, IGES). The app zips many files or a folder."),
     direct_upload_id: Optional[str] = Form(
@@ -1132,7 +1132,7 @@ async def get_batch_results_csv(
 @router.post("/batch/{batch_id}/cancel")
 async def cancel_batch(
     batch_id: str,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Cancel a batch and terminalize every unfinished item atomically."""

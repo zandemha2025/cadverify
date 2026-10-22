@@ -44,7 +44,7 @@ from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import bom_service as svc
@@ -117,7 +117,7 @@ async def ingest_assembly(
     assembly_key: Optional[str] = Query(
         None, description="key to store this tree under (defaults to the filename)"
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _admission: None = Depends(admit_analysis),
@@ -162,7 +162,7 @@ async def onboard_bom(
     assembly_key: Optional[str] = Query(
         None, description="key to store this BOM under (or the upload filename)"
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
 ):

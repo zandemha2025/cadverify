@@ -46,7 +46,7 @@ export function StartScreen({
   /** What the cost breakdown's Check another part (or an old issue link) carried. */
   carried?: CheckContext;
 }) {
-  const { usage } = useShell();
+  const { usage, checkBlocked } = useShell();
   const [over, setOver] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [machines, setMachines] = React.useState<number | null>(null);
@@ -105,6 +105,21 @@ export function StartScreen({
           </p>
         </div>
         {notice ? <div style={{ position: "absolute", left: "calc(33% - 300px)", width: 600, top: 96, zIndex: 3 }}>{notice}</div> : null}
+        {checkBlocked ? (
+          // An org viewer: the org's parts and records are open, new checks are not.
+          <div className="plinth" role="note" aria-label="Read-only access">
+            <b>Read-only access</b>
+            <span>{checkBlocked}</span>
+            <span className="swap" style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" }}>
+              <Link className="btn ink" href={R.parts}>
+                Open your parts
+              </Link>
+              <Link className="btn" href={R.records}>
+                Cost records
+              </Link>
+            </span>
+          </div>
+        ) : (
         <div
           className={cx("plinth", over && "over")}
           role="group"
@@ -175,6 +190,7 @@ export function StartScreen({
             }}
           />
         </div>
+        )}
         <p className="five">Available after a check</p>
       </section>
       <aside className="sheet" aria-label="Getting started">

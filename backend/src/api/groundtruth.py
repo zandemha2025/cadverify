@@ -35,7 +35,7 @@ from src.auth.kill_switch import require_kill_switch_open
 from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import groundtruth_service as svc
@@ -199,7 +199,7 @@ async def create_ground_truth(
     request: Request,
     response: Response,
     payload: GroundTruthIn,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Persist one real ground-truth record for the caller's organization.
@@ -265,7 +265,7 @@ async def get_ground_truth(
 async def recalibrate_ground_truth(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Re-run the ground-truth loop over THIS org's records and refresh the
@@ -330,7 +330,7 @@ async def import_ground_truth(
     request: Request,
     response: Response,
     file: Optional[UploadFile] = File(None),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Bulk-import an org's historical costs from a CSV to feed the flywheel.

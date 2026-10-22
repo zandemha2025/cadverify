@@ -17,6 +17,7 @@ import { setPendingFile } from "./pending-file";
 import { Palette, PaletteProvider, usePalette } from "./palette";
 import { cx } from "./ui";
 import { WorkBar } from "./work/work-bar";
+import { checkBlockedLine } from "./viewer-access";
 
 /** The Pilot tag on a nav section; Many parts says what a work-email account gets free instead. */
 function navTag(key: string, usage: Usage | null): string {
@@ -29,13 +30,16 @@ function navTag(key: string, usage: Usage | null): string {
 
 type Usage = { plan: string; tier?: string; unlimited: boolean; used: number; cap: number; remaining: number };
 type Org = { org_id: string; name: string; org_role: string; is_active: boolean };
+type Orgs = { active: string | null; list: Org[] };
 
 const ShellContext = React.createContext<{
   pickFile: () => void;
   openShortcuts: () => void;
   usage: Usage | null;
   refreshUsage: () => void;
-}>({ pickFile: () => {}, openShortcuts: () => {}, usage: null, refreshUsage: () => {} });
+  /** Set for an org viewer: the line saying why Check a part is off. */
+  checkBlocked: string | null;
+}>({ pickFile: () => {}, openShortcuts: () => {}, usage: null, refreshUsage: () => {}, checkBlocked: null });
 
 export function useShell() {
   return React.useContext(ShellContext);
@@ -83,7 +87,22 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("proofshape:usage-changed", refreshUsage);
   }, [refreshUsage]);
 
-  const pickFile = React.useCallback(() => fileRef.current?.click(), []);
+  const [orgs, setOrgs] = React.useState<Orgs | null>(null);
+  React.useEffect(() => {
+    fetch(`${API_BASE}/orgs`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => b && setOrgs({ active: b.active_org_id ?? null, list: b.organizations ?? [] }))
+      .catch(() => {});
+  }, []);
+  // An org viewer reads the org's parts but can't check new ones: Check a part
+  // is off, and anything that would open the file picker lands on the check
+  // page, which says why.
+  const checkBlocked = checkBlockedLine(orgs?.list.find((o) => o.org_id === orgs.active) ?? null);
+
+  const pickFile = React.useCallback(() => {
+    if (checkBlocked) router.push(R.check);
+    else fileRef.current?.click();
+  }, [checkBlocked, router]);
 
   // Back from Stripe Checkout (?upgraded=1): say so once; the webhook may land a moment later.
   const [upgraded, setUpgraded] = React.useState(false);
@@ -125,7 +144,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const section = sectionOf(pathname);
   return (
-    <ShellContext.Provider value={{ pickFile, openShortcuts: () => setShortcuts(true), usage, refreshUsage }}>
+    <ShellContext.Provider value={{ pickFile, openShortcuts: () => setShortcuts(true), usage, refreshUsage, checkBlocked }}>
       <div className="ob" data-ui="v4">
         <header className="bar">
           <Link className="brand" href={R.home}>
@@ -146,9 +165,16 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           <button className="find" type="button" onClick={() => palette.setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
             Search parts and tools, or ask<span aria-hidden="true">⌘K</span>
           </button>
-          <button className="btn go sm" type="button" style={{ marginLeft: 8 }} onClick={pickFile}>
-            Check a part
-          </button>
+          <span title={checkBlocked ?? undefined} style={{ marginLeft: 8, display: "inline-flex" }}>
+            <button className="btn go sm" type="button" onClick={pickFile} disabled={!!checkBlocked} aria-describedby={checkBlocked ? "v4-check-blocked" : undefined}>
+              Check a part
+            </button>
+            {checkBlocked ? (
+              <span id="v4-check-blocked" className="sr">
+                {checkBlocked}
+              </span>
+            ) : null}
+          </span>
           <input
             ref={fileRef}
             type="file"
@@ -165,7 +191,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             }}
           />
           <Bell />
-          <AccountMenu usage={usage} onShortcuts={() => setShortcuts(true)} />
+          <AccountMenu usage={usage} orgs={orgs} setOrgs={setOrgs} onShortcuts={() => setShortcuts(true)} />
         </header>
         {upgraded ? (
           <div className="toast" role="status" style={{ position: "absolute", right: 20, top: 66, zIndex: 20 }}>
@@ -183,7 +209,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         ) : null}
         {children}
         <WorkBar />
-        <Palette onPickFile={pickFile} onShortcuts={() => setShortcuts(true)} />
+        <Palette onPickFile={pickFile} onShortcuts={() => setShortcuts(true)} checkBlocked={checkBlocked} />
         {shortcuts ? <Shortcuts onClose={() => setShortcuts(false)} /> : null}
       </div>
     </ShellContext.Provider>
@@ -217,22 +243,27 @@ function Bell() {
   );
 }
 
-function AccountMenu({ usage, onShortcuts }: { usage: Usage | null; onShortcuts: () => void }) {
+function AccountMenu({
+  usage,
+  orgs,
+  setOrgs,
+  onShortcuts,
+}: {
+  usage: Usage | null;
+  orgs: Orgs | null;
+  setOrgs: (orgs: Orgs) => void;
+  onShortcuts: () => void;
+}) {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [askOut, setAskOut] = React.useState(false);
-  const [orgs, setOrgs] = React.useState<{ active: string | null; list: Org[] } | null>(null);
   const [switching, setSwitching] = React.useState(false);
   const [consent, setConsent] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
-    fetch(`${API_BASE}/orgs`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((b) => b && setOrgs({ active: b.active_org_id ?? null, list: b.organizations ?? [] }))
-      .catch(() => {});
     try {
       setConsent(localStorage.getItem(ANALYTICS_CONSENT));
     } catch {

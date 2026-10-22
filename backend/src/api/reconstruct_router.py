@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.validation_caps import require_paid_access
 from src.config.public_urls import error_doc_url
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, org_role_allows_writes, require_org_checker, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import reconstruction_service
@@ -56,10 +56,8 @@ async def reconstruction_capability(
     """Return the real deployment capability before a browser accepts images."""
     availability = reconstruction_service.check_reconstruction_availability()
     available = bool(availability["available"])
-    try:
-        can_submit = Role(user.role).rank >= Role.analyst.rank
-    except ValueError:
-        can_submit = False
+    # The same rule POST /reconstruct enforces: platform analyst and org member.
+    can_submit = await org_role_allows_writes(user)
     egress = bool(availability.get("egress")) if available else False
     if not available:
         message = (
@@ -109,7 +107,7 @@ async def reconstruct(
     ),
     process_types: Optional[str] = Query(None, description="Comma-separated process types for analysis after reconstruction."),
     rule_pack: Optional[str] = Query(None, description="Industry rule pack: aerospace, automotive, oil_gas, medical."),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     _paid_access: None = Depends(require_paid_access),
 ):
