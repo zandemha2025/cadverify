@@ -777,7 +777,7 @@ async def _decision_item(
                          "message": f"{name}: no CAD in the package, {why}. Attach it yourself."})
     if item["request"]["quantity"] is None:
         warnings.append({"code": "quantity_missing", "decision_id": decision.ulid,
-                         "message": f"{name}: no quantity. Set one in the package."})
+                         "message": f"{name}: no quantity was given, so the supplier is asked without one."})
     return item, warnings, (raw_name, raw_bytes)
 
 
