@@ -68,8 +68,8 @@ export function orgDeletionPreview(): Promise<OrgPreview> {
   return call<OrgPreview>("/orgs/current/deletion-preview");
 }
 
-export function deleteOrg(confirmName: string): Promise<Receipt> {
-  return call<Receipt>("/orgs/current/delete", jsonBody("POST", { confirm_name: confirmName }));
+export function deleteOrg(confirmName: string, keepPlan = false): Promise<Receipt> {
+  return call<Receipt>("/orgs/current/delete", jsonBody("POST", { confirm_name: confirmName, keep_plan: keepPlan }));
 }
 
 export function accountDeletionPreview(): Promise<AccountPreview> {

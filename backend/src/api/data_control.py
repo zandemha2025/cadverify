@@ -147,6 +147,8 @@ def _org_admin(ctx: OrgAuthContext) -> str:
 
 class OrgDeleteBody(BaseModel):
     confirm_name: str = Field(..., min_length=1, max_length=300)
+    # Keep the deleting admin's own Pro plan (used in another organization).
+    keep_plan: bool = False
 
 
 @router.get("/orgs/current/deletion-preview")
@@ -159,7 +161,7 @@ async def org_deletion_preview(
 ):
     org_id = _org_admin(ctx)
     response.headers["Cache-Control"] = "no-store"
-    return await svc.org_deletion_preview(session, org_id)
+    return await svc.org_deletion_preview(session, org_id, ctx.user_id)
 
 
 @router.post("/orgs/current/delete")
@@ -174,14 +176,17 @@ async def delete_current_org(
 ):
     """Delete the caller's active organization and all of its data.
 
-    Members are signed out; anyone left without an organization gets a new
-    empty one. Accounts and billing records stay.
+    Members are signed out and land in another organization they belong to,
+    or their own workspace. The caller's Pro plan is cancelled with it unless
+    ``keep_plan``; other members' plans are theirs. Accounts and billing
+    records stay.
     """
     org_id = _org_admin(ctx)
     if user.org_id is not None and user.org_id != org_id:
         raise HTTPException(status_code=404, detail="Organization not found")
     receipt = await svc.delete_organization(
-        session, org_id=org_id, user_id=ctx.user_id, confirm_name=body.confirm_name
+        session, org_id=org_id, user_id=ctx.user_id, confirm_name=body.confirm_name,
+        keep_plan=body.keep_plan,
     )
     await _remove_files(receipt.ulid)
     response.headers["Cache-Control"] = "no-store"

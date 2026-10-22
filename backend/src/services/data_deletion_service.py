@@ -57,9 +57,11 @@ keep the event and its time only: details, result, and the actor's email,
 network address and browser are dropped. Its usage rows keep their counts
 with no organization and no file hash. Members are
 signed out (their session version is bumped); a member left without an
-organization gets a new empty personal one, as at sign-up. Accounts, billing
-records (Stripe customer/subscription rows and the invoices Stripe keeps) and
-the free-check ledgers stay: they belong to the person, not the organization.
+organization gets a new, empty "<First name>'s workspace". The deleting
+admin's live Pro subscription is cancelled at Stripe first unless they keep
+it. Accounts, other members' plans, billing records (Stripe customer rows and
+the invoices Stripe keeps) and the free-check ledgers stay: they belong to the
+person, not the organization.
 """
 from __future__ import annotations
 
@@ -435,7 +437,7 @@ KEPT_AFTER_PART_DELETE = [
 
 KEPT_AFTER_ORG_DELETE = [
     "Each member's sign-in account and their other organizations.",
-    "Plans and billing records: each account's plan and subscription (not cancelled by this; cancel in Plan and billing), and the invoices the payment processor (Stripe) keeps.",
+    "Other members' own plans and subscriptions (each is billed to its person), and the invoices the payment processor (Stripe) keeps. The deleting admin's Pro plan is cancelled with the organization unless they chose to keep it.",
     "Each account's free-check count.",
     "A deletion record: who deleted the organization and when, with counts. Not its name, files or results.",
     "Audit events, with their details removed and without who did them or from where (email, network address, browser).",
@@ -755,16 +757,33 @@ async def _org_counts(session: AsyncSession, org_id: str) -> dict[str, int]:
     }
 
 
-async def org_deletion_preview(session: AsyncSession, org_id: str) -> dict[str, Any]:
+async def org_deletion_preview(
+    session: AsyncSession, org_id: str, user_id: int | None = None
+) -> dict[str, Any]:
     org = (await session.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
     if org is None:
         raise HTTPException(status_code=404, detail="Organization not found")
-    return {
+    out = {
         "org_id": org.id,
         "name": org.name,
         "will_remove": await _org_counts(session, org_id),
         "kept": KEPT_AFTER_ORG_DELETE,
     }
+    if user_id is not None:
+        # The deleting admin's own plan: a live Pro subscription is cancelled
+        # with the organization (at once, as when an account is deleted) unless
+        # they keep it. Plans are billed per person, so no one else's changes.
+        from src.services import account_deletion_service as ads
+
+        plan = (await session.execute(select(User.plan).where(User.id == user_id))).scalar_one_or_none()
+        out["billing"] = ads._billing_view(plan or "trial", await ads._billing(session, user_id))
+    return out
+
+
+def _workspace_for(email: str, full_name: str | None) -> str:
+    from src.services.org_service import workspace_name
+
+    return workspace_name(email, full_name)
 
 
 @dataclass
@@ -850,6 +869,7 @@ async def remove_org_rows(
 
 async def delete_organization(
     session: AsyncSession, *, org_id: str, user_id: int, confirm_name: str,
+    keep_plan: bool = False, cancel_subscription=None,
 ) -> DataDeletion:
     """Delete the organization and everything in it. The caller is its admin.
 
@@ -857,6 +877,11 @@ async def delete_organization(
     ignored). The org row is locked FOR UPDATE, which waits for any part
     deletion holding its share lock. Idempotent at the HTTP layer: a second
     call finds no organization (the caller's active org is then another one).
+
+    The caller's live Pro subscription is cancelled at Stripe first, at once,
+    unless ``keep_plan``; if Stripe can't cancel it, nothing is deleted.
+    Members land in another organization they belong to, or in their own
+    workspace ("<First name>'s workspace", new and empty if they had none).
     """
     if not org_id or not _SAFE_ORG.fullmatch(org_id):
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -872,6 +897,17 @@ async def delete_organization(
         )
 
     deletion_ulid = str(ULID())
+    plan_cancelled = False
+    if not keep_plan:
+        from src.services import account_deletion_service as ads
+
+        billing = await ads._billing(session, user_id, lock=True)
+        if ads._live_subscription(billing):
+            cancel = cancel_subscription or ads.cancel_subscription_at_stripe
+            await cancel(billing.stripe_subscription_id, f"org-delete-{deletion_ulid}")
+            billing.status = "canceled"
+            billing.updated_at = now_utc()
+            plan_cancelled = True
     removal = await remove_org_rows(
         session, org_id=org_id, user_id=user_id, deletion_ulid=deletion_ulid,
         actor_email=await _email(session, user_id),
@@ -889,7 +925,14 @@ async def delete_organization(
                 .order_by(Membership.created_at.asc(), Membership.id.asc()).limit(1)
             )
         ).scalar_one_or_none()
-        target = remaining or await ensure_personal_org(session, member_id, email)
+        if remaining is None:
+            full_name = (
+                await session.execute(select(User.full_name).where(User.id == member_id))
+            ).scalar_one_or_none()
+            remaining = await ensure_personal_org(
+                session, member_id, email, name=_workspace_for(email, full_name)
+            )
+        target = remaining
         await session.execute(update(User).where(User.id == member_id).values(current_org_id=target))
         moved[int(member_id)] = target
     others = [m for m in moved if m != user_id]
@@ -914,7 +957,12 @@ async def delete_organization(
         target=org_id,
         requested_by=user_id,
         status="removing_files",
-        removed_json={**counts, "members_signed_out": len(others), "now_in_org": moved.get(user_id)},
+        removed_json={
+            **counts,
+            "members_signed_out": len(others),
+            "now_in_org": moved.get(user_id),
+            "pro_plan_cancelled": plan_cancelled,
+        },
         steps_json=steps,
         steps_total=len(steps),
         steps_done=0,

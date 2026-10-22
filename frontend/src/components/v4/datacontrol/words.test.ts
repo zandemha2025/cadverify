@@ -11,6 +11,8 @@ import {
   linkEndText,
   linksLine,
   nameMatches,
+  orgMembersAfterLine,
+  orgPlanLine,
   orgRemovalLines,
   partRemovalLines,
   receiptLine,
@@ -97,6 +99,18 @@ test("deleting the organization: typed name must match exactly; the list counts 
   assert.ok(!lines.some((l) => l.includes("catalog run")));
   const empty = orgRemovalLines({ ...p, will_remove: { ...p.will_remove, parts: 0, checks: 0, cost_records: 0 } });
   assert.equal(empty[0], "No parts, checks or cost records yet");
+
+  // it-24: the plan is cancelled with the org, said before confirming; members' fate plainly.
+  assert.equal(orgPlanLine(p, false), null);
+  const paying: OrgPreview = { ...p, name: "Kestrel Aero", billing: { plan: "pro", subscription_status: "active", period_end: "2026-11-20T00:00:00Z", cancels_now: true } };
+  assert.equal(orgPlanLine(paying, false), "Your Pro plan is cancelled with Kestrel Aero: nothing more is charged. The rest of the period to 20 Nov 2026 isn't refunded.");
+  assert.match(orgPlanLine(paying, true) ?? "", /^Your Pro plan stays/);
+  const after = orgMembersAfterLine(paying);
+  assert.match(after, /^Everyone in Kestrel Aero keeps their sign-in account and loses all access to Kestrel Aero\. The 3 other members are signed out\./);
+  assert.match(after, /their own workspace, named "<first name>'s workspace" \(new and empty if they don't have one\)\. Nothing from Kestrel Aero is in it\./);
+  assert.match(after, /Other members' own plans aren't changed\.$/);
+  assert.doesNotMatch(orgMembersAfterLine({ ...paying, will_remove: { ...paying.will_remove, members: 1 } }), /other member/);
+  assert.match(receiptLine({ id: "01DEL", scope: "organization", target: "o", status: "done", removed: { pro_plan_cancelled: true }, files: { steps_total: 1, steps_done: 1, removed: 0, retrying: false }, created_at: null, completed_at: null, kept: [] } as Receipt), /your Pro plan is cancelled\.$/);
 });
 
 const ACCOUNT: AccountPreview = {

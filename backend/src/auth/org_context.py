@@ -233,7 +233,12 @@ async def revoke_org_api_keys(
 
 
 async def ensure_personal_org(
-    session: AsyncSession, user_id: int, email: str, full_name: str | None = None
+    session: AsyncSession,
+    user_id: int,
+    email: str,
+    full_name: str | None = None,
+    *,
+    name: str | None = None,
 ) -> str:
     """Get-or-create the user's personal org; return its org_id.
 
@@ -263,7 +268,7 @@ async def ensure_personal_org(
             "INSERT INTO organizations (id, name, slug, is_personal, created_at) "
             "VALUES (:id, :name, :slug, true, now())"
         ),
-        {"id": org_id, "name": personal_org_display_name(email, full_name), "slug": personal_org_slug(email)},
+        {"id": org_id, "name": name or personal_org_display_name(email, full_name), "slug": personal_org_slug(email)},
     )
     await session.execute(
         text(

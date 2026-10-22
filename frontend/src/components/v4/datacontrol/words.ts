@@ -113,7 +113,10 @@ export function fingerprint(hash: string): string {
 
 export function receiptLine(r: Receipt): string {
   if (r.scope === "account") return accountReceiptLine(r);
-  if (r.status === "done") return r.scope === "part" ? "Deleted. The stored file and every record of it are gone." : "Deleted. The organization's files and records are gone.";
+  if (r.status === "done") {
+    if (r.scope === "part") return "Deleted. The stored file and every record of it are gone.";
+    return r.removed.pro_plan_cancelled ? "Deleted. The organization's files and records are gone, and your Pro plan is cancelled." : "Deleted. The organization's files and records are gone.";
+  }
   if (r.status === "failed") return `The records are deleted. Removing the stored files stopped after repeated errors. Send ScaleCAD support this deletion ID: ${r.id}.`;
   const f = r.files;
   return `The records are deleted. Removing the stored files: ${f.steps_done} of ${f.steps_total} storage areas done${f.retrying ? ", retrying" : ""}.`;
@@ -135,6 +138,29 @@ export interface OrgPreview {
     active_share_links: number;
   };
   kept: string[];
+  /** The deleting admin's own plan (billed to them, not the organization). */
+  billing?: { plan: string; subscription_status: string | null; period_end: string | null; cancels_now: boolean };
+}
+
+/** What happens to the deleting admin's Pro plan, said before they confirm; null when there's none. */
+export function orgPlanLine(p: OrgPreview, keep: boolean): string | null {
+  if (!p.billing?.cancels_now) return null;
+  if (keep) return "Your Pro plan stays: you keep paying for it and use it in your other organizations.";
+  const end = day(p.billing.period_end);
+  return `Your Pro plan is cancelled with ${p.name}: nothing more is charged.${end ? ` The rest of the period to ${end} isn't refunded.` : " The rest of this period isn't refunded."}`;
+}
+
+/** Where members end up, said plainly. */
+export function orgMembersAfterLine(p: OrgPreview): string {
+  const others = Math.max(0, p.will_remove.members - 1);
+  return [
+    `Everyone in ${p.name} keeps their sign-in account and loses all access to ${p.name}.`,
+    others ? `The ${n(others, "other member")} ${others === 1 ? "is" : "are"} signed out.` : null,
+    `Each person moves to another organization they belong to, or to their own workspace, named "<first name>'s workspace" (new and empty if they don't have one). Nothing from ${p.name} is in it.`,
+    others ? "Other members' own plans aren't changed." : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function orgRemovalLines(p: OrgPreview): string[] {

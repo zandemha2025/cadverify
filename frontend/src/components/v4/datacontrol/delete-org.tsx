@@ -2,8 +2,10 @@
 
 /**
  * Delete organization (admins only; the server checks it too). Says what goes,
- * that it can't be undone, that members are signed out and what stays
- * (accounts and billing records). The name must be typed exactly.
+ * that it can't be undone, where members end up (another organization they
+ * belong to, or their own workspace), that the admin's own Pro plan is
+ * cancelled with it unless they keep it, and what stays. The name must be
+ * typed exactly.
  */
 import * as React from "react";
 import { Panel } from "../ui";
@@ -12,7 +14,7 @@ import { forgetLoaded } from "../records/api";
 import { clearCachedMeshes } from "../part/mesh-cache";
 import { deleteOrg, orgDeletionPreview } from "./api";
 import { useDialogFocus, useReceipt } from "./delete-part";
-import { nameMatches, orgRemovalLines, receiptLine, type OrgPreview, type Receipt } from "./words";
+import { nameMatches, orgMembersAfterLine, orgPlanLine, orgRemovalLines, receiptLine, type OrgPreview, type Receipt } from "./words";
 import "./data.css";
 
 export function DeleteOrgPanel({ orgName }: { orgName: string }) {
@@ -20,6 +22,7 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
   const [preview, setPreview] = React.useState<OrgPreview | null>(null);
   const [loadErr, setLoadErr] = React.useState<string | null>(null);
   const [typed, setTyped] = React.useState("");
+  const [keepPlan, setKeepPlan] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<Receipt | null>(null);
@@ -43,7 +46,7 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await deleteOrg(typed);
+      const r = await deleteOrg(typed, keepPlan);
       void clearCachedMeshes();
       forget("");
       forgetLoaded();
@@ -88,7 +91,16 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
                 <li key={l}>{l}</li>
               ))}
             </ul>
-            <p className="dc-p">Members are signed out. Anyone left without an organization gets a new, empty one.</p>
+            <p className="dc-p">{orgMembersAfterLine(preview)}</p>
+            {orgPlanLine(preview, keepPlan) ? (
+              <div className="dc-p" role="note">
+                <b>Your plan.</b> {orgPlanLine(preview, keepPlan)}
+                <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                  <input type="checkbox" checked={keepPlan} onChange={(e) => setKeepPlan(e.target.checked)} />
+                  Keep my Pro plan (I use it in another organization)
+                </label>
+              </div>
+            ) : null}
             <p className="dc-warn">This can&apos;t be undone. Export records and download fixed copies you need first.</p>
             <details className="dc-kept" open>
               <summary>What stays</summary>
@@ -99,7 +111,9 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
               </ul>
             </details>
             <label className="field dc-name" htmlFor={inputId}>
-              Type the organization&apos;s name to confirm: {name}
+              {orgPlanLine(preview, keepPlan) && !keepPlan
+                ? `Type the organization's name to delete it and cancel your Pro plan: ${name}`
+                : `Type the organization's name to confirm: ${name}`}
               <input id={inputId} type="text" autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} />
             </label>
             {err ? (
@@ -109,7 +123,7 @@ export function DeleteOrgPanel({ orgName }: { orgName: string }) {
             ) : null}
             <div className="dc-acts">
               <button className="btn sm ink" type="button" disabled={!nameMatches(typed, name) || busy} aria-busy={busy} onClick={() => void run()}>
-                {busy ? "Deleting…" : "Delete organization"}
+                {busy ? "Deleting…" : orgPlanLine(preview, keepPlan) && !keepPlan ? "Delete organization and cancel plan" : "Delete organization"}
               </button>
               <button
                 className="btn sm"
@@ -147,7 +161,7 @@ function OrgDeleted({ receipt }: { receipt: Receipt }) {
           {receiptLine(receipt)}
         </p>
         <p className="dc-p">
-          Members were signed out. Your account and your other organizations are as they were; if this was your only organization you now have a new, empty one. Deletion ID{" "}
+          Members were signed out. Your account and your other organizations are as they were; if this was your only organization you are now in your own workspace, new and empty. Deletion ID{" "}
           <span className="mono">{receipt.id}</span>.
         </p>
         <div className="dc-acts">
