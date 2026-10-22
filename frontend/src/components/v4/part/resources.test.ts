@@ -148,11 +148,24 @@ test("ownership: owned at running cost, a machine of yours that doesn't fit, or 
   assert.deepEqual([unc.kind, unc.v, unc.machine], ["unconfirmed", "Can't confirm", "Haas VF-2"]);
 });
 
-test("machine time is the hours the machine line charges: learning shortens it at volume (de-19)", () => {
+test("machine time is the hours the machine line charges: a machine's cycle doesn't learn (ce-03)", () => {
+  // Since ce-03 the learning curve is on touch labor only: 1,000 parts take the full cycle each.
+  const now = est("cnc_3axis", "6061-T6", 1000, [
+    { name: "cycle_time", value: 0.4013, unit: "hr" },
+    { name: "learning_curve", value: 0.813, unit: "×" },
+    { name: "machine_cost", value: 30.1, source: "0.4013 hr × $75/hr × region-labor ×1; time: …" },
+  ]);
+  const rn = routeResources(now, 96)!;
+  assert.equal(rn.hoursEach, 0.4013);
+  assert.equal(rn.hoursFirstLot, null);
+  assert.ok(Math.abs(rn.hoursRun! - 401.3) < 1e-6);
+});
+
+test("an older record whose machine line carried learning shows the hours it charged (de-19)", () => {
   const e = est("cnc_3axis", "6061-T6", 1000, [
     { name: "cycle_time", value: 0.4013, unit: "hr" },
     { name: "learning_curve", value: 0.705, unit: "×" },
-    { name: "machine_cost", value: 21.21 },
+    { name: "machine_cost", value: 21.21, source: "0.4013 hr × $75/hr × 0.705 learning@qty1000 × region-labor ×1" },
   ]);
   const r = routeResources(e, 96)!;
   assert.ok(Math.abs(r.hoursEach! - 0.4013 * 0.705) < 1e-9);

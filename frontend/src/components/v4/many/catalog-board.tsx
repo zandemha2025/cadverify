@@ -286,7 +286,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 {rates.length ? (
                   <details className="cr-ans-rate">
                     <summary>Running rate: what your machines cost an hour here</summary>
-                    <p>A machine you own is already paid for, so its time is priced at the hourly rate you set less the share that pays for the machine itself. Each part’s machine cost also carries learning at its quantity, utilization and margin.</p>
+                    <p>A machine you own is already paid for, so its time is priced at the hourly rate you set less the share that pays for the machine itself. Each part’s machine cost also carries utilization and margin; a machine’s cycle doesn’t learn, so the learning curve is on the hand work only.</p>
                     <ul>
                       {rates.map((l) => (
                         <li key={l}>{l}</li>

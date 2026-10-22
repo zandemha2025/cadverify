@@ -25,6 +25,7 @@ import os
 from src.analysis.models import ProcessType
 from src.analysis.process_names import process_label
 from src.costing.drivers import basis_words, build_orientation, parts_per_build
+from src.costing.learning import learning_words, lot_average_factor
 from src.costing.provenance import TYPICAL, CostEstimate, Driver, Provenance
 from src.costing.rates import (
     ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, CASTING, FORGING_FAMILY, EDM,
@@ -43,30 +44,24 @@ def _print_note() -> str:
 
     return CALIBRATION_NOTE
 
-# Master on/off for the volume/learning economics (S1 fix). Defaults ON (the
-# corrected behavior that fixes the demo path). Set CADVERIFY_CNC_LEARNING=0 to
-# recover the old flat, volume-invariant conversion cost. (A learning_rate=1.0
-# rate override is the equivalent per-quote off-switch.)
+# Master on/off for the volume/learning economics (S1 fix). Defaults ON. Set
+# CADVERIFY_CNC_LEARNING=0 to recover the flat, volume-invariant conversion cost.
+# (A learning_rate=1.0 rate override is the equivalent per-quote off-switch.)
 _LEARNING_FAMILIES = {"subtractive", "fabrication"}
 
 
 def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
-    """Wright cumulative-average learning multiplier on ATTENDED CONVERSION cost.
+    """The lot-average learning factor an order of ``qty`` pays on its TOUCH LABOR.
 
-    Real machining/fabrication economics: per-unit attended time (machine cycle +
-    hand labor) falls as cumulative volume grows — optimized tool-paths, dedicated
-    fixtures/pallets, dialed-in feeds & speeds, less operator attention. Modeled as
-    the classic Wright curve, cumulative-average form:
+    ce-03: the curve applies to the hand work and in-process inspection, never to
+    the machine's cycle (the program sets it) or the tools that follow it, and an
+    order pays the average over its parts, not its last part's factor. The rate
+    card's hours are the first lot's standard (``ref_qty`` = lot_size), so nothing
+    is credited at or below one lot. See ``src.costing.learning`` for the source
+    and the arithmetic.
 
-        mult(Q) = (Q / Q_ref) ** b ,  b = log2(learning_rate) < 0 ,  clamped ≤ 1
-
-    Q_ref = the first production lot (lot_size): the rate-card cycle time is the
-    first-lot standard time, so no learning is credited at/below one lot (mult=1),
-    and it accrues only above it. Floored at ``learning_floor`` (a practical
-    minimum cycle time). learning_rate=1.0 (or CADVERIFY_CNC_LEARNING=0) => 1.0.
-
-    Returns (multiplier, source_string). The source is honestly tagged as a
-    DEFAULT assumption, NOT validated against real shop quotes.
+    Returns (multiplier, source_string); the rate is a DEFAULT assumption, not
+    validated against real shop quotes.
     """
     if os.getenv("CADVERIFY_CNC_LEARNING", "1") == "0":
         return 1.0, None
@@ -76,15 +71,8 @@ def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
     if not rate or rate >= 1.0 or ref_qty <= 0 or qty <= ref_qty:
         return 1.0, None
     floor = rates.g("learning_floor")
-    b = math.log(rate) / math.log(2.0)
-    mult = (qty / ref_qty) ** b
-    mult = max(mult, floor)
-    doublings = math.log(qty / ref_qty) / math.log(2.0)
-    src = (f"learning curve {rate:g}×/doubling of cumulative qty on machine+labor: "
-           f"({qty}/{ref_qty} first-lot)^{b:.3f} = ×{mult:.3f} "
-           f"(~{doublings:.1f} doublings, floor {floor:g}) "
-           f"(typical value, not confirmed by a shop)")
-    return mult, src
+    mult = lot_average_factor(rate, ref_qty, floor, qty)
+    return mult, learning_words(rate, ref_qty, floor, qty, mult)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -759,13 +747,15 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         machine_prov = None
     eff_machine_rate = base_machine_rate * (1.0 - cap_frac) if owned_here else base_machine_rate
     machine_cost = machine_hr * eff_machine_rate / cav_div / util
-    machine_learned = machine_cost * learn_mult          # attended-time learning (S1)
-    machine_scaled = machine_learned * rl_machine * mgn * burden   # E-now #2: labor-only region scaling
+    # ce-03: the machine's cycle is paced by its program and doesn't learn; only touch
+    # labor (post-process hand work, in-process inspection) does (src.costing.learning).
+    machine_scaled = machine_cost * rl_machine * mgn * burden   # E-now #2: labor-only region scaling
     owned_note = (f" × (1-{cap_frac:g}) on a machine you own: running cost only, the "
                   f"machine is already paid for (typical value, not confirmed by a shop)") if owned_here else ""
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
-    learn_note = f" × {learn_mult:.3f} learning@qty{qty}" if learn_mult != 1.0 else ""
+    learn_note = (f" × {learn_mult:.3f} learning (the average part of {qty:,}, from the first lot of "
+                  f"{lot_size:g})") if learn_mult != 1.0 else ""
     if rl_machine != rl:
         _frac = rates.g("machine_labor_frac")
         region_mach_note = (f" × region-machine ×{rl_machine:g} (labor {_frac:g} of "
@@ -787,7 +777,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
         provenance=machine_prov_tag,
         source=(f"{machine_hr:.4f} hr × ${machine_rate_shown:g}/hr{machine_name_note}"
-                f"{owned_note}{cav_note}{util_note}{learn_note}{region_mach_note}{conversion_note}"
+                f"{owned_note}{cav_note}{util_note}{region_mach_note}{conversion_note}"
                 f"; time: {cycle_src}"),
         error_band_pct=band,
     ))
@@ -845,7 +835,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     elif process == PT.FDM:
         post_hr_part = rates.pget(process, "post_hr_part_unmeasured", post_hr_part)
     post_labor = (post_hr_part + support_hr + post_hr_build / n) * labor_rate
-    post_labor_learned = post_labor * learn_mult         # attended-time learning (S1)
+    post_labor_learned = post_labor * learn_mult         # touch labor learns (lot average, ce-03)
     labor_scaled = post_labor_learned * rl * mgn * burden
     support_note = ""
     if process == PT.FDM and print_plan is not None:
@@ -923,7 +913,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                         f"(typical value, not confirmed by a shop)"),
                 error_band_pct=40.0,
             ))
-        inspect_part = inspect_hr_part * learn_mult                   # per-part (learns/samples down at volume)
+        inspect_part = inspect_hr_part * learn_mult                   # in-process inspection is touch labor: it learns
         fai_hr_order = fai_hr
         fai_per_unit = fai_hr * n_setups / qty                       # first article per setup
         insp_hr_per_unit = fai_per_unit + inspect_part

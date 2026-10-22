@@ -117,13 +117,12 @@ RATE_CARD_V0: dict = {
         "shot_overhead_s": 5.0,       # s — molding non-cooling cycle overhead
         "ship_days": 3.0,             # outbound logistics
         # ── volume/learning economics (S1 fix) ──────────────────────────
-        # Wright cumulative-average learning curve on the ATTENDED CONVERSION
-        # cost (machine cycle + post-process labor) of make-now, labor-bearing
-        # families (subtractive/CNC + fabrication/sheet-metal). Per-unit
-        # conversion time drops as (cumulative_qty / first_lot)^b, b=log2(rate),
-        # capturing optimized tool-paths, dedicated fixturing, dialed-in
-        # feeds/speeds, and reduced attention at volume. Material never learns;
-        # per-lot setup already amortizes separately. This is a MODEL, tagged
+        # Learning curve on TOUCH LABOR only (post-process hand work and in-process
+        # inspection) of make-now, labor-bearing families (subtractive/CNC +
+        # fabrication/sheet-metal): past the first lot each part's time follows
+        # (x / first_lot)^b, b=log2(rate), and an order pays the lot average
+        # (src.costing.learning, ce-03). Machine-paced cycle time, tools, material,
+        # setup and programming never learn (De Jong 1957). This is a MODEL, tagged
         # DEFAULT/assumption — NOT validated against real shop quotes.
         "learning_rate": 0.90,        # 0<rate<=1 fraction per doubling of cumulative qty; 1.0 = no learning (old flat behavior)
         "learning_floor": 0.25,       # min fraction of first-lot standard time the curve can reach (practical cycle-time floor)

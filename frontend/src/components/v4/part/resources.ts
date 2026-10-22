@@ -61,8 +61,9 @@ export function cm3Text(v: number | null | undefined): string {
 export interface RouteResources {
   process: string;
   quantity: number;
-  /** Machine hours per part at this quantity: the cycle_time driver, times the learning
-   *  curve when the price applies one (the same hours the machine line charges). */
+  /** Machine hours per part at this quantity: the cycle_time driver, the same hours the
+   *  machine line charges. A machine's cycle doesn't learn (ce-03); records priced before
+   *  that charged the cycle times the learning curve, and their hours say so. */
   hoursEach: number | null;
   /** The first lot's hours per part when learning shortens them at this quantity, else null. */
   hoursFirstLot: number | null;
@@ -118,9 +119,11 @@ export function routeResources(e: CostEstimate | null | undefined, partCm3: numb
   const q = e.quantity;
   const cycle = driver(e, "cycle_time");
   const first = cycle && cycle.unit === "hr" && finite(cycle.value) && cycle.value >= 0 ? cycle.value : null;
-  // de-19: the machine line charges the cycle times the learning curve; the hours shown are the same.
+  // de-19: the hours shown are the hours the machine line charges. Since ce-03 learning is on
+  // touch labor only; an older record whose machine line carried it ("learning@qty") keeps it.
   const learn = driver(e, "learning_curve");
-  const mult = learn && finite(learn.value) && learn.value > 0 && learn.value < 1 ? learn.value : null;
+  const machineLearned = /learning@qty/.test(driver(e, "machine_cost")?.source ?? "");
+  const mult = machineLearned && learn && finite(learn.value) && learn.value > 0 && learn.value < 1 ? learn.value : null;
   const hoursEach = first != null && mult != null ? first * mult : first;
   const mat = materialOf(e);
   const vol = finite(partCm3) && partCm3 > 0 ? partCm3 : null;
