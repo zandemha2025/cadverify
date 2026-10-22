@@ -47,6 +47,7 @@ class GeoDrivers:
     planar_aspect: float = 0.0        # mid_dim / gauge — flatness of the part
     outline_perimeter_mm: float = 0.0 # laser/punch cut length (outer + cutouts)
     bend_count: int = 0               # verified flat blanks have no bends
+    bend_length_mm: float = 0.0       # a bent sheet's bend lines (its width along them); 0 when not bent
     sheet_like: bool = False          # geometry reads as a constant-gauge flat sheet
     sheet_blank_mm: tuple | None = None  # gauge, short side, long side in the sheet plane
     sheet_tolerance_mm: float = 0.0   # numeric transform noise, not manufacturing allowance
@@ -223,12 +224,14 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
     # press-brake bends. Its blank outline is that rectangle.
     bent = bent_sheet_geometry(mesh) if sheet_geometry is None and not rotational else None
     bend_count = 0
+    bend_length_mm = 0.0
     if bent is not None:
         sheet_blank_mm = (bent.gauge_mm, *sorted((bent.width_mm, bent.developed_mm)))
         w, length = bent.width_mm, bent.developed_mm
         sheet_geometry = (sheet_blank_mm, np.array([[0.0, 0.0], [length, 0.0], [length, w], [0.0, w]]),
                           bent.precision_mm)
         bend_count = bent.bends
+        bend_length_mm = float(bent.width_mm) if bent.bends else 0.0
     sheet_tolerance_mm = wall_thickness_tolerance(
         mesh, max(1e-4, min(float(np.linalg.norm(dims)) * 1e-4, .1)))
     sheet_precision_mm = sheet_geometry[2] if sheet_geometry is not None else 0.0
@@ -260,6 +263,7 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         planar_aspect=round(planar_aspect, 2),
         outline_perimeter_mm=round(outline_perimeter_mm, 2),
         bend_count=bend_count,  # flat blanks 0; a measured bent sheet its bends
+        bend_length_mm=round(bend_length_mm, 3),  # what a press brake's bend length must clear
         sheet_like=sheet_like,
         sheet_blank_mm=sheet_blank_mm,
         sheet_tolerance_mm=sheet_tolerance_mm,

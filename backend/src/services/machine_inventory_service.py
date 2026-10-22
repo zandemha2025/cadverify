@@ -210,6 +210,14 @@ def _validate_capabilities(caps: Any, errors: list[str], process: Any = None) ->
                     f"motion_mode must be one of {sorted(_MOTION_MODES)}"
                 )
             continue
+        if key == "sheet_kind":
+            # What a sheet-metal machine is (me-02): a press brake bends, a cutter makes the blank.
+            from src.costing.makeability import SHEET_KINDS
+            if not isinstance(val, str) or val not in SHEET_KINDS:
+                errors.append(f"sheet_kind must be one of {list(SHEET_KINDS)}")
+            elif isinstance(process, str) and process in _VALID_PROCESSES and process != ProcessType.SHEET_METAL.value:
+                errors.append(f"capability 'sheet_kind' applies to sheet_metal machines only (got {process})")
+            continue
         if key == "chamber_type":
             if not isinstance(val, str) or val not in _CHAMBER_TYPES:
                 errors.append(

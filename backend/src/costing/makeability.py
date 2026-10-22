@@ -32,7 +32,7 @@ caller — the fit engine never invents a dollar.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from src.analysis.models import ProcessType
 from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions, envelope_nonfit_bound
@@ -120,6 +120,12 @@ class PartReq:
     # printed larger so it shrinks to size when sintered); ``bbox_mm`` already
     # includes it. 0 => printed at size. Named in a size miss so it reads why.
     print_oversize: float = 0.0
+    # A bent sheet (sheet-metal route): its press-brake bends, the length of its
+    # bend lines (MEASURED), and the press force to air-bend them (computed from
+    # the registry's tensile strength, ``bend_force_t``; None when unknown).
+    bend_count: int = 0
+    bend_length_mm: "float | None" = None
+    bend_force_t: "float | None" = None
 
 
 @dataclass(frozen=True)
@@ -308,7 +314,43 @@ _CERT_WORDS = {"as9100": "AS9100", "iso9001": "ISO 9001", "itar": "ITAR registra
                "nadcap_nondestructive_testing": "NADCAP for nondestructive testing",
                "nadcap_coatings": "NADCAP for coatings", "nadcap_welding": "NADCAP for welding",
                "nadcap_measurement_inspection": "NADCAP for measurement and inspection"}
+# What a sheet-metal machine is (``capabilities["sheet_kind"]``, me-02). A press
+# brake bends: its fit is bend length, press force and the thickest sheet it bends
+# per material. A cutter makes the flat blank: its fit is its bed and the thickest
+# sheet it cuts per material. A sheet machine with no kind declared keeps the
+# plain work-area check (older declarations).
+PRESS_BRAKE = "press_brake"
+SHEET_CUTTERS = ("laser", "punch", "plasma", "waterjet")
+SHEET_KINDS = (PRESS_BRAKE, *SHEET_CUTTERS)
+_CUTTER_WORDS = "a laser, punch, plasma or waterjet"
+
+# Air-bending force (the rule press-brake tonnage charts are built on):
+# F [kN] = 1.42 × Rm [N/mm²] × s² [mm²] × L [m] ÷ V [mm], with the die opening V
+# taken as 8 × the sheet thickness, the usual choice up to 12 mm sheet. Rm is the
+# material's tensile strength from the registry. Metric tonnes = kN ÷ 9.80665.
+BEND_FORCE_FACTOR = 1.42
+BEND_DIE_RATIO = 8.0
+KN_PER_TONNE = 9.80665
+
+
+def bend_force_t(tensile_mpa, gauge_mm, bend_length_mm):
+    """Press force (metric t) to air-bend ``bend_length_mm`` of ``gauge_mm`` sheet, or None when unknown."""
+    if not (_is_number(tensile_mpa) and _is_number(gauge_mm) and _is_number(bend_length_mm)):
+        return None
+    if tensile_mpa <= 0 or gauge_mm <= 0 or bend_length_mm <= 0:
+        return None
+    v = BEND_DIE_RATIO * gauge_mm
+    kn = BEND_FORCE_FACTOR * tensile_mpa * gauge_mm ** 2 * (bend_length_mm / 1000.0) / v
+    return kn / KN_PER_TONNE
+
+
+def sheet_kind(cap) -> "str | None":
+    k = (cap or {}).get("sheet_kind")
+    return k if k in SHEET_KINDS else None
+
+
 _ENVELOPE_AXIS = {"swing_dia": "swing diameter", "between_centers": "length between centers",
+                  "max_bend_length_mm": "bend length",
                   "minimum_width_mm": "its narrowest width against the work area's smallest side",
                   "diameter_mm": "its widest extent against the work area's diagonal"}
 
@@ -417,6 +459,13 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
 
     req_ops = _required_secondary_ops(pt, material_class, tolerance_it, env)
 
+    bends = int(getattr(drivers, "bend_count", 0) or 0) if pt == ProcessType.SHEET_METAL else 0
+    bend_len = float(getattr(drivers, "bend_length_mm", 0.0) or 0.0) if bends else None
+    tensile = material_props.get("tensile_strength")
+    if tensile is None and not isinstance(material, str):
+        tensile = getattr(material, "tensile_strength", None)
+    force_t = bend_force_t(tensile, thickness_mm, bend_len) if bends else None
+
     return PartReq(
         process=_pt_value(pt if pt is not None else process),
         bbox_mm=bbox,
@@ -442,6 +491,9 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
         enclosing_cylinder_mm=getattr(drivers, "enclosing_cylinder_mm", None),
         dfm_failures=dfm_failures_from_score(process_score),
         min_wall_mm=thinnest_measured_wall(process_score),
+        bend_count=bends,
+        bend_length_mm=bend_len,
+        bend_force_t=force_t,
     )
 
 
@@ -466,6 +518,8 @@ def _machine_envelope(cap: dict):
     """
     if any(k in cap for k in ("swing_dia", "between_centers")):
         return "turning", cap
+    if sheet_kind(cap) == PRESS_BRAKE:
+        return "brake", cap
     if "bed_x" in cap or "bed_y" in cap:
         return "sheet", _sorted_env(cap, ("bed_x", "bed_y"))
     for keyset in (("x", "y", "z"), ("flask_x", "flask_y", "flask_z"),
@@ -506,6 +560,27 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
                 f"length {need_len:.0f}mm > machine {float(length):.0f}mm "
                 f"(need >={need_len:.0f}mm)"))
         return fails
+
+    if kind == "brake":
+        # A press brake bends: what has to fit is the bend lines, not a box.
+        if part.bend_count <= 0:
+            if part.sheet_like:
+                return [FitFailure("envelope", "bend_count", "bends", 0,
+                                   f"a flat blank with nothing to bend: it is cut, not bent ({_CUTTER_WORDS} makes it)")]
+            return [FitFailure("envelope", "bend_count", "bends", None,
+                               "its bend lines weren't measured on this shape; confirm it on the brake")]
+        limit = cap.get("max_bend_length_mm")
+        need = part.bend_length_mm
+        if not _is_number(limit):
+            return [FitFailure("envelope", "max_bend_length_mm", round(need, 2) if _is_number(need) else None,
+                               None, "bend length not declared")]
+        if not _is_number(need):
+            return [FitFailure("envelope", "max_bend_length_mm", None, round(float(limit), 2),
+                               "the part's bend length wasn't measured; confirm it on the brake")]
+        if need > float(limit) + part.geometry_tolerance_mm + part.geometry_precision_mm:
+            return [FitFailure("envelope", "max_bend_length_mm", round(need, 2), round(float(limit), 2),
+                               f"bend {need:.0f}mm > machine {float(limit):.0f}mm")]
+        return []
 
     # Rectangular box placements / sheet outline placements.
     if env is None:
@@ -771,6 +846,33 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             failures.append(FitFailure(
                 "force", "taper_deg", need_taper, max_taper,
                 f"taper {need_taper:.1f}deg > machine max {max_taper:.1f}deg"))
+
+    kind = sheet_kind(cap) if pt == ProcessType.SHEET_METAL else None
+    if kind == PRESS_BRAKE and part_req.bend_count > 0:
+        # Press force: the force to air-bend this part's bend lines (bend_force_t)
+        # against the brake's declared tonnage.
+        have_t = next((cap.get(k) for k in ("tonnage_t", "press_tonnage_t") if _is_number(cap.get(k))), None)
+        need_t = part_req.bend_force_t
+        if have_t is None:
+            failures.append(FitFailure("force", "tonnage_t",
+                                       round(need_t, 2) if need_t is not None else None, None,
+                                       "press force (tonnage) not declared"))
+        elif need_t is None:
+            failures.append(FitFailure(
+                "force", "tonnage_t", None, float(have_t),
+                f"bend force unknown: no tensile strength on file for {part_req.material_name or part_req.material_class}"))
+        elif need_t > float(have_t):
+            failures.append(FitFailure(
+                "force", "tonnage_t", round(need_t, 2), float(have_t),
+                f"needs {need_t:.2f} t to air-bend {part_req.bend_length_mm:.0f}mm of "
+                f"{part_req.thickness_mm:.2f}mm {part_req.material_name or part_req.material_class}; "
+                f"machine {float(have_t):g} t"))
+    elif kind in SHEET_CUTTERS and part_req.bend_count > 0:
+        # A cutter makes the blank; the bends need a press brake.
+        failures.append(FitFailure(
+            "secondary_op", "bending", "press brake", False,
+            f"cuts the blank; its {part_req.bend_count} bend{'s' if part_req.bend_count != 1 else ''} "
+            f"need a press brake"))
 
     need_tonnage = part_req.material_props.get("required_tonnage_t")
     if _is_number(need_tonnage):
@@ -1121,6 +1223,31 @@ def _unknown(failures) -> list:
     return [f for f in failures if f.have is None]
 
 
+def _blank_hint(hint: dict, preq: PartReq, owned, shop_caps) -> dict:
+    """A press brake bends a blank someone has to cut (me-02). On a cutter of yours
+    that fits the flat blank, the hint names it; with none, the blank is bought
+    outside: ``blank_outside`` (the caller prices the cut outside) and a note
+    saying why, never a silent in-house cut."""
+    blank = replace(preq, bend_count=0, bend_length_mm=None, bend_force_t=None)
+    cutters = [m for m in owned if sheet_kind(m.capabilities) in SHEET_CUTTERS]
+    fits = [fit_machine(blank, m, shop_caps) for m in cutters]
+    ok = [f for f in fits if f.passes]
+    notes = list(hint.get("notes", ()))
+    if ok:
+        best = min(ok, key=lambda f: f.resource_hint.get("hourly_rate_usd")
+                   if _is_number(f.resource_hint.get("hourly_rate_usd")) else float("inf"))
+        notes.append(f"blank cut on your {best.machine}")
+        return {**hint, "blank_on": best.machine, "notes": tuple(notes)}
+    if not cutters:
+        why = "no laser, punch, plasma or waterjet in Your shop"
+    else:
+        closest = min(fits, key=_machine_score)
+        reason = "; ".join(f.human for f in closest.failures[:2]) or "it doesn't fit"
+        why = f"your {closest.machine} can't cut it ({reason})"
+    notes.append(f"blank cut outside: {why}")
+    return {**hint, "blank_outside": True, "blank_note": why, "notes": tuple(notes)}
+
+
 def _machine_score(fr: FitResult):
     """Lower = closer to passing (fewest hard fails, then smallest rel delta)."""
     hard = _hard(fr.failures)
@@ -1225,6 +1352,10 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
                     f.resource_hint.get("hourly_rate_usd")
                     if _is_number(f.resource_hint.get("hourly_rate_usd"))
                     else float("inf")))
+            best_cap = owned[fits.index(best)]
+            if (r == ProcessType.SHEET_METAL.value and preq.bend_count > 0
+                    and sheet_kind(best_cap.capabilities) == PRESS_BRAKE):
+                best = replace(best, resource_hint=_blank_hint(best.resource_hint, preq, owned, shop_caps))
             sec = len(best.resource_hint.get("secondary_ops", ()))
             cost = (best.resource_hint.get("hourly_rate_usd")
                     if _is_number(best.resource_hint.get("hourly_rate_usd"))
