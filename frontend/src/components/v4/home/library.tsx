@@ -10,6 +10,7 @@ import * as React from "react";
 import { onboardLibrary } from "@/lib/verify/library-api";
 import type { OnboardSummary } from "@/lib/verify/library";
 import { cx } from "../ui";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 import * as api from "./data";
 
 const CAD = ".stl,.step,.stp,.iges,.igs";
@@ -21,6 +22,8 @@ export function LibraryPanel({ onAdded }: { onAdded: () => void }) {
   const [busy, setBusy] = React.useState(false);
   const [res, setRes] = React.useState<OnboardSummary | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  // A viewer opens the library but can't add to it: the pickers are off, with the reason.
+  const readOnly = useReadOnly("add parts to the library");
 
   React.useEffect(() => {
     api.librarySize().then(setSize, () => setSize(null));
@@ -53,14 +56,14 @@ export function LibraryPanel({ onAdded }: { onAdded: () => void }) {
       </div>
       <div className="h-lib">
         <span className="h-pk">
-          <label className="btn sm h-file">
+          <label className={cx("btn sm h-file", readOnly && "off")} aria-disabled={readOnly ? true : undefined} title={readOnly ?? undefined}>
             Choose CAD files
             <input
               type="file"
               multiple
               accept={CAD}
               aria-label="Choose CAD files for the parts library"
-              disabled={busy}
+              disabled={busy || !!readOnly}
               onChange={(e) => {
                 const picked = Array.from(e.target.files ?? []);
                 e.target.value = "";
@@ -69,13 +72,13 @@ export function LibraryPanel({ onAdded }: { onAdded: () => void }) {
               }}
             />
           </label>
-          <label className="btn sm h-file">
+          <label className={cx("btn sm h-file", readOnly && "off")} aria-disabled={readOnly ? true : undefined} title={readOnly ?? undefined}>
             <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{mapping ? mapping.name : "Choose mapping"}</span>
             <input
               type="file"
               accept=".csv,.json,text/csv,application/json"
               aria-label="Choose a mapping file, CSV or JSON"
-              disabled={busy}
+              disabled={busy || !!readOnly}
               onChange={(e) => {
                 const m = e.target.files?.[0] ?? null;
                 e.target.value = "";
@@ -93,6 +96,7 @@ export function LibraryPanel({ onAdded }: { onAdded: () => void }) {
           ) : null}
         </span>
         <small>Mapping columns: filename, part_id, name, program, material_class. Optional.</small>
+        <ReadOnlyLine line={readOnly} />
         {files.length ? (
           <div className="h-files" role="list" aria-label="Files to add">
             {files.map((f, i) => (

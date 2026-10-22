@@ -16,6 +16,7 @@ import { R } from "../routes";
 import * as api from "../home/data";
 import { rateCardName, yoursOf } from "../home/home-derive";
 import { PartThumb } from "../home/thumb";
+import { useShell } from "../shell";
 import "./onboard.css";
 
 /** Make the joined organization the active one. */
@@ -76,6 +77,8 @@ export function teamInfo(s: TeamSetup, role: string): [string, string][] {
 /** Parts, right after joining (`?joined=1`): who set up what, and the first check. */
 export function JoinedWelcome() {
   const [on, setOn] = React.useState(false);
+  // A viewer opens the team's parts but doesn't check: no "Check your own part".
+  const { checkBlocked } = useShell();
   const [org, setOrg] = React.useState<string | null>(null);
   const [machines, setMachines] = React.useState<string[] | null>(null);
   const [newest, setNewest] = React.useState<{ key: string; file: string; checks: number } | null>(null);
@@ -141,18 +144,24 @@ export function JoinedWelcome() {
             <span aria-hidden="true">→</span>
           </Link>
         ) : null}
-        <Link className="lrow" href={R.check}>
-          <span className="h-th" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-              <path d="M10 13V3m0 0L6 7m4-4 4 4M4 13v4h12v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span>
-            <b>Check your own part</b>
-            <small>Uses 1 check · on your team’s machines</small>
-          </span>
-          <span aria-hidden="true">→</span>
-        </Link>
+        {checkBlocked ? (
+          <p className="nb-fine" role="note" style={{ margin: "2px 2px 0" }}>
+            {checkBlocked}
+          </p>
+        ) : (
+          <Link className="lrow" href={R.check}>
+            <span className="h-th" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path d="M10 13V3m0 0L6 7m4-4 4 4M4 13v4h12v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span>
+              <b>Check your own part</b>
+              <small>Uses 1 check · on your team’s machines</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </Link>
+        )}
         <p className="nb-fine" style={{ margin: "2px 2px 0" }}>
           Three short tips show on the first part you open, once.
         </p>

@@ -61,6 +61,7 @@ export function MachineSheet({
   rc,
   onEdit,
   onDelete,
+  readOnly = null,
   load,
   loadError,
   onRetryLoad,
@@ -76,6 +77,8 @@ export function MachineSheet({
   rc: RateCardState;
   onEdit: () => void;
   onDelete: () => Promise<void>;
+  /** An org viewer's line: no Edit or Delete, the line instead. */
+  readOnly?: string | null;
 }) {
   const [asking, setAsking] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -136,15 +139,20 @@ export function MachineSheet({
         <WorkOnIt load={load ?? null} error={loadError ?? null} onRetry={onRetryLoad} name={name} />
         <div className="gh">
           <span>Spec</span>
-          <span style={{ display: "flex", gap: 6 }}>
-            <button className="btn sm" type="button" onClick={onEdit}>
-              Edit specs
-            </button>
-            <button className="btn sm" type="button" ref={deleteBtn} onClick={() => setAsking(true)} aria-expanded={asking}>
-              Delete
-            </button>
-          </span>
+          {readOnly ? (
+            <span />
+          ) : (
+            <span style={{ display: "flex", gap: 6 }}>
+              <button className="btn sm" type="button" onClick={onEdit}>
+                Edit specs
+              </button>
+              <button className="btn sm" type="button" ref={deleteBtn} onClick={() => setAsking(true)} aria-expanded={asking}>
+                Delete
+              </button>
+            </span>
+          )}
         </div>
+        {readOnly ? <p className="smeta" role="note" style={{ margin: "0 12px 8px" }}>{readOnly}</p> : null}
         {asking ? (
           <div className="confirm" role="alertdialog" aria-label="Delete machine">
             <b>Delete {name}?</b>

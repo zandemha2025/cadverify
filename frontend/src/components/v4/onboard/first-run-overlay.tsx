@@ -59,7 +59,7 @@ export function FirstRun() {
   const p = usePart();
   const fx = useFix();
   const { user } = useAuth();
-  const { usage } = useShell();
+  const { usage, checkBlocked } = useShell();
   const uid = user?.id ?? null;
   const key = p.data.key;
   const rc = useRecheck(key);
@@ -177,7 +177,8 @@ export function FirstRun() {
   );
   useRegisterPaletteItems("first-run", palette);
 
-  const card = tips && !quiet && !nMachines && !skipped ? shopCardDue(tips, now) : null;
+  // A viewer can't add the shop's machines, so the card isn't offered to them.
+  const card = !checkBlocked && tips && !quiet && !nMachines && !skipped ? shopCardDue(tips, now) : null;
 
   return (
     <>

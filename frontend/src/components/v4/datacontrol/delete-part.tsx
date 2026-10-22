@@ -13,6 +13,7 @@ import { forgetLoaded } from "../records/api";
 import { deleteCachedMeshes } from "../part/mesh-cache";
 import { deletePart, deletionStatus, partDeletionPreview } from "./api";
 import { fingerprint, linksLine, partRemovalLines, receiptLine, type PartPreview, type Receipt } from "./words";
+import { useReadOnly } from "../read-only";
 import "./data.css";
 
 export function DeletePartButton({
@@ -21,6 +22,7 @@ export function DeletePartButton({
   className = "btn sm",
   label = "Delete part",
   onDeleted,
+  readOnlyAs = "hidden",
 }: {
   partKey: string;
   fileName: string;
@@ -28,8 +30,18 @@ export function DeletePartButton({
   label?: string;
   /** Called when the person closes the receipt. */
   onDeleted: () => void;
+  /** For an org viewer, who can't delete: no button, and optionally the one line saying why. */
+  readOnlyAs?: "hidden" | "line";
 }) {
   const [open, setOpen] = React.useState(false);
+  const readOnly = useReadOnly();
+  if (readOnly) {
+    return readOnlyAs === "line" ? (
+      <span role="note" style={{ flexBasis: "100%", fontSize: 12.5, color: "var(--ink3)" }}>
+        {readOnly}
+      </span>
+    ) : null;
+  }
   return (
     <>
       <button className={className} type="button" onClick={() => setOpen(true)} title="Delete this part, its stored file and its results">

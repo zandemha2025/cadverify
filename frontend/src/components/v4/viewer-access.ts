@@ -22,3 +22,18 @@ export function checkBlockedLine(active: ActiveOrg | null | undefined): string |
   if (!active || active.org_role !== "viewer") return null;
   return viewerCheckLine(active.name);
 }
+
+/**
+ * The one line beside a write control a viewer can't use (disabled, never
+ * offered as if it would work): "Viewers can't change parts. Ask an admin for
+ * Member access." `what` names the thing ("change the shop's machines").
+ */
+export function viewerWriteLine(what = "change parts"): string {
+  return `Viewers can't ${what}. Ask an admin for Member access.`;
+}
+
+/** The viewer write line for the active org, or null when the role may write (or isn't known yet). */
+export function writeBlockedLine(active: ActiveOrg | null | undefined, what?: string): string | null {
+  if (!active || active.org_role !== "viewer") return null;
+  return viewerWriteLine(what);
+}

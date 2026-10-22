@@ -29,6 +29,7 @@ import { SpecCaps } from "./spec-caps";
 import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, opSavedNote, tileSub, toggleOp } from "./shop-derive";
 import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
 import { useUnits } from "../units/use-units";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { UnitSwitch } from "../units/unit-switch";
 
 type DialogState = { mode: "add"; process?: string } | { mode: "edit"; machine: OwnedMachine } | null;
@@ -180,12 +181,14 @@ export function MachinesScreen() {
     showToast(`${mode === "add" ? "Added" : "Saved"} ${machineName(m)}. Older decisions are marked for re-costing.`);
   };
 
+  // A viewer sees the shop's machines but can't change them: Add and Import are off, with the reason.
+  const readOnly = useReadOnly("change the shop's machines");
   const actions = (
     <>
-      <button className="btn ink sm" type="button" onClick={() => setDialog({ mode: "add" })}>
+      <button className="btn ink sm" type="button" onClick={() => setDialog({ mode: "add" })} disabled={!!readOnly} title={readOnly ?? undefined}>
         Add machine
       </button>
-      <button className="btn sm" type="button" onClick={() => csvRef.current?.click()} disabled={busyCsv}>
+      <button className="btn sm" type="button" onClick={() => csvRef.current?.click()} disabled={busyCsv || !!readOnly} title={readOnly ?? undefined}>
         {busyCsv ? "Importing…" : "Import CSV"}
       </button>
       <button className="btn sm" type="button" onClick={onTemplate}>
@@ -237,6 +240,7 @@ export function MachinesScreen() {
         }}
       />
       <Content>
+        {readOnly ? <Banner>{readOnly}</Banner> : null}
         {banner?.kind === "import" ? (
           <Banner tone={banner.s.errors.length ? "warn" : "ok"} onDismiss={() => setBanner(null)}>
             <b>
@@ -300,12 +304,12 @@ export function MachinesScreen() {
             {machines.map((m) => (
               <MachineTile key={m.id} m={m} on={m.id === sel} onPick={() => pick(m.id)} load={shopLoad ? loadFor(shopLoad.machines, machineName(m)) ?? loadFor(shopLoad.machines, m.name ?? "") : undefined} />
             ))}
-            <AddTile onPick={() => setDialog({ mode: "add", process: "fdm" })} />
+            {readOnly ? null : <AddTile onPick={() => setDialog({ mode: "add", process: "fdm" })} />}
           </div>
           </>
         )}
         {machines && machines.length > 0 ? <BatchOnMachines n={total ?? machines.length} /> : null}
-        <ShopOps onSaved={() => recs.reload()} />
+        <ShopOps onSaved={() => recs.reload()} readOnly={readOnly} />
       </Content>
       <Sheet label="Machine details" style={{ bottom: 20 }}>
         <span ref={sheetRef} aria-hidden="true" style={{ display: "block", height: 0 }} />
@@ -321,6 +325,7 @@ export function MachinesScreen() {
             rc={rc}
             onEdit={() => setDialog({ mode: "edit", machine: selected })}
             onDelete={onDelete}
+            readOnly={readOnly}
           />
         ) : (
           <div className="top">
@@ -425,7 +430,7 @@ function AddTile({ onPick }: { onPick: () => void }) {
 }
 
 /** "Across the shop": the shop-level operations the engine asks for by name. */
-function ShopOps({ onSaved }: { onSaved: () => void }) {
+function ShopOps({ onSaved, readOnly = null }: { onSaved: () => void; readOnly?: string | null }) {
   const [ops, setOps] = React.useState<Record<string, unknown> | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState<string | null>(null);
@@ -517,8 +522,9 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
                 type="button"
                 className={cx("tog2", on && "on")}
                 aria-pressed={on}
-                aria-disabled={!ops || saving != null}
-                onClick={() => void toggle(key, label)}
+                aria-disabled={!ops || saving != null || !!readOnly}
+                title={readOnly ?? undefined}
+                onClick={() => (readOnly ? undefined : void toggle(key, label))}
               >
                 {saving === key ? "Saving…" : label}
               </button>
@@ -531,7 +537,8 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
           ? note.text
           : "Stress relief and sintering, a metal printer's own steps, count as done in-house until you turn them off (sent out). HIP and grinding count only when on."}
       </p>
-      {!error ? <SpecCaps ops={ops} saving={saving} onSet={(k, v, l) => void setKey(k, v, l)} /> : null}
+      {/* A viewer's choices are off: SpecCaps treats any non-null `saving` as busy. */}
+      {!error ? <SpecCaps ops={ops} saving={readOnly ? "" : saving} onSet={(k, v, l) => (readOnly ? undefined : void setKey(k, v, l))} /> : null}
     </Panel>
   );
 }

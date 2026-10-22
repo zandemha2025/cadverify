@@ -472,7 +472,7 @@ function Peek({ row, v, onClose, onDeleted }: { row: PartRow; v: Verdict; onClos
               Analysis
             </Link>
           ) : null}
-          <DeletePartButton partKey={row.part_key} fileName={row.filename} className="btn sm ghost" label="Delete" onDeleted={onDeleted} />
+          <DeletePartButton partKey={row.part_key} fileName={row.filename} className="btn sm ghost" label="Delete" onDeleted={onDeleted} readOnlyAs="line" />
         </div>
       </div>
     </>
