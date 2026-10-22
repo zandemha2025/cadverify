@@ -134,12 +134,17 @@ starts when the work does.
   slots (`parse_pool.pool_slot`) before its timer starts, so the assembly
   probe's 60 s and a parse's own limit are spent on its own extraction, not
   behind other parts'.
-- The ladder's rung caps are wall time, so on a saturated box they measure the
-  load. When every rung fails and one ran out of time while the CPUs were
-  oversubscribed (the 1-minute load average above the CPU count, or every
-  compute slot in use), the answer is busy, not "this file can't be meshed":
-  the API's 429 `server_busy`; a catalog part is checked again after the rest
-  of its run; a big file's check ends `CHECK_BUSY`, nothing charged.
+- The ladder's rung caps (24 / 15 / 15 s for a 60 s budget) are CPU seconds in
+  the rung's parse worker (read from `/proc`), the part's own work, the same
+  on an idle or a loaded box: a rung that uses its cap doesn't converge, and
+  the ladder tries the next strategy, as before. Wall time only bounds the
+  whole ladder (the route's budget less 2 s). Running out of it first means the
+  worker was starved, not that the part is bad: the ladder stops there, never
+  trying another strategy (another mesh) because of time, and the answer is
+  busy, not "this file can't be meshed": the API's 429 `server_busy`; a
+  catalog part is checked again after the rest of its run; a big file's check
+  ends `CHECK_BUSY`, nothing charged. A geometry failure (gmsh raises, no
+  surfaces, an open shell) still moves to the next strategy.
 - A rung that hits its cap, or whose request went away, no longer SIGKILLs
   the whole shared pool (which broke every other request's parse in flight):
   the pool is retired (`parse_pool.retire_pool`). New work goes to a fresh

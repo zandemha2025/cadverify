@@ -473,22 +473,38 @@ async def test_pool_parallelizes_concurrent_distinct_parts(monkeypatch):
 
     parts = generate_distinct_parts(3)
     parse_pool.submit_sync(parts[0], ".step")  # warm: pay spawn once up front
+    # A budget the box's load can't use up: the rung caps are CPU time, and the
+    # ladder's wall-clock deadline must not end a parse as busy on a loaded box.
+    monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "600")
+    monkeypatch.delenv("PARSE_PROCESS_POOL_DISABLED", raising=False)
 
-    async def wall(disabled: bool) -> float:
-        if disabled:
-            monkeypatch.setenv("PARSE_PROCESS_POOL_DISABLED", "1")
-        else:
-            monkeypatch.delenv("PARSE_PROCESS_POOL_DISABLED", raising=False)
-        mesh_cache.get_cache().clear()
-        t = time.perf_counter()
-        await asyncio.gather(
-            *[_parse_mesh_async(d, f"p{i}.step") for i, d in enumerate(parts)]
-        )
-        return time.perf_counter() - t
+    # The proof is the overlap, measured inside one run: on a loaded box every
+    # parse slows alike, but on the pool they still run at the same time, where
+    # the thread path (GIL + the process-global gmsh lock) runs them one by one.
+    spans: list[tuple[float, float]] = []
+    orig = parse_pool.submit_async
 
-    thread_wall = await wall(True)
-    pool_wall = await wall(False)
-    assert pool_wall < thread_wall * 0.75, (
-        f"process pool ({pool_wall:.2f}s) should beat threads "
-        f"({thread_wall:.2f}s) for 3 concurrent distinct parts"
+    async def _timed(data, suffix):
+        t0 = time.perf_counter()
+        try:
+            return await orig(data, suffix)
+        finally:
+            spans.append((t0, time.perf_counter()))
+
+    monkeypatch.setattr(parse_pool, "submit_async", _timed)
+    mesh_cache.get_cache().clear()
+    t = time.perf_counter()
+    meshes = await asyncio.gather(
+        *[_parse_mesh_async(d, f"p{i}.step") for i, d in enumerate(parts)]
+    )
+    pool_wall = time.perf_counter() - t
+    assert all(len(m.faces) > 0 for m, _ in meshes)
+    serial = sum(end - start for start, end in spans)
+    latest_start = max(start for start, _ in spans)
+    earliest_end = min(end for _, end in spans)
+    assert len(spans) == 3
+    assert latest_start < earliest_end, f"the three parses never ran at once: {spans}"
+    assert pool_wall < serial * 0.75, (
+        f"process pool ({pool_wall:.2f}s) should overlap 3 concurrent distinct parts "
+        f"(their serial sum {serial:.2f}s)"
     )

@@ -4,8 +4,8 @@
   a fresh pool, and the old one (the stuck worker with it) is killed only once
   its other in-flight parses have finished.
 - A parse or assembly extraction takes a pool slot before its timer starts.
-- A ladder whose rungs ran out of wall time on a saturated box answers busy
-  (429 server_busy), not "this file can't be meshed".
+- A rung's cap is its worker's CPU time; a ladder that runs out of wall time
+  first answers busy (429 server_busy) and never tries the next strategy.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import time
 from concurrent.futures.process import BrokenProcessPool
 
 import pytest
+import trimesh
 from fastapi import HTTPException
 
 from src.api import routes
@@ -66,8 +67,8 @@ def test_a_retired_pool_with_nothing_else_running_is_killed_at_once(fresh_pool):
 
 
 @pytest.mark.asyncio
-async def test_a_capped_rung_zero_retires_its_pool_and_spares_the_sibling(monkeypatch):
-    """Rung 0 on the shared pool hits its cap: its pool is retired with it as the stuck one."""
+async def test_a_stopped_rung_zero_retires_its_pool_and_spares_the_sibling(monkeypatch):
+    """Rung 0 on the shared pool is stopped (here: out of time): its pool is retired, with it as the stuck one."""
     retired = []
 
     class _Pool:
@@ -82,8 +83,13 @@ async def test_a_capped_rung_zero_retires_its_pool_and_spares_the_sibling(monkey
     monkeypatch.setattr(parse_pool, "_get_pool", lambda: pool)
     monkeypatch.setattr(parse_pool, "retire_pool", lambda p, stuck=None, **k: retired.append((p, stuck)))
     monkeypatch.setattr(parse_pool, "recycle_pool", lambda **k: pytest.fail("the shared pool must not be killed"))
-    with pytest.raises(parse_pool._RungTimeout):
-        await parse_pool._rung0_via_pool(b"step", ".step", 0.1, asyncio.get_event_loop())
+    loop = asyncio.get_event_loop()
+    token = parse_pool._LADDER_DEADLINE.set(loop.time() + 0.3)
+    try:
+        with pytest.raises(parse_pool._RungStarved):
+            await parse_pool._rung0_via_pool(b"step", ".step", 0.1, loop)
+    finally:
+        parse_pool._LADDER_DEADLINE.reset(token)
     assert len(retired) == 1 and retired[0][0] is pool and retired[0][1] is not None
 
 
@@ -132,22 +138,24 @@ async def _slot_then(fn):
 
 
 @pytest.mark.asyncio
-async def test_rungs_capped_on_a_saturated_box_answer_busy_not_unmeshable(monkeypatch):
-    monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "3")
+async def test_a_rung_out_of_wall_time_answers_busy_and_never_tries_the_next(monkeypatch):
+    """Running out of wall time is the box, not the part: busy, and no other strategy (another mesh)."""
+    tried = []
 
-    async def _grind0(data, suffix, cap, loop):
-        raise parse_pool._RungTimeout("rung 0 exceeded its cap")
+    async def _starved0(data, suffix, cap, loop):
+        tried.append(0)
+        raise parse_pool._RungStarved("rung 0 ran out of time with 3s of its 24s of CPU")
 
-    async def _grind_recovery(data, suffix, idx, cap):
-        raise parse_pool._RungTimeout(f"rung {idx} exceeded its cap")
+    async def _recovery(data, suffix, idx, cap):
+        tried.append(idx)
+        return trimesh.creation.box(extents=(10, 10, 10))
 
-    monkeypatch.setattr(parse_pool, "_rung0_via_pool", _grind0)
-    monkeypatch.setattr(parse_pool, "_run_rung_killable", _grind_recovery)
-
-    monkeypatch.setattr(parse_pool, "_saturated", lambda: True)
+    monkeypatch.setattr(parse_pool, "_rung0_via_pool", _starved0)
+    monkeypatch.setattr(parse_pool, "_run_rung_killable", _recovery)
     with pytest.raises(parse_pool.ParseBusy) as ei:
         await parse_pool.submit_async(b"part", ".step")
-    assert "could not tessellate" in str(ei.value).lower()  # still the ladder's own words underneath
+    assert tried == [0]
+    assert "busy" in str(ei.value)
     # The route answers the API's busy 429, not a 400 "can't be meshed".
     monkeypatch.setattr(routes, "is_step_supported", lambda: True)
     with pytest.raises(HTTPException) as http:
@@ -155,28 +163,97 @@ async def test_rungs_capped_on_a_saturated_box_answer_busy_not_unmeshable(monkey
     assert http.value.status_code == 429 and http.value.detail["code"] == "server_busy"
     assert isinstance(http.value, compute_budget.MeshBusy)
 
-    # An idle box: the honest 400.
-    monkeypatch.setattr(parse_pool, "_saturated", lambda: False)
+
+@pytest.mark.asyncio
+async def test_a_rung_that_used_its_cpu_budget_advances(monkeypatch):
+    """A rung that used up its CPU cap doesn't converge (on any load): the next strategy runs."""
+    tried = []
+
+    async def _grind0(data, suffix, cap, loop):
+        tried.append(0)
+        raise parse_pool._RungTimeout("rung 0 used its 24s of CPU")
+
+    async def _recovery(data, suffix, idx, cap):
+        tried.append(idx)
+        return trimesh.creation.box(extents=(10, 10, 10))
+
+    monkeypatch.setattr(parse_pool, "_rung0_via_pool", _grind0)
+    monkeypatch.setattr(parse_pool, "_run_rung_killable", _recovery)
+    mesh = await parse_pool.submit_async(b"part", ".step")
+    assert tried == [0, 1] and mesh.is_watertight
+
+
+@pytest.mark.asyncio
+async def test_a_geometry_failure_still_advances_and_all_failing_is_the_honest_400(monkeypatch):
+    tried = []
+
+    async def _fail0(data, suffix, cap, loop):
+        tried.append(0)
+        raise RuntimeError("gmsh: no surfaces")
+
+    async def _fail(data, suffix, idx, cap):
+        tried.append(idx)
+        raise RuntimeError("gmsh: no surfaces")
+
+    monkeypatch.setattr(parse_pool, "_rung0_via_pool", _fail0)
+    monkeypatch.setattr(parse_pool, "_run_rung_killable", _fail)
+    with pytest.raises(ValueError) as ei:
+        await parse_pool.submit_async(b"part", ".step")
+    assert not isinstance(ei.value, parse_pool.ParseBusy)
+    assert tried == [0, 1, 2]
+    monkeypatch.setattr(routes, "is_step_supported", lambda: True)
     with pytest.raises(HTTPException) as http:
         await routes._tessellate_step_via_pool(b"part", ".step", "part.step")
     assert http.value.status_code == 400
     assert "could not tessellate" in str(http.value.detail).lower()
 
 
+def _burn(report: str, seconds: float) -> str:
+    """A rung's worker that computes (CPU) for ``seconds``."""
+    parse_pool._report_start(report)
+    end = time.process_time() + seconds
+    while time.process_time() < end:
+        pass
+    return "burned"
+
+
+def _nap(report: str, seconds: float) -> str:
+    """A rung's worker that gets no CPU (as on a starved box) for ``seconds``."""
+    parse_pool._report_start(report)
+    time.sleep(seconds)
+    return "napped"
+
+
+async def _await_in_own_process(fn, seconds: float, cpu_cap: float, deadline_s: float):
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    ex = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
+    report = parse_pool._new_report()
+    loop = asyncio.get_event_loop()
+    token = parse_pool._LADDER_DEADLINE.set(loop.time() + deadline_s)
+    try:
+        cfut = ex.submit(fn, report, seconds)
+        return await parse_pool._await_rung(cfut, report, 0, cpu_cap)
+    finally:
+        parse_pool._LADDER_DEADLINE.reset(token)
+        parse_pool._hard_kill(ex)
+        ex.shutdown(wait=False, cancel_futures=True)
+        parse_pool._drop_report(report)
+
+
 @pytest.mark.asyncio
-async def test_a_deterministic_mesh_failure_stays_a_400_even_when_busy(monkeypatch):
-    async def _fail0(data, suffix, cap, loop):
-        raise RuntimeError("gmsh: no surfaces")
-
-    async def _fail(data, suffix, idx, cap):
-        raise RuntimeError("gmsh: no surfaces")
-
-    monkeypatch.setattr(parse_pool, "_rung0_via_pool", _fail0)
-    monkeypatch.setattr(parse_pool, "_run_rung_killable", _fail)
-    monkeypatch.setattr(parse_pool, "_saturated", lambda: True)
-    with pytest.raises(ValueError) as ei:
-        await parse_pool.submit_async(b"part", ".step")
-    assert not isinstance(ei.value, parse_pool.ParseBusy)
+async def test_the_rung_cap_is_the_workers_cpu_time_not_wall_time():
+    # 1 s of CPU against a 0.5 s CPU cap: the cap, well inside a 60 s deadline.
+    with pytest.raises(parse_pool._RungTimeout):
+        await _await_in_own_process(_burn, 1.0, cpu_cap=0.5, deadline_s=60)
+    # Asleep (no CPU) far past the cap's seconds: not the cap, but the deadline: starved.
+    t0 = time.monotonic()
+    with pytest.raises(parse_pool._RungStarved):
+        await _await_in_own_process(_nap, 30.0, cpu_cap=0.5, deadline_s=8)
+    assert time.monotonic() - t0 < 20
+    # Within both: the result.
+    assert await _await_in_own_process(_nap, 0.2, cpu_cap=0.5, deadline_s=60) == "napped"
 
 
 def test_a_busy_mesh_is_a_catalog_timeout_checked_again_later():
@@ -184,12 +261,3 @@ def test_a_busy_mesh_is_a_catalog_timeout_checked_again_later():
 
     assert _timed_out(compute_budget.MeshBusy())
     assert not _timed_out(compute_budget.ComputeBusy())
-
-
-def test_saturation_reads_the_load_and_the_budget(monkeypatch):
-    monkeypatch.setattr(parse_pool.os, "cpu_count", lambda: 4)
-    monkeypatch.setattr(parse_pool.os, "getloadavg", lambda: (9.0, 5.0, 3.0))
-    assert parse_pool._saturated()
-    monkeypatch.setattr(parse_pool.os, "getloadavg", lambda: (1.0, 1.0, 1.0))
-    assert not parse_pool._saturated()
-
