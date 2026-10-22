@@ -11,6 +11,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SALES_MAILTO, type Plans } from "@/lib/billing";
+import { API_BASE } from "@/lib/api-base";
 import { Chip, Content } from "../ui";
 import { AccountFrame, AccountHead, Banner } from "./frame";
 import * as api from "./api";
@@ -26,8 +27,13 @@ export function BillingScreen({ plans }: { plans: Plans }) {
   const [going, setGoing] = React.useState<"checkout" | "portal" | null>(null);
   const [err, setErr] = React.useState<{ kind: "checkout" | "portal"; message: string } | null>(null);
   const [cancelled, setCancelled] = React.useState(false);
+  // Parts your organization has checked so far (op-02): the pilot's "parts used", from the parts list itself.
+  const [partsChecked, setPartsChecked] = React.useState<number | null>(null);
 
   React.useEffect(() => {
+    fetch(`${API_BASE}/catalog?page_size=1`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => setPartsChecked(typeof c?.pagination?.total === "number" ? c.pagination.total : null), () => setPartsChecked(null));
     fetch("/api/auth/me/usage", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((u) => setUsage(u), () => setUsage(null))
@@ -103,7 +109,7 @@ export function BillingScreen({ plans }: { plans: Plans }) {
           <span key="a">
             {allowWord} <b className="num">{allowCap ?? "—"}</b>
           </span>,
-          <span key="b">Billing <b>Stripe</b></span>,
+          <span key="b">Billing <b>{pilot ? "Your pilot agreement" : "Stripe"}</b></span>,
         ]}
       />
       <Content full>
@@ -199,7 +205,7 @@ export function BillingScreen({ plans }: { plans: Plans }) {
                   </span>
                 </>
               ) : pilot ? (
-                <span className="a-fh">Your pilot already includes unlimited checks.</span>
+                <span className="a-fh">Checks aren’t counted on your pilot.</span>
               ) : checkoutOff ? (
                 <>
                   {mailButton("btn")}
@@ -222,20 +228,42 @@ export function BillingScreen({ plans }: { plans: Plans }) {
               $7,500 <small>one factory</small>
             </span>
             <ul>
+              {pilot ? (
+                <>
+                  {/* op-02: the terms as they are on this account. ScaleCAD sets no part limit and holds no dates. */}
+                  <li>
+                    <i aria-hidden="true">✓</i>No part limit in ScaleCAD
+                    {partsChecked != null ? ` · ${partsChecked.toLocaleString("en-US")} ${partsChecked === 1 ? "part" : "parts"} checked so far` : ""}
+                  </li>
+                  <li>
+                    <i aria-hidden="true">✓</i>Checks aren’t counted
+                  </li>
+                  <li>
+                    <i aria-hidden="true">✓</i>Scope and dates as in your pilot agreement (typically up to 500 parts over 4–6 weeks)
+                  </li>
+                </>
+              ) : (
+                <li>
+                  <i aria-hidden="true">✓</i>Up to 500 parts, 4–6 weeks
+                </li>
+              )}
               <li>
-                <i aria-hidden="true">✓</i>Up to 500 parts, 4–6 weeks
-              </li>
-              <li>
-                <i aria-hidden="true">✓</i>Batches, assemblies, Photo to 3D
+                <i aria-hidden="true">✓</i>Batches without a part limit, assemblies, Photo to 3D
               </li>
               <li>
                 <i aria-hidden="true">✓</i>Recalibration from real jobs
               </li>
             </ul>
             <div className="a-act">
-              <Link className="btn" href={PILOT_HREF}>
-                Talk to us
-              </Link>
+              {pilot ? (
+                <a className="btn" href={SALES_MAILTO}>
+                  Email us about your pilot
+                </a>
+              ) : (
+                <Link className="btn" href={PILOT_HREF}>
+                  Talk to us
+                </Link>
+              )}
             </div>
           </section>
         </div>
@@ -250,8 +278,10 @@ export function BillingScreen({ plans }: { plans: Plans }) {
               <b style={{ textAlign: "left" }}>Fixes ScaleCAD makes, mesh repair, Design Studio, Fit in assembly. The free trial has an hourly and daily limit on them</b>
               <span>Pro adds</span>
               <b style={{ textAlign: "left" }}>Monthly checks, and no free-trial limit on those tools</b>
-              <span>Pilot only</span>
-              <b style={{ textAlign: "left" }}>Batches, assemblies, Photo to 3D, recalibration</b>
+              <span>Free trial</span>
+              <b style={{ textAlign: "left" }}>Catalog runs of up to {plans.free.catalog_parts} parts with a work email, separate from checks</b>
+              <span>Pilot adds</span>
+              <b style={{ textAlign: "left" }}>Catalog runs and batches without a part limit, assemblies, Photo to 3D, recalibration</b>
             </div>
           </section>
           <section className="panel" aria-label="Payment and invoices">

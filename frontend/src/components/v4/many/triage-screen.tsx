@@ -69,13 +69,14 @@ export function TriageScreen() {
   const fileRef = React.useRef<HTMLInputElement>(null);
   const toolFrom = React.useRef<string | null>(null);
   // The newest catalog run: its page is the make-or-buy answer, by cost, at the listed quantities.
-  const [lastRun, setLastRun] = React.useState<{ id: string; name: string } | null>(null);
+  const [lastRun, setLastRun] = React.useState<{ id: string; name: string; running: boolean } | null>(null);
   React.useEffect(() => {
     let live = true;
     listBatches({ limit: 20 }).then(
       (r) => {
         const run = r.batches.find((b) => b.job_type === "catalog");
-        if (live && run) setLastRun({ id: run.batch_ulid, name: run.name || "your catalog run" });
+        if (live && run)
+          setLastRun({ id: run.batch_ulid, name: run.name || "your catalog run", running: !["completed", "failed", "cancelled"].includes(String(run.status ?? "")) });
       },
       () => undefined,
     );
@@ -339,11 +340,20 @@ export function TriageScreen() {
             {roll.cold_projection || roll.evaluation_note ? (
               <div className="stale" role="status" style={{ background: "var(--typ-bg)", color: "var(--ink2)" }}>
                 <span>
-                  {roll.cold_projection
-                    ? "These parts haven’t been sorted against your machines yet. Check a part again to sort it."
-                    : "No part has been checked against your machines. Add your machines in Your shop, then check parts."}
+                  {/* op-09: with machines set up and a run going, the parts are still arriving, not lost. */}
+                  {lastRun?.running && machines?.length
+                    ? `Your catalog run is still checking against your ${machines.length} ${machines.length === 1 ? "machine" : "machines"}; parts appear here as they finish.`
+                    : roll.cold_projection
+                      ? "These parts haven’t been sorted against your machines yet. Check a part again to sort it."
+                      : machines?.length
+                        ? `These parts were checked before your ${machines.length} ${machines.length === 1 ? "machine was" : "machines were"} added. Check them again, or start a catalog run, to sort them on your machines.`
+                        : "No part has been checked against your machines. Add your machines in Your shop, then check parts."}
                 </span>
-                {!roll.cold_projection ? (
+                {lastRun?.running && machines?.length ? (
+                  <Link className="btn sm" href={R.batch(lastRun.id)} style={{ marginLeft: "auto", background: "#fff" }}>
+                    Open the run
+                  </Link>
+                ) : !roll.cold_projection && !machines?.length ? (
                   <Link className="btn sm" href={R.shop} style={{ marginLeft: "auto", background: "#fff" }}>
                     Your machines
                   </Link>

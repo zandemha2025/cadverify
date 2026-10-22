@@ -142,7 +142,7 @@ export function FirstHome({
   const resume = mode === "back" && file && key ? resumeCard({ file, partHref, cost, machines: nMachines, onMachines, addedAfter, hrefs: { addMachines: addHref, rates: R.rates, recheck: `${partHref}?lens=shop` } }) : null;
 
   const left = usage ? (usage.unlimited ? null : usage.remaining) : null;
-  const checksFact = !usage ? null : usage.unlimited ? "Pilot plan · checks aren’t capped" : `${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} ${usage.remaining === 1 ? "check" : "checks"}${mode === "back" ? " left" : ""}`;
+  const checksFact = !usage ? null : usage.unlimited ? "Pilot plan · checks aren’t counted" : `${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} ${usage.remaining === 1 ? "check" : "checks"}${mode === "back" ? " left" : ""}`;
   const batchAccess = useBatchAccess();
   const catalog = batchAccess.kind === "free" ? batchAccess.usage : null;
   const lines = allowanceLines({
