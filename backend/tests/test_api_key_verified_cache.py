@@ -341,3 +341,50 @@ async def test_last_used_writes_never_raise_and_come_once_a_minute(monkeypatch, 
     assert touch.await_count == 2
     loop.set_exception_handler(None)
     assert unretrieved == []
+
+
+@pytest.mark.asyncio
+async def test_a_hit_extends_the_entry_and_a_rehash_still_forces_a_check(monkeypatch):
+    token, row = _key()
+    rows = {row.hmac_index: row}
+    checks = _serve(monkeypatch, rows)
+    clock = [5000.0]
+    monkeypatch.setattr(verified_keys, "_now", lambda: clock[0])
+    ttl = verified_keys.TTL_S
+    await _auth(token)
+    assert checks.n == 1
+    for _ in range(4):  # used every 0.9 TTL: it never lapses
+        clock[0] += 0.9 * ttl
+        await _auth(token)
+    assert checks.n == 1  # 3.6 TTLs after the check, still remembered
+    (entry,) = verified_keys._entries.values()
+    assert entry[2] == clock[0] + ttl  # extended from the last hit
+    # Re-hashed after those extensions: checked again, and refused.
+    _, _, other_hash = mint_token()
+    rows[row.hmac_index] = replace(row, secret_hash=other_hash)
+    assert (await _refused(token)).detail["code"] == "auth_invalid"
+    assert checks.n == 2
+    # Left idle past the TTL, the entry lapses.
+    rows[row.hmac_index] = row
+    clock[0] += ttl + 1
+    await _auth(token)
+    assert checks.n == 3
+
+
+def test_the_ttl_is_fifteen_minutes_unless_set_and_zero_is_off(monkeypatch):
+    monkeypatch.delenv("API_KEY_VERIFY_CACHE_TTL_S", raising=False)
+    assert verified_keys._ttl_from_env() == 900.0
+    monkeypatch.setenv("API_KEY_VERIFY_CACHE_TTL_S", "0")
+    assert verified_keys._ttl_from_env() == 0.0
+    monkeypatch.setenv("API_KEY_VERIFY_CACHE_TTL_S", "not a number")
+    assert verified_keys._ttl_from_env() == 900.0
+
+
+@pytest.mark.asyncio
+async def test_a_zero_ttl_checks_every_request(monkeypatch):
+    token, row = _key()
+    checks = _serve(monkeypatch, {row.hmac_index: row})
+    monkeypatch.setattr(verified_keys, "TTL_S", 0.0)
+    for _ in range(3):
+        await _auth(token)
+    assert checks.n == 3 and len(verified_keys._entries) == 0

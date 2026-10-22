@@ -9,11 +9,14 @@ the event loop and stalled every other request while it did:
 * the check runs in a worker thread (``asyncio.to_thread``), at most
   ``VERIFY_SLOTS`` at once per process (64 MiB each), and concurrent requests
   presenting the same key share one check;
-* a passed check is remembered for ``TTL_S`` seconds, at most ``MAX_ENTRIES``
-  keys. An entry is keyed by HMAC-SHA256 of the presented token under a random
-  per-process secret and holds the key row's id and a SHA-256 of the row's
-  stored hash, so it counts only for that row with that stored hash (a key
-  re-hashed or replaced checks again). The token itself is never stored.
+* a passed check is remembered while the key keeps being used: each hit
+  extends the entry to ``TTL_S`` seconds from then (15 minutes unless
+  ``API_KEY_VERIFY_CACHE_TTL_S`` says otherwise; 0 turns the cache off), at
+  most ``MAX_ENTRIES`` keys. An entry is keyed by HMAC-SHA256 of the presented
+  token under a random per-process secret and holds the key row's id and a
+  SHA-256 of the row's stored hash, so it counts only for that row with that
+  stored hash (a key re-hashed or replaced checks again, however long the entry
+  has lived). The token itself is never stored.
 
 A failed check is not remembered.
 """
@@ -32,12 +35,12 @@ from typing import Callable
 
 def _ttl_from_env() -> float:
     try:
-        return max(0.0, float(os.getenv("API_KEY_VERIFY_CACHE_TTL_S", "60")))
+        return max(0.0, float(os.getenv("API_KEY_VERIFY_CACHE_TTL_S", "900")))
     except ValueError:
-        return 60.0
+        return 900.0
 
 
-TTL_S = _ttl_from_env()  # 0 turns the cache off: every request checks the secret again
+TTL_S = _ttl_from_env()  # sliding: each hit extends it. 0 turns the cache off: every request checks again
 MAX_ENTRIES = 4096
 VERIFY_SLOTS = 2
 
@@ -64,11 +67,15 @@ def _hit(tk: bytes, key_id: int, hd: bytes) -> bool:
         entry = _entries.get(tk)
         if entry is None:
             return False
-        if entry[2] <= _now():
+        now = _now()
+        if entry[2] <= now:
             del _entries[tk]
             return False
+        if entry[0] != key_id or not hmac.compare_digest(entry[1], hd):
+            return False
+        _entries[tk] = (key_id, hd, now + TTL_S)  # sliding: in use, it stays
         _entries.move_to_end(tk)
-        return entry[0] == key_id and hmac.compare_digest(entry[1], hd)
+        return True
 
 
 def _remember(tk: bytes, key_id: int, hd: bytes) -> None:
