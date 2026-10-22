@@ -13,6 +13,7 @@ from src.profiles.models import (
     MaterialProfile,
 )
 from src.profiles.loader import merge_materials, MATERIALS_STRUCTURED, _YAML_MATERIALS
+from src.profiles.pricing import default_form, priced_for
 
 
 # ──────────────────────────────────────────────
@@ -71,6 +72,19 @@ _HARDCODED_MATERIALS: list[MaterialProfile] = [
     MaterialProfile("Copper C110 (Sheet)", [ProcessType.SHEET_METAL], 0.5, 1080, 220, 50, 8.94, 10),
 ]
 
+
+def _with_form(m: MaterialProfile) -> MaterialProfile:
+    """A hardcoded row has one price, in the form its processes buy (each row
+    lists processes of one kind: resin printers, a mill, a press brake)."""
+    form = default_form(m.process_types)
+    if form is None or m.cost_per_kg is None or m.cost_per_kg_by_form:
+        return m
+    m.cost_per_kg_by_form = {form: float(m.cost_per_kg)}
+    m.price_form = form
+    return m
+
+
+_HARDCODED_MATERIALS = [_with_form(m) for m in _HARDCODED_MATERIALS]
 
 # Merge: YAML overrides matching hardcoded entries, adds new ones
 MATERIALS: list[MaterialProfile] = merge_materials(_HARDCODED_MATERIALS, _YAML_MATERIALS)
@@ -284,8 +298,10 @@ MACHINES: list[MachineProfile] = [
 # ──────────────────────────────────────────────
 
 def get_materials_for_process(process: ProcessType) -> list[MaterialProfile]:
-    """Get all materials compatible with a given process."""
-    return [m for m in MATERIALS if process in m.process_types]
+    """Get all materials compatible with a given process, each priced at the
+    form that process buys (powder for a metal printer, bar for a mill, sheet
+    for a press brake; src.profiles.pricing)."""
+    return [priced_for(m, process) for m in MATERIALS if process in m.process_types]
 
 
 def processes_for_material_class(material_class: str) -> frozenset[ProcessType]:

@@ -27,6 +27,12 @@ class MaterialProfile:
     machinability_index: Optional[float] = None
     thermal_conductivity: Optional[float] = None  # W/m·K
     hardness_hrc: Optional[float] = None
+    # USD/kg by the form the alloy or polymer is bought in ("wrought", "powder",
+    # "sheet", "filament", ...), as the material file lists them. A process is
+    # priced at the form it consumes: src.profiles.pricing.priced_for sets
+    # ``cost_per_kg`` to that price and ``price_form`` to the form.
+    cost_per_kg_by_form: dict[str, float] = field(default_factory=dict)
+    price_form: Optional[str] = None
 
 
 # How a catalog machine's ``materials`` were read from its maker.
