@@ -628,7 +628,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     setup_hr = rates.p(process, "setup_hr")
     lot_raw = rates.lot_size_raw(process)
     lot_size = n if lot_raw == "build" else int(lot_raw)
-    n_setups = math.ceil(qty / lot_size)
+    # M14: the first lot pays a whole setup; past it, setups are shared per part
+    # (parts beyond the last full build ride on a build shared with other work,
+    # the full-plate assumption the machine time already makes). Rounding the
+    # lot count up made 50 parts on 20-part plates pay three whole setups and
+    # cost more each than 20: the price per part rose with quantity.
+    n_setups = max(1.0, qty / lot_size)
     learn_mult, learn_src = _learning_multiplier(family, qty, lot_size, rates)
 
     # formative: a multi-cavity tool makes n_cavities parts per machine cycle
@@ -772,8 +777,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     drivers_out.append(Driver(
         name="setup_cost", value=round(setup_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"),
-        source=(f"setup {setup_hr:g}hr × ${labor_rate:g}/hr × ceil({qty}/{lot_size}) "
-                f"= {n_setups} setups ÷ {qty} × region-labor ×{rl:g}{conversion_note}"),
+        source=(f"setup {setup_hr:g}hr × ${labor_rate:g}/hr × {qty}/{lot_size} lots "
+                f"= {n_setups:.4g} setups (at least one) ÷ {qty} × region-labor ×{rl:g}{conversion_note}"),
         error_band_pct=20.0,
     ))
 
@@ -816,7 +821,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             drivers_out.append(Driver(
                 name="inspection_cost", value=round(inspection_scaled, 4), unit="$",
                 provenance=rates.prov_tag(f"fai_hr.{process.name}"),
-                source=(f"first-article {fai_hr:g}hr × {n_setups} lot(s) ÷ {qty} + in-process "
+                source=(f"first-article {fai_hr:g}hr × {n_setups:.4g} lot(s) ÷ {qty} + in-process "
                         f"{inspect_hr_part:g}hr/part{learn_note} = {insp_hr_per_unit:.4f}hr × "
                         f"${labor_rate:g}/hr × region-labor ×{rl:g}{conversion_note} "
                         f"(typical value, not confirmed by a shop)"),
@@ -870,7 +875,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         drivers_out.append(Driver(
             name="finishing_cost", value=round(finishing_scaled, 4), unit="$",
             provenance=rates.prov_tag(f"finish_per_part.{process.name}"),
-            source=(f"outsourced finishing: lot ${fin_lot:g} × {n_setups} ÷ {qty} + "
+            source=(f"outsourced finishing: lot ${fin_lot:g} × {n_setups:.4g} ÷ {qty} + "
                     f"${fin_part:g}/part = ${finishing_per_unit:.2f}/unit × region-labor ×{rl:g}{margin_note} "
                     f"(typical value, not confirmed by a shop)"),
             error_band_pct=40.0,

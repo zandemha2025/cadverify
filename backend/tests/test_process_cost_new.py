@@ -206,16 +206,17 @@ _POLY = dict(name="PA12 (Nylon 12)", density=1.01, cost_per_kg=60.0)
 GOLDEN = {
     # FDM updated for the shared 300 x 300 x 350 mm build size (src/profiles/envelopes.py):
     # the plate holds more parts, so per-build setup and the Z climb spread further.
-    PT.FDM: (_POLY, "polymer", 24.7332,
-             {"amortized_fixed": 0.35, "material": 1.9998, "machine": 15.2667, "labor": 7.1167}),
-    PT.SLA: (_POLY, "polymer", 56.9677,
-             {"amortized_fixed": 1.575, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
-    PT.DLP: (_POLY, "polymer", 14.0563,
-             {"amortized_fixed": 0.63, "material": 1.9998, "machine": 5.7647, "labor": 5.6618}),
+    # 100 parts at 30 a plate pay 100/30 setups, not 4 (M14: no partial-plate step)
+    PT.FDM: (_POLY, "polymer", 24.6749,
+             {"amortized_fixed": 0.2917, "material": 1.9998, "machine": 15.2667, "labor": 7.1167}),
+    PT.SLA: (_POLY, "polymer", 56.8927,
+             {"amortized_fixed": 1.5, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
+    PT.DLP: (_POLY, "polymer", 14.0439,
+             {"amortized_fixed": 0.6176, "material": 1.9998, "machine": 5.7647, "labor": 5.6618}),
     PT.SLS: (_POLY, "polymer", 9.2043,
              {"amortized_fixed": 0.175, "material": 1.9998, "machine": 4.1096, "labor": 2.9199}),
-    PT.MJF: (_POLY, "polymer", 9.2417,
-             {"amortized_fixed": 0.35, "material": 1.9998, "machine": 3.8884, "labor": 3.0035}),
+    PT.MJF: (_POLY, "polymer", 9.0952,
+             {"amortized_fixed": 0.2035, "material": 1.9998, "machine": 3.8884, "labor": 3.0035}),
     PT.CNC_3AXIS: (_ALU, "aluminum", 30.2797,
                    {"amortized_fixed": 0.2625, "material": 0.7484, "machine": 9.375,
                     "labor": 17.5, "nre": 0.7, "inspection": 1.225, "consumables": 0.4688}),
