@@ -225,3 +225,11 @@ test("a part whose check stopped before its price names no process or material (
   // A priced part keeps its route.
   assert.match(verdictOf(part(), null).where, / · 6061-T6 Aluminum$/);
 });
+
+test("ce-10: a tile whose price predates the org's published rates says so", async () => {
+  const { ratesNote } = await import("./parts-derive.ts");
+  const uc = { usd: 36.69, qty: 100, withheld: false, withheld_reason: null, validated: false };
+  assert.equal(ratesNote({ unit_cost: uc, rates: { priced: 0, current: 1, out_of_date: true, text: "" } } as never), "priced at rates v0; yours are v1");
+  assert.equal(ratesNote({ unit_cost: uc, rates: { priced: 1, current: 1, out_of_date: false, text: "" } } as never), null);
+  assert.equal(ratesNote({ unit_cost: { ...uc, usd: null }, rates: { priced: 0, current: 1, out_of_date: true, text: "" } } as never), null);
+});

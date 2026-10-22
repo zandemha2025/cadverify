@@ -24,7 +24,9 @@ export interface PartRow {
   findings: { total: number; critical: number; advisory: number; info: number; scoped_process: string } | null;
   provenance_posture: { measured: number; shop: number; user: number; default: number; total: number } | null;
   route_blocker_count: number;
-  cost_decision: { id: string } | null;
+  cost_decision: { id: string; created_at?: string | null; rate_card?: number | null } | null;
+  /** The rate card the row's price was figured at against the org's card in effect (ce-10). */
+  rates?: { priced: number; current: number; out_of_date: boolean; text: string } | null;
   analysis: { id: string } | null;
   updated_at: string;
 }

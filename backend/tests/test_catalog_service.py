@@ -227,7 +227,8 @@ def test_derive_row_costed_with_analysis_full_shape():
     assert row["provenance_posture"]["total"] == 2
     assert row["provenance_posture"]["grounded"] == 1
     # links to both artifacts
-    assert row["cost_decision"] == {"id": "CD1", "url": "/api/v1/cost-decisions/CD1"}
+    assert row["cost_decision"] == {"id": "CD1", "url": "/api/v1/cost-decisions/CD1",
+                                    "created_at": "2026-06-01T00:00:00+00:00", "rate_card": None}
     assert row["analysis"] == {"id": "AN1", "url": "/api/v1/analyses/AN1"}
 
 
@@ -439,3 +440,28 @@ def test_opening_quantity_matches_the_part_page_rule_on_the_shared_cases():
     assert len(cases) >= 8
     for c in cases:
         assert svc.opening_qty(c["quantities"], c["yearly"]) == c["opens"], c
+
+
+@pytest.mark.asyncio
+async def test_parts_list_rows_say_a_price_predates_the_published_rates(monkeypatch):
+    """ce-10: 'The Parts list shows the old prices with no marker either.'"""
+    from types import SimpleNamespace
+
+    from src.services import rate_card_basis
+
+    published = datetime(2026, 10, 22, 15, 59, tzinfo=timezone.utc)
+
+    async def _rows(session, org_id):
+        return [SimpleNamespace(version=1, status="published", effective_from=published, effective_to=None)]
+
+    monkeypatch.setattr(rate_card_basis, "org_rate_rows", _rows)
+    monkeypatch.setenv("RATE_LIBRARY_ENABLED", "1")
+    old = svc.derive_row(part_key="pocket", analysis=None,
+                         cost=_ref(_cost_json(), id="OLD", ts=datetime(2026, 10, 22, 15, 35, tzinfo=timezone.utc)))
+    new_json = dict(_cost_json(), rate_card={"version": 1})
+    new = svc.derive_row(part_key="shaft", analysis=None,
+                         cost=_ref(new_json, id="NEW", ts=datetime(2026, 10, 22, 16, 21, tzinfo=timezone.utc)))
+    assert new["cost_decision"]["rate_card"] == 1 and old["cost_decision"]["rate_card"] is None
+    rows = await svc.annotate_rates(None, "org", [old, new])
+    assert rows[0]["rates"]["text"] == "Priced at rates v0; your rates are v1." and rows[0]["rates"]["out_of_date"]
+    assert rows[1]["rates"]["out_of_date"] is False

@@ -141,6 +141,13 @@ export function priceText(row: PartRow): string {
   return `${money(uc.usd)} at ${uc.qty.toLocaleString("en-US")}${uc.qty_basis === "declared" ? " a year" : ""}`;
 }
 
+/** "priced at rates v0; yours are v1" when the tile's price predates the org's published rates (ce-10), else null. */
+export function ratesNote(row: PartRow): string | null {
+  const r = row.rates;
+  if (!r?.out_of_date || row.unit_cost?.usd == null) return null;
+  return `priced at rates v${r.priced}; yours are v${r.current}`;
+}
+
 /** The part page opened on the tile's quantity, so it shows the price the tile showed. */
 export function partQuery(row: PartRow): string {
   const q = row.unit_cost?.qty;

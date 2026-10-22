@@ -179,6 +179,29 @@ def opening_qty(quantities, declared: Optional[int] = None) -> Optional[int]:
     return b["qty"] if b else None
 
 
+async def annotate_rates(session: AsyncSession, org_id: Optional[str], rows: list[dict]) -> list[dict]:
+    """Each costed row's ``rates``: the rate card its price was figured at against the
+    one in effect (``rate_card_basis.basis``), one read for the whole page (ce-10)."""
+    from src.services import rate_card_basis
+    from src.services.rate_library_service import rate_library_enabled
+
+    costed = [r for r in rows if isinstance(r.get("cost_decision"), dict)]
+    if not costed or not org_id:
+        return rows
+    card_rows = await rate_card_basis.org_rate_rows(session, org_id)
+    enabled = rate_library_enabled()
+    for r in costed:
+        cd = r["cost_decision"]
+        made = cd.get("created_at") or r.get("updated_at")
+        try:
+            when = datetime.fromisoformat(made) if isinstance(made, str) else None
+        except ValueError:
+            when = None
+        stamp = {"rate_card": {"version": cd["rate_card"]}} if isinstance(cd.get("rate_card"), int) else {}
+        r["rates"] = rate_card_basis.basis(stamp, when, card_rows, enabled=enabled)
+    return rows
+
+
 def make_now_estimate(cost_result_json: dict, *, at_opening_qty: bool = False,
                       declared: Optional[int] = None) -> Optional[dict]:
     """The estimate behind the recommended make-now route.
@@ -346,7 +369,12 @@ def derive_row(
         "provenance_posture": provenance_posture,
         "route_blocker_count": route_blocker_count,
         "cost_decision": (
-            {"id": cost.id, "url": f"/api/v1/cost-decisions/{cost.id}"}
+            {"id": cost.id, "url": f"/api/v1/cost-decisions/{cost.id}",
+             # When it was priced and at which of the org's rate cards (stamped by
+             # rate_card_basis.apply_rate_card): the list can say a price is out of date (ce-10).
+             "created_at": cost.created_at.isoformat() if cost.created_at else None,
+             "rate_card": ((cost_json.get("rate_card") or {}).get("version")
+                           if isinstance(cost_json.get("rate_card"), dict) else None)}
             if cost is not None
             else None
         ),

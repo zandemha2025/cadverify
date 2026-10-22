@@ -30,6 +30,7 @@ import {
   peekFigs,
   partQuery,
   priceText,
+  ratesNote,
   searchFromFilter,
   verdictOf,
   VERDICT_FILTERS,
@@ -291,6 +292,7 @@ export function PartsScreen() {
                 const v = verdicts.get(r.part_key)!;
                 const on = r.part_key === sel;
                 const price = priceText(r);
+                const stale = ratesNote(r);
                 return (
                   <div role="listitem" key={r.part_key} style={{ display: "flex", minWidth: 0 }}>
                     <button
@@ -298,7 +300,7 @@ export function PartsScreen() {
                       className={cx("h-tile", on && "on")}
                       style={{ flex: 1 }}
                       aria-pressed={on}
-                      aria-label={`${r.filename}, ${verdictsReady || v.key === "design" ? v.label : makeFailed ? "machine verdict not loaded" : "machine verdict loading"}, ${price === "—" ? "no price" : price}`}
+                      aria-label={`${r.filename}, ${verdictsReady || v.key === "design" ? v.label : makeFailed ? "machine verdict not loaded" : "machine verdict loading"}, ${price === "—" ? "no price" : price}${stale ? `, ${stale}` : ""}`}
                       onClick={() => {
                         setSel(on ? null : r.part_key);
                         if (!on && window.matchMedia("(max-width:900px)").matches) {
@@ -312,6 +314,7 @@ export function PartsScreen() {
                       </span>
                       <b title={r.filename}>{r.filename}</b>
                       <small>{v.stale ? `${v.where} · out of date` : v.where}</small>
+                      {stale ? <small className="h-ratestale">{stale.replace(/^p/, "P")}</small> : null}
                       <span className="h-tr">
                         {verdictsReady || v.key === "design" ? <Chip tone={v.tone}>{v.label}</Chip> : <Chip tone="unk">{makeFailed ? "Not loaded" : "Checking"}</Chip>}
                         <span className="c num">{price}</span>

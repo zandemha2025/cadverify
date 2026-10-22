@@ -232,3 +232,4 @@
 .ob .h-dfoot{padding:12px 18px 18px}
 }
 @media (max-width:520px){.ob .h-shelf{gap:8px}.ob .h-tile{padding:8px 10px 10px}.ob .h-tile .h-pic{height:72px}.ob .h-tile .h-tr{flex-wrap:wrap;gap:4px}.ob .h-steps{grid-template-columns:minmax(0,1fr)}}
+.ob .h-tile small.h-ratestale{color:var(--warn);font-size:12px}
