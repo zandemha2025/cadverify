@@ -41,6 +41,8 @@ export interface SureInput {
   /** The route the view above shows (the cost view's selected process), so the range and the
    *  inputs counted are that route's, not the cheapest one's (de-19: ±50% over ±55%). */
   route?: string | null;
+  /** The material the check was asked for, when no price came back to say it (me-12: the page read "default material" after a failed price). */
+  materialClass?: string | null;
 }
 
 function hasEnv(env: ServiceEnvironment | null | undefined): boolean {
@@ -59,7 +61,7 @@ function shapeItem(i: SureInput): SureItem | null {
 }
 
 function materialItem(i: SureInput): SureItem {
-  const cls = i.cost?.material_class ?? null;
+  const cls = i.cost?.material_class ?? i.materialClass ?? null;
   if (!cls || cls === "polymer") return { kind: "typ", k: "Material", v: `${MATERIAL_CLASS_LABEL.polymer.toLowerCase()}, the default until you choose another in Specs` };
   return { kind: "yours", k: "Material", v: `${(MATERIAL_CLASS_LABEL[cls] ?? cls).toLowerCase()}, chosen for this check` };
 }

@@ -224,7 +224,8 @@ function Fixes() {
 
 export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: string }[]): { title: string; meta: string; figs: FigItem[] } {
   const v = p.data.validation;
-  const cls = p.data.cost?.material_class ?? null;
+  // With no price back (it didn't finish), the material the check was asked for, not the default (me-12).
+  const cls = p.data.cost?.material_class ?? p.session?.materialClass ?? null;
   if (p.interrupted) return { title: "Check interrupted", meta: "Nothing computed · the file is kept", figs: [{ k: "Processes", v: "Not checked", tone: "warn" }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   const singles = p.methods;
   if (p.checking) {

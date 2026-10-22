@@ -113,6 +113,16 @@ export function methodShort(code: string): string {
 /** An engine process in plain words with its acronym: "Filament printing (FDM/FFF)". One spelling for every screen. */
 export { processLabel };
 
+/**
+ * The rates a saved record was priced at against the organization's rates now (ce-10): the one line the part
+ * page shows near the price when they differ ("Priced at rates v0; your rates are v1."), else null.
+ */
+export function ratesNote(decision: { rates?: { priced: number; current: number; out_of_date: boolean; text?: string } | null } | null | undefined): string | null {
+  const r = decision?.rates;
+  if (!r || !r.out_of_date) return null;
+  return r.text?.trim() || `Priced at rates v${r.priced}; your rates are v${r.current}.`;
+}
+
 /** The engine's overall DFM verdict in plain words. */
 export function overallWords(v: string | null | undefined): string {
   return v === "pass" ? "no problems found" : v === "issues" ? "problems to check" : v === "fail" ? "problems that stop processes" : "not reported";

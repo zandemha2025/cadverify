@@ -7,7 +7,7 @@
  * Pure, for node --test.
  */
 
-export type ErrorPlace = "recheck" | "view";
+export type ErrorPlace = "recheck" | "view" | "cost";
 
 export interface PlainError {
   text: string;
@@ -30,10 +30,8 @@ export function plainError(place: ErrorPlace, status: number, detail: string | n
   if (BUSY_ORG.test(said) || (status === 429 && /capacity/i.test(said) && !BUSY_SERVER.test(said))) {
     const limit = said.match(/limit of (\d+)/)?.[1];
     const n = limit ? `${limit} ` : "";
-    const lead =
-      place === "view"
-        ? `The 3D view is waiting: ScaleCAD is already running ${n ? `${n}jobs` : "as many jobs as it runs at once"} for your organization (checks, re-checks and 3D views).`
-        : `Not re-checked yet: ScaleCAD is already running ${n ? `${n}jobs` : "as many jobs as it runs at once"} for your organization (checks, re-checks and 3D views).`;
+    const jobs = `ScaleCAD is already running ${n ? `${n}jobs` : "as many jobs as it runs at once"} for your organization (checks, re-checks and 3D views).`;
+    const lead = place === "view" ? `The 3D view is waiting: ${jobs}` : place === "cost" ? `Prices are waiting: ${jobs}` : `Not re-checked yet: ${jobs}`;
     return { text: `${lead} Try again when one finishes.${place === "recheck" ? ` ${UNCHANGED}` : ""}`, detail: raw, retry: true };
   }
   if (BUSY_SERVER.test(said)) {
@@ -44,7 +42,9 @@ export function plainError(place: ErrorPlace, status: number, detail: string | n
       text:
         place === "view"
           ? "ScaleCAD couldn't turn the kept file into a 3D shape in the time a 3D view gets. Try again in a minute."
-          : `Not re-checked: ScaleCAD couldn't turn the kept file into a 3D shape in the time a check gets, so nothing was priced. ${UNCHANGED} Try again in a minute.`,
+          : place === "cost"
+            ? "The process checks are ready. Prices didn't finish: ScaleCAD couldn't turn the file into a 3D shape for pricing in the time a check gets. Retry cost: it gets more time."
+            : `Not re-checked: ScaleCAD couldn't turn the kept file into a 3D shape in the time a check gets, so nothing was priced. ${UNCHANGED} Try again in a minute.`,
       detail: raw,
       retry: true,
     };
@@ -56,10 +56,18 @@ export function plainError(place: ErrorPlace, status: number, detail: string | n
       text:
         place === "view"
           ? `The 3D view took longer than it's allowed${secs} and stopped. Try again in a minute.`
-          : `Not re-checked: it took longer than a check is allowed${secs} and stopped. ${UNCHANGED} Try again in a minute.`,
+          : place === "cost"
+            ? `The process checks are ready. Prices took longer than a check is allowed${secs} and stopped. Retry cost: it gets more time.`
+            : `Not re-checked: it took longer than a check is allowed${secs} and stopped. ${UNCHANGED} Try again in a minute.`,
       detail: raw,
       retry: true,
     };
   }
-  return { text: raw ?? (place === "view" ? "The 3D view didn't load." : `The re-check didn't finish. ${UNCHANGED}`), detail: null, retry: status >= 500 || status === 0 };
+  return { text: raw ?? (place === "view" ? "The 3D view didn't load." : place === "cost" ? "Prices didn't finish." : `The re-check didn't finish. ${UNCHANGED}`), detail: null, retry: status >= 500 || status === 0 };
+}
+
+/** A refusal that waiting can fix because the request ran out of time or room, not because of the file. */
+export function ranOutOfTime(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return TESSELLATE.test(message) && /exceeded \d+(?:\.\d+)?\s*s cap/i.test(message) ? true : TIMEOUT.test(message);
 }

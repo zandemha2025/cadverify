@@ -18,14 +18,16 @@ import { fetchPreviewMesh } from "@/lib/verify/preview-mesh";
 import { isAssemblyCandidate } from "@/lib/verify/assembly";
 import { closedBodies, isMultiBody } from "@/lib/verify/bodies";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
-import { retryVerificationCost, runVerification, type VerifyResult } from "@/lib/verify/run";
+import { quantityLadderFor, retryVerificationCost, runVerification, type VerifyResult } from "@/lib/verify/run";
+import { readVerification } from "@/lib/verify/verification";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 import { putCachedMesh } from "./mesh-cache";
-import { fetchAssemblyAnalysisV4, probeAssemblyV4 } from "./api";
+import { fetchAssemblyAnalysisV4, fetchSourceKept, probeAssemblyV4, recheckStored } from "./api";
+import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markWorkSeen, registerWork } from "../work/work-bar";
 import { startStoredCheck } from "./stored-check";
 import { R } from "../routes";
-import { plainError } from "./plain-errors";
+import { plainError, ranOutOfTime } from "./plain-errors";
 
 export type Failure =
   | { kind: "quota"; message: string }
@@ -373,8 +375,18 @@ export async function retryPrices(id: number) {
   const materialClass = s.materialClass;
   patch(id, { costRetrying: true, pricedWith: materialClass });
   try {
-    const retried = await retryVerificationCost({ file: s.file, materialClass, orientation: s.orientation, quantity: s.quantity }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
-    patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
+    // Prices that ran out of time on the web request (a busy server meshing a STEP/IGES, me-12) are retried
+    // from the file kept with the part, which moves to the worker's larger budget when time runs out again.
+    // Retrying the same web request failed the same way.
+    if (s.key && ranOutOfTime(s.result.costError) && (await fetchSourceKept(s.key)) === true) {
+      const quantities = quantityLadderFor([resolvedAnnualVolume(s.result.partContext), s.quantity]);
+      const r = await recheckStored(s.key, { materialClass, orientation: s.orientation, qty: quantities, owned: ownedProcessesFrom(s.result.machines ?? []) });
+      const retried = { cost: r.cost, costGeometryInvalid: null, costError: null, verification: readVerification(r.cost) ?? null, quantities: r.cost.quantities ?? quantities };
+      patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
+    } else {
+      const retried = await retryVerificationCost({ file: s.file, materialClass, orientation: s.orientation, quantity: s.quantity }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
+      patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
+    }
   } catch (e) {
     patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, costError: e instanceof Error ? e.message : "Prices didn’t finish." } : x.result }));
   } finally {

@@ -101,7 +101,7 @@ export function UseSheet() {
   const clearing = dirty && !hasServiceConditions(parsed.env) && hasServiceConditions(stored);
   const verification = readVerification(p.data.cost);
   const strikes = envStrikes(verification);
-  const cls = p.data.cost?.material_class ?? "polymer";
+  const cls = p.data.cost?.material_class ?? p.session?.materialClass ?? "polymer";
   const curMat = pendMat ?? cls;
 
   const save = async () => {

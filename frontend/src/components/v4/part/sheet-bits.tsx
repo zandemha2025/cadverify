@@ -7,7 +7,8 @@ import { R } from "../routes";
 import { useShell } from "../shell";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
-import { MATERIAL_CLASS_LABEL } from "./model";
+import { MATERIAL_CLASS_LABEL, ratesNote } from "./model";
+import { plainError } from "./plain-errors";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
 import { sureOf, type SureLens } from "./sure";
@@ -53,8 +54,11 @@ function SureLine({ lens, route = null }: { lens: SureLens; route?: string | nul
   const [open, setOpen] = React.useState(false);
   const id = React.useId();
   const sure = React.useMemo(
-    () => (p.checking || p.interrupted ? null : sureOf(lens, { validation: p.data.validation, cost: p.data.cost, machines: p.data.machines, env: p.data.runEnvironment, methods: p.methods, q: p.q, route })),
-    [lens, p.checking, p.interrupted, p.data.validation, p.data.cost, p.data.machines, p.data.runEnvironment, p.methods, p.q, route],
+    () =>
+      p.checking || p.interrupted
+        ? null
+        : sureOf(lens, { validation: p.data.validation, cost: p.data.cost, machines: p.data.machines, env: p.data.runEnvironment, methods: p.methods, q: p.q, route, materialClass: p.session?.materialClass ?? null }),
+    [lens, p.checking, p.interrupted, p.data.validation, p.data.cost, p.data.machines, p.data.runEnvironment, p.methods, p.q, route, p.session?.materialClass],
   );
   if (!sure) return null;
   const to = sure.next ? SURE_TO[sure.next.to] : null;
@@ -116,8 +120,35 @@ export function RunNotice() {
     <>
       <BodiesNotice />
       <RunState />
+      <RatesNotice />
     </>
   );
+}
+
+/** A saved record priced at older rates says so near its price, with the way to re-price it (ce-10). */
+function RatesNotice() {
+  const p = usePart();
+  const text = p.checking || p.interrupted ? null : ratesNote(p.data.decision);
+  if (!text) return null;
+  return (
+    <div className="note swap" role="status" style={{ marginTop: 8 }}>
+      <b>{text}</b>
+      <span>{p.canRecheck ? "Re-cost prices it again from the file kept with this part, at your rates now. No check used." : "Drop the file on the part to price it at your rates now."}</span>
+      {p.canRecheck ? (
+        <span>
+          <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
+            Re-cost
+          </button>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Why prices didn't finish, in plain words (me-12: "gmsh could not mesh the geometry [rung 2 exceeded 15s cap]"). */
+function costFailedText(err: string | null | undefined): string {
+  const plain = plainError("cost", 0, err ?? null);
+  return plain.detail ? plain.text : ["The process checks are ready.", err].filter(Boolean).join(" ");
 }
 
 function RunState() {
@@ -146,7 +177,7 @@ function RunState() {
           <CostFailedBanner
             onRetryCost={p.retryPrices}
             onRerun={() => p.recheck()}
-            detail={p.session?.costRetrying ? "Retrying cost…" : ["The process checks are ready.", err].filter(Boolean).join(" ")}
+            detail={p.session?.costRetrying ? "Retrying cost…" : costFailedText(err)}
           />
         )}
         {usage}

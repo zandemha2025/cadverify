@@ -21,6 +21,7 @@ import {
   progressSteps,
   routeAsk,
   biggestTypicalNote,
+  ratesNote,
 } from "./model.ts";
 import type { Method } from "./model.ts";
 import type { CostEstimate } from "@/lib/api";
@@ -437,4 +438,12 @@ test("ce-16 / me-05: the labor line at the org's published $58/h reads \"Your ra
   assert.equal(groundedCount(e).grounded, 1);
   // the biggest line is hers now: no "it's a typical value ... Add your labor rate" note
   assert.equal(biggestTypicalNote(e, "process"), null);
+});
+
+test("a record priced at older rates says so near the price; current rates say nothing (ce-10)", () => {
+  assert.equal(ratesNote({ rates: { priced: 0, current: 1, out_of_date: true, text: "Priced at rates v0; your rates are v1." } }), "Priced at rates v0; your rates are v1.");
+  assert.equal(ratesNote({ rates: { priced: 0, current: 1, out_of_date: true, text: "" } }), "Priced at rates v0; your rates are v1.");
+  assert.equal(ratesNote({ rates: { priced: 1, current: 1, out_of_date: false, text: "Priced at your rates v1." } }), null);
+  assert.equal(ratesNote({ rates: null }), null);
+  assert.equal(ratesNote(null), null);
 });
