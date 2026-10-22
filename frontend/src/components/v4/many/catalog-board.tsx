@@ -19,7 +19,7 @@ import { Content, Empty, Fig, Figs, Loading, PageHead, Panel, Sheet, cx } from "
 import { markWorkSeen, registerWork, runKey } from "../work/work-bar";
 import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useToast, whenLabel } from "./common";
 import { etaText } from "./batch-model";
-import { downloadBoardCsv, fetchBoard, inviteToRun, recheckParts } from "./catalog-api";
+import { CatalogRunError, downloadBoardCsv, fetchBoard, inviteToRun, recheckParts } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
 import { AccuracyPanel } from "../validation/accuracy-panel";
 import { reportHref } from "../validation/routes";
@@ -33,6 +33,8 @@ import {
   countLine,
   machinesText,
   recheckable,
+  recheckStarted,
+  recheckTrouble,
   rowName,
   runTitle,
   runningRateLines,
@@ -115,6 +117,8 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   const [asking, setAsking] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
   const [rechecking, setRechecking] = React.useState<Set<string>>(() => new Set());
+  // Why the last "Check again" was refused, kept on the board until the next try.
+  const [recheckErr, setRecheckErr] = React.useState<{ code: string | null; message: string } | null>(null);
   const searchId = React.useId();
   const sortId = React.useId();
 
@@ -166,6 +170,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   const nMachines = board?.machines.length ?? null;
   const sel = bucket !== "all" ? bucketDef(bucket) : null;
   const failed = recheckable(board);
+  const trouble = recheckTrouble(recheckErr);
   const answer = answerText(board);
   const rates = runningRateLines(board);
 
@@ -173,12 +178,15 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
     const keys = ids ?? failed.map((r) => r.item_id);
     if (!keys.length) return;
     setRechecking((cur) => new Set([...cur, ...keys]));
+    setRecheckErr(null);
     try {
       const res = await recheckParts(batchId, ids);
-      toast(`Checking ${res.rechecking.length} ${res.rechecking.length === 1 ? "part" : "parts"} again. Each lands back on its own row.`);
+      toast(recheckStarted(res));
       reload();
     } catch (e) {
-      toast(errorText(e, "The parts weren’t checked again."));
+      const message = errorText(e, "The parts weren’t checked again.");
+      setRecheckErr({ code: e instanceof CatalogRunError ? e.code : null, message });
+      toast(message);
     } finally {
       setRechecking((cur) => {
         const next = new Set(cur);
@@ -308,6 +316,20 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     {rechecking.size ? "Starting…" : `Check ${failed.length === 1 ? "it" : `all ${failed.length}`} again`}
                   </button>
                 </span>
+              </div>
+            ) : null}
+
+            {trouble ? (
+              <div className="panel cr-note cr-again" role="alert">
+                <b>{trouble.title}</b>
+                <span>{trouble.body}</span>
+                {trouble.offerList ? (
+                  <span>
+                    <button className="btn sm ink" type="button" onClick={() => void csv()} disabled={csvBusy}>
+                      {csvBusy ? "Downloading…" : "Download the parts list (CSV)"}
+                    </button>
+                  </span>
+                ) : null}
               </div>
             ) : null}
 

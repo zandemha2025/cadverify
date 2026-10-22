@@ -188,7 +188,7 @@ export async function fetchUsage(): Promise<unknown> {
 }
 
 /** Check a run's parts again in the run: the ones named, or every part not checked. */
-export async function recheckParts(batchId: string, itemIds?: string[]): Promise<{ batch_id: string; rechecking: string[]; status: string }> {
+export async function recheckParts(batchId: string, itemIds?: string[]): Promise<{ batch_id: string; rechecking: string[]; files_gone?: string[]; status: string }> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/batch/${encodeURIComponent(batchId)}/catalog/recheck`, {

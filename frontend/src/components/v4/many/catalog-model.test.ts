@@ -285,3 +285,20 @@ test("money reads a negative as minus dollars, never $-3", () => {
   assert.equal(money(-0.001, 2), "$0.00");
   assert.equal(money(7023.5, 0), "$7,024");
 });
+
+test("a refused Check again says why on the board and offers the parts list when the files are gone (op-17)", async () => {
+  const { recheckTrouble, recheckStarted } = await import("./catalog-model.ts");
+  assert.equal(recheckTrouble(null), null);
+  const gone = recheckTrouble({ code: "catalog_run_files_gone", message: "This run’s files are no longer stored, so its parts can’t be checked again here. Download its parts list (CSV) and start a new run with the same files." });
+  assert.ok(gone);
+  assert.equal(gone.title, "These parts can’t be checked again here");
+  assert.match(gone.body, /no longer stored/);
+  assert.equal(gone.offerList, true);
+  const notReady = recheckTrouble({ code: "catalog_run_not_ready", message: "This run’s ZIP is still being unpacked." });
+  assert.deepEqual(notReady && [notReady.title, notReady.offerList], ["This run has no parts yet", false]);
+  // A refusal without words of its own still says something.
+  const bare = recheckTrouble({ code: null, message: "" });
+  assert.deepEqual(bare && [bare.title, bare.body], ["The parts weren’t checked again", "Try again in a minute."]);
+  assert.equal(recheckStarted({ rechecking: ["a", "b"], files_gone: [] }), "Checking 2 parts again. Each lands back on its own row.");
+  assert.equal(recheckStarted({ rechecking: ["a"], files_gone: ["b", "c"] }), "Checking 1 part again. It lands back on its own row. 2 files are no longer stored; start a new run with them.");
+});

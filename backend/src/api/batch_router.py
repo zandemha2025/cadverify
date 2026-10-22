@@ -867,11 +867,18 @@ async def recheck_catalog_parts(
 ):
     """Check a run's parts again, in the run: each lands back on its own row.
 
-    For parts that couldn't be checked (a time limit, a busy worker) or were
-    skipped. They run with the run's own quantities, materials and prices, as
-    they did the first time; the run reopens until they finish. A free run's
-    parts count against the allowance as on the first run (a part already
-    counted is free again). Answers ``{batch_id, rechecking: [item ids]}``.
+    For parts that couldn't be checked (a time limit, a busy worker), were
+    skipped, or were left when the run stopped. They run from the run's stored
+    files, with its own quantities, materials and prices, as they did the
+    first time; a finished, cancelled or stopped run reopens until they finish.
+    A free run's parts count against the allowance as on the first run (a part
+    already counted is free again). Answers ``{batch_id, rechecking: [item
+    ids], files_gone: [item ids], status}``.
+
+    409 ``catalog_run_not_ready``: the run's ZIP was never unpacked (or is
+    still being unpacked), so it has no parts yet. 409
+    ``catalog_run_files_gone``: none of the parts' files is stored any more;
+    its parts list (the CSV) still names them, for a new run.
     """
     from src.auth.catalog_allowance import _access
 
@@ -884,10 +891,14 @@ async def recheck_catalog_parts(
     )).scalars().first()
     if batch is None:
         raise HTTPException(status_code=404, detail="Catalog run not found")
-    if batch.input_mode == "direct_upload" or batch.status == "failed":
+    # A stored ZIP's run keeps input_mode direct_upload until the worker has
+    # unpacked it into parts; that, not the run's status, says it has none.
+    if batch.input_mode == "direct_upload":
+        unpacking = batch.status not in ("completed", "failed", "cancelled")
         raise HTTPException(status_code=409, detail={
             "code": "catalog_run_not_ready",
-            "message": "This run's ZIP was never unpacked, so it has no parts to check again. Start a new run."})
+            "message": "This run's ZIP is still being unpacked. Its parts can be checked again once they are on the board."
+            if unpacking else "This run's ZIP was never unpacked, so it has no parts to check again. Start a new run."})
     wanted = {i.split(":", 1)[0] for i in ((body.item_ids if body else None) or []) if i}
     stmt = select(BatchItem).where(BatchItem.batch_id == batch.id).with_for_update()
     if wanted:
@@ -898,11 +909,26 @@ async def recheck_catalog_parts(
     if not items:
         raise HTTPException(status_code=409, detail={
             "code": "nothing_to_recheck", "message": "Every part of this run is checked or still checking."})
+    # A part runs again from the run's stored file. A file the ZIP held that
+    # can't be checked (a native CAD file, a drawing, over the size limit) was
+    # never stored and keeps its own reason; a stored file that's gone says so.
+    missing = await asyncio.to_thread(batch_service.missing_batch_blobs, batch.ulid, [i.filename for i in items])
+    never_stored = [i for i in items if i.filename in missing and i.status == "skipped" and i.attempt_count == 0
+                    and i.started_at is None and i.completed_at is None and i.error_message]
+    gone = [i for i in items if i.filename in missing and i not in never_stored]
+    items = [i for i in items if i.filename not in missing]
+    if not items:
+        if gone:
+            raise HTTPException(status_code=409, detail={
+                "code": "catalog_run_files_gone", "files_gone": len(gone),
+                "message": "This run's files are no longer stored, so its parts can't be checked again here. "
+                           "Download its parts list (CSV) and start a new run with the same files."})
+        raise HTTPException(status_code=409, detail={
+            "code": "nothing_to_recheck",
+            "message": "These files can't be checked as they are: export them as STEP, STL or IGES and start a new run."})
+    for item in gone:
+        item.error_message = batch_service.FILE_GONE_ITEM
     for item in items:
-        if item.status == "failed":
-            batch.failed_items = max(0, int(batch.failed_items or 0) - 1)
-        elif item.status == "completed":
-            batch.completed_items = max(0, int(batch.completed_items or 0) - 1)
         item.status = "pending"
         item.priority = "normal"
         item.attempt_count = 0
@@ -911,20 +937,35 @@ async def recheck_catalog_parts(
         item.completed_at = None
         item.lease_started_at = None
         item.duration_ms = None
-    reopened = batch.status in ("completed", "cancelled")
+    # A finished, cancelled or stopped run reopens; a stopped run's failure
+    # (and its resume count) belongs to the run that stopped, not this one.
+    reopened = batch.status in ("completed", "cancelled", "failed")
     if reopened:
         batch.status = "processing"
         batch.completed_at = None
+        manifest = {k: v for k, v in (batch.manifest_json or {}).items()
+                    if k not in ("failure", "failure_reason", "resumes")}
+        batch.manifest_json = manifest
         batch_service.touch_batch_heartbeat(batch)
     await session.flush()
+    # The run's counters from its parts as they now stand (the row lock holds
+    # off the parts' own updates until this commits): the run finishes when
+    # every part is checked, failed or skipped, as it did the first time. A
+    # part a stopped or cancelled run skipped, and that isn't being checked
+    # again, counts as done, as a skipped file of the ZIP always has.
+    counts = (await batch_service.get_batch_item_status_counts(session, [batch.id])).get(batch.id, {})
+    batch.completed_items = int(counts.get("completed", 0))
+    batch.failed_items = int(counts.get("failed", 0)) + int(counts.get("skipped", 0))
     access = await _access(session, batch.user_id)
     if access.free:
         # The allowance as on the first run: a new part takes a slot, a counted one is free.
         await catalog_run_service.reserve_catalog_run(session, batch.user_id, batch, access)
     await session.commit()
+    answer = {"batch_id": batch.ulid, "rechecking": [i.ulid for i in items],
+              "files_gone": [i.ulid for i in gone], "status": batch.status}
     if not reopened:
         # The run is still going: its coordinator picks the parts up on its next tick.
-        return {"batch_id": batch.ulid, "rechecking": [i.ulid for i in items], "status": batch.status}
+        return answer
     from src.jobs.arq_backend import get_arq_pool
 
     try:
@@ -935,7 +976,7 @@ async def recheck_catalog_parts(
         raise HTTPException(status_code=503, detail={
             "code": "BATCH_ENQUEUE_FAILED",
             "message": "The parts are queued again, but the run couldn't be restarted. Try again in a minute."})
-    return {"batch_id": batch.ulid, "rechecking": [i.ulid for i in items], "status": batch.status}
+    return answer
 
 
 @router.get("/batch/{batch_id}/catalog.csv")

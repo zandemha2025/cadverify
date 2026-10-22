@@ -615,6 +615,34 @@ export function recheckable(board: Board | null): BoardRow[] {
   return (board?.rows ?? []).filter((r) => r.bucket === "not_checked");
 }
 
+/**
+ * What a refused "Check again" says on the board, kept there until the next
+ * try: a refusal never shows as nothing. When the run's files are gone, the
+ * parts list (the run's CSV) is offered for a new run.
+ */
+export function recheckTrouble(err: { code?: string | null; message?: string | null } | null): { title: string; body: string; offerList: boolean } | null {
+  if (!err) return null;
+  const body = (err.message ?? "").trim() || "Try again in a minute.";
+  switch (err.code) {
+    case "catalog_run_files_gone":
+      return { title: "These parts can’t be checked again here", body, offerList: true };
+    case "catalog_run_not_ready":
+      return { title: "This run has no parts yet", body, offerList: false };
+    case "nothing_to_recheck":
+      return { title: "Nothing to check again", body, offerList: false };
+    default:
+      return { title: "The parts weren’t checked again", body, offerList: false };
+  }
+}
+
+/** The note once a "Check again" is accepted: how many go back, and any whose file is gone. */
+export function recheckStarted(res: { rechecking: string[]; files_gone?: string[] }): string {
+  const n = res.rechecking.length;
+  const gone = res.files_gone?.length ?? 0;
+  const head = `Checking ${n.toLocaleString("en-US")} ${n === 1 ? "part" : "parts"} again. ${n === 1 ? "It lands" : "Each lands"} back on its own row.`;
+  return gone ? `${head} ${gone.toLocaleString("en-US")} ${gone === 1 ? "file is" : "files are"} no longer stored; start a new run with ${gone === 1 ? "it" : "them"}.` : head;
+}
+
 /** "12 of 50 checked · 3 checking" from the board (part by part). */
 export function boardProgress(board: Board | null): { done: number; total: number; checking: number; failed: number } {
   if (!board) return { done: 0, total: 0, checking: 0, failed: 0 };

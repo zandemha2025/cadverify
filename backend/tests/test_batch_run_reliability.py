@@ -458,3 +458,129 @@ async def test_a_stopped_run_sends_one_notification_saying_so(run_world):
     assert rows[0]["kind"] == "catalog.run_stopped"
     assert rows[0]["title"] == "Catalog run stopped - Reliability run"
     assert rows[0]["body"] == "1 of 4 checked; 3 not checked. Check them again on the run's page."
+
+
+# ---------------------------------------------------------------------------
+# 3. "Check again" works on a stopped run (op-17)
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def api(run_world, monkeypatch):
+    from fastapi import FastAPI
+
+    import src.jobs.arq_backend as arq_backend
+    from src.api.batch_router import router as batch_router
+    from src.auth.rate_limit import limiter
+    from src.auth.require_api_key import AuthedUser, require_api_key
+
+    pool = FakeArq()
+
+    async def _get_pool():
+        return pool
+
+    monkeypatch.setattr(arq_backend, "get_arq_pool", _get_pool)
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.include_router(batch_router)
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+        user_id=run_world["uid"], api_key_id=0, key_prefix="session", role="analyst"
+    )
+    return {"app": app, "pool": pool}
+
+
+async def _recheck(app, ulid: str, item_ids=None):
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        return await ac.post(f"/api/v1/batch/{ulid}/catalog/recheck", json={"item_ids": item_ids} if item_ids else {})
+
+
+async def _stop_run(ulid: str, *, checked: int) -> None:
+    """The run as batch 23 was left: failed by the sweep, the first parts checked, the rest skipped."""
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'completed', attempt_count = 1, completed_at = now() "
+            "WHERE id IN (SELECT bi.id FROM batch_items bi JOIN batches b ON b.id = bi.batch_id "
+            "WHERE b.ulid = :u ORDER BY bi.id LIMIT :n)"), {"u": ulid, "n": checked})
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'skipped', attempt_count = 2, completed_at = now(), "
+            "error_message = 'The run stopped before this part was checked: x.' "
+            "WHERE status = 'pending' AND batch_id = (SELECT id FROM batches WHERE ulid = :u)"), {"u": ulid})
+        await s.execute(text(
+            "UPDATE batches SET status = 'failed', completed_at = now(), completed_items = :n, "
+            "manifest_json = manifest_json || CAST(:m AS jsonb) WHERE ulid = :u"),
+            {"u": ulid, "n": checked, "m": json.dumps({
+                "failure_reason": "orphaned", "resumes": {"count": 3, "done": checked},
+                "failure": {"code": "run_stopped", "message": "The run stopped before every part was checked."}})})
+
+
+@pytest.mark.asyncio
+async def test_check_all_again_on_a_stopped_run_puts_its_parts_back_and_it_finishes(run_world, api, monkeypatch):
+    _install_part_check(monkeypatch)
+    ulid = await run_world["make_run"](5)
+    await _stop_run(ulid, checked=2)
+
+    r = await _recheck(api["app"], ulid)
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert len(body["rechecking"]) == 3 and body["status"] == "processing"
+    state = await _batch(ulid)
+    assert state["status"] == "processing"
+    assert "failure" not in state["manifest_json"] and "failure_reason" not in state["manifest_json"]
+    assert "resumes" not in state["manifest_json"]
+    assert [i["status"] for i in state["items"]] == ["completed", "completed", "pending", "pending", "pending"]
+    assert all(i["error_message"] is None and i["attempt_count"] == 0 for i in state["items"][2:])
+    assert [j[0] for j in api["pool"].queue] == ["run_batch_coordinator"]
+
+    await _drive(api["pool"])
+    state = await _batch(ulid)
+    assert state["status"] == "completed" and state["completed_items"] == 5
+
+
+@pytest.mark.asyncio
+async def test_check_again_on_one_part_of_a_stopped_run(run_world, api, monkeypatch):
+    _install_part_check(monkeypatch)
+    ulid = await run_world["make_run"](4)
+    await _stop_run(ulid, checked=1)
+    one = (await _batch(ulid))["items"][3]["ulid"]
+
+    r = await _recheck(api["app"], ulid, [one])
+    assert r.status_code == 202, r.text
+    assert r.json()["rechecking"] == [one]
+    await _drive(api["pool"])
+    state = await _batch(ulid)
+    assert [i["status"] for i in state["items"]] == ["completed", "skipped", "skipped", "completed"]
+    assert state["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_check_again_when_the_runs_files_are_gone_says_so(run_world, api):
+    ulid = await run_world["make_run"](3, blobs=False)
+    await _stop_run(ulid, checked=0)
+
+    r = await _recheck(api["app"], ulid)
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "catalog_run_files_gone"
+    assert "no longer stored" in detail["message"] and "never unpacked" not in detail["message"]
+    assert (await _batch(ulid))["status"] == "failed"
+    assert not api["pool"].queue
+
+
+@pytest.mark.asyncio
+async def test_check_again_on_a_run_whose_zip_was_never_unpacked(run_world, api):
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    ulid = await run_world["make_run"](0, status="failed", blobs=False)
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text("UPDATE batches SET input_mode = 'direct_upload' WHERE ulid = :u"), {"u": ulid})
+    r = await _recheck(api["app"], ulid)
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "catalog_run_not_ready"

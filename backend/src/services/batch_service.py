@@ -1251,7 +1251,7 @@ async def mark_pending_items_terminal(
 # than this many times without any).
 BATCH_RESUME_LIMIT = max(1, int(os.getenv("BATCH_RESUME_LIMIT", "3")))
 RUN_STOPPED_PREFIX = "The run stopped before this part was checked: "
-_FILE_GONE_ITEM = "This part's file is no longer stored. Start a new run with it."
+FILE_GONE_ITEM = "This part's file is no longer stored. Start a new run with it."
 
 
 def batch_item_lease_seconds() -> int:
@@ -1266,7 +1266,7 @@ def batch_item_lease_seconds() -> int:
     return max(660, configured)
 
 
-def _missing_batch_blobs(batch_ulid: str, filenames: list[str]) -> set[str]:
+def missing_batch_blobs(batch_ulid: str, filenames: list[str]) -> set[str]:
     """The filenames whose extracted object is no longer in the batch store (blocking I/O)."""
     store = _batch_store()
     missing: set[str] = set()
@@ -1311,7 +1311,7 @@ async def _resume_stale_batch(
         )
     ).all()
     missing = (
-        await asyncio.to_thread(_missing_batch_blobs, batch.ulid, [r.filename for r in remaining])
+        await asyncio.to_thread(missing_batch_blobs, batch.ulid, [r.filename for r in remaining])
         if remaining
         else set()
     )
@@ -1342,7 +1342,7 @@ async def _resume_stale_batch(
         await session.execute(
             update(BatchItem)
             .where(BatchItem.id.in_(gone), BatchItem.status.in_(["pending", "queued", "processing"]))
-            .values(status="failed", completed_at=now, lease_started_at=None, error_message=_FILE_GONE_ITEM)
+            .values(status="failed", completed_at=now, lease_started_at=None, error_message=FILE_GONE_ITEM)
         )
         batch.failed_items = int(batch.failed_items or 0) + len(gone)
     recovery = await recover_stale_batch_item_leases(
