@@ -375,3 +375,29 @@ async def test_uploads_and_checks_belong_to_their_organization(world):
         assert (await ac.get(f"/api/v1/uploads/{up['upload_id']}/parts")).status_code == 404
         assert (await ac.post("/api/v1/checks", json={"direct_upload_id": up["upload_id"]})).status_code == 404
         assert (await ac.get("/api/v1/checks")).json()["checks"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_worker_restart_mid_check_says_so_and_charges_nothing(world, monkeypatch):
+    import asyncio
+
+    from src.jobs.stored_check_tasks import run_stored_check
+    from src.services import analysis_service
+
+    uid = world["users"]["work"]
+    async with _client(world["app"], uid) as ac:
+        up = await _upload(ac, "bracket.stl", _stl(seed=11))
+        r = await ac.post("/api/v1/checks", json={"direct_upload_id": up["upload_id"]})
+        check_id = r.json()["check_id"]
+
+        async def _stopped(*_a, **_k):
+            raise asyncio.CancelledError()
+
+        monkeypatch.setattr(analysis_service, "run_analysis", _stopped)
+        with pytest.raises(asyncio.CancelledError):
+            await run_stored_check({}, check_id)
+        done = (await ac.get(f"/api/v1/checks/{check_id}")).json()
+    assert done["status"] == "failed" and done["error"]["code"] == "CHECK_INTERRUPTED"
+    assert "worker restarted" in done["error"]["message"]
+    usage = await _usage(uid)
+    assert usage["used"] == 0 and usage["reserved"] == 0

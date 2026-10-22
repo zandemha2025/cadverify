@@ -226,6 +226,7 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
     from src.services import stored_check_service as svc
     from src.services.part_archive import PartArchiveError, compression_of, unpack_part
 
+    started = time.monotonic()
     claimed = await _claim(job_ulid)
     if claimed is None:
         return {"skipped": True}
@@ -355,11 +356,16 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
         logger.info("stored check %s refused: %s", job_ulid, exc.code)
         return {"ok": False, "code": exc.code}
     except asyncio.CancelledError:
+        # arq cancels a task at its time limit, and every running task when the
+        # worker stops (a release, a restart). Say which.
         await progress.stop()
         if check_id and op:
             await _release(user.user_id, check_id, op)
+        timed_out = time.monotonic() - started >= svc.STORED_CHECK_JOB_TIMEOUT_SECONDS - 5
         await _finish(job_ulid, ok=False, result=result, error=_Failed(
-            "CHECK_TIMEOUT", "The check ran past its time limit. Nothing was charged."))
+            "CHECK_TIMEOUT", "The check ran past its time limit. Nothing was charged.") if timed_out else _Failed(
+            "CHECK_INTERRUPTED", "The check was interrupted before it finished: the worker restarted. "
+            "Nothing was charged; check the file again."))
         raise
     except Exception as exc:  # noqa: BLE001 - the job must end with an honest state
         await progress.stop()
