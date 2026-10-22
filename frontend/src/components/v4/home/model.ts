@@ -17,6 +17,9 @@ export interface PartRow {
     withheld: boolean;
     withheld_reason: string | null;
     validated: boolean;
+    /** "declared": the part's yearly quantity (priced); "default": the part page's own rule (ce-19). */
+    qty_basis?: "declared" | "default" | null;
+    declared_qty?: number | null;
   } | null;
   findings: { total: number; critical: number; advisory: number; info: number; scoped_process: string } | null;
   provenance_posture: { measured: number; shop: number; user: number; default: number; total: number } | null;
