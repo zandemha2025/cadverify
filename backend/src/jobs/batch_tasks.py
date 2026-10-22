@@ -1204,6 +1204,11 @@ async def _notify_run_finished(batch_ulid: str) -> None:
             if a.get("saving_usd") is not None:
                 bits.append(f"saves ${a['saving_usd']:,.0f} against what you pay today")
             name = board.get("name") or "Catalog run"
+            # A run that stopped and was checked again has finished after all.
+            await notification_service.resolve_by_source(
+                session, org_id=batch.org_id, source_type="catalog_run", source_id=batch.ulid,
+                kind="catalog.run_stopped",
+            )
             await notification_service.emit_notification(
                 session, org_id=batch.org_id, actor_user_id=batch.user_id, kind="catalog.run_finished",
                 severity="info" if a.get("not_checked") else "pass",

@@ -278,15 +278,23 @@ async def test_the_minute_cron_restarts_a_run_whose_coordinator_is_gone(run_worl
     await batch_tasks.run_batch_coordinator({"redis": pool}, ulid)
     # The chain's next tick is lost (Redis restarted, a publish failed); the parts' jobs are not.
     pool.queue = [j for j in pool.queue if j[0] != "run_batch_coordinator"]
+    def kicks() -> int:  # this run's kicks (other runs in the database are not this test's)
+        return sum(1 for name, args, kw in pool.enqueued if name == "run_batch_coordinator" and args == (ulid,)
+                   and str(kw.get("_job_id") or "").startswith("batch-coordinator-kick:"))
+
     # Fresh: nothing to do yet.
-    assert await batch_tasks.rekick_batch_coordinators({"redis": pool}) == 0
+    await batch_tasks.rekick_batch_coordinators({"redis": pool})
+    assert kicks() == 0
     # Two minutes without a tick: the cron starts a coordinator, once.
     key = batch_tasks._chain_key(ulid)
     state = json.loads(pool.kv[key])
     state["at"] -= 600
     pool.kv[key] = json.dumps(state).encode()
-    assert await batch_tasks.rekick_batch_coordinators({"redis": pool}) == 1
-    assert await batch_tasks.rekick_batch_coordinators({"redis": pool}) == 0
+    await batch_tasks.rekick_batch_coordinators({"redis": pool})
+    assert kicks() == 1
+    await batch_tasks.rekick_batch_coordinators({"redis": pool})
+    assert kicks() == 1
+    pool.queue = [j for j in pool.queue if j[0] != "run_batch_coordinator" or j[1] == (ulid,)]
     await _drive(pool)
     assert (await _batch(ulid))["status"] == "completed"
 
@@ -521,9 +529,15 @@ async def _stop_run(ulid: str, *, checked: int) -> None:
 
 @pytest.mark.asyncio
 async def test_check_all_again_on_a_stopped_run_puts_its_parts_back_and_it_finishes(run_world, api, monkeypatch):
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs import batch_tasks
+
     _install_part_check(monkeypatch)
     ulid = await run_world["make_run"](5)
     await _stop_run(ulid, checked=2)
+    await batch_tasks._notify_run_stopped(ulid)
 
     r = await _recheck(api["app"], ulid)
     assert r.status_code == 202, r.text
@@ -540,6 +554,11 @@ async def test_check_all_again_on_a_stopped_run_puts_its_parts_back_and_it_finis
     await _drive(api["pool"])
     state = await _batch(ulid)
     assert state["status"] == "completed" and state["completed_items"] == 5
+    # The run finished after all: its "stopped" notification is resolved, the "finished" one is open.
+    async with eng.get_session_factory()() as s:
+        notes = dict((await s.execute(text(
+            "SELECT kind, status FROM notifications WHERE source_id = :u"), {"u": ulid})).all())
+    assert notes == {"catalog.run_stopped": "resolved", "catalog.run_finished": "open"}
 
 
 @pytest.mark.asyncio
