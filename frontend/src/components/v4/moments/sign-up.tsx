@@ -11,6 +11,11 @@
  * used: creating the account sends the code to it at once, and the phone check
  * opens on "Enter code". A part added on the sign-in screen (or here) waits on
  * this device and checks after the phone check, so nothing picked is lost.
+ *
+ * From an invite link (`?invite=`): the card names the organization, the role
+ * and who sent it, the invited address is filled in and can't be changed, and
+ * there's no free-check pitch, phone number or part to hold. Creating the
+ * account accepts the invite, so the person lands in the inviting org.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -27,6 +32,9 @@ import { AuthCard, CardField } from "./auth-card";
 import { adoptTyped } from "./early-typing";
 import { tierHint } from "./email-tier";
 import { V4_HOME, V4_SIGNUP_HOME, afterSignup, v4Landing } from "./landing";
+import { inviteNext } from "./invite-next";
+import { fetchInviteSummary, inviteTokenFrom, inviterLine, roleMeans, roleWord, type InviteSummary } from "./invite-summary";
+import { R } from "../routes";
 import { PHONE_WHY } from "./phone-gate";
 import { rememberSignupPhone, sessionStore } from "./signup-phone";
 import "./moments.css";
@@ -67,7 +75,11 @@ export function V4SignUp({
   ssoLoginPath?: string;
   phoneNeeded: boolean;
 }) {
-  const asked = useSearchParams().get("next");
+  const params = useSearchParams();
+  const asked = params.get("next");
+  const inviteToken = inviteTokenFrom(params.get("invite"), asked);
+  const [invite, setInvite] = React.useState<InviteSummary | null>(null);
+  const [inviteProblem, setInviteProblem] = React.useState<string | null>(null);
   const requested = safeLocalPath(asked, V4_SIGNUP_HOME);
   const next = v4Landing(requested) === V4_HOME ? V4_SIGNUP_HOME : requested;
   const explicitNext = asked && next !== V4_SIGNUP_HOME && next !== V4_HOME ? next : null;
@@ -94,6 +106,23 @@ export function V4SignUp({
     if (file && !partProblem(file)) setPart(file);
   }, []);
 
+  React.useEffect(() => {
+    if (!inviteToken) return;
+    let live = true;
+    void fetchInviteSummary(inviteToken).then((r) => {
+      if (!live) return;
+      if (r.ok) {
+        setInvite(r.summary);
+        setEmail(r.summary.email);
+      } else {
+        setInviteProblem(r.message);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [inviteToken]);
+
   function pick(file: File | undefined) {
     if (!file) return;
     const problem = partProblem(file);
@@ -110,7 +139,14 @@ export function V4SignUp({
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, name, phone, ...signupMetadata() }),
+        body: JSON.stringify({
+          email: invite ? invite.email : email,
+          password,
+          name,
+          phone: invite ? "" : phone,
+          ...signupMetadata(),
+          ...(invite && inviteToken ? { invite_token: inviteToken } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -119,6 +155,13 @@ export function V4SignUp({
       }
       identifyAccount(data.user.id);
       track("signup_completed", { auth_provider: "password" });
+      if (invite && inviteToken) {
+        // Joined (or not, and the accept page says why).
+        const joined = data.invite && typeof data.invite.org_id === "string";
+        const after = joined ? inviteNext(new URLSearchParams(asked?.split("?")[1] ?? "").get("next")) ?? `${R.parts}?joined=1` : `/orgs/accept?token=${encodeURIComponent(inviteToken)}`;
+        window.location.href = after;
+        return;
+      }
       // The part waits for this account only; the code goes to the number typed above.
       const held = part ? await holdPendingPart(browserPendingPartStore(), part, email) : false;
       const sent = phoneNeeded && phone.trim() ? await sendSignupCode(phone.trim()) : null;
@@ -131,12 +174,19 @@ export function V4SignUp({
   }
 
   const hint = tierHint(email, freeChecks);
+  const org = invite?.org_name || "the organization";
+  const meta = invite
+    ? [`Joining ${org}`, `Role: ${roleWord(invite.role)}`, inviterLine(invite)].filter((x): x is string => Boolean(x))
+    : inviteToken
+      ? ["Organization invite"]
+      : [`${freeChecks.work} free checks with a work email`, `${freeChecks.personal} with a personal one`, "No credit card"];
   return (
     <AuthCard
       label="Create account"
       title="Create account"
-      meta={[`${freeChecks.work} free checks with a work email`, `${freeChecks.personal} with a personal one`, "No credit card"]}
-      error={error}
+      meta={meta}
+      error={error ?? (inviteProblem ? `${inviteProblem} You can still create an account; ask your admin for a new invite.` : null)}
+      note={invite ? roleMeans(invite.role, org) : undefined}
       busy={busy}
       actions={
         <button className="btn ink" type="submit" form="v4-signup" disabled={!hydrated || busy} aria-busy={busy}>
@@ -152,12 +202,27 @@ export function V4SignUp({
     >
       <form id="v4-signup" ref={formRef} className="form" onSubmit={submit}>
         <CardField id="name" name="name" label="Full name" type="text" autoComplete="name" required maxLength={160} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-        <CardField id="email" name="email" label="Email" type="email" autoComplete="email" required maxLength={320} placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <p className="chipline" aria-live="polite">
-          <Chip tone={hint.tone}>{hint.chip}</Chip>
-          {hint.text}
-        </p>
         <CardField
+          id="email"
+          name="email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          maxLength={320}
+          placeholder="you@company.com"
+          value={email}
+          readOnly={!!invite}
+          hint={invite ? "The invited address. Only it can accept." : undefined}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        {inviteToken ? null : (
+          <p className="chipline" aria-live="polite">
+            <Chip tone={hint.tone}>{hint.chip}</Chip>
+            {hint.text}
+          </p>
+        )}
+        {inviteToken ? null : <CardField
           id="phone"
           name="phone"
           label={phoneNeeded ? "Mobile number" : "Phone (optional)"}
@@ -169,7 +234,7 @@ export function V4SignUp({
           value={phone}
           hint={phoneNeeded ? PHONE_WHY : undefined}
           onChange={(e) => setPhone(e.target.value)}
-        />
+        />}
         {/* HTML counts UTF-16 units; allow two per server-validated code point. */}
         <CardField
           id="password"
@@ -183,7 +248,7 @@ export function V4SignUp({
           hint="8–128 characters, with a letter and a number"
           onChange={(e) => setPassword(e.target.value)}
         />
-        <div className="heldrow" aria-live="polite">
+        {inviteToken ? null : <div className="heldrow" aria-live="polite">
           {part ? (
             <>
               <span>
@@ -210,7 +275,7 @@ export function V4SignUp({
               </label>
             </>
           )}
-        </div>
+        </div>}
         {partError ? (
           <span className="hintx bad" role="alert">
             {partError}

@@ -2,6 +2,12 @@
  * Same-origin signup. Proxies credentials and profile fields; on success sets
  * the first-party httpOnly `dash_session` cookie (auto-login). The session token
  * is never exposed to browser JS.
+ *
+ * Signing up from an invite (`invite_token`): once the account exists it
+ * accepts the invite with the new session, so the person joins the inviting
+ * organization with the invited role and it becomes their active org. The API
+ * still binds the invite to the invited address; if it refuses, the account
+ * stays and the answer says why (`invite.error`).
  */
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
@@ -14,7 +20,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const crossSite = crossSiteRefusal(req);
   if (crossSite) return crossSite;
-  const body = await req.json().catch(() => ({}));
+  const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const { invite_token: inviteRaw, ...body } = raw ?? {};
+  const inviteToken = typeof inviteRaw === "string" && inviteRaw.trim() && inviteRaw.length <= 512 ? inviteRaw.trim() : null;
   const backendPath = "/auth/signup";
   try {
     const res = await fetch(backendUrl(backendPath), {
@@ -43,8 +51,9 @@ export async function POST(req: Request) {
       });
     }
     await setSession(data.session);
+    const invite = inviteToken ? await acceptInvite(data.session, inviteToken) : undefined;
     return NextResponse.json(
-      { user: data.user },
+      { user: data.user, ...(invite ? { invite } : {}) },
       { headers: { "cache-control": "no-store" } },
     );
   } catch (err) {
@@ -60,5 +69,27 @@ export async function POST(req: Request) {
       },
       { status: 503, headers: { "cache-control": "no-store" } },
     );
+  }
+}
+
+type InviteOutcome = { org_id: string; org_role: string } | { error: string };
+
+/** Accept the invite as the account just made; never throws. */
+async function acceptInvite(session: string, token: string): Promise<InviteOutcome> {
+  try {
+    const res = await fetch(backendUrl("/api/v1/orgs/invites/accept"), {
+      method: "POST",
+      headers: { "content-type": "application/json", Cookie: `dash_session=${session}` },
+      body: JSON.stringify({ token }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = (await res.json().catch(() => ({}))) as { org_id?: unknown; org_role?: unknown; detail?: unknown };
+    if (res.ok && typeof data.org_id === "string") return { org_id: data.org_id, org_role: String(data.org_role ?? "member") };
+    const d = data.detail as { message?: unknown } | string | undefined;
+    const message = typeof d === "string" ? d : typeof d?.message === "string" ? d.message : null;
+    return { error: message ?? "The invite wasn’t accepted." };
+  } catch {
+    return { error: "Couldn’t reach ScaleCAD to accept the invite." };
   }
 }

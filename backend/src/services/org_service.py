@@ -443,6 +443,94 @@ async def _redeemable_invite(
     return inv
 
 
+async def invite_summary(session: AsyncSession, raw_token: str) -> dict:
+    """What an invite link is for, shown to its holder before they sign in.
+
+    The organization, the role, who sent it, the invited address and when it
+    expires: what the landing page names so the person can tell the invite is
+    genuine, and what sign-up prefills. Only a pending invite answers; an
+    unknown one is 404 and a used, revoked or expired one 409, with no details.
+    Read-only. Who may redeem it is still decided at accept (the invited
+    account only).
+    """
+    if not raw_token or not raw_token.strip():
+        raise _400("An invite token is required.")
+    inv = (
+        await session.execute(
+            select(OrgInvite).where(OrgInvite.token_hash == hash_invite_token(raw_token.strip()))
+        )
+    ).scalars().first()
+    if inv is None:
+        raise _404("Invite not found or already used.")
+    if inv.revoked_at is not None:
+        raise _409("This invite has been revoked.")
+    if inv.accepted_at is not None:
+        raise _409("This invite has already been used.")
+    if _as_aware(inv.expires_at) < _now():
+        raise _409("This invite has expired.")
+    org_name = (
+        await session.execute(select(Organization.name).where(Organization.id == inv.org_id))
+    ).scalar_one_or_none()
+    inviter = None
+    if inv.created_by is not None:
+        inviter = (
+            await session.execute(
+                select(User.full_name, User.email).where(User.id == inv.created_by)
+            )
+        ).first()
+    return {
+        "org_name": org_name,
+        "role": inv.role,
+        "email": inv.email,
+        "invited_by": inviter.email if inviter else None,
+        "invited_by_name": (inviter.full_name or "").strip() or None if inviter else None,
+        "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
+    }
+
+
+def workspace_name(email: str, full_name: str | None) -> str:
+    """A person's own workspace: "<First name>'s workspace", never a company name."""
+    from src.auth.org_context import ORG_NAME_MAX
+
+    first = (full_name or "").split()
+    who = first[0] if first else (email.split("@", 1)[0] or "Your")
+    return f"{who}'s workspace"[:ORG_NAME_MAX]
+
+
+async def _settle_personal_workspace(session: AsyncSession, user: User, joined_org_id: str) -> None:
+    """Joining someone's organization: the person's own workspace reads as theirs.
+
+    Sign-up gives every account a personal org, named after a work email's
+    company. Someone who joins their company's organization by invite would
+    then also "own" a second, company-named org. Their personal org (only
+    them in it, still under the name sign-up gave it) is renamed
+    "<First name>'s workspace"; one they renamed or share is left alone.
+    """
+    from src.auth.org_context import personal_org_display_name
+
+    email = user.email or ""
+    auto_name = personal_org_display_name(email, user.full_name)
+    rows = (
+        await session.execute(
+            select(Organization)
+            .join(Membership, Membership.org_id == Organization.id)
+            .where(
+                Membership.user_id == user.id,
+                Organization.is_personal.is_(True),
+                Organization.id != joined_org_id,
+            )
+        )
+    ).scalars().all()
+    for org in rows:
+        members = (
+            await session.execute(
+                select(func.count()).select_from(Membership).where(Membership.org_id == org.id)
+            )
+        ).scalar_one()
+        if members == 1 and org.name == auto_name:
+            org.name = workspace_name(email, user.full_name)
+
+
 async def preview_invite(
     session: AsyncSession, user_id: int, raw_token: str
 ) -> dict:
@@ -508,9 +596,17 @@ async def accept_invite(
         )
         session.add(membership)
         created = True
+        accepting = await session.get(User, user_id)
+        if accepting is not None:
+            await _settle_personal_workspace(session, accepting, inv.org_id)
 
     inv.accepted_by = user_id
     inv.accepted_at = _now()
+    await session.flush()
+    # Accepting is choosing to work there: the organization becomes active.
+    await session.execute(
+        User.__table__.update().where(User.id == user_id).values(current_org_id=inv.org_id)
+    )
     await session.flush()
     return membership, inv, created
 

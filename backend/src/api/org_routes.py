@@ -435,6 +435,23 @@ async def preview_invite(
     return await svc.preview_invite(session, user.user_id, body.token)
 
 
+@router.post("/invites/summary")
+@limiter.limit("30/minute;300/hour")
+async def invite_summary(
+    request: Request,
+    response: Response,
+    body: AcceptBody,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """What an invite link is for, before its holder signs in: the org, the
+    role, who sent it, the invited address and when it expires. No sign-in:
+    the link itself is the secret, emailed to the invited address. Pending
+    invites only; a used, revoked, expired or unknown one gives no details.
+    Read-only, so no kill-switch gate; POST keeps the token out of URLs."""
+    response.headers["Cache-Control"] = "no-store"
+    return await svc.invite_summary(session, body.token)
+
+
 @router.post("/invites/accept", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;300/day")
 async def accept_invite(

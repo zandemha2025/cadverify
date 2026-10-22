@@ -21,6 +21,7 @@ import { V4_HOME } from "./landing";
 import { R } from "../routes";
 import { switchTo, teamInfo, useTeamSetup } from "../onboard/teammate";
 import { inviteNext } from "./invite-next";
+import { fetchInviteSummary, inviterLine, roleMeans, roleWord, type InviteSummary } from "./invite-summary";
 import "./moments.css";
 
 type Preview = {
@@ -38,7 +39,7 @@ type State =
   | { kind: "missing" }
   | { kind: "confirm"; preview: Preview | null }
   | { kind: "declined"; preview: Preview | null }
-  | { kind: "login" }
+  | { kind: "login"; summary: InviteSummary | null }
   | { kind: "joined"; role: string; org: string | null; created: boolean; switched: boolean; switchError: string | null }
   | { kind: "failed"; message: string; retry: boolean; otherAccount: boolean };
 
@@ -67,7 +68,7 @@ async function post(path: string, token: string): Promise<{ status: number; data
 
 function failure(status: number, data: unknown, fallback: string): State {
   const message = apiProblemDetail(data) ?? fallback;
-  if (status === 401) return { kind: "login" };
+  if (status === 401) return { kind: "login", summary: null };
   if (status === 400) return { kind: "missing" };
   return { kind: "failed", message, retry: status >= 500 || status === 429, otherAccount: status === 403 };
 }
@@ -101,6 +102,21 @@ export function V4InviteAccept() {
     };
   }, [token, attempt]);
 
+  // Signed out: name the org, the inviter and the role from the link itself.
+  const needSummary = state.kind === "login" && state.summary === null;
+  React.useEffect(() => {
+    if (!needSummary || !token) return;
+    let live = true;
+    void fetchInviteSummary(token).then((r) => {
+      if (!live) return;
+      if (r.ok) setState({ kind: "login", summary: r.summary });
+      else if (r.status === 404 || r.status === 409) setState({ kind: "failed", message: r.message, retry: false, otherAccount: false });
+    });
+    return () => {
+      live = false;
+    };
+  }, [needSummary, token]);
+
   async function accept() {
     if (busy) return;
     setBusy(true);
@@ -126,7 +142,7 @@ export function V4InviteAccept() {
 
   const here = `/orgs/accept?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
   const loginHref = `/login?next=${encodeURIComponent(here)}`;
-  const signupHref = `/signup?next=${encodeURIComponent(here)}`;
+  const signupHref = `/signup?invite=${encodeURIComponent(token)}&next=${encodeURIComponent(here)}`;
 
   switch (state.kind) {
     case "checking":
@@ -160,20 +176,47 @@ export function V4InviteAccept() {
           links={<Link href="/login">Sign in</Link>}
         />
       );
-    case "login":
+    case "login": {
+      const s = state.summary;
+      if (!s) {
+        return (
+          <AuthCard
+            label="Sign in to accept"
+            title="Sign in to accept"
+            meta={["Only the invited account can accept"]}
+            actions={
+              <Link className="btn ink" href={loginHref}>
+                Sign in
+              </Link>
+            }
+            links={<Link href={signupHref}>Create an account</Link>}
+          />
+        );
+      }
+      const org = s.org_name || "the organization";
       return (
         <AuthCard
-          label="Sign in to accept"
-          title="Sign in to accept"
-          meta={["Only the invited account can accept"]}
+          label={`Join ${org}`}
+          title={`Join ${org}`}
+          meta={[inviterLine(s), expiresIn(s.expires_at)].filter((x): x is string => Boolean(x))}
+          info={[
+            ["Role", roleWord(s.role)],
+            ["For", s.email],
+          ]}
           actions={
-            <Link className="btn ink" href={loginHref}>
-              Sign in
-            </Link>
+            <>
+              <Link className="btn ink" href={signupHref}>
+                Create account
+              </Link>
+              <Link className="btn" href={loginHref}>
+                Sign in
+              </Link>
+            </>
           }
-          links={<Link href={signupHref}>Create an account</Link>}
+          note={`${roleMeans(s.role, org)} Only ${s.email} can accept: create an account with it, or sign in if you have one.`}
         />
       );
+    }
     case "confirm": {
       const p = state.preview;
       const org = p?.org_name || "the organization";
@@ -247,7 +290,9 @@ export function V4InviteAccept() {
           }
           note={
             state.switched
-              ? "No shop setup: every check you run uses your team’s machines and rates."
+              ? state.role === "viewer"
+                ? `You open ${state.org ?? "the organization"}’s parts and records. Viewers don’t check or change parts; ask an admin for Member access.`
+                : "No shop setup: every check you run uses your team’s machines and rates."
               : `${state.switchError ? `${state.switchError} ` : ""}Switch to ${state.org ?? "it"} from the account menu to use its machines and rates.`
           }
         />
