@@ -1581,6 +1581,14 @@ class PartContext(Base):
     bom_assembly_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bom_child_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bom_roots_per_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # What the org pays today to buy this part (migration 0059): USER-declared,
+    # from a catalog run's parts list or the part's Decision view.
+    # {usd_each, per, source: "parts_list"|"you", run_id, updated_at}. Not an
+    # engine input: it moves a part between make and buy and sets the saving,
+    # never the engine's figures, so it never marks a record out of date.
+    buy_price: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
