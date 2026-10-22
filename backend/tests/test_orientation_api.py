@@ -63,6 +63,16 @@ def _fdm_codes(result: dict) -> set[str]:
 @_requires_pg
 @pytest.mark.asyncio
 async def test_a_turned_recheck_is_recorded_and_uses_no_check():
+    import src.db.engine as eng
+
+    try:
+        await _turned_recheck_flow()
+    finally:
+        # The pool belongs to this test's event loop; the next test opens its own.
+        await eng.dispose_engine()
+
+
+async def _turned_recheck_flow():
     from httpx import ASGITransport, AsyncClient
     from sqlalchemy import select, text
     from ulid import ULID
