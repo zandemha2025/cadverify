@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, StrictInt
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,6 +82,25 @@ async def _context_payload(session: AsyncSession, org_id: str, row: PartContext)
     payload["resolved_annual_volume"] = demand["annual_volume"]
     payload["annual_volume_basis"] = demand["annual_volume_basis"]
     return payload
+
+
+@router.get("")
+@limiter.limit("120/hour;1000/day")
+async def search_parts(
+    request: Request,
+    response: Response,
+    limit: int = Query(300, ge=1, le=500, description="Newest parts to list (parts with declared specs are always listed)."),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The organization's parts with what search finds them by: file name, program and
+    declared specs in words (``{"parts": [{mesh_hash, filename, program, specs}], "truncated"}``).
+    Searching "anodize", "AS9100" or a tolerance found nothing (buyer-06)."""
+    org_id = await resolve_org(session, user.user_id)
+    if not org_id:
+        return {"parts": [], "truncated": False}
+    response.headers["Cache-Control"] = "no-store"
+    return await svc.search_index(session, org_id, limit)
 
 
 @router.get("/{mesh_hash}")

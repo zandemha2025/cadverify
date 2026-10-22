@@ -134,7 +134,7 @@ _REQUEST_TEXT = ("name", "part_number", "description", "material")
 # The part specs the buyer declared (src.costing.part_specs): every field is the
 # buyer's own statement about the part and what its maker must hold.
 PART_SPEC_KEYS = ("finishes", "ra_um", "ra_unit", "heat_treatments", "inspection",
-                  "certifications", "nadcap_processes")
+                  "certifications", "nadcap_processes", "general_tolerance")
 _SPEC_BLOCK_KEYS = ("summary", "ra_text", "nadcap_processes", "excluded_processes", "note")
 
 # Verdicts that mean a machine the shop owns makes the route.

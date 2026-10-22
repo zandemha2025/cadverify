@@ -57,7 +57,7 @@ PLATE_RESULT = {
     },
 }
 SPECS = {"finishes": ["anodize_ii"], "ra_um": 1.6, "ra_unit": "um", "inspection": ["fai_as9102"],
-         "certifications": ["as9100"]}
+         "certifications": ["as9100"], "general_tolerance": {"plus_minus": 0.1, "unit": "mm"}}
 NOTE = "Please quote 250 pcs/yr each, 4 releases. Quote due Nov 5."
 # What must never reach the supplier unless the buyer turns the cost estimate on.
 OUR_NUMBERS = (b"193.18", b"665.55", b"158.04", b"155.88", b"130.9", b"241", b"Alibaba", b"crossover",
@@ -177,6 +177,8 @@ async def test_a_supplier_package_carries_what_a_supplier_quotes_from_and_none_o
     assert NOTE in brief
     for line in ("- Material: Aluminum", "- Quantity: 250", "- Finish: Anodize, Type II, Ra 1.6 µm",
                  "- Inspection: First article inspection, AS9102",
+                 # buyer-06 / buyer-15: the general tolerance reaches the supplier with the specs.
+                 "- General tolerance: ±0.1 mm",
                  "- CAD: parts/01-plate-with-boss/plate-with-boss.step",
                  "- Size: 300 × 200 × 10.8 mm (measured from the CAD)"):
         assert line in brief, line

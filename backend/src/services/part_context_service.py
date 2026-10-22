@@ -323,12 +323,61 @@ ENGINE_INPUT_FIELDS = (("part_specs", "part_specs_changed"),
 
 
 def engine_inputs(row: Any) -> dict:
-    """The declared values the cost engine reads, for a before/after comparison."""
+    """The declared values the cost engine reads, for a before/after comparison.
+    A spec the price doesn't use (the general tolerance) isn't one of them."""
+    from src.costing.part_specs import NOT_PRICED_FIELDS
+
     if row is None:
         return {k: None for k, _ in ENGINE_INPUT_FIELDS}
-    return {k: (getattr(row, k, None) or None) for k, _ in ENGINE_INPUT_FIELDS}
+    out = {k: (getattr(row, k, None) or None) for k, _ in ENGINE_INPUT_FIELDS}
+    if isinstance(out.get("part_specs"), dict):
+        out["part_specs"] = {k: v for k, v in out["part_specs"].items() if k not in NOT_PRICED_FIELDS} or None
+    return out
 
 
 def changed_input_reasons(before: dict, after: dict) -> list:
     """Stale reasons for the engine inputs that changed (in a stable order)."""
     return [reason for key, reason in ENGINE_INPUT_FIELDS if (before or {}).get(key) != (after or {}).get(key)]
+
+
+async def search_index(session: AsyncSession, org_id: str, limit: int = 300) -> dict:
+    """The organization's parts with what they are found by (buyer-06, buyer-16): the file
+    name, the program and the declared specs in words ("Finish: Anodize, Type II, Ra 1.6 µm",
+    "Supplier must hold: AS9100", "General tolerance: ±0.1 mm"). Newest parts first; every
+    part with declared specs is in it. Read-only, org-scoped."""
+    from sqlalchemy import desc
+
+    from src.costing.part_specs import normalize_part_specs, spec_summary
+    from src.db.models import PartSummary
+
+    rows = (await session.execute(
+        select(PartSummary.mesh_hash, PartSummary.row_json)
+        .where(PartSummary.org_id == org_id)
+        .order_by(desc(PartSummary.updated_at)).limit(limit + 1)
+    )).all()
+    truncated = len(rows) > limit
+    names = {mh: (rj or {}).get("filename") for mh, rj in rows[:limit]}
+    contexts = {c.mesh_hash: c for c in await list_contexts(session, org_id)}
+    with_specs = [mh for mh, c in contexts.items() if getattr(c, "part_specs", None) and mh not in names]
+    if with_specs:
+        extra = (await session.execute(
+            select(PartSummary.mesh_hash, PartSummary.row_json)
+            .where(PartSummary.org_id == org_id, PartSummary.mesh_hash.in_(with_specs))
+        )).all()
+        found = {mh: (rj or {}).get("filename") for mh, rj in extra}
+        for mh in with_specs:
+            names[mh] = found.get(mh)
+    parts = []
+    for mh, filename in names.items():
+        ctx = contexts.get(mh)
+        try:
+            specs = normalize_part_specs(getattr(ctx, "part_specs", None)) if ctx is not None else None
+        except ValueError:
+            specs = None
+        parts.append({
+            "mesh_hash": mh,
+            "filename": filename,
+            "program": getattr(ctx, "program", None) if ctx is not None else None,
+            "specs": spec_summary(specs) if specs else [],
+        })
+    return {"parts": parts, "truncated": truncated}

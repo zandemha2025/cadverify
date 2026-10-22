@@ -81,8 +81,15 @@ NADCAP_PROCESSES: dict = {
 }
 SPEC_FIELDS = frozenset({
     "finishes", "ra_um", "ra_unit", "heat_treatments", "inspection",
-    "certifications", "nadcap_processes",
+    "certifications", "nadcap_processes", "general_tolerance",
 })
+# The general tolerance for dimensions the drawing doesn't tolerance (buyer-06): an
+# ISO 2768-1 class, or a ± value in the part's units. The buyer's statement for the
+# supplier; the price doesn't use it (``stored_specs`` leaves it out of the engine).
+ISO_2768_CLASSES: dict = {"f": "fine", "m": "medium", "c": "coarse", "v": "very coarse"}
+TOLERANCE_UNITS = ("mm", "in")
+TOLERANCE_MAX_MM = 10.0
+NOT_PRICED_FIELDS = frozenset({"general_tolerance"})
 RA_UNITS = ("um", "uin")
 RA_MIN_UM, RA_MAX_UM = 0.012, 50.0
 
@@ -313,12 +320,53 @@ def validate_part_specs(specs) -> None:
     unit = specs.get("ra_unit")
     if unit is not None and unit not in RA_UNITS:
         errors.append("ra_unit must be 'um' or 'uin'")
+    _check_tolerance(specs.get("general_tolerance"), errors)
     if "nadcap" in certs and not (nadcap or derived_nadcap(finishes, heat)):
         errors.append("NADCAP needs the special process it covers, for example heat_treating")
     if nadcap and "nadcap" not in certs:
         errors.append("nadcap_processes are only used when NADCAP is a required certification")
     if errors:
         raise ValueError("; ".join(errors))
+
+
+def _check_tolerance(tol, errors: list) -> None:
+    """``{"iso2768": "m"}`` or ``{"plus_minus": 0.1, "unit": "mm"}``; None is no tolerance."""
+    if tol is None:
+        return
+    if not isinstance(tol, dict):
+        errors.append("general_tolerance must be an object")
+        return
+    keys = set(tol)
+    if keys == {"iso2768"}:
+        if tol["iso2768"] not in ISO_2768_CLASSES:
+            errors.append(f"general_tolerance.iso2768 must be one of {sorted(ISO_2768_CLASSES)}")
+        return
+    if keys in ({"plus_minus"}, {"plus_minus", "unit"}):
+        unit = tol.get("unit") or "mm"
+        value = tol["plus_minus"]
+        if unit not in TOLERANCE_UNITS:
+            errors.append("general_tolerance.unit must be 'mm' or 'in'")
+        elif not _is_number(value) or value <= 0:
+            errors.append("general_tolerance.plus_minus must be a number above 0")
+        elif value * (25.4 if unit == "in" else 1.0) > TOLERANCE_MAX_MM:
+            errors.append(f"general_tolerance.plus_minus must be at most {TOLERANCE_MAX_MM:g} mm")
+        return
+    errors.append("general_tolerance is either {iso2768: f|m|c|v} or {plus_minus, unit}")
+
+
+def tolerance_text(specs: dict) -> Optional[str]:
+    """``ISO 2768-m (medium)`` or ``±0.1 mm`` (``±0.005 in (0.127 mm)``), or None."""
+    tol = (specs or {}).get("general_tolerance")
+    if not isinstance(tol, dict):
+        return None
+    if tol.get("iso2768") in ISO_2768_CLASSES:
+        return f"ISO 2768-{tol['iso2768']} ({ISO_2768_CLASSES[tol['iso2768']]})"
+    value = tol.get("plus_minus")
+    if not _is_number(value):
+        return None
+    if tol.get("unit") == "in":
+        return f"±{value:g} in ({value * 25.4:.3g} mm)"
+    return f"±{value:g} mm"
 
 
 def normalize_part_specs(specs) -> Optional[dict]:
@@ -339,6 +387,11 @@ def normalize_part_specs(specs) -> Optional[dict]:
     if specs.get("ra_um") is not None:
         out["ra_um"] = float(specs["ra_um"])
         out["ra_unit"] = specs.get("ra_unit") or "um"
+    tol = specs.get("general_tolerance")
+    if tol:
+        out["general_tolerance"] = (
+            {"iso2768": tol["iso2768"]} if "iso2768" in tol
+            else {"plus_minus": float(tol["plus_minus"]), "unit": tol.get("unit") or "mm"})
     return out or None
 
 
@@ -401,6 +454,9 @@ def spec_summary(specs: dict) -> list:
     certs = required_certifications(s)
     if certs:
         lines.append("Supplier must hold: " + ", ".join(c["label"] for c in certs))
+    tol = tolerance_text(s)
+    if tol:
+        lines.append(f"General tolerance: {tol}")
     return lines
 
 
@@ -782,11 +838,15 @@ def session_for(options, rates, region: str, drivers) -> Optional[SpecSession]:
 
 
 def stored_specs(context_row: Any) -> Optional[dict]:
-    """A part context row's declared specs, normalized, or None."""
+    """A part context row's declared specs the engine prices with, normalized, or None.
+    The general tolerance is the buyer's statement for the supplier, not priced, so it
+    stays out (a record isn't out of date when only the tolerance changes)."""
     raw = getattr(context_row, "part_specs", None) if context_row is not None else None
     if not raw:
         return None
     try:
-        return normalize_part_specs(raw)
+        specs = normalize_part_specs(raw)
     except ValueError:
         return None
+    priced = {k: v for k, v in (specs or {}).items() if k not in NOT_PRICED_FIELDS}
+    return priced or None
