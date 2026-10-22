@@ -231,7 +231,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
     </span>,
     machinesText(board),
     board?.material_class ? materialWord(board.material_class) : null,
-    board ? `${board.quantity.toLocaleString("en-US")} each unless listed` : null,
+    board ? `${board.quantity.toLocaleString("en-US")} a year each unless listed` : null,
     statusWord && board ? `${statusWord} · ${board.free ? "free run" : "pilot plan"}` : statusWord,
   ].filter(Boolean);
 

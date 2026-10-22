@@ -371,7 +371,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
               </select>
             </label>
             <label className="field">
-              Quantity <span className="fh">Each, unless listed</span>
+              Quantity a year <span className="fh">Each part, unless the list names one</span>
               <input
                 type="number"
                 min={1}
@@ -386,7 +386,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
             </label>
           </div>
           <span className={qtyVal == null ? "fe" : "fh"} id={qtyHint} style={{ marginTop: -6 }}>
-            {qtyVal == null ? "Enter a whole number of parts, 1 or more." : "Prices and machine time are shown at this quantity."}
+            {qtyVal == null ? "Enter a whole number of parts, 1 or more." : "Prices and machine time are shown at this quantity. Each part keeps it as its yearly volume, and an RFQ package asks for it."}
           </span>
         </div>
 
