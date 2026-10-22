@@ -313,13 +313,21 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           <span>Approval</span>
           <span />
         </div>
-        {detail.is_stale ? (
+        {detail.is_stale || detail.rates?.out_of_date ? (
           <div className="stale" role="note">
             <b>Out of date</b>
             <span>
-              {staleText(detail.stale_reason)}
-              {detail.stale_at ? ` · ${stampUtc(detail.stale_at)}` : ""}. Check the part again before relying on it.
+              {detail.rates?.out_of_date ? `${detail.rates.text} ` : ""}
+              {detail.is_stale ? `${staleText(detail.stale_reason)}${detail.stale_at ? ` · ${stampUtc(detail.stale_at)}` : ""}. ` : ""}
+              Check the part again before relying on it.
             </span>
+            {detail.mesh_hash ? (
+              <span>
+                <Link className="btn sm" href={`${R.cost(detail.mesh_hash)}?decision=${encodeURIComponent(detail.id)}`}>
+                  {detail.rates?.out_of_date ? `Re-cost at your rates v${detail.rates.current}` : "Check it again"}
+                </Link>
+              </span>
+            ) : null}
           </div>
         ) : null}
         <div className="sign">

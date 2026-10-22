@@ -135,13 +135,35 @@ function errorCode(body: unknown): string | null {
  * the part shows it. `owned`: the org's machines' processes (unknown ones are
  * dropped, as a fresh check does).
  */
-export async function recheckStored(key: string, opts: { materialClass?: string | null; qty?: number[]; owned?: string[]; orientation?: string | null; onWorker?: (stage: string, moved: boolean) => void }): Promise<StoredRecheck> {
+export async function recheckStored(
+  key: string,
+  opts: {
+    materialClass?: string | null;
+    qty?: number[];
+    owned?: string[];
+    orientation?: string | null;
+    onWorker?: (stage: string, moved: boolean) => void;
+    /** The cost breakdown's what-if inputs, priced from the kept file like an upload (ce-17). */
+    region?: string | null;
+    cavities?: number | null;
+    complexity?: string | null;
+    shop?: string | null;
+    overrides?: Record<string, number> | null;
+    units?: "mm" | "inch" | null;
+  },
+): Promise<StoredRecheck> {
   const q = new URLSearchParams();
   if (opts.materialClass) q.set("material_class", opts.materialClass);
   if (opts.qty?.length) q.set("qty", opts.qty.join(","));
   const owned = (opts.owned ?? []).filter((p) => KNOWN_ENGINE_PROCESSES.has(p));
   if (owned.length) q.set("owned_processes", owned.join(","));
   if (opts.orientation) q.set("orientation", opts.orientation);
+  if (opts.region && opts.region !== "auto") q.set("region", opts.region);
+  if (opts.cavities != null && opts.cavities !== 1) q.set("cavities", String(opts.cavities));
+  if (opts.complexity && opts.complexity !== "moderate") q.set("complexity", opts.complexity);
+  if (opts.shop) q.set("shop", opts.shop);
+  if (opts.overrides && Object.keys(opts.overrides).length) q.set("overrides", JSON.stringify(opts.overrides));
+  if (opts.units === "inch") q.set("units", "inch");
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/parts/${encodeURIComponent(key)}/recheck${q.toString() ? `?${q}` : ""}`, { method: "POST" });

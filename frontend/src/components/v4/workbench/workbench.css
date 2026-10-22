@@ -370,3 +370,7 @@
 .ob .ct th{padding:8px 6px}
 .ob .ct .nm small{font-size:11.5px}
 }
+
+/* A price figured at an older rate card than the org's published one (ce-10). */
+.ob .wb-stale{margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;border-radius:12px;background:var(--warn-bg);color:#5C3800;font-size:13.5px}
+.ob .wb-stale b{color:#3D2600;font-weight:600}

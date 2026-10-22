@@ -18,7 +18,7 @@ import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { checkHref } from "../part/check-context";
 import { cx } from "../ui";
 import { rateChips } from "./derive";
-import { attachFile, getWb, recost, useShops, useWb } from "./session";
+import { attachFile, canRecost, getWb, recost, useShops, useWb } from "./session";
 import { shortSource } from "./words";
 import { tabOf, tabUrlName, wbHref, type WbTab } from "./cost-url";
 
@@ -234,8 +234,9 @@ function NeedFileHost({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ask, setAsk] = React.useState<Ask | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
+  // A part opened from its records re-costs on the file its organization kept (no upload, no check).
   const need = React.useCallback((reason: string, run: () => void) => {
-    if (getWb().file) run();
+    if (getWb().file || canRecost()) run();
     else setAsk({ reason, run, other: null, msg: null });
   }, []);
   const choose = React.useCallback(() => setAsk({ reason: "turn the part and see findings on it", run: () => {}, other: null, msg: null }), []);
@@ -349,17 +350,21 @@ function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
   const shop = shops.find((x) => x.id === shopId) ?? null;
   const name = shop?.name ?? cal?.shopName ?? null;
   const chips = rateChips(s.report?.assumptions ?? [], s.opts.overrides);
+  // The org's published rate card this price was figured at (absent: typical rates, v0).
+  const card = s.report?.rate_card?.version ?? null;
+  const base = card != null ? `Your rates v${card}` : "Typical rates";
   const pick = (id: string | null) => {
     close();
     if (id === shopId && s.report) return;
     const next: CostOptions = { ...s.opts, shop: id };
-    need(id ? "re-cost with this shop’s rates" : "re-cost on typical rates", async () => {
+    need(id ? "re-cost with this shop’s rates" : card != null ? "re-cost on your rates" : "re-cost on typical rates", async () => {
       const r = await recost(next);
       const nm = shops.find((x) => x.id === id)?.name;
-      toast(r ? (id ? `Re-costed with ${nm} rates.` : "Shop cleared. Re-costed on typical rates.") : "Re-cost didn’t finish. The last good numbers stay.");
+      const v = r?.rate_card?.version;
+      toast(r ? (id ? `Re-costed with ${nm} rates.` : v != null ? `Shop cleared. Re-costed on your rates v${v}.` : "Shop cleared. Re-costed on typical rates.") : "Re-cost didn’t finish. The last good numbers stay.");
     });
   };
-  const label = busy ? "Re-costing…" : name ? `Rates: ${name}` : "Rates: typical";
+  const label = busy ? "Re-costing…" : name ? `Rates: ${name}` : `Rates: ${card != null ? `yours v${card}` : "typical"}`;
   return (
     <span className="wrap" ref={wrap}>
       <button
@@ -387,9 +392,9 @@ function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
         >
           <div className="ph2">
             <span>Use a shop’s rates · re-costs</span>
-            <span>{name ?? "Typical rates"}</span>
+            <span>{name ?? base}</span>
           </div>
-          {[{ id: null as string | null, name: "Typical rates", sub: "No shop · every rate typical" }, ...shops.map((x) => ({ id: x.id as string | null, name: x.name, sub: [x.region, shortSource(x.source)].filter(Boolean).join(" · ") }))].map((r) => (
+          {[{ id: null as string | null, name: base, sub: card != null ? "No shop · your published rate card" : "No shop · every rate typical" }, ...shops.map((x) => ({ id: x.id as string | null, name: x.name, sub: [x.region, shortSource(x.source)].filter(Boolean).join(" · ") }))].map((r) => (
             <button key={r.id ?? "none"} className="mi" type="button" aria-pressed={r.id === shopId} onClick={() => pick(r.id)} disabled={busy}>
               <span className="ck" aria-hidden="true">
                 {r.id === shopId ? "✓" : ""}
@@ -400,6 +405,19 @@ function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
               </span>
             </button>
           ))}
+          {chips.card.length ? (
+            <>
+              <div className="ph2">
+                <span>From your rates v{card}</span>
+                <span>{chips.card.length}</span>
+              </div>
+              <div className="rchips shop">
+                {chips.card.map((t) => (
+                  <span key={t}>{t}</span>
+                ))}
+              </div>
+            </>
+          ) : null}
           {chips.bound.length ? (
             <>
               <div className="ph2">
@@ -447,6 +465,40 @@ function CheckAnotherButton() {
   );
 }
 
+/**
+ * "Priced at rates v0; your rates are v1. Re-cost": a price figured at an older
+ * rate card than the org's published one says so on every tab (ce-10), and
+ * re-costs on the file kept with the record.
+ */
+function RatesStale() {
+  const s = useWb();
+  const toast = useToast();
+  const { need } = useNeedFile();
+  const r = s.decision?.rates ?? null;
+  if (!r?.out_of_date) return null;
+  const busy = s.cost.phase === "running";
+  return (
+    <div className="wb-stale" role="note">
+      <span>
+        <b>{r.text}</b> These prices use the rates in effect when the part was checked.
+      </span>
+      <button
+        className="btn sm ink"
+        type="button"
+        disabled={busy}
+        onClick={() =>
+          need(`re-cost at your rates v${r.current}`, async () => {
+            const out = await recost({ ...s.opts });
+            toast(out ? `Re-costed at your rates v${out.rate_card?.version ?? r.current}.` : "Re-cost didn’t finish. The last good numbers stay.");
+          })
+        }
+      >
+        {busy ? "Re-costing…" : `Re-cost at v${r.current}`}
+      </button>
+    </div>
+  );
+}
+
 export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string; meta: React.ReactNode[]; wide?: boolean }) {
   const { shops } = useShops();
   const s = useWb();
@@ -480,6 +532,7 @@ export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string; me
           <CheckAnotherButton />
         </div>
       </div>
+      <RatesStale />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { recost, reloadDecisions, useWb } from "./session";
 import { WbHead, WbLink, useNeedFile, useToast, useWbNav, wbHref } from "./chrome";
 import { baseMeta, useShopName } from "./decision";
 import { money, qtyText, whenText } from "./words";
+import { ratesName, summaryWithRates } from "./rates-words";
 import type { TabProps } from "./workbench";
 
 export function HistoryTab({ part, qty }: TabProps) {
@@ -22,7 +23,8 @@ export function HistoryTab({ part, qty }: TabProps) {
   const toast = useToast();
   const shopName = useShopName();
   const rows = historyRows(s.decisions ?? [], s.decision?.id ?? null);
-  const summary = decisionSummary(s.report, s.validation, qty);
+  // Says which rates priced it, and that it's out of date when newer rates are published (ce-10, ce-20).
+  const summary = summaryWithRates(decisionSummary(s.report, s.validation, qty), s.decision?.rates);
   const [cp, setCp] = React.useState<{ ok: boolean; msg: string } | null>(null);
   React.useEffect(() => setCp(null), [summary]);
   const copy = async () => {
@@ -155,7 +157,7 @@ export function HistoryTab({ part, qty }: TabProps) {
                 ) : null}
               </div>
               <p style={{ margin: "0 12px", color: "var(--ink3)", fontSize: 12.5 }}>
-                Reflects the decision at {qty != null ? qtyText(qty) : "—"} parts on {shopName ?? "typical rates"}.
+                Reflects the decision at {qty != null ? qtyText(qty) : "—"} parts on {ratesName(s.report, shopName)}.
               </p>
             </>
           ) : (

@@ -49,7 +49,9 @@ import { daysRange, materialName, money, qtyListText, qtyText } from "./words";
 import type { TabProps } from "./workbench";
 
 export function rateMeta(s: WbState, shopName: string | null): string {
-  return shopName ? `Rates: ${shopName}` : "Rates: typical";
+  if (shopName) return `Rates: ${shopName}`;
+  const v = s.report?.rate_card?.version;
+  return v != null ? `Rates: yours v${v}` : "Rates: typical";
 }
 
 /** The bound shop's name: the option we sent, else the report's own calibration note. */
