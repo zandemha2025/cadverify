@@ -366,10 +366,18 @@ def check_aspect_ratio(
     max_ratio: float,
     process: ProcessType,
 ) -> list[Issue]:
-    dims = sorted(ctx.info.bounding_box.dimensions)
-    if dims[0] < 0.1:
+    """Tall, thin parts as built: build height over the narrowest footprint.
+
+    The risk is a part standing up on a small footprint (it sways, layers
+    shift, it breaks off the plate), so the ratio is the height along the
+    build direction (+Z of the checked orientation) over the narrowest width
+    of the part's footprint on the plate, not the longest over the shortest
+    bounding-box side: a 100 x 60 x 3 mm plate lying flat is 3 mm tall.
+    """
+    height, width = build_height_and_footprint_width(ctx.mesh)
+    if width < 0.1:
         return []
-    ratio = dims[2] / dims[0]
+    ratio = height / width
     if ratio <= max_ratio:
         return []
     return [Issue(
@@ -377,14 +385,41 @@ def check_aspect_ratio(
         measurement_unit="ratio",
         severity=Severity.WARNING,
         message=(
-            f"Aspect ratio {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for "
-            f"{process.value}. Tall/thin parts risk failure."
+            f"Built {format_measurement(height)}mm tall on a footprint {format_measurement(width)}mm wide: "
+            f"{format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for {process.value}. "
+            "Tall, thin parts risk failure."
         ),
         process=process,
         measured_value=ratio,
         required_value=max_ratio,
-        fix_suggestion="Split into segments, add bracing, or reorient.",
+        fix_suggestion="Lay it down (turn it so a long side is on the plate), split it, or add bracing.",
     )]
+
+
+def build_height_and_footprint_width(mesh) -> tuple[float, float]:
+    """Height along +Z and the narrowest width of the footprint's convex outline."""
+    from scipy.spatial import ConvexHull
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    if len(vertices) == 0:
+        return 0.0, 0.0
+    height = float(np.ptp(vertices[:, 2]))
+    plan = vertices[:, :2] - vertices[:, :2].mean(axis=0)
+    try:
+        hull = plan[ConvexHull(plan).vertices]
+    except Exception:
+        extents = np.ptp(plan, axis=0)
+        return height, float(extents.min())
+    edges = np.roll(hull, -1, axis=0) - hull
+    lengths = np.linalg.norm(edges, axis=1)
+    keep = lengths > 0
+    if not np.any(keep):
+        return height, 0.0
+    directions = edges[keep] / lengths[keep, None]
+    normals = np.stack([-directions[:, 1], directions[:, 0]], axis=1)
+    # The narrowest caliper width of a convex outline is across one of its edges.
+    widths = np.ptp(normals @ hull.T, axis=1)
+    return height, float(widths.min())
 
 
 # ──────────────────────────────────────────────────────────────

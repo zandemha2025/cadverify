@@ -356,6 +356,31 @@ class GeometryContext:
         return voids
 
     @cached_property
+    def ribs(self) -> list[dict[str, Any]]:
+        """Thin plates standing out from the rest of the part along one edge.
+
+        A plate is two flat faces facing away from each other, a thickness
+        ``t`` apart, overlapping face to face. It is a rib (or a fin, flange,
+        bracket leg) when it joins the rest of the part along one straight
+        root (concave edges in a line) and is free on its other edges; its
+        height is how far it reaches from that root. A flat plate on its own
+        joins nothing and is not a rib; a box wall joined on three sides is a
+        wall, not a rib, and an L corner (bracket legs) is a corner: a rib
+        stands on a face that carries on past both of its sides. Each entry: ``thickness_mm``, ``height_mm``,
+        ``base_thickness_mm`` (the plate it stands on, when that is a measured
+        plate too, else None) and ``center``.
+        """
+        if self.metadata.get("decimation", {}).get("succeeded"):
+            return []
+        try:
+            return detect_ribs(self.mesh, self.facet_groups, self.face_areas, self.normals,
+                               wall_thickness_tolerance(self.mesh, self.scale_eps)
+                               + 2.0 * float(self.mesh.metadata.get("coordinate_error", 0.0)))
+        except Exception:
+            logger.warning("Rib detection failed", exc_info=True)
+            return []
+
+    @cached_property
     def straight_profile_geometry(self):
         """Verify extrusion geometry without treating the file's Z as the wire axis."""
         if self.metadata.get("decimation", {}).get("succeeded") or not self.mesh.is_volume:
@@ -864,6 +889,138 @@ def _count_connected_components(mesh: trimesh.Trimesh) -> int:
     )
     n_components, _ = _csgraph_cc(graph, directed=False)
     return int(n_components)
+
+
+_RIB_MAX_FACETS = 400       # largest flat faces considered for plates
+_RIB_PARALLEL_COS = 0.9995   # opposite plate faces within ~1.8 degrees of parallel
+
+
+def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_areas: np.ndarray,
+                normals: np.ndarray, tol: float) -> list[dict[str, Any]]:
+    """Measured ribs; see ``GeometryContext.ribs`` for the definition."""
+    from shapely.geometry import LineString, MultiLineString, Point, Polygon
+    from shapely.ops import unary_union
+
+    if not mesh.is_watertight or not len(facet_groups):
+        return []
+    facets = sorted(facet_groups, key=lambda f: -float(face_areas[f].sum()))[:_RIB_MAX_FACETS]
+    total = float(face_areas.sum()) or 1.0
+    facets = [f for f in facets if float(face_areas[f].sum()) >= 1e-4 * total]
+    if len(facets) < 2:
+        return []
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    center = vertices.mean(axis=0)
+    triangles = np.asarray(mesh.faces)
+    # Edge (sorted vertex pair) -> concave? for every sharp mesh edge.
+    adjacency_edges = np.sort(np.asarray(mesh.face_adjacency_edges), axis=1)
+    sharp = np.asarray(mesh.face_adjacency_angles) > np.radians(30.0)
+    concave_edge = {(int(a), int(b)): not bool(convex) for (a, b), convex, s in
+                    zip(adjacency_edges, mesh.face_adjacency_convex, sharp) if s}
+    face_facet = np.full(len(triangles), -1, dtype=np.int64)
+    for index, facet in enumerate(facets):
+        face_facet[facet] = index
+    edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for (a, b), (fa, fb) in zip(adjacency_edges, np.asarray(mesh.face_adjacency)):
+        edge_faces[(int(a), int(b))] = [int(fa), int(fb)]
+
+    info = []
+    for index, facet in enumerate(facets):
+        normal = normals[int(facet[np.argmax(face_areas[facet])])]
+        offset = float(np.mean((vertices[triangles[facet]].reshape(-1, 3) - center) @ normal))
+        # Boundary edges: edges used once within the facet.
+        edges = np.sort(np.concatenate([triangles[facet][:, [0, 1]], triangles[facet][:, [1, 2]],
+                                        triangles[facet][:, [2, 0]]]), axis=1)
+        unique, counts = np.unique(edges, axis=0, return_counts=True)
+        boundary = [tuple(int(v) for v in e) for e in unique[counts == 1]]
+        info.append((normal, offset, boundary))
+
+    def frame(normal):
+        u = np.cross(normal, [1.0, 0.0, 0.0])
+        if np.linalg.norm(u) < 0.5:
+            u = np.cross(normal, [0.0, 1.0, 0.0])
+        u /= np.linalg.norm(u)
+        return u, np.cross(normal, u)
+
+    polygons: dict[tuple[int, int], Any] = {}
+
+    def outline(index, owner):
+        """Facet ``index`` drawn in the plane frame of facet ``owner``."""
+        key = (index, owner)
+        if key not in polygons:
+            u, v = frame(info[owner][0])
+            pts = vertices[triangles[facets[index]]] - center
+            tri2d = np.stack([pts @ u, pts @ v], axis=-1)
+            polygons[key] = unary_union([Polygon(t) for t in tri2d if Polygon(t).area > 0]).buffer(0)
+        return polygons[key]
+
+    plates = []
+    for i in range(len(facets)):
+        n_i, d_i, _ = info[i]
+        for j in range(i + 1, len(facets)):
+            n_j, d_j, _ = info[j]
+            if float(n_i @ n_j) > -_RIB_PARALLEL_COS:
+                continue
+            thickness = d_i + d_j  # n_j ~ -n_i: plane i at d_i, plane j at -d_j along n_i
+            if thickness > tol:
+                plates.append((i, j, thickness))
+
+    ribs = []
+    plate_of_facet: dict[int, float] = {}
+    measured = []
+    for i, j, thickness in plates:
+        u, v = frame(info[i][0])
+        shared = outline(i, i).intersection(outline(j, i))
+        if shared.is_empty or shared.area < 0.5 * min(outline(i, i).area, outline(j, i).area):
+            continue
+        plate_of_facet[i] = min(plate_of_facet.get(i, np.inf), thickness)
+        plate_of_facet[j] = min(plate_of_facet.get(j, np.inf), thickness)
+        measured.append((i, j, thickness, shared, u, v))
+
+    for i, j, thickness, shared, u, v in measured:
+        roots, free = [], 0
+        rooted = set()
+        neighbours = set()
+        for k in (i, j):
+            for edge in info[k][2]:
+                flag = concave_edge.get(edge)
+                if flag is None:
+                    continue
+                if flag:
+                    roots.append(edge)
+                    rooted.add(k)
+                    neighbours.update(int(face_facet[f]) for f in edge_faces.get(edge, []))
+                else:
+                    free += 1
+        # A rib stands on a face that carries on past both of its sides (a T):
+        # both of its faces meet that face in a concave edge. A free plate has
+        # no root (a web); an L (bracket legs, a cap on a post) roots only one
+        # face and is a corner, not a rib; no free edge means it is enclosed.
+        if rooted != {i, j} or not free:
+            continue
+        points = vertices[np.asarray(roots).reshape(-1)] - center
+        root2d = np.stack([points @ u, points @ v], axis=-1)
+        # One straight root: the root points lie along a line (within the thickness).
+        spread = root2d - root2d.mean(axis=0)
+        _, singular, axes = np.linalg.svd(spread, full_matrices=False)
+        across = np.abs(spread @ axes[1]) if len(singular) > 1 else np.zeros(len(spread))
+        if float(across.max(initial=0.0)) > max(thickness, tol):
+            continue
+        root_line = MultiLineString([LineString(root2d[k:k + 2]) for k in range(0, len(root2d), 2)])
+        coords = [c for poly in getattr(shared, "geoms", [shared]) for c in poly.exterior.coords]
+        height = max(root_line.distance(Point(c)) for c in coords)
+        if height < 2.0 * thickness:
+            continue  # a stub, not a plate standing out
+        base = [plate_of_facet[k] for k in neighbours if k >= 0 and k not in (i, j) and k in plate_of_facet]
+        middle = shared.representative_point()
+        anchor = center + info[i][0] * (info[i][1] - thickness / 2.0) + u * middle.x + v * middle.y
+        ribs.append({
+            "thickness_mm": float(thickness),
+            "height_mm": float(height),
+            "base_thickness_mm": float(min(base)) if base else None,
+            "center": tuple(float(c) for c in anchor),
+        })
+    ribs.sort(key=lambda r: -r["height_mm"] / r["thickness_mm"])
+    return ribs
 
 
 _MAX_NESTING_SHELLS = 64

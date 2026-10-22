@@ -187,3 +187,35 @@ def test_a_wall_on_the_limit_still_says_the_file_cannot_settle_it():
     assert issue.required_value == 0.8 and abs(issue.measured_value - 0.8) < 1e-3
 
 
+# ── M7 / C10: build-direction aspect and real ribs ───────────────────────────
+@pytest.mark.parametrize("process", ["fdm", "sls", "mjf"])
+def test_a_flat_plate_is_not_tall_and_thin(process):
+    flat = _ctx(_stl(_box((100, 60, 3))))
+    assert "EXTREME_ASPECT_RATIO" not in _codes(flat, process)
+    standing = _ctx(_stl(_box((3, 60, 100))))  # the same plate stood on its edge
+    assert "EXTREME_ASPECT_RATIO" in _codes(standing, process)
+
+
+def test_a_flat_plate_has_no_rib_and_a_cylinder_gets_no_rib_guidance():
+    plate = _ctx(_stl(_box((100, 60, 3))))
+    assert "HIGH_RIB_RATIO" not in _codes(plate, "forging")
+    assert plate.ribs == []
+    cylinder = _ctx(_stl(trimesh.creation.cylinder(radius=10, height=60, sections=256)))
+    assert cylinder.info.face_count > 200
+    assert "RIB_RULES_CHECK" not in _codes(cylinder, "injection_molding")
+
+
+def test_a_real_rib_is_measured_and_judged():
+    base = _box((100, 60, 4), at=(-50, -30, 0))
+    rib = _box((60, 2, 20), at=(-30, -1, 4))
+    ctx = _ctx(_stl(_union(base, rib)))
+    (found,) = ctx.ribs
+    assert found["thickness_mm"] == pytest.approx(2.0, abs=1e-3)
+    assert found["height_mm"] == pytest.approx(20.0, abs=1e-3)
+    assert found["base_thickness_mm"] == pytest.approx(4.0, abs=1e-3)
+    forging = next(i for i in _issues(ctx, "forging") if i.code == "HIGH_RIB_RATIO")
+    assert forging.measured_value == pytest.approx(10.0, abs=1e-2)
+    molding = next(i for i in _issues(ctx, "injection_molding") if i.code == "RIB_RULES_CHECK")
+    assert "20mm tall" in molding.message
+
+
