@@ -43,21 +43,21 @@
 .ob .shp .val-dlg-host .dlg{width:940px}
 .ob .val-steps{display:flex;gap:6px;font-size:12.5px;color:var(--ink3)}
 .ob .val-steps b{color:var(--ink);font-weight:600}
-.ob .val-map{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
+.ob .val-map{flex:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
 .ob .val-map .field select{width:100%}
 .ob .val-map .opts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .ob .val-map .opts .seg button{height:26px;padding:0 10px;font-size:12px}
 .ob .val-grp{font-size:12px;font-weight:600;color:var(--ink3);margin:4px 0 -2px;grid-column:1/-1}
-.ob .val-sample{overflow-x:auto;border:1px solid rgba(20,24,31,.08);border-radius:12px}
+.ob .val-sample{flex:none;overflow-x:auto;border:1px solid rgba(20,24,31,.08);border-radius:12px}
 .ob .val-sample table{border-collapse:collapse;font-size:12px;min-width:100%}
 .ob .val-sample th,.ob .val-sample td{padding:5px 8px;text-align:left;white-space:nowrap;border-top:1px solid rgba(20,24,31,.06);max-width:220px;overflow:hidden;text-overflow:ellipsis}
 .ob .val-sample th{border-top:0;color:var(--ink3);font-weight:600;background:rgba(20,24,31,.03)}
 .ob .val-sample th i{font-style:normal;color:var(--ink);display:block;font-size:11px}
-.ob .val-pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:6px 14px;align-items:center;font-size:13px}
+.ob .val-pv{flex:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:6px 14px;align-items:center;font-size:13px}
 .ob .val-pv select{width:100%}
 .ob .val-chips{display:flex;gap:6px;flex-wrap:wrap}
-.ob .val-rows{display:flex;flex-direction:column;border:1px solid rgba(20,24,31,.08);border-radius:12px;overflow:hidden}
-.ob .val-row{display:grid;grid-template-columns:48px minmax(0,1.4fr) minmax(0,1.3fr) minmax(0,1.3fr);gap:6px 12px;padding:9px 12px;border-top:1px solid rgba(20,24,31,.07);font-size:13px;align-items:start}
+.ob .val-rows{flex:none;display:flex;flex-direction:column;border:1px solid rgba(20,24,31,.08);border-radius:12px;overflow:hidden}
+.ob .val-row{display:grid;grid-template-columns:58px minmax(0,1.4fr) minmax(0,1.3fr) minmax(0,1.3fr);gap:6px 12px;padding:9px 12px;border-top:1px solid rgba(20,24,31,.07);font-size:13px;align-items:start}
 .ob .val-row:first-child{border-top:0}
 .ob .val-row .ln{color:var(--ink3);font-variant-numeric:tabular-nums;font-size:12px;padding-top:2px}
 .ob .val-row small{display:block;color:var(--ink3);font-size:12px;line-height:1.4}

@@ -121,6 +121,21 @@ async def _rows_for_all_parts(session: AsyncSession, org_id: str) -> tuple[list[
     return rows, records
 
 
+async def _run_records(session: AsyncSession, org_id: str, rows: list[dict]) -> dict[str, dict]:
+    from src.db.models import CostDecision
+
+    ids = sorted({r["cost_decision_id"] for r in rows if r.get("cost_decision_id")})
+    if not ids:
+        return {}
+    out = {}
+    for mesh_hash, ulid, result in (await session.execute(
+        select(CostDecision.mesh_hash, CostDecision.ulid, CostDecision.result_json)
+        .where(CostDecision.org_id == org_id, CostDecision.ulid.in_(ids))
+    )).all():
+        out[mesh_hash] = {"id": ulid, "result_json": result or {}}
+    return out
+
+
 async def _decisions(session: AsyncSession, org_id: str, keys: set[str], names: dict[str, dict]) -> list[dict]:
     from src.db.models import CostDecision, User
     from src.services.cost_decision_service import DISPOSITION_LABELS
@@ -196,7 +211,8 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
         board = await build_board(session, batch)
         rows = board["rows"]
         keys = {r["part_key"] for r in rows if r.get("part_key")}
-        records = await acc.latest_records(session, org_id, keys)
+        # The run's own records: its wins compare the prices the run sorted on.
+        records = await _run_records(session, org_id, rows)
         scope = {"kind": "run", "run_id": batch.ulid, "created_at": board.get("created_at"),
                  "completed_at": board.get("completed_at"), "status": board.get("status"),
                  "quantity": board.get("quantity"), "material_class": board.get("material_class"),
@@ -264,8 +280,10 @@ def _hours(v) -> str:
     f = _num(v)
     if f is None:
         return "—"
+    if f * 60 < 1:
+        return f"{max(1, round(f * 3600))} s"
     if f < 1:
-        return f"{f * 60:.0f} min"
+        return f"{f * 60:.1f} min" if f * 60 < 10 else f"{f * 60:.0f} min"
     return f"{f:,.1f} h" if f < 100 else f"{f:,.0f} h"
 
 
@@ -289,7 +307,14 @@ def _proc(v) -> str:
     return process_words(v) if v else "—"
 
 
-_env.filters.update({"money": _money, "hours": _hours, "kg": _kg, "pct": _pct, "proc": _proc})
+def _factor(v) -> str:
+    f = _num(v)
+    if f is None:
+        return "—"
+    return f"{_pct((f - 1) * 100)} (× {f:.2f})"
+
+
+_env.filters.update({"money": _money, "hours": _hours, "kg": _kg, "pct": _pct, "proc": _proc, "factor": _factor})
 
 
 def render_html(report: dict) -> str:

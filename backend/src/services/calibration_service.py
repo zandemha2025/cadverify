@@ -133,6 +133,10 @@ async def apply(session: AsyncSession, org_id: str, user_id: Optional[int],
         raise ValueError("Nothing to apply: no method has a change that makes ScaleCAD more accurate on your parts.")
     current = await active_calibration(session, org_id)
     factors = dict((current.factors or {}) if current else {})
+    # A method whose factors are already in effect isn't applied again.
+    offered = {p: f for p, f in offered.items() if not same_factors(factors.get(p), f)}
+    if not offered:
+        raise ValueError("Nothing new to apply: the calibration in effect already has these changes.")
     factors.update(offered)
     row = OrgCalibration(
         org_id=org_id,
@@ -145,6 +149,19 @@ async def apply(session: AsyncSession, org_id: str, user_id: Optional[int],
     session.add(row)
     await session.flush()
     return row
+
+
+def same_factors(a: Optional[dict], b: Optional[dict], tol: float = 5e-4) -> bool:
+    """True when two per-method factor pairs are the same (hours and cost, None == None)."""
+    if not a or not b:
+        return False
+    for k in ("hours", "cost"):
+        x, y = a.get(k), b.get(k)
+        if (x is None) != (y is None):
+            return False
+        if x is not None and abs(float(x) - float(y)) > tol:
+            return False
+    return True
 
 
 async def undo(session: AsyncSession, org_id: str, user_id: Optional[int]) -> Optional[OrgCalibration]:

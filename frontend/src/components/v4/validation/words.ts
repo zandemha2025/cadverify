@@ -18,10 +18,11 @@ export function trim(n: number, digits = 1): string {
   return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
 }
 
-/** 0.42 → "25 min", 4.1 → "4.1 h", 1234 → "1,234 h". */
+/** 0.0015 → "5 s", 0.42 → "25 min", 4.1 → "4.1 h", 1234 → "1,234 h". */
 export function hoursWord(h: number | null | undefined): string {
   if (h == null || !Number.isFinite(h)) return "—";
-  if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`;
+  if (h * 60 < 1) return `${Math.max(1, Math.round(h * 3600))} s`;
+  if (h < 1) return `${trim(h * 60, h * 60 < 10 ? 1 : 0)} min`;
   if (h < 100) return `${trim(h, 1)} h`;
   return `${Math.round(h).toLocaleString("en-US")} h`;
 }
@@ -130,10 +131,15 @@ export function changeWord(process: string, kind: "hours" | "cost", factor: numb
   return factor < 1 ? `Your ${m} costs ${d}% less than ScaleCAD’s estimate` : `Your ${m} costs ${d}% more than ScaleCAD’s estimate`;
 }
 
+/** 0.8796 → "−12% (× 0.88)". */
+export function factorWord(f: number): string {
+  return `${pctWord((f - 1) * 100)} (× ${trim(f, 2)})`;
+}
+
 /** "Median error 14% now, 2% with it. Each part checked with a factor fitted on your other parts." */
 export function effectWord(e: FactorEntry): string | null {
   if (e.before_pct == null || e.after_pct == null) return null;
-  return `Median error ${absPct(e.before_pct)} now, ${absPct(e.after_pct)} with it, on ${partsWord(e.parts)}. Each part is checked with a factor fitted on your other parts.`;
+  return `Median error ${absPct(e.before_pct)} now, ${absPct(e.after_pct)} with it, on ${partsWord(e.parts)}.`;
 }
 
 /** Why a method has no change to apply, in plain words. */

@@ -64,9 +64,9 @@ function input(over: Partial<SureInput> = {}, costExtra: AnyObj = {}): SureInput
 
 test("Cost: the band, how many inputs are yours, and whether real jobs back it", () => {
   const s = sureOf("cost", input())!;
-  assert.equal(s.line, "±50% · 2 of 3 inputs from your file or shop · not yet checked against real jobs");
+  assert.equal(s.line, "±50% · 2 of 3 inputs from your file or shop · range not yet measured from your jobs");
   assert.deepEqual(s.items.map((x) => [x.kind, x.k]), [["typ", "Range"], ["file", "From your file"], ["yours", "From your shop or you"], ["typ", "Typical defaults"], ["typ", "Biggest line"], ["file", "Shape"]]);
-  assert.match(s.items[0].v, /a stated assumption band, not yet checked against real jobs$/);
+  assert.match(s.items[0].v, /a stated assumption band, not yet measured from your jobs$/);
   assert.match(s.items[4].v, /55% of the price: a typical value$/);
   assert.deepEqual(s.next, { text: "Add your rates", to: "rates" }, "the biggest line is typical, so your rates would help most");
 });

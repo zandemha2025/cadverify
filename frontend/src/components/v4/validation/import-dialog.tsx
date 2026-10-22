@@ -423,7 +423,7 @@ function RowView({ r, parts, choice, onChoose }: { r: PreviewRow; parts: PartPic
         {r.status === "matched" && r.part ? (
           <small>
             {r.part.file_name}
-            {r.basis ? ` · by ${basisWord(r.basis)}` : ""}
+            {r.basis === "chosen" ? " · chosen by you" : r.basis ? ` · by ${basisWord(r.basis)}` : ""}
           </small>
         ) : null}
         {r.status !== "matched" && r.reason ? <small>{r.reason}</small> : null}

@@ -9,18 +9,26 @@
 import * as React from "react";
 import { ConfirmButton, Loading, Panel } from "../ui";
 import { ActualsApiError, applyCalibration, getCalibration, undoCalibration, type CalibrationEntry, type CalibrationState } from "./api";
-import { changeWord, dateWord, effectWord, methodWord, whyNot } from "./words";
+import { changeWord, dateWord, effectWord, factorWord, methodWord, whyNot } from "./words";
 import "./validation.css";
 
 function factorsLine(e: CalibrationEntry): string {
   return Object.entries(e.factors)
     .map(([p, f]) => {
       const bits = [];
-      if (f.hours) bits.push(`machine time × ${f.hours}`);
-      if (f.cost) bits.push(`cost × ${f.cost}`);
+      if (f.hours) bits.push(`machine time ${factorWord(f.hours)}`);
+      if (f.cost) bits.push(`cost ${factorWord(f.cost)}`);
       return `${methodWord(p)}: ${bits.join(", ")}`;
     })
     .join("; ");
+}
+
+/** The applied factors match what the actuals support now (same as the backend's same_factors). */
+function sameAs(inEffect: CalibrationEntry | null, process: string, hours: number | null, cost: number | null): boolean {
+  const f = inEffect?.factors[process];
+  if (!f) return false;
+  const eq = (a: number | null | undefined, b: number | null) => (a == null) === (b == null) && (a == null || b == null || Math.abs(a - b) <= 5e-4);
+  return eq(f.hours, hours) && eq(f.cost, cost);
 }
 
 export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?: () => void }) {
@@ -65,9 +73,11 @@ export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?:
     if (confirm) confirmRef.current?.focus();
   }, [confirm]);
 
-  const offered = (state?.proposal.processes ?? []).filter((p) => p.hours.offer || p.cost.offer);
-  const chosen = offered.filter((p) => picked[p.process]).map((p) => p.process);
   const inEffect = state?.history.find((h) => h.in_effect) ?? null;
+  const factorsOf = (p: CalibrationState["proposal"]["processes"][number]) => [p.hours.offer ? p.hours.factor : null, p.cost.offer ? p.cost.factor : null] as const;
+  const current = (p: CalibrationState["proposal"]["processes"][number]) => sameAs(inEffect, p.process, ...factorsOf(p));
+  const offered = (state?.proposal.processes ?? []).filter((p) => (p.hours.offer || p.cost.offer) && !current(p));
+  const chosen = offered.filter((p) => picked[p.process]).map((p) => p.process);
 
   const doApply = async () => {
     setBusy(true);
@@ -79,7 +89,7 @@ export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?:
       setN((x) => x + 1);
       onChanged?.();
     } catch (e) {
-      if (e instanceof ActualsApiError && e.status === 403) setMsg({ tone: "warn", text: "Applying a calibration is part of the pilot. Seeing what it would change works on every plan." });
+      if (e instanceof ActualsApiError && e.status === 403) setMsg({ tone: "warn", text: "Not applied: your plan doesn’t include applying a calibration. It’s part of the pilot." });
       else setMsg({ tone: "bad", text: e instanceof Error ? e.message : "The calibration wasn’t applied." });
       setConfirm(false);
     } finally {
@@ -129,17 +139,24 @@ export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?:
                 ? "Nothing to calibrate yet: import actuals that match your parts."
                 : !p.enough
                   ? `${p.parts} ${p.parts === 1 ? "part" : "parts"} with actuals. A calibration needs ${p.min_parts} or more, and ${p.min_per_method} actuals for the method it changes.`
-                  : offered.length
+                  : offered.length || inEffect
                     ? "What your actuals say ScaleCAD should change. Each figure is checked part by part: the part’s own actual never grades the factor fitted on it."
                     : "Your actuals don’t support a change for any method right now."}
             </p>
             {p.processes.length ? (
               <div className="val-cal" role="group" aria-label="Changes by method">
                 {p.processes.map((x) => {
-                  const offer = x.hours.offer || x.cost.offer;
+                  const live = current(x);
+                  const offer = (x.hours.offer || x.cost.offer) && !live;
                   const id = `cal-${x.process}`;
                   return (
                     <div className="val-prop" key={x.process}>
+                      {live ? (
+                        <span className="chip c-ok" style={{ width: "fit-content", gridColumn: "1 / -1" }}>
+                          <i aria-hidden="true" />
+                          In effect
+                        </span>
+                      ) : null}
                       {offer ? (
                         <input id={id} type="checkbox" checked={!!picked[x.process]} onChange={(e) => setPicked((o) => ({ ...o, [x.process]: e.target.checked }))} aria-label={`Include ${methodWord(x.process)}`} />
                       ) : (
@@ -214,7 +231,11 @@ export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?:
               <button className="btn ink sm" type="button" ref={applyRef} onClick={() => setConfirm(true)} disabled={busy || !offered.length || !chosen.length}>
                 Apply to future estimates <span className="pilot">Pilot</span>
               </button>
-              {!state.can_apply ? <span className="fh">Your plan covers the comparison; applying is part of the pilot.</span> : null}
+              {!state.can_apply ? (
+                <a className="fh" href="/pilot">
+                  About the pilot
+                </a>
+              ) : null}
             </div>
             {state.history.length ? (
               <>

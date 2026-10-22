@@ -150,7 +150,7 @@
   {% endif %}
   {% endif %}
   {% if r.calibration %}
-  <div class="note">Calibration in effect: applied {{ (r.calibration.applied_at or '')[:10] }}{% if r.calibration.applied_by %} by {{ r.calibration.applied_by }}{% endif %}, for {% for p, f in r.calibration.factors.items() %}{{ p | proc }}{% if f.hours %} (machine time × {{ f.hours }}){% endif %}{% if f.cost %} (cost × {{ f.cost }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</div>
+  <div class="note">Calibration in effect: applied {{ (r.calibration.applied_at or '')[:10] }}{% if r.calibration.applied_by %} by {{ r.calibration.applied_by }}{% endif %}, for {% for p, f in r.calibration.factors.items() %}{{ p | proc }}{% if f.hours %}, machine time {{ f.hours | factor }}{% endif %}{% if f.cost %}, cost {{ f.cost | factor }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</div>
   {% endif %}
   <div class="note{% if not a.enough %} warn{% endif %}">
     <ul class="caveats">

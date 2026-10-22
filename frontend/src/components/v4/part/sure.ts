@@ -83,7 +83,7 @@ function costItems(i: SureInput): { items: SureItem[]; line: string | null; typi
   items.push(
     validated
       ? { kind: "yours", k: "Range", v: `${money(c!.low_usd)}–${money(c!.high_usd)} (±${trimNum(band, 0)}%), checked against ${plural(c!.n_samples, "of your real job", "of your real jobs")}` }
-      : { kind: "typ", k: "Range", v: `${c ? `${money(c.low_usd)}–${money(c.high_usd)} ` : ""}(±${trimNum(band, 0)}%): a stated assumption band, not yet checked against real jobs` },
+      : { kind: "typ", k: "Range", v: `${c ? `${money(c.low_usd)}–${money(c.high_usd)} ` : ""}(±${trimNum(band, 0)}%): a stated assumption band, not yet measured from your jobs` },
   );
   const n = { file: 0, yours: 0, typ: 0 };
   for (const d of e.drivers) n[srcOf(d.provenance).kind] += 1;
@@ -101,7 +101,7 @@ function costItems(i: SureInput): { items: SureItem[]; line: string | null; typi
     items.push({ kind, k: "Biggest line", v: `${top.name}, ${share}% of the price: ${kind === "typ" ? "a typical value" : kind === "file" ? "measured from your file" : "your value"}` });
   }
   const grounded = n.file + n.yours;
-  const line = `±${trimNum(band, 0)}% · ${grounded} of ${total} inputs from your file or shop · ${validated ? "checked against real jobs" : "not yet checked against real jobs"}`;
+  const line = `±${trimNum(band, 0)}% · ${grounded} of ${total} inputs from your file or shop · ${validated ? "checked against real jobs" : "range not yet measured from your jobs"}`;
   return { items, line, typicalTop, validated };
 }
 

@@ -14,7 +14,7 @@ import { R } from "../routes";
 import { Empty, Loading } from "../ui";
 import { getReport, reportPdfUrl, type Report } from "./api";
 import { reportHref } from "./routes";
-import { absPct, dateWord, hoursWord, methodWord, moneyWord, pctWord, statsLine, summaryLine } from "./words";
+import { absPct, dateWord, factorWord, hoursWord, methodWord, moneyWord, pctWord, statsLine, summaryLine } from "./words";
 import "./validation.css";
 
 function kg(v: number | null | undefined): string {
@@ -339,7 +339,7 @@ export function ReportScreen({ run }: { run: string | null }) {
           Calibration in effect since {dateWord(rep.calibration.applied_at)}
           {rep.calibration.applied_by ? `, applied by ${rep.calibration.applied_by}` : ""}:{" "}
           {Object.entries(rep.calibration.factors)
-            .map(([p, f]) => `${methodWord(p)}${f.hours ? `, machine time × ${f.hours}` : ""}${f.cost ? `, cost × ${f.cost}` : ""}`)
+            .map(([p, f]) => `${methodWord(p)}${f.hours ? `, machine time ${factorWord(f.hours)}` : ""}${f.cost ? `, cost ${factorWord(f.cost)}` : ""}`)
             .join("; ")}
           .
         </p>

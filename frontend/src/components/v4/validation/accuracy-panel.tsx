@@ -115,7 +115,9 @@ export function MethodTable({ d }: { d: Accuracy }) {
 
 export function ActualsTable({ rows, limit = 40 }: { rows: Comparison[]; limit?: number }) {
   const [all, setAll] = React.useState(false);
-  const shown = all ? rows : rows.slice(0, limit);
+  // Real actuals first, test rows after them; newest first within each.
+  const ordered = React.useMemo(() => [...rows].sort((a, b) => Number(a.test) - Number(b.test)), [rows]);
+  const shown = all ? ordered : ordered.slice(0, limit);
   if (!rows.length) return null;
   return (
     <>
@@ -198,18 +200,16 @@ export function AccuracyPanel({
       title="Checked against your real numbers"
       note={s ? (s.parts ? `${partsWord(s.parts)}${s.test ? ` · ${s.test} test` : ""}` : s.test ? `${s.test} test` : undefined) : undefined}
       actions={
-        compact ? (
-          <span className="val-noprint" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span className="val-noprint" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {compact ? (
             <Link className="btn sm" href={R.actuals}>
               Actual costs
             </Link>
-            {run ? (
-              <Link className="btn sm" href={reportHref(run)}>
-                Pilot report
-              </Link>
-            ) : null}
-          </span>
-        ) : undefined
+          ) : null}
+          <Link className="btn sm" href={reportHref(run ?? null)}>
+            Pilot report
+          </Link>
+        </span>
       }
     >
       {error ? (

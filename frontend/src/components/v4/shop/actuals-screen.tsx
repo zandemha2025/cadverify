@@ -17,7 +17,6 @@ import { Content, Loading, PageHead, Panel, Sheet, cx, usd } from "../ui";
 import { AccuracyPanel } from "../validation/accuracy-panel";
 import { CalibrationPanel } from "../validation/calibration-panel";
 import { ImportDialog } from "../validation/import-dialog";
-import { reportHref } from "../validation/routes";
 import type { ImportResult } from "../validation/api";
 import { basisWord, hoursWord } from "../validation/words";
 import { Banner, ShopWorld, usePartRecords } from "./common";
@@ -117,9 +116,6 @@ export function ActualsScreen() {
             <button className="btn sm" type="button" onClick={onTemplate}>
               Download template<span className="new">New</span>
             </button>
-            <Link className="btn sm" href={reportHref(null)}>
-              Pilot report
-            </Link>
             <button className="btn ink sm" type="button" onClick={() => setAsk((n) => n + 1)}>
               Recalibrate <span className="pilot">Pilot</span>
             </button>

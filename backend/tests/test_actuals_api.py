@@ -74,7 +74,7 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
     from ulid import ULID
 
     import src.db.engine as eng
-    from src.db.models import AuditLog, CostDecision, GroundTruthRecordRow, OrgCalibration, PartSignature
+    from src.db.models import AuditLog, Batch, BatchItem, CostDecision, GroundTruthRecordRow, OrgCalibration, PartSignature
 
     monkeypatch.setenv("CADVERIFY_CALIBRATION_DIR", str(tmp_path / "cal"))
     monkeypatch.setenv("PDF_CACHE_DIR", str(tmp_path / "pdf"))
@@ -100,9 +100,21 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
         for oid, uid in ((org_a, a1), (org_a, a2), (org_b, b1)):
             await s.execute(text("INSERT INTO memberships (id, org_id, user_id, org_role, created_at) VALUES (:i, :o, :u, 'admin', now())"),
                             {"i": str(ULID()), "o": oid, "u": uid})
+        decisions = []
         for i, h in enumerate(hashes):
-            s.add(CostDecision(user_id=a1, org_id=org_a, mesh_hash=h, params_hash="p", engine_version="t",
-                               filename=f"part-{i:02d}.step", file_type="step", result_json=_result(ENGINE_HOURS, 40.0)))
+            d = CostDecision(user_id=a1, org_id=org_a, mesh_hash=h, params_hash="p", engine_version="t",
+                             filename=f"part-{i:02d}.step", file_type="step", result_json=_result(ENGINE_HOURS, 40.0))
+            s.add(d)
+            decisions.append(d)
+        await s.flush()
+        # A catalog run of three of the parts; its parts list names part-02 "PN-RUN-2".
+        run = Batch(user_id=a1, org_id=org_a, status="completed", job_type="catalog", input_mode="zip", total_items=3,
+                    manifest_json={"catalog": {"quantity": 100, "items": {"part-02.step": {"part_number": "PN-RUN-2", "quantity": 100}}}})
+        s.add(run)
+        await s.flush()
+        for d in decisions[2:5]:
+            s.add(BatchItem(batch_id=run.id, org_id=org_a, filename=d.filename, status="completed", cost_decision_id=d.id))
+        run_id = run.ulid
         # Two revisions with the same file name: a row naming it is asked about.
         s.add(CostDecision(user_id=a1, org_id=org_a, mesh_hash="ff" + "b" * 62, params_hash="p", engine_version="t",
                            filename="part-00.step", file_type="step", result_json=_result(ENGINE_HOURS, 40.0)))
@@ -114,7 +126,8 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
 
     lines = ["Part No,File,Qty,Machine hrs each,Cost each,Process,Date"]
     lines.append(f"PN-0001,,100,{ENGINE_HOURS * TRUE_RATIO:.4f},36.00,3-axis mill,2026-09-01")     # by declared part number
-    for i in range(2, N_PARTS):
+    lines.append(f"PN-RUN-2,,100,{ENGINE_HOURS * TRUE_RATIO:.4f},36.00,3-axis mill,2026-09-02")         # by a run's parts list
+    for i in range(3, N_PARTS):
         lines.append(f",part-{i:02d}.step,100,{ENGINE_HOURS * TRUE_RATIO:.4f},36.00,3-axis mill,2026-09-0{(i % 9) + 1}")
     lines.append(",part-00.step,100,3.5,36,3-axis mill,")                                          # ambiguous
     lines.append(",nope.step,100,3.5,36,3-axis mill,")                                              # unmatched
@@ -153,6 +166,11 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             assert a["summary"]["hours"]["median_abs_pct"] == pytest.approx(13.6, abs=0.1)   # 4.0 vs 3.52
             assert a["calibration"] is None
 
+            # One catalog run's parts: too few to say much, and said so.
+            r = await ac.get(f"/api/v1/actuals/accuracy?run={run_id}")
+            assert r.status_code == 200, r.text
+            assert r.json()["summary"]["parts"] == 3 and r.json()["summary"]["enough"] is False
+
             r = await ac.get(f"/api/v1/actuals/accuracy?part={hashes[1]}")
             one = r.json()["rows"]
             assert len(one) == 1 and one[0]["hours"]["error_pct"] == pytest.approx(13.64, abs=0.01)
@@ -161,6 +179,8 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             _act_as(app, b1)
             r = await ac.get("/api/v1/actuals/accuracy")
             assert r.json()["summary"]["actuals"] == 0
+            assert (await ac.get(f"/api/v1/actuals/accuracy?run={run_id}")).status_code == 404
+            assert (await ac.get(f"/api/v1/actuals/report?run={run_id}")).status_code == 404
             assert (await ac.get("/api/v1/actuals/calibration")).json()["history"] == []
 
             # ---- the proposal is on every plan; applying it is the pilot's
@@ -177,6 +197,9 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             r = await ac.post("/api/v1/actuals/calibration/apply", json={"processes": ["cnc_3axis"]})
             assert r.status_code == 200, r.text
             applied = r.json()["applied"]
+            # The same factors again: nothing new, nothing recorded.
+            r2 = await ac.post("/api/v1/actuals/calibration/apply", json={"processes": ["cnc_3axis"]})
+            assert r2.status_code == 422 and "Nothing new" in r2.json()["detail"]["message"]
             assert applied["factors"]["cnc_3axis"]["hours"] == pytest.approx(TRUE_RATIO, abs=1e-3)
             assert applied["applied_by"].startswith("act-") and applied["applied_at"]
 
@@ -213,6 +236,14 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             assert any("before any calibration" in c for c in rep["caveats"])
             r = await ac.get("/api/v1/actuals/report.pdf")
             assert r.status_code == 200 and r.content[:4] == b"%PDF"
+            # The run's report: its three parts, its own records' prices, its actuals.
+            r = await ac.get(f"/api/v1/actuals/report?run={run_id}")
+            assert r.status_code == 200, r.text
+            rr = r.json()
+            assert rr["scope"]["kind"] == "run" and rr["parts"] == 3
+            assert rr["accuracy"]["parts"] == 3
+            assert any("3 parts with actuals: not enough to say" in c for c in rr["caveats"])
+            assert {w["part_number"] for w in rr["wins"]} >= {"PN-RUN-2"}
 
             # ---- undo: who and when, and the next estimate is the engine's again
             r = await ac.post("/api/v1/actuals/calibration/undo")
@@ -234,7 +265,7 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             assert (await s.execute(select(OrgCalibration).where(OrgCalibration.org_id == org_b))).first() is None
     finally:
         async with eng.get_session_factory()() as s:
-            for t in ("ground_truth_records", "org_calibrations", "part_signatures", "cost_decisions", "audit_log", "analyses"):
+            for t in ("ground_truth_records", "org_calibrations", "part_signatures", "batch_items", "batches", "cost_decisions", "audit_log", "analyses"):
                 await s.execute(text(f"DELETE FROM {t} WHERE org_id IN (:a, :b)"), {"a": org_a, "b": org_b})
             if users:
                 await s.execute(text("DELETE FROM memberships WHERE user_id = ANY(:i)"), {"i": users})

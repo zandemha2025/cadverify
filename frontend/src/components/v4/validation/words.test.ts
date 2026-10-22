@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { Comparison, FactorEntry, Stats, Summary } from "./api.ts";
-import { MIN_PARTS, MIN_PER_METHOD, absPct, actualLine, changeWord, contextLine, effectWord, hoursWord, partLines, pctWord, rangeWord, summaryLine, whyNot } from "./words.ts";
+import { MIN_PARTS, MIN_PER_METHOD, absPct, factorWord, actualLine, changeWord, contextLine, effectWord, hoursWord, partLines, pctWord, rangeWord, summaryLine, whyNot } from "./words.ts";
 
 const backend = (p: string) => readFileSync(new URL(`../../../../../backend/${p}`, import.meta.url), "utf8");
 
@@ -21,11 +21,14 @@ test("the part page line reads like the brief", () => {
 
 test("numbers", () => {
   assert.equal(hoursWord(0.42), "25 min");
+  assert.equal(hoursWord(0.0015), "5 s");
+  assert.equal(hoursWord(0.0654), "3.9 min");
   assert.equal(hoursWord(12), "12 h");
   assert.equal(hoursWord(1234.4), "1,234 h");
   assert.equal(pctWord(-12.4), "−12%");
   assert.equal(pctWord(0.3), "0%");
   assert.equal(absPct(-13.6), "14%");
+  assert.equal(factorWord(0.8796), "−12% (× 0.88)");
 });
 
 const stats = (n: number, parts: number, med = 14): Stats => ({ n, parts, median_abs_pct: med, median_pct: med, worst_pct: 38, worst: null, inside: n, with_range: n, enough: parts >= 8 });
@@ -48,7 +51,7 @@ test("what a calibration would change, and why not", () => {
   assert.equal(changeWord("cnc_3axis", "hours", 0.88), "Your 3-axis milling runs 12% faster than ScaleCAD’s typical estimate");
   assert.equal(changeWord("fdm", "hours", 1.2), "Your filament printing takes 20% longer than ScaleCAD’s typical estimate");
   assert.equal(changeWord("cnc_turning", "cost", 1.05), "Your turning costs 5% more than ScaleCAD’s estimate");
-  assert.match(effectWord(entry({}))!, /^Median error 14% now, 1% with it, on 9 parts\./);
+  assert.equal(effectWord(entry({})), "Median error 14% now, 1% with it, on 9 parts.");
   assert.equal(whyNot(entry({ why: "org_few", offer: false }), "hours", 3), "8 parts with actuals are needed before a calibration is applied; you have 3.");
   assert.match(whyNot(entry({ why: "out_of_range", factor: 6 }), "hours", 9), /6× ScaleCAD’s\. Check the column is per part/);
   assert.equal(whyNot(entry({ why: "few", n: 2 }), "cost", 9), "2 actuals with costs; 3 or more are needed for this method.");
