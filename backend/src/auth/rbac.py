@@ -26,12 +26,13 @@ from __future__ import annotations
 from src.config.public_urls import error_doc_url
 
 from enum import Enum
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.auth.models import lookup_org_membership
+from src.auth.org_binding import bind_gate_org, gate_org, release_gate_org
 from src.auth.require_api_key import AuthedUser, require_api_key
 
 
@@ -119,6 +120,70 @@ class OrgAuthContext(BaseModel):
     org_role: Optional[str] = None
 
 
+async def _authorize_org_role(
+    request: Request | None, user: AuthedUser, min_role: OrgRole
+) -> OrgAuthContext:
+    """The org-role decision behind :func:`require_org_role` (no binding).
+
+    Raises the 403 (and logs the refused write) when the caller's role in the
+    active org is below ``min_role``.
+    """
+    is_superadmin = user.role == Role.superadmin.value
+    membership = await lookup_org_membership(user.user_id)
+    # Bearer keys retain their issuing org. If the user's active membership
+    # changed after authentication, fail this authorization check instead of
+    # silently moving the key to the new organization.
+    if user.org_id is not None and (
+        membership is None or membership[0] != user.org_id
+    ):
+        membership = None
+    # A second gate in a request that already bound an org (R2 F1) checks that
+    # same org; a different answer means the org moved under the request.
+    bound = gate_org(user.user_id)
+    if bound is not None and membership is not None and membership[0] != bound:
+        membership = None
+    org_id = membership[0] if membership else None
+    org_role = membership[1] if membership else None
+
+    if not is_superadmin:
+        allowed = False
+        if org_role is not None:
+            try:
+                allowed = OrgRole(org_role).rank >= min_role.rank
+            except ValueError:
+                allowed = False
+        if not allowed:
+            await log_refused_write(
+                request,
+                user,
+                org_id=org_id or user.org_id,
+                org_role=org_role,
+                reason="insufficient_org_role",
+            )
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "insufficient_org_role",
+                    "message": (
+                        f"Requires org {min_role.value} role or higher"
+                    ),
+                    "doc_url": (
+                        error_doc_url("insufficient_org_role")
+                    ),
+                },
+            )
+
+    return OrgAuthContext(
+        user_id=user.user_id,
+        api_key_id=user.api_key_id,
+        key_prefix=user.key_prefix,
+        role=user.role,
+        is_superadmin=is_superadmin,
+        org_id=org_id,
+        org_role=org_role,
+    )
+
+
 def require_org_role(min_role: OrgRole):
     """Return a FastAPI dependency enforcing a minimum ORG role.
 
@@ -130,60 +195,22 @@ def require_org_role(min_role: OrgRole):
     The returned ``OrgAuthContext`` gives the route both the decision *and* the
     org boundary (``org_id``) it needs to scope its reads/writes — this is the
     first place ``resolve_org``-style resolution is wired into a real consumer.
+
+    The org it checked stays bound for the rest of the request
+    (``auth.org_binding``): every org resolver the route calls answers that org,
+    even if the caller switches their active org while the request runs. The
+    dependency yields so the binding is released when the request ends.
     """
 
     async def _check(
         request: Request, user: AuthedUser = Depends(require_api_key)
-    ) -> OrgAuthContext:
-        is_superadmin = user.role == Role.superadmin.value
-        membership = await lookup_org_membership(user.user_id)
-        # Bearer keys retain their issuing org. If the user's active membership
-        # changed after authentication, fail this authorization check instead of
-        # silently moving the key to the new organization.
-        if user.org_id is not None and (
-            membership is None or membership[0] != user.org_id
-        ):
-            membership = None
-        org_id = membership[0] if membership else None
-        org_role = membership[1] if membership else None
-
-        if not is_superadmin:
-            allowed = False
-            if org_role is not None:
-                try:
-                    allowed = OrgRole(org_role).rank >= min_role.rank
-                except ValueError:
-                    allowed = False
-            if not allowed:
-                await log_refused_write(
-                    request,
-                    user,
-                    org_id=org_id or user.org_id,
-                    org_role=org_role,
-                    reason="insufficient_org_role",
-                )
-                raise HTTPException(
-                    403,
-                    detail={
-                        "code": "insufficient_org_role",
-                        "message": (
-                            f"Requires org {min_role.value} role or higher"
-                        ),
-                        "doc_url": (
-                            error_doc_url("insufficient_org_role")
-                        ),
-                    },
-                )
-
-        return OrgAuthContext(
-            user_id=user.user_id,
-            api_key_id=user.api_key_id,
-            key_prefix=user.key_prefix,
-            role=user.role,
-            is_superadmin=is_superadmin,
-            org_id=org_id,
-            org_role=org_role,
-        )
+    ) -> AsyncIterator[OrgAuthContext]:
+        ctx = await _authorize_org_role(request, user, min_role)
+        token = bind_gate_org(ctx.user_id, ctx.org_id)
+        try:
+            yield ctx
+        finally:
+            release_gate_org(token)
 
     return _check
 
@@ -221,9 +248,6 @@ async def log_refused_write(
         )
     except Exception:  # the audit row is best effort; the 403 stands
         pass
-
-
-_org_member_gate = require_org_role(OrgRole.member)
 
 
 async def _org_name(org_id: str) -> Optional[str]:
@@ -296,16 +320,21 @@ def _org_member_write_gate(action: str):
 
     async def _gate(
         request: Request, user: AuthedUser = Depends(require_role(Role.analyst))
-    ) -> AuthedUser:
+    ) -> AsyncIterator[AuthedUser]:
         try:
             # The org-role check logs the refused write itself.
-            await _org_member_gate(request, user)
+            ctx = await _authorize_org_role(request, user, OrgRole.member)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get("code") != "insufficient_org_role":
                 raise
             raise await _read_only_refusal(user, action) from exc
-        return user
+        # The write lands in the org this checked (R2 F1), released at the end.
+        token = bind_gate_org(user.user_id, ctx.org_id)
+        try:
+            yield user
+        finally:
+            release_gate_org(token)
 
     return _gate
 
@@ -327,7 +356,7 @@ async def org_role_allows_writes(user: AuthedUser) -> bool:
         return False
     try:
         # A capability probe is a read: no request, so nothing is logged.
-        await _org_member_gate(None, user)
+        await _authorize_org_role(None, user, OrgRole.member)
     except HTTPException:
         return False
     return True

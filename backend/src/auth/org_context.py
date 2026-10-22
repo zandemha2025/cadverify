@@ -24,6 +24,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.org_binding import gate_org
 from src.db.models import ApiKey, Batch, Membership, Organization, User
 
 # org_role values allowed by the memberships CHECK constraint (migration 0009).
@@ -190,7 +191,21 @@ def caller_org_subquery(user_id: int):
     ``user_id`` binds as a literal parameter, so the returned expression is
     self-contained (not correlated against the outer table) — safe to drop into
     any ``select`` regardless of what it reads from.
+
+    Inside a request whose role gate already checked an org for this user
+    (``auth.org_binding``, R2 F1), the answer is that org — still only while the
+    membership is live (else NULL: no rows, never another org) — so a switch
+    sent while the request runs can't move it into an org the gate never
+    checked.
     """
+    bound = gate_org(user_id)
+    if bound is not None:
+        return (
+            select(Membership.org_id)
+            .where(Membership.user_id == user_id, Membership.org_id == bound)
+            .limit(1)
+            .scalar_subquery()
+        )
     current_org = (
         select(User.current_org_id).where(User.id == user_id).scalar_subquery()
     )
@@ -227,6 +242,9 @@ async def resolve_org(session: AsyncSession, user_id: int) -> Optional[str]:
 
     Membership is RE-VALIDATED on every call (not a cached claim), so a removed
     member loses access immediately.
+
+    Inside a request whose role gate checked an org, this is that org (see
+    :func:`caller_org_subquery`).
     """
     return (
         await session.execute(select(caller_org_subquery(user_id)))

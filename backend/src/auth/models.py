@@ -453,8 +453,27 @@ async def lookup_org_membership(user_id: int) -> tuple[str, str] | None:
     helpers here, so it composes with ``require_api_key`` without a request DB
     dependency. Returns None for a user with no membership (a mocked test
     session, or a superadmin provisioned without one).
+
+    Once a role gate in this request checked an org (``auth.org_binding``, R2
+    F1), this answers the caller's role in THAT org (None if they left it), so
+    every later check in the request (another gate, admission, org limits)
+    reads the org the request writes to.
     """
+    from src.auth.org_binding import gate_org
+
+    bound = gate_org(user_id)
     async with _session()() as s:
+        if bound is not None:
+            r = (
+                await s.execute(
+                    text(
+                        "SELECT m.org_id, m.org_role FROM memberships m "
+                        "WHERE m.user_id = :uid AND m.org_id = :org LIMIT 1"
+                    ),
+                    {"uid": user_id, "org": bound},
+                )
+            ).first()
+            return (r[0], r[1]) if r else None
         r = (
             await s.execute(
                 text(
