@@ -285,6 +285,23 @@ export type Report = {
   organization: string | null;
   generated_at: string;
   scope: { kind: "run" | "all"; run_id: string | null; created_at?: string | null; quantity: number | null; parts_list?: { name: string } | null };
+  /** Page one (op-20): the run's answer as the run page says it, what it covers, what the prices assume. */
+  headline?: { head: string; sub: string; missing: string | null } | null;
+  coverage?: {
+    parts: number;
+    checked: number;
+    not_checked: number;
+    not_sorted: number;
+    text: string;
+    reasons: { reason: string; parts: number }[];
+    unchecked: { part: string | null; reason: string | null }[];
+    unsorted: { part: string | null; reason: string | null }[];
+  } | null;
+  basis?: string[];
+  /** "Haas VF-2: 12,400 h needed of 11,520 h a year (108%)" for each machine overloaded. */
+  overloaded?: string[];
+  /** Accuracy figures only with enough actuals to say something. */
+  accuracy_shown?: boolean;
   parts: number;
   buckets: ReportBucket[];
   other: Record<string, number>;
@@ -297,14 +314,14 @@ export type Report = {
     used_kg?: number | null;
     used_parts?: number;
     cost_usd: number | null;
-    machines: { machine: string; process: string | null; hours: number; parts: number }[];
+    machines: { machine: string; process: string | null; hours: number; parts: number; available_hours?: number | null; utilization_pct?: number | null; overloaded?: boolean | null; capacity?: { set: boolean; text: string } | null }[];
     materials?: BreakdownMaterial[];
   };
   /** Needs a new machine: the capability each part lacks. */
   missing?: BreakdownMissing[];
   /** Made outside: the processes no machine of yours does, with their machine time. */
   outside?: BreakdownMachine[];
-  wins: { file_name: string | null; part_number: string | null; part_key: string | null; quantity: number; process: string | null; machine: string | null; in_house_each: number; outside_each: number; outside_process: string | null; saving_total: number; hours_total: number | null }[];
+  wins: { file_name: string | null; part_number: string | null; part_key: string | null; quantity: number; process: string | null; machine: string | null; in_house_each: number; outside_each: number; outside_process: string | null; vs?: "you" | "parts_list" | "model"; saving_total: number; hours_total: number | null }[];
   decisions: {
     part_key: string;
     file_name: string | null;
@@ -312,6 +329,8 @@ export type Report = {
     decision: string;
     code: string;
     process: string | null;
+    /** The quantity the decision was recorded at. */
+    quantity?: number | null;
     note: string | null;
     by: string | null;
     at: string | null;

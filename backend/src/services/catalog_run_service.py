@@ -1618,6 +1618,14 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
     }
 
 
+BUY_OUTCOMES = ("outside", "supplier")
+
+
+def is_decided_buy(row: dict) -> bool:
+    """A part someone recorded as bought ("Make outside", "Keep buying from our supplier")."""
+    return row.get("outcome") in BUY_OUTCOMES
+
+
 def make_or_buy_answer(rows: list[dict]) -> dict:
     """The run's answer in counts and money: make N, buy M, the rest, and the saving.
 
@@ -1625,16 +1633,23 @@ def make_or_buy_answer(rows: list[dict]) -> dict:
     today, summed over the in-house parts with a current price (each part's
     saving × its quantity); None when no in-house part has one. Nothing is
     summed from a model price: the saving is against real prices only.
+
+    A part recorded "Make outside" or "Keep buying from our supplier" is bought,
+    whatever the run sorted it as: it counts in ``buy`` (``decided_buy``) and
+    adds nothing to the saving, on the run and in the pilot report alike.
     """
     def n(*keys: str) -> int:
         return sum(1 for r in rows if r.get("bucket") in keys)
 
-    make = [r for r in rows if r.get("bucket") == "in_house"]
+    in_house = [r for r in rows if r.get("bucket") == "in_house"]
+    decided_buy = [r for r in in_house if is_decided_buy(r)]
+    make = [r for r in in_house if not is_decided_buy(r)]
     saved = [r for r in make if isinstance(r.get("saving"), dict)]
     return {
         "parts": len(rows),
         "make": len(make),
-        "buy": n("outside"),
+        "buy": n("outside") + len(decided_buy),
+        "decided_buy": len(decided_buy),
         "new_machine": n("new_machine"),
         "cant_make": n("cant_make"),
         "not_checked": n("not_checked"),

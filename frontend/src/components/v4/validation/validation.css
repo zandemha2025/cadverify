@@ -83,6 +83,15 @@
 .ob .val-paper .muted{color:var(--ink3)}
 .ob .val-paper .foot{margin:8px 0 0;color:var(--ink3);font-size:11.5px;line-height:1.5}
 .ob .val-rep ul.cav{padding:6px 0 0 18px}
+/* page one leads with the run's answer (op-20) */
+.ob .val-rep .rlead{display:flex;flex-direction:column;gap:4px;margin:14px 0 6px;padding:14px 16px;border:1.5px solid var(--ink);border-radius:14px;background:#fff}
+.ob .val-rep .rlead b{font-size:18px;font-weight:600;line-height:1.3;color:var(--ink)}
+.ob .val-rep .rlead span{font-size:13.5px;color:var(--ink2)}
+.ob .val-rep .rlead small{font-size:12.5px;color:var(--ink3)}
+.ob .val-rep .rover{color:#8A1C12;font-weight:600}
+.ob .val-rep ul.rcols{list-style:none;padding:0;margin:6px 0 0;columns:5 9em;column-gap:14px;font-size:12px}
+.ob .val-rep ul.rcols small{color:var(--ink3)}
+@media print{.ob .val-rep .rlead{border-color:#000}}
 .ob .val-rep h2.rh{font-size:15px;font-weight:600;margin:0}
 .ob .val-rep .rbk{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:14px 0 0}
 .ob .val-rep .rbk > div{padding:10px 12px;border-radius:14px;background:#fff;border:1px solid var(--rule);min-width:0}

@@ -549,6 +549,10 @@ def test_the_answer_counts_and_sums_savings_against_real_prices_only():
     assert (a["make"], a["buy"], a["new_machine"], a["undecided"]) == (2, 1, 1, 2)
     assert (a["saving_usd"], a["saving_parts"], a["make_without_price"], a["with_price"]) == (600.0, 1, 1, 1)
     assert cr.make_or_buy_answer([{"bucket": "in_house"}])["saving_usd"] is None
+    # A part recorded "Keep buying from our supplier" (or "Make outside") is bought: no saving, counted in buy.
+    kept = [{**rows[0], "outcome": "supplier"}] + rows[1:]
+    k = cr.make_or_buy_answer(kept)
+    assert (k["make"], k["buy"], k["decided_buy"], k["saving_usd"], k["make_without_price"]) == (1, 2, 1, None, 1)
 
 
 def test_a_machine_shows_the_running_rate_you_set_on_every_row():

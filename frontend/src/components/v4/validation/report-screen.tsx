@@ -110,11 +110,49 @@ export function ReportScreen({ run }: { run: string | null }) {
         <span>{dateWord(rep.generated_at)}</span>
       </p>
 
+      {rep.headline ? (
+        <div className="rlead">
+          <b>{rep.headline.head}</b>
+          {rep.headline.sub ? <span>{rep.headline.sub}</span> : null}
+          {rep.headline.missing ? <small>{rep.headline.missing}</small> : null}
+        </div>
+      ) : null}
+      {rep.coverage ? (
+        <p className="rp">
+          <b>{rep.coverage.text}.</b>
+          {rep.coverage.not_checked ? ` Not checked: ${rep.coverage.reasons.map((g) => `${g.parts} ${g.reason.toLowerCase()}`).join(", ")}; they are listed at the end and aren’t in any figure here.` : ""}
+        </p>
+      ) : null}
+      {rep.overloaded?.length ? (
+        <p className="rp rover">Overloaded if every make part comes in-house: {rep.overloaded.join("; ")}.</p>
+      ) : rep.in_house.machines.some((m) => m.available_hours) ? (
+        <p className="rp">
+          Every machine has the hours its make parts need:{" "}
+          {rep.in_house.machines
+            .filter((m) => m.available_hours)
+            .map((m) => `${m.machine} ${hoursWord(m.hours)} of ${hoursWord(m.available_hours ?? null)} a year (${Math.round(m.utilization_pct ?? 0)}%)`)
+            .join("; ")}
+          .
+        </p>
+      ) : null}
+      {rep.basis?.length ? (
+        <>
+          <p className="rp" style={{ marginBottom: 0 }}>
+            <b>What the prices assume</b>
+          </p>
+          <ul className="cav">
+            {rep.basis.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
       <div className="rbk" role="group" aria-label="Parts by where they're made">
         <div>
           <span>Parts</span>
           <b className="num">{rep.parts}</b>
-          <small>{other.length ? `${other.reduce((s, [, v]) => s + v, 0)} not sorted` : "all sorted"}</small>
+          <small>{rep.coverage?.not_checked ? `${rep.coverage.not_checked} not checked` : other.length ? `${other.reduce((s, [, v]) => s + v, 0)} not sorted` : "all sorted"}</small>
         </div>
         {rep.buckets.map((b) => (
           <div key={b.key}>
@@ -193,6 +231,12 @@ export function ReportScreen({ run }: { run: string | null }) {
                     <th scope="col" className="r">
                       Machine time
                     </th>
+                    <th scope="col" className="r">
+                      Hours a year
+                    </th>
+                    <th scope="col" className="r">
+                      Utilization
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -202,6 +246,11 @@ export function ReportScreen({ run }: { run: string | null }) {
                       <td>{methodWord(m.process)}</td>
                       <td className="r num">{m.parts}</td>
                       <td className="r num">{hoursWord(m.hours)}</td>
+                      <td className="r num">
+                        {m.available_hours ? hoursWord(m.available_hours) : "—"}
+                        {m.capacity && !m.capacity.set ? <small>assumed</small> : null}
+                      </td>
+                      <td className="r num">{m.utilization_pct != null ? (m.overloaded ? <b className="rover">{Math.round(m.utilization_pct)}%, overloaded</b> : `${m.utilization_pct}%`) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -323,10 +372,10 @@ export function ReportScreen({ run }: { run: string | null }) {
                     In-house each
                   </th>
                   <th scope="col" className="r">
-                    Cheapest outside each
+                    Buy each
                   </th>
                   <th scope="col" className="r">
-                    Difference at quantity
+                    Saving at quantity
                   </th>
                 </tr>
               </thead>
@@ -342,7 +391,7 @@ export function ReportScreen({ run }: { run: string | null }) {
                     <td className="r num">{moneyWord(w.in_house_each)}</td>
                     <td className="r num">
                       {moneyWord(w.outside_each)}
-                      <small>{methodWord(w.outside_process)}</small>
+                      <small>{w.vs === "model" || !w.vs ? `ScaleCAD estimate, ${methodWord(w.outside_process)}` : "what you pay"}</small>
                     </td>
                     <td className="r num">{moneyWord(w.saving_total)}</td>
                   </tr>
@@ -350,7 +399,7 @@ export function ReportScreen({ run }: { run: string | null }) {
               </tbody>
             </table>
           </div>
-          <p className="foot">Your machine at its marginal rate against the cheapest outside route, both ScaleCAD estimates at the same quantity.</p>
+          <p className="foot">Your machine at its running rate against what you pay today where you gave a price, else against ScaleCAD’s estimate of the cheapest outside route at the same quantity.</p>
         </>
       ) : (
         <p className="rp muted">No in-house part has both an in-house and an outside price to compare.</p>
@@ -384,7 +433,7 @@ export function ReportScreen({ run }: { run: string | null }) {
                   </td>
                   <td>
                     {d.decision}
-                    {d.process ? <small>{methodWord(d.process)}</small> : null}
+                    {d.process || d.quantity ? <small>{[d.process ? methodWord(d.process) : null, d.quantity ? `at ${d.quantity.toLocaleString("en-US")}` : null].filter(Boolean).join(" ")}</small> : null}
                   </td>
                   <td>{d.by ?? "Not recorded"}</td>
                   <td>{dateWord(d.at)}</td>
@@ -410,8 +459,12 @@ export function ReportScreen({ run }: { run: string | null }) {
       )}
 
       <h2>Checked against your actuals</h2>
-      <p className="rp">{summaryLine(a)}</p>
-      {a.parts ? (
+      <p className="rp">
+        {a.parts && rep.accuracy_shown === false
+          ? `${a.parts} ${a.parts === 1 ? "part has" : "parts have"} actuals: not enough to say how accurate ScaleCAD is for you (${a.min_parts} or more give a fair picture), so no accuracy figure is given yet.`
+          : summaryLine(a)}
+      </p>
+      {a.parts && rep.accuracy_shown !== false ? (
         <div className="val-wide">
           <table>
             <thead>
@@ -443,7 +496,7 @@ export function ReportScreen({ run }: { run: string | null }) {
           </table>
         </div>
       ) : null}
-      {a.parts && a.hours.worst?.file_name ? (
+      {a.parts && rep.accuracy_shown !== false && a.hours.worst?.file_name ? (
         <p className="foot">
           Largest machine-hours miss: {a.hours.worst.file_name} ({pctWord(a.hours.worst_pct)}). Median by size {absPct(a.hours.median_abs_pct)}. Error is ScaleCAD’s estimate against your actual: +10% means ScaleCAD said 10% more.
         </p>
@@ -463,6 +516,22 @@ export function ReportScreen({ run }: { run: string | null }) {
           <li key={c}>{c}</li>
         ))}
       </ul>
+      {rep.coverage && (rep.coverage.unchecked.length || rep.coverage.unsorted.length) ? (
+        <>
+          <h2>
+            Not checked ({rep.coverage.not_checked}){rep.coverage.not_sorted ? `, and checked without a machine verdict (${rep.coverage.not_sorted})` : ""}
+          </h2>
+          <p className="foot">They aren’t in any figure above. Check them again from the run.{rep.coverage.reasons.length === 1 ? ` All ${rep.coverage.not_checked}: ${rep.coverage.reasons[0].reason.toLowerCase()}.` : ""}</p>
+          <ul className="rcols">
+            {[...rep.coverage.unchecked, ...rep.coverage.unsorted].map((u, i) => (
+              <li key={i}>
+                {u.part}
+                {rep.coverage!.reasons.length !== 1 && u.reason ? <small> {u.reason}</small> : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       <p className="foot">ScaleCAD pilot report · {rep.generated_at.slice(0, 16).replace("T", " ")} UTC · engine estimates and your own numbers, not quotes.</p>
     </article>
   );
