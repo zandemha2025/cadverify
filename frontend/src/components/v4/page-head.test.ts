@@ -24,6 +24,9 @@ test("every page with a page head and Content gets the measured offset from one 
   assert.match(ui, /data-under-head/);
   // Desktop only: phones flow the head and the content, so no offset applies there.
   assert.match(css, /@media \(min-width:901px\)\{\.ob \.content\[data-under-head\]\{top:max\(var\(--content-top,132px\),var\(--head-end,0px\)\)\}\}/);
+  // A long unbroken name (a ZIP called Ridgeline_spares_and_customer_supplied_parts_2026Q3_rev_C…) wraps
+  // inside the head instead of running off a phone's screen.
+  assert.match(css, /\.ob \.ptitle\{[^}]*overflow-wrap:anywhere/);
   // Your shop's own copy (8b17369) is folded into the shared one.
   assert.doesNotMatch(read("shop/common.tsx"), /--shp-head/);
   assert.doesNotMatch(read("shop/shop.css"), /--shp-head/);
