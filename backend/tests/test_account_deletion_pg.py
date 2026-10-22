@@ -381,3 +381,45 @@ async def test_the_crm_page_moves_to_notions_trash(monkeypatch):
     status["patch"] = 502
     with pytest.raises(httpx.HTTPStatusError):  # retried by the deletion's worker steps
         await customer_sync.archive_notion_user(7, page)
+
+
+async def test_a_webhook_during_the_cancel_doesnt_block_the_delete(stores, monkeypatch):
+    """Stripe's customer.subscription.deleted can arrive before it answers the cancel.
+
+    The webhook locks the billing row and then the account; no lock of the
+    deletion may be held while Stripe is called, or the two wait on each other.
+    """
+    import asyncio
+    import os
+
+    import asyncpg
+
+    from src.services import account_deletion_service as ads
+
+    w = await _world(stores)
+    me = w.users["me"]
+
+    async def cancel_with_webhook(sub_id: str, key: str) -> None:
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            async with conn.transaction():
+                await asyncio.wait_for(
+                    conn.execute("UPDATE billing_accounts SET status='canceled' WHERE stripe_subscription_id=$1", sub_id),
+                    timeout=5,
+                )
+                await asyncio.wait_for(conn.execute("UPDATE users SET plan='trial' WHERE id=$1", me), timeout=5)
+        finally:
+            await conn.close()
+
+    monkeypatch.setattr(ads, "cancel_subscription_at_stripe", cancel_with_webhook)
+    app = _app()
+    try:
+        async with _client(app) as client:
+            _act(app, me)
+            r = await client.post("/api/v1/account/delete", json={"confirm_email": w.email})
+            assert r.status_code == 200, r.text
+            assert r.json()["removed"]["plan_cancelled"] is True
+        assert await _count("SELECT count(*) FROM users WHERE id=:u AND is_active", u=me) == 0
+        assert await _count("SELECT count(*) FROM billing_accounts WHERE user_id=:u AND status='canceled'", u=me) == 1
+    finally:
+        await _cleanup(w)

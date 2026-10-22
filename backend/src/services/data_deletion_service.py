@@ -885,33 +885,36 @@ async def delete_organization(
     """
     if not org_id or not _SAFE_ORG.fullmatch(org_id):
         raise HTTPException(status_code=404, detail="Organization not found")
-    org = (
-        await session.execute(select(Organization).where(Organization.id == org_id).with_for_update())
-    ).scalar_one_or_none()
-    if org is None:
-        raise HTTPException(status_code=404, detail="Organization not found")
-    if (confirm_name or "").strip() != (org.name or "").strip():
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "confirm_name_mismatch", "message": "Type the organization's name exactly to delete it."},
-        )
+    def _name_check(org: Organization | None) -> Organization:
+        if org is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        if (confirm_name or "").strip() != (org.name or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "confirm_name_mismatch", "message": "Type the organization's name exactly to delete it."},
+            )
+        return org
 
+    _name_check((await session.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none())
     deletion_ulid = str(ULID())
     plan_cancelled = False
     if not keep_plan:
         from src.services import account_deletion_service as ads
 
-        # No row lock while Stripe is called: Stripe's own
-        # customer.subscription.deleted webhook updates this row, and it must
-        # not wait on this transaction (a webhook sent before Stripe answers
-        # would otherwise hold the cancel until it times out).
-        billing = await ads._billing(session, user_id)
-        if ads._live_subscription(billing):
-            cancel = cancel_subscription or ads.cancel_subscription_at_stripe
-            await cancel(billing.stripe_subscription_id, f"org-delete-{deletion_ulid}")
-            billing.status = "canceled"
-            billing.updated_at = now_utc()
-            plan_cancelled = True
+        # Before any row lock: no lock is held while Stripe answers, and
+        # Stripe's customer.subscription.deleted webhook (billing row, then the
+        # account) never waits on this transaction in a cycle.
+        plan_cancelled = await ads.cancel_live_plan(
+            session, user_id, f"org-delete-{deletion_ulid}", cancel_subscription
+        )
+    org = _name_check(
+        (
+            await session.execute(
+                select(Organization).where(Organization.id == org_id).with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+    )
     removal = await remove_org_rows(
         session, org_id=org_id, user_id=user_id, deletion_ulid=deletion_ulid,
         actor_email=await _email(session, user_id),

@@ -237,6 +237,34 @@ async def cancel_subscription_at_stripe(subscription_id: str, idempotency_key: s
 CancelSubscription = Callable[[str, str], Awaitable[None]]
 
 
+async def cancel_live_plan(
+    session: AsyncSession,
+    user_id: int,
+    idempotency_key: str,
+    cancel_subscription: Optional[CancelSubscription] = None,
+) -> bool:
+    """Cancel the person's live Pro subscription at Stripe; return whether there was one.
+
+    Called before the deletion takes any row lock: no lock is held across the
+    Stripe call. Stripe's customer.subscription.deleted webhook then locks the
+    billing row and the account, in that order; this records the cancel on the
+    billing row first too, so neither ever waits on the other in a cycle.
+    Raises (503) when Stripe can't cancel, before anything is deleted.
+    """
+    billing = await _billing(session, user_id)
+    if not _live_subscription(billing):
+        return False
+    cancel = cancel_subscription or cancel_subscription_at_stripe
+    await cancel(billing.stripe_subscription_id, idempotency_key)
+    await session.execute(
+        update(BillingAccount)
+        .where(BillingAccount.user_id == user_id)
+        .values(status="canceled", updated_at=dd.now_utc())
+        .execution_options(synchronize_session=False)
+    )
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Audit redaction
 # ---------------------------------------------------------------------------
@@ -322,12 +350,27 @@ async def delete_account(
     cancel_subscription: Optional[CancelSubscription] = None,
 ) -> DataDeletion:
     """Delete the person's account (see the module docstring). Commits; returns the receipt."""
-    user = await _user(session, user_id, lock=True)
+    user = await _user(session, user_id)
     if not _emails_match(confirm_email, user.email):
         raise HTTPException(
             status_code=400,
             detail={"code": "confirm_email_mismatch", "message": "Type your account's email exactly to delete it."},
         )
+    # Refuse a blocked deletion before Stripe is asked to cancel anything; the
+    # same check runs again under the locks below.
+    early = [_blocker(p) for p in await _plan(session, user_id) if p.action == BLOCKED]
+    if early:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "account_delete_blocked", "message": early[0]["message"], "blockers": early},
+        )
+    deletion_ulid = str(ULID())
+    # Billing first, and before any row lock: if Stripe can't cancel the plan,
+    # nothing is deleted, and no lock is held while Stripe answers.
+    plan_cancelled = await cancel_live_plan(
+        session, user_id, f"account-delete-{deletion_ulid}", cancel_subscription
+    )
+    user = await _user(session, user_id, lock=True)
     await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": f"account-delete:{user_id}"})
     # Lock every organization the person is in (in id order), then decide: no one
     # can join an organization that is about to be deleted with it, or leave one
@@ -340,24 +383,16 @@ async def delete_account(
     plans = await _plan(session, user_id)
     blockers = [_blocker(p) for p in plans if p.action == BLOCKED]
     if blockers:
+        # Something changed in the moment since the first check. The plan, if
+        # any, is already cancelled at Stripe; say so.
+        message = blockers[0]["message"] + (" Your Pro plan was already cancelled." if plan_cancelled else "")
         raise HTTPException(
             status_code=409,
-            detail={"code": "account_delete_blocked", "message": blockers[0]["message"], "blockers": blockers},
+            detail={"code": "account_delete_blocked", "message": message, "blockers": blockers},
         )
 
-    deletion_ulid = str(ULID())
     email, email_lower = user.email, user.email_lower
     emails = {e for e in (email, email_lower, (email or "").lower()) if e}
-
-    # Billing first: if Stripe can't cancel the plan, nothing is deleted.
-    billing = await _billing(session, user_id, lock=True)
-    plan_cancelled = False
-    if _live_subscription(billing):
-        cancel = cancel_subscription or cancel_subscription_at_stripe
-        await cancel(billing.stripe_subscription_id, f"account-delete-{deletion_ulid}")
-        billing.status = "canceled"
-        billing.updated_at = dd.now_utc()
-        plan_cancelled = True
 
     # The free allowance this email used outlives the account, as a fingerprint.
     from src.services import deleted_account_allowance as allowance
