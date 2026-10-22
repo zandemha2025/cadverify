@@ -76,7 +76,7 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
 
   return (
     <main className="world pv" aria-label={title}>
-      <section className="stage" aria-label={title}>
+      <section className="stage sc-stage" aria-label={title}>
         <div className="floor" />
         <div className="pagehead">
           <h1 className="ptitle" style={{ overflowWrap: "anywhere" }}>
@@ -157,7 +157,7 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
           />
         </div>
 
-        <section className="prog" role="status" aria-live="polite" aria-labelledby="sc-title">
+        <section className="prog sc-prog" role="status" aria-live="polite" aria-labelledby="sc-title">
           <div className="hd">
             <div style={{ minWidth: 0 }}>
               <h2 className="stitle" id="sc-title">

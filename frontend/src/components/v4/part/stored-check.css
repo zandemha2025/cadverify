@@ -13,5 +13,8 @@
 .ob .pv .sc-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
 @media (prefers-reduced-motion:reduce){.ob .pv .sc-bar i{transition:none}}
 @media (max-width:900px){
+  .ob .pv .stage.sc-stage{height:auto;padding-bottom:96px}
   .ob .pv .sc-card{position:relative;left:auto;top:auto;width:auto;margin:12px 16px;padding:22px 18px}
+  /* On a phone the steps follow the card instead of floating over it (the card holds the actions). */
+  .ob .pv .prog.sc-prog{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:auto;max-height:none;margin:12px 16px}
 }
