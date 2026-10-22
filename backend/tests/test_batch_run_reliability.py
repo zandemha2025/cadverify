@@ -338,6 +338,35 @@ async def test_a_part_stopped_every_try_fails_with_a_plain_reason(run_world, mon
 # ---------------------------------------------------------------------------
 
 
+async def _sweep(pool: FakeArq, ulid: str) -> int:
+    """Run the orphan sweep; return how many runs it stopped, other tests' runs counted out.
+
+    The sweep resumes or stops every stale run in the database, as it must. Runs
+    that other tests left behind (a reused database also keeps earlier suite runs')
+    are not this test's: the ones the sweep stopped are subtracted from its count,
+    and the coordinators it queued for them are dropped, so the test sees and
+    drives only its own run.
+    """
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs import batch_tasks
+
+    async with eng.get_session_factory()() as s:
+        others = set((await s.execute(text(
+            "SELECT ulid FROM batches WHERE status IN ('pending', 'processing', 'extracting') AND ulid <> :u"
+        ), {"u": ulid})).scalars().all())
+    reaped = await batch_tasks.sweep_orphaned_batches({"redis": pool})
+    if not others:
+        return reaped
+    pool.queue = [j for j in pool.queue if not (j[0] == "run_batch_coordinator" and j[1] and j[1][0] in others)]
+    async with eng.get_session_factory()() as s:
+        stopped_others = (await s.execute(text(
+            "SELECT count(*) FROM batches WHERE ulid = ANY(:o) AND status = 'failed'"
+        ), {"o": sorted(others)})).scalar_one()
+    return reaped - int(stopped_others)
+
+
 async def _age_run(ulid: str, *, heartbeat_minutes: int, stuck: int = 0, manifest_extra: dict | None = None) -> None:
     """Make the run look like the incident: no heartbeat for a while, some parts stuck mid-check."""
     from sqlalchemy import text
@@ -360,14 +389,12 @@ async def _age_run(ulid: str, *, heartbeat_minutes: int, stuck: int = 0, manifes
 
 @pytest.mark.asyncio
 async def test_a_stale_run_with_its_parts_stored_is_resumed_not_failed(run_world, monkeypatch):
-    from src.jobs import batch_tasks
-
     _install_part_check(monkeypatch)
     pool = FakeArq()
     ulid = await run_world["make_run"](6)
     await _age_run(ulid, heartbeat_minutes=15, stuck=2)
 
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 0
+    assert await _sweep(pool, ulid) == 0
     state = await _batch(ulid)
     assert state["status"] == "processing"
     stuck = state["items"][:2]
@@ -376,7 +403,7 @@ async def test_a_stale_run_with_its_parts_stored_is_resumed_not_failed(run_world
     assert resumes["count"] == 1 and resumes["done"] == 0
     hb = datetime.fromisoformat(state["manifest_json"]["heartbeat_at"])
     assert datetime.now(timezone.utc) - hb < timedelta(minutes=1)
-    assert [j[0] for j in pool.queue] == ["run_batch_coordinator"]
+    assert [(j[0], j[1]) for j in pool.queue] == [("run_batch_coordinator", (ulid,))]
 
     await _drive(pool)
     state = await _batch(ulid)
@@ -385,13 +412,11 @@ async def test_a_stale_run_with_its_parts_stored_is_resumed_not_failed(run_world
 
 @pytest.mark.asyncio
 async def test_a_stale_run_whose_files_are_gone_stops_with_the_reason_on_each_part(run_world):
-    from src.jobs import batch_tasks
-
     pool = FakeArq()
     ulid = await run_world["make_run"](4, blobs=False)
     await _age_run(ulid, heartbeat_minutes=15)
 
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    assert await _sweep(pool, ulid) == 1
     state = await _batch(ulid)
     assert state["status"] == "failed"
     assert not pool.queue
@@ -404,13 +429,11 @@ async def test_a_stale_run_whose_files_are_gone_stops_with_the_reason_on_each_pa
 
 @pytest.mark.asyncio
 async def test_a_run_resumed_without_progress_stops_after_the_limit(run_world):
-    from src.jobs import batch_tasks
-
     pool = FakeArq()
     ulid = await run_world["make_run"](3)
     await _age_run(ulid, heartbeat_minutes=15, manifest_extra={"resumes": {"count": 3, "done": 0}})
 
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    assert await _sweep(pool, ulid) == 1
     state = await _batch(ulid)
     assert state["status"] == "failed"
     assert "no progress" in state["manifest_json"]["failure"]["message"]
@@ -423,7 +446,6 @@ async def test_a_resumed_run_that_made_progress_starts_its_count_again(run_world
     from sqlalchemy import text
 
     import src.db.engine as eng
-    from src.jobs import batch_tasks
 
     pool = FakeArq()
     ulid = await run_world["make_run"](3)
@@ -434,7 +456,7 @@ async def test_a_resumed_run_that_made_progress_starts_its_count_again(run_world
             "UPDATE batch_items SET status = 'completed' WHERE id = (SELECT min(bi.id) FROM batch_items bi "
             "JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u)"), {"u": ulid})
 
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 0
+    assert await _sweep(pool, ulid) == 0
     state = await _batch(ulid)
     assert state["status"] == "processing"
     assert state["manifest_json"]["resumes"] == {**state["manifest_json"]["resumes"], "count": 1, "done": 1}
@@ -456,7 +478,7 @@ async def test_a_stopped_run_sends_one_notification_saying_so(run_world):
             "UPDATE batch_items SET status = 'completed' WHERE id = (SELECT min(bi.id) FROM batch_items bi "
             "JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u)"), {"u": ulid})
 
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    assert await _sweep(pool, ulid) == 1
     await batch_tasks._notify_run_stopped(ulid)  # a second sweep, or a retry: still one
     async with eng.get_session_factory()() as s:
         rows = (await s.execute(text(
@@ -624,7 +646,6 @@ async def test_a_run_the_sweep_stops_says_why_on_its_board_and_every_skipped_par
     from sqlalchemy import text
 
     import src.db.engine as eng
-    from src.jobs import batch_tasks
 
     pool = FakeArq()
     ulid = await run_world["make_run"](4, blobs=False)
@@ -635,8 +656,8 @@ async def test_a_run_the_sweep_stops_says_why_on_its_board_and_every_skipped_par
             "UPDATE batch_items SET status = 'completed', completed_at = now() WHERE id = (SELECT min(bi.id) "
             "FROM batch_items bi JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u)"), {"u": ulid})
 
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
-    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 0  # the next sweep finds it stopped
+    assert await _sweep(pool, ulid) == 1
+    assert await _sweep(pool, ulid) == 0  # the next sweep finds it stopped
     board = await _board(api["app"], ulid)
     assert board["status"] == "failed"
     assert board["failure"]["message"] == (
@@ -661,13 +682,12 @@ async def test_a_stale_run_that_cant_be_resumed_always_keeps_a_reason(run_world)
     from sqlalchemy import text
 
     import src.db.engine as eng
-    from src.jobs import batch_tasks
 
     ulid = await run_world["make_run"](2)
     async with eng.get_session_factory()() as s, s.begin():
         await s.execute(text("UPDATE batches SET input_mode = 'manifest' WHERE ulid = :u"), {"u": ulid})
     await _age_run(ulid, heartbeat_minutes=15)
-    assert await batch_tasks.sweep_orphaned_batches({"redis": FakeArq()}) == 1
+    assert await _sweep(FakeArq(), ulid) == 1
     state = await _batch(ulid)
     assert state["manifest_json"]["failure"] == {
         "code": "run_stopped",
