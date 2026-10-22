@@ -45,7 +45,7 @@ from src.api.material_library import router as material_library_router
 from src.api.governance import router as governance_router
 from src.api.notifications import router as notifications_router
 from src.api.integrations import router as integrations_router
-from src.api.scim import router as scim_router
+from src.api.scim import mount_scim
 from src.api.part_context import router as part_context_router
 from src.api.part_preview import router as part_preview_router
 from src.api.part_fixes import router as part_fixes_router
@@ -596,8 +596,10 @@ app.include_router(phone_router, prefix="/api/v1/account/phone", tags=["account"
 from src.api.preferences import router as preferences_router  # noqa: E402
 app.include_router(preferences_router, prefix="/api/v1/account/preferences", tags=["account"])
 # SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
-# than under /api/v1 so Okta/Entra can target it directly.
-app.include_router(scim_router)
+# than under /api/v1 so Okta/Entra can target it directly, and only where single
+# sign-on is in use (AUTH_MODE saml/oidc/hybrid) or SCIM_ENABLED=1; a password
+# deployment does not serve /scim/v2 at all. Logs which way it went.
+mount_scim(app)
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
 # infra, independent of AUTH_MODE.

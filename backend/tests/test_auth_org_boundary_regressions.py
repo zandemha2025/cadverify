@@ -131,10 +131,20 @@ async def test_scim_membership_removal_revokes_org_keys(monkeypatch):
     from src.services import scim_service
 
     membership = SimpleNamespace(org_role="member")
-    user = SimpleNamespace(id=55, current_org_id="org-b", session_version=3)
+    # An account org-b's SCIM provisioned and no other org holds, so removing it
+    # also signs it out.
+    user = SimpleNamespace(
+        id=55, current_org_id="org-b", session_version=3, auth_provider="scim"
+    )
     session = AsyncMock()
     monkeypatch.setattr(
         scim_service, "_membership", AsyncMock(return_value=membership)
+    )
+    monkeypatch.setattr(
+        scim_service, "_identity", AsyncMock(return_value=SimpleNamespace())
+    )
+    monkeypatch.setattr(
+        scim_service, "_belongs_to_other_org", AsyncMock(return_value=False)
     )
     revoke = AsyncMock(return_value=2)
     monkeypatch.setattr(scim_service, "revoke_org_api_keys", revoke)
