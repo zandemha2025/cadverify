@@ -376,3 +376,58 @@ async def test_bad_inputs_are_clean_errors(world):
     # Another org's run (or no run) is a 404 on the board.
     r = await _get(app, "/api/v1/batch/does-not-exist/catalog")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_large_zip_comes_from_a_direct_upload(world, monkeypatch, tmp_path):
+    """The ZIP uploaded to storage in parts (resumable), read back verified, the same run."""
+    import hashlib
+    import io as _io
+
+    from httpx import ASGITransport, AsyncClient
+
+    import src.db.engine as eng
+    from src.services import direct_upload_service as uploads
+
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "local")
+    monkeypatch.setenv("DIRECT_UPLOAD_LOCAL_ROOT", str(tmp_path / "incoming"))
+    monkeypatch.delenv("RELEASE", raising=False)
+    app, uid = world["app"], world["users"]["work"]
+    _as(app, uid)
+    data = _zip({"a.stl": _stl((20, 20, 20), seed=21), "b.stl": _stl((30, 20, 10), seed=22)})
+
+    async def _upload(checksum: str) -> str:
+        async with eng.get_session_factory()() as s:
+            up, parts, _, _ = await uploads.initiate(
+                s, user_id=uid, purpose="batch_zip", filename="catalog.zip", content_type="application/zip",
+                size_bytes=len(data), checksum_sha256=checksum, idempotency_key=f"cat-{uuid.uuid4().hex}", plan="trial",
+            )
+            store = uploads._require_s3_store()
+            etag, _ = store.put_part(up.object_key, up.multipart_upload_id, 1, _io.BytesIO(data), max_bytes=len(data))
+            await uploads.complete(s, user_id=uid, upload_ulid=up.ulid, parts=[{"part_number": 1, "etag": etag}])
+            return up.ulid
+
+    async def _post_upload(upload_id: str):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            return await ac.post("/api/v1/catalog-runs", data={"direct_upload_id": upload_id, "quantity": "10"})
+
+    # A damaged upload is refused before anything runs, and nothing is reserved.
+    bad = await _post_upload(await _upload("0" * 64))
+    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "DIRECT_UPLOAD_CHECKSUM_MISMATCH"
+    assert (await _usage(uid))["reserved"] == 0
+
+    upload_id = await _upload(hashlib.sha256(data).hexdigest())
+    r = await _post_upload(upload_id)
+    assert r.status_code == 202, r.text
+    assert r.json()["parts"] == 2 and r.json()["catalog"]["new"] == 2
+    # The upload is used up: a second run from it is refused.
+    again = await _post_upload(upload_id)
+    assert again.status_code == 409
+    from sqlalchemy import text
+
+    async with eng.get_session_factory()() as s:
+        status, cleaned = (await s.execute(text(
+            "SELECT status, storage_cleaned_at IS NOT NULL FROM direct_uploads WHERE ulid = :u"), {"u": upload_id})).one()
+        await s.execute(text("DELETE FROM direct_uploads WHERE user_id = :u"), {"u": uid})
+        await s.commit()
+    assert (status, cleaned) == ("consumed", True)

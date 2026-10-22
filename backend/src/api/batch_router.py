@@ -52,7 +52,7 @@ from src.auth.org_context import caller_org_subquery
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
-from src.db.engine import get_db_session
+from src.db.engine import get_db_session, get_session_factory
 from src.db.models import Analysis, Batch, BatchItem, DirectUpload
 from src.services import batch_service, catalog_run_service, direct_upload_service
 from src.services.batch_service import (
@@ -697,7 +697,10 @@ async def create_catalog_run(
     request: Request,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
-    file: UploadFile = File(..., description="ZIP of CAD files (STL, STEP, IGES). The app zips many files or a folder."),
+    file: Optional[UploadFile] = File(None, description="ZIP of CAD files (STL, STEP, IGES). The app zips many files or a folder."),
+    direct_upload_id: Optional[str] = Form(
+        None, description="Instead of file: a completed batch_zip direct upload (POST /api/v1/uploads/multipart)."
+    ),
     manifest: Optional[UploadFile] = File(
         None, description="Optional parts list (CSV or a BOM export): file or part number, quantity, material."
     ),
@@ -723,7 +726,16 @@ async def create_catalog_run(
     ``catalog_run_work_email``. Free runs take a ZIP up to
     FREE_CATALOG_MAX_ZIP_BYTES, check at most FREE_CATALOG_CONCURRENCY parts at
     a time, carry no webhook, and one runs at a time per account.
+
+    The ZIP comes as ``file`` or, for a large one, as ``direct_upload_id``: the
+    browser uploaded it to storage in parts (resumably), and it is read from
+    there, checksum-verified, into the same path as a posted ZIP.
     """
+    if (file is None) == (direct_upload_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "BATCH_INPUT_REQUIRED", "message": "Provide either a ZIP file or direct_upload_id."},
+        )
     cls = (material_class or "").strip().lower() or None
     if cls is not None and cls not in catalog_run_service.MATERIAL_CLASSES:
         raise HTTPException(
@@ -752,6 +764,10 @@ async def create_catalog_run(
         quantity=quantity or catalog_run_service.DEFAULT_RUN_QUANTITY,
         max_zip_bytes=max_zip,
     )
+    if direct_upload_id is not None:
+        return await _catalog_run_from_upload(
+            request, user, session, direct_upload_id, max_zip, manifest=manifest, concurrency_limit=concurrency_limit,
+        )
     return await create_batch(
         request=request,
         user=user,
@@ -769,6 +785,85 @@ async def create_catalog_run(
         _org_limit=None,
         _paid_access=None,
     )
+
+
+async def _catalog_run_from_upload(
+    request: Request, user: AuthedUser, session: AsyncSession, upload_ulid: str, max_zip: int, *,
+    manifest: Optional[UploadFile], concurrency_limit: Optional[int],
+):
+    """A catalog run from a ZIP the browser uploaded to storage.
+
+    The upload is taken (``preparing``) under its row lock so two requests can't
+    both use it, read to a local temp file with its size and SHA-256 verified,
+    and passed to the same path as a posted ZIP. It is consumed (and its
+    stored copy deleted) once the run exists; a refusal (the allowance, a bad
+    ZIP) hands it back so the same upload can be used again.
+    """
+    import asyncio
+    import os
+    from types import SimpleNamespace
+
+    def _http(exc: direct_upload_service.DirectUploadError) -> HTTPException:
+        return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    try:
+        upload = await direct_upload_service.lock_completed_for_batch(session, user_id=user.user_id, upload_ulid=upload_ulid)
+    except direct_upload_service.DirectUploadError as exc:
+        raise _http(exc) from exc
+    if upload.purpose != direct_upload_service.PURPOSE_BATCH_ZIP:
+        raise HTTPException(status_code=409, detail={"code": "DIRECT_UPLOAD_WRONG_PURPOSE",
+                                                     "message": "This upload is a single part; check it with POST /api/v1/checks."})
+    if upload.expected_size_bytes > max_zip:
+        raise HTTPException(status_code=413, detail=f"ZIP of {upload.expected_size_bytes} bytes exceeds the maximum of {max_zip} bytes for this run")
+    upload.status = "preparing"
+    upload.preparation_started_at = datetime.now(timezone.utc)
+    snapshot = SimpleNamespace(
+        ulid=upload.ulid, org_id=upload.org_id, purpose=upload.purpose, filename=upload.filename,
+        object_key=upload.object_key, expected_size_bytes=upload.expected_size_bytes,
+        expected_checksum_sha256=upload.expected_checksum_sha256,
+    )
+    await session.commit()
+
+    async def _release(status: str, code: Optional[str] = None, message: Optional[str] = None) -> None:
+        async with get_session_factory()() as s2:
+            row = (await s2.execute(select(DirectUpload).where(DirectUpload.ulid == snapshot.ulid).with_for_update())).scalars().first()
+            if row is None:
+                return
+            if status == "completed":
+                row.status = "completed"
+                row.preparation_started_at = None
+                await s2.commit()
+                return
+            await direct_upload_service.finish_part_upload(s2, row, ok=status == "consumed", error_code=code, error_message=message)
+
+    path: Optional[str] = None
+    try:
+        try:
+            path = await asyncio.to_thread(direct_upload_service.download_to_bounded_tempfile, snapshot)
+        except direct_upload_service.DirectUploadError as exc:
+            await _release("failed", exc.code, exc.message)
+            raise _http(exc) from exc
+        with open(path, "rb") as fh:
+            zip_file = UploadFile(file=fh, filename=snapshot.filename, size=os.path.getsize(path))
+            try:
+                result = await create_batch(
+                    request=request, user=user, session=session, file=zip_file, direct_upload_id=None,
+                    webhook_url=None, webhook_secret=None, concurrency_limit=concurrency_limit, job_type="catalog",
+                    s3_bucket=None, s3_prefix=None, manifest_url=None, manifest=manifest,
+                    _org_limit=None, _paid_access=None,
+                )
+            except BaseException:
+                # Refused (the allowance, a bad ZIP, a limit): the upload can be used again.
+                await _release("completed")
+                raise
+        await _release("consumed")
+        return result
+    finally:
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 async def _catalog_batch(session: AsyncSession, batch_id: str, user_id: int) -> Batch:
