@@ -24,6 +24,31 @@ logger = logging.getLogger("cadverify.reconstruct_router")
 router = APIRouter(prefix="/api/v1", tags=["reconstruct"])
 
 
+_IMAGE_CHUNK = 1024 * 1024  # 1 MiB
+
+
+async def _read_image_capped(img: UploadFile) -> bytes:
+    """Read one uploaded image, refusing it as soon as it passes MAX_IMAGE_BYTES."""
+    from src.reconstruction import preprocessing
+
+    limit = preprocessing.MAX_IMAGE_BYTES
+    buf = bytearray()
+    while True:
+        chunk = await img.read(min(_IMAGE_CHUNK, limit + 1 - len(buf)))
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > limit:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Image exceeds maximum of {limit} bytes "
+                    f"({limit // (1024 * 1024)} MB)"
+                ),
+            )
+    return bytes(buf)
+
+
 @router.get("/reconstruct/capability")
 async def reconstruction_capability(
     user: AuthedUser = Depends(require_role(Role.viewer)),
@@ -124,10 +149,10 @@ async def reconstruct(
             },
         )
 
-    # Read all image bytes
+    # Read each image with the size cap applied while reading.
     image_data: list[tuple[bytes, str]] = []
     for img in images:
-        img_bytes = await img.read()
+        img_bytes = await _read_image_capped(img)
         content_type = img.content_type or "image/jpeg"
         image_data.append((img_bytes, content_type))
 
