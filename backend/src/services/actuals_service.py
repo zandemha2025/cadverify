@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.models import ProcessType
 
 MAX_ROWS = 5000
+MAX_PARTS_LISTED = 2000
 MAX_COLUMNS = 200
 _XLSX_MAX_UNZIPPED = 60 * 1024 * 1024
 _XLSX_MAX_RATIO = 200
@@ -978,6 +979,8 @@ async def preview(session: AsyncSession, org_id: str, filename: str, data: bytes
         "mapping": m.public(),
         "process_values": process_values(table, m, machines),
         "parts_checked": len(index.parts),
+        # The org's checked parts, so a row that matched none can be matched by hand.
+        "parts": [p.public() for p in sorted(index.parts.values(), key=lambda x: (x.file_name.lower(), x.key))][:MAX_PARTS_LISTED],
         "summary": summarize(results),
         "rows": [r.public(index) for r in results],
     }

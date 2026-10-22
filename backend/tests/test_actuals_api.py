@@ -134,6 +134,7 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             amb = next(x for x in p["rows"] if x["status"] == "ambiguous")
             assert {c["key"] for c in amb["candidates"]} == {hashes[0], "ff" + "b" * 62}
             assert all(c["key"] != "ee" + "c" * 62 for x in p["rows"] for c in x["candidates"])
+            assert len(p["parts"]) == N_PARTS + 1 and all(x["key"] != "ee" + "c" * 62 for x in p["parts"])
             pn_row = next(x for x in p["rows"] if x["values"]["part_number"] == "PN-0001")
             assert pn_row["part"]["key"] == hashes[1] and pn_row["basis"] == "part_number"
 
