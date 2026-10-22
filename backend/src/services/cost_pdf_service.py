@@ -137,8 +137,29 @@ def _units(text, unit="mm", with_mm=False):
 _jinja_env.filters["units"] = _units
 
 
+def stale_lines(governance: dict, rates: dict | None) -> list[str]:
+    """What makes a saved record out of date, in words, for the top of its PDF (ce-14):
+    the rate card it was priced at against the one in effect, and any other change
+    (machines, material prices, calibration) since it was checked."""
+    out = []
+    rates_stale = bool(rates and rates.get("out_of_date"))
+    if rates_stale:
+        out.append(f"{rates.get('text')} Re-cost before quoting.")
+    if governance.get("is_stale"):
+        code = str(governance.get("stale_reason") or "").partition(":")[0]
+        if not (rates_stale and code == "rate_library_published"):
+            words = {
+                "rate_library_published": "New rates were published",
+                "material_library_published": "New material prices were published",
+                "machine_inventory_changed": "Your machines changed",
+            }.get(code, "What it was priced from changed")
+            when = str(governance.get("stale_at") or "")[:16].replace("T", " ")
+            out.append(f"{words}{f' on {when} UTC' if when else ''}: check the part again before relying on it.")
+    return out
+
+
 def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None,
-                           length_unit: str = "mm") -> dict:
+                           length_unit: str = "mm", rates: dict | None = None) -> dict:
     """Assemble the Jinja render context from a persisted CostDecision.
 
     ``outbound`` makes the supplier's copy (RFQ package): ``decision.result_json``
@@ -153,6 +174,8 @@ def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None,
 
     unit = length_unit if length_unit in ("mm", "in") else "mm"
     with_mm = outbound is not None and unit == "in"
+    gov = {} if outbound is not None else governance_fields(decision)
+    rates = None if outbound is not None else rates
     geo = (decision.result_json or {}).get("geometry") or {}
     return {
         "length_unit": unit,
@@ -170,20 +193,24 @@ def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None,
         "result": decision.result_json or {},
         "engine_version": decision.engine_version or _app_version,
         "mesh_hash": "" if outbound is not None else (decision.mesh_hash or "")[:12],
-        "governance": {} if outbound is not None else governance_fields(decision),
+        "governance": gov,
         "outbound": outbound,
+        # Which rate card priced it, and what makes it out of date (ce-10, ce-14).
+        "rates": rates,
+        "stale_lines": [] if outbound is not None else stale_lines(gov, rates),
+        "checked_at": (decision.created_at.strftime("%Y-%m-%d %H:%M UTC") if decision.created_at else ""),
     }
 
 
 def render_cost_html(decision: CostDecision, outbound: dict | None = None,
-                     length_unit: str = "mm") -> str:
+                     length_unit: str = "mm", rates: dict | None = None) -> str:
     """Render the cost report template to HTML (no WeasyPrint dependency).
 
     Exposed so tests can assert on rendered content without the system PDF
     libraries, and reused by the sync PDF renderer below.
     """
     template = _jinja_env.get_template("cost_report.html")
-    return template.render(**build_cost_pdf_context(decision, outbound, length_unit))
+    return template.render(**build_cost_pdf_context(decision, outbound, length_unit, rates))
 
 
 def _render_cost_pdf_sync(decision: CostDecision, html_str: str | None = None) -> bytes:
@@ -214,7 +241,7 @@ async def generate_cost_pdf(decision: CostDecision, html_str: str | None = None)
 
 
 async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None,
-                          length_unit: str = "mm") -> bytes:
+                          length_unit: str = "mm", rates: dict | None = None) -> bytes:
     """Return this decision's cost-report PDF, rendering ONCE and caching bytes.
 
     Content-addressed: the cache key embeds a fingerprint of the rendered HTML,
@@ -223,7 +250,7 @@ async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None,
     hot path for BOTH the single-PDF download and every RFQ-package item, so a
     package download streams stored bytes with no per-request WeasyPrint render.
     """
-    html_str = render_cost_html(decision, outbound, length_unit)
+    html_str = render_cost_html(decision, outbound, length_unit, rates)
     key = _cache_key(decision.ulid, _fingerprint(html_str))
     store = _pdf_store()
     try:
@@ -286,14 +313,20 @@ async def get_or_generate_cost_pdf(
     # Lengths in the person's unit (mm or in), the same as their screens.
     from src.services.length_units import length_unit_for
 
-    pdf_bytes = await cached_cost_pdf(decision, length_unit=await length_unit_for(session, user_id))
+    # Which rate card priced it and which is in effect: an out-of-date record's PDF says so (ce-14).
+    from src.services.rate_card_basis import basis_for
+
+    rates = (await basis_for(session, decision.org_id, [decision])).get(decision.ulid)
+    pdf_bytes = await cached_cost_pdf(decision, length_unit=await length_unit_for(session, user_id), rates=rates)
     return pdf_bytes, decision.filename
 
 
-def safe_cost_filename(filename: str) -> str:
-    """Derive a safe '{stem}-cost-report.pdf' download filename."""
+def safe_cost_filename(filename: str, record_id: str | None = None, kind: str = "cost-report.pdf") -> str:
+    """A safe download filename, unique per record: '{stem}-{last 6 of the record id}-cost-report.pdf'
+    (ce-14: every pocket-block record exported as the same pocket-block-cost.csv)."""
     stem = Path(filename).stem
     safe_stem = re.sub(r"[^\w\-.]", "_", stem)
     if not safe_stem:
         safe_stem = "cost"
-    return f"{safe_stem}-cost-report.pdf"
+    rid = re.sub(r"[^0-9A-Za-z]", "", record_id or "")[-6:].upper()
+    return f"{safe_stem}{f'-{rid}' if rid else ''}-{kind}"

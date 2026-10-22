@@ -31,6 +31,7 @@
     .pick { background: #eaf5ea; }
     .src { font-size: 8px; color: #555; }
     .avoid-break { page-break-inside: avoid; }
+    .stale { background: #fdf3dc; border-left: 3px solid #8c5200; padding: 6px 8px; margin: 8px 0; color: #3d2600; }
     .governance { background: #f4f8f4; border-left: 3px solid #3d7a4a; padding: 6px 8px; margin: 8px 0; }
     .governance-note { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
@@ -44,7 +45,16 @@
     {% if label %}&mdash; {{ label }}{% endif %}
     &mdash; {{ created_at[:10] }}
     {% if material_class %}&middot; material class: {{ material_class }}{% endif %}
+    {% if outbound is none %}&middot; priced at {% if rates and rates.get('priced') %}your rates v{{ rates.get('priced') }}{% else %}typical rates (v0){% endif %}{% endif %}
   </p>
+
+  {% if stale_lines %}
+  <!-- An out-of-date record says so first, before any price (ce-14). -->
+  <div class="stale">
+    <strong>Out of date.</strong>
+    {% for l in stale_lines %}{{ l }} {% endfor %}
+  </div>
+  {% endif %}
 
   <!-- Honesty disclaimer (never certified) -->
   <div class="disclaimer">
@@ -365,7 +375,7 @@
 
   <!-- Footer -->
   <div class="footer">
-    ScaleCAD {{ engine_version }} |{% if mesh_hash %} mesh: {{ mesh_hash }} |{% endif %} generated {{ created_at }} |
+    ScaleCAD {{ engine_version }} |{% if mesh_hash %} mesh: {{ mesh_hash }} |{% endif %} checked {{ checked_at or created_at }}{% if outbound is none %} at {% if rates and rates.get('priced') %}rates v{{ rates.get('priced') }}{% else %}typical rates (v0){% endif %}{% endif %} |
     Assumption-based should-cost &mdash; not a validated quote.
   </div>
 

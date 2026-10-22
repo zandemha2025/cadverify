@@ -1058,7 +1058,8 @@ def test_pdf_endpoint_contract(client, real_result_json, monkeypatch):
     r = cl.get("/api/v1/cost-decisions/01PDF0000000000000000000A/pdf")
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/pdf"
-    assert "cube-cost-report.pdf" in r.headers["content-disposition"]
+    # ce-14: unique per record (the last 6 of its id), never one name for every record of a part
+    assert "cube-00000A-cost-report.pdf" in r.headers["content-disposition"]
     assert r.content.startswith(b"%PDF")
 
 

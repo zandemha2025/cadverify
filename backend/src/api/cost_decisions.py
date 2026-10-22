@@ -327,7 +327,7 @@ async def download_cost_pdf(
     pdf_bytes, original_filename = await cost_pdf_service.get_or_generate_cost_pdf(
         decision_id, user.user_id, session
     )
-    safe_name = cost_pdf_service.safe_cost_filename(original_filename)
+    safe_name = cost_pdf_service.safe_cost_filename(original_filename, decision_id)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -346,9 +346,13 @@ async def export_cost_json(
 ):
     """Export the glass-box decision JSON plus its governance state."""
     d = await svc.get_owned(session, decision_id, user.user_id)
+    from src.services.rate_card_basis import basis_for
+
     payload = {
         **(d.result_json or {}),
         "governance": svc.governance_fields(d),
+        # Which rate card priced it, which is in effect, out of date or not (ce-14).
+        "rates": (await basis_for(session, d.org_id, [d])).get(d.ulid),
     }
     return Response(
         content=json.dumps(payload, separators=(",", ":")),
@@ -356,7 +360,7 @@ async def export_cost_json(
         headers={
             "Content-Disposition": (
                 f'attachment; filename="'
-                f'{cost_pdf_service.safe_cost_filename(d.filename)[:-4]}.json"'
+                f'{cost_pdf_service.safe_cost_filename(d.filename, d.ulid, "cost.json")}"'
             )
         },
     )
@@ -370,17 +374,19 @@ async def export_cost_csv(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Export estimates, line items, confidence, and governance as CSV."""
+    """The CSV of cost inputs (ce-14): one row per cost line, with the hours, rates, kg and
+    $/kg behind it, the record id, when it was checked and exported, the rate card it was
+    priced at and whether it's out of date. Lines foot to the unit cost to the cent."""
     d = await svc.get_owned(session, decision_id, user.user_id)
-    csv_text = svc.build_estimates_csv(
-        d.result_json or {},
-        governance=svc.governance_fields(d),
-    )
-    stem = cost_pdf_service.safe_cost_filename(d.filename)[:-4]
+    from src.services.rate_card_basis import basis_for
+
+    rates = (await basis_for(session, d.org_id, [d])).get(d.ulid)
+    csv_text = svc.build_cost_inputs_csv(d, governance=svc.governance_fields(d), rates=rates)
+    name = cost_pdf_service.safe_cost_filename(d.filename, d.ulid, "cost.csv")
     return Response(
         content=csv_text,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
 
 

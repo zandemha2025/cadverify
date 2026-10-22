@@ -22,6 +22,7 @@ import type {
   RfqPackageSummary,
   ValidationResult,
 } from "@/lib/api";
+import { exportName } from "@/lib/api";
 import type { AnalysisListRow } from "@/lib/recent-parts";
 import type { ShareLinkFields } from "../datacontrol/api";
 import type { LinkPayload } from "../share/words";
@@ -315,7 +316,8 @@ export async function unshareRecord(id: string): Promise<void> {
 export async function exportRecord(id: string, filename: string, kind: "pdf" | "csv" | "json"): Promise<string> {
   const path = kind === "pdf" ? "pdf" : kind === "csv" ? "export.csv" : "export.json";
   const res = await send(`/cost-decisions/${encodeURIComponent(id)}/${path}`);
-  const name = `${stem(filename)}-${kind === "pdf" ? "cost-report.pdf" : kind === "csv" ? "cost.csv" : "cost.json"}`;
+  // Unique per record ("pocket-block-Z7JG57-cost.csv"), as the server names it (ce-14).
+  const name = exportName(res, filename, id, kind === "pdf" ? "cost-report.pdf" : kind === "csv" ? "cost.csv" : "cost.json");
   saveBlob(await res.blob(), name);
   return name;
 }

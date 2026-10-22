@@ -107,7 +107,7 @@ function SavedCard({ filename }: { filename: string }) {
       if (kind === "pdf") await downloadCostPdf(id, filename);
       if (kind === "json") await exportCostJson(id, filename);
       if (kind === "csv") await exportCostCsv(id, filename);
-      toast(`Downloaded ${stem}-${kind === "pdf" ? "cost-report.pdf" : `cost.${kind}`}`);
+      toast(`Downloaded ${stem}-${id.slice(-6).toUpperCase()}-${kind === "pdf" ? "cost-report.pdf" : `cost.${kind}`}`);
     } catch (e) {
       toast(e instanceof Error ? e.message : "The download didn’t finish.");
     } finally {

@@ -994,6 +994,132 @@ def build_estimates_csv(
     return buf.getvalue()
 
 
+# The inputs behind each line, one column per field (ce-14): a cost engineer rebuilds
+# the price in a spreadsheet from these without retyping anything from the PDF.
+_ESTIMATE_COLUMNS = (
+    "process", "material", "quantity", "unit_cost_usd", "fixed_cost_usd", "variable_cost_usd",
+    "est_error_band_pct", "confidence_low_usd", "confidence_high_usd", "confidence_label",
+    "confidence_validated", "dfm_ready",
+)
+_LINE_COLUMNS = (
+    "line", "line_usd", "hours", "hours_for", "rate_usd_per_h",
+    "kg", "usd_per_kg", "scrap", "learning_factor", "source", "rate_card", "formula",
+)
+COST_INPUT_COLUMNS = (
+    "record_id", "part", "checked_at", "exported_at",
+    "rates_priced_at", "rates_in_effect", "out_of_date", "out_of_date_reason",
+    *_ESTIMATE_COLUMNS, *_GOVERNANCE_COLUMNS, *_LINE_COLUMNS,
+)
+
+_SOURCE_WORDS = {"MEASURED": "your file", "CAD": "your file", "USER": "you", "SHOP": "your shop",
+                 "DEFAULT": "typical"}
+
+
+def _line_inputs(key: str, est: dict, labor_rate: Optional[float]) -> dict:
+    """The driver quantities behind one line: hours (a part or the order) and the
+    rate, kg and $/kg, the learning factor; read off the record's own drivers."""
+    import re
+
+    from src.services.accuracy_service import stated_hours
+
+    drivers = {d.get("name"): d for d in est.get("drivers") or [] if isinstance(d, dict)}
+    stated = stated_hours(est)
+    learn = (drivers.get("learning_curve") or {}).get("value")
+    out: dict = {}
+    if key == "material":
+        mm = est.get("material_mass") or {}
+        sc = re.search(r"\(1\+(\d+(?:\.\d+)?) scrap\)", str((drivers.get("material_cost") or {}).get("source") or ""))
+        out.update(kg=mm.get("used_kg"), usd_per_kg=mm.get("usd_per_kg"), scrap=float(sc.group(1)) if sc else None)
+    elif key == "machine":
+        m = re.search(r"\$(\d+(?:\.\d+)?)/hr", str((drivers.get("machine_cost") or {}).get("source") or ""))
+        out.update(hours=(drivers.get("cycle_time") or {}).get("value"), hours_for="a part",
+                   rate_usd_per_h=float(m.group(1)) if m else None)
+    elif key == "labor":
+        out.update(hours=stated.get("labor_part"), hours_for="a part", rate_usd_per_h=labor_rate,
+                   learning_factor=learn)
+    elif key == "amortized_fixed":
+        out.update(hours=stated.get("setup_order"), hours_for="the order", rate_usd_per_h=labor_rate)
+    elif key == "nre":
+        out.update(hours=stated.get("programming_order"), hours_for="the order", rate_usd_per_h=labor_rate)
+    elif key == "inspection":
+        out.update(hours=stated.get("inspection_part"), hours_for="a part", rate_usd_per_h=labor_rate,
+                   learning_factor=learn)
+    return out
+
+
+def build_cost_inputs_csv(
+    decision: Any,
+    *,
+    governance: Optional[dict] = None,
+    rates: Optional[dict] = None,
+    exported_at: Optional[datetime] = None,
+) -> str:
+    """"CSV of cost inputs" (ce-14): one row per cost line of every priced process and
+    quantity, with the line's dollars (to the cent, footed with a Rounding row like the
+    screen and the PDF), the inputs behind it (hours and for what, $/h, kg, $/kg,
+    learning factor), where its rate comes from, and the record: id, part, when it was
+    checked and exported, the rate card it was priced at and whether it's out of date.
+    Line names are the screen's (``footing.LINE_NAMES``)."""
+    from src.costing.footing import footed_items, line_driver, line_name
+
+    rj = getattr(decision, "result_json", None) or {}
+    governance = governance or {}
+    rates = rates or {}
+
+    def gov(key: str):
+        if key == "disposition_basis":
+            basis = governance.get(key)
+            return json.dumps(basis, sort_keys=True) if basis else ""
+        v = governance.get(key, "")
+        return "" if v is None else v
+
+    exported_at = exported_at or datetime.now(timezone.utc)
+    labor_rate = next((a.get("value") for a in rj.get("assumptions") or []
+                       if isinstance(a, dict) and a.get("name") == "labor_rate"), None)
+    stale_reason = []
+    if rates.get("out_of_date"):
+        stale_reason.append(rates.get("text") or "")
+    if governance.get("is_stale") and not (rates.get("out_of_date") and str(governance.get("stale_reason") or "").startswith("rate_library_published")):
+        stale_reason.append(str(governance.get("stale_reason") or "changed since it was checked").replace("_", " "))
+    record = [
+        getattr(decision, "ulid", ""),
+        getattr(decision, "filename", ""),
+        _iso(getattr(decision, "created_at", None)) or "",
+        exported_at.isoformat(),
+        rates.get("priced", ""),
+        rates.get("current", ""),
+        bool(rates.get("out_of_date") or governance.get("is_stale")),
+        "; ".join(x for x in stale_reason if x),
+    ]
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(COST_INPUT_COLUMNS)
+    for e in rj.get("estimates") or []:
+        if not isinstance(e, dict):
+            continue
+        drivers = {d.get("name"): d for d in e.get("drivers") or [] if isinstance(d, dict)}
+        ci = e.get("confidence") or {}
+        head = [e.get("process", ""), e.get("material", ""), e.get("quantity", ""), e.get("unit_cost_usd", ""),
+                e.get("fixed_cost_usd", ""), e.get("variable_cost_usd", ""), e.get("est_error_band_pct", ""),
+                ci.get("low_usd", ""), ci.get("high_usd", ""), ci.get("label", ""),
+                # Honesty: False for every assumption-based band.
+                ci.get("validated", False), e.get("dfm_ready", ""),
+                *(gov(k) for k in _GOVERNANCE_COLUMNS)]
+        for key, usd in footed_items(e.get("line_items") or {}, e.get("unit_cost_usd")).items():
+            d = drivers.get(line_driver(key)) or {}
+            inp = _line_inputs(key, e, labor_rate)
+            writer.writerow([spreadsheet_safe_cell(v) for v in [
+                *record, *head,
+                line_name(key), f"{usd:.2f}",
+                inp.get("hours", ""), inp.get("hours_for", ""), inp.get("rate_usd_per_h", ""),
+                inp.get("kg", ""), inp.get("usd_per_kg", ""), inp.get("scrap", ""), inp.get("learning_factor", ""),
+                _SOURCE_WORDS.get(str(d.get("provenance") or ""), "") if d else "",
+                f"v{d['rate_card']}" if d.get("rate_card") is not None else "",
+                d.get("source", ""),
+            ]])
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Share (mirror share_service, cost-decision flavored)
 # ---------------------------------------------------------------------------

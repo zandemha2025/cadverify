@@ -1759,22 +1759,34 @@ function costStem(filename: string): string {
   return filename.replace(/\.[^.]+$/, "");
 }
 
+/**
+ * The download name for a record's export: the server's (unique per record,
+ * "pocket-block-Z7JG57-cost.csv"), else the part's name with the record's last
+ * six characters (ce-14: every record of a part exported under one name).
+ */
+export function exportName(res: Response | null, filename: string, id: string, kind: string): string {
+  const cd = res?.headers?.get?.("content-disposition") ?? "";
+  const m = /filename="?([^";]+)"?/i.exec(cd);
+  if (m && m[1]) return m[1];
+  return `${costStem(filename)}-${id.slice(-6).toUpperCase()}-${kind}`;
+}
+
 /** Download the cost-report PDF for a saved decision. */
 export async function downloadCostPdf(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/pdf`);
-  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost-report.pdf`);
+  triggerBlobDownload(await res.blob(), exportName(res, filename, id, "cost-report.pdf"));
 }
 
 /** Export the raw glass-box decision JSON (result_json) for a saved decision. */
 export async function exportCostJson(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.json`);
-  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.json`);
+  triggerBlobDownload(await res.blob(), exportName(res, filename, id, "cost.json"));
 }
 
-/** Export the estimates / line-items table as CSV (honest confidence columns). */
+/** Export the CSV of cost inputs: one row per cost line with its hours, rates, kg and $/kg, the record and its rate card (ce-14). */
 export async function exportCostCsv(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.csv`);
-  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.csv`);
+  triggerBlobDownload(await res.blob(), exportName(res, filename, id, "cost.csv"));
 }
 
 /** Download a generated RFQ/supplier evidence ZIP. */
