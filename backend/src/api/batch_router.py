@@ -680,11 +680,13 @@ async def check_parts_list(
 ):
     """Read a parts list without starting anything: every problem at once.
 
-    200 ``{ok, rows, with_quantity, with_price, problems, not_priced}``:
+    200 ``{ok, rows, with_quantity, with_price, problems, not_priced, materials_not_priced}``:
     ``problems`` are the cells a run can't start with (``{row, column, value,
     why, accepted, message}``), all of them; ``not_priced`` (``{count, notes}``)
     are the specs it names that ScaleCAD keeps as written and doesn't price,
-    which never stop a run. Nothing is stored.
+    which never stop a run; ``materials_not_priced`` (``{count, groups}``) are the
+    rows in a material ScaleCAD doesn't price yet, once per material with its
+    parts: checked, never priced as another material. Nothing is stored.
     """
     try:
         data = await batch_service.read_manifest_upload_bounded(manifest)
@@ -697,14 +699,16 @@ async def check_parts_list(
         problems = getattr(exc, "problems", None) or [
             {"row": None, "column": None, "value": None, "why": str(exc), "accepted": None, "message": str(exc)}]
         return {"ok": False, "rows": None, "with_quantity": None, "with_price": None,
-                "problems": problems, "not_priced": {"count": 0, "notes": []}}
+                "problems": problems, "not_priced": {"count": 0, "notes": []},
+                "materials_not_priced": {"count": 0, "groups": []}}
     from src.services import parts_list_specs
 
     rows = parts_list_specs.attach(rows, text)
     return {"ok": True, "rows": len(rows),
             "with_quantity": sum(1 for r in rows if r.get("quantity")),
             "with_price": sum(1 for r in rows if r.get("current_price_usd")),
-            "problems": [], "not_priced": catalog_run_service.not_priced_specs(rows)}
+            "problems": [], "not_priced": catalog_run_service.not_priced_specs(rows),
+            "materials_not_priced": catalog_run_service.list_unpriced_materials(rows)}
 
 
 # ---------------------------------------------------------------------------

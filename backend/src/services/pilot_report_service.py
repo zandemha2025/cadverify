@@ -242,6 +242,28 @@ def _usd0(v: float) -> str:
     return f"{'−' if v < 0 else ''}${abs(v):,.0f}"
 
 
+def not_priced_text(groups: Optional[list], show: int = 3) -> Optional[str]:
+    """frontend many/catalog-model.ts ``notPricedText``: the materials ScaleCAD doesn't price yet,
+    once each with their parts (op-03)."""
+    if not groups:
+        return None
+    said = []
+    for g in groups:
+        shown = list(g.get("parts") or [])[:show]
+        more = g["count"] - len(shown)
+        if more > 0:
+            names = f"{', '.join(shown)} and {more} more"
+        elif len(shown) > 1:
+            names = f"{', '.join(shown[:-1])} and {shown[-1]}"
+        else:
+            names = shown[0] if shown else ""
+        said.append(f"{g['material']} ({g['count']:,} {'part' if g['count'] == 1 else 'parts'}"
+                    f"{': ' + names if names else ''})")
+    total = sum(g["count"] for g in groups)
+    tail = ("Its shape was checked; it isn’t" if total == 1 else "Their shapes were checked; they aren’t")
+    return f"Not priced yet: {'; '.join(said)}. {tail} priced as anything else."
+
+
 def answer_words(a: Optional[dict], has_list: bool) -> Optional[dict]:
     """The run's answer as the run page says it (frontend many/catalog-model.ts ``answerText``):
     ``{head, sub, missing}``, e.g. "Make 20 parts in-house: save $398,445 a year against what
@@ -273,10 +295,12 @@ def answer_words(a: Optional[dict], has_list: bool) -> Optional[dict]:
     if a.get("new_machine"):
         rest.append(f"{a['new_machine']} need a new machine")
     if a.get("undecided"):
+        unsorted = (a.get("not_sorted") or 0) - (a.get("not_priced") or 0)
         why = ", ".join(w for w in (
             f"{a['cant_make']} can’t be made as drawn" if a.get("cant_make") else None,
             f"{a['not_checked']} not checked" if a.get("not_checked") else None,
-            f"{a['not_sorted']} not sorted" if a.get("not_sorted") else None,
+            f"{a['not_priced']} not priced yet" if a.get("not_priced") else None,
+            f"{unsorted} not sorted" if unsorted else None,
             f"{a['checking']} still checking" if a.get("checking") else None) if w)
         rest.append(f"{a['undecided']} can’t be decided yet ({why})")
     if has_list:
@@ -289,6 +313,7 @@ def answer_words(a: Optional[dict], has_list: bool) -> Optional[dict]:
                    f"{'it isn’t' if without == 1 else 'they aren’t'} in the saving.")
     else:
         missing = None
+    missing = " ".join(w for w in (missing, not_priced_text(a.get("not_priced_materials"))) if w) or None
     return {"head": head, "sub": " · ".join(rest), "missing": missing}
 
 
@@ -317,7 +342,17 @@ def coverage(rows: list[dict]) -> dict:
                       for r in unchecked[:500]],
         "unsorted": [{"part": r.get("part_number") or r.get("filename"), "reason": r.get("reason")}
                      for r in unsorted[:200]],
+        # The same, said once per reason with its parts ("Brass C360 isn't priced in ScaleCAD yet ...": 3 parts).
+        "unsorted_groups": _by_reason(unsorted[:200]),
     }
+
+
+def _by_reason(rows: list[dict]) -> list[dict]:
+    groups: dict[str, list] = {}
+    for r in rows:
+        groups.setdefault(r.get("reason") or "Checked; no price or machine verdict", []).append(
+            r.get("part_number") or r.get("filename"))
+    return [{"reason": k, "parts": v} for k, v in sorted(groups.items(), key=lambda kv: -len(kv[1]))]
 
 
 def basis_lines(machines: list[dict], *, rates_version: int, answer: Optional[dict], parts: int) -> list[str]:

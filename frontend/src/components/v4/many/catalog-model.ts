@@ -139,6 +139,9 @@ export interface RunAnswer {
   saving_parts: number;
   make_without_price: number;
   make_cost_usd: number | null;
+  /** Of those not sorted, the parts in a material ScaleCAD doesn't price yet, once per material (op-03). */
+  not_priced?: number;
+  not_priced_materials?: { material: string; count: number; parts: string[] }[];
 }
 
 export interface BucketTotal {
@@ -454,12 +457,13 @@ export function answerText(board: Board | null): { head: string; sub: string; mi
   if (a.saving_usd != null && a.saving_parts) rest.push(`Buy ${a.buy}`);
   if (a.new_machine) rest.push(`${a.new_machine} need a new machine`);
   if (a.undecided) {
-    const why = [a.cant_make ? `${a.cant_make} can’t be made as drawn` : null, a.not_checked ? `${a.not_checked} not checked` : null, a.not_sorted ? `${a.not_sorted} not sorted` : null, a.checking ? `${a.checking} still checking` : null].filter(Boolean).join(", ");
+    const unsorted = a.not_sorted - (a.not_priced ?? 0);
+    const why = [a.cant_make ? `${a.cant_make} can’t be made as drawn` : null, a.not_checked ? `${a.not_checked} not checked` : null, a.not_priced ? `${a.not_priced} not priced yet` : null, unsorted ? `${unsorted} not sorted` : null, a.checking ? `${a.checking} still checking` : null].filter(Boolean).join(", ");
     rest.push(`${a.undecided} can’t be decided yet (${why})`);
   }
   if (board.has_list) rest.push("parts on your list, at their listed quantities");
   const sub = rest.join(" · ");
-  const missing =
+  const noSaving =
     a.saving_usd == null
       ? a.make
         ? "No saving yet: it needs what you pay today. Add a Current price column to the parts list, or type the price on a part’s Decision view."
@@ -467,7 +471,25 @@ export function answerText(board: Board | null): { head: string; sub: string; mi
       : a.make_without_price
         ? `${n(a.make_without_price, "in-house part")} ${a.make_without_price === 1 ? "has" : "have"} no current price, so ${a.make_without_price === 1 ? "it isn’t" : "they aren’t"} in the saving.`
         : null;
+  const missing = [noSaving, notPricedText(a.not_priced_materials)].filter(Boolean).join(" ") || null;
   return { head, sub, missing };
+}
+
+/** "Not priced yet: Brass C360 (3 parts: RFS-21047, RFS-21048 and RFS-21052). Their shapes were checked; they aren’t priced as anything else."
+ * ``before``: said of a parts list before its run (the run checks their shapes). */
+export function notPricedText(groups: RunAnswer["not_priced_materials"], show = 3, before = false): string | null {
+  if (!groups?.length) return null;
+  const said = groups.map((g) => {
+    const shown = g.parts.slice(0, show);
+    const more = g.count - shown.length;
+    const names = more > 0 ? `${shown.join(", ")} and ${more} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}` : (shown[0] ?? "");
+    return `${g.material} (${g.count.toLocaleString("en-US")} ${g.count === 1 ? "part" : "parts"}${names ? `: ${names}` : ""})`;
+  });
+  const total = groups.reduce((s, g) => s + g.count, 0);
+  const tail = before
+    ? `The run checks ${total === 1 ? "its shape" : "their shapes"} and never prices ${total === 1 ? "it" : "them"} as anything else.`
+    : `${total === 1 ? "Its shape was checked; it isn’t" : "Their shapes were checked; they aren’t"} priced as anything else.`;
+  return `Not priced yet: ${said.join("; ")}. ${tail}`;
 }
 
 /* ------------------------------------------------------------------ */

@@ -36,6 +36,8 @@ export interface OwnedMachine {
   capital_frac: number | null;
   capabilities: Record<string, unknown>;
   materials: string[] | null;
+  /** Declared materials kept as typed that ScaleCAD doesn't price yet (brass, bronze, copper: op-03). */
+  materials_not_priced?: string[];
   material_thickness_map: Record<string, unknown> | null;
   notes: string | null;
   /** Hours available a year (shifts × hours a shift × days); null: the default, said as assumed. */

@@ -35,6 +35,8 @@ import { outsideName, problemsFigure, rowNote } from "./pick-words";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
 import { AtMachine } from "./at-machine-section";
+import { useMachineViews } from "./lens-shop";
+import { shortWhy } from "./machine-rank";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -504,6 +506,8 @@ export function PickNote({ ch }: { ch: ReturnType<typeof useChoice> }) {
   const p = usePart();
   const [rule, setRule] = React.useState(false);
   const pair = ch.pair;
+  const views = useMachineViews();
+  const { unit } = useUnits();
   if (ch.earlier) return <EarlierNote ch={ch} />;
   if (!pair || ch.choice) return null;
   const inHouse = pair.pick === "in_house";
@@ -514,6 +518,17 @@ export function PickNote({ ch }: { ch: ReturnType<typeof useChoice> }) {
     <div className="note" style={{ margin: "6px 12px 6px" }}>
       <b>{title}</b>
       <span>{pickWhy(pair, p.q)}</span>
+      {/* me-10: the pick is a process you own a machine for, made outside: the one thing that kept your machine out. */}
+      {!inHouse
+        ? views
+            .filter((v) => v.process === pair.outside?.process && v.tone !== "ok")
+            .slice(0, 2)
+            .map((v) => (
+              <span key={v.id} style={{ color: "var(--ink2)" }}>
+                {inText(`Not on your ${v.name}: ${shortWhy(v)}.`, unit)}
+              </span>
+            ))
+        : null}
       <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button className="btn sm ghost" type="button" aria-expanded={rule} onClick={() => setRule((r) => !r)} style={{ height: 24 }}>
           {rule ? "Hide the rule" : "How ScaleCAD picks"}

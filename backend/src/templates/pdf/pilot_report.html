@@ -253,9 +253,9 @@
   {% if one_reason %}<p>All {{ c.not_checked }}: {{ c.reasons[0].reason | lower }}.</p>{% endif %}
   <div class="cols"{% if one_reason %} style="column-count: 5"{% endif %}>
     {% for u in c.unchecked %}<div>{{ u.part }}{% if not one_reason %} <span class="muted">{{ u.reason }}</span>{% endif %}</div>{% endfor %}
-    {% for u in c.unsorted %}<div>{{ u.part }} <span class="muted">{{ u.reason }}</span></div>{% endfor %}
   </div>
   {% if c.not_checked > c.unchecked | length %}<p class="muted">And {{ c.not_checked - (c.unchecked | length) }} more.</p>{% endif %}
+  {% for g in c.unsorted_groups %}<p><strong>{{ g.reason }}</strong> ({{ g.parts | length }}): {{ g.parts | join(', ') }}</p>{% endfor %}
   {% endif %}
 
   <div class="footer">ScaleCAD pilot report &middot; {{ r.generated_at[:16] | replace('T', ' ') }} UTC &middot; engine estimates and your own numbers, not quotes</div>

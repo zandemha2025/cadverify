@@ -968,6 +968,38 @@ def _row_specs(block: Any, declared: Any, notes: Any = None) -> Optional[dict]:
             "not_priced": kept}
 
 
+def is_unpriced_material(material: Optional[str], material_class: Optional[str], note: Optional[str]) -> bool:
+    """A material the list names that ScaleCAD doesn't price yet (brass, bronze, nickel ...):
+    ``read_material`` gave it no class and a "... yet" note. An unrecognised word isn't one."""
+    return bool(material) and not material_class and str(note or "").endswith("yet")
+
+
+def _row_unpriced(row: dict) -> bool:
+    m = row.get("material") or {}
+    return is_unpriced_material(m.get("declared"), m.get("class"), m.get("note"))
+
+
+def group_unpriced_materials(pairs: Iterable[tuple[str, Optional[str]]], limit: int = 50) -> list[dict]:
+    """``(material, part name)`` pairs said once per material: ``[{material, count, parts}]``,
+    most parts first, at most ``limit`` names each (op-03: "not priced yet" once, with its parts)."""
+    groups: dict[str, dict] = {}
+    for material, part in pairs:
+        g = groups.setdefault(material.strip().lower(), {"material": material.strip(), "count": 0, "parts": []})
+        g["count"] += 1
+        if part and len(g["parts"]) < limit:
+            g["parts"].append(part)
+    return sorted(groups.values(), key=lambda g: (-g["count"], g["material"].lower()))
+
+
+def list_unpriced_materials(parts_list: Optional[list[dict]]) -> dict:
+    """The parts list's rows in a material ScaleCAD doesn't price yet: ``{count, groups}``."""
+    rows = [r for r in parts_list or []
+            if is_unpriced_material(r.get("material"), r.get("material_class"), r.get("material_note"))]
+    return {"count": len(rows),
+            "groups": group_unpriced_materials((r["material"], r.get("part_number") or r.get("file")
+                                                or f"row {r.get('row')}") for r in rows)}
+
+
 def not_priced_specs(parts_list: Optional[list[dict]], limit: int = 500) -> dict:
     """The parts list's specs ScaleCAD keeps but doesn't price: a count and the first ``limit`` notes."""
     from src.services.parts_list_specs import not_priced
@@ -1643,6 +1675,7 @@ def make_or_buy_answer(rows: list[dict]) -> dict:
 
     in_house = [r for r in rows if r.get("bucket") == "in_house"]
     decided_buy = [r for r in in_house if is_decided_buy(r)]
+    unpriced = [r for r in rows if r.get("bucket") == "not_sorted" and _row_unpriced(r)]
     make = [r for r in in_house if not is_decided_buy(r)]
     saved = [r for r in make if isinstance(r.get("saving"), dict)]
     return {
@@ -1654,6 +1687,10 @@ def make_or_buy_answer(rows: list[dict]) -> dict:
         "cant_make": n("cant_make"),
         "not_checked": n("not_checked"),
         "not_sorted": n("not_sorted"),
+        # Of those not sorted, the parts in a material ScaleCAD doesn't price yet, said once per material.
+        "not_priced": len(unpriced),
+        "not_priced_materials": group_unpriced_materials(
+            (r["material"]["declared"], r.get("part_number") or r.get("filename")) for r in unpriced),
         "checking": n("checking"),
         "undecided": n("cant_make", "not_checked", "not_sorted", "checking"),
         "with_price": sum(1 for r in rows if r.get("current_price")),

@@ -179,7 +179,8 @@ export function parsePositive(raw: string, label: string): { value: number | nul
 /** How the server read each typed material (me-01), from the save's response. */
 export interface MaterialReading {
   typed: string;
-  as: string;
+  /** null: kept on the machine as typed, not priced yet (brass, bronze, copper: op-03). */
+  as: string | null;
   note: string | null;
 }
 
@@ -188,5 +189,6 @@ export function readingsLine(rs: readonly MaterialReading[] | null | undefined):
   const said = (rs ?? []).filter((r) => r.note);
   if (!said.length) return null;
   const notes = [...new Set(said.map((r) => r.note as string))].map((n) => (n.endsWith(".") ? n : `${n}.`));
-  return `Materials read as ${said.map((r) => `${r.typed} → ${r.as}`).join(", ")}. ${notes.join(" ")}`;
+  const read = said.filter((r) => r.as);
+  return [read.length ? `Materials read as ${read.map((r) => `${r.typed} → ${r.as}`).join(", ")}.` : null, ...notes].filter(Boolean).join(" ");
 }

@@ -32,6 +32,7 @@ import {
   groupNotPriced,
   listProblemsOf,
   notPricedLine,
+  notPricedText,
 } from "./catalog-model.ts";
 
 const row = (o: Partial<BoardRow>): BoardRow => ({
@@ -270,6 +271,20 @@ test("the run's answer leads with the saving against what you pay today, or says
   const some = answerText({ rows: [], has_list: true, answer: { ...answer, saving_parts: 5, make_without_price: 7 } } as never)!;
   assert.equal(some.head, "Make 12 parts in-house: save $41,200 a year against what you pay today (on the 5 with a current price)");
   assert.equal(some.missing, "7 in-house parts have no current price, so they aren’t in the saving.");
+});
+
+test("a material ScaleCAD doesn't price yet is said once, with its parts (op-03)", () => {
+  const groups = [
+    { material: "Brass C360", count: 4, parts: ["RFS-21047", "RFS-21048", "RFS-21052", "RFS-21055"] },
+    { material: "bronze", count: 1, parts: ["RFS-21050"] },
+  ];
+  const answer = { parts: 7, make: 0, buy: 0, new_machine: 0, cant_make: 0, not_checked: 0, not_sorted: 7, checking: 0, undecided: 7, with_price: 0, saving_usd: null, saving_parts: 0, make_without_price: 0, make_cost_usd: null, not_priced: 5, not_priced_materials: groups };
+  const t = answerText({ rows: [], has_list: true, answer } as never)!;
+  // The same words as the pilot report (pilot_report_service.answer_words).
+  assert.equal(t.sub, "7 can’t be decided yet (5 not priced yet, 2 not sorted) · parts on your list, at their listed quantities");
+  assert.equal(t.missing, "Not priced yet: Brass C360 (4 parts: RFS-21047, RFS-21048, RFS-21052 and 1 more); bronze (1 part: RFS-21050). Their shapes were checked; they aren’t priced as anything else.");
+  assert.equal(notPricedText([groups[1]], 3, true), "Not priced yet: bronze (1 part: RFS-21050). The run checks its shape and never prices it as anything else.");
+  assert.equal(notPricedText([]), null);
 });
 
 test("counts: files in, parts out, machines as Your shop counts them, the list's parts apart", () => {

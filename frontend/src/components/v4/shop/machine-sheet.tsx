@@ -211,7 +211,10 @@ export function MachineSheet({
           <span>{env?.label ?? "Work area"}</span>
           <b className="num">{env ? env.text : "Not declared"}</b>
           <span>Materials</span>
-          <b>{m.materials?.length ? m.materials.join(", ") : "Not declared"}</b>
+          <b>
+            {m.materials?.length ? m.materials.join(", ") : "Not declared"}
+            {m.materials_not_priced?.length ? <small> · {m.materials_not_priced.join(", ")}: not priced yet</small> : null}
+          </b>
           {m.process === "sheet_metal" ? (
             <>
               <span>Thickest sheet</span>

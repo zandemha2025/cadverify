@@ -64,4 +64,12 @@ test("a save says how it read the grades it had no price of their own for (me-01
   assert.equal(line, "Materials read as 303 → 304 Stainless, 316 → SS316L. ScaleCAD has no 303 price; read as 304 Stainless, the closest stainless it prices. 316 is read as 316L (SS316L), the 316 stainless ScaleCAD prices.");
   assert.equal(readingsLine([{ typed: "6061", as: "6061-T6 Aluminum", note: null }]), null);
   assert.equal(readingsLine(undefined), null);
+  // op-03: brass and bronze stay on the machine as typed, said not priced yet; ductile iron says what it's priced as.
+  assert.equal(
+    readingsLine([
+      { typed: "Brass C360", as: null, note: "ScaleCAD doesn't price brass yet: Brass C360 stays on the machine, and a brass part shows as not priced yet" },
+      { typed: "ductile iron", as: "Mild Steel", note: "ScaleCAD has no iron price on a 3-axis mill; ductile iron is read as Mild Steel, the steel it prices an iron part in there" },
+    ]),
+    "Materials read as ductile iron → Mild Steel. ScaleCAD doesn't price brass yet: Brass C360 stays on the machine, and a brass part shows as not priced yet. ScaleCAD has no iron price on a 3-axis mill; ductile iron is read as Mild Steel, the steel it prices an iron part in there.",
+  );
 });

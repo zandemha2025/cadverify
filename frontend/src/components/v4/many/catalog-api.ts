@@ -123,6 +123,8 @@ export interface ListCheck {
   with_price: number | null;
   problems: ListProblem[];
   not_priced: { count: number; notes: NotPricedSpec[] };
+  /** Rows in a material ScaleCAD doesn't price yet, once per material with its parts (op-03). */
+  materials_not_priced?: { count: number; groups: { material: string; count: number; parts: string[] }[] };
 }
 
 /** Read a picked parts list without uploading the ZIP: every problem in it, at once. */

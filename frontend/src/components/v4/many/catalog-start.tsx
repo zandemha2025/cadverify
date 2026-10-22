@@ -29,6 +29,7 @@ import {
   groupNotPriced,
   listProblemsOf,
   notPricedLine,
+  notPricedText,
   planFiles,
   refusalTitle,
   sizeText,
@@ -569,6 +570,7 @@ function ListReport({ state, name }: { state: ListState; name: string }) {
         {c.with_quantity ? ` · ${c.with_quantity} with a yearly quantity` : ""}
         {c.with_price ? ` · ${c.with_price} with what you pay today` : ""}
       </span>
+      {c.materials_not_priced?.count ? <span className="fh">{notPricedText(c.materials_not_priced.groups, 3, true)}</span> : null}
       {c.not_priced.count ? (
         <details className="cs-np">
           <summary>

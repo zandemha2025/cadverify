@@ -287,13 +287,85 @@ _GRADE_ALIASES: dict[str, tuple[str, Optional[str]]] = {
 }
 
 
+# Copper alloys a job shop cuts (op-03: "Brass C360, bronze" refused). ScaleCAD
+# prices no brass, bronze or copper part on a mill, lathe or printer yet (copper
+# only as C110 sheet), so each is kept on the machine as typed and the save says
+# it isn't priced yet; it is never read as another metal. Iron is priced on a
+# method's cheapest steel where the method has no iron of its own, which is how a
+# parts list's ductile-iron part is priced there (routing.select_material).
+_COPPER_WORDS = re.compile(r"\b(brass|bronze|copper|gunmetal|be-?cu)\b", re.I)
+# A copper alloy's UNS number, short or full (C360, C93200); C276 is Hastelloy.
+_COPPER_UNS = re.compile(r"(?<![a-z0-9])c(?!276(?![0-9]))([1-9][0-9]{2}|[1-9][0-9]{4})(?![0-9])", re.I)
+_COPPER_SHEET = re.compile(r"^(copper|c ?1(01|02|10)(00)?|copper c ?1(01|02|10)(00)?|c ?1(01|02|10)(00)? copper)$", re.I)
+_IRON_WORDS = re.compile(r"\b(ductile|cast|gr[ae]y|nodular|sg)\s*iron\b|\ba536\b|\b(65-45-12|80-55-06|60-40-18|100-70-03)\b", re.I)
+
+
+def _cheapest_steel(process: Optional[str]) -> Optional[str]:
+    from src.costing.rates import MATERIAL_FAMILY
+
+    try:
+        pt = ProcessType(process) if process else None
+    except ValueError:
+        pt = None
+    steels = [m for m in get_materials_for_process(pt) if MATERIAL_FAMILY.get(m.name) == "steel"
+              and m.cost_per_kg] if pt is not None else []
+    return min(steels, key=lambda m: m.cost_per_kg).name if steels else None
+
+
+def _metal_reading(name: str, process: Optional[str]) -> Optional[tuple[Optional[str], Optional[str]]]:
+    """``(stored as, note)`` for a copper alloy or an iron on a metal method, else None.
+
+    ``stored as`` None: kept as typed, not priced yet. A method that prices the
+    material itself (Copper C110 sheet on a sheet-metal line, Ductile Iron in a
+    sand mold) isn't listed here: it resolves to that material like any other."""
+    if process in _POLYMER_METHODS:
+        return None
+    text = name.strip()
+    own = set(_method_materials(process))
+    if any(_mkey(m) == _mkey(text) for m in own):
+        return None
+    if _COPPER_WORDS.search(text) or _COPPER_UNS.search(text):
+        if "Copper C110 (Sheet)" in own and _COPPER_SHEET.match(text):
+            return None
+        word = next((w for w in ("brass", "bronze") if w in text.lower()), "copper")
+        return None, (f"ScaleCAD doesn't price {word} yet: {text} stays on the machine, and a {word} part "
+                      f"shows as not priced yet")
+    irons = sorted(m for m in own if "iron" in m.lower())
+    if _IRON_WORDS.search(text) and irons:
+        same = re.search(r"ductile|nodular|\bsg\b|a536|\d+-\d+-\d+", text, re.I)  # names ductile iron itself
+        return irons[0], (None if same else f"{text} is read as {irons[0]}, the iron ScaleCAD prices")
+    if _IRON_WORDS.search(text):
+        steel = _cheapest_steel(process)
+        if steel is not None:
+            label = _METHOD_LABEL.get(process or "", "this method")
+            return steel, (f"ScaleCAD has no iron price on {label}; {text} is read as {steel}, the steel "
+                           f"it prices an iron part in there")
+    return None
+
+
+def materials_not_priced(materials: Any, process: Optional[str] = None) -> list[str]:
+    """The declared materials kept as typed that ScaleCAD doesn't price yet (``_metal_reading``)."""
+    out: list[str] = []
+    for m in materials or ():
+        if isinstance(m, str) and m.strip():
+            read = _metal_reading(m, process)
+            if read is not None and read[0] is None:
+                out.append(m.strip())
+    return out
+
+
 def material_readings(materials: Any, process: Optional[str] = None) -> list[dict]:
     """How each declared material was read, where it isn't stored as typed:
     ``{"typed", "as", "note"}`` (note None for a plain spelling such as 6061 →
-    6061-T6 Aluminum). Unknown entries are refused elsewhere, not listed here."""
+    6061-T6 Aluminum). ``as`` None: kept on the machine as typed, not priced yet
+    (brass, bronze, copper). Unknown entries are refused elsewhere, not listed here."""
     out: list[dict] = []
     for m in materials or ():
         if not isinstance(m, str) or not m.strip():
+            continue
+        metal = _metal_reading(m, process)
+        if metal is not None:
+            out.append({"typed": m.strip(), "as": metal[0], "note": metal[1]})
             continue
         canon, _problem = _resolve_material(m, process)
         if canon is None or canon == m.strip():
@@ -433,6 +505,11 @@ def _resolve_material(name: str, process: Optional[str] = None) -> tuple[Optiona
     grade = _GRADE_ALIASES.get(key)
     if grade is not None:
         return grade[0], None
+    if _COPPER_SHEET.match(stripped) and "Copper C110 (Sheet)" in _method_materials(process):
+        return "Copper C110 (Sheet)", None  # a sheet-metal line prices C110 sheet itself
+    metal = _metal_reading(stripped, process)
+    if metal is not None:
+        return metal[0] or stripped, None
     prof = get_material_by_name(stripped)
     if prof is not None:
         return prof.name, None
@@ -1440,6 +1517,8 @@ def machine_to_public(r: MachineInstance) -> dict:
         "capital_frac": r.capital_frac,
         "capabilities": r.capabilities or {},
         "materials": r.materials,
+        # Declared materials ScaleCAD keeps on the machine but doesn't price yet (brass, bronze, copper).
+        "materials_not_priced": materials_not_priced(r.materials, r.process),
         "material_thickness_map": r.material_thickness_map,
         "notes": r.notes,
         # The hours it is available a year: its own schedule, else the default (said as assumed).
