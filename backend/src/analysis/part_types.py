@@ -722,13 +722,16 @@ def _non_manifold_edges(mesh: trimesh.Trimesh) -> int:
 
 def describe(mesh: trimesh.Trimesh, *, names: Optional[dict[int, str]] = None,
              product_tree: Optional[dict] = None, time_budget_sec: float = 20.0,
-             bodies: Optional[list[Body]] = None, single_detail: bool = True) -> dict:
+             bodies: Optional[list[Body]] = None, single_detail: bool = True,
+             cad_provisional: bool = False) -> dict:
     """What the file holds, in the engine's words and in plain words.
 
     ``names`` maps body id -> product name read from a STEP product tree, when the
     caller has one; ``product_tree`` is its summary (parts, designs). Geometry
     decides everything else. ``single_detail=False`` answers a one-shell file at
-    once (no stock reading), for the per-upload check.
+    once (no stock reading), for the per-upload check. ``cad_provisional=True``
+    (also the per-upload check) answers a STEP/IGES mesh whose touching solids
+    merged into open pieces with a provisional reading, left to the product tree.
     """
     started = time.monotonic()
     deadline = started + max(1.0, float(time_budget_sec))
@@ -768,6 +771,20 @@ def describe(mesh: trimesh.Trimesh, *, names: Optional[dict[int, str]] = None,
     # Closed bodies that share an edge where they touch: as one mesh it isn't a
     # closed solid, but every body on its own is.
     out["bodies_share_edges"] = bool(all_closed and _non_manifold_edges(mesh) > 0)
+    if (cad_provisional and not all_closed and product_tree is None
+            and str((getattr(mesh, "metadata", None) or {}).get("source_format")) == "cad"):
+        # A STEP/IGES file tessellated as one mesh: where its solids touch, the
+        # mesh merges them and some read as open pieces. Their count and shapes
+        # aren't the file's; its product tree has each solid whole.
+        out.update(
+            kind="bodies", provisional=True, body_count=len(bodies),
+            summary=("This file holds several solids. Where they touch, the one-mesh reading merges "
+                     "them, so ScaleCAD reads each part from the file's own product tree, body by body."),
+            bodies=[_body_record(b, {b.design: 1}, {b.design: b.index}) for b in bodies],
+            designs=None, contacts=[], contacts_complete=False,
+            elapsed_sec=round(time.monotonic() - started, 2),
+        )
+        return out
 
     for b in bodies:
         if names and b.index in names:
@@ -887,7 +904,7 @@ def describe(mesh: trimesh.Trimesh, *, names: Optional[dict[int, str]] = None,
         else:
             lead = "likely an assembly of separate parts"
         apart = n - touching
-        tail = f"; {apart} of them touch nothing" if apart and touching else ""
+        tail = f"; {apart} of them touch nothing" if apart and touching and contacts_complete else ""
         out.update(
             kind="assembly",
             summary=f"This file holds {n} bodies that touch: {lead} ({what}){tail}.",

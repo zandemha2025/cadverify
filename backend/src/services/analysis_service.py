@@ -919,7 +919,8 @@ def _part_type(mesh) -> dict | None:
     except ValueError:
         budget = 8.0
     try:
-        out = _sanitize_nonfinite(describe(mesh, single_detail=False, time_budget_sec=max(1.0, budget)))
+        out = _sanitize_nonfinite(describe(mesh, single_detail=False, cad_provisional=True,
+                                           time_budget_sec=max(1.0, budget)))
         return out if isinstance(out, dict) else None
     except Exception:
         logger.warning("part type reading failed; the check goes on without it", exc_info=True)

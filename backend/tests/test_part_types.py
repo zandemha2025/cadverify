@@ -158,6 +158,24 @@ def test_stock_shapes_read_from_cross_sections():
     assert stock_of(cases.bent_l(), cases.bent_l().volume) is None, "a bent sheet isn't flat stock"
 
 
+def test_a_step_mesh_whose_touching_solids_merged_is_left_to_the_product_tree():
+    """One mesh from a STEP assembly: touching solids merge into open pieces."""
+    from src.analysis.part_types import describe
+
+    whole = cases.box([0, 0, 0], [30, 30, 30])
+    opened = cases.box([50, 0, 0], [80, 30, 30])
+    opened = trimesh.Trimesh(opened.vertices, opened.faces[:-2], process=False)
+    mesh = trimesh.util.concatenate([whole, opened])
+    mesh.metadata["source_format"] = "cad"
+    out = describe(mesh, single_detail=False, cad_provisional=True)
+    assert out["kind"] == "bodies" and out["provisional"] is True
+    assert "product tree" in out["summary"] and out["contacts"] == []
+    # the body check itself (no provisional shortcut) still reads the mesh's bodies
+    out = describe(mesh)
+    assert out["kind"] != "bodies" or not out.get("provisional")
+    assert out["all_closed"] is False
+
+
 # ── body by body ────────────────────────────────────────────────────────────
 
 

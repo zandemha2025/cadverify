@@ -329,7 +329,7 @@ def check_bodies_sync(
                 + ("" if complete else " (for the members read as stock)")
                 + (f"; {cut_n} plate{'s' if cut_n != 1 else ''} priced as laser-cut blanks on the sheet-metal route"
                    if cut_n else "")
-                + "; " + ", ".join(not_priced) + " aren't priced."
+                + "; " + (", ".join(not_priced[:-1]) + " and " + not_priced[-1]) + " aren't priced."
             ),
         }
         out["total"] = None
