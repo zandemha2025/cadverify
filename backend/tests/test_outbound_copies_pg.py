@@ -13,6 +13,7 @@ record view still shows all of it.
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 import os
@@ -172,5 +173,90 @@ async def test_outbound_copies_keep_the_org_inventory_out(shop_result, monkeypat
                                      {"p": pid})).scalar_one()
         assert_nothing_private(json.dumps(saved), "rfq_packages.items_json")
         assert SPARE not in json.dumps(saved)
+    finally:
+        await _cleanup(w)
+
+
+async def test_public_package_and_part_links_keep_the_shop_out(shop_result, monkeypatch, tmp_path):  # noqa: F811
+    """The links a supplier opens without signing in, at their most: a part's
+    link with our cost and its CAD, and a package with our cost and CAD. The
+    page, the CAD routes and every file of the link's ZIP carry no machine
+    name, rate, in-house choice, note, approver or review state."""
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.api.rfq_packages import public_package_router
+    from src.auth.require_api_key import AuthedUser, require_api_key
+    from src.services import rfq_package_service as rfq
+    from src.services.cost_pdf_service import render_cost_html
+    from src.services.source_artifact_service import save_source_artifact
+
+    monkeypatch.setenv("RATE_LIMIT_DISABLED", "1")
+    monkeypatch.setenv("PDF_CACHE_DIR", str(tmp_path / "pdf"))
+    monkeypatch.setenv("SOURCE_ARTIFACT_BLOB_DIR", str(tmp_path / "kept"))
+    monkeypatch.delenv("OBJECT_STORE_LOCAL_ROOT", raising=False)
+    monkeypatch.delenv("OBJECT_STORE_BACKEND", raising=False)
+    monkeypatch.setattr(rfq, "precompute_cost_pdf", AsyncMock(return_value=None))
+
+    async def _html_pdf(decision, gov=None, length_unit="mm"):
+        return render_cost_html(decision, gov, length_unit).encode()
+
+    monkeypatch.setattr(rfq, "cached_cost_pdf", _html_pdf)
+    monkeypatch.setattr(rfq, "_supplier_brief_pdf", AsyncMock(return_value=b"%PDF brief"))
+
+    w = await _seed(shop_result)
+    cad_bytes = b"solid bracket\nendsolid bracket\n"
+    h = hashlib.sha256(cad_bytes).hexdigest()  # the kept file is addressed by its own hash
+    async with eng.get_session_factory()() as s:
+        await s.execute(text("UPDATE cost_decisions SET mesh_hash = :h WHERE ulid = :d"), {"h": h, "d": w["decision"]})
+        await s.commit()
+    await save_source_artifact(w["org"], h, "bracket.stl", cad_bytes)
+    app = _app()
+    app.include_router(public_package_router, prefix="/s")
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+        user_id=w["user"], api_key_id=0, key_prefix="session", role="analyst")
+
+    def clean(blob: bytes, where: str) -> None:
+        assert_nothing_private(blob, where)
+        low = blob.decode("utf-8", "replace").lower()
+        assert SPARE.lower() not in low, where
+        # The record is approved; no copy says so (the report's template only says approvers stay inside).
+        for word in ("approved", "approval_status", "approval_note", "approved_by"):
+            assert word not in low, (where, word)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            part = (await client.post(f"/api/v1/cost-decisions/{w['decision']}/share", json={
+                "include_cost": True, "include_cad": True, "note": "Quote 50 and 500."})).json()
+            page = await client.get(part["share_url"])
+            assert page.status_code == 200, page.text
+            clean(page.content, "GET /s/cost (cost and CAD on)")
+            assert page.json()["includes_cost_estimate"] is True and page.json()["note"] == "Quote 50 and 500."
+            cad = await client.get(page.json()["cad"]["url"])
+            assert cad.status_code == 200 and cad.content == cad_bytes
+
+            made = await client.post("/api/v1/rfq-packages", json={
+                "decision_ids": [w["decision"]], "title": "Bracket RFQ", "supplier_name": "Supplier A",
+                "include_raw_cad": True, "include_cost_estimate": True})
+            assert made.status_code == 201, made.text
+            pid = made.json()["package"]["id"]
+            link = (await client.post(f"/api/v1/rfq-packages/{pid}/share", json={})).json()
+            view = await client.get(link["share_url"])
+            assert view.status_code == 200, view.text
+            clean(view.content, "GET /s/pkg")
+            assert view.json()["includes_cost_estimate"] is True
+            assert "folder" not in view.json()["parts"][0]
+            assert (await client.get(view.json()["parts"][0]["cad"]["url"])).content == cad_bytes
+            zipped = await client.get(view.json()["zip_url"])
+            assert zipped.status_code == 200
+            with zipfile.ZipFile(io.BytesIO(zipped.content)) as zf:
+                names = zf.namelist()
+                assert any(n.endswith("/should-cost-report.pdf") for n in names), names
+                for name in names:
+                    if name.endswith(".stl"):
+                        assert zf.read(name) == cad_bytes
+                        continue
+                    clean(zf.read(name), f"/s/pkg zip: {name}")
     finally:
         await _cleanup(w)

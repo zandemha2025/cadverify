@@ -173,3 +173,101 @@ async def test_a_package_is_shared_as_one_link_until_it_is_switched_off(kept):
             assert (await client.get(plate["url"])).status_code == 410
     finally:
         await _cleanup(w)
+
+
+async def _expire(table: str, ulid: str) -> None:
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    async with eng.get_session_factory()() as s:
+        await s.execute(text(f"UPDATE {table} SET share_expires_at = now() - interval '1 minute' WHERE ulid = :u"),
+                        {"u": ulid})
+        await s.commit()
+
+
+def _ended(r, code: str) -> None:
+    """410, saying only which way the link ended and when (no record data)."""
+    assert r.status_code == 410, r.text
+    assert set(r.json()["detail"]) == {"code", "message", "ended_at"} and r.json()["detail"]["code"] == code
+
+
+async def test_a_links_downloads_end_with_it_and_hand_out_only_what_the_buyer_included(kept):
+    """The CAD and ZIP routes of a link are public too, so each checks the link
+    itself: an unknown id is 404, an ended or switched-off link 410 with no
+    record data, and a CAD line is only one the link or package holds."""
+    import re
+
+    w = await _seed()
+    try:
+        async with await _client(w) as client:
+            unknown = "Zz9Zz9Zz9Zz9"
+            for path in (f"/s/cost/{unknown}", f"/s/cost/{unknown}/cad", f"/s/pkg/{unknown}",
+                         f"/s/pkg/{unknown}/download.zip", f"/s/pkg/{unknown}/cad/1"):
+                r = await client.get(path)
+                assert r.status_code == 404, (path, r.text)
+                assert "single" not in r.text and "plate" not in r.text
+
+            # A record's link with its CAD: the short id is the share generator's
+            # (12 random base62 characters), and the CAD ends with the link.
+            link = (await client.post(f"/api/v1/cost-decisions/{w['single']}/share", json={"include_cad": True})).json()
+            short = link["share_url"].rsplit("/", 1)[1]
+            assert re.fullmatch(r"[A-Za-z0-9]{12}", short)
+            cad = await client.get(f"{link['share_url']}/cad")
+            assert cad.status_code == 200 and cad.content == SINGLE
+            assert cad.headers["cache-control"] == "private, no-store" and cad.headers["x-robots-tag"] == "noindex"
+            await _expire("cost_decisions", w["single"])
+            _ended(await client.get(link["share_url"]), "share_expired")
+            _ended(await client.get(f"{link['share_url']}/cad"), "share_expired")
+            # Re-shared without the CAD: the old id is unknown, the new one has no CAD.
+            plain = (await client.post(f"/api/v1/cost-decisions/{w['single']}/share", json={})).json()
+            assert plain["share_url"] != link["share_url"]
+            assert (await client.get(f"{link['share_url']}/cad")).status_code == 404
+            assert (await client.get(f"{plain['share_url']}/cad")).status_code == 404
+            # Switched off: the CAD stops with the page.
+            with_cad = (await client.post(f"/api/v1/cost-decisions/{w['single']}/share", json={"include_cad": True})).json()
+            assert (await client.get(f"{with_cad['share_url']}/cad")).status_code == 200
+            assert (await client.delete(f"/api/v1/cost-decisions/{w['single']}/share")).status_code == 200
+            _ended(await client.get(f"{with_cad['share_url']}/cad"), "share_switched_off")
+
+            # A package built without CAD: its link hands out no CAD at any line,
+            # and its ZIP holds no part file and none of our cost.
+            bare = (await client.post("/api/v1/rfq-packages", json={
+                "decision_ids": [w["single"], w["rechecked"]], "title": "RFQ-NO-CAD"})).json()["package"]
+            bare_link = (await client.post(f"/api/v1/rfq-packages/{bare['id']}/share", json={})).json()
+            assert re.fullmatch(r"/s/pkg/[A-Za-z0-9]{12}", bare_link["share_url"])
+            assert bare_link["share_url"] != link["share_url"].replace("/cost/", "/pkg/")
+            view = (await client.get(bare_link["share_url"])).json()
+            assert [p["cad"] for p in view["parts"]] == [None, None]
+            for line in ("1", "2", "0", "3", "-1", "999"):
+                r = await client.get(f"{bare_link['share_url']}/cad/{line}")
+                assert r.status_code == 404, (line, r.text)
+                assert r.content not in (SINGLE, PLATE)
+            zipped = await client.get(f"{bare_link['share_url']}/download.zip")
+            assert zipped.status_code == 200 and zipped.headers["cache-control"] == "private, no-store"
+            with zipfile.ZipFile(io.BytesIO(zipped.content)) as zf:
+                names = zf.namelist()
+                assert not [n for n in names if n.endswith((".stl", ".step"))], names
+                for name in names:
+                    body = zf.read(name)
+                    assert SINGLE not in body and PLATE not in body, name
+                    for word in OUR_COST:
+                        assert word not in body, (name, word)
+
+            # A package with CAD: only its own lines, and all three routes end with the link.
+            pkg = (await client.post("/api/v1/rfq-packages", json={
+                "decision_ids": [w["single"], w["rechecked"]], "title": "RFQ-CAD", "include_raw_cad": True})).json()["package"]
+            pkg_link = (await client.post(f"/api/v1/rfq-packages/{pkg['id']}/share", json={})).json()
+            base = pkg_link["share_url"]
+            assert (await client.get(f"{base}/cad/1")).content == SINGLE
+            assert (await client.get(f"{base}/cad/2")).content == PLATE
+            assert (await client.get(f"{base}/cad/3")).status_code == 404
+            # The other package's link can't reach this package's CAD.
+            assert (await client.get(f"{bare_link['share_url']}/cad/2")).status_code == 404
+            await _expire("rfq_packages", pkg["id"])
+            for path in (base, f"{base}/download.zip", f"{base}/cad/1", f"{base}/cad/2"):
+                r = await client.get(path)
+                _ended(r, "share_expired")
+                assert SINGLE not in r.content and PLATE not in r.content and b"RFQ-CAD" not in r.content
+    finally:
+        await _cleanup(w)
