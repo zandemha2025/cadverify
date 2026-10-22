@@ -409,11 +409,15 @@ async def lifespan(app: FastAPI):
             logger.exception("failed to flush tracing")
 
 
+from src.config.api_docs import fastapi_docs_kwargs, log_docs_state, mount_scalar
+
 app = FastAPI(
     title="ScaleCAD API",
     description="Manufacturing validation for STEP and STL files",
     version="0.2.0",
     lifespan=lifespan,
+    # /docs, /redoc and /openapi.json: off in a release unless API_DOCS_ENABLED=1.
+    **fastapi_docs_kwargs(),
 )
 
 # OpenTelemetry tracing — OPT-IN and OFF by default. setup_tracing() returns
@@ -667,18 +671,6 @@ def _mount_labeling_tool(target: FastAPI) -> bool:
 _mount_labeling_tool(app)
 
 
-# Scalar API docs — serves interactive documentation alongside /docs and /redoc
-try:
-    from scalar_fastapi import get_scalar_api_reference
-    from fastapi.responses import HTMLResponse
-
-    @app.get("/scalar", include_in_schema=False)
-    async def scalar_docs():
-        return HTMLResponse(
-            get_scalar_api_reference(
-                openapi_url=app.openapi_url,
-                title=app.title,
-            )
-        )
-except ImportError:
-    pass  # scalar-fastapi not installed; /scalar endpoint not available
+# Scalar API docs alongside /docs and /redoc, under the same release rule.
+mount_scalar(app)
+log_docs_state()

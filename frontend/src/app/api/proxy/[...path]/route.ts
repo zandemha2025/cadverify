@@ -19,6 +19,7 @@ import { type NextRequest } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { getSessionToken } from "@/lib/session";
 import { prepareProxyRequestBody } from "@/lib/proxy-request-body";
+import { e2eFaultHeaders } from "@/lib/e2e-fault-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -112,13 +113,10 @@ async function handle(
     const idempotencyKey = req.headers.get("idempotency-key");
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
   }
-  // Secret-gated, record-scoped release-evidence faults. The backend ignores
-  // both headers unless its non-public E2E token is explicitly configured and
-  // matches; forwarding them here keeps browser QA on the real same-origin path.
-  for (const name of ["x-proofshape-e2e-token", "x-proofshape-e2e-fault"]) {
-    const value = req.headers.get(name);
-    if (value) headers[name] = value;
-  }
+  // Secret-gated, record-scoped release-evidence faults for local runs. The
+  // backend ignores both headers unless its non-public E2E token matches; in a
+  // release neither side honours them, so they are never forwarded there.
+  Object.assign(headers, e2eFaultHeaders(req.headers));
 
   const prepared = await prepareProxyRequestBody(method, contentType, req.body);
   if (prepared.tooLarge) {
