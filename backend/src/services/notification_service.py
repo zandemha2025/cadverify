@@ -10,11 +10,11 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.db.models import Notification, NotificationRead
+from src.db.models import Membership, Notification, NotificationRead
 
 VALID_DESTS = {"records", "calibration", "verify"}
 VALID_SEVERITIES = {"pass", "cond", "info"}
@@ -31,6 +31,25 @@ def _clean_dest(dest: str) -> str:
 
 def _clean_severity(severity: str) -> str:
     return severity if severity in VALID_SEVERITIES else "info"
+
+
+def _visible_to(user_id: int):
+    """Rows ``user_id`` may see: no ``audience_role``, or one at or below their role
+    in the notification's org (viewer < member < admin). An audience nobody
+    recognises is shown to nobody; a non-member sees only audience-less rows
+    (and the org filter already limits them to their active org)."""
+    caller_role = (
+        select(Membership.org_role)
+        .where(Membership.user_id == user_id, Membership.org_id == Notification.org_id)
+        .correlate(Notification)
+        .limit(1)
+        .scalar_subquery()
+    )
+    caller_rank = case((caller_role == "admin", 3), (caller_role == "member", 2),
+                       (caller_role == "viewer", 1), else_=0)
+    needed = case((Notification.audience_role == "admin", 3), (Notification.audience_role == "member", 2),
+                  (Notification.audience_role == "viewer", 1), else_=99)
+    return or_(Notification.audience_role.is_(None), caller_rank >= needed)
 
 
 def _source(source_type: Optional[str], source_id: Optional[str]) -> tuple[str, str]:
@@ -54,7 +73,11 @@ async def emit_notification(
     audience_role: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
 ) -> Notification:
-    """Create or reopen/update an idempotent notification row."""
+    """Create or reopen/update an idempotent notification row.
+
+    ``audience_role`` (``viewer`` | ``member`` | ``admin``) is the lowest org
+    role that sees the notification (``_visible_to``); None: everyone in the org.
+    """
     st, sid = _source(source_type, source_id)
     existing = (
         await session.execute(
@@ -155,7 +178,7 @@ async def list_notifications(
                 NotificationRead.user_id == user_id,
             ),
         )
-        .where(Notification.org_id == org_id)
+        .where(Notification.org_id == org_id, _visible_to(user_id))
     )
     if status != "all":
         if status not in VALID_STATUSES:
@@ -186,6 +209,7 @@ async def mark_read(
             select(Notification).where(
                 Notification.org_id == org_id,
                 Notification.ulid == notification_id,
+                _visible_to(user_id),
             )
         )
     ).scalars().first()
@@ -223,6 +247,7 @@ async def dismiss_notification(
             select(Notification).where(
                 Notification.org_id == org_id,
                 Notification.ulid == notification_id,
+                _visible_to(user_id),
             )
         )
     ).scalars().first()
@@ -266,6 +291,7 @@ async def restore_notification(
             select(Notification).where(
                 Notification.org_id == org_id,
                 Notification.ulid == notification_id,
+                _visible_to(user_id),
             )
         )
     ).scalars().first()
@@ -307,6 +333,7 @@ async def mark_all_read(
                 Notification.org_id == org_id,
                 Notification.status == "open",
                 NotificationRead.id.is_(None),
+                _visible_to(user_id),
             )
         )
     ).scalars().all()
