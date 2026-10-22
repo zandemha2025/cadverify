@@ -338,7 +338,8 @@ async def test_timeout_returns_original_analysis(monkeypatch):
 
     from src.services import repair_service
 
-    mesh = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    # An open box, so there is something to repair (a closed one is "nothing to repair").
+    mesh = _make_non_watertight_box()
     stl_bytes = mesh.export(file_type="stl")
 
     mock_user = MagicMock()

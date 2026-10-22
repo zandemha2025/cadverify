@@ -28,11 +28,11 @@ test("headlines say what happened, with the volume when it moved", () => {
 });
 
 test("what was open, in numbers the user can find in the file", () => {
-  assert.equal(openingsLine(boredBlock), "A missing face, an opening 20 mm across, and 1 smaller (6 mm) · 945 open edges");
+  assert.equal(openingsLine(boredBlock), "A missing face, an opening 20 mm across, and 1 more (6 mm) · 945 open edges");
   assert.equal(openingsLine(unsewn), "Faces that touch but aren’t joined · 2,576 open edges, 2,520 of them on top of another");
   assert.equal(openingsLine(plane), "A surface with no thickness, 20 mm across · 560 open edges");
   assert.equal(openingsLine(gaps), "2 small gaps, the largest 3.5 mm across · 6 open edges");
-  assert.equal(openingsLine({ ...boredBlock, loops: 6, sizes_mm: [20, 6, 5.9, 5.8, 5.7] }), "A missing face, an opening 20 mm across, and 5 smaller (6 mm, 5.9 mm, 5.8 mm, …) · 945 open edges");
+  assert.equal(openingsLine({ ...boredBlock, loops: 6, sizes_mm: [20, 6, 5.9, 5.8, 5.7] }), "A missing face, an opening 20 mm across, and 5 more (6 mm, 5.9 mm, 5.8 mm, …) · 945 open edges");
   assert.equal(openingsLine({ ...gaps, kind: "none", open_edges: 0 }), null);
   assert.equal(openingsLine(undefined), null);
 });

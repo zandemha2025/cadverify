@@ -320,7 +320,7 @@ def _what_was_open(o: dict) -> str:
         rest = n - 1
         smaller = [f"{x:g} mm" for x in (o.get("sizes_mm") or [])[1:4]]
         sizes = f" ({', '.join(smaller)}{', …' if rest > len(smaller) else ''})" if smaller else ""
-        extra = f" and {rest} smaller {'opening' if rest == 1 else 'openings'}{sizes}" if rest > 0 else ""
+        extra = f" and {rest} other {'opening' if rest == 1 else 'openings'}{sizes}" if rest > 0 else ""
         return f"the missing face (an opening {o['largest_mm']:g} mm across){extra}"
     if o["kind"] == "surface":
         return "the surface's open edges"
@@ -411,9 +411,45 @@ async def repair_mesh(
     session,
     org_id: str | None = None,
 ) -> dict:
-    """Parse mesh, enforce limits, run repair, re-analyze, return combined result."""
-    result, _repaired = await _repair(file_bytes, filename, processes, rule_pack, user, session, org_id)
+    """Parse mesh, enforce limits, run repair, re-analyze, return combined result.
+
+    The repaired copy is saved as a part by its re-check; it is linked to the
+    uploaded original by ``derived-from.json``, as the stored-part repair and
+    the fixes do, so keeping it never uses another check (validation_caps).
+    """
+    result, repaired = await _repair(file_bytes, filename, processes, rule_pack, user, session, org_id)
+    if repaired is not None:
+        await _link_upload_repair(file_bytes, filename, repaired, result, user, session, org_id)
     return result
+
+
+async def _link_upload_repair(original: bytes, filename: str, repaired: bytes, result: dict, user, session, org_id: str | None) -> None:
+    """Record which checked part an uploaded file's repaired copy came from (best effort)."""
+    from src.services import cad_fix_service as fx
+
+    if org_id is None:
+        from src.auth.org_context import resolve_org
+
+        try:
+            org_id = await resolve_org(session, user.user_id)
+        except Exception:
+            logger.warning("could not resolve the organization for a repair link", exc_info=True)
+            return
+    if not org_id:
+        return
+    suffix = Path(filename or "").suffix.lower().lstrip(".") or "stl"
+    details = result.get("repair_details") or {}
+    link = {
+        "parent_mesh_hash": hashlib.sha256(original).hexdigest(), "parent_format": suffix,
+        "parent_filename": filename, "fix": "mesh_repair", "params": {},
+        "method": f"mesh repair ({details.get('tier')})", "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by_user_id": user.user_id,
+    }
+    try:
+        key = fx._record_key(org_id, hashlib.sha256(repaired).hexdigest(), "derived-from.json")
+    except ValueError:
+        return
+    await _store_record(fx, key, link)
 
 
 async def _repair(

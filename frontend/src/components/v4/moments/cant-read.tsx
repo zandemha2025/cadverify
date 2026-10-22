@@ -98,7 +98,8 @@ export function CantReadSheet({
   return (
     <aside className="sheet mo-x4" aria-label="What's wrong and how to fix it">
       <div className="top">
-        <h1 className="ptitle">Can&apos;t read this file</h1>
+        {/* An open shell was read and measured; it just isn't a closed solid. */}
+        <h1 className="ptitle">{problem === "open" ? "Not a closed solid" : "Can’t read this file"}</h1>
         <p className="pmeta" style={{ marginTop: 6 }}>
           {[fileName, ...meta].filter(Boolean).map((m, i) => (
             <span key={i} style={{ overflowWrap: "anywhere" }}>
@@ -138,10 +139,10 @@ export function CantReadSheet({
               <b>
                 Repair here <small style={{ color: "var(--ink3)", fontWeight: 500 }}>No check used</small>
               </b>
-              <p>Closes gaps and shows the result beside the original. Reports if it can&apos;t.</p>
+              <p>Joins faces that touch and closes gaps on a copy, then shows it beside the original. Says why if it can&apos;t.</p>
               <span>
                 <button className="btn sm" type="button" onClick={onRepair}>
-                  Request repair
+                  Repair a copy
                 </button>
               </span>
             </div>

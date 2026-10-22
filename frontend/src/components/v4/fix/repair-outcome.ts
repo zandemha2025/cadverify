@@ -35,7 +35,7 @@ function count(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 }
 
-/** What was open, as one line: "A missing face, an opening 20 mm across, and 1 smaller (6 mm) · 945 open edges". */
+/** What was open, as one line: "A missing face, an opening 20 mm across, and 1 more (6 mm) · 945 open edges". */
 export function openingsLine(o: RepairOpenings | null | undefined): string | null {
   if (!o || o.kind === "none") return null;
   const edges = count(o.open_edges, "open edge");
@@ -44,7 +44,7 @@ export function openingsLine(o: RepairOpenings | null | undefined): string | nul
   if (o.kind === "face") {
     const rest = o.sizes_mm.slice(1, 4);
     const more = o.loops - 1;
-    const tail = more > 0 ? `, and ${more} smaller${rest.length ? ` (${rest.map(mm).join(", ")}${more > rest.length ? ", …" : ""})` : ""}` : "";
+    const tail = more > 0 ? `, and ${more} more${rest.length ? ` (${rest.map(mm).join(", ")}${more > rest.length ? ", …" : ""})` : ""}` : "";
     return `A missing face, an opening ${o.largest_mm != null ? mm(o.largest_mm) : "the size of a face"} across${tail} · ${edges}`;
   }
   return `${count(o.loops, "small gap")}${o.largest_mm != null ? `, the largest ${mm(o.largest_mm)} across` : ""} · ${edges}`;

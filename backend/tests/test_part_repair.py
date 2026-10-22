@@ -129,7 +129,7 @@ def test_every_outcome_has_one_plain_sentence():
     face = {"kind": "face", "loops": 3, "largest_mm": 20.0, "open_edges": 945, "open_edges_after_weld": 663}
     out, text = rs.repair_outcome(True, {"openings": face, "volume_change_pct": 0.1, "volume_warning": None})
     assert out == "repaired"
-    assert text == "Closed the missing face (an opening 20 mm across) and 2 smaller openings. The volume changed +0.1%."
+    assert text == "Closed the missing face (an opening 20 mm across) and 2 other openings. The volume changed +0.1%."
     out, text = rs.repair_outcome(True, {"openings": face, "volume_change_pct": 10.4, "volume_warning": "..."})
     assert out == "closed_changed" and "+10.4%" in text and "bore, hole or pocket" in text
     out, text = rs.repair_outcome(True, {"openings": face, "volume_change_pct": None, "volume_warning": "..."})
@@ -147,7 +147,7 @@ def test_every_outcome_has_one_plain_sentence():
     assert text == "Closed the faces that touched but weren't joined. The volume changed +0.0%."
     sized = {**face, "sizes_mm": [20.0, 6.0, 6.0]}
     _, text = rs.repair_outcome(True, {"openings": sized, "volume_change_pct": 0.1, "volume_warning": None})
-    assert text.startswith("Closed the missing face (an opening 20 mm across) and 2 smaller openings (6 mm, 6 mm).")
+    assert text.startswith("Closed the missing face (an opening 20 mm across) and 2 other openings (6 mm, 6 mm).")
     assert rs.repair_outcome(False, {"openings": {"kind": "none"}, "not_needed": True}) == (
         "not_needed", "Already a closed solid: nothing to repair.")
 
