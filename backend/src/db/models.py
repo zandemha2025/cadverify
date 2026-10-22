@@ -830,8 +830,10 @@ class UsageEvent(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    org_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    # Nullable, SET NULL (migration 0057): deleting an organization clears its
+    # rows' file hashes and keeps the counts, with no organization.
+    org_id: Mapped[Optional[str]] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )
     api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
@@ -2562,7 +2564,7 @@ class DataDeletion(Base):
 
     __tablename__ = "data_deletions"
     __table_args__ = (
-        CheckConstraint("scope IN ('part', 'organization')", name="ck_data_deletions_scope"),
+        CheckConstraint("scope IN ('part', 'organization', 'account')", name="ck_data_deletions_scope"),
         CheckConstraint(
             "status IN ('removing_files', 'done', 'failed')", name="ck_data_deletions_status"
         ),
@@ -2605,4 +2607,29 @@ class DataDeletion(Base):
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+class DeletedAccountAllowance(Base):
+    """Free allowance a deleted account had used, by a one-way fingerprint of its email.
+
+    ``email_hmac`` is an HMAC of the normalised email under the server's API-key
+    pepper (``src.services.deleted_account_allowance``), never the email. A new
+    account with the same normalised email starts from these counts, so
+    deleting an account and signing up again doesn't reissue free checks.
+    """
+
+    __tablename__ = "deleted_account_allowances"
+    __table_args__ = (
+        CheckConstraint(
+            "checks_used >= 0 AND catalog_parts_used >= 0",
+            name="ck_deleted_account_allowances_counts",
+        ),
+    )
+
+    email_hmac: Mapped[str] = mapped_column(Text, primary_key=True)
+    checks_used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    catalog_parts_used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    deleted_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
