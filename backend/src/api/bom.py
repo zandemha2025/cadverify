@@ -38,6 +38,7 @@ from fastapi import (
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
@@ -65,12 +66,22 @@ def _import_cap_bytes() -> int:
 
 
 def _assembly_cap_bytes() -> int:
-    """STEP/IGES upload cap for assembly ingest."""
+    """STEP/IGES upload cap for assembly ingest: the web upload limit.
+
+    The ingest runs the same extraction as ``/validate/assembly``, so it takes
+    that route's cap (MAX_UPLOAD_MB). ``BOM_ASSEMBLY_MAX_MB`` can only lower it.
+    """
+    from src.api.routes import _max_upload_bytes
+
+    web_cap = _max_upload_bytes()
+    raw = os.getenv("BOM_ASSEMBLY_MAX_MB")
+    if raw is None:
+        return web_cap
     try:
-        mb = int(os.getenv("BOM_ASSEMBLY_MAX_MB", "256"))
+        mb = int(raw)
     except ValueError:
-        mb = 256
-    return max(1, mb) * 1024 * 1024
+        return web_cap
+    return min(web_cap, max(1, mb) * 1024 * 1024)
 
 
 async def _require_org(session: AsyncSession, user: AuthedUser) -> str:
@@ -109,6 +120,7 @@ async def ingest_assembly(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Persist the REAL edge tree of an uploaded STEP/IGES assembly.
 
