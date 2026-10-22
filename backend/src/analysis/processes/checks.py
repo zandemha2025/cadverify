@@ -1733,6 +1733,10 @@ def check_sheet_gauge(
 ) -> list[Issue]:
     issues: list[Issue] = []
     dims = ctx.flat_sheet_dimensions
+    # M9: a sheet bent along parallel lines is measured from its strip profile.
+    bent = getattr(ctx, "bent_sheet", None) if dims is None else None
+    if bent is not None:
+        dims = (bent.gauge_mm, *sorted((bent.width_mm, bent.developed_mm)))
     if dims is None:
         thick = _section_thicker_than_sheet(ctx)
         if thick is not None:
@@ -1753,8 +1757,20 @@ def check_sheet_gauge(
             fix_suggestion="Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.",
         )]
     t = dims[0]
-    precision = ctx.sheet_precision
+    precision = ctx.sheet_precision if bent is None else bent.precision_mm
     tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + precision
+    if bent is not None and bent.min_inside_radius_mm < t - tolerance:
+        r = bent.min_inside_radius_mm
+        issues.append(Issue(
+            code="BEND_RADIUS_UNDER_GAUGE", severity=Severity.WARNING,
+            measurement_unit="mm", measured_value=r, required_value=t, process=process,
+            message=(f"{'A bend has a sharp inside corner' if r <= tolerance else f'Inside bend radius about {r:.1f}mm'}"
+                     f" under the {format_measurement(t, t)}mm sheet thickness: a press brake bends "
+                     f"to an inside radius of about one thickness or more."),
+            fix_suggestion=(f"Give each of the {bent.bends} bend{'s' if bent.bends != 1 else ''} an inside "
+                            f"radius of at least {format_measurement(t, t)}mm (outside radius "
+                            f"{format_measurement(2 * t, 2 * t)}mm)."),
+        ))
     if precision:
         issues.append(Issue(
             code="SHEET_GAUGE_PRECISION", severity=Severity.WARNING,

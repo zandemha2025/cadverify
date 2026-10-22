@@ -15,7 +15,7 @@ import numpy as np
 import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
-from src.analysis.context import enclosing_box_dimensions, enclosing_cylinder_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
+from src.analysis.context import bent_sheet_geometry, enclosing_box_dimensions, enclosing_cylinder_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
 from src.analysis.context import fitting_box_dimensions as build_orientation
 from src.costing.routing import is_rotational
 
@@ -218,12 +218,26 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
 
     sheet_geometry = flat_sheet_geometry(mesh)
     sheet_blank_mm = sheet_geometry[0] if sheet_geometry is not None else None
+    # M9: a sheet bent along parallel lines (an L bracket, a channel) is priced
+    # from its flat blank: width along the bends × developed length, plus its
+    # press-brake bends. Its blank outline is that rectangle.
+    bent = bent_sheet_geometry(mesh) if sheet_geometry is None and not rotational else None
+    bend_count = 0
+    if bent is not None:
+        sheet_blank_mm = (bent.gauge_mm, *sorted((bent.width_mm, bent.developed_mm)))
+        w, length = bent.width_mm, bent.developed_mm
+        sheet_geometry = (sheet_blank_mm, np.array([[0.0, 0.0], [length, 0.0], [length, w], [0.0, w]]),
+                          bent.precision_mm)
+        bend_count = bent.bends
     sheet_tolerance_mm = wall_thickness_tolerance(
         mesh, max(1e-4, min(float(np.linalg.norm(dims)) * 1e-4, .1)))
     sheet_precision_mm = sheet_geometry[2] if sheet_geometry is not None else 0.0
     sheet_gauge_mm, planar_aspect, outline_perimeter_mm, sheet_like = _sheet_geometry(
         geometry.volume or 0.0, geometry.surface_area or 0.0, sheet_blank_mm,
         sheet_tolerance_mm + sheet_precision_mm)
+    if bent is not None:
+        # The blank is a plain rectangle (holes would break the bent reading).
+        outline_perimeter_mm = 2.0 * (bent.width_mm + bent.developed_mm)
     # A rotational solid is a turned/spun part, not a flat blank.
     sheet_like = sheet_like and not rotational
 
@@ -245,7 +259,7 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         sheet_gauge_mm=sheet_gauge_mm,
         planar_aspect=round(planar_aspect, 2),
         outline_perimeter_mm=round(outline_perimeter_mm, 2),
-        bend_count=0,  # Only verified flat blanks are sheet-costable; no bends.
+        bend_count=bend_count,  # flat blanks 0; a measured bent sheet its bends
         sheet_like=sheet_like,
         sheet_blank_mm=sheet_blank_mm,
         sheet_tolerance_mm=sheet_tolerance_mm,

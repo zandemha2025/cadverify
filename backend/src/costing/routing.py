@@ -458,7 +458,8 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
     if drivers.sheet_like:
         d = drivers.sheet_blank_mm or d
         bends = drivers.bend_count
-        op = "flat laser/punch blank" if bends == 0 else f"blank + {bends} press-brake bend(s)"
+        op = ("a flat laser or punch blank" if bends == 0
+              else f"a blank and {bends} press-brake bend{'s' if bends != 1 else ''}")
         return RoutingRecommendation(
             archetype="sheet_panel",
             process=PT.SHEET_METAL.value,
@@ -466,10 +467,12 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             material_hint=(material_class if material_class in SHEET_METAL_CLASSES else "aluminum"),
             confidence=0.85,
             reasoning=(
-                f"A flat sheet: constant {gauge:g} mm thick over a {d[1]:.0f} × {d[2]:.0f} mm "
-                f"blank ({aspect:.0f} times wider than thick). Cut it from sheet: {op}, "
-                f"{drivers.outline_perimeter_mm:.0f} mm of cutting. Printing it suits "
-                f"prototypes, not production."),
+                (f"A flat sheet: constant {gauge:g} mm thick over a {d[1]:.0f} × {d[2]:.0f} mm "
+                 f"blank ({aspect:.0f} times wider than thick). " if bends == 0 else
+                 f"A bent sheet: constant {gauge:g} mm thick, a {d[1]:.0f} × {d[2]:.0f} mm flat "
+                 f"blank bent {'once' if bends == 1 else f'{bends} times'} along parallel lines. ")
+                + f"Cut it from sheet: {op}, {drivers.outline_perimeter_mm:.0f} mm of cutting. "
+                f"Printing it suits prototypes, not production."),
             alternatives=[PT.CNC_3AXIS.value, PT.MJF.value],
         )
 

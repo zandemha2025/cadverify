@@ -44,7 +44,7 @@ const FAMILIES: FamilyDef[] = [
   { id: "uneven", codes: ["NON_UNIFORM_WALLS"], title: "Uneven walls", place: "Walls" },
   { id: "build", codes: ["EXCEEDS_BUILD_VOLUME"], title: "Too big for the machine", place: "Whole part" },
   { id: "fixture", codes: ["NO_FIXTURE_SURFACES"], title: "Nothing flat to hold it by", place: "Whole part" },
-  { id: "bend", codes: ["SHARP_BEND"], title: "Bends too tight", place: "Bends" },
+  { id: "bend", codes: ["SHARP_BEND", "BEND_RADIUS_UNDER_GAUGE"], title: "Bends too tight", place: "Bends" },
 ];
 
 const BY_CODE = new Map<string, FamilyDef>();

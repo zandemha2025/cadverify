@@ -548,6 +548,13 @@ class GeometryContext:
             blocked[faces] = hits
         return blocked
 
+    @cached_property
+    def bent_sheet(self) -> "BentSheet | None":
+        """A constant-gauge sheet bent along parallel lines, when it isn't flat."""
+        if self.metadata.get("decimation", {}).get("succeeded") or self.flat_sheet_geometry is not None:
+            return None
+        return bent_sheet_geometry(self.mesh)
+
     @property
     def flat_sheet_dimensions(self) -> tuple[float, float, float] | None:
         measured = self.flat_sheet_geometry
@@ -1220,6 +1227,140 @@ def _straight_through(mesh, caps, heights, low, high, gauge, tol, normal, leanin
     distance = np.linalg.norm(a + t[..., None] * ab - point, axis=2)
     allowed = _SAGITTA_PER_CHORD * np.sqrt(length2) + tol
     return bool(np.all((distance <= allowed).any(axis=1)))
+
+
+@dataclass(frozen=True)
+class BentSheet:
+    """A constant-gauge sheet bent along parallel lines (an L bracket, a channel).
+
+    ``developed_mm`` is the blank length along the bends at mid-thickness, so the
+    flat blank is ``width_mm`` × ``developed_mm`` × ``gauge_mm``.
+    """
+    gauge_mm: float
+    width_mm: float            # along the bend lines
+    developed_mm: float        # flat length across the bends, at mid-thickness
+    bends: int
+    min_inside_radius_mm: float
+    precision_mm: float
+
+
+def _profile_bends(polygon, gauge: float) -> tuple[int, float]:
+    """Bends in a strip profile: one run of inward (concave) corners per bend.
+
+    Returns (bend count, smallest inside radius; 0 for a sharp corner)."""
+    from shapely.geometry.polygon import orient
+
+    ring = orient(polygon.simplify(gauge / 20.0), sign=1.0).exterior
+    pts = np.asarray(ring.coords)[:-1]
+    if len(pts) < 4:
+        return 0, 0.0
+    d_in = pts - np.roll(pts, 1, axis=0)
+    d_out = np.roll(pts, -1, axis=0) - pts
+    turn = np.arctan2(d_in[:, 0] * d_out[:, 1] - d_in[:, 1] * d_out[:, 0], (d_in * d_out).sum(axis=1))
+    seg = np.linalg.norm(d_out, axis=1)
+    concave = turn < -np.radians(5.0)
+    if not concave.any():
+        return 0, 0.0
+    # A bend is a run of inward corners joined by short chords (one corner if
+    # sharp, a tessellated arc if radiused); a straight flange between two
+    # inward corners (a channel's base) ends the run.
+    start = int(np.argmin(concave))  # begin the cyclic scan on a convex corner
+    order = [int(i) for i in np.roll(np.arange(len(pts)), -start)]
+    runs: list[list[int]] = []
+    previous = None
+    for i in order:
+        if concave[i]:
+            joined = previous is not None and concave[previous] and seg[previous] <= 1.5 * gauge
+            if joined:
+                runs[-1].append(i)
+            else:
+                runs.append([i])
+        previous = i
+    radii = []
+    for run in runs:
+        theta = float(-turn[run].sum())
+        if len(run) == 1 or theta <= 0:
+            radii.append(0.0)
+        else:
+            arc = float(sum(seg[i] for i in run[:-1]))
+            radii.append(arc / (theta * (len(run) - 1) / len(run)))
+    return len(runs), (min(radii) if radii else 0.0)
+
+
+def bent_sheet_geometry(mesh: trimesh.Trimesh) -> BentSheet | None:
+    """A sheet of one gauge bent along parallel lines, read as the straight
+    extrusion of its strip profile along the bend lines.
+
+    The profile (the cap at one end of that extrusion) must be a single strip of
+    constant thickness: area A and perimeter P give the thickness t from
+    P = 2A/t + 2t, and the profile must collapse when shrunk by just over t/2
+    (nothing thicker than t) but not at just under it. Flanges with holes or
+    cut-outs aren't extrusions along the bends and return None.
+    """
+    try:
+        if not mesh.is_volume or mesh.body_count != 1 or len(mesh.faces) > 200_000:
+            return None
+        normals = mesh.face_normals
+        # The bend lines run along one of the part's plane directions; try the
+        # face of each of the largest planar regions (one per direction).
+        candidates, seen = [], []
+        facets = sorted(zip(mesh.facets_area, mesh.facets), key=lambda fa: -fa[0])[:24] if len(mesh.facets) else []
+        for _area, facet in facets:
+            n = normals[int(facet[0])]
+            if any(abs(float(n @ m)) > 1 - 1e-6 for m in seen):
+                continue
+            seen.append(n)
+            candidates.append(int(facet[0]))
+        for face in candidates[:6]:
+            bent = _bent_along(mesh, face)
+            if bent is not None:
+                return bent
+        return None
+    except Exception:
+        logger.warning("Bent sheet measurement failed", exc_info=True)
+        return None
+
+
+def _bent_along(mesh: trimesh.Trimesh, face: int) -> "BentSheet | None":
+    """The bent-sheet reading with the bend lines along ``face``'s normal."""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
+    normals = mesh.face_normals
+    extrusion = flat_sheet_geometry(mesh, normal_face=face)
+    if extrusion is None:
+        return None
+    (width, _, _), _hull, precision = extrusion
+    normal = normals[face]
+    vertices = np.asarray(mesh.vertices) - mesh.bounds.mean(axis=0)
+    heights = vertices @ normal
+    low = float(heights.min())
+    tol = max(1e-4, 1e-6 * float(np.linalg.norm(mesh.extents))) + precision
+    caps = (np.abs(normals @ normal) > 1 - 1e-6) & np.all(np.abs(heights[mesh.faces] - low) <= tol, axis=1)
+    if not caps.any():
+        return None
+    rotation = np.asarray(trimesh.geometry.align_vectors(normal, [0., 0., 1.]))[:3, :3]
+    flat = (vertices @ rotation.T)[:, :2]
+    profile = unary_union([Polygon(flat[f]) for f in mesh.faces[caps]]).buffer(0)
+    if profile.geom_type != "Polygon" or len(profile.interiors):
+        return None
+    area, perimeter = float(profile.area), float(profile.length)
+    disc = perimeter ** 2 - 16.0 * area
+    if area <= 0 or disc <= 0:
+        return None
+    gauge = (perimeter - np.sqrt(disc)) / 4.0
+    developed = area / gauge
+    if not (gauge > 0 and developed >= 4 * gauge and width >= 2 * gauge):
+        return None
+    # Nothing in the profile thicker than the strip: the widest circle in a
+    # sharp bend's corner is 2 - √2 ≈ 0.59 of the gauge across, so shrinking
+    # by 0.625 × the gauge must leave nothing, and by 0.45 × must leave the strip.
+    if not profile.buffer(-0.625 * gauge).is_empty or profile.buffer(-0.45 * gauge).is_empty:
+        return None
+    bends, radius = _profile_bends(profile, gauge)
+    if bends == 0:
+        return None  # a flat strip is a flat sheet; flat_sheet_geometry reads it
+    return BentSheet(float(gauge), float(width), float(developed), int(bends), float(radius), float(precision))
 
 
 def flat_sheet_dimensions(mesh: trimesh.Trimesh) -> tuple[float, float, float] | None:
