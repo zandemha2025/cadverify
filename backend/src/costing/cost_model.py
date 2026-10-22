@@ -13,7 +13,7 @@ V1 changes (the 8 weaknesses):
   #5     tooling cavity^exponent × complexity; per-shot machine ÷ n_cavities.
   #8     setup: once per order on a machine, mould or die; once per plate when printing.
 
-    line_items = {amortized_fixed, material, machine, labor}   (4-key shape kept)
+    line_items = {amortized_fixed (setup), material, machine, labor} (+ tooling, nre, ...)
     unit_cost  = Σ line_items   (+ min_charge_floor when the order floor bites)
 """
 
@@ -1161,11 +1161,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                         f"× {n_cavities} cav^{rates.data['cavity_exponent']:g} (={cav:.2f}) "
                         f"× {complexity} (={comp:.2f}) = ${tooling_cost:,.0f}; "
                         f"±60%, you can override it {tooling_note}")
-        drivers_out.append(Driver(
-            name="tooling_cost", value=round(tooling_cost, 2), unit="$",
-            provenance=rates.prov_tag(f"tooling.{process.name}"),
-            source=tool_src, error_band_pct=60.0,
-        ))
+        tool_band = 60.0
     elif family in ("casting", "forging"):
         # ---- TOOLING (casting pattern / wax die+shell / forging die) --------
         # Size-tier base × family multiplier × complexity. Ordering: sand pattern
@@ -1188,15 +1184,30 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                         f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
                         f"= ${tooling_cost:,.0f}; ±55%, you can override it "
                         f"{tooling_note}")
-        drivers_out.append(Driver(
-            name="tooling_cost", value=round(tooling_cost, 2), unit="$",
-            provenance=rates.prov_tag(f"tooling.{process.name}"),
-            source=tool_src, error_band_pct=55.0,
-        ))
+        tool_band = 55.0
     else:
         tooling_cost = 0.0
 
     tooling_amort_scaled = (tooling_cost / qty) * rt * mgn
+    if tooling_cost > 0:
+        # ce-04: the tool is its own line. The whole tool is paid once (unit "$/tool",
+        # never in a column of per-part values); each part carries its share. Tool
+        # life isn't modeled: one tool is assumed to last the order.
+        _tool_prov = rates.prov_tag(f"tooling.{process.name}")
+        drivers_out.append(Driver(
+            name="tooling_cost", value=round(tooling_cost, 2), unit="$/tool",
+            provenance=_tool_prov, source=f"{tool_src}; paid once for the tool", error_band_pct=tool_band,
+        ))
+        _rt_note = f" × region-tooling ×{rt:g}" if rt != 1.0 else ""
+        drivers_out.append(Driver(
+            name="tooling_per_part", value=round(tooling_amort_scaled, 4), unit="$",
+            provenance=_tool_prov,
+            source=(f"the tool ${tooling_cost:,.2f} once ÷ {qty:,} parts{_rt_note}{margin_note} = "
+                    f"${tooling_amort_scaled:,.2f} a part. One tool is assumed to last the order: "
+                    f"ScaleCAD doesn't model tool life, so an order past the tool's life needs a "
+                    f"second tool this price leaves out"),
+            error_band_pct=tool_band,
+        ))
     qm["once_usd"] += tooling_cost * rt * mgn
     # Inspection and finishing, × the declared tolerance's factor where it applies.
     _tf = tol_cost_mult if tolerance_surcharge else 1.0
@@ -1211,11 +1222,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # non-zero — every consumer iterates line_items generically, and the Σ ==
     # unit_cost invariant still holds (asserted below).
     line_items = {
-        "amortized_fixed": round(tooling_amort_scaled + setup_scaled, 4),
+        "amortized_fixed": round(setup_scaled, 4),     # setup, shared over the order (or per plate)
         "material": round(material_scaled, 4),
         "machine": round(machine_scaled, 4),
         "labor": round(labor_scaled, 4),
     }
+    if tooling_amort_scaled:
+        # ce-04: tooling is its own line, never folded into setup.
+        line_items["tooling"] = round(tooling_amort_scaled, 4)
     if nre_scaled:
         line_items["nre"] = round(nre_scaled, 4)
     if inspection_scaled:

@@ -41,6 +41,7 @@ LINE_KEYS: dict[str, tuple[str, ...]] = {
     "machine_cost": ("machine_rate.{P}", "utilization"),
     "material_cost": ("material_price.{M}", "material_price.@{C}"),
     "tooling_cost": ("tooling.{P}",),
+    "tooling_per_part": ("tooling.{P}",),
     "min_charge_floor": ("min_charge.{P}",),
     "consumables_cost": ("perishable_frac",),
     "finishing_cost": ("finish_per_part.{P}", "finish_lot_charge.{P}"),

@@ -310,7 +310,8 @@ const DRIVER: Record<string, string> = {
   nre_cost: "Programming",
   inspection_cost: "Inspection",
   consumables_cost: "Tools and coolant",
-  tooling_cost: "Tooling",
+  tooling_cost: "Tooling, the whole tool",
+  tooling_per_part: "Tooling, a part",
   finishing_cost: "Finishing",
   sinter_cost: "Sintering",
   post_process_cost: "Post-processing",
@@ -352,10 +353,10 @@ export interface CostLine {
   source: string;
 }
 
-export function srcOf(provenance: string | null | undefined): { kind: SrcKind; label: string } {
+export function srcOf(provenance: string | null | undefined, rateCard?: number | null): { kind: SrcKind; label: string } {
   const p = String(provenance ?? "").toUpperCase();
   if (p === "USER") return { kind: "yours", label: "Yours" };
-  if (p === "SHOP") return { kind: "yours", label: "Your shop" };
+  if (p === "SHOP") return { kind: "yours", label: rateCard != null ? `Your rates v${rateCard}` : "Your shop" };
   if (p === "MEASURED" || p === "CAD") return { kind: "file", label: "File" };
   return { kind: "typ", label: "Typical" };
 }
@@ -369,7 +370,7 @@ export function costLines(e: CostEstimate | null | undefined): CostLine[] {
       return (u === "$" || u === "usd") && Number.isFinite(d.value);
     })
     .map((d) => {
-      const s = srcOf(d.provenance);
+      const s = srcOf(d.provenance, d.rate_card);
       const base = driverLabel(d.name);
       return { key: d.name, label: d.name === "material_cost" ? `${base}, ${e.material}` : base, usd: d.value, src: s.kind, srcLabel: s.label, source: d.source ?? "" };
     });

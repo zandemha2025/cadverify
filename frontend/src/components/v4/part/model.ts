@@ -490,9 +490,11 @@ export function fixesOf(validation: ValidationResult | null): Fix[] {
 
 export type SrcKind = "file" | "yours" | "typ";
 
-export function srcOf(provenance: string | null | undefined): { kind: SrcKind; label: string } {
+/** Where a cost line comes from. `rateCard`: the org's published rate card version its rate is from ("Your rates v1"). */
+export function srcOf(provenance: string | null | undefined, rateCard?: number | null): { kind: SrcKind; label: string } {
   const p = String(provenance ?? "").toUpperCase();
   if (p === "MEASURED" || p === "CAD") return { kind: "file", label: "Your file" };
+  if (p === "SHOP" && rateCard != null) return { kind: "yours", label: `Your rates v${rateCard}` };
   if (p === "USER" || p === "SHOP") return { kind: "yours", label: "Yours" };
   return { kind: "typ", label: "Typical" };
 }
@@ -506,7 +508,8 @@ const DRIVER_LABEL: Record<string, (q: number, d: CostDriver) => string> = {
   machine_cost: () => "Machine",
   material_cost: () => "Material",
   consumables_cost: () => "Tools and coolant",
-  tooling_cost: (q) => `Tooling, shared over ${qtyWord(q)}`,
+  tooling_cost: () => "Tooling, the whole tool",
+  tooling_per_part: (q) => `Tooling, shared over ${qtyWord(q)}`,
   // de-20: a lot priced at the process's order minimum ($300 for wire-arc) says so.
   min_charge_floor: (q) => (q === 1 ? "Order minimum, on one part" : `Order minimum, shared over ${qtyWord(q)}`),
   finish_machining: () => "Finish machining",
@@ -568,14 +571,14 @@ export function costLines(e: CostEstimate | null | undefined): CostLine[] {
     .filter((d) => d.unit === "$" && Number.isFinite(d.value))
     .sort((a, b) => b.value - a.value)
     .map((d) => {
-      const src = srcOf(d.provenance);
+      const src = srcOf(d.provenance, d.rate_card);
       return {
         key: d.name,
         name: driverLabel(d, e.quantity),
         value: d.value,
         src,
         how: d.source,
-        band: `${d.error_band_pct != null ? `±${trimNum(d.error_band_pct, 0)}%` : "no stated band"} · ${src.kind === "yours" ? "your value" : src.kind === "file" ? "measured from your file" : "typical value"}`,
+        band: `${d.error_band_pct != null ? `±${trimNum(d.error_band_pct, 0)}%` : "no stated band"} · ${d.rate_card != null ? `rate from your rates v${d.rate_card}` : src.kind === "yours" ? "your value" : src.kind === "file" ? "measured from your file" : "typical value"}`,
       };
     });
 }

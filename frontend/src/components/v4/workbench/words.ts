@@ -47,7 +47,8 @@ export const DRIVER: Record<string, string> = {
   stress_relief_cost: "Stress relief",
   support_material: "Support material",
   support_removal_cost: "Support removal",
-  tooling_cost: "Tooling",
+  tooling_cost: "Tooling, the whole tool",
+  tooling_per_part: "Tooling, a part",
   spec_bead_blast_cost: "Bead blast",
   spec_anodize_ii_cost: "Anodize, Type II",
   spec_anodize_iii_cost: "Hard anodize, Type III",
@@ -71,7 +72,7 @@ export function driverName(name: string): string {
 }
 
 export const LINE: Record<string, string> = {
-  amortized_fixed: "Setup, spread",
+  amortized_fixed: "Setup",
   material: "Material",
   machine: "Machine",
   labor: "Labor",

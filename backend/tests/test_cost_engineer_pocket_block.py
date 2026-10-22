@@ -107,3 +107,34 @@ def test_no_change_at_or_below_the_first_lot(block):
     # ce-06: 0.52 + 15.69 + 17.50 + 0.78 + setup 26.25/25 = 1.05 + programming 70/25 = 2.80
     #        + inspection (0.5/25 + 0.03) × 35 = 1.75  →  $40.10
     assert round(block(25).unit_cost_usd, 2) == 40.10
+
+
+# ── ce-04: tooling is its own line ────────────────────────────────────────────
+
+def test_sand_casting_tooling_is_its_own_line_at_100():
+    """ce-04: "Tooling (pattern/core box) $5,250 ÷ 100 = $52.50 each as its own line, with
+    Setup $0.35 separate (0.35 + 52.50 + 21.00 + 3.52 + 0.86 = 78.23)"."""
+    rates = build_rate_card()
+    mat = select_material(PT.SAND_CASTING, "steel", rates)
+    e = cost_breakdown(PT.SAND_CASTING, _pocket_block(), mat, "steel", 100, rates, "US")
+    assert e.line_items["tooling"] == pytest.approx(52.50)
+    assert e.line_items["amortized_fixed"] == pytest.approx(0.35)          # setup only, was $52.85
+    assert [round(e.line_items[k], 2) for k in ("amortized_fixed", "tooling", "labor", "machine", "material")] \
+        == [0.35, 52.50, 21.00, 3.52, 0.86]
+    assert round(e.unit_cost_usd, 2) == 78.23
+    whole = _driver(e, "tooling_cost")
+    each = _driver(e, "tooling_per_part")
+    # The whole tool is a once-for-the-tool value, never in the column of per-part dollars.
+    assert (whole.value, whole.unit) == (5250.0, "$/tool")
+    assert (each.value, each.unit) == (52.5, "$")
+    assert "$5,250.00 once ÷ 100 parts" in each.source and "tool life" in each.source
+    assert e.qty_model["once_usd"] == pytest.approx(5250.0 + 35.0)      # the tool and the setup, once
+
+
+def test_forging_die_is_its_own_line():
+    rates = build_rate_card()
+    mat = select_material(PT.FORGING, "steel", rates)
+    e = cost_breakdown(PT.FORGING, _pocket_block(), mat, "steel", 10000, rates, "US")
+    # $30,000 die ÷ 10,000 = $3.00; setup 3 h × $35 ÷ 10,000 = $0.0105 (was one $3.01 "setup" line)
+    assert e.line_items["tooling"] == pytest.approx(3.0)
+    assert e.line_items["amortized_fixed"] == pytest.approx(0.0105)
