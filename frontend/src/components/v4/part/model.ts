@@ -767,6 +767,13 @@ export function withQuantity(qs: number[], n: number, max = 6): number[] {
   return out;
 }
 
+/** The priced quantity that pricing ``n`` would replace (the engine prices six at most), or null when ``n`` is added (ce-08). */
+export function replacedBy(qs: number[], n: number, max = 6): number | null {
+  const after = withQuantity(qs, n, max);
+  const gone = qs.filter((x) => x > 0 && !after.includes(x));
+  return gone.length ? gone[0] : null;
+}
+
 export function otherQtyNote(methods: Method[], qs: number[], raw: string): { on: boolean; text: string; value: number | null } {
   const n = Number.parseInt(raw, 10);
   const computed = `Computed at ${qs.map(qtyWord).join(", ").replace(/, ([^,]*)$/, " and $1")}.`;

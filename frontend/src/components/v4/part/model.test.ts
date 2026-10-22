@@ -491,3 +491,11 @@ test("outside prices say they are should-costs when the rates add no overhead or
   assert.match(shouldCostWords([{ name: "margin", value: 0 }, { name: "overhead", value: 0 }]), /^Outside prices are should-costs: what making it costs a shop, with no overhead or margin added/);
   assert.equal(shouldCostWords([{ name: "margin", value: 0.1 }, { name: "overhead", value: 0.15 }]), "Outside prices add 15% overhead and 10% margin from your rates.");
 });
+
+test("ce-08: pricing 25 on a record of six quantities says which one it replaces", async () => {
+  const { replacedBy } = await import("./model.ts");
+  // her record: 1, 100, 1,000, 2,000, 5,000, 10,000; Price 25 used to drop 2,000 silently
+  assert.equal(replacedBy([1, 100, 1000, 2000, 5000, 10000], 25), 2000);
+  assert.equal(replacedBy([1, 100, 1000], 25), null);
+  assert.equal(replacedBy([1, 100, 1000, 2000, 5000, 10000], 2000), null);
+});
