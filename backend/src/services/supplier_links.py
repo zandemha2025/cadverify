@@ -163,6 +163,9 @@ async def create_package_link(session: AsyncSession, package_id: str, user_id: i
 
     pkg = await _owned_package(session, package_id, user_id)
     replaced = pkg.share_short_id if share_links.status(pkg) == "active" else None
+    if replaced is not None:
+        # Replacing switches the live link off: its maker or an org admin only.
+        await share_links.require_can_switch_off(session, pkg, user_id)
     short_id = await _fresh_package_short_id(session)
     share_links.open_link(pkg, user_id, options.expires_in_days, short_id, ends_at=options.ends_at(),
                           shows={"include_cost": rfq.includes_cost(pkg), "include_cad": True, "note": None,

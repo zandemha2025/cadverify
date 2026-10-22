@@ -1279,6 +1279,10 @@ async def create_share(
     if active and options is None:
         return _share_link(d)
 
+    if active:
+        # A new link switches the one that is on off: the same rule as DELETE
+        # .../share (its maker or an org admin), never a colleague's live link.
+        await share_links.require_can_switch_off(session, d, user_id)
     opts = options or share_links.ShareOptions(expires_in_days=expires_in_days)
     short_id = generate_short_id()
     replaced = d.share_short_id if active else None
