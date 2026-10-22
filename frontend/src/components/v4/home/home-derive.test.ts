@@ -203,3 +203,9 @@ test("peek figures: price, range and machine; withheld stays withheld", async ()
   assert.equal(peekFigs(w, vo(w, null), null)[0].v, "Withheld");
   assert.equal(peekFigs(w, vo(w, null), null).length, 2, "no range for a withheld price");
 });
+
+test("ce-19: the list's price is at the part page's quantity, and says when that's the yearly one", () => {
+  const uc = { usd: 36.69, qty: 100, currency: "USD", withheld: false, withheld_reason: null, validated: false };
+  assert.equal(priceText({ unit_cost: { ...uc, qty_basis: "default", declared_qty: 800 } } as never), "$36.69 at 100");
+  assert.equal(priceText({ unit_cost: { ...uc, usd: 25.32, qty: 1000, qty_basis: "declared", declared_qty: 1000 } } as never), "$25.32 at 1,000 a year");
+});

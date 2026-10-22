@@ -324,10 +324,16 @@ async def refresh_part_summary(
     if analysis is None and cost is None:
         return False
 
+    # The parts list prices at the quantity the part opens at: its declared yearly
+    # quantity when the record priced it (ce-19, op-08).
+    from src.services.part_context_service import get_context
+
+    ctx = await get_context(session, org_id, mesh_hash)
     row = catalog_service.derive_row(
         part_key=mesh_hash,
         analysis=_source_ref(analysis) if analysis is not None else None,
         cost=_source_ref(cost) if cost is not None else None,
+        declared_qty=getattr(ctx, "annual_volume", None) if ctx is not None else None,
     )
     fields = derive_summary_fields(row)
     makeability = derive_makeability_fields(

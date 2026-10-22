@@ -1632,6 +1632,10 @@ export interface CatalogUnitCost {
   withheld: boolean;
   withheld_reason: string | null;
   validated: boolean;
+  /** Why this quantity: "declared" (the part's yearly quantity, priced) or "default" (10, else the first of 10 or more, else the largest), the part page's own rule. */
+  qty_basis?: "declared" | "default" | null;
+  /** The part's declared yearly quantity, when it has one (it may not be priced yet). */
+  declared_qty?: number | null;
 }
 
 /**

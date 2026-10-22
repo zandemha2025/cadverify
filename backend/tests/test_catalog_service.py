@@ -405,3 +405,37 @@ def test_invalid_cursor_is_a_valueerror_subclass():
     # So any generic ValueError handler still catches it, but the route can map it
     # specifically to a 400.
     assert issubclass(svc.InvalidCursorError, ValueError)
+
+
+def test_parts_list_prices_at_the_quantity_the_part_page_opens_at():
+    """ce-19 / me-22: the list read '$149.30 at 1' for the pocket block while its part
+    page opened at 100 ($36.69)."""
+    j = _cost_json(qty=1, unit=149.30)
+    j["quantities"] = [1, 100, 1000, 2000, 5000, 10000]
+    at100 = dict(j["estimates"][0], quantity=100, unit_cost_usd=36.69)
+    j["estimates"].insert(1, at100)
+    row = svc.derive_row(part_key="pocket", analysis=None, cost=_ref(j, id="CD1"))
+    assert row["unit_cost"]["qty"] == 100 and row["unit_cost"]["usd"] == 36.69
+    # her yearly 800 isn't priced on this record: the default rule, and the row says which
+    row = svc.derive_row(part_key="pocket", analysis=None, cost=_ref(j, id="CD1"), declared_qty=800)
+    assert row["unit_cost"]["qty"] == 100 and row["unit_cost"]["qty_basis"] == "default"
+    assert row["unit_cost"]["declared_qty"] == 800
+    # a yearly quantity the record priced is where the list prices it
+    at1000 = dict(j["estimates"][0], quantity=1000, unit_cost_usd=25.32)
+    j2 = dict(j, estimates=[*j["estimates"], at1000])
+    row = svc.derive_row(part_key="pocket", analysis=None, cost=_ref(j2, id="CD2"), declared_qty=1000)
+    assert (row["unit_cost"]["qty"], row["unit_cost"]["usd"], row["unit_cost"]["qty_basis"]) == (1000, 25.32, "declared")
+    # batch webhooks keep their first-estimate convention
+    assert svc.make_now_estimate(j)["quantity"] == 1
+
+
+def test_opening_quantity_matches_the_part_page_rule_on_the_shared_cases():
+    """The parts list (here) and the part page (frontend model.ts openingQty) read the
+    same cases, so one part opens at one quantity everywhere."""
+    import json
+    from pathlib import Path
+
+    cases = json.loads((Path(__file__).parent / "fixtures" / "opening_qty_cases.json").read_text())["cases"]
+    assert len(cases) >= 8
+    for c in cases:
+        assert svc.opening_qty(c["quantities"], c["yearly"]) == c["opens"], c

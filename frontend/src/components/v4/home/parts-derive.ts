@@ -124,11 +124,16 @@ export function verdictOf(row: PartRow, make: Makeability | null | undefined): V
   return { key: "unknown", label: "No machine check", tone: "unk", where: routeLine(row), stale };
 }
 
-/** The tile's price at its quantity ("$30.00 at 1"): the unit cost when the engine priced the route, "—" when withheld or never priced. */
+/**
+ * The tile's price at the quantity the part page opens at ("$36.69 at 100"; "$25.32 at 1,000 a year"
+ * when that's the part's declared yearly quantity): the unit cost when the engine priced the route,
+ * "—" when withheld or never priced (ce-19, me-22).
+ */
 export function priceText(row: PartRow): string {
   const uc = row.unit_cost;
   if (!uc || uc.withheld || uc.usd == null) return "—";
-  return uc.qty != null ? `${money(uc.usd)} at ${uc.qty.toLocaleString("en-US")}` : money(uc.usd);
+  if (uc.qty == null) return money(uc.usd);
+  return `${money(uc.usd)} at ${uc.qty.toLocaleString("en-US")}${uc.qty_basis === "declared" ? " a year" : ""}`;
 }
 
 /** The part page opened on the tile's quantity, so it shows the price the tile showed. */

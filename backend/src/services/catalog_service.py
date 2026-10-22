@@ -151,21 +151,61 @@ def posture(drivers: Optional[list[dict]]) -> dict:
     }
 
 
-def make_now_estimate(cost_result_json: dict) -> Optional[dict]:
+def opening_basis(quantities, declared: Optional[int] = None) -> Optional[dict]:
+    """The quantity a part opens at, the ONE rule the parts list, the part page
+    (frontend ``part/model.ts`` ``openingQty``), the catalog board and Decision
+    share (ce-19, me-22, op-08), and why:
+
+    * the part's declared yearly quantity when the record priced it (``declared``);
+    * else 10 when priced, else the first priced quantity of 10 or more, else the
+      largest (``default``). A yearly quantity the record didn't price falls
+      through to the default; the part page says so and offers to price it.
+
+    ``tests/fixtures/opening_qty_cases.json`` holds both twins to the same cases.
+    ``{"qty": 100, "basis": "default", "declared": 800}``; None when nothing was priced."""
+    qs = sorted({int(q) for q in (quantities or []) if isinstance(q, (int, float)) and not isinstance(q, bool) and q > 0})
+    if not qs:
+        return None
+    d = int(declared) if isinstance(declared, (int, float)) and not isinstance(declared, bool) and declared > 0 else None
+    if d is not None and d in qs:
+        return {"qty": d, "basis": "declared", "declared": d}
+    q = 10 if 10 in qs else next((q for q in qs if q >= 10), qs[-1])
+    return {"qty": q, "basis": "default", "declared": d}
+
+
+def opening_qty(quantities, declared: Optional[int] = None) -> Optional[int]:
+    """``opening_basis``'s quantity."""
+    b = opening_basis(quantities, declared)
+    return b["qty"] if b else None
+
+
+def make_now_estimate(cost_result_json: dict, *, at_opening_qty: bool = False,
+                      declared: Optional[int] = None) -> Optional[dict]:
     """The estimate behind the recommended make-now route.
 
     The FIRST estimate whose ``process`` equals ``decision.make_now_process`` —
     the same ``pickEstimate`` convention the saved-decision hero and the resident
     Inspector use. None when there is no decision or no matching estimate.
+
+    ``at_opening_qty``: the make-now estimate at the quantity the part page opens
+    at (``opening_qty``), in the material the decision recommends there, so the
+    parts list and the part page show the same price (ce-19, me-22).
     """
     decision = cost_result_json.get("decision") or {}
     proc = (decision.get("make_now_process") or "").strip()
     if not proc:
         return None
-    for e in cost_result_json.get("estimates") or []:
-        if e.get("process") == proc:
-            return e
-    return None
+    matches = [e for e in cost_result_json.get("estimates") or [] if e.get("process") == proc]
+    if not matches:
+        return None
+    if at_opening_qty:
+        q = opening_qty(cost_result_json.get("quantities") or [e.get("quantity") for e in matches], declared)
+        at = [e for e in matches if e.get("quantity") == q]
+        if at:
+            rec = (decision.get("recommendation") or {}).get(str(q)) or {}
+            mat = rec.get("material") if rec.get("process") == proc else decision.get("make_now_material")
+            return next((e for e in at if mat and e.get("material") == mat), at[0])
+    return matches[0]
 
 
 def _process_score(analysis_result_json: dict, process: str) -> Optional[dict]:
@@ -199,6 +239,7 @@ def derive_row(
     part_key: str,
     analysis: Optional[SourceRef],
     cost: Optional[SourceRef],
+    declared_qty: Optional[int] = None,
 ) -> dict:
     """Derive one catalog row from a part's (optional) analysis + cost artifacts.
 
@@ -219,7 +260,9 @@ def derive_row(
     # DFM-recommended best_process (real, but not costed). Either is honestly
     # labeled by ``source`` so the UI never conflates a costed route with a raw
     # DFM suggestion.
-    est = make_now_estimate(cost_json) if cost else None
+    # Priced at the quantity the part opens at: its declared yearly quantity, else the default rule.
+    est = make_now_estimate(cost_json, at_opening_qty=True, declared=declared_qty) if cost else None
+    qty_basis = (opening_basis(cost_json.get("quantities") or [], declared_qty) if cost else None)
     recommended_route: Optional[dict] = None
     scoped_process = ""
     if cost is not None:
@@ -271,6 +314,9 @@ def derive_row(
             # truth yet); the catalog never presents an unvalidated cost as
             # measured.
             "validated": bool(ci.get("validated", False)),
+            # Why this quantity: the declared yearly one, the next priced above it, or the default rule.
+            "qty_basis": (qty_basis or {}).get("basis") if (qty_basis or {}).get("qty") == est.get("quantity") else None,
+            "declared_qty": (qty_basis or {}).get("declared"),
         }
     elif cost is not None:
         # Costed but no matching make-now estimate (e.g. GEOMETRY_INVALID) — the
@@ -489,8 +535,9 @@ async def build_catalog(
         return {"rows": [], "truncated": False}
 
     parts, truncated = await _fold_org_parts(session, org_id, part_key=part_key)
+    declared = {c.mesh_hash: getattr(c, "annual_volume", None) for c in await pcsvc.list_contexts(session, org_id)}
     rows = [
-        derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
+        derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref, declared_qty=declared.get(mesh))
         for (mesh, analysis_ref, cost_ref) in parts
     ]
 
