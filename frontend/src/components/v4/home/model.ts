@@ -99,6 +99,7 @@ export interface MachineRow {
   process: string;
   count: number;
   hourly_rate_usd: number | null;
+  created_at?: string | null;
 }
 
 export interface ChangeRow {

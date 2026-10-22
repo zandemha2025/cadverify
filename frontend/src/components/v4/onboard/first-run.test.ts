@@ -194,10 +194,10 @@ test("Home's first-run mode", () => {
 
 const hrefs = { check: "/c", shop: "/s", rates: "/r", programs: "/p", actuals: "/a", team: "/t", addMachines: "/add" };
 
-test("setup steps before the first part: check is next, machines wait for it", () => {
+test("setup steps before the first part: check is next, and machines can be added first (me-19)", () => {
   const i: FirstStepsInput = { records: 0, parts: 0, part: null, machines: [], rates: { using_governed: false, source: "default_rate_card_v0" }, yours: null, labor: null, programs: null, actuals: null, members: 1, failed: {}, hrefs };
   const s = firstSteps(i);
-  assert.deepEqual(s.map((x) => x.chip), ["To do", "Locked", "Typical", "Locked", "Locked", "Optional"]);
+  assert.deepEqual(s.map((x) => x.chip), ["To do", "To do", "Typical", "Locked", "Locked", "Optional"]);
   assert.equal(s[0].next, true);
   assert.equal(s[2].detail, "Default rate card v0 · every input typical");
 });
@@ -228,6 +228,26 @@ test("setup steps after a skipped shop: add machines is next, with the part name
   assert.equal(rated[2].chip, "Partly");
   assert.equal(rated[2].next, true);
   assert.match(rated[2].detail, /labor \(\$35\/h\)/);
+});
+
+test("pick up where you left off says a check predates the machines only when it does (me-07)", () => {
+  const h = { addMachines: "/add", rates: "/r", recheck: "/re" };
+  // The record hasn't loaded yet: nothing, rather than a card that flips two seconds later.
+  assert.equal(resumeCard({ file: "pocket-block.step", partHref: "/p", cost: null, machines: 4, onMachines: false, hrefs: h }), null);
+  const before = resumeCard({ file: "bracket.step", partHref: "/p", cost: BEFORE, machines: 4, onMachines: false, addedAfter: true, hrefs: h });
+  assert.equal(before?.title, "bracket.step was checked before your machines were added");
+  // Machines were there before the check, and the check still didn't use them: said as it is.
+  const notOn = resumeCard({ file: "bracket.step", partHref: "/p", cost: BEFORE, machines: 4, onMachines: false, addedAfter: false, hrefs: h });
+  assert.equal(notOn?.title, "bracket.step wasn’t checked against your machines");
+  // Checked on your machines: never the re-check card.
+  assert.notEqual(resumeCard({ file: "bracket.step", partHref: "/p", cost: NOW_RATED, machines: 4, onMachines: true, addedAfter: false, hrefs: h })?.k, "Next: re-check on your machines");
+});
+
+test("Add your machines is never locked before the first check: Your shop takes them any time (me-19)", () => {
+  const s = firstSteps({ records: 0, parts: 0, part: null, machines: [], rates: null, yours: null, labor: null, programs: null, actuals: null, members: null, failed: {}, hrefs: { check: "/c", shop: "/s", rates: "/r", programs: "/p", actuals: "/a", team: "/t", addMachines: "/s?add=1" } });
+  const m = s.find((x) => x.key === "machines")!;
+  assert.equal(m.chip, "To do");
+  assert.deepEqual(m.go, { label: "Add machines", href: "/s?add=1" });
 });
 
 test("pick up where you left off: machines next, then the labor rate", () => {

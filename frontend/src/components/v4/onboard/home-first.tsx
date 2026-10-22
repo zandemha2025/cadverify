@@ -137,7 +137,9 @@ export function FirstHome({
     hrefs: { check: R.check, shop: R.shop, rates: R.rates, programs: R.programs, actuals: R.actuals, team: R.org, addMachines: addHref },
   });
   const done = steps.filter((s) => s.tone === "done").length;
-  const resume = mode === "back" && file && key ? resumeCard({ file, partHref, cost, machines: nMachines, onMachines, hrefs: { addMachines: addHref, rates: R.rates, recheck: `${partHref}?lens=shop` } }) : null;
+  const checkedAt = latest?.created_at ? Date.parse(latest.created_at) : NaN;
+  const addedAfter = input.machines && Number.isFinite(checkedAt) ? input.machines.some((m) => !!m.created_at && Date.parse(m.created_at) > checkedAt) : null;
+  const resume = mode === "back" && file && key ? resumeCard({ file, partHref, cost, machines: nMachines, onMachines, addedAfter, hrefs: { addMachines: addHref, rates: R.rates, recheck: `${partHref}?lens=shop` } }) : null;
 
   const left = usage ? (usage.unlimited ? null : usage.remaining) : null;
   const checksFact = !usage ? null : usage.unlimited ? "Pilot plan · checks aren’t capped" : `${usage.remaining} ${usage.plan === "pro" ? "Pro" : "free"} ${usage.remaining === 1 ? "check" : "checks"}${mode === "back" ? " left" : ""}`;

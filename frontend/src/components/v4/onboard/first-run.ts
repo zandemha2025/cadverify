@@ -620,7 +620,9 @@ export function firstSteps(i: FirstStepsInput): FirstStep[] {
   else if (nm > 0) {
     const names = i.machines!.map((m) => m.name).filter(Boolean);
     steps.push({ key: "machines", title: "Add your machines", detail: `${pl(nm, "machine")} · ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}`, chip: "Done", tone: "done", go: { label: "Open machines", href: i.hrefs.shop } });
-  } else if (!has) steps.push({ key: "machines", title: "Add your machines", detail: "After the first check · answers then name the machine that can make it", chip: "Locked", tone: "lock" });
+  } else if (!has)
+    // me-19: Your shop takes machines before any check, so this step is never locked: add them first and the first answer names the machine.
+    steps.push({ key: "machines", title: "Add your machines", detail: "Before your first check, or after · answers then name the machine that can make it", chip: "To do", tone: "warn", go: { label: "Add machines", href: i.hrefs.addMachines } });
   else steps.push({ key: "machines", title: "Add your machines", detail: i.part && !i.part.onMachines ? `Not added yet · ${i.part.file} was priced at typical shops only` : "Not added yet · answers use typical machines", chip: "To do", tone: "warn", go: { label: "Add machines", href: i.hrefs.addMachines } });
 
   if (!i.rates) steps.push({ key: "rates", title: "Set your rates", detail: f.rates ? "Rates didn’t load" : "Checking rates", chip: "Unknown", tone: f.rates ? "bad" : "unk" });
@@ -677,9 +679,13 @@ export function resumeCard(i: {
   cost: CostReport | null;
   machines: number | null;
   onMachines: boolean;
+  /** Whether a machine was added after this check: true, false, or null when it isn't known. */
+  addedAfter?: boolean | null;
   hrefs: { addMachines: string; rates: string; recheck: string };
 }): ResumeCard | null {
   const cost = i.cost;
+  // me-07: with machines declared, nothing is said about the check until its record has loaded (no flash of a wrong card).
+  if (!cost && (i.machines ?? 0) > 0) return null;
   const qs = quantitiesOf(cost);
   const q = qs.length ? defaultQty(qs) : null;
   if (i.machines == null) return null;
@@ -697,9 +703,10 @@ export function resumeCard(i: {
     };
   }
   if (!i.onMachines) {
+    // "Checked before your machines were added" only when one was (me-07); otherwise the true thing: it wasn't checked on them.
     return {
       k: "Next: re-check on your machines",
-      title: `${i.file} was checked before your machines were added`,
+      title: i.addedAfter ? `${i.file} was checked before your machines were added` : `${i.file} wasn’t checked against your machines`,
       text: "Re-check it and the answer names the machine that can make it, at your rates.",
       meta: "Re-checking the same file doesn’t use a check",
       go: { label: "Re-check", href: i.hrefs.recheck },
