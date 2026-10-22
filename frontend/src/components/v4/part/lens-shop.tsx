@@ -16,6 +16,8 @@ import { useFix } from "../fix/ctx";
 import { problemForIssue } from "../fix/problems";
 import { dims as unitDims, inText, len } from "../units/units";
 import { useUnits } from "../units/use-units";
+import { pairAt } from "./choice";
+import { machineSummary, pickedMachineId, rankMachines } from "./machine-rank";
 
 function bboxOf(p: ReturnType<typeof usePart>): [number, number, number] | null {
   const b = p.data.validation?.geometry.bounding_box_mm ?? p.data.cost?.geometry.bbox_mm ?? null;
@@ -27,10 +29,19 @@ function machineChip(verdict: string): string {
   return verdict === "Not set up" ? "Material not declared" : verdict;
 }
 
+/**
+ * Your machines in the order the In-house view shows them (me-08): the machine the in-house answer is on
+ * at this quantity first (the engine's cheapest route on a machine of yours), then the others that can make
+ * it, cheapest first, then the ones that can't confirm, aren't set up or can't.
+ */
 export function useMachineViews(): MachineView[] {
   const p = usePart();
   const bbox = bboxOf(p);
-  return React.useMemo(() => machineViews(p.data.machines, p.methods, p.data.cost, p.q, bbox), [p.data.machines, p.methods, p.data.cost, p.q, bbox]);
+  const side = pairAt(p.data.cost, p.q)?.in_house ?? null;
+  return React.useMemo(() => {
+    const views = machineViews(p.data.machines, p.methods, p.data.cost, p.q, bbox);
+    return rankMachines(views, pickedMachineId(views, side));
+  }, [p.data.machines, p.methods, p.data.cost, p.q, bbox, side]);
 }
 
 function useSelectedMachine(views: MachineView[]): MachineView | null {
@@ -49,8 +60,14 @@ export function ShopLayer() {
   const part = bboxOf(p);
   const env = m?.envelope ?? null;
   const { unit } = useUnits();
+  const caps = (m ? p.data.machines.find((x) => x.id === m.id)?.capabilities : null) ?? null;
+  const swing = typeof caps?.swing_dia === "number" ? caps.swing_dia : null;
+  const between = typeof caps?.between_centers === "number" ? caps.between_centers : null;
   let drawing: React.ReactNode = null;
-  if (m && env && part) {
+  if (m && part && m.process === "cnc_turning" && swing && between) {
+    // A lathe is drawn as a lathe (me-08): the chuck, the swing over the bed and the length between centres.
+    drawing = <LatheDrawing name={m.name} swing={swing} between={between} part={part} />;
+  } else if (m && env && part) {
     const [W, D, H] = env;
     const sc = Math.min(470 / ((W + D) * C30), 400 / ((W + D) * S30 + H));
     const ox = 100 + D * C30 * sc;
@@ -96,6 +113,54 @@ export function ShopLayer() {
   );
 }
 
+/** A turned part's diameter and length from its box: the odd one out of three extents is the axis, else the longest. */
+function turnedSize(box: [number, number, number]): { dia: number; length: number } {
+  const [a, b, c] = [...box].sort((x, y) => x - y);
+  const close = (x: number, y: number) => Math.abs(x - y) <= 0.02 * Math.max(x, y);
+  if (close(b, c) && !close(a, b)) return { dia: b, length: a };
+  return { dia: b, length: c };
+}
+
+/** Side view of a lathe: chuck, the swing envelope between centres, and the part drawn to scale in the chuck. */
+function LatheDrawing({ name, swing, between, part }: { name: string; swing: number; between: number; part: [number, number, number] }) {
+  const { unit } = useUnits();
+  const { dia, length } = turnedSize(part);
+  const sc = Math.min(460 / between, 300 / swing);
+  const x0 = 150;
+  const cy = 560;
+  const chuckH = Math.max(swing * sc * 0.55, 40);
+  const ex = x0 + between * sc;
+  const top = cy - (swing / 2) * sc;
+  const bot = cy + (swing / 2) * sc;
+  const pw = Math.max(length * sc, 2);
+  const ph = Math.max(dia * sc, 2);
+  const pc: [number, number] = [x0 + pw / 2, cy];
+  return (
+    <>
+      <svg width="948" height="944" viewBox="0 0 948 944" role="img" aria-label={`${name}: swing ${len(swing, unit, 0)} diameter, ${len(between, unit, 0)} between centres, with the ${len(dia, unit)} diameter by ${len(length, unit)} part drawn to scale in the chuck`} style={{ position: "absolute", left: 0, top: 0 }}>
+        <rect x={x0} y={top} width={between * sc} height={bot - top} fill="#E3E7EC" fillOpacity="0.85" stroke="#5F656E" strokeWidth="1.6" />
+        <line x1={x0 - 70} y1={cy} x2={ex + 40} y2={cy} stroke="#AEB5BE" strokeWidth="1.2" strokeDasharray="10 4 2 4" />
+        <rect x={x0 - 64} y={cy - chuckH / 2} width={64} height={chuckH} rx="4" fill="#5F656E" />
+        <path d={`M${ex} ${cy - 14} L${ex + 26} ${cy} L${ex} ${cy + 14} Z`} fill="#5F656E" />
+        <rect x={x0} y={cy - ph / 2} width={pw} height={ph} fill="#141414" />
+        <line x1={pc[0]} y1={pc[1]} x2={661 - 118 * 0.7} y2={226 + 118 * 0.7} stroke="#141414" strokeWidth="1.2" strokeDasharray="3 4" />
+        <circle cx="661" cy="226" r="118" fill="none" stroke="#141414" strokeOpacity="0.28" strokeWidth="1.2" />
+      </svg>
+      {[
+        { x: (x0 + ex) / 2, y: bot + 24, t: `${len(between, unit, 0)} between centres` },
+        { x: ex + 70, y: (top + cy) / 2, t: `Swing Ø${len(swing, unit, 0)}` },
+      ].map((d) => (
+        <span key={d.t} className="num" style={{ position: "absolute", left: d.x, top: d.y, transform: "translate(-50%, -50%)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)", whiteSpace: "nowrap" }}>
+          {d.t}
+        </span>
+      ))}
+      <span style={{ position: "absolute", left: 661, top: 360, transform: "translateX(-50%)", fontSize: 12.5, color: "var(--ink2)", whiteSpace: "nowrap" }}>
+        Your part, Ø{len(dia, unit)} × {len(length, unit)}, magnified. It is drawn to true scale in the {name}’s chuck.
+      </span>
+    </>
+  );
+}
+
 function sig(ms: OwnedMachine[]): string {
   return ms.map((m) => `${m.id}:${m.updated_at ?? ""}`).sort().join("|");
 }
@@ -116,10 +181,11 @@ export function ShopSheet() {
   }, []);
   const changed = current != null && p.data.cost != null && sig(current) !== sig(p.data.machines);
   const can = views.filter((v) => v.tone === "ok");
-  const cant = views.filter((v) => v.tone === "bad");
+  const groups = machineSummary(views);
   const figs: FigItem[] = [];
   if (can.length) figs.push({ k: "Can make", v: can.map((v) => v.name).join(", "), tone: "ok" });
   else if (views.length) figs.push({ k: "Can make", v: "None", s: "no machine of yours clears every check", tone: "bad" });
+  // The in-house answer: the machine it is on leads the list (views are ranked), with its hours and price.
   const ih = can.find((v) => v.cost != null);
   const vol = p.data.cost?.geometry?.volume_cm3 ?? null;
   if (ih) {
@@ -130,9 +196,11 @@ export function ShopSheet() {
     if (r?.hoursRun != null) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: hoursText(r.hoursRun), s: [`machine time on your ${ih.name}`, r.kgRun != null ? `${massText(r.kgRun)} ${r.grade}` : null, price].filter(Boolean).join(" · ") });
     else figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: p.costOff ? "Not priced" : money(ih.cost), s: e && !p.costOff ? priceMeta(ih.method!, p.q)?.replace(/^Could be /, "") ?? "" : "" });
   }
-  const warn = views.filter((v) => v.tone === "warn");
-  if (cant.length) figs.push({ k: "Can't", v: cant.map((v) => v.name).join(", "), s: cant.map((v) => (v.verdict === "Can't" ? "can't make it as drawn" : v.verdict.toLowerCase())).join(" · "), tone: "bad" });
-  else if (warn.length) figs.push({ k: warn.every((v) => v.verdict === "Not set up") ? "Material not declared" : "Not set up", v: warn.map((v) => v.name).join(", "), s: warn.length === 1 ? warn[0].why : undefined, tone: "warn" });
+  // Every machine left out of Can make is named here with its reason (me-10), not only inside its row.
+  for (const g of groups) {
+    if (g.k === "Can make") continue;
+    figs.push({ k: g.k, v: g.names, s: g.why ?? undefined, tone: g.tone ?? undefined });
+  }
   const { unit } = useUnits();
   const box = bboxOf(p);
   const dims = box ? unitDims(box, unit) : dimsText(box);
