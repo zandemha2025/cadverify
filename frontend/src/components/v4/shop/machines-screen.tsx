@@ -25,6 +25,7 @@ import { Banner, LaborFact, RateCardChip, ShopWorld, useLaborRate, usePartRecord
 import { MachineDialog } from "./machine-dialog";
 import { MachineSheet } from "./machine-sheet";
 import { downloadText, getMachineLoad, getShopCapabilities, putShopCapabilities, type MachineLoad, type ShopLoad } from "./shop-api";
+import { SpecCaps } from "./spec-caps";
 import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, tileSub, toggleOp } from "./shop-derive";
 import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
 
@@ -450,6 +451,27 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
     }
   };
 
+  // One op set to in-house (true), sent out / not held (false) or not said (absent).
+  const setKey = async (key: string, value: boolean | undefined, label: string) => {
+    if (!ops || saving) return;
+    const next = { ...ops };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    setSaving(key);
+    setNote(null);
+    try {
+      const r = await putShopCapabilities(next);
+      setOps(r.ops ?? next);
+      const said = value === undefined ? "not said" : value ? "declared" : "declared not here";
+      setNote({ ok: true, text: `${label}: ${said}. Older decisions are marked for re-costing.` });
+      onSaved();
+    } catch (e) {
+      setNote({ ok: false, text: `Couldn't save: ${e instanceof Error ? e.message : "try again."}` });
+    } finally {
+      setSaving(null);
+    }
+  };
+
   return (
     <Panel
       title="Across the shop"
@@ -498,6 +520,7 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
       <p className={cx("fh")} aria-live="polite" style={{ margin: "-6px 16px 12px", color: note && !note.ok ? "var(--bad)" : undefined }}>
         {note ? note.text : "A part that needs one of these fits in-house only when it's on."}
       </p>
+      {!error ? <SpecCaps ops={ops} saving={saving} onSet={(k, v, l) => void setKey(k, v, l)} /> : null}
     </Panel>
   );
 }

@@ -25,6 +25,7 @@ import { Chip, Content, Failed, KV, Loading, Panel, Sheet, cx } from "../ui";
 import { R } from "../routes";
 import { useShell } from "../shell";
 import { DeleteOrgPanel } from "../datacontrol/delete-org";
+import { SignoffPanel } from "./signoff-panel";
 import { AccountFrame, AccountHead, Banner, Confirm, CopyButton } from "./frame";
 import * as api from "./api";
 import {
@@ -269,6 +270,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
                 Org role sets what you can manage here. Workspace role sets what you can do in parts and records.
               </p>
             </Panel>
+            <SignoffPanel />
             {isAdmin ? (
               <>
                 <InvitePanel onInvited={() => void load()} domain={user?.email ? domainOf(user.email) : ""} />
