@@ -45,11 +45,16 @@ def code_at_step(secret_b32: str, step: int) -> str:
 
 
 def clean_code(raw: object) -> str | None:
-    """Six digits from what a person typed ("123 456", "123-456"), else None."""
+    """Six digits from what a person typed ("123 456", "123-456"), else None.
+
+    ASCII digits only: ``str.isdigit`` also accepts other scripts' digits
+    ("١٢٣٤٥٦"), which no authenticator app shows and which the constant-time
+    compare refuses with a TypeError.
+    """
     if not isinstance(raw, str):
         return None
     digits = "".join(ch for ch in raw if not ch.isspace() and ch != "-")
-    if len(digits) != DIGITS or not digits.isdigit():
+    if len(digits) != DIGITS or not (digits.isascii() and digits.isdigit()):
         return None
     return digits
 

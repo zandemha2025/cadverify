@@ -62,6 +62,14 @@ def test_code_input_is_forgiving_about_spaces_only():
         assert totp.clean_code(bad) is None
 
 
+def test_digits_from_other_scripts_are_not_a_code():
+    """Arabic-Indic or full-width digits pass str.isdigit() but are no code, and
+    the constant-time compare would raise on them: they never reach it."""
+    for other in ("١٢٣٤٥٦", "１２３４５６", "۱۲۳۴۵۶", "12３456"):
+        assert totp.clean_code(other) is None
+        assert totp.matching_step(RFC_SECRET, other, now=1_700_000_000.0) is None
+
+
 def test_secret_and_link_shape():
     secret = totp.new_secret()
     assert len(secret) == 32 and set(secret) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
@@ -543,6 +551,49 @@ async def test_org_rule_signs_out_members_and_sets_them_up_at_next_sign_in(env, 
 
 @requires_pg
 @pytest.mark.asyncio
+async def test_step_up_leaves_a_single_sign_on_account_signed_in(env):
+    """Joining an org that requires two-step ends the sessions of an account
+    without it, except one that signs in through single sign-on (bound to an
+    IdP identity, or made by SAML/OIDC before bindings): the identity provider
+    owns that step, as the step-up docstring and the module say."""
+    import src.db.engine as eng
+
+    w = World()
+    try:
+        async with _client() as ac:
+            bound, bound_s = await _signup(ac, w.email("bound"))
+            legacy, legacy_s = await _signup(ac, w.email("legacy"))
+            plain, plain_s = await _signup(ac, w.email("plain"))
+            org = f"01TS{w.tag.upper()}"[:26]
+            w.orgs.append(org)
+            async with eng.get_session_factory()() as s:
+                await s.execute(text("INSERT INTO organizations (id, name, slug, require_two_step) VALUES (:o, :n, :sl, true)"),
+                                {"o": org, "n": f"Kestrel {w.tag}", "sl": f"kestrel-{w.tag}"})
+                for uid in (bound, legacy, plain):
+                    await s.execute(text("INSERT INTO memberships (id, org_id, user_id, org_role) VALUES (:i, :o, :u, 'member')"),
+                                    {"i": uuid.uuid4().hex, "o": org, "u": uid})
+                await s.execute(text("INSERT INTO auth_identities (provider, issuer, subject, user_id) "
+                                     "VALUES ('oidc', 'https://idp.kestrel.example', :sub, :u)"),
+                                {"sub": f"sub-{w.tag}", "u": bound})
+                await s.execute(text("UPDATE users SET auth_provider = 'saml' WHERE id = :u"), {"u": legacy})
+                await s.commit()
+            for session in (bound_s, legacy_s):
+                r = await ac.post("/auth/two-step/step-up", headers=_cookie(session))
+                assert r.status_code == 200 and r.json() == {"two_step": None}, r.text
+                assert (await ac.get("/protected", headers=_cookie(session))).status_code == 200
+            r = await ac.post("/auth/two-step/step-up", headers=_cookie(plain_s))
+            assert r.json()["two_step"] == "setup"
+            assert (await ac.get("/protected", headers=_cookie(plain_s))).status_code == 401
+            # What an admin sees in Members agrees with who is exempt.
+            async with eng.get_session_factory()() as s:
+                seen = {m["user_id"]: m["single_sign_on"] for m in await ts.member_status(s, org)}
+            assert seen == {bound: True, legacy: True, plain: False}
+    finally:
+        await _cleanup(w)
+
+
+@requires_pg
+@pytest.mark.asyncio
 async def test_email_link_and_google_ask_for_the_code(env, clock, monkeypatch):
     import src.auth.magic_link as m
     from fastapi.testclient import TestClient
@@ -697,6 +748,38 @@ async def test_a_burst_of_wrong_codes_is_held_to_the_lock(env, clock):
             r = await ac.post("/auth/two-step/challenge/verify", json={"challenge": challenge, "code": totp.code_at_step(secret, clock["step"])})
             assert r.status_code == 429 and "session" not in r.text
             assert (await _actions(uid)).count("auth.two_step_locked") == 1
+    finally:
+        await _cleanup(w)
+
+
+@requires_pg
+@pytest.mark.asyncio
+async def test_digits_from_another_script_get_the_normal_answer_never_a_500(env, clock):
+    """"١٢٣٤٥٦" is six digits to str.isdigit(); every code route answers it as a
+    code that isn't six digits (400), at setup and at sign-in, and takes no attempt."""
+    import src.db.engine as eng
+
+    w = World()
+    try:
+        async with _client() as ac:
+            email = w.email("arabic")
+            uid, first = await _signup(ac, email)
+            r = await ac.post("/auth/two-step/enrol", headers=_cookie(first))
+            assert r.status_code == 200, r.text
+            r = await ac.post("/auth/two-step/enrol/confirm", headers=_cookie(first), json={"code": "١٢٣٤٥٦"})
+            assert r.status_code == 400 and r.json()["detail"]["code"] == "two_step_code_format", r.text
+            secret, _codes, _session = await _enrol(ac, first, clock)
+            challenge = (await ac.post("/auth/login", json={"email": email, "password": PASSWORD})).json()["challenge"]
+            r = await ac.post("/auth/two-step/challenge/verify", json={"challenge": challenge, "code": "١٢٣٤٥٦"})
+            assert r.status_code == 400, r.text
+            assert r.json()["detail"]["code"] == "two_step_code_format"
+            assert r.json()["detail"]["message"] == "Enter the 6-digit code from your authenticator app."
+            async with eng.get_session_factory()() as s:
+                failed = (await s.execute(text("SELECT failed_attempts FROM user_two_step WHERE user_id = :u"), {"u": uid})).scalar_one()
+            assert failed == 0
+            clock["step"] += 1
+            r = await ac.post("/auth/two-step/challenge/verify", json={"challenge": challenge, "code": totp.code_at_step(secret, clock["step"])})
+            assert r.status_code == 200, r.text
     finally:
         await _cleanup(w)
 

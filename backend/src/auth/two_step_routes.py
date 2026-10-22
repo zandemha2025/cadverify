@@ -269,11 +269,16 @@ async def step_up(request: Request, response: Response, user_id: int = Depends(r
     one of its sessions ends here and a setup challenge is returned, so the
     organization's data is reached only after setting it up. An account that
     already has two-step (or owes nothing) keeps its session: it signed in with
-    a code, or through single sign-on, which is exempt.
+    a code. So does an account that signs in through the organization's single
+    sign-on (:data:`ts.SINGLE_SIGN_ON_ACCOUNT_SQL`): there the identity provider
+    owns the second step, its sign-ins never ask for a code, and ending its
+    session would only send it back through the same codeless sign-in.
     """
     require_auth_proxy_if_enabled(request)
     _no_store(response)
     if await ts.sign_in_requirement(session, user_id) != "setup":
+        return {"two_step": None}
+    if await ts.signs_in_with_single_sign_on(session, user_id):
         return {"two_step": None}
     version = await _bump_version(session, user_id)
     email, _role, _active, _v = await _user(session, user_id)

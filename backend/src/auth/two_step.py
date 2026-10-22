@@ -255,6 +255,28 @@ async def requiring_orgs(session: AsyncSession, user_id: int) -> list[dict]:
     return [{"org_id": r[0], "name": r[1]} for r in rows]
 
 
+# An account that signs in through this deployment's identity provider: bound
+# to a SAML or OIDC identity, or created by SAML/OIDC before bindings existed.
+# Those sign-ins never ask for a code (the identity provider owns that step),
+# so an organization's rule doesn't end such an account's sessions or stop its
+# API keys. SQL over ``users u``; shared by every check that applies the rule.
+SINGLE_SIGN_ON_ACCOUNT_SQL = (
+    "(u.auth_provider IN ('saml', 'oidc') "
+    "OR EXISTS (SELECT 1 FROM auth_identities sso_ai WHERE sso_ai.user_id = u.id))"
+)
+
+
+async def signs_in_with_single_sign_on(session: AsyncSession, user_id: int) -> bool:
+    """Whether the account signs in through the identity provider (see above)."""
+    row = (
+        await session.execute(
+            text(f"SELECT {SINGLE_SIGN_ON_ACCOUNT_SQL} FROM users u WHERE u.id = :u"),
+            {"u": int(user_id)},
+        )
+    ).first()
+    return bool(row and row[0])
+
+
 async def sign_in_requirement(session: AsyncSession, user_id: int) -> Purpose | None:
     """What a password, email-link or Google sign-in still owes before a session.
 
@@ -608,7 +630,7 @@ async def member_status(session: AsyncSession, org_id: str) -> list[dict]:
         await session.execute(
             text(
                 "SELECT u.id, u.email, m.org_role, (t.enabled_at IS NOT NULL AND t.secret_sealed IS NOT NULL), "
-                "u.auth_provider "
+                f"{SINGLE_SIGN_ON_ACCOUNT_SQL} "
                 "FROM memberships m JOIN users u ON u.id = m.user_id "
                 "LEFT JOIN user_two_step t ON t.user_id = u.id "
                 "WHERE m.org_id = :o ORDER BY u.email"
@@ -622,7 +644,7 @@ async def member_status(session: AsyncSession, org_id: str) -> list[dict]:
             "email": r[1],
             "org_role": r[2],
             "two_step_on": bool(r[3]),
-            "single_sign_on": (r[4] or "") in ("saml", "oidc"),
+            "single_sign_on": bool(r[4]),
         }
         for r in rows
     ]
