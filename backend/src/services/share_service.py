@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import secrets
 import string
+from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -64,8 +65,11 @@ async def create_share(
     user_id: int,
     session: AsyncSession,
     expires_in_days: int | None = share_links.DEFAULT_DAYS,
+    *,
+    ends_at: datetime | None = None,
 ) -> dict:
-    """Make a public link to an analysis that ends after ``expires_in_days``.
+    """Make a public link to an analysis that ends after ``expires_in_days``,
+    or at ``ends_at`` (a chosen day, ``ShareOptions.ends_at``) when given.
 
     ``None`` is the sharer's explicit "no end date". A link that is already on
     is returned unchanged (idempotent). A link that ended or was switched off
@@ -76,7 +80,7 @@ async def create_share(
         return _link(analysis)
 
     short_id = generate_short_id()
-    share_links.open_link(analysis, user_id, expires_in_days, short_id)
+    share_links.open_link(analysis, user_id, expires_in_days, short_id, ends_at=ends_at)
     from src.services.audit_service import emit_event
 
     await emit_event(

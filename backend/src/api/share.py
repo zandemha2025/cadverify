@@ -46,8 +46,12 @@ async def create_share(
     ``{"expires_on": "YYYY-MM-DD"}``; omitted is 7 days, ``null`` is the
     explicit "no end date" choice kept for API callers.
     """
-    days = (body or ShareOptions()).expires_in_days
-    return await share_service.create_share(analysis_id, user.user_id, session, days)
+    opts = body or ShareOptions()
+    # ``expires_on`` (validated by ShareOptions: today up to a year ahead) wins,
+    # as on the record and package share routes.
+    return await share_service.create_share(
+        analysis_id, user.user_id, session, opts.expires_in_days, ends_at=opts.ends_at()
+    )
 
 
 @share_router.delete("/{analysis_id}/share")
