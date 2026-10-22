@@ -4,7 +4,7 @@
  * Pure (type imports only), so it runs under `node --test`.
  */
 import { processLabel, processName } from "../process-names.ts";
-import type { Comparison, FactorEntry, Metric, Stats, Summary } from "./api.ts";
+import type { Comparison, FactorEntry, HourLine, Metric, Proposal, Stats, Summary } from "./api.ts";
 
 /** Parts with actuals before ScaleCAD's accuracy for you is a fair picture (groundtruth_service.MIN_REAL_RECORDS). */
 export const MIN_PARTS = 8;
@@ -55,6 +55,8 @@ export function metricValue(kind: "hours" | "cost", v: number | null | undefined
 /** "Your actual: 4.1 h, ScaleCAD 4.4 h (+7%)". */
 export function actualLine(kind: "hours" | "cost", m: Metric): string {
   const each = kind === "cost" ? " each" : "";
+  // The printed numbers and a % a calculator gets from them, when the server gives them (ce-12).
+  if (m.shown?.error) return `Your actual: ${m.shown.actual}${each}, ScaleCAD ${m.shown.estimate} (${m.shown.error})`;
   return `Your actual: ${metricValue(kind, m.actual)}${each}, ScaleCAD ${metricValue(kind, m.estimate)} (${pctWord(m.error_pct)})`;
 }
 
@@ -131,6 +133,21 @@ export function changeWord(process: string, kind: "hours" | "cost", factor: numb
   return factor < 1 ? `Your ${m} costs ${d}% less than ScaleCAD’s estimate` : `Your ${m} costs ${d}% more than ScaleCAD’s estimate`;
 }
 
+/**
+ * The calibration's lead line for the state it's in (ce-12): no matched actuals,
+ * matched but too few (with each method's count against what it needs), or what to change.
+ */
+export function calibrationLead(p: Proposal, hasOffer: boolean): string {
+  if (!p.processes.length) return "Nothing to calibrate yet: no actual matches a checked part. Log a job against a part, or import actuals with a file name or part number.";
+  if (!p.enough) {
+    const counts = p.processes.map((x) => `${methodWord(x.process)} has ${Math.max(x.hours.n, x.cost.n)}`).join(", ");
+    return `${partsWord(p.parts)} with actuals. A calibration needs ${p.min_parts} parts or more, and ${p.min_per_method} actuals for each method it changes (${counts}).`;
+  }
+  return hasOffer
+    ? "What your actuals say ScaleCAD should change. Each figure is checked part by part: the part’s own actual never grades the factor fitted on it."
+    : "Your actuals don’t support a change for any method right now.";
+}
+
 /** 0.8796 → "−12% (× 0.88)". */
 export function factorWord(f: number): string {
   return `${pctWord((f - 1) * 100)} (× ${trim(f, 2)})`;
@@ -176,6 +193,24 @@ export function partLines(rows: Comparison[]): { kind: "hours" | "cost"; text: s
     if (r.cost) out.push({ kind: "cost", text: actualLine("cost", r.cost), range: rangeWord("cost", r.cost), row: r });
   }
   return out;
+}
+
+/** One setup, labor or inspection line of an actual: "Labor a part: yours 24.00 min, ScaleCAD 30.00 min · 30.00 min ÷ 24.00 min − 1 = +25.0%". */
+export function hourLineWord(l: HourLine): string {
+  if (!l.shown?.formula) return `${l.label}: yours ${hoursWord(l.actual)}${l.note ? ` · ${l.note}` : ""}`;
+  return `${l.label}: yours ${l.shown.actual}, ScaleCAD ${l.shown.estimate} · ${l.shown.formula}`;
+}
+
+/** Which rates the compared costs were priced at, and the rows left out for older rates. */
+export function ratesWord(s: Summary | null): string | null {
+  if (!s) return null;
+  const bits: string[] = [];
+  const cards = s.rates_priced ?? [];
+  if (cards.length === 1) bits.push(`Costs compared at ${cards[0] ? `your rates v${cards[0]}` : "typical rates (v0)"}.`);
+  else if (cards.length > 1) bits.push(`Costs compared at rates ${cards.map((v) => `v${v}`).join(", ")}.`);
+  const x = s.rates_excluded ?? 0;
+  if (x) bits.push(`${x} ${x === 1 ? "cost isn’t" : "costs aren’t"} graded: ${x === 1 ? "its record was" : "their records were"} priced before your current rates. Re-check ${x === 1 ? "that part" : "those parts"} to compare.`);
+  return bits.length ? bits.join(" ") : null;
 }
 
 /** "3-axis milling, 25 parts, job J-118, 14 Mar 2026". */

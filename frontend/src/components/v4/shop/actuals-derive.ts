@@ -23,6 +23,12 @@ export type GtRecord = {
   source_type?: string | null;
   invoice_date?: string | null;
   actual_machine_hours?: number | null;
+  /** For the order. */
+  actual_setup_hours?: number | null;
+  /** Each part. */
+  actual_labor_hours?: number | null;
+  /** Each part. */
+  actual_inspection_hours?: number | null;
   part_number?: string | null;
   machine?: string | null;
   match_basis?: string | null;

@@ -201,10 +201,11 @@ export function ActualsScreen() {
 
         <AccuracyPanel tick={tick} onImport={() => fileRef.current?.click()} />
 
-        <CalibrationPanel ask={ask} onChanged={() => setTick((t) => t + 1)} />
+        <CalibrationPanel ask={ask} tick={tick} onChanged={() => setTick((t) => t + 1)} />
 
         <LogJob
           parts={recs.data?.parts ?? []}
+          partsLoading={recs.data == null && !recs.error}
           machines={machines}
           onSaved={async () => {
             const r = await load();
@@ -256,10 +257,13 @@ export function ActualsScreen() {
 
 function LogJob({
   parts,
+  partsLoading = false,
   machines,
   onSaved,
 }: {
   parts: { filename: string; make_now_process: string | null; label: string | null; mesh_hash?: string }[];
+  /** While your parts load, the Part field waits as a list instead of a text box that would be replaced (ce-12). */
+  partsLoading?: boolean;
   machines: OwnedMachine[];
   onSaved: () => Promise<number>;
 }) {
@@ -331,7 +335,11 @@ function LogJob({
       <div className="frow" style={{ gridTemplateColumns: "2fr 1.3fr 0.8fr 1fr 1fr" }}>
         <label className="field">
           Part
-          {picks.length ? (
+          {partsLoading ? (
+            <select aria-label="Part" value="" disabled aria-busy="true">
+              <option value="">Loading your parts…</option>
+            </select>
+          ) : picks.length ? (
             <select aria-label="Part" value={partKey} onChange={(e) => pickPart(e.target.value)} {...inv("part")}>
               <option value="">Pick a part</option>
               {picks.map((p) => (
@@ -416,18 +424,18 @@ function LogJob({
           {err("machineH")}
         </label>
         <label className="field">
-          Setup h
-          <input aria-label="Setup hours" type="text" inputMode="decimal" placeholder="opt." value={f.setupH} onChange={(e) => set("setupH", e.target.value)} {...inv("setupH")} />
+          Setup h, order
+          <input aria-label="Setup hours for the order" type="text" inputMode="decimal" placeholder="opt." value={f.setupH} onChange={(e) => set("setupH", e.target.value)} {...inv("setupH")} />
           {err("setupH")}
         </label>
         <label className="field">
-          Labor h
-          <input aria-label="Labor hours" type="text" inputMode="decimal" placeholder="opt." value={f.laborH} onChange={(e) => set("laborH", e.target.value)} {...inv("laborH")} />
+          Labor h each
+          <input aria-label="Labor hours per part" type="text" inputMode="decimal" placeholder="opt." value={f.laborH} onChange={(e) => set("laborH", e.target.value)} {...inv("laborH")} />
           {err("laborH")}
         </label>
         <label className="field">
-          Inspect h
-          <input aria-label="Inspection hours" type="text" inputMode="decimal" placeholder="opt." value={f.inspectH} onChange={(e) => set("inspectH", e.target.value)} {...inv("inspectH")} />
+          Inspect h each
+          <input aria-label="Inspection hours per part" type="text" inputMode="decimal" placeholder="opt." value={f.inspectH} onChange={(e) => set("inspectH", e.target.value)} {...inv("inspectH")} />
           {err("inspectH")}
         </label>
       </div>
@@ -453,6 +461,16 @@ function LogJob({
       </div>
     </Panel>
   );
+}
+
+/** The setup, labor and inspection hours a job was logged with, so they stay visible (ce-12). */
+function hoursLine(r: GtRecord): string | null {
+  const bits = [
+    r.actual_setup_hours != null ? `setup ${hoursWord(r.actual_setup_hours)} for the order` : null,
+    r.actual_labor_hours != null ? `labor ${hoursWord(r.actual_labor_hours)} each` : null,
+    r.actual_inspection_hours != null ? `inspection ${hoursWord(r.actual_inspection_hours)} each` : null,
+  ].filter(Boolean);
+  return bits.length ? bits.join(", ") : null;
 }
 
 function LoggedJobs({ records, error }: { records: GtRecord[] | null; error: string | null }) {
@@ -492,7 +510,8 @@ function LoggedJobs({ records, error }: { records: GtRecord[] | null; error: str
                     r.machine ? `on ${r.machine}` : null,
                     r.source && !/STAND-IN/i.test(r.source) ? r.source : null,
                     r.invoice_date ? longDate(r.invoice_date) : r.created_at ? `logged ${longDate(r.created_at)}` : null,
-                    r.match_basis ? `matched by ${basisWord(r.match_basis)}` : null,
+                    r.match_basis === "chosen" ? "picked by you" : r.match_basis ? `matched by ${basisWord(r.match_basis)}` : null,
+                    hoursLine(r),
                   ]
                     .filter(Boolean)
                     .join(" · ")}

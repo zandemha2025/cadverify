@@ -116,3 +116,4 @@
   .ob .val-paper h2{break-after:avoid}
   .ob .val-rep .panel{box-shadow:none;border:1px solid #d9dce1;break-inside:avoid}
 }
+.ob .val-sub.warn{color:#6B3F00}

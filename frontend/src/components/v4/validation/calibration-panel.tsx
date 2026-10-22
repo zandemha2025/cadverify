@@ -9,7 +9,7 @@
 import * as React from "react";
 import { ConfirmButton, Loading, Panel } from "../ui";
 import { ActualsApiError, applyCalibration, getCalibration, undoCalibration, type CalibrationEntry, type CalibrationState } from "./api";
-import { changeWord, dateWord, effectWord, factorWord, methodWord, whyNot } from "./words";
+import { calibrationLead, changeWord, dateWord, effectWord, factorWord, methodWord, whyNot } from "./words";
 import "./validation.css";
 
 function factorsLine(e: CalibrationEntry): string {
@@ -31,7 +31,8 @@ function sameAs(inEffect: CalibrationEntry | null, process: string, hours: numbe
   return eq(f.hours, hours) && eq(f.cost, cost);
 }
 
-export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?: () => void }) {
+/** `tick`: bump it when actuals change (a job logged or imported) so the panel reads the new state. */
+export function CalibrationPanel({ ask, onChanged, tick = 0 }: { ask?: number; onChanged?: () => void; tick?: number }) {
   const [state, setState] = React.useState<CalibrationState | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [n, setN] = React.useState(0);
@@ -61,7 +62,7 @@ export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?:
     return () => {
       live = false;
     };
-  }, [n]);
+  }, [n, tick]);
 
   // The page's Recalibrate button asks here.
   React.useEffect(() => {
@@ -135,13 +136,7 @@ export function CalibrationPanel({ ask, onChanged }: { ask?: number; onChanged?:
               </div>
             ) : null}
             <p className="val-lead">
-              {!p.processes.length
-                ? "Nothing to calibrate yet: import actuals that match your parts."
-                : !p.enough
-                  ? `${p.parts} ${p.parts === 1 ? "part" : "parts"} with actuals. A calibration needs ${p.min_parts} or more, and ${p.min_per_method} actuals for the method it changes.`
-                  : offered.length || inEffect
-                    ? "What your actuals say ScaleCAD should change. Each figure is checked part by part: the part’s own actual never grades the factor fitted on it."
-                    : "Your actuals don’t support a change for any method right now."}
+              {calibrationLead(p, !!(offered.length || inEffect))}
             </p>
             {p.processes.length ? (
               <div className="val-cal" role="group" aria-label="Changes by method">

@@ -12,7 +12,7 @@ import { R } from "../routes";
 import { Fig, Loading, Panel, cx } from "../ui";
 import { getAccuracy, type Accuracy, type Comparison, type Metric, type Stats } from "./api";
 import { reportHref } from "./routes";
-import { absPct, contextLine, leanWord, methodWord, metricValue, partsWord, pctWord, rangeWord, statsLine, summaryLine } from "./words";
+import { absPct, contextLine, hourLineWord, leanWord, methodWord, metricValue, partsWord, pctWord, rangeWord, ratesWord, statsLine, summaryLine } from "./words";
 import "./validation.css";
 
 export function useAccuracy(scope: { part?: string | null; run?: string | null }, tick = 0) {
@@ -38,14 +38,15 @@ export function useAccuracy(scope: { part?: string | null; run?: string | null }
 function MetricCell({ kind, m }: { kind: "hours" | "cost"; m: Metric | null }) {
   if (!m) return <span className="muted">—</span>;
   const range = rangeWord(kind, m);
+  // The printed numbers and the arithmetic on exactly them, so a calculator agrees (ce-12).
+  const sh = m.shown;
   return (
     <>
-      <b className="num">{metricValue(kind, m.actual)}</b> <span className="num">vs {metricValue(kind, m.estimate)}</span>{" "}
-      <span className="val-err">{pctWord(m.error_pct)}</span>
-      <small>
-        {range ?? "No stated range"}
-        {kind === "cost" && m.basis === "between" ? " · between priced quantities" : ""}
-      </small>
+      <b className="num">{sh?.actual ?? metricValue(kind, m.actual)}</b> <span className="num">vs {sh?.estimate ?? metricValue(kind, m.estimate)}</span>{" "}
+      <span className="val-err">{sh?.error ?? pctWord(m.error_pct)}</span>
+      {sh?.formula ? <small className="num">{sh.formula}</small> : null}
+      {kind === "cost" && m.basis === "model" && m.basis_note ? <small>{m.basis_note}</small> : null}
+      <small>{range ?? "No stated range"}</small>
     </>
   );
 }
@@ -126,7 +127,7 @@ export function ActualsTable({ rows, limit = 40 }: { rows: Comparison[]; limit?:
           <thead>
             <tr>
               <th scope="col">Part</th>
-              <th scope="col">Machine hours each: yours vs ScaleCAD</th>
+              <th scope="col">Hours: yours vs ScaleCAD</th>
               <th scope="col">Cost each: yours vs ScaleCAD</th>
               <th scope="col">
                 <span className="sr">Range</span>
@@ -140,10 +141,16 @@ export function ActualsTable({ rows, limit = 40 }: { rows: Comparison[]; limit?:
                   {c.part_key ? <Link href={R.part(c.part_key)}>{c.file_name ?? "Part"}</Link> : <b>{c.file_name}</b>}
                   {c.part_number ? <span className="muted"> · {c.part_number}</span> : null}
                   <small>{contextLine(c)}</small>
+                  {c.rates && !c.rates_excluded ? <small>{c.rates.text}</small> : null}
                   {c.note ? <small>{c.note}</small> : null}
                 </td>
                 <td data-k="Machine hours each">
                   <MetricCell kind="hours" m={c.hours} />
+                  {(c.hour_lines ?? []).map((l) => (
+                    <small key={l.line} className="num">
+                      {hourLineWord(l)}
+                    </small>
+                  ))}
                 </td>
                 <td data-k="Cost each">
                   <MetricCell kind="cost" m={c.cost} />
@@ -241,8 +248,10 @@ export function AccuracyPanel({
             {compact && s.parts === 0
               ? "Import your shop’s actual hours or costs in Your shop › Actual costs; parts of this run are compared here."
               : `Error is ScaleCAD’s estimate against your actual: +10% means ScaleCAD said 10% more. Compared with the estimate for the same part, method and quantity${data.calibration ? ", from before your calibration" : ""}.`}
-            {s.not_compared ? ` ${s.not_compared} ${s.not_compared === 1 ? "actual isn’t" : "actuals aren’t"} comparable (method not priced, or quantity outside the priced ones).` : ""}
+            {s.not_compared ? ` ${s.not_compared} ${s.not_compared === 1 ? "actual isn’t" : "actuals aren’t"} comparable (method not priced, or a quantity the record can’t price).` : ""}
+            {!compact && data.rows.some((r) => r.cost?.basis === "model") ? " A quantity the record didn’t price is compared with the record’s own model at that quantity: what the order pays once, over the quantity, plus what each part adds." : ""}
           </p>
+          {ratesWord(s) ? <p className={cx("val-sub", (s.rates_excluded ?? 0) > 0 && "warn")}>{ratesWord(s)}</p> : null}
         </>
       )}
     </Panel>

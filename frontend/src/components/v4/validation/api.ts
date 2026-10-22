@@ -140,7 +140,28 @@ export function importActuals(file: File, mapping: Mapping, choices: Record<stri
 
 /* ---------------- accuracy ---------------- */
 
-export type Metric = { actual: number; estimate: number; low: number | null; high: number | null; error_pct: number; inside: boolean | null; basis?: string | null };
+/** What a row prints and its arithmetic on exactly those printed numbers ("12.55 min ÷ 14.40 min − 1 = −12.8%"). */
+export type Shown = { estimate: string; actual: string; error: string | null; formula: string | null };
+
+export type Metric = {
+  actual: number;
+  estimate: number;
+  low: number | null;
+  high: number | null;
+  error_pct: number;
+  inside: boolean | null;
+  /** exact: the record priced this quantity · model: the record's own quantity model at it */
+  basis?: "exact" | "model" | string | null;
+  /** For a model price: "ScaleCAD's model at 25: $188.50 once ÷ 25 + $47.74 a part = $55.28 (...)" */
+  basis_note?: string | null;
+  shown?: Shown;
+};
+
+/** Setup (for the order), labor and inspection (a part) hours an actual carries, next to the record's stated hours. */
+export type HourLine = { line: "setup" | "labor" | "inspection"; label: string; actual: number; estimate: number | null; error_pct?: number; shown?: Shown; note?: string };
+
+/** Which rate card priced the record an actual is compared with, and which is in effect now. */
+export type RatesBasis = { priced: number; current: number; out_of_date: boolean; text: string };
 
 export type Comparison = {
   id: string;
@@ -158,6 +179,10 @@ export type Comparison = {
   cost: Metric | null;
   note: string | null;
   calibrated_record: boolean;
+  rates?: RatesBasis | null;
+  /** true: cost not compared because the record predates the org's published rates */
+  rates_excluded?: boolean;
+  hour_lines?: HourLine[];
 };
 
 export type Stats = {
@@ -184,6 +209,10 @@ export type Summary = {
   hours: Stats;
   cost: Stats;
   per_process: { process: string; hours: Stats; cost: Stats }[];
+  /** Cost rows left out because their record was priced at older rates than the org's published ones. */
+  rates_excluded?: number;
+  /** The rate card versions the compared costs were priced at (0 = typical). */
+  rates_priced?: number[];
 };
 
 export type CalibrationEntry = {

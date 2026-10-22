@@ -67,3 +67,23 @@ test("part lines put real numbers before test ones and say the context", () => {
   assert.equal(contextLine(row(false)), "3-axis milling · 25 parts · on Haas VF-2 · J-118 · 14 Mar 2026");
   assert.match(contextLine(row(true)), /test numbers$/);
 });
+
+test("ce-11 / ce-12: rates the costs were compared at, hour lines and the calibration lead", async () => {
+  const { calibrationLead, hourLineWord, ratesWord } = await import("./words.ts");
+  const base = { parts: 2, actuals: 3, compared: 3, not_compared: 0, test: 0, min_parts: 8, min_per_method: 3, enough: false } as unknown as Summary;
+  assert.equal(ratesWord({ ...base, rates_priced: [1], rates_excluded: 0 }), "Costs compared at your rates v1.");
+  assert.equal(
+    ratesWord({ ...base, rates_priced: [1], rates_excluded: 1 }),
+    "Costs compared at your rates v1. 1 cost isn’t graded: its record was priced before your current rates. Re-check that part to compare.",
+  );
+  assert.equal(ratesWord({ ...base, rates_priced: [], rates_excluded: 0 }), null);
+  assert.equal(
+    hourLineWord({ line: "labor", label: "Labor a part", actual: 0.4, estimate: 0.5, error_pct: 25, shown: { estimate: "30.00 min", actual: "24.00 min", error: "+25.0%", formula: "30.00 min ÷ 24.00 min − 1 = +25.0%" } }),
+    "Labor a part: yours 24.00 min, ScaleCAD 30.00 min · 30.00 min ÷ 24.00 min − 1 = +25.0%",
+  );
+  const f = (n: number) => ({ n, parts: n, factor: null, offer: false, why: "few" }) as FactorEntry;
+  // Her three actuals: two 3-axis, one turning; 8 parts and 3 per method needed
+  const lead = calibrationLead({ parts: 2, min_parts: 8, min_per_method: 3, enough: false, processes: [{ process: "cnc_3axis", hours: f(2), cost: f(2) }, { process: "cnc_turning", hours: f(0), cost: f(1) }] }, false);
+  assert.match(lead, /^2 parts with actuals\. A calibration needs 8 parts or more, and 3 actuals for each method it changes \(.+ has 2, .+ has 1\)\.$/);
+  assert.match(calibrationLead({ parts: 0, min_parts: 8, min_per_method: 3, enough: false, processes: [] }, false), /^Nothing to calibrate yet: no actual matches a checked part/);
+});
