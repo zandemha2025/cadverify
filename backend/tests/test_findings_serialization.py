@@ -497,3 +497,15 @@ def test_real_geometry_findings_serialize_ratio_and_angle_units():
                        measured_value=80., measurement_unit="percent")
     assert serialize_issue(historical)["measurement_unit"] == "percent"
     assert "measurement_unit" not in serialize_issue(Issue("UNKNOWN", Severity.INFO, "unknown", None, measured_value=2))
+
+
+def test_measurements_read_in_three_figures_unless_the_limit_needs_more():
+    # Plain engineering figures: no "0.173003mm" or "14.7625mm" in a finding.
+    assert format_measurement(0.173003, 0.5) == "0.173"
+    assert format_measurement(14.7625, 10) == "14.8"
+    assert format_measurement(268.814272, 254) == "269"
+    assert format_measurement(1234.5) == "1234"
+    # Near the limit the extra digits stay, so the order never flips.
+    assert format_measurement(2.9999, 3.0) == "2.9999"
+    assert format_measurement(0.79999999, 0.8) == "0.79999999"
+    assert format_measurement(0.8, 0.8) == "0.8"

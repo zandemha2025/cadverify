@@ -38,15 +38,27 @@ MAX_SERIALIZED_AFFECTED_FACES = 2000
 
 
 def format_measurement(value: float, reference: float | None = None) -> str:
-    """Compact display without changing a measured-versus-limit comparison."""
+    """Compact display without changing a measured-versus-limit comparison.
+
+    Three significant figures (never fewer than the whole-number digits, so no
+    exponent), with more digits only where fewer would make the measured value
+    and its limit compare differently. The precision is chosen from the pair, so
+    ``format_measurement(a, b)`` and ``format_measurement(b, a)`` use the same one
+    and the two printed numbers keep the true order ("0.173mm" against a 0.5 mm
+    limit, "0.7999mm" against 0.8 mm).
+    """
     if not math.isfinite(value):
         return "unavailable"
-    shown = f"{value:.6g}"
-    if reference is not None and math.isfinite(reference):
-        rounded, limit = float(shown), float(f"{reference:.6g}")
-        if (rounded < limit) != (value < reference) or (rounded > limit) != (value > reference):
-            return repr(float(value))
-    return shown
+    whole = len(str(int(abs(value)))) if abs(value) >= 1 else 1
+    if reference is None or not math.isfinite(reference):
+        return f"{value:.{max(3, whole)}g}"
+    whole = max(whole, len(str(int(abs(reference)))) if abs(reference) >= 1 else 1)
+    want = (value < reference, value > reference)
+    for digits in range(max(3, whole), max(6, whole) + 1):
+        shown, limit = float(f"{value:.{digits}g}"), float(f"{reference:.{digits}g}")
+        if (shown < limit, shown > limit) == want:
+            return f"{value:.{digits}g}"
+    return repr(float(value))
 
 
 def serialize_citation(citation: Optional[Citation]) -> Optional[dict]:
