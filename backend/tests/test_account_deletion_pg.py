@@ -27,6 +27,16 @@ _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not _PG, reason="requires live Postgres")]
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """The test clients share one address, so a limiter another test file
+    switched on would carry its counts (5 deletes an hour) into these tests."""
+    from src.auth.rate_limit import limiter
+
+    limiter.reset()
+    yield
+
+
 @pytest.fixture
 def stripe(monkeypatch):
     """Stripe as seen by the cancel call: records requests, can be made to fail."""
