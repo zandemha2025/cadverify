@@ -229,6 +229,16 @@ test("a printer declared for the route's own material can make it (feedback 15)"
   assert.equal(w.why, "Declared for PETG, not PLA.");
 });
 
+test("a machine that fits but needs something never declared reads can't confirm (audit W1/M2)", () => {
+  const f = fixture();
+  const eos = { ...f.machines[0], id: "m7", name: "EOS M 400-4", process: "mjf" };
+  const cost = { ...f.cost, verification: { ...f.cost.verification, verdict: "unknown", per_route: { mjf: { verdict: "unknown", machines_evaluated: 1, best_machine: "EOS M 400-4", failures: [{ gate: "secondary_op", axis: "stress_relief", need: "stress_relief", have: null, human: "needs stress relief afterwards; not declared whether you do it in-house" }] } } } };
+  const [v] = machineViews([eos] as never, buildMethods({ ...f, cost, machines: [eos] as never }), cost, 10, [20, 15, 10]);
+  assert.equal(v.verdict, "Can't confirm");
+  assert.equal(v.tone, "warn");
+  assert.match(v.why, /not declared whether you do it in-house\. Declare it in Your shop to confirm\./);
+});
+
 test("decide offers the real routes and binds each to an exact estimate", () => {
   const f = fixture();
   const methods = buildMethods(f);

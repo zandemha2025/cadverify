@@ -749,6 +749,11 @@ export function machineViews(machines: OwnedMachine[], methods: Method[], cost: 
       price = method ? priceAt(method, q) : null;
       why = env ? `Fits its ${env.map((n) => trimNum(n, 0)).join(" × ")} mm work area.` : "Clears every gate the engine checked.";
       if (fit.secondary_ops?.length) why += ` Needs ${joinWords(fit.secondary_ops)} afterwards.`;
+    } else if (fit?.verdict === "unknown" && failures.length && failures.every((f) => f.have == null)) {
+      // Fits as far as it was declared; something it needs was never declared (a material, an op).
+      tone = "warn";
+      verdict = "Can't confirm";
+      why = `${failures.map(gapText).join(" · ")}. Declare it in Your shop to confirm.`;
     } else if (failures.length) {
       tone = "bad";
       verdict = "Doesn't fit";
@@ -805,7 +810,13 @@ export function decideOptions(methods: Method[], cost: CostReport | null, q: num
     const e = inHouse.prices.get(q)!;
     opts.push({ id: "inhouse", kind: "inhouse", label: "Make in-house", sub: `${inHouse.inHouse} · ${inHouse.short} ${e.material} · ${days(e.lead_time?.low_days, e.lead_time?.high_days)}`, cost: e.unit_cost_usd, off: false, route: route(e) });
   } else {
-    opts.push({ id: "inhouse", kind: "inhouse", label: "Make in-house", sub: machinesDeclared ? "No machine of yours can make it as checked" : "No machines declared yet", cost: null, off: true, route: null });
+    const unconfirmed = methods.find((m) => m.fit?.verdict === "unknown" && m.fit.best_machine && m.verdict !== "bad" && m.verdict !== "out");
+    const sub = unconfirmed
+      ? `Can't confirm on your ${unconfirmed.fit!.best_machine}: ${unconfirmed.fit!.failures.map(gapText).join(" · ")}`
+      : machinesDeclared
+        ? "No machine of yours can make it as checked"
+        : "No machines declared yet";
+    opts.push({ id: "inhouse", kind: "inhouse", label: "Make in-house", sub, cost: null, off: true, route: null });
   }
   const outside = workable.filter((m) => m !== inHouse).slice(0, 2);
   outside.forEach((m, i) => {
