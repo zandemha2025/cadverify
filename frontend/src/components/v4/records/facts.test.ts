@@ -13,6 +13,7 @@ import {
   cheapestWorkableAt,
   chartPaths,
   costLines,
+  driverLabel,
   defaultQty,
   groupByPart,
   inHouseAt,
@@ -171,6 +172,16 @@ test("cost inputs keep only dollar drivers and say where each came from", () => 
   assert.deepEqual(rangeOf(e), { text: "$15.77–$47.31", pct: 50, validated: false, n: 0 });
   const plain = rangeOf(cheapestAt(report(), 10)?.est);
   assert.equal(plain?.text, "$6.75–$23.25");
+});
+
+test("a spec's cost input reads as the spec is named (buyer-07)", () => {
+  const e = { ...routeOptions(report(), 10)[0].est, drivers: [
+    { name: "spec_fai_as9102_cost", value: 0.84, unit: "$", provenance: "DEFAULT", source: "6 h per order" },
+    { name: "spec_anodize_ii_cost", value: 1.96, unit: "$", provenance: "DEFAULT", source: "" },
+    { name: "spec_new_thing_cost", value: 1, unit: "$", provenance: "DEFAULT", source: "" },
+  ] } as CostEstimate;
+  assert.deepEqual(costLines(e).map((l) => l.label), ["First article inspection (AS9102)", "Anodize (Type II)", "New thing"]);
+  assert.equal(driverLabel("spec_fai_as9102_cost"), "First article inspection (AS9102)");
 });
 
 test("compare: cheapest workable material per way, redesign-only and ruled-out cells", () => {

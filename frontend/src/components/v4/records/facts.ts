@@ -317,7 +317,29 @@ const DRIVER: Record<string, string> = {
   min_charge_floor: "Minimum charge",
   support_cost: "Supports",
   energy_cost: "Energy",
+  // A spec's own line reads as the spec is named (backend src/costing/part_specs.py).
+  spec_bead_blast_cost: "Bead blast",
+  spec_anodize_ii_cost: "Anodize (Type II)",
+  spec_anodize_iii_cost: "Hard anodize (Type III)",
+  spec_passivate_cost: "Passivation",
+  spec_electropolish_cost: "Electropolish",
+  spec_powder_coat_cost: "Powder coat",
+  spec_plating_cost: "Plating",
+  spec_stress_relief_cost: "Stress relief",
+  spec_solution_age_cost: "Solution treat and age",
+  spec_quench_temper_cost: "Quench and temper",
+  spec_case_harden_cost: "Case hardening",
+  spec_hip_cost: "HIP (hot isostatic pressing)",
+  spec_fai_as9102_cost: "First article inspection (AS9102)",
+  spec_cmm_report_cost: "CMM report",
+  spec_full_100_cost: "100% inspection",
+  spec_fine_finish_cost: "Grind or polish to the Ra",
 };
+
+/** A cost input's plain name: "First article inspection (AS9102)", never "Spec fai as9102". */
+export function driverLabel(name: string): string {
+  return DRIVER[name] ?? name.replace(/^spec_/, "").replace(/_cost$/, "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
 
 export type SrcKind = "file" | "yours" | "typ";
 
@@ -348,7 +370,7 @@ export function costLines(e: CostEstimate | null | undefined): CostLine[] {
     })
     .map((d) => {
       const s = srcOf(d.provenance);
-      const base = DRIVER[d.name] ?? d.name.replace(/_cost$/, "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+      const base = driverLabel(d.name);
       return { key: d.name, label: d.name === "material_cost" ? `${base}, ${e.material}` : base, usd: d.value, src: s.kind, srcLabel: s.label, source: d.source ?? "" };
     });
 }
