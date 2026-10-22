@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   allowanceText,
+  answerText,
   bucketBreakdown,
+  compareLine,
+  countLine,
+  machinesText,
+  rowName,
+  runTitle,
+  runningRateLines,
+  scopedRows,
+  unlistedRows,
   breakdownOf,
   capabilityGroups,
   catalogAccess,
@@ -63,7 +72,7 @@ test("a part's line leads with machine time, material and ownership, then the pr
   assert.deepEqual(line, {
     time: "15 min each · 6.3 h for 25",
     material: "6061-T6 Aluminum · 270 g each",
-    ownership: "Your Haas VF-2 · marginal $48.75/h",
+    ownership: "Your Haas VF-2 · running rate $48.75/h",
     price: "$30.00 each · $750 for 25",
   });
   const outside = partLine(row({ bucket: "outside", route: { process: "fdm", machine: null, owned: false }, marginal: false }));
@@ -212,4 +221,57 @@ test("a row's engine words read in the person's unit; its file name never change
   assert.equal(mm.reason, "24 faces (100.0%) below 0.8mm min wall for fdm");
   assert.equal(mm.price, "Withheld: walls under 0.8 mm");
   assert.equal(mm.spec, null);
+});
+
+test("make against buy on a row: both prices, where the buy price comes from, and the saving", () => {
+  const bought = row({
+    bucket: "outside",
+    unit_cost_usd: 5.13,
+    route: { process: "sheet_metal", machine: null, owned: false },
+    marginal: false,
+    could_make: { process: "cnc_3axis", machine: "Haas VF-2", unit_cost_usd: 38.71, times: 7.5 },
+    buy: { unit_cost_usd: 5.13, source: "model", text: null, process: "sheet_metal", same_process: false },
+  });
+  assert.equal(compareLine(bought), "Make $38.71 on your Haas VF-2 · Buy $5.13, sheet metal outside");
+  assert.equal(partLine(bought).ownership, "Bought · your Haas VF-2 could make it");
+  const saved = row({
+    make: { process: "cnc_3axis", machine: "Haas VF-2", unit_cost_usd: 20, low_usd: 16, high_usd: 26 },
+    buy: { unit_cost_usd: 50, source: "parts_list", text: "$50.00 each", process: null, same_process: false },
+    saving: { each: 30, total: 300, vs: "parts_list" },
+  });
+  assert.equal(compareLine(saved), "Make $20.00 on your Haas VF-2 · Buy $50.00, your parts list's price · saves $30.00 each");
+  const shop = row({ make: { process: "cnc_3axis", machine: "Haas VF-2", unit_cost_usd: 43.42, low_usd: 35, high_usd: 56 }, buy: { unit_cost_usd: 54.63, source: "model", text: null, process: "cnc_3axis", same_process: true } });
+  assert.equal(compareLine(shop), "Make $43.42 on your Haas VF-2 · Buy $54.63, 3-axis milling outside (a shop running your process)");
+  assert.equal(compareLine(row({})), null);
+  assert.equal(rowName(row({ name: "bracket-assembly.step, body 1 of 3" })), "bracket-assembly.step, body 1 of 3");
+});
+
+test("the run's answer leads with the saving against what you pay today, or says what's missing", () => {
+  const answer = { parts: 54, make: 12, buy: 20, new_machine: 3, cant_make: 10, not_checked: 9, not_sorted: 0, checking: 0, undecided: 19, with_price: 12, saving_usd: 41200.4, saving_parts: 12, make_without_price: 0, make_cost_usd: 1000 };
+  const board = { rows: [], has_list: true, answer } as never;
+  const t = answerText(board)!;
+  assert.equal(t.head, "Make these 12 parts in-house: save $41,200 a year against what you pay today");
+  assert.equal(t.sub, "Buy 20 · 3 need a new machine · 19 can’t be decided yet (10 can’t be made as drawn, 9 not checked) · parts on your list, at their listed quantities");
+  assert.equal(t.missing, null);
+  const none = answerText({ rows: [], has_list: true, answer: { ...answer, saving_usd: null, saving_parts: 0, with_price: 0, make_without_price: 12 } } as never)!;
+  assert.equal(none.head, "Make 12 parts in-house, buy 20");
+  assert.equal(none.sub, "3 need a new machine · 19 can’t be decided yet (10 can’t be made as drawn, 9 not checked) · parts on your list, at their listed quantities");
+  assert.equal(runTitle({ name: null, parts_list: { name: "parts-list.csv" } } as never), "parts-list");
+  assert.equal(runTitle({ name: "Ridgeline-bought-parts" } as never), "Ridgeline-bought-parts");
+  assert.equal(runTitle(null), "Catalog run");
+  assert.match(none.missing ?? "", /^No saving yet: it needs what you pay today/);
+  const some = answerText({ rows: [], has_list: true, answer: { ...answer, saving_parts: 5, make_without_price: 7 } } as never)!;
+  assert.equal(some.head, "Make 12 parts in-house: save $41,200 a year against what you pay today (on the 5 with a current price)");
+  assert.equal(some.missing, "7 in-house parts have no current price, so they aren’t in the saving.");
+});
+
+test("counts: files in, parts out, machines as Your shop counts them, the list's parts apart", () => {
+  const rows = Array.from({ length: 56 }, (_, i) => row({ item_id: String(i), listed: i < 54 }));
+  const board = { rows, files: 50, has_list: true, split_files: [{ kind: "assembly" }, { kind: "assembly" }], machines: [{ name: "Haas VF-2", process: "cnc_3axis", count: 3, hourly_rate_usd: 85, capital_frac: 0.35, running_rate_usd: 55.25 }, { name: "Lathe", process: "cnc_turning", count: 1 }, { name: "X1C", process: "fdm" }] } as never;
+  assert.equal(countLine(board), "50 files → 56 parts (2 assemblies split into bodies)");
+  assert.equal(countLine({ rows: rows.slice(0, 3), files: 3, split_files: [] } as never), "3 parts");
+  assert.equal(machinesText(board), "Against 5 machines");
+  assert.equal(scopedRows(board).length, 54);
+  assert.equal(unlistedRows(board).length, 2);
+  assert.deepEqual(runningRateLines(board), ["Haas VF-2: $85.00/h you set, less 35% that pays for the machine itself (a typical share; set yours in Your shop): $55.25/h"]);
 });

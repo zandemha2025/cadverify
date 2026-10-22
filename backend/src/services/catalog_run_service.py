@@ -1407,6 +1407,9 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
         .order_by(BatchItem.id)
     )).all()
     machines = await _org_machines(session, batch.org_id)
+    from src.db.models import Organization
+
+    org_name = (await session.execute(select(Organization.name).where(Organization.id == batch.org_id))).scalar_one_or_none()
     per_file = meta.get("items") or {}
     default_qty = int(meta.get("quantity") or DEFAULT_RUN_QUANTITY)
     from src.services import signoff_service
@@ -1485,6 +1488,7 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
         "machines": machines,
         "machine_count": sum(int(m.get("count") or 1) for m in machines),
         "name": meta.get("name"),
+        "org_name": org_name,
         "files": len(items),
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,

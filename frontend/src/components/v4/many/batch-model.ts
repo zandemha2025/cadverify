@@ -64,18 +64,27 @@ export function doneFraction(p: BatchProgress): number {
   return Math.min(1, (p.completed_items + p.failed_items + p.skipped_items) / p.total_items);
 }
 
-/** "~40 s left" / "~3 min left" from the rate so far, or "" when it can't be said. */
-export function etaText(p: BatchProgress, now: number = Date.now()): string {
+/**
+ * "~40 s left" / "~3 min left" from the rate so far, or "" when it can't be said.
+ *
+ * Said only when it can be trusted: after a few items and a tenth of the run,
+ * and not for the last items in flight (the slowest parts finish last, so the
+ * rate so far says nothing about them: "Last 3 items" instead). Minutes round up.
+ */
+export function etaText(p: BatchProgress, now: number = Date.now(), noun: [string, string] = ["item", "items"]): string {
   if (TERMINAL.has(p.status) || !p.started_at) return "";
   const done = p.completed_items + p.failed_items + p.skipped_items;
   const left = p.total_items - done;
   const started = new Date(p.started_at).getTime();
   if (!done || left <= 0 || !Number.isFinite(started)) return "";
+  const inFlight = Math.max(1, p.concurrency_limit || 1);
+  if (left <= inFlight && p.total_items > inFlight) return `Last ${left} ${left === 1 ? noun[0] : noun[1]}`;
+  if (done < 3 || done / Math.max(1, p.total_items) < 0.1) return "";
   const elapsed = (now - started) / 1000;
   if (elapsed <= 0) return "";
   const sec = Math.round(left / (done / elapsed));
   if (!Number.isFinite(sec) || sec <= 0) return "";
-  return sec < 90 ? `~${sec} s left` : sec < 5400 ? `~${Math.round(sec / 60)} min left` : `~${Math.round(sec / 3600)} h left`;
+  return sec < 90 ? `~${sec} s left` : sec < 5400 ? `~${Math.ceil(sec / 60)} min left` : `~${Math.ceil(sec / 3600)} h left`;
 }
 
 /** The cancel question's body. Unfinished items include any in progress: the server skips those too. */

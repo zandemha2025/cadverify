@@ -61,6 +61,11 @@ test("ETA comes from the real rate and is empty when it can't be said", () => {
   assert.equal(etaText(P({ started_at: null }), now), "");
   assert.equal(etaText(P({ completed_items: 0, failed_items: 0 }), now), "");
   assert.equal(etaText(P({ status: "completed" }), now), "");
+  // Not on too little: two parts done of fifty says nothing yet.
+  assert.equal(etaText(P({ total_items: 50, completed_items: 2, failed_items: 0, concurrency_limit: 4 }), now), "");
+  // The last parts in flight: the slow ones finish last, so no time is guessed (oo-12).
+  assert.equal(etaText(P({ total_items: 56, completed_items: 52, failed_items: 1, concurrency_limit: 4 }), now, ["part", "parts"]), "Last 3 parts");
+  assert.equal(etaText(P({ total_items: 56, completed_items: 20, failed_items: 0, concurrency_limit: 4 }), new Date("2026-10-18T10:10:00Z").getTime()), "~18 min left");
 });
 
 test("cancel question says in-progress items are skipped too", () => {

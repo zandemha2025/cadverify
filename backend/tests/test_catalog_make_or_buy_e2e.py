@@ -77,6 +77,7 @@ async def test_the_listed_material_is_priced_and_in_house_means_cheaper(world):
     # oo-12: named after the ZIP; the shop's machines counted as Your shop counts them.
     assert board["name"] == "Ridgeline-bought-parts"
     assert board["machine_count"] == 2 and board["files"] == 6
+    assert board["org_name"].startswith("catalog-")
 
     # oo-08: Delrin is machined in Delrin (the mill isn't declared for plastic), never printed in PLA.
     pin = rows["pin.stl"]

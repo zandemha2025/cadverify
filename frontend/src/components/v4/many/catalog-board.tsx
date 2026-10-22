@@ -19,7 +19,7 @@ import { Content, Empty, Fig, Figs, Loading, PageHead, Panel, Sheet, cx } from "
 import { markWorkSeen, registerWork, runKey } from "../work/work-bar";
 import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useToast, whenLabel } from "./common";
 import { etaText } from "./batch-model";
-import { downloadBoardCsv, fetchBoard } from "./catalog-api";
+import { downloadBoardCsv, fetchBoard, recheckParts } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
 import { AccuracyPanel } from "../validation/accuracy-panel";
 import { reportHref } from "../validation/routes";
@@ -27,7 +27,17 @@ import {
   BUCKETS,
   OTHER,
   SORTS,
+  answerText,
   boardProgress,
+  compareLine,
+  countLine,
+  machinesText,
+  recheckable,
+  rowName,
+  runTitle,
+  runningRateLines,
+  scopedRows,
+  unlistedRows,
   breakdownOf,
   bucketCount,
   bucketDef,
@@ -104,6 +114,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   const [csvBusy, setCsvBusy] = React.useState(false);
   const [asking, setAsking] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
+  const [rechecking, setRechecking] = React.useState<Set<string>>(() => new Set());
   const searchId = React.useId();
   const sortId = React.useId();
 
@@ -147,11 +158,35 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
     );
   }
 
-  const rows = board?.rows ?? [];
+  // With a parts list, the answer and the table are the list's parts; the rest is shown apart.
+  const rows = scopedRows(board);
+  const apart = unlistedRows(board);
   const shown = sortRows(filterRows(rows, bucket, query), sort);
   const total = rows.length;
   const nMachines = board?.machines.length ?? null;
   const sel = bucket !== "all" ? bucketDef(bucket) : null;
+  const failed = recheckable(board);
+  const answer = answerText(board);
+  const rates = runningRateLines(board);
+
+  const recheck = async (ids?: string[]) => {
+    const keys = ids ?? failed.map((r) => r.item_id);
+    if (!keys.length) return;
+    setRechecking((cur) => new Set([...cur, ...keys]));
+    try {
+      const res = await recheckParts(batchId, ids);
+      toast(`Checking ${res.rechecking.length} ${res.rechecking.length === 1 ? "part" : "parts"} again. Each lands back on its own row.`);
+      reload();
+    } catch (e) {
+      toast(errorText(e, "The parts weren’t checked again."));
+    } finally {
+      setRechecking((cur) => {
+        const next = new Set(cur);
+        for (const k of keys) next.delete(k);
+        return next;
+      });
+    }
+  };
 
   const csv = async () => {
     if (csvBusy) return;
@@ -191,10 +226,10 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
 
   const statusWord = status ? (running ? "Running" : status === "completed" ? "Finished" : status[0].toUpperCase() + status.slice(1)) : null;
   const meta: React.ReactNode[] = [
-    <span key="n">
-      <b className="num">{total.toLocaleString("en-US")}</b> {total === 1 ? "part" : "parts"}
+    <span key="n" className="num">
+      {board ? countLine(board) : "Loading"}
     </span>,
-    nMachines == null ? "Machines loading" : nMachines ? `Against ${nMachines} ${nMachines === 1 ? "machine" : "machines"}` : "No machines yet",
+    machinesText(board),
     board?.material_class ? materialWord(board.material_class) : null,
     board ? `${board.quantity.toLocaleString("en-US")} each unless listed` : null,
     statusWord && board ? `${statusWord} · ${board.free ? "free run" : "pilot plan"}` : statusWord,
@@ -203,7 +238,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   return (
     <ManyWorld label="Catalog run">
       <PageHead
-        title="Catalog run"
+        title={runTitle(board)}
         meta={meta}
         tabs={tabs}
         tabsLabel="Many parts"
@@ -242,6 +277,40 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
               </div>
             ) : null}
 
+            {answer && (TERMINAL.has(board.status) || total > 0) ? (
+              <section className="panel cr-ans" aria-label="The answer">
+                <h2>{answer.head}</h2>
+                <p className="cr-ans-sub num">{answer.sub}</p>
+                {answer.missing ? <p className="cr-ans-miss">{answer.missing}</p> : null}
+                {board.bucket_rule ? <p className="cr-ans-rule">{board.bucket_rule}</p> : null}
+                {rates.length ? (
+                  <details className="cr-ans-rate">
+                    <summary>Running rate: what your machines cost an hour here</summary>
+                    <p>A machine you own is already paid for, so its time is priced at the hourly rate you set less the share that pays for the machine itself. Each part’s machine cost also carries learning at its quantity, utilization and margin.</p>
+                    <ul>
+                      {rates.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </section>
+            ) : null}
+
+            {failed.length && !running ? (
+              <div className="panel cr-note cr-again" role="note">
+                <b>
+                  {failed.length} {failed.length === 1 ? "part wasn’t" : "parts weren’t"} checked
+                </b>
+                <span>{failed.length === 1 ? "It goes" : "They go"} back in this run at {failed.length === 1 ? "its" : "their"} listed quantity and land on {failed.length === 1 ? "its own row" : "their own rows"}.</span>
+                <span>
+                  <button className="btn sm ink" type="button" onClick={() => void recheck()} disabled={rechecking.size > 0}>
+                    {rechecking.size ? "Starting…" : `Check ${failed.length === 1 ? "it" : `all ${failed.length}`} again`}
+                  </button>
+                </span>
+              </div>
+            ) : null}
+
             {running || prog.checking ? (
               <div className="panel prog cr-prog" aria-live="polite">
                 <span className="st">Running</span>
@@ -252,7 +321,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 <span className="pb" aria-hidden="true">
                   <i style={{ transform: `scaleX(${prog.total ? prog.done / prog.total : 0})` }} />
                 </span>
-                <span className="num">{progress ? etaText(progress) : ""}</span>
+                <span className="num">{progress ? etaText(progress, Date.now(), ["part", "parts"]) : ""}</span>
                 <span className="act">
                   Keeps going if you leave or close this page. The bar at the foot of every page brings you back.
                   {running ? (
@@ -303,6 +372,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 ))}
                 <span>
                   Buckets sum to <b className="num">{total}</b>
+                  {apart.length ? ` · ${apart.length} not on your parts list, below` : ""}
                 </span>
               </div>
             </section>
@@ -360,16 +430,42 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     </thead>
                     <tbody>
                       {shown.map((r) => (
-                        <PartRow key={r.item_id} r={r} />
+                        <PartRow key={r.item_id} r={r} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
               <p className="tfoot" style={{ padding: "0 8px 10px" }}>
-                <span>Machine time, material and prices are model estimates from your machines and rates, not quotes. Material is what the route uses (stock, printed material with supports), with the part’s own mass beside it when that differs. Open a part for its sources.</span>
+                <span>Machine time, material and prices are model estimates from your machines and rates, not quotes; a current price is yours. Material is what the route uses (stock, printed material with supports), with the part’s own mass beside it when that differs. Open a part for its sources.</span>
               </p>
             </Panel>
+
+            {apart.length ? (
+              <Panel title="Not on your parts list" note={`${apart.length}`}>
+                <p className="cr-p0">Files in the ZIP the parts list doesn’t name. Checked at the run’s quantity and material, and kept out of the answer and the totals above.</p>
+                <div className="cr-wrap">
+                  <table className="cr-t">
+                    <thead>
+                      <tr>
+                        <th scope="col">Part</th>
+                        <th scope="col">Machine time</th>
+                        <th scope="col">Material</th>
+                        <th scope="col">Ownership</th>
+                        <th scope="col" className="r">
+                          Price
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortRows(apart, sort).map((r) => (
+                        <PartRow key={r.item_id} r={r} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            ) : null}
 
             {TERMINAL.has(board.status) ? <AccuracyPanel run={batchId} compact /> : null}
 
@@ -435,7 +531,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   );
 }
 
-function PartRow({ r }: { r: BoardRow }) {
+function PartRow({ r, onRecheck, rechecking }: { r: BoardRow; onRecheck?: () => void; rechecking?: boolean }) {
   const router = useRouter();
   const { unit } = useUnits();
   const d = bucketDef(r.bucket);
@@ -452,6 +548,8 @@ function PartRow({ r }: { r: BoardRow }) {
   const [o1, o2] = sub(line.ownership);
   const [p1, p2] = sub(words.price);
   const sign = rowSignoffLine(r);
+  const name = rowName(r);
+  const compare = compareLine(r);
   return (
     <tr
       className={cx("cr-r", href && "click")}
@@ -463,18 +561,24 @@ function PartRow({ r }: { r: BoardRow }) {
     >
       <td className="cr-pc">
         <div className="cr-p">
-        <Thumb name={r.filename} />
+        <Thumb name={r.body?.file ?? r.filename} />
         <span className="cr-pt">
           {href ? (
-            <Link href={href} className="cr-name" title={r.filename}>
-              {r.filename}
+            <Link href={href} className="cr-name" title={name}>
+              {name}
             </Link>
           ) : (
-            <b className="cr-name" title={r.filename}>
-              {r.filename}
+            <b className="cr-name" title={name}>
+              {name}
             </b>
           )}
-          {r.part_number ? <small className="mono">{r.part_number}</small> : null}
+          {r.part_number || r.description ? (
+            <small>
+              {r.part_number ? <span className="mono">{r.part_number}</span> : null}
+              {r.part_number && r.description ? " · " : null}
+              {r.description}
+            </small>
+          ) : null}
           <span className="cr-why">
             <i style={{ background: d.color }} aria-hidden="true" />
             <span className="sr">{d.label}: </span>
@@ -484,7 +588,15 @@ function PartRow({ r }: { r: BoardRow }) {
           {words.spec ? <small className="cr-spec">{words.spec}</small> : null}
           {rowMustHold(r) ? <small className="cr-spec">{rowMustHold(r)}</small> : null}
           {sign ? <small className={cx("cr-sign", sign.tone)}>{sign.text}</small> : null}
-          {words.note ? <small className="cr-warn">{words.note}; priced in {r.material.class ? materialWord(r.material.class).toLowerCase() : "the run’s material"}</small> : null}
+          {compare ? <small className="cr-cmp num">{compare}</small> : null}
+          {words.note ? <small className="cr-warn">{words.note}</small> : null}
+          {r.bucket === "not_checked" && onRecheck ? (
+            <span className="cr-again-row">
+              <button className="btn sm" type="button" onClick={onRecheck} disabled={rechecking}>
+                {rechecking ? "Starting…" : "Check again"}
+              </button>
+            </span>
+          ) : null}
         </span>
         </div>
       </td>
@@ -503,7 +615,7 @@ function PartRow({ r }: { r: BoardRow }) {
       <td className={cx("r", p1 === "—" && !r.cheaper_outside && "nil")} data-k="Price">
         <b className="num">{p1}</b>
         {p2 ? <small className="num">{p2}</small> : null}
-        {r.cheaper_outside ? (
+        {!compare && r.cheaper_outside ? (
           <small title={`Cheaper outside by ${procName(r.cheaper_outside.process).toLowerCase()}`}>
             Outside {money(r.cheaper_outside.unit_cost_usd)} · {procName(r.cheaper_outside.process).toLowerCase()}
           </small>
@@ -535,14 +647,15 @@ function RunSheet({
   const { unit } = useUnits();
   if (!board) return <Loading rows={4} label="Loading this run" />;
   const sel = bucket !== "all" ? bucketDef(bucket) : null;
-  const total = board.rows.length;
+  const scoped = scopedRows(board);
+  const total = scoped.length;
   const prog = boardProgress(board);
-  const selRows = sel ? board.rows.filter((r) => r.bucket === bucket) : [];
-  const inHouse = board.rows.filter((r) => r.bucket === "in_house");
+  const selRows = sel ? scoped.filter((r) => r.bucket === bucket) : [];
+  const inHouse = scoped.filter((r) => r.bucket === "in_house");
   const ihB = breakdownOf(board, "in_house");
   const outB = breakdownOf(board, "outside");
   const selB = sel ? breakdownOf(board, bucket) : null;
-  const groups = capabilityGroups(board.rows);
+  const groups = capabilityGroups(scoped);
   const t = board.totals;
   return (
     <>
@@ -551,7 +664,7 @@ function RunSheet({
         <p className="smeta">
           {sel
             ? `${selRows.length} of ${total} parts · ${sel.note}`
-            : `${prog.done} of ${total} checked${progress?.started_at ? ` · started ${whenLabel(progress.started_at)}` : ""}`}
+            : `${total - scoped.filter((r) => r.bucket === "checking").length} of ${total} checked${progress?.started_at ? ` · started ${whenLabel(progress.started_at)}` : ""}`}
         </p>
         {!sel ? (
           <Figs>
@@ -573,7 +686,7 @@ function RunSheet({
               <>
                 <Resources t={t.in_house} b={ihB} />
                 <div className="kv">
-                  <span>At your marginal rates</span>
+                  <span>At your machines’ running rates</span>
                   <b className="num">{money(t.in_house?.cost_usd, 0)}</b>
                 </div>
               </>
@@ -607,7 +720,7 @@ function RunSheet({
             </div>
             {bucketCount(board, "outside") ? <Resources t={t.outside} b={outB} /> : null}
             <div className="kv">
-              <span>Model price</span>
+              <span>At the buy prices</span>
               <b className="num">{money(t.outside?.cost_usd, 0)}</b>
             </div>
             <div className="gh" style={{ marginTop: 6 }}>
@@ -633,7 +746,7 @@ function RunSheet({
               <>
                 <Resources t={t[bucket]} b={selB} />
                 <div className="kv">
-                  <span>{bucket === "in_house" ? "At your marginal rates" : "Model price"}</span>
+                  <span>{bucket === "in_house" ? "At your machines’ running rates" : "At the buy prices"}</span>
                   <b className="num">{money(t[bucket]?.cost_usd, 0)}</b>
                 </div>
               </>

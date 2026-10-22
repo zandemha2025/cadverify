@@ -50,7 +50,7 @@ export interface BoardRow {
   machine_rate_usd: number | null;
   marginal: boolean;
   capability: { process: string | null; gate: string | null; single?: boolean | null; need?: unknown; have?: unknown; human: string | null; all?: string[] } | null;
-  cheaper_outside: { process: string; unit_cost_usd: number } | null;
+  cheaper_outside: { process: string; unit_cost_usd: number; same_process?: boolean } | null;
   duration_ms: number | null;
   error: string | null;
   /** The part specs the run priced with (or the parts list declared), and what the supplier must hold. */
@@ -61,6 +61,20 @@ export interface BoardRow {
   record_out_of_date?: boolean;
   /** One body shape of a file the run checked body by body (a weldment, parts saved together). */
   body?: BodyOfFile | null;
+  /** The row's name: the file, or "bracket-assembly.step, body 1 of 3". */
+  name?: string;
+  /** On the parts list (its quantity, material and price are the list's). */
+  listed?: boolean;
+  /** What you pay today for one, and where the price came from. */
+  current_price?: { usd_each: number; source: "you" | "parts_list"; text: string } | null;
+  /** The cheapest route on a machine of yours at the part's quantity. */
+  make?: { process: string | null; machine: string | null; material?: string | null; unit_cost_usd: number; low_usd: number | null; high_usd: number | null } | null;
+  /** What buying it costs: your price, else the cheapest outside price. */
+  buy?: { unit_cost_usd: number; source: "you" | "parts_list" | "model"; text: string | null; process: string | null; same_process: boolean } | null;
+  /** Buying wins: what making it on your machine would cost, and how many times the buy price. */
+  could_make?: { process: string | null; machine: string | null; unit_cost_usd: number; times: number | null } | null;
+  /** In-house against what you pay today: each and at the part's quantity. */
+  saving?: { each: number; total: number; vs: "you" | "parts_list" } | null;
 }
 
 export interface BodyOfFile {
@@ -95,6 +109,35 @@ export function bodyLine(r: BoardRow, unit: LengthUnit = "mm"): string | null {
   const which = b.name ? `${b.name}` : b.ids.length > 1 ? `Bodies ${b.ids.join(", ")}` : `Body ${b.ids[0] ?? "?"}`;
   const of = b.of ? ` of ${b.of}` : "";
   return [`${which}${of} in ${b.file}`, b.copies > 1 ? `${b.copies} per file` : null, b.shape ? inText(b.shape, unit) : null].filter(Boolean).join(" · ");
+}
+
+export interface BoardMachine {
+  name: string;
+  process: string;
+  count?: number;
+  /** The hourly rate you set, the share of it that pays for the machine, and what's left: the running rate. */
+  hourly_rate_usd?: number;
+  capital_frac?: number;
+  capital_frac_set?: boolean;
+  running_rate_usd?: number;
+}
+
+/** The run's answer: make N, buy M, the rest, and the saving against what you pay today. */
+export interface RunAnswer {
+  parts: number;
+  make: number;
+  buy: number;
+  new_machine: number;
+  cant_make: number;
+  not_checked: number;
+  not_sorted: number;
+  checking: number;
+  undecided: number;
+  with_price: number;
+  saving_usd: number | null;
+  saving_parts: number;
+  make_without_price: number;
+  make_cost_usd: number | null;
 }
 
 export interface BucketTotal {
@@ -149,8 +192,22 @@ export interface Board {
   material_class: string | null;
   quantity: number;
   parts_list: { name: string | null; rows: number; matched: number; unmatched: number } | null;
-  unmatched: { row?: number; file: string | null; part_number: string | null; quantity: number | null; material: string | null }[];
-  machines: { name: string; process: string }[];
+  unmatched: { row?: number; file: string | null; part_number: string | null; description?: string | null; quantity: number | null; material: string | null }[];
+  machines: BoardMachine[];
+  /** Machines counted as Your shop counts them (3 VF-2s are 3). */
+  machine_count?: number;
+  /** The run's name: its ZIP's, else its parts list's. */
+  name?: string | null;
+  /** The organization the run belongs to. */
+  org_name?: string | null;
+  /** Files in the ZIP (a file of several bodies is one file, several rows). */
+  files?: number;
+  /** With a parts list, the totals and the answer cover the parts on it. */
+  has_list?: boolean;
+  unlisted?: { parts: number; totals: Record<string, BucketTotal> } | null;
+  answer?: RunAnswer;
+  /** What decides make or buy, in one line. */
+  bucket_rule?: string;
   created_at: string | null;
   completed_at: string | null;
   rows: BoardRow[];
@@ -271,7 +328,8 @@ export function partLine(r: BoardRow): PartLine {
       : "";
   const material = matName ? `${matName}${mass}${listed}` : "—";
   let ownership = "—";
-  if (r.route?.owned) ownership = `Your ${r.route.machine ?? procName(r.route.process)}${r.marginal && finite(r.machine_rate_usd) ? ` · marginal ${money(r.machine_rate_usd)}/h` : r.marginal ? " · marginal rate" : ""}`;
+  if (r.route?.owned) ownership = `Your ${r.route.machine ?? procName(r.route.process)}${r.marginal && finite(r.machine_rate_usd) ? ` · running rate ${money(r.machine_rate_usd)}/h` : r.marginal ? " · running rate" : ""}`;
+  else if (r.could_make) ownership = `Bought · your ${r.could_make.machine ?? procName(r.could_make.process)} could make it`;
   else if (r.bucket === "new_machine") {
     const cap = r.capability;
     const why = cap?.gate === "material" && typeof cap.need === "string" ? `not qualified for ${cap.need}` : cap?.gate === "envelope" ? "too small for it" : "none fits";
@@ -296,6 +354,113 @@ export function rowWords(r: BoardRow, unit: LengthUnit, spec: string | null = nu
   return { reason: u(r.reason), body: bodyLine(r, unit), spec: u(spec), price: inText(partLine(r).price, unit), note: u(r.material.note) };
 }
 
+/** The row's name: the file the person gave, or which body of it. */
+export function rowName(r: Pick<BoardRow, "name" | "filename">): string {
+  return r.name || r.filename;
+}
+
+function priceFrom(source: string | null | undefined): string {
+  return source === "you" ? "your price" : source === "parts_list" ? "your parts list's price" : "";
+}
+
+/**
+ * Make against buy on one row: "Make $38.71 on your Haas VF-2 · Buy $5.13, sheet metal outside",
+ * "Buy $4.00, your price", with the saving when it's against what you pay today. Null when neither side is priced.
+ */
+export function compareLine(r: BoardRow): string | null {
+  const make = r.make ?? (r.could_make ? { unit_cost_usd: r.could_make.unit_cost_usd, machine: r.could_make.machine, process: r.could_make.process } : null);
+  const buy = r.buy;
+  if (!make && !buy) return null;
+  const bits: string[] = [];
+  if (make) bits.push(`Make ${money(make.unit_cost_usd)} on your ${make.machine ?? procName(make.process)}`);
+  if (buy) {
+    const from = buy.source === "model" ? (buy.process ? `${procName(buy.process).toLowerCase()} outside${buy.same_process ? " (a shop running your process)" : ""}` : "outside") : priceFrom(buy.source);
+    bits.push(`Buy ${money(buy.unit_cost_usd)}${from ? `, ${from}` : ""}`);
+  }
+  if (r.saving) bits.push(r.saving.each >= 0 ? `saves ${money(r.saving.each)} each` : `costs ${money(-r.saving.each)} more each, inside the estimate's range`);
+  return bits.join(" · ");
+}
+
+/** The run's name: its ZIP's, else its parts list's (older runs kept only that), else "Catalog run". */
+export function runTitle(board: Board | null): string {
+  const list = board?.parts_list?.name?.replace(/\.(csv|tsv|txt)$/i, "").trim();
+  return board?.name || list || "Catalog run";
+}
+
+/** The parts the answer covers: the parts list's when the run has one, else all. */
+export function scopedRows(board: Board | null): BoardRow[] {
+  if (!board) return [];
+  return board.has_list ? board.rows.filter((r) => r.listed) : board.rows;
+}
+
+/** Files in the ZIP the parts list doesn't name: shown apart, not in the answer. */
+export function unlistedRows(board: Board | null): BoardRow[] {
+  return board?.has_list ? board.rows.filter((r) => !r.listed) : [];
+}
+
+/** "50 files → 56 parts (2 assemblies split into bodies)", or "12 parts". */
+export function countLine(board: Board | null): string {
+  if (!board) return "";
+  const parts = board.rows.length;
+  const files = board.files ?? parts;
+  const split = board.split_files ?? [];
+  const p = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+  if (!split.length || files === parts) return p(parts, "part");
+  const kinds = new Set(split.map((f) => f.kind));
+  const what = kinds.size === 1 && kinds.has("assembly") ? p(split.length, "assembly", "assemblies") : kinds.size === 1 && kinds.has("weldment") ? p(split.length, "weldment") : p(split.length, "file");
+  return `${p(files, "file")} → ${p(parts, "part")} (${what} split into bodies)`;
+}
+
+/** "Against 5 machines", counted as Your shop counts them. */
+export function machinesText(board: Board | null): string {
+  if (!board) return "Machines loading";
+  const n = board.machine_count ?? board.machines.reduce((s, m) => s + (m.count ?? 1), 0);
+  return n ? `Against ${n} ${n === 1 ? "machine" : "machines"}` : "No machines yet";
+}
+
+/** What a running rate is, per machine with a rate you set: "Haas VF-2: $85.00/h you set, less 35% that pays for the machine: $55.25/h". */
+export function runningRateLines(board: Board | null): string[] {
+  return (board?.machines ?? [])
+    .filter((m) => finite(m.hourly_rate_usd) && finite(m.running_rate_usd))
+    .map((m) => `${m.name}: ${money(m.hourly_rate_usd)}/h you set, less ${Math.round((m.capital_frac ?? 0) * 100)}% that pays for the machine itself${m.capital_frac_set ? "" : " (a typical share; set yours in Your shop)"}: ${money(m.running_rate_usd)}/h`);
+}
+
+/**
+ * The run's answer, as a heading and a line under it. With current prices:
+ * "Make these 12 parts in-house: save $41,200 a year against what you pay today".
+ * Without: the counts, and what's missing for a saving.
+ */
+export function answerText(board: Board | null): { head: string; sub: string; missing: string | null } | null {
+  const a = board?.answer;
+  if (!a || !board) return null;
+  const n = (k: number, one: string, many = `${one}s`) => `${k.toLocaleString("en-US")} ${k === 1 ? one : many}`;
+  const year = board.has_list ? " a year" : "";
+  let head: string;
+  if (a.saving_usd != null && a.saving_parts) {
+    const these = a.make === a.saving_parts ? `these ${n(a.make, "part")}` : `${n(a.make, "part")}`;
+    head = `Make ${these} in-house: save ${money(a.saving_usd, 0)}${year} against what you pay today${a.make_without_price ? ` (on the ${a.saving_parts} with a current price)` : ""}`;
+  } else if (a.make) head = `Make ${n(a.make, "part")} in-house, buy ${a.buy}`;
+  else head = a.parts ? `Buy all ${n(a.buy, "part")} that could be decided` : "No parts yet";
+  const rest: string[] = [];
+  if (a.saving_usd != null && a.saving_parts) rest.push(`Buy ${a.buy}`);
+  if (a.new_machine) rest.push(`${a.new_machine} need a new machine`);
+  if (a.undecided) {
+    const why = [a.cant_make ? `${a.cant_make} can’t be made as drawn` : null, a.not_checked ? `${a.not_checked} not checked` : null, a.not_sorted ? `${a.not_sorted} not sorted` : null, a.checking ? `${a.checking} still checking` : null].filter(Boolean).join(", ");
+    rest.push(`${a.undecided} can’t be decided yet (${why})`);
+  }
+  if (board.has_list) rest.push("parts on your list, at their listed quantities");
+  const sub = rest.join(" · ");
+  const missing =
+    a.saving_usd == null
+      ? a.make
+        ? "No saving yet: it needs what you pay today. Add a Current price column to the parts list, or type the price on a part’s Decision view."
+        : null
+      : a.make_without_price
+        ? `${n(a.make_without_price, "in-house part")} ${a.make_without_price === 1 ? "has" : "have"} no current price, so ${a.make_without_price === 1 ? "it isn’t" : "they aren’t"} in the saving.`
+        : null;
+  return { head, sub, missing };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Sorting, filtering, grouping                                       */
 /* ------------------------------------------------------------------ */
@@ -318,7 +483,7 @@ function desc(a: number | null, b: number | null): number {
 }
 
 export function sortRows(rows: readonly BoardRow[], key: SortKey): BoardRow[] {
-  const byName = (a: BoardRow, b: BoardRow) => a.filename.localeCompare(b.filename, "en", { numeric: true });
+  const byName = (a: BoardRow, b: BoardRow) => rowName(a).localeCompare(rowName(b), "en", { numeric: true });
   const out = [...rows];
   if (key === "name") return out.sort(byName);
   if (key === "hours") return out.sort((a, b) => desc(a.hours_total, b.hours_total) || byName(a, b));
@@ -332,7 +497,7 @@ export function filterRows(rows: readonly BoardRow[], bucket: string, query: str
   return rows.filter((r) => {
     if (bucket !== "all" && r.bucket !== bucket) return false;
     if (!q) return true;
-    return [r.filename, r.part_number, r.reason, r.material.name, r.material.declared, r.route?.machine]
+    return [r.filename, r.name, r.part_number, r.description, r.reason, r.material.name, r.material.declared, r.route?.machine]
       .some((s) => typeof s === "string" && s.toLowerCase().includes(q));
   });
 }
@@ -440,6 +605,11 @@ export function materialLine(g: BreakdownMaterial): { label: string; value: stri
 
 export function bucketCount(board: Board | null, key: string): number {
   return board?.totals?.[key]?.parts ?? 0;
+}
+
+/** Parts that couldn't be checked and can be checked again (a body's file goes back whole). */
+export function recheckable(board: Board | null): BoardRow[] {
+  return (board?.rows ?? []).filter((r) => r.bucket === "not_checked");
 }
 
 /** "12 of 50 checked · 3 checking" from the board (part by part). */

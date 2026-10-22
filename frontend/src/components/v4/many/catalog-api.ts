@@ -186,3 +186,19 @@ export async function fetchUsage(): Promise<unknown> {
   if (!res.ok) throw new Error(`usage ${res.status}`);
   return res.json();
 }
+
+/** Check a run's parts again in the run: the ones named, or every part not checked. */
+export async function recheckParts(batchId: string, itemIds?: string[]): Promise<{ batch_id: string; rechecking: string[]; status: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/batch/${encodeURIComponent(batchId)}/catalog/recheck`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(itemIds?.length ? { item_ids: itemIds } : {}),
+    });
+  } catch {
+    throw new CatalogRunError("The server couldn’t be reached. Check your connection and try again.", 0, "network", null);
+  }
+  if (!res.ok) throw problem(res.status, await res.json().catch(() => null), "The parts weren’t checked again.");
+  return res.json();
+}
