@@ -53,37 +53,7 @@ function localAppBase(apiBase) {
   return url.origin;
 }
 
-async function switchToNewSharedOrg(apiBase, session, name) {
-  const headers = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    Cookie: `dash_session=${session}`,
-  };
-  const created = await jsonResponse(await fetch(`${apiBase}/api/v1/orgs`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name }),
-  }));
-  const orgId = created.json?.org_id;
-  if (!created.response.ok || !orgId) {
-    throw new Error(`local shared org creation HTTP ${created.response.status}: ${JSON.stringify(created.json)}`);
-  }
-  const switched = await jsonResponse(await fetch(`${apiBase}/api/v1/orgs/switch`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ org_id: orgId }),
-  }));
-  if (switched.response.status !== 200 || switched.json?.org_id !== orgId) {
-    throw new Error(`local org switch HTTP ${switched.response.status}: ${JSON.stringify(switched.json)}`);
-  }
-  return orgId;
-}
-
-/**
- * ``sharedOrg: true`` mints the key in a new team organization the throwaway
- * admin creates and switches to, for surfaces a personal org cannot use (SCIM).
- */
-export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId, purpose, sharedOrg = false }) {
+export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId, purpose }) {
   if (configuredToken) {
     return { token: configuredToken, source: "configured credential" };
   }
@@ -119,7 +89,6 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
   }
 
   await grantLocalPaidAccess(email);
-  const orgId = sharedOrg ? await switchToNewSharedOrg(apiBase, session, `E2E ${purpose} ${runId} ${nonce}`) : null;
   const created = await jsonResponse(await fetch(`${apiBase}/api/v1/keys`, {
     method: "POST",
     headers: {
@@ -139,7 +108,6 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     source: "throwaway local admin created through real HTTP auth and key-management surfaces",
     accountEmail: email,
     keyPrefix: created.json.prefix,
-    ...(orgId ? { orgId } : {}),
   };
 }
 

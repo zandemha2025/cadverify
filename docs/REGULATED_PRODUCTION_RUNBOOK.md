@@ -185,7 +185,10 @@ cannot pull IdP users in or make their sign-in ambiguous. SAML signs in to an
 existing account with the same email only when that account is already bound to
 the same IdP NameID, belongs to that organization, or was created by SAML before
 bindings existed; any other match answers `409 saml_link_required` and the
-account is left untouched. A production render fails without the value (or with
+account is left untouched. SCIM provisioning (`/scim/v2`) answers only an admin
+API key issued in that organization; a key from any other organization gets
+`403 sso_org_required`, so no other organization can create accounts for
+addresses no one has registered yet. A production render fails without the value (or with
 the checked-in `replace-me` placeholder), and a released backend with AUTH_MODE
 saml, oidc or hybrid refuses to start without `SSO_ORG_ID`. For a first install,
 set `none`, sign in, create the organization, then set its id and redeploy.
