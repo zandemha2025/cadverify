@@ -549,6 +549,91 @@ async def test_org_rule_signs_out_members_and_sets_them_up_at_next_sign_in(env, 
         await _cleanup(w)
 
 
+async def _key_in(user_id: int, org: str) -> str:
+    """A live read-write key for ``user_id`` issued in ``org`` (their active org)."""
+    import src.db.engine as eng
+    from src.auth.hashing import hmac_index, mint_token
+
+    token, prefix, secret_hash = mint_token()
+    async with eng.get_session_factory()() as s:
+        await s.execute(text("INSERT INTO api_keys (user_id, org_id, name, prefix, hmac_index, secret_hash, scope) "
+                             "VALUES (:u, :o, 'ci', :p, :h, :s, 'read_write')"),
+                        {"u": user_id, "o": org, "p": prefix, "h": hmac_index(token), "s": secret_hash})
+        await s.commit()
+    return token
+
+
+@requires_pg
+@pytest.mark.asyncio
+async def test_the_org_rule_stops_keys_of_members_without_two_step_until_they_set_it_up(env, clock):
+    """Turning the rule on ends members' sessions and also refuses their API keys
+    (403, plain words). The key isn't revoked: once its owner sets two-step up it
+    works again. A single sign-on member's key keeps working, like their sign-in."""
+    import src.db.engine as eng
+
+    w = World()
+    try:
+        async with _client() as ac:
+            admin, admin_s = await _signup(ac, w.email("admin"))
+            member_email = w.email("member")
+            member, _member_s = await _signup(ac, member_email)
+            sso, _sso_s = await _signup(ac, w.email("sso"))
+            org = f"01TS{w.tag.upper()}"[:26]
+            w.orgs.append(org)
+            async with eng.get_session_factory()() as s:
+                await s.execute(text("INSERT INTO organizations (id, name, slug) VALUES (:o, :n, :sl)"),
+                                {"o": org, "n": f"Kestrel {w.tag}", "sl": f"kestrel-{w.tag}"})
+                for uid, role in ((admin, "admin"), (member, "member"), (sso, "member")):
+                    await s.execute(text("INSERT INTO memberships (id, org_id, user_id, org_role) VALUES (:i, :o, :u, :r)"),
+                                    {"i": uuid.uuid4().hex, "o": org, "u": uid, "r": role})
+                    await s.execute(text("UPDATE users SET current_org_id = :o WHERE id = :u"), {"o": org, "u": uid})
+                await s.execute(text("INSERT INTO auth_identities (provider, issuer, subject, user_id) "
+                                     "VALUES ('saml', 'https://idp.kestrel.example', :sub, :u)"),
+                                {"sub": f"sub-{w.tag}", "u": sso})
+                await s.commit()
+            member_key, sso_key = await _key_in(member, org), await _key_in(sso, org)
+
+            def bearer(key: str) -> dict:
+                return {"Authorization": f"Bearer {key}"}
+
+            assert (await ac.get("/protected", headers=bearer(member_key))).status_code == 200
+            _secret, _codes, admin_s = await _enrol(ac, admin_s, clock)
+            r = await ac.put("/auth/two-step/org", headers=_cookie(admin_s), json={"required": True})
+            assert r.status_code == 200 and r.json()["required"] is True, r.text
+
+            r = await ac.get("/protected", headers=bearer(member_key))
+            assert r.status_code == 403, r.text
+            assert r.json()["detail"]["code"] == "api_key_two_step_required"
+            assert r.json()["detail"]["message"] == (
+                "This organization requires two-step sign-in. Set it up in Account › Security, "
+                "and this key works again."
+            )
+            assert (await ac.get("/protected", headers=bearer(sso_key))).status_code == 200
+
+            # The member sets it up at their next sign-in; the same key works again.
+            challenge = (await ac.post("/auth/login", json={"email": member_email, "password": PASSWORD})).json()["challenge"]
+            setup = (await ac.post("/auth/two-step/challenge/setup", json={"challenge": challenge})).json()
+            secret = setup["manual_key"].replace(" ", "")
+            r = await ac.post("/auth/two-step/challenge/setup/confirm",
+                              json={"challenge": challenge, "code": totp.code_at_step(secret, clock["step"])})
+            assert r.status_code == 200, r.text
+            assert (await ac.get("/protected", headers=bearer(member_key))).status_code == 200
+            async with eng.get_session_factory()() as s:
+                revoked = (await s.execute(text("SELECT count(*) FROM api_keys WHERE user_id = :u AND revoked_at IS NOT NULL"),
+                                           {"u": member})).scalar_one()
+            assert revoked == 0
+
+            # With the rule off, nobody's key is held back.
+            r = await ac.put("/auth/two-step/org", headers=_cookie(admin_s), json={"required": False})
+            assert r.status_code == 200, r.text
+            async with eng.get_session_factory()() as s:
+                await s.execute(text("DELETE FROM user_two_step WHERE user_id = :u"), {"u": member})
+                await s.commit()
+            assert (await ac.get("/protected", headers=bearer(member_key))).status_code == 200
+    finally:
+        await _cleanup(w)
+
+
 @requires_pg
 @pytest.mark.asyncio
 async def test_step_up_leaves_a_single_sign_on_account_signed_in(env):

@@ -2,8 +2,11 @@
 
 Mounted under /auth:
   GET /google/start    → 302 to Google with state + nonce
-  GET /google/callback → validates state, upserts user, mints API key,
-                          303 to /settings/developer?new=1 with cv_mint_once cookie
+  GET /google/callback → validates state, upserts user (a Google account opens
+                          an existing one only on its exact address or its own
+                          linked subject), mints a read-only API key that expires
+                          in 90 days when none is active, 303 to
+                          /settings/developer?new=1 with cv_mint_once cookie
 """
 from __future__ import annotations
 
@@ -148,6 +151,7 @@ async def google_callback(request: Request):
         )
         return resp
 
+    # Read only, expiring in 90 days: the rules for every key made at sign-in.
     full_token, prefix, secret_hash = mint_token()
     await create_api_key(
         user_id, "Default", prefix, hmac_index(full_token), secret_hash

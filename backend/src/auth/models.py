@@ -48,6 +48,10 @@ class ApiKeyRow:
     expires_at: object = None
     expired: bool = False
     key_org_role: str | None = None
+    # The key's org requires two-step sign-in and its owner has none (and
+    # doesn't sign in through single sign-on): the key is refused until they
+    # set it up, then works again (``require_api_key``).
+    two_step_owed: bool = False
 
 
 @dataclass
@@ -65,6 +69,16 @@ async def upsert_user(
     disposable_flag: bool = False,
     auth_provider: str = "google",
 ) -> int:
+    """Get or create the account for a Google (or other) sign-in; returns its id.
+
+    ``email_lower`` is the stored form (``normalize_email``: no "+tag", Gmail
+    dots dropped), so it can name an account whose own address differs. A
+    Google subject therefore reaches an existing account only when that
+    account is already linked to the same subject, or is linked to none and its
+    stored address is this exact address (case aside). "dana+x@corp.example" never
+    opens "dana@corp.example", and a different Google account never opens one
+    already linked: both get a 409 and the account is left untouched.
+    """
     provider = (auth_provider or "google").strip().lower()
     async with _session()() as s:
         row = (
@@ -72,14 +86,7 @@ async def upsert_user(
                 text(
                     "INSERT INTO users (email, email_lower, google_sub, auth_provider, disposable_flag) "
                     "VALUES (:e, :el, :g, :ap, :d) "
-                    "ON CONFLICT (email_lower) DO UPDATE SET "
-                    "google_sub = COALESCE(users.google_sub, EXCLUDED.google_sub), "
-                    "auth_provider = CASE "
-                    "WHEN users.google_sub IS NULL "
-                    "AND users.auth_provider = 'google' "
-                    "AND EXCLUDED.google_sub IS NULL "
-                    "THEN EXCLUDED.auth_provider "
-                    "ELSE users.auth_provider END "
+                    "ON CONFLICT (email_lower) DO NOTHING "
                     "RETURNING id"
                 ),
                 {
@@ -91,6 +98,40 @@ async def upsert_user(
                 },
             )
         ).first()
+        if row is None:
+            # An account already holds this address's stored form.
+            existing = (
+                await s.execute(
+                    text(
+                        "SELECT id, email, google_sub FROM users "
+                        "WHERE email_lower = :el FOR UPDATE"
+                    ),
+                    {"el": email_lower},
+                )
+            ).first()
+            if existing is None:  # pragma: no cover - the conflicting row just existed
+                raise RuntimeError("users row vanished during sign-in")
+            if google_sub is not None:
+                if existing[2] is not None and existing[2] != google_sub:
+                    raise _google_link_refused("other_google_account")
+                if existing[2] is None:
+                    if (existing[1] or "").strip().lower() != (email or "").strip().lower():
+                        raise _google_link_refused("other_address_form")
+                    await s.execute(
+                        text("UPDATE users SET google_sub = :g WHERE id = :u"),
+                        {"g": google_sub, "u": int(existing[0])},
+                    )
+            else:
+                # A sign-in without a Google subject replaces only the original
+                # Google default provider of an account Google never linked.
+                await s.execute(
+                    text(
+                        "UPDATE users SET auth_provider = :ap WHERE id = :u "
+                        "AND google_sub IS NULL AND auth_provider = 'google'"
+                    ),
+                    {"ap": provider, "u": int(existing[0])},
+                )
+            row = existing
         # W1: guarantee the (possibly brand-new) user has a personal org +
         # admin membership before any of their rows are written. Idempotent:
         # a returning/existing user already has one, so this is a no-op read.
@@ -115,6 +156,31 @@ async def upsert_user(
         await ensure_personal_org(s, uid, email)
         await s.commit()
         return uid
+
+
+def _google_link_refused(reason: str) -> "HTTPException":
+    """409 for a Google sign-in that may not open the account its address names."""
+    from fastapi import HTTPException
+
+    if reason == "other_google_account":
+        message = (
+            "The ScaleCAD account for this address is linked to a different Google "
+            "account. Sign in with that Google account, or with an email link or password."
+        )
+    else:
+        message = (
+            "A ScaleCAD account already uses a different form of this address, so "
+            "this Google account can't open it. Sign in to that account with its own "
+            "address, by email link or password."
+        )
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "google_link_refused",
+            "message": message,
+            "doc_url": error_doc_url("google_link_refused"),
+        },
+    )
 
 
 def _account_deactivated() -> "HTTPException":
@@ -349,36 +415,30 @@ async def set_password_hash(
 async def create_api_key(
     user_id: int, name: str, prefix: str, hmac_idx: str, secret_hash: str
 ) -> int:
+    """The key made at Google sign-in, in the account's active org.
+
+    It follows the branch's rules for every key made at sign-in
+    (``provisioning.insert_login_key``): read only, expiring in 90 days.
+    """
     from src.auth.org_context import resolve_org
+    from src.auth.provisioning import insert_login_key
 
     async with _session()() as s:
         # api_keys.org_id is NOT NULL (W1). The caller always holds a provisioned
         # org by now (signup provisions one; the 0009 backfill covers existing
         # users), so resolve_org returns it.
         org_id = await resolve_org(s, user_id)
-        row = (
-            await s.execute(
-                text(
-                    "INSERT INTO api_keys (user_id, org_id, name, prefix, hmac_index, secret_hash) "
-                    "VALUES (:u, :o, :n, :p, :h, :s) RETURNING id"
-                ),
-                {"u": user_id, "o": org_id, "n": name, "p": prefix, "h": hmac_idx, "s": secret_hash},
-            )
-        ).first()
-        from src.services.audit_service import append_audit_entry
-
-        await append_audit_entry(
+        key_id = await insert_login_key(
             s,
-            user_id,
-            "api_key.created",
-            "api_key",
-            str(row[0]),
-            {"key_prefix": prefix},
+            user_id=user_id,
             org_id=org_id,
+            key_name=name,
+            prefix=prefix,
+            hmac_idx=hmac_idx,
+            secret_hash=secret_hash,
         )
         await s.commit()
-
-        return int(row[0])
+        return key_id
 
 
 async def user_has_active_api_key(user_id: int) -> bool:
@@ -402,6 +462,8 @@ async def user_has_active_api_key(user_id: int) -> bool:
 
 
 async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
+    from src.auth.two_step import SINGLE_SIGN_ON_ACCOUNT_SQL
+
     async with _session()() as s:
         r = (
             await s.execute(
@@ -418,10 +480,15 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
                     ") AS active_org_id, "
                     "k.scope, k.expires_at, "
                     "(k.expires_at IS NOT NULL AND k.expires_at <= now()) AS expired, "
-                    "key_m.org_role AS key_org_role "
+                    "key_m.org_role AS key_org_role, "
+                    "(COALESCE(key_o.require_two_step, false) "
+                    " AND NOT COALESCE(t.enabled_at IS NOT NULL AND t.secret_sealed IS NOT NULL, false) "
+                    f" AND NOT {SINGLE_SIGN_ON_ACCOUNT_SQL}) AS two_step_owed "
                     "FROM api_keys k JOIN users u ON u.id = k.user_id "
                     "JOIN memberships key_m ON key_m.user_id = k.user_id "
                     "AND key_m.org_id = k.org_id "
+                    "LEFT JOIN organizations key_o ON key_o.id = k.org_id "
+                    "LEFT JOIN user_two_step t ON t.user_id = k.user_id "
                     "WHERE k.hmac_index = :h"
                 ),
                 {"h": hmac_idx},

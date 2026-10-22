@@ -363,6 +363,32 @@ async def _ensure_key(
         return None, None, None
 
     token, prefix, secret_hash = mint_token()
+    key_id = await insert_login_key(
+        session,
+        user_id=user_id,
+        org_id=org_id,
+        key_name=key_name,
+        prefix=prefix,
+        hmac_idx=hmac_index(token),
+        secret_hash=secret_hash,
+    )
+    return key_id, prefix, token
+
+
+async def insert_login_key(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    org_id: str,
+    key_name: str,
+    prefix: str,
+    hmac_idx: str,
+    secret_hash: str,
+) -> int:
+    """Store and audit a key made at sign-in, with the least-privilege defaults
+    (read only, expiring in 90 days). Every sign-in path that makes a key uses
+    this: email link here, Google through ``models.create_api_key``. The caller
+    commits."""
     row = (
         await session.execute(
             text(
@@ -377,7 +403,7 @@ async def _ensure_key(
                 "org_id": org_id,
                 "name": key_name,
                 "prefix": prefix,
-                "hmac_index": hmac_index(token),
+                "hmac_index": hmac_idx,
                 "secret_hash": secret_hash,
                 "scope": _LOGIN_KEY_SCOPE,
                 "days": _LOGIN_KEY_DAYS,
@@ -401,7 +427,7 @@ async def _ensure_key(
         },
         org_id=org_id,
     )
-    return key_id, prefix, token
+    return key_id
 
 
 async def provision_authenticated_login(

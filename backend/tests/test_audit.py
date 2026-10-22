@@ -114,9 +114,11 @@ async def test_log_action_propagates_commit_failure():
 
 @pytest.mark.asyncio
 async def test_api_key_creation_does_not_commit_when_audit_append_fails():
-    """The key secret is never committed without its durable creation event."""
-    from src.auth import models
-    from src.services import audit_service
+    """The key secret is never committed without its durable creation event.
+
+    Google sign-in's key is stored and audited by ``provisioning.insert_login_key``
+    (the sign-in key rules), so the append that fails is the one it calls."""
+    from src.auth import models, provisioning
 
     session = AsyncMock()
     insert_result = MagicMock()
@@ -130,7 +132,7 @@ async def test_api_key_creation_does_not_commit_when_audit_append_fails():
         "src.auth.org_context.resolve_org",
         new=AsyncMock(return_value="org-1"),
     ), patch.object(
-        audit_service,
+        provisioning,
         "append_audit_entry",
         new=AsyncMock(side_effect=RuntimeError("audit append failed")),
     ):

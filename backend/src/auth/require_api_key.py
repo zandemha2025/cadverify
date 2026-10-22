@@ -94,6 +94,20 @@ def _403_read_only(owner_org_role: str | None, method: str) -> HTTPException:
     )
 
 
+def _403_two_step_required() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "api_key_two_step_required",
+            "message": (
+                "This organization requires two-step sign-in. Set it up in "
+                "Account › Security, and this key works again."
+            ),
+            "doc_url": error_doc_url("api_key_two_step_required"),
+        },
+    )
+
+
 def _401(code: str, message: str) -> HTTPException:
     return HTTPException(
         status_code=401,
@@ -221,6 +235,11 @@ async def require_api_key(
     # comparison ran on the database clock in ``lookup_api_key``.
     if getattr(row, "expired", False):
         raise _401_expired(getattr(row, "expires_at", None))
+    # The org requires two-step sign-in and the key's owner hasn't set it up:
+    # refused, not revoked, so it works again once they have (R1-4). Read in the
+    # same ``lookup_api_key`` query.
+    if getattr(row, "two_step_owed", False):
+        raise _403_two_step_required()
     role = getattr(row, "role", None)
     if role is None:
         role = await lookup_user_role(row.user_id)

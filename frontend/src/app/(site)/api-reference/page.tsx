@@ -27,6 +27,7 @@ export default async function Page() {
       "A viewer's key is always read only, whatever it was made as.",
       "Organization: a key works only in the organization it was made in. Used while its owner has another organization active, it gets 403 api_key_org_mismatch.",
       "Expiry: 30, 90 or 365 days, or none. An expired key gets 401 api_key_expired with the date it stopped working.",
+      "Two-step sign-in: in an organization that requires it, a key whose owner hasn't set it up gets 403 api_key_two_step_required. It works again once they have. People who sign in through the organization's single sign-on are exempt, as when they sign in.",
       "A key stops working when it is revoked, when its owner leaves the organization, or when their account is turned off. An org admin sees every key in the organization and can revoke any of them.",
       "Deleting the organization or an account needs a signed-in person in the web app; a key can't do it.",
     ],
