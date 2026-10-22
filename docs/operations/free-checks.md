@@ -36,7 +36,7 @@ These still require the pilot entitlement (`require_paid_access`, `403 paid_acce
 
 There is no admin screen for this. An authorized operator with database access uses one of two tools for the verified account:
 
-- **The plan: `backend/scripts/set_plan.py`.** Don't set `users.plan` by hand. The script sets it, prints the account before and after, and writes a `user.plan_changed` audit row (actor `staff script`, with from, to and your reason) in the same transaction, so the organization's Activity shows "Plan changed · Free trial → Pilot". The same plan again changes nothing and writes nothing. It is a command, never a web route.
+- **The plan: `backend/scripts/set_plan.py`.** Don't set `users.plan` by hand. The script shows the account, asks before changing it, sets it, prints it after, and writes a `user.plan_changed` audit row (actor `staff script`, with from, to and your reason) in the same transaction, so the organization's Activity shows "Plan changed · Free trial → Pilot". The same plan again changes nothing and writes nothing. It is a command, never a web route.
 
   ```
   cd backend
@@ -45,11 +45,16 @@ There is no admin screen for this. An authorized operator with database access u
       --reason "Pilot agreed with Northfield Pumps, 2026-10-22"
 
   Before: account 52 dana@northfieldpumps.com · plan trial · organization 01M5H5… · no Stripe subscription
+  Change account 52 dana@northfieldpumps.com from trial to pilot? [y/N] y
   After:  account 52 dana@northfieldpumps.com · plan pilot · organization 01M5H5… · no Stripe subscription
   Done. Audit row user.plan_changed written (actor "staff script").
   ```
 
-  In the API image the backend is at `/app` (`cd /app` instead of `cd backend`), and the API's `DATABASE_URL` secret is the database it changes. `--plan` is `trial`, `pro` or `pilot`; `--email` and a non-empty `--reason` are required. It refuses (exit 2, nothing changed) an unknown email, a deleted account, a missing reason or another plan name.
+  In the API image the backend is at `/app` (`cd /app` instead of `cd backend`), and the API's `DATABASE_URL` secret is the database it changes. `--plan` is `trial`, `pro` or `pilot`; a non-empty `--reason` is required, and so is one of:
+  - `--email`: matched the way sign-in stores addresses (lower case, without a `+tag`, Gmail dots dropped), so `Dana+ops@northfieldpumps.com` finds `dana@northfieldpumps.com`. If an address could mean more than one account (one stored before addresses were normalized), the script names them all with their ids and changes none. Run it again with `--user-id`.
+  - `--user-id`: the account's id, from the `Before:` line or that refusal.
+
+  Only `y` or `yes` changes the plan. Any other answer, or none, changes nothing. `--yes` skips the question, for a run someone has already reviewed. It refuses (exit 2, nothing changed) an unknown email or id, an email matching more than one account, a deleted account, a missing reason, another plan name, an answer other than yes, or a plan that changed while it was asking.
   - `pilot`: unlimited checks plus the tools above that need approved access. Stripe billing only moves accounts between `trial` and `pro`, so it never overwrites `pilot`.
   - `trial`: back to the remaining lifetime allowance; it does not erase usage. An account with an active Pro subscription is set back to `pro` by Stripe's next subscription event (the script says so).
   - `pro`: Pro's monthly allowance needs an active Stripe subscription. Without one the account keeps the free allowance until Stripe records one (the script says so). Use Stripe for paid Pro.
