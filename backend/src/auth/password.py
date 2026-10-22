@@ -27,6 +27,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
@@ -39,9 +40,11 @@ from src.auth.client_ip import (
     require_verified_proxy,
 )
 from src.auth.dashboard_session import (
+    COOKIE_NAME,
     clear_session_cookie,
     require_dashboard_session,
     sign,
+    unsign_payload,
 )
 from src.auth.disposable import classify, normalize_email
 from src.auth.hashing import hash_password, password_needs_rehash, verify_password
@@ -49,6 +52,7 @@ from src.auth.rate_limit import limiter
 from src.auth.models import (
     bump_session_version,
     create_password_user,
+    lookup_session_user,
     get_user_session_version,
     get_login_credentials,
     get_user_public,
@@ -575,12 +579,38 @@ async def initialize_password(
 
 
 @router.post("/logout")
-async def logout(response: Response) -> dict:
-    # Single-browser logout clears the cookie. Use /logout-all or the admin
-    # revoke-sessions route to bump users.session_version and invalidate every
-    # outstanding dashboard cookie for the account.
+async def logout(request: Request, response: Response):
+    """Sign out: the session ends on the server, not only in this browser.
+
+    Dashboard sessions are stateless HMAC tokens that carry the account's
+    ``session_version``, so a copied cookie would outlive a cookie-only logout.
+    A live session cookie bumps the version (ending every session of the
+    account, as /logout-all does) and the cookie is cleared. A missing, forged
+    or already-ended cookie only clears the cookie. If the account can't be
+    read the cookie is still cleared and the answer is a 503, never a claimed
+    sign-out.
+    """
+    cookie = request.cookies.get(COOKIE_NAME)
+    payload = unsign_payload(cookie) if cookie else None
+    revoked = False
+    if payload is not None:
+        try:
+            row = await lookup_session_user(payload.user_id)
+            if row is not None and row.session_version == payload.session_version:
+                revoked = await bump_session_version(payload.user_id) is not None
+        except Exception:
+            logger.warning("logout: session could not be ended for user_id=%s", payload.user_id, exc_info=True)
+            failed = JSONResponse(
+                status_code=503,
+                content={"detail": {
+                    "code": "logout_unavailable",
+                    "message": "This browser is signed out, but the session couldn't be ended on the server. Try again.",
+                }},
+            )
+            clear_session_cookie(failed)
+            return failed
     clear_session_cookie(response)
-    return {"ok": True}
+    return {"ok": True, "session_ended": revoked}
 
 
 @router.post("/logout-all")
