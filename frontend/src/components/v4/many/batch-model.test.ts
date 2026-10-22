@@ -137,3 +137,47 @@ test("durations", () => {
   assert.equal(seconds(1234), "1.2 s");
   assert.equal(seconds(null), "—");
 });
+
+test("a run counts its files one way everywhere: checked, not checked, to go (op-10, op-16)", async () => {
+  const { runCounts, runCountsLine } = await import("./batch-model.ts");
+  // Batch 23 after it stopped: 28 checked, 270 skipped. Never "296 of 296 checked".
+  const stopped = runCounts(P({ status: "failed", total_items: 298, completed_items: 28, failed_items: 0, skipped_items: 270, pending_items: 0 }));
+  assert.deepEqual(stopped, { total: 298, checked: 28, notChecked: 270, toGo: 0 });
+  assert.equal(runCountsLine(stopped), "28 of 298 checked · 270 not checked");
+  const going = runCounts(P({ total_items: 298, completed_items: 8, failed_items: 1, skipped_items: 0, pending_items: 289 }));
+  assert.equal(runCountsLine(going), "8 of 298 checked · 1 not checked · 289 to go");
+  // Without the progress read, from the board's rows: a file checked body by body is one file.
+  const rows = [
+    { item_id: "A", bucket: "in_house" },
+    { item_id: "B:1", bucket: "outside" },
+    { item_id: "B:2", bucket: "in_house" },
+    { item_id: "C", bucket: "not_checked" },
+    { item_id: "D", bucket: "checking" },
+  ];
+  assert.deepEqual(runCounts(null, rows), { total: 4, checked: 2, notChecked: 1, toGo: 1 });
+});
+
+test("a stopped run says when it stopped and what is left, in plain words (op-16)", async () => {
+  const { stoppedLine } = await import("./batch-model.ts");
+  const counts = { total: 298, checked: 28, notChecked: 270, toGo: 0 };
+  assert.equal(stoppedLine(counts, "16:55"), "28 of 298 checked; 270 not checked: the run stopped at 16:55. Check them again.");
+  assert.equal(stoppedLine({ total: 3, checked: 2, notChecked: 1, toGo: 0 }, null), "2 of 3 checked; 1 not checked: the run stopped. Check it again.");
+});
+
+test("time left comes from the run's measured pace when the server has one (op-11)", () => {
+  const now = new Date("2026-10-18T10:10:00Z").getTime();
+  // 298 parts at 45 an hour with 270 to go: about 6 h.
+  const p = P({ total_items: 298, completed_items: 28, failed_items: 0, pending_items: 270, concurrency_limit: 10, pace_per_hour: 45, eta_seconds: 21600 });
+  assert.equal(etaText(p, now, ["part", "parts"]), "~6 h left at 45 parts an hour");
+  assert.equal(etaText(P({ pace_per_hour: 7.5, eta_seconds: 2580 }), now, ["part", "parts"]), "~43 min left at 7.5 parts an hour");
+  assert.equal(etaText(P({ pace_per_hour: 120, eta_seconds: 30, total_items: 90, pending_items: 60 }), now, ["part", "parts"]), "~30 s left at 120 parts an hour");
+  assert.equal(etaText(P({ total_items: 298, pending_items: 270, pace_per_hour: 45, eta_seconds: 23400 }), now, ["part", "parts"]), "~6 h 30 min left at 45 parts an hour");
+});
+
+test("the work bar and the run page say the same thing about a run, and it only goes up (op-10)", async () => {
+  const { runCounts, runWork } = await import("./batch-model.ts");
+  const a = runWork(runCounts(P({ total_items: 298, completed_items: 6, failed_items: 2, skipped_items: 0, pending_items: 290 })));
+  assert.deepEqual(a, { label: "Checking 298 parts", detail: "6 of 298 checked", progress: 8 / 298 });
+  const b = runWork(runCounts(null, [{ item_id: "A", bucket: "in_house" }, { item_id: "B", bucket: "checking" }]));
+  assert.deepEqual(b, { label: "Checking 2 parts", detail: "1 of 2 checked", progress: 0.5 });
+});

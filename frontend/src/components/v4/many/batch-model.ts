@@ -72,19 +72,108 @@ export function doneFraction(p: BatchProgress): number {
  * rate so far says nothing about them: "Last 3 items" instead). Minutes round up.
  */
 export function etaText(p: BatchProgress, now: number = Date.now(), noun: [string, string] = ["item", "items"]): string {
-  if (TERMINAL.has(p.status) || !p.started_at) return "";
+  if (TERMINAL.has(p.status)) return "";
   const done = p.completed_items + p.failed_items + p.skipped_items;
   const left = p.total_items - done;
-  const started = new Date(p.started_at).getTime();
-  if (!done || left <= 0 || !Number.isFinite(started)) return "";
+  if (!done || left <= 0) return "";
   const inFlight = Math.max(1, p.concurrency_limit || 1);
   if (left <= inFlight && p.total_items > inFlight) return `Last ${left} ${left === 1 ? noun[0] : noun[1]}`;
+  // The server's pace: the run's own parts finished over its last half hour.
+  if (p.pace_per_hour && p.eta_seconds != null && p.eta_seconds > 0) return `${leftWords(p.eta_seconds)} left at ${paceWords(p.pace_per_hour, noun)}`;
+  const started = p.started_at ? new Date(p.started_at).getTime() : NaN;
+  if (!Number.isFinite(started)) return "";
   if (done < 3 || done / Math.max(1, p.total_items) < 0.1) return "";
   const elapsed = (now - started) / 1000;
   if (elapsed <= 0) return "";
   const sec = Math.round(left / (done / elapsed));
   if (!Number.isFinite(sec) || sec <= 0) return "";
   return sec < 90 ? `~${sec} s left` : sec < 5400 ? `~${Math.ceil(sec / 60)} min left` : `~${Math.ceil(sec / 3600)} h left`;
+}
+
+/** "~40 s", "~43 min", "~6 h", "~6 h 30 min" (minutes round up; hours to the next 10 minutes). */
+export function leftWords(sec: number): string {
+  if (sec < 90) return `~${Math.max(1, Math.round(sec))} s`;
+  if (sec < 5400) return `~${Math.ceil(sec / 60)} min`;
+  let h = Math.floor(sec / 3600);
+  let m = Math.round((sec - h * 3600) / 600) * 10;
+  if (m === 60) {
+    h += 1;
+    m = 0;
+  }
+  return m ? `~${h} h ${m} min` : `~${h} h`;
+}
+
+/** "45 parts an hour", "7.5 parts an hour". */
+export function paceWords(perHour: number, noun: [string, string] = ["item", "items"]): string {
+  const n = perHour >= 10 ? Math.round(perHour) : Math.round(perHour * 10) / 10;
+  return `${n.toLocaleString("en-US")} ${n === 1 ? noun[0] : noun[1]} an hour`;
+}
+
+/** A run's files counted one way everywhere: checked, not checked (failed or skipped), still to go. */
+export interface RunCounts {
+  total: number;
+  checked: number;
+  notChecked: number;
+  toGo: number;
+}
+
+/**
+ * The run's counts from its progress read (durable item states), else from the
+ * board's rows (a file checked body by body is one file). The run page, its
+ * side panel and the work bar all read this, so they never disagree.
+ */
+export function runCounts(
+  p: Pick<BatchProgress, "total_items" | "completed_items" | "failed_items" | "skipped_items"> | null,
+  rows?: { item_id: string; bucket: string }[] | null,
+): RunCounts {
+  if (p && p.total_items) {
+    const checked = p.completed_items;
+    const notChecked = p.failed_items + p.skipped_items;
+    return { total: p.total_items, checked, notChecked, toGo: Math.max(0, p.total_items - checked - notChecked) };
+  }
+  const files = new Map<string, string>();
+  for (const r of rows ?? []) {
+    const id = String(r.item_id).split(":")[0];
+    const was = files.get(id);
+    // A file is still checking while any of its rows is; not checked when its row says so.
+    if (was === "checking" || was === "not_checked") continue;
+    files.set(id, r.bucket);
+  }
+  let checked = 0;
+  let notChecked = 0;
+  let toGo = 0;
+  for (const b of files.values()) {
+    if (b === "checking") toGo += 1;
+    else if (b === "not_checked") notChecked += 1;
+    else checked += 1;
+  }
+  return { total: files.size, checked, notChecked, toGo };
+}
+
+/** "8 of 298 checked · 1 not checked · 289 to go" */
+export function runCountsLine(c: RunCounts): string {
+  const n = (v: number) => v.toLocaleString("en-US");
+  const bits = [`${n(c.checked)} of ${n(c.total)} checked`];
+  if (c.notChecked) bits.push(`${n(c.notChecked)} not checked`);
+  if (c.toGo) bits.push(`${n(c.toGo)} to go`);
+  return bits.join(" · ");
+}
+
+/** The run's line in the work bar, the same wherever it's registered: checked of total, and how far along. */
+export function runWork(c: RunCounts): { label: string; detail: string; progress: number | null } {
+  const n = (v: number) => v.toLocaleString("en-US");
+  return {
+    label: `Checking ${n(c.total)} ${c.total === 1 ? "part" : "parts"}`,
+    detail: `${n(c.checked)} of ${n(c.total)} checked`,
+    progress: c.total ? (c.checked + c.notChecked) / c.total : null,
+  };
+}
+
+/** "28 of 298 checked; 270 not checked: the run stopped at 16:55. Check them again." */
+export function stoppedLine(c: RunCounts, at: string | null): string {
+  const n = (v: number) => v.toLocaleString("en-US");
+  const left = c.notChecked + c.toGo;
+  return `${n(c.checked)} of ${n(c.total)} checked; ${n(left)} not checked: the run stopped${at ? ` at ${at}` : ""}. Check ${left === 1 ? "it" : "them"} again.`;
 }
 
 /** The cancel question's body. Unfinished items include any in progress: the server skips those too. */

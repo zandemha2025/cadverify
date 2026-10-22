@@ -72,6 +72,10 @@ export interface BatchProgress {
   created_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  /** The pace the run is going at now, measured from its own parts (null until a few have finished). */
+  pace_per_hour?: number | null;
+  /** Time left at that pace, in seconds. */
+  eta_seconds?: number | null;
 }
 
 export interface BatchItem {

@@ -716,6 +716,13 @@ async def get_batch_progress(
         0,
         batch.total_items - completed_items - failed_items - skipped_items,
     )
+    pace_per_hour: float | None = None
+    eta_seconds: int | None = None
+    if batch.status in ("pending", "processing") and pending_items > 0:
+        per_second = await measured_pace(session, batch.id)
+        if per_second:
+            pace_per_hour = round(per_second * 3600, 1)
+            eta_seconds = int(round(pending_items / per_second))
 
     return {
         "batch_ulid": batch.ulid,
@@ -731,7 +738,47 @@ async def get_batch_progress(
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "started_at": batch.started_at.isoformat() if batch.started_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
+        # The pace the run is going at now, measured from its own parts, and the
+        # time left at that pace (None until a few parts have finished).
+        "pace_per_hour": pace_per_hour,
+        "eta_seconds": eta_seconds,
     }
+
+
+PACE_WINDOW_SECONDS = 30 * 60
+PACE_MIN_PARTS = 3
+
+
+async def measured_pace(
+    session: AsyncSession,
+    batch_id: int,
+    now: Optional[datetime] = None,
+) -> Optional[float]:
+    """Parts finished per second, measured over the run's last 30 minutes.
+
+    The parts that finished (checked or failed) in the window over the time
+    since the first of them, so a run that has stalled slows its own pace as
+    time passes. None until PACE_MIN_PARTS have finished in the window: the
+    first parts say little about the rest. A run checked again counts only
+    its parts' new finishes (older ones fall out of the window).
+    """
+    now = now or datetime.now(timezone.utc)
+    rows = (
+        await session.execute(
+            select(BatchItem.completed_at).where(
+                BatchItem.batch_id == batch_id,
+                BatchItem.status.in_(["completed", "failed"]),
+                BatchItem.completed_at >= now - timedelta(seconds=PACE_WINDOW_SECONDS),
+            )
+        )
+    ).scalars().all()
+    if len(rows) < PACE_MIN_PARTS:
+        return None
+    first = min(rows)
+    if first.tzinfo is None:
+        first = first.replace(tzinfo=timezone.utc)
+    span = max(60.0, (now - first).total_seconds())
+    return len(rows) / span
 
 
 async def get_batch_item_status_counts(

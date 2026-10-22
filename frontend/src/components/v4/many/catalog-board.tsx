@@ -18,7 +18,8 @@ import { R } from "../routes";
 import { Content, Empty, Fig, Figs, Loading, PageHead, Panel, Sheet, cx } from "../ui";
 import { markWorkSeen, registerWork, runKey } from "../work/work-bar";
 import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useToast, whenLabel } from "./common";
-import { etaText } from "./batch-model";
+import { etaText, runCounts, runCountsLine, runWork, stoppedLine } from "./batch-model";
+import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { CatalogRunError, downloadBoardCsv, fetchBoard, inviteToRun, recheckParts } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
 import { AccuracyPanel } from "../validation/accuracy-panel";
@@ -126,14 +127,19 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   const status = board?.status ?? progress?.status ?? null;
   const running = status != null && !TERMINAL.has(status);
   const prog = boardProgress(board);
+  // One count of the run's files everywhere (this page, its side panel, the work bar).
+  const counts = runCounts(progress, board?.rows);
+  const work = runWork(counts);
+  // A viewer sees the run; checking parts again or cancelling it is a member's.
+  const readOnly = useReadOnly("check parts again or cancel a run");
 
   // On its own page the run needs no bar; once it has finished here, it's been seen.
   React.useEffect(() => {
     if (!board) return;
     if (!TERMINAL.has(board.status)) {
-      registerWork({ key: runKey(batchId), href: R.batch(batchId), persist: true, state: "running", label: `Checking ${prog.total} ${prog.total === 1 ? "part" : "parts"}`, detail: `${prog.done} of ${prog.total}`, progress: prog.total ? prog.done / prog.total : null });
+      registerWork({ key: runKey(batchId), href: R.batch(batchId), persist: true, state: "running", label: work.label, detail: work.detail, progress: work.progress });
     } else markWorkSeen(runKey(batchId));
-  }, [board, batchId, prog.done, prog.total]);
+  }, [board, batchId, work.label, work.detail, work.progress]);
 
   if (err && !board) {
     return (
@@ -309,14 +315,18 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
             {failed.length && !running ? (
               <div className="panel cr-note cr-again" role="note">
                 <b>
-                  {failed.length} {failed.length === 1 ? "part wasn’t" : "parts weren’t"} checked
+                  {board.status === "failed"
+                    ? stoppedLine(counts, stopTime(board.completed_at))
+                    : `${failed.length} ${failed.length === 1 ? "part wasn’t" : "parts weren’t"} checked`}
                 </b>
+                {stopReason(board) ? <span>{stopReason(board)}</span> : null}
                 <span>{failed.length === 1 ? "It goes" : "They go"} back in this run at {failed.length === 1 ? "its" : "their"} listed quantity and land on {failed.length === 1 ? "its own row" : "their own rows"}.</span>
                 <span>
-                  <button className="btn sm ink" type="button" onClick={() => void recheck()} disabled={rechecking.size > 0}>
+                  <button className="btn sm ink" type="button" onClick={() => void recheck()} disabled={rechecking.size > 0 || !!readOnly} title={readOnly ?? undefined}>
                     {rechecking.size ? "Starting…" : `Check ${failed.length === 1 ? "it" : `all ${failed.length}`} again`}
                   </button>
                 </span>
+                <ReadOnlyLine line={readOnly} />
               </div>
             ) : null}
 
@@ -337,17 +347,14 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
             {running || prog.checking ? (
               <div className="panel prog cr-prog" aria-live="polite">
                 <span className="st">Running</span>
-                <span className="num">
-                  {prog.done} of {prog.total} checked{prog.checking ? ` · ${prog.checking} to go` : ""}
-                  {prog.failed ? ` · ${prog.failed} couldn’t be checked` : ""}
-                </span>
+                <span className="num">{runCountsLine(counts)}</span>
                 <span className="pb" aria-hidden="true">
-                  <i style={{ transform: `scaleX(${prog.total ? prog.done / prog.total : 0})` }} />
+                  <i style={{ transform: `scaleX(${work.progress ?? 0})` }} />
                 </span>
                 <span className="num">{progress ? etaText(progress, Date.now(), ["part", "parts"]) : ""}</span>
                 <span className="act">
-                  Keeps going if you leave or close this page. The bar at the foot of every page brings you back.
-                  {running ? (
+                  Keeps going if you leave or close this page. The bar at the foot of every page brings you back, and you get a notification when it finishes or stops.
+                  {running && !readOnly ? (
                     <>
                       {" "}
                       <button className="lk" type="button" onClick={() => setAsking(true)}>
@@ -453,7 +460,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     </thead>
                     <tbody>
                       {shown.map((r) => (
-                        <PartRow key={r.item_id} r={r} machines={board.machines} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
+                        <PartRow key={r.item_id} r={r} machines={board.machines} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} readOnly={readOnly} />
                       ))}
                     </tbody>
                   </table>
@@ -482,7 +489,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     </thead>
                     <tbody>
                       {sortRows(apart, sort).map((r) => (
-                        <PartRow key={r.item_id} r={r} machines={board.machines} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
+                        <PartRow key={r.item_id} r={r} machines={board.machines} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} readOnly={readOnly} />
                       ))}
                     </tbody>
                   </table>
@@ -554,7 +561,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   );
 }
 
-function PartRow({ r, machines, onRecheck, rechecking }: { r: BoardRow; machines?: BoardMachine[]; onRecheck?: () => void; rechecking?: boolean }) {
+function PartRow({ r, machines, onRecheck, rechecking, readOnly }: { r: BoardRow; machines?: BoardMachine[]; onRecheck?: () => void; rechecking?: boolean; readOnly?: string | null }) {
   const router = useRouter();
   const { unit } = useUnits();
   const d = bucketDef(r.bucket);
@@ -615,7 +622,7 @@ function PartRow({ r, machines, onRecheck, rechecking }: { r: BoardRow; machines
           {words.note ? <small className="cr-warn">{words.note}</small> : null}
           {r.bucket === "not_checked" && onRecheck ? (
             <span className="cr-again-row">
-              <button className="btn sm" type="button" onClick={onRecheck} disabled={rechecking}>
+              <button className="btn sm" type="button" onClick={onRecheck} disabled={rechecking || !!readOnly} title={readOnly ?? undefined}>
                 {rechecking ? "Starting…" : "Check again"}
               </button>
             </span>
@@ -687,7 +694,7 @@ function RunSheet({
         <p className="smeta">
           {sel
             ? `${selRows.length} of ${total} parts · ${sel.note}`
-            : `${total - scoped.filter((r) => r.bucket === "checking").length} of ${total} checked${progress?.started_at ? ` · started ${whenLabel(progress.started_at)}` : ""}`}
+            : `${runCountsLine(runCounts(progress, board.rows))}${progress?.started_at ? ` · started ${whenLabel(progress.started_at)}` : ""}`}
         </p>
         {!sel ? (
           <Figs>
@@ -923,4 +930,21 @@ function InviteToRun({ batchId }: { batchId: string }) {
       ) : null}
     </form>
   );
+}
+
+/** When a run stopped, for its line: "16:55" today, else the day and time. */
+function stopTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : whenLabel(iso).replace(/^Yesterday/, "yesterday");
+}
+
+/** Why a stopped run stopped, from its failure ("The run stopped before every part was checked: why."). */
+function stopReason(board: Board): string | null {
+  const msg = (board as Board & { failure?: { message?: string | null } | null }).failure?.message;
+  if (board.status !== "failed" || !msg) return null;
+  const why = msg.includes(": ") ? msg.slice(msg.indexOf(": ") + 2) : msg;
+  return why ? why[0].toUpperCase() + why.slice(1) : null;
 }

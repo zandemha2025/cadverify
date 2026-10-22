@@ -584,3 +584,43 @@ async def test_check_again_on_a_run_whose_zip_was_never_unpacked(run_world, api)
     r = await _recheck(api["app"], ulid)
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "catalog_run_not_ready"
+
+
+# ---------------------------------------------------------------------------
+# 4. Honest status: the time left comes from the measured pace (op-11)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_progress_carries_the_measured_pace_and_the_time_left(run_world):
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.services import batch_service
+
+    ulid = await run_world["make_run"](10)
+    # Four parts finished over the last 8 minutes (2 s, 2, 5 and 8 min ago): 4 in 8 min = 30 an hour.
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'completed', completed_at = now() - (interval '1 minute' * m.mins) "
+            "FROM (SELECT bi.id, (ARRAY[8, 5, 2, 0.03])[row_number() OVER (ORDER BY bi.id)] AS mins "
+            "      FROM batch_items bi JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u ORDER BY bi.id LIMIT 4) m "
+            "WHERE batch_items.id = m.id"), {"u": ulid})
+        await s.execute(text("UPDATE batches SET completed_items = 4 WHERE ulid = :u"), {"u": ulid})
+    async with eng.get_session_factory()() as s:
+        p = await batch_service.get_batch_progress(s, ulid, run_world["uid"])
+    assert p["completed_items"] == 4 and p["pending_items"] == 6
+    assert p["pace_per_hour"] == pytest.approx(30, rel=0.05)
+    assert p["eta_seconds"] == pytest.approx(6 / 30 * 3600, rel=0.05)
+
+
+@pytest.mark.asyncio
+async def test_no_time_left_until_the_pace_is_measured(run_world):
+    from src.services import batch_service
+
+    import src.db.engine as eng
+
+    ulid = await run_world["make_run"](10)
+    async with eng.get_session_factory()() as s:
+        p = await batch_service.get_batch_progress(s, ulid, run_world["uid"])
+    assert p["pace_per_hour"] is None and p["eta_seconds"] is None

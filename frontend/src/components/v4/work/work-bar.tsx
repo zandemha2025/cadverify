@@ -21,6 +21,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { listBatches } from "@/lib/api/batch";
+import { runCounts, runWork } from "../many/batch-model";
 import { API_BASE } from "@/lib/api-base";
 import { keptWorkLine, type KeptJobStatus } from "../part/kept-job-model";
 import { pendingUploads } from "@/lib/api/part-upload";
@@ -169,13 +170,16 @@ function useCatalogRuns(pathname: string) {
           const key = runKey(b.batch_ulid);
           const href = `/app/many/${encodeURIComponent(b.batch_ulid)}`;
           const n = b.total_items;
-          const done = b.completed_items + b.failed_items + b.skipped_items;
           const known = items.get(key);
           if (!TERMINAL.has(b.status)) {
             next = 6_000;
-            registerWork({ key, href, persist: true, state: "running", label: `Checking ${n || ""} ${n === 1 ? "part" : "parts"}`.replace("  ", " "), detail: n ? `${done} of ${n}` : "Starting", progress: n ? done / n : null });
+            // The run page registers the same line from the same counts (many/batch-model runWork).
+            const w = runWork(runCounts(b));
+            registerWork({ key, href, persist: true, state: "running", label: n ? w.label : "Checking parts", detail: n ? w.detail : "Starting", progress: n ? w.progress : null });
           } else if (known && known.state === "running" && !seen.has(key)) {
-            registerWork({ key, href, persist: true, state: b.status === "completed" ? "done" : "stopped", label: b.status === "completed" ? `${n} ${n === 1 ? "part" : "parts"} checked` : `Run ${b.status}`, detail: b.failed_items ? `${b.failed_items} couldn’t be checked` : "Sorted", progress: 1 });
+            const c = runCounts(b);
+            const left = c.notChecked + c.toGo;
+            registerWork({ key, href, persist: true, state: b.status === "completed" ? "done" : "stopped", label: b.status === "completed" ? (left ? "Run finished" : `${n} ${n === 1 ? "part" : "parts"} checked`) : b.status === "failed" ? "Run stopped" : "Run cancelled", detail: left ? `${runWork(c).detail} · ${left} not checked` : "Sorted", progress: 1 });
           }
         }
       } catch {
