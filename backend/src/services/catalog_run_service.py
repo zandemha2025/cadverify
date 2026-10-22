@@ -485,6 +485,12 @@ def _tidy_mm(s: Optional[str]) -> Optional[str]:
 def _first_sentence(s: Optional[str]) -> Optional[str]:
     if not s:
         return None
+    from src.analysis.serialization import wall_words
+
+    # The wall check in plain words, its numbers as the engine wrote them (op-15).
+    wall = wall_words(s)
+    if wall:
+        return wall
     t = _tidy_mm(s).strip()
     i = t.find(". ")
     return (t[:i] if i > 0 else t).rstrip(".")

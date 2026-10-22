@@ -34,3 +34,13 @@ def test_the_engine_counts_mesh_triangles_and_the_run_reads_it_plainly():
     for issue in thin:
         assert " mesh triangles (" in issue.message and " faces (" not in issue.message
         assert wall_words(issue.message).startswith("Walls down to ")
+
+
+def test_the_run_row_and_its_csv_say_it_the_same_way():
+    from src.services import catalog_run_service as cr
+
+    sentence = "88060 mesh triangles (97.0%) below 0.8mm min wall for 3-axis milling. Thinnest: 0.364mm."
+    assert cr._first_sentence(sentence) == (
+        "Walls down to 0.364 mm, under the 0.8 mm min wall for 3-axis milling (88,060 mesh triangles)")
+    # Any other engine sentence: its first sentence, as before.
+    assert cr._first_sentence("Part lacks rotation. Turning needs a round part.") == "Part lacks rotation"
