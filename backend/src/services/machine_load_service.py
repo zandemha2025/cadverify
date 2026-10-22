@@ -58,10 +58,16 @@ def _hours_each(result: dict, process: str, qty: int) -> Optional[float]:
 
 
 def checked_quantity(result: dict) -> Optional[int]:
-    """The quantity a part was checked for: the one quantity its record priced off the standard ladder, if exactly one."""
+    """The quantity a part was checked for: the standard ladder with one inner point given way to it.
+
+    Only that shape counts (both the catalog run and the single check build it);
+    a record priced at quantities someone chose another way ("10, 100") has none.
+    """
     qs = {int(q) for q in result.get("quantities") or [] if isinstance(q, (int, float)) and not isinstance(q, bool) and q > 0}
     extra = sorted(qs - set(LADDER))
-    return extra[0] if len(extra) == 1 else None
+    if len(qs) != len(LADDER) or len(extra) != 1 or LADDER[0] not in qs or LADDER[-1] not in qs:
+        return None
+    return extra[0]
 
 
 def part_load(result: Optional[dict], disposition: Optional[str], basis: Optional[dict],
@@ -158,7 +164,7 @@ async def org_machine_load(session: AsyncSession, org_id: str, default_quantity:
 
     newest = (await session.execute(
         select(CostDecision.mesh_hash, CostDecision.ulid, CostDecision.filename, CostDecision.label,
-               CostDecision.stale_at, literal_column(_BOARD_DECISION_SQL, type_=JSONB))
+               CostDecision.stale_at, CostDecision.quantities, literal_column(_BOARD_DECISION_SQL, type_=JSONB))
         .where(CostDecision.org_id == org_id)
         .distinct(CostDecision.mesh_hash)
         .order_by(CostDecision.mesh_hash, CostDecision.created_at.desc(), CostDecision.id.desc())
@@ -178,8 +184,10 @@ async def org_machine_load(session: AsyncSession, org_id: str, default_quantity:
         return (at if at.tzinfo else at.replace(tzinfo=timezone.utc)) <= now
 
     parts = []
-    for key, ulid, filename, label, stale_at, result in newest:
+    for key, ulid, filename, label, stale_at, quantities, result in newest:
         disp, basis = outcomes.get(key, (None, None))
+        # The board's slice of the record leaves out its quantities; the column holds the same list.
+        result = {**(result or {}), "quantities": quantities if isinstance(quantities, list) else []}
         parts.append({"part_key": key, "record_id": ulid, "file_name": filename, "label": label,
-                      "result": result or {}, "disposition": disp, "basis": basis, "stale": stale(stale_at)})
+                      "result": result, "disposition": disp, "basis": basis, "stale": stale(stale_at)})
     return machine_load(parts, default_quantity)

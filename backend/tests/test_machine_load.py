@@ -50,6 +50,9 @@ def test_not_decided_counts_at_the_quantity_the_part_was_checked_for():
     assert ml.checked_quantity({"quantities": [1, 100, 1000, 2000, 5000, 10000]}) is None
     assert ml.checked_quantity({"quantities": [1, 100, 500, 2000, 5000, 10000]}) == 500
     assert ml.checked_quantity({}) is None
+    # Quantities chosen another way (an API call's "10, 100") name no checked quantity.
+    assert ml.checked_quantity({"quantities": [10, 100]}) is None
+    assert ml.checked_quantity({"quantities": [10, 100, 1000, 10000]}) is None
 
 
 def test_a_recorded_in_house_outcome_counts_at_its_own_quantity_and_route():
@@ -147,6 +150,9 @@ async def orgs():
         # A newer check of the same part: its outcome stays the one recorded on the older record.
         s.add(rec("mine", "a" * 64, MILL, params="p2"))
         s.add(rec("mine", "b" * 64, MILL))
+        # A catalog-run part listed at 25: its record's ladder carries 25 in place of 100.
+        listed = {**MILL, "estimates": [_est("cnc_3axis", 25, 0.3)]}
+        s.add(rec("mine", "d" * 64, listed, quantities=[1, 25, 1000, 2000, 5000, 10000]))
         s.add(rec("theirs", "c" * 64, MILL))
     app = FastAPI()
     app.state.limiter = limiter
@@ -178,10 +184,12 @@ async def test_load_endpoint_reads_only_the_callers_org(orgs):
     r = await _get(orgs["app"], uid, "/api/v1/machine-inventory/load")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["parts"] == 2  # the other org's part isn't read
+    assert body["parts"] == 3  # the other org's part isn't read
     (haas,) = body["machines"]
-    assert (haas["machine"], haas["parts"], haas["decided_parts"], haas["decided_hours"]) == ("Haas VF-2", 2, 1, 5.0)
-    assert (haas["default_parts"], haas["default_hours"], haas["hours"]) == (1, 25.0, 30.0)
+    assert (haas["machine"], haas["parts"], haas["decided_parts"], haas["decided_hours"]) == ("Haas VF-2", 3, 1, 5.0)
+    assert (haas["default_parts"], haas["default_hours"], haas["hours"]) == (2, 32.5, 37.5)
+    listed = next(t for t in haas["top"] if t["part_key"] == "d" * 64)
+    assert (listed["basis"], listed["quantity"], listed["hours"]) == ("checked", 25, 7.5)
     _, other_uid = orgs["ids"]["theirs"]
     theirs = (await _get(orgs["app"], other_uid, "/api/v1/machine-inventory/load")).json()
     assert theirs["parts"] == 1 and theirs["machines"][0]["decided_parts"] == 0
