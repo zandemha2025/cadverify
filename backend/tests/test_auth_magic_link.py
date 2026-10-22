@@ -231,7 +231,7 @@ async def test_delayed_failed_send_cannot_delete_newer_magic_link(monkeypatch):
     second = await m.magic_start(
         _request(), email=email, cf_turnstile_response="ok"
     )
-    assert second == {"status": "sent"}
+    assert second == {"status": "sent", "sent_to": email}
 
     release_first_send.set()
     with pytest.raises(HTTPException) as exc_info:

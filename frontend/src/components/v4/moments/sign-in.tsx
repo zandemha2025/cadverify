@@ -76,6 +76,8 @@ export function V4SignIn({
   const [part, setPart] = React.useState<File | null>(null);
   const [partError, setPartError] = React.useState<string | null>(null);
   const [heldSent, setHeldSent] = React.useState(false);
+  // The address the API mailed the link to (lowercased, "+tag" dropped), never the typed one.
+  const [sentTo, setSentTo] = React.useState<string | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const emailRef = React.useRef<HTMLInputElement>(null);
   const formRef = React.useRef<HTMLFormElement>(null);
@@ -142,6 +144,7 @@ export function V4SignIn({
         return;
       }
       setHeldSent(held);
+      setSentTo(typeof data?.sent_to === "string" && data.sent_to ? data.sent_to : null);
       setStep("sent");
     } catch {
       setError("Could not send a sign-in link. Please try again.");
@@ -412,9 +415,11 @@ export function V4SignIn({
                 Link sent
               </h1>
               <p className="pmeta" style={{ marginTop: 6 }}>
-                <span style={{ overflowWrap: "anywhere" }}>
-                  To <b>{email}</b>
-                </span>
+                {sentTo ? (
+                  <span style={{ overflowWrap: "anywhere" }}>
+                    To <b>{sentTo}</b>
+                  </span>
+                ) : null}
                 <span>Single use</span>
                 <span>Expires in 15 min</span>
               </p>

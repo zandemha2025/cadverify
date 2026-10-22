@@ -423,9 +423,14 @@ async def magic_start(
     link = _dashboard_url(
         f"/magic/verify#token={token}" + (f"&next={quote(next_path, safe='')}" if next_path else "")
     )
+    # The link signs into the account for ``email_norm`` (lowercased, "+tag"
+    # dropped), so it is mailed to that address, never the one as typed: a link
+    # mailed to victim+x@corp would otherwise sign into victim@corp, and whoever
+    # reads the "+x" mailbox (a catch-all, a literal-"+" mail system) owns the
+    # account (security review R1-1).
     payload: resend.Emails.SendParams = {
         "from": os.environ["RESEND_FROM"],
-        "to": email_clean,
+        "to": email_norm,
         "subject": "Your ScaleCAD login link",
         "html": (
             f'<a href="{html.escape(link, quote=True)}">'
@@ -457,7 +462,8 @@ async def magic_start(
             "email_delivery_unavailable",
             "Email delivery is temporarily unavailable. Please try again.",
         )
-    return {"status": "sent"}
+    # The address the link really went to, so "sent to" is never the typed one.
+    return {"status": "sent", "sent_to": email_norm}
 
 
 @router.post("/magic/exchange")
@@ -528,6 +534,12 @@ async def magic_verify(
         )
 
     result = await _consume(token, request)
+    if result.challenge is not None:
+        # The account owes a two-step code (its state changed after the check
+        # above, or the check was wrong). This host can't hold the challenge for
+        # the dashboard, and a session must never come without the code: no
+        # cookie, back to sign in (security review R1-5).
+        return RedirectResponse(url=_dashboard_url("/login"), status_code=303)
     resp = RedirectResponse(
         url=_dashboard_url(result.redirect), status_code=303
     )
