@@ -49,6 +49,7 @@ GATED = {
     ],
     "manifest": ["import_manifest"],
     "part_context": ["declare_part_context"],
+    "part_revisions": ["set_revision_of"],
     "reconstruct_router": ["reconstruct"],
     "rfq_packages": ["create_rfq_package"],
     "routes": [

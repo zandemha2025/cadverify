@@ -4,8 +4,9 @@
   each linked side is ``{mesh_hash, filename, record_id, problem, at}`` or null.
 * ``PUT /parts/{mesh_hash}/revision-of`` ``{from_mesh_hash, problem?}`` records
   this part as the next revision of ``from_mesh_hash`` (the file uploaded from
-  that part's problem card). Org members only; both parts must be saved parts
-  of the caller's active organization, else 404. Never a check.
+  that part's problem card). The same writer check as the other parts writes
+  (platform analyst and org member, ``require_org_writer``); both parts must be
+  saved parts of the caller's active organization, else 404. Never a check.
 """
 from __future__ import annotations
 
@@ -17,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
-from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role
+from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role, require_org_writer
+from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import part_revision_service as svc
 
@@ -58,6 +60,7 @@ async def set_revision_of(
     response: Response,
     mesh_hash: str,
     body: RevisionOfBody,
+    _writer: AuthedUser = Depends(require_org_writer),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
     session: AsyncSession = Depends(get_db_session),
 ):

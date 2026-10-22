@@ -48,7 +48,7 @@ def _world(monkeypatch):
     yield store
 
 
-def _client(user_id: int) -> httpx.AsyncClient:
+def _client(user_id: int, role: str = "analyst") -> httpx.AsyncClient:
     from src.api.part_revisions import router
     from src.auth.rate_limit import limiter
     from src.auth.require_api_key import AuthedUser, require_api_key
@@ -57,7 +57,7 @@ def _client(user_id: int) -> httpx.AsyncClient:
     app = FastAPI()
     app.state.limiter = limiter
     app.include_router(router, prefix="/api/v1/parts")
-    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=user_id, api_key_id=0, key_prefix="session", role="analyst")
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=user_id, api_key_id=0, key_prefix="session", role=role)
 
     async def _session():
         yield None
@@ -95,6 +95,20 @@ async def test_only_this_orgs_parts_and_only_members_link():
         assert (await viewer.get(f"/api/v1/parts/{NEW}/revisions")).status_code == 200
     async with _client(3) as outsider:
         assert (await outsider.put(f"/api/v1/parts/{NEW}/revision-of", json={"from_mesh_hash": OLD})).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_platform_viewer_cant_link_even_as_an_org_member(_world):
+    """The same writer check as the other parts writes (R2 minor): a platform
+    viewer is refused, whatever their org role; reading stays open."""
+    async with _client(1, role="viewer") as c:
+        r = await c.put(f"/api/v1/parts/{NEW}/revision-of", json={"from_mesh_hash": OLD})
+        assert r.status_code == 403 and r.json()["detail"]["code"] == "insufficient_role", r.text
+        assert (await c.get(f"/api/v1/parts/{NEW}/revisions")).status_code == 200
+    assert _world == {}  # nothing recorded
+    async with _client(2) as viewer:
+        r = await viewer.put(f"/api/v1/parts/{NEW}/revision-of", json={"from_mesh_hash": OLD})
+        assert r.status_code == 403 and r.json()["detail"]["code"] == "org_member_required", r.text
 
 
 @pytest.mark.asyncio
