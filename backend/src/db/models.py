@@ -653,7 +653,7 @@ class CostDecision(Base):
         ),
         CheckConstraint(
             "user_disposition IS NULL OR user_disposition IN "
-            "('inhouse', 'outside', 'acquire', 'redesign')",
+            "('inhouse', 'outside', 'acquire', 'redesign', 'supplier')",
             name="ck_cost_decisions_disposition",
         ),
     )
@@ -1686,6 +1686,10 @@ class MachineInstance(Base):
         JSONB, nullable=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Hours available a year (migration 0064): {shifts, hours_per_shift,
+    # days_per_year} per machine, × count. NULL → the shown default
+    # (machine_load_service.DEFAULT_SCHEDULE). Capacity, never a fit axis.
+    schedule: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
