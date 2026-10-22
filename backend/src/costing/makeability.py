@@ -735,10 +735,17 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
         if op == "grinding":
             continue
         avail = ops.get(op)
-        if avail is None or avail is False:
-            # a MISSING (or declared-unavailable) required op is a concrete gap
-            # (you lack this capability), NOT an "undeclared datum" unknown →
-            # have=False (a hard failure). ``False`` must never read as present.
+        if avail is None:
+            # Never asked: whether the shop does this op is UNKNOWN (have=None),
+            # not a gap. A metal printer's owner usually stress-relieves, but
+            # nothing the shop declared says so either way.
+            failures.append(FitFailure(
+                "secondary_op", op, op, None,
+                f"needs {op.replace('_', ' ')} afterwards; not declared whether "
+                f"you do it in-house"))
+        elif avail is False:
+            # Declared unavailable: a concrete gap (have=False, a hard failure).
+            # ``False`` must never read as present.
             failures.append(FitFailure(
                 "secondary_op", op, op, False,
                 f"requires {op}; not available in-house"))
@@ -1100,8 +1107,11 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     exclusions_t = tuple(exclusions)
 
     # verdict precedence (see module docstring / spec §0), over DFM-ready routes:
-    #   in_house > with_secondary > not_on_owned > outsource_only > unknown
-    #   > not_makeable (every remaining route is DFM-blocked as modeled)
+    #   in_house > with_secondary > not_on_owned > unknown > outsource_only
+    #   > not_makeable (every remaining route is DFM-blocked as modeled).
+    # An owned machine that fits but can't be confirmed (a material or op the
+    # shop hasn't declared) outranks "outside only": the honest headline is
+    # "can't confirm on yours: declare X", not "you own nothing for it".
     if passes:
         best = min(passes, key=lambda t: (t[0], t[1]))
         sec, _cost, fr, _route = best
@@ -1120,14 +1130,14 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
             gap=gap_analysis(fits), env_exclusions=exclusions_t,
             per_route=per_route)
 
+    if unknown_routes:
+        return MakeabilityVerdict(verdict="unknown", env_exclusions=exclusions_t,
+                                  per_route=per_route)
+
     if outsource_routes:
         return MakeabilityVerdict(
             verdict="makeable_outsource_only", env_exclusions=exclusions_t,
             per_route=per_route)
-
-    if unknown_routes:
-        return MakeabilityVerdict(verdict="unknown", env_exclusions=exclusions_t,
-                                  per_route=per_route)
 
     if design_blocked:
         # Name the blocker on the route closest to being made in-house (an owned

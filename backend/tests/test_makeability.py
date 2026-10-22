@@ -408,7 +408,8 @@ def test_secondary_op_required_absent_hard_fail():
                           material_class="titanium", bbox=(50, 100, 200),
                           sec=("stress_relief",)), m, ShopCaps(ops={}))
     sf = [f for f in fr.failures if f.gate == "secondary_op"][0]
-    assert not fr.passes and "stress_relief" in sf.human and sf.have is not None
+    # never declared: no pass, and an unknown (have=None), not a gap
+    assert not fr.passes and "stress relief" in sf.human and sf.have is None
 
 
 def test_secondary_op_declared_false_is_absent_not_a_pass():
@@ -679,15 +680,46 @@ def test_verdict_makeable_not_on_owned_with_gap():
 
 
 def test_verdict_not_on_owned_when_required_op_absent():
-    # owns the DMLS machine, but the mandated stress-relief op is not in-house
+    # owns the DMLS machine, but the mandated stress-relief op is declared absent
+    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
+                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
+                   capabilities={"x": 400, "y": 400, "z": 400})
+    p = part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
+             bbox=(50, 100, 200), sec=("stress_relief",), it=STANDARD_IT)
+    v = verify_part({"dmls": p}, [m], ShopCaps(ops={"stress_relief": False}))
+    assert v.verdict == "makeable_not_on_owned"
+    assert any(g.gate == "secondary_op" for g in v.gap)
+
+
+def test_verdict_unknown_when_required_op_never_declared():
+    # Audit M2: a stress-relief op the shop was never asked about is unknown,
+    # not "not available in-house"; the owned printer that fits is not a gap.
     m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
                    hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
                    capabilities={"x": 400, "y": 400, "z": 400})
     p = part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
              bbox=(50, 100, 200), sec=("stress_relief",), it=STANDARD_IT)
     v = verify_part({"dmls": p}, [m], ShopCaps(ops={}))
-    assert v.verdict == "makeable_not_on_owned"
-    assert any(g.gate == "secondary_op" for g in v.gap)
+    assert v.verdict == "unknown"
+    f = v.per_route["dmls"]["failures"][0]
+    assert f.gate == "secondary_op" and f.have is None
+    assert "not declared whether you do it in-house" in f.human
+
+
+def test_an_unconfirmed_owned_route_outranks_outside_only():
+    # Audit W1: an owned resin printer that fits but declares no materials, next
+    # to routes the shop owns nothing for, is "can't confirm", not "outside only".
+    m = MachineCap(process="dlp", name="Carbon M2", max_workpiece_kg=None,
+                   hourly_rate_usd=None, materials=(),
+                   capabilities={"x": 189, "y": 118, "z": 326})
+    routes = {"dlp": part(process="dlp", material_name="Standard Resin", material_class="polymer",
+                          bbox=(20, 20, 20), it=STANDARD_IT),
+              "sls": part(process="sls", material_name="PA12 (Nylon 12)", material_class="polymer",
+                          bbox=(20, 20, 20), it=STANDARD_IT)}
+    v = verify_part(routes, [m])
+    assert v.per_route["sls"]["verdict"] == "makeable_outsource_only"
+    assert v.per_route["dlp"]["verdict"] == "unknown"
+    assert v.verdict == "unknown"
 
 
 def test_verdict_makeable_outsource_only():
