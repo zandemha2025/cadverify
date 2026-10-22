@@ -7,6 +7,7 @@
  * stays missing ("—"), never zero.
  */
 import { machineKind, processName } from "../process-names.ts";
+import { inText, type LengthUnit } from "../units/units.ts";
 
 /* ------------------------------------------------------------------ */
 /*  The board, as GET /batch/{id}/catalog returns it                   */
@@ -84,13 +85,16 @@ export interface SplitFile {
   words: string;
 }
 
-/** "Body 1 of 4 in frame.stl · 2 per file · Square tube 40 × 40 × 3 mm, 600 mm long" */
-export function bodyLine(r: BoardRow): string | null {
+/**
+ * "Body 1 of 4 in frame.stl · 2 per file · Square tube 40 × 40 × 3 mm, 600 mm long".
+ * Only the shape's figures follow the person's unit; the body and file names are names.
+ */
+export function bodyLine(r: BoardRow, unit: LengthUnit = "mm"): string | null {
   const b = r.body;
   if (!b) return null;
   const which = b.name ? `${b.name}` : b.ids.length > 1 ? `Bodies ${b.ids.join(", ")}` : `Body ${b.ids[0] ?? "?"}`;
   const of = b.of ? ` of ${b.of}` : "";
-  return [`${which}${of} in ${b.file}`, b.copies > 1 ? `${b.copies} per file` : null, b.shape].filter(Boolean).join(" · ");
+  return [`${which}${of} in ${b.file}`, b.copies > 1 ? `${b.copies} per file` : null, b.shape ? inText(b.shape, unit) : null].filter(Boolean).join(" · ");
 }
 
 export interface BucketTotal {
@@ -278,6 +282,18 @@ export function partLine(r: BoardRow): PartLine {
   if (finite(r.unit_cost_usd)) price = `${money(r.unit_cost_usd)} each${finite(r.total_cost_usd) && q > 1 ? ` · ${money(r.total_cost_usd, 0)} for ${q.toLocaleString("en-US")}` : ""}`;
   else if (r.price_withheld) price = `Withheld: ${r.price_withheld}`;
   return { time, material, ownership, price };
+}
+
+/**
+ * A row's words in the person's unit: the reason, the body's shape, its spec
+ * line, the price (a withheld price says why, often a wall in mm) and the
+ * material note. Every mm figure in the engine's words reads in inches when the
+ * person chose inches; the file name and part number are never touched (a file
+ * called "box-60mm.stl" keeps its name).
+ */
+export function rowWords(r: BoardRow, unit: LengthUnit, spec: string | null = null): { reason: string | null; body: string | null; spec: string | null; price: string; note: string | null } {
+  const u = (t: string | null | undefined) => (t ? inText(t, unit) : null);
+  return { reason: u(r.reason), body: bodyLine(r, unit), spec: u(spec), price: inText(partLine(r).price, unit), note: u(r.material.note) };
 }
 
 /* ------------------------------------------------------------------ */

@@ -22,7 +22,9 @@ import {
   type PrinterText,
 } from "@/lib/verify/machine-form";
 import { Dialog } from "./common";
-import { LATHE, PROCS, machineName, procName } from "./shop-derive";
+import { LATHE, PROCS, SIZE_FIELDS, machineName, procName, sizeFieldsIn, sizeFieldsToMm, type SizeField } from "./shop-derive";
+import { useUnits } from "../units/use-units";
+import type { LengthUnit } from "../units/units";
 
 type Form = {
   name: string;
@@ -80,6 +82,20 @@ const ENCLOSURE_LABELS: [PrinterText["enclosure"], string][] = [
   ["heated", "Heated chamber"],
 ];
 
+function sizesOf(f: Form): Record<SizeField, string> {
+  return Object.fromEntries(SIZE_FIELDS.map((k) => [k, f[k]])) as Record<SizeField, string>;
+}
+
+/**
+ * The form with its sizes in the person's unit, and what they were in mm: the
+ * API and engine keep mm, and a size the person doesn't touch saves exactly as it was.
+ */
+function shownForm(f: Form, unit: LengthUnit): { form: Form; base: { mm: Record<SizeField, string>; shown: Record<SizeField, string> } } {
+  const mm = sizesOf(f);
+  const shown = sizeFieldsIn(mm, unit);
+  return { form: { ...f, ...shown }, base: { mm, shown } };
+}
+
 export function MachineDialog({
   mode,
   machine,
@@ -94,7 +110,12 @@ export function MachineDialog({
   onSaved: (m: OwnedMachine, mode: "add" | "edit") => void;
 }) {
   const editing = mode === "edit" && machine;
-  const [form, setForm] = React.useState<Form>(() => formFrom(editing ? machine : null, presetProcess));
+  // Sizes in the person's unit (mm or in), fixed while the dialog is open.
+  const { unit: liveUnit } = useUnits();
+  const [unit] = React.useState<LengthUnit>(liveUnit);
+  const [init] = React.useState(() => shownForm(formFrom(editing ? machine : null, presetProcess), unit));
+  const [form, setForm] = React.useState<Form>(init.form);
+  const sizeBase = React.useRef(init.base);
   // Capabilities the form doesn't show come from here: the machine being edited, or the catalog template.
   const [baseCap, setBaseCap] = React.useState<Record<string, unknown>>(() => (editing ? machine.capabilities ?? {} : {}));
   const [pre, setPre] = React.useState("");
@@ -151,14 +172,19 @@ export function MachineDialog({
     setDirty(true);
     setErrors({});
     setSaveError(null);
+    const reset = (f: Form) => {
+      const next = shownForm(f, unit);
+      sizeBase.current = next.base;
+      setForm(next.form);
+    };
     if (!value || catalog === "failed" || !catalog) {
-      setForm(formFrom(null, presetProcess));
+      reset(formFrom(null, presetProcess));
       setBaseCap({});
       return;
     }
     const t = catalog[Number(value)];
     if (!t) return;
-    setForm(formFrom(t));
+    reset(formFrom(t));
     setBaseCap((t.capabilities ?? {}) as Record<string, unknown>);
   };
 
@@ -172,15 +198,17 @@ export function MachineDialog({
   const shown = printerFieldsFor(form.process);
 
   const save = async () => {
+    // Sizes go to the API in mm, whatever unit they were typed in.
+    const mm = sizeFieldsToMm(sizesOf(form), sizeBase.current.shown, sizeBase.current.mm, unit);
     const nums = parseMachineNumbers({
       count: form.count,
       rate: form.rate,
       maxKg: form.kg,
-      x: form.x,
-      y: form.y,
-      z: form.z,
-      swing: form.swing,
-      between: form.between,
+      x: mm.x,
+      y: mm.y,
+      z: mm.z,
+      swing: mm.swing,
+      between: mm.between,
       isTurning: turning,
     });
     const capital = parseCapitalPercent(form.capital);
@@ -282,8 +310,8 @@ export function MachineDialog({
           <input aria-label="Name" type="text" value={form.name} placeholder="Haas VF-2" onChange={(e) => set("name", e.target.value)} />
         </label>
         <label className="field">
-          Method
-          <select aria-label="Method" value={form.process} onChange={(e) => set("process", e.target.value)}>
+          Process
+          <select aria-label="Process" value={form.process} onChange={(e) => set("process", e.target.value)}>
             {PROCS.map(([v, l]) => (
               <option key={v} value={v}>
                 {l}
@@ -305,31 +333,31 @@ export function MachineDialog({
       {turning ? (
         <div className="g2">
           <label className="field">
-            Swing diameter (mm)
-            <input aria-label="Swing diameter (mm)" type="text" inputMode="decimal" value={form.swing} onChange={(e) => set("swing", e.target.value)} {...inv("swing")} />
+            Swing diameter ({unit})
+            <input aria-label={`Swing diameter (${unit})`} type="text" inputMode="decimal" value={form.swing} onChange={(e) => set("swing", e.target.value)} {...inv("swing")} />
             {err("swing")}
           </label>
           <label className="field">
-            Between centers (mm)
-            <input aria-label="Between centers (mm)" type="text" inputMode="decimal" value={form.between} onChange={(e) => set("between", e.target.value)} {...inv("between")} />
+            Between centers ({unit})
+            <input aria-label={`Between centers (${unit})`} type="text" inputMode="decimal" value={form.between} onChange={(e) => set("between", e.target.value)} {...inv("between")} />
             {err("between")}
           </label>
         </div>
       ) : (
         <div className="g3">
           <label className="field">
-            Work area X (mm)
-            <input aria-label="Work area X (mm)" type="text" inputMode="decimal" value={form.x} onChange={(e) => set("x", e.target.value)} {...inv("x")} />
+            Work area X ({unit})
+            <input aria-label={`Work area X (${unit})`} type="text" inputMode="decimal" value={form.x} onChange={(e) => set("x", e.target.value)} {...inv("x")} />
             {err("x")}
           </label>
           <label className="field">
-            Y (mm)
-            <input type="text" inputMode="decimal" aria-label="Work area Y (mm)" value={form.y} onChange={(e) => set("y", e.target.value)} {...inv("y")} />
+            Y ({unit})
+            <input type="text" inputMode="decimal" aria-label={`Work area Y (${unit})`} value={form.y} onChange={(e) => set("y", e.target.value)} {...inv("y")} />
             {err("y")}
           </label>
           <label className="field">
-            Z (mm)
-            <input type="text" inputMode="decimal" aria-label="Work area Z (mm)" value={form.z} onChange={(e) => set("z", e.target.value)} {...inv("z")} />
+            Z ({unit})
+            <input type="text" inputMode="decimal" aria-label={`Work area Z (${unit})`} value={form.z} onChange={(e) => set("z", e.target.value)} {...inv("z")} />
             {err("z")}
           </label>
         </div>

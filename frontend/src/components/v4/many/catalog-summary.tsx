@@ -12,6 +12,8 @@ import { R } from "../routes";
 import { Empty, Loading } from "../ui";
 import { errorText } from "./common";
 import { fetchBoard } from "./catalog-api";
+import { useUnits } from "../units/use-units";
+import { inText } from "../units/units";
 import { BUCKETS, OTHER, boardProgress, breakdownOf, bucketCount, capabilityGroups, hoursText, machineLine, massText, materialLine, materialWord, money, partLine, sortRows, type Board } from "./catalog-model";
 import "./many.css";
 import "./catalog.css";
@@ -23,6 +25,8 @@ function dateText(iso: string | null): string {
 }
 
 export function CatalogSummary({ batchId }: { batchId: string }) {
+  // Lengths in the engine's words read in the person's unit, as on the board.
+  const { unit } = useUnits();
   const [board, setBoard] = React.useState<Board | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -139,7 +143,7 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
                   return <span key={`g-${g.material}`}>{`${l.label}: ${l.value}`}</span>;
                 })}
                 {needs.map((g) => (
-                  <span key={`n-${g.key}`}>{`Needs ${g.text.charAt(0).toLowerCase()}${g.text.slice(1)}: ${g.rows.length} ${g.rows.length === 1 ? "part" : "parts"}`}</span>
+                  <span key={`n-${g.key}`}>{`Needs ${inText(g.text.charAt(0).toLowerCase() + g.text.slice(1), unit)}: ${g.rows.length} ${g.rows.length === 1 ? "part" : "parts"}`}</span>
                 ))}
               </p>
             ) : null}
@@ -166,11 +170,11 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
                           {r.filename}
                           {r.part_number ? <small>{r.part_number}</small> : null}
                         </td>
-                        <td>{r.reason ?? "—"}</td>
+                        <td>{r.reason ? inText(r.reason, unit) : "—"}</td>
                         <td>{l.time}</td>
                         <td>{l.material}</td>
                         <td>{l.ownership}</td>
-                        <td className="r">{l.price}</td>
+                        <td className="r">{inText(l.price, unit)}</td>
                       </tr>
                     );
                   })}

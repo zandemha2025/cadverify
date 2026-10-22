@@ -138,7 +138,7 @@
   <p>
     Recommended process: <strong>{{ routing.get('recommended_process') | process_name }}</strong>
     (archetype: {{ routing.get('archetype') }}, confidence {{ routing.get('confidence') }})
-    {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') | units(length_unit) }}</span>{% endif %}
+    {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') | units(length_unit, with_mm) }}</span>{% endif %}
   </p>
   {% endif %}
 
@@ -313,7 +313,7 @@
           <td>{{ d.get('name') }}</td>
           <td class="num">{% if d.get('value') is none %}hidden{% else %}{{ d.get('value') }} {{ d.get('unit') }}{% endif %}</td>
           <td><span class="prov prov-{{ d.get('provenance') }}">{{ d.get('provenance') }}</span></td>
-          <td class="src">{{ d.get('source') | units(length_unit) }}</td>
+          <td class="src">{{ d.get('source') | units(length_unit, with_mm) }}</td>
         </tr>
         {% endfor %}
       </table>
@@ -343,7 +343,7 @@
       <td>{{ a.get('name') }}</td>
       <td class="num">{% if a.get('value') is none %}hidden{% else %}{{ a.get('value') }}{% endif %}</td>
       <td>{{ a.get('unit') }}</td>
-      <td class="src">{{ a.get('source') | units(length_unit) }}</td>
+      <td class="src">{{ a.get('source') | units(length_unit, with_mm) }}</td>
       <td><span class="prov prov-{{ a.get('provenance') }}">{{ a.get('provenance') }}</span></td>
     </tr>
     {% endfor %}
@@ -356,7 +356,7 @@
   {% if notes %}
   <h3>Notes</h3>
   <ul style="margin:3px 0;">
-    {% for n in notes %}<li>{{ n | units(length_unit) }}</li>{% endfor %}
+    {% for n in notes %}<li>{{ n | units(length_unit, with_mm) }}</li>{% endfor %}
   </ul>
   {% endif %}
 

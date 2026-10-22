@@ -5,6 +5,7 @@
  * pages show. No fetching here; every number comes from the caller's API data.
  */
 import { processLabel } from "../process-names.ts";
+import { MM_PER_IN, lenValue, parseLen, type LengthUnit } from "../units/units.ts";
 
 /** Processes in the order the add/edit form lists them (board O9), in the one spelling every screen uses. */
 export const PROCS: readonly (readonly [string, string])[] = ["fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting", "ded", "waam", "cnc_3axis", "cnc_5axis", "cnc_turning", "wire_edm", "injection_molding", "die_casting", "investment_casting", "sand_casting", "sheet_metal", "forging"].map((c) => [c, processLabel(c)] as const);
@@ -15,12 +16,12 @@ const PROC_NAME: Record<string, string> = Object.fromEntries(PROCS);
 const PROC_SHORT: Record<string, string> = { cnc_turning: "Lathe" };
 
 export function procName(p: string | null | undefined): string {
-  if (!p) return "Unknown method";
+  if (!p) return "Unknown process";
   return PROC_NAME[p] ?? p;
 }
 
 export function procShort(p: string | null | undefined): string {
-  if (!p) return "Unknown method";
+  if (!p) return "Unknown process";
   return PROC_SHORT[p] ?? procName(p);
 }
 
@@ -69,25 +70,35 @@ export type Envelope = {
   w: number;
   d: number;
   h: number;
-  /** "762 × 406 × 508 mm" or "Ø254 × 533 mm". */
+  /** "762 × 406 × 508 mm" or "Ø254 × 533 mm" (in inches: "30.00 × 15.98 × 20.00 in"). */
   text: string;
-  /** The compact figure form ("762×406×508", "Ø254×533"). */
+  /** The compact figure form ("762×406×508", "Ø254×533"), in `unit`. */
   fig: string;
+  /** The unit `text` and `fig` are in. */
+  unit: LengthUnit;
   /** The key/value label for this envelope. */
   label: string;
 };
+
+/** One work-area figure in the unit: mm as declared ("762"), inches by drawing practice ("30.00"). */
+function envNum(mm: number, unit: LengthUnit): string {
+  if (unit === "mm") return plain(mm);
+  const v = Math.abs(mm) / MM_PER_IN;
+  return (mm / MM_PER_IN).toFixed(v < 10 ? 3 : v < 100 ? 2 : 1);
+}
 
 /**
  * A machine's declared work envelope, read from the same capability keys the API
  * stores and the engine reads. Lathes use swing_dia + between_centers; a lathe
  * saved before that used X × Y × Z and says so. Null when nothing is declared.
  */
-export function envelopeOf(m: Pick<MachineLike, "process" | "capabilities">): Envelope | null {
+export function envelopeOf(m: Pick<MachineLike, "process" | "capabilities">, unit: LengthUnit = "mm"): Envelope | null {
   const cap = m.capabilities ?? {};
+  const n = (mm: number) => envNum(mm, unit);
   const swing = capNum(cap, "swing_dia");
   const between = capNum(cap, "between_centers");
   if (swing != null && between != null) {
-    return { w: swing, d: swing, h: between, text: `Ø${plain(swing)} × ${plain(between)} mm`, fig: `Ø${plain(swing)}×${plain(between)}`, label: "Swing × between centers" };
+    return { w: swing, d: swing, h: between, text: `Ø${n(swing)} × ${n(between)} ${unit}`, fig: `Ø${n(swing)}×${n(between)}`, unit, label: "Swing × between centers" };
   }
   const x = capNum(cap, "x") ?? capNum(cap, "bed_x") ?? capNum(cap, "platen_x");
   const y = capNum(cap, "y") ?? capNum(cap, "bed_y") ?? capNum(cap, "platen_y");
@@ -95,8 +106,46 @@ export function envelopeOf(m: Pick<MachineLike, "process" | "capabilities">): En
   if (x == null || y == null) return null;
   const lathe = m.process === LATHE;
   const label = lathe ? "Work area (declared X × Y × Z)" : "Work area";
-  if (z == null) return { w: x, d: y, h: Math.min(x, y) / 20, text: `${plain(x)} × ${plain(y)} mm`, fig: `${plain(x)}×${plain(y)}`, label };
-  return { w: x, d: y, h: z, text: `${plain(x)} × ${plain(y)} × ${plain(z)} mm`, fig: `${plain(x)}×${plain(y)}×${plain(z)}`, label };
+  if (z == null) return { w: x, d: y, h: Math.min(x, y) / 20, text: `${n(x)} × ${n(y)} ${unit}`, fig: `${n(x)}×${n(y)}`, unit, label };
+  return { w: x, d: y, h: z, text: `${n(x)} × ${n(y)} × ${n(z)} ${unit}`, fig: `${n(x)}×${n(y)}×${n(z)}`, unit, label };
+}
+
+/** The machine form's size fields (work area X/Y/Z, a lathe's swing and length between centers). */
+export const SIZE_FIELDS = ["x", "y", "z", "swing", "between"] as const;
+export type SizeField = (typeof SIZE_FIELDS)[number];
+
+/**
+ * The size fields as the form shows them, in the person's unit. The API and the
+ * engine keep millimetres; the form is display and input only.
+ */
+export function sizeFieldsIn(mm: Record<SizeField, string>, unit: LengthUnit): Record<SizeField, string> {
+  if (unit === "mm") return { ...mm };
+  const out = { ...mm };
+  for (const k of SIZE_FIELDS) {
+    const v = mm[k].trim() === "" ? NaN : Number(mm[k]);
+    if (Number.isFinite(v)) out[k] = lenValue(v, "in");
+  }
+  return out;
+}
+
+/**
+ * The size fields back in millimetres for saving. A field the person didn't
+ * change saves exactly the millimetres it came from (no round trip through
+ * rounded inches); a changed one is read in the person's unit ("12", "12 in",
+ * '12"' or "305 mm"). Text that isn't a length is passed on as typed, so the
+ * form's own check names the field.
+ */
+export function sizeFieldsToMm(shown: Record<SizeField, string>, initialShown: Record<SizeField, string>, initialMm: Record<SizeField, string>, unit: LengthUnit): Record<SizeField, string> {
+  const out = { ...shown };
+  for (const k of SIZE_FIELDS) {
+    if (shown[k] === initialShown[k]) out[k] = initialMm[k];
+    else if (shown[k].trim() === "") out[k] = "";
+    else {
+      const mm = parseLen(shown[k], unit);
+      out[k] = mm == null ? shown[k] : String(Math.round(mm * 1000) / 1000);
+    }
+  }
+  return out;
 }
 
 /**

@@ -9,6 +9,15 @@ A package is the supplier's copy. Every record in it, in the API view and in
 every file of the ZIP, is ``outbound.rfq_item``: the shop's machines, rates,
 in-house routes and choices, calibration, approvers and notes never go in. It
 is saved that way, and a package saved before that is cleaned on every read.
+
+Lengths in a supplier's copy (part sizes in the brief and line items, the
+should-cost report) lead with the unit of the person who builds the package,
+the requester, with millimetres alongside when that unit is inches
+("11.81 × 7.874 × 3.937 in (300 × 200 × 100 mm)"). The organization has no
+unit of its own, and the requester is the one who reads the copy before it
+goes out. The unit is saved on the package (``metadata.length_unit``) so every
+download reads the same; a package saved before that uses the requester's
+current choice. The JSON records stay in mm: they are data, not prose.
 """
 from __future__ import annotations
 
@@ -33,6 +42,7 @@ from src.auth.org_context import caller_org_subquery, resolve_org
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Batch, BatchItem, CostDecision, ManifestPart, PartContext, RfqPackage
 from src.services import cost_decision_service, outbound
+from src.services import length_units as lu
 from src.services.cost_pdf_service import cached_cost_pdf, precompute_cost_pdf
 
 MAX_ITEMS = 25
@@ -192,7 +202,22 @@ async def _raw_cad_payload(
     }
 
 
-def _line_items_csv(items: list[dict[str, Any]]) -> str:
+def _part_size(item: dict[str, Any], unit: str) -> str | None:
+    """The part's measured size for the supplier, the copy's unit first (mm alongside in inches)."""
+    geo = ((item.get("cost_decision") or {}).get("geometry") or {})
+    text = lu.dims_with_mm(geo.get("bbox_mm"), unit)
+    return None if text == "—" else text
+
+
+async def _supplier_unit(session: AsyncSession, package: RfqPackage) -> str:
+    """The unit the package was built in (saved on it), else its requester's current choice."""
+    unit = (package.metadata_json or {}).get("length_unit")
+    if unit in ("mm", "in"):
+        return unit
+    return await lu.length_unit_for(session, package.user_id)
+
+
+def _line_items_csv(items: list[dict[str, Any]], unit: str = "mm") -> str:
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(
@@ -210,6 +235,7 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
             "requested_process",
             "requested_material",
             "requested_quantity",
+            "size",
             "part_specs",
             "supplier_must_hold",
         ]
@@ -237,6 +263,7 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
                     requested.get("process"),
                     requested.get("material"),
                     requested.get("quantity"),
+                    _part_size(item, unit),
                     "; ".join(context.get("spec_summary") or []),
                     "; ".join(context.get("supplier_must_hold") or []),
                 ]
@@ -257,7 +284,17 @@ def _spec_sections(items: list[dict[str, Any]] | None) -> list[tuple[str, list[s
     return out
 
 
-def _supplier_brief(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> str:
+def _part_sizes(items: list[dict[str, Any]] | None, unit: str) -> list[tuple[str, str]]:
+    """``(file name, measured size)`` for each item whose record measured one."""
+    out = []
+    for item in items or []:
+        size = _part_size(item, unit)
+        if size:
+            out.append((str((item.get("decision") or {}).get("filename") or "part"), size))
+    return out
+
+
+def _supplier_brief(package: RfqPackage, items: list[dict[str, Any]] | None = None, unit: str = "mm") -> str:
     lines = [
         f"# {package.title}",
         "",
@@ -274,6 +311,10 @@ def _supplier_brief(package: RfqPackage, items: list[dict[str, Any]] | None = No
     note = (package.metadata_json or {}).get("note")
     if note:
         lines += ["", "## Buyer note", "", str(note)]
+    sizes = _part_sizes(items, unit)
+    if sizes:
+        lines += ["", "## Part sizes", "", "Measured from each file (bounding box)."]
+        lines += [""] + [f"- {fname}: {size}" for fname, size in sizes]
     specs = _spec_sections(items)
     if specs:
         must = sorted({c for _f, _l, certs in specs for c in certs})
@@ -288,7 +329,7 @@ def _supplier_brief(package: RfqPackage, items: list[dict[str, Any]] | None = No
     return "\n".join(lines) + "\n"
 
 
-def _supplier_brief_html(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> str:
+def _supplier_brief_html(package: RfqPackage, items: list[dict[str, Any]] | None = None, unit: str = "mm") -> str:
     """Render the package-level sourcing truth as a printable HTML document.
 
     The per-decision PDFs explain each should-cost calculation, while this
@@ -308,6 +349,11 @@ def _supplier_brief_html(package: RfqPackage, items: list[dict[str, Any]] | None
     note_html = (
         f"<h2>Buyer note</h2><p>{html.escape(str(note))}</p>" if note else ""
     )
+    sizes = _part_sizes(items, unit)
+    if sizes:
+        note_html += ("<h2>Part sizes</h2><p>Measured from each file (bounding box).</p><table>"
+                      + "".join(f"<tr><th>{html.escape(f)}</th><td>{html.escape(sz)}</td></tr>" for f, sz in sizes)
+                      + "</table>")
     specs = _spec_sections(items)
     if specs:
         must = sorted({c for _f, _l, certs in specs for c in certs})
@@ -350,15 +396,15 @@ def _supplier_brief_html(package: RfqPackage, items: list[dict[str, Any]] | None
 </html>"""
 
 
-def _render_supplier_brief_pdf_sync(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> bytes:
+def _render_supplier_brief_pdf_sync(package: RfqPackage, items: list[dict[str, Any]] | None = None, unit: str = "mm") -> bytes:
     from weasyprint import HTML
 
-    return HTML(string=_supplier_brief_html(package, items)).write_pdf()
+    return HTML(string=_supplier_brief_html(package, items, unit)).write_pdf()
 
 
-async def _supplier_brief_pdf(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> bytes:
+async def _supplier_brief_pdf(package: RfqPackage, items: list[dict[str, Any]] | None = None, unit: str = "mm") -> bytes:
     async with _RFQ_PDF_SEMAPHORE:
-        return await asyncio.to_thread(_render_supplier_brief_pdf_sync, package, items)
+        return await asyncio.to_thread(_render_supplier_brief_pdf_sync, package, items, unit)
 
 
 async def _decision_item(
@@ -469,6 +515,8 @@ async def create_package(
     raw_included = False
     raw_payloads: list[tuple[str, bytes]] = []
     terms = await outbound.org_names(session, org_id)
+    # The supplier's copy reads in the requester's unit (see the module doc).
+    unit = await lu.length_unit_for(session, user.user_id)
     for did in ids:
         item, item_warnings, raw = await _decision_item(
             session, by_id[did], include_raw_cad=options.include_raw_cad, terms=terms
@@ -500,6 +548,8 @@ async def create_package(
             "note": _clean_text(options.note, max_len=2000),
             "raw_cad_requested": bool(options.include_raw_cad),
             "contract": "should_cost_evidence_not_supplier_quote",
+            "length_unit": unit,
+            "length_unit_basis": "requester",
         },
     )
     session.add(package)
@@ -529,7 +579,7 @@ async def create_package(
 
     async def _warm() -> None:
         await _asyncio.gather(
-            *(precompute_cost_pdf(d, gov) for d, gov in decisions_to_warm)
+            *(precompute_cost_pdf(d, gov, unit) for d, gov in decisions_to_warm)
         )
 
     try:
@@ -599,11 +649,12 @@ async def build_zip(
     session: AsyncSession,
     package: RfqPackage,
 ) -> bytes:
+    unit = await _supplier_unit(session, package)
     try:
         supplier_pdf_name = "supplier-brief.pdf"
         # Spec lines are built from the spec vocabulary only (no shop names).
         supplier_pdf = await _supplier_brief_pdf(
-            package, [outbound.rfq_item(item) for item in package.items_json or []])
+            package, [outbound.rfq_item(item) for item in package.items_json or []], unit)
     except Exception:
         supplier_pdf_name = "supplier-brief-pdf-unavailable.txt"
         supplier_pdf = (
@@ -626,8 +677,8 @@ async def build_zip(
             "package_manifest.json",
             json.dumps(manifest, indent=2, sort_keys=True, default=str),
         )
-        zf.writestr("line-items.csv", _line_items_csv(items))
-        zf.writestr("supplier-brief.md", _supplier_brief(package, items))
+        zf.writestr("line-items.csv", _line_items_csv(items, unit))
+        zf.writestr("supplier-brief.md", _supplier_brief(package, items, unit))
         zf.writestr(supplier_pdf_name, supplier_pdf)
         zf.writestr(
             "cost-decisions.json",
@@ -670,7 +721,8 @@ async def build_zip(
                 zf.writestr(
                     f"decisions/{index:02d}-{stem}/should-cost-report.pdf",
                     await cached_cost_pdf(
-                        _snapshot_decision(item), outbound.rfq_governance(item["decision"])
+                        _snapshot_decision(item), outbound.rfq_governance(item["decision"]),
+                        length_unit=unit,
                     ),
                 )
             except Exception:

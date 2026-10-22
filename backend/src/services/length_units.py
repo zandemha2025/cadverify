@@ -2,7 +2,8 @@
 
 The engine always works in millimetres. An export a person downloads (the
 cost-report PDF) shows lengths in their chosen unit (``users.preferences.
-length_unit``, migration 0056). Conversions are exact (1 in = 25.4 mm,
+length_unit``, migration 0056); a supplier's copy (RFQ package) shows that unit
+first with millimetres alongside. Conversions are exact (1 in = 25.4 mm,
 1 in² = 6.4516 cm², 1 in³ = 16.387064 cm³) and every figure carries its unit.
 Mirrors ``frontend/src/components/v4/units/units.ts``.
 """
@@ -54,8 +55,12 @@ def volume_cm3(cm3, unit: str) -> str:
     return f"{cm3 / CM3_PER_IN3:,.3f} in³" if unit == "in" else f"{cm3:g} cm³"
 
 
-def in_text(text, unit: str):
-    """Engine text with every mm figure in inches ("needs 1306 mm" → "needs 51.42 in")."""
+def in_text(text, unit: str, keep_mm: bool = False):
+    """Engine text with every mm figure in inches ("needs 1306 mm" → "needs 51.42 in").
+
+    ``keep_mm`` (a supplier's copy) keeps the millimetres alongside:
+    "needs 51.42 in (1306 mm)".
+    """
     if not isinstance(text, str) or unit != "in":
         return text
 
@@ -75,9 +80,32 @@ def in_text(text, unit: str):
             return f"{sign}{v / factor:,.{dp}f}"
 
         out = _NUM.sub(one, nums)
-        return f"{out} {'in' if u == 'mm' else 'in²' if u in ('mm²', 'cm²') else 'in³'}"
+        shown = f"{out} {'in' if u == 'mm' else 'in²' if u in ('mm²', 'cm²') else 'in³'}"
+        return f"{shown} ({nums} {u})" if keep_mm else shown
 
     return _RUN.sub(run, text)
+
+
+# ── a supplier's copy: the unit first, millimetres alongside ───────────────────
+# An RFQ package goes to a supplier, who may work in either unit; the drawing and
+# the engine are in mm. Inches lead when the copy's unit is inches, with the mm
+# figure beside each one ("11.81 × 7.874 × 3.937 in (300 × 200 × 100 mm)").
+# In mm the figure is shown once.
+
+
+def dims_with_mm(mm: Optional[Iterable[float]], unit: str) -> str:
+    shown = dims(mm, unit)
+    return f"{shown} ({dims(mm, 'mm')})" if unit == "in" and shown != "—" else shown
+
+
+def area_with_cm2(cm2, unit: str) -> str:
+    shown = area_cm2(cm2, unit)
+    return f"{shown} ({area_cm2(cm2, 'mm')})" if unit == "in" and shown != "N/A" else shown
+
+
+def volume_with_cm3(cm3, unit: str) -> str:
+    shown = volume_cm3(cm3, unit)
+    return f"{shown} ({volume_cm3(cm3, 'mm')})" if unit == "in" and shown != "N/A" else shown
 
 
 async def length_unit_for(session, user_id: int) -> str:
@@ -86,7 +114,8 @@ async def length_unit_for(session, user_id: int) -> str:
         from src.db.models import User
 
         row = await session.get(User, user_id)
-        unit = ((getattr(row, "preferences", None) or {}).get("length_unit")) if row is not None else None
+        prefs = getattr(row, "preferences", None) if row is not None else None
+        unit = prefs.get("length_unit") if isinstance(prefs, dict) else None
         return unit if unit in ("mm", "in") else "mm"
     except Exception:  # noqa: BLE001 — a display preference never breaks an export
         return "mm"

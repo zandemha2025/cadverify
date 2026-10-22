@@ -28,6 +28,8 @@ import { downloadText, getMachineLoad, getShopCapabilities, putShopCapabilities,
 import { SpecCaps } from "./spec-caps";
 import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, opSavedNote, tileSub, toggleOp } from "./shop-derive";
 import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
+import { useUnits } from "../units/use-units";
+import { UnitSwitch } from "../units/unit-switch";
 
 type DialogState = { mode: "add"; process?: string } | { mode: "edit"; machine: OwnedMachine } | null;
 type BannerState =
@@ -215,6 +217,11 @@ export function MachinesScreen() {
         ]}
         tabs={tabs}
         tabsLabel="Your shop"
+        tabsAside={
+          <span className="sizes">
+            Sizes <UnitSwitch className="unit-switch" />
+          </span>
+        }
       />
       <input
         ref={csvRef}
@@ -338,7 +345,8 @@ export function MachinesScreen() {
 }
 
 function MachineTile({ m, on, onPick, load }: { m: OwnedMachine; on: boolean; onPick: () => void; load?: MachineLoad | null }) {
-  const env = envelopeOf(m);
+  const { unit } = useUnits();
+  const env = envelopeOf(m, unit);
   const st = machineStatus(m);
   const box = env ? isoBox(env.w, env.d, env.h) : null;
   return (
@@ -394,6 +402,7 @@ function LoadSummary({ load, hours }: { load: ShopLoad; hours: number | null }) 
 }
 
 function AddTile({ onPick }: { onPick: () => void }) {
+  const { unit } = useUnits();
   const box = isoBox(256, 256, 256);
   return (
     <button type="button" className="mt add" onClick={onPick}>
@@ -405,7 +414,7 @@ function AddTile({ onPick }: { onPick: () => void }) {
         <path d={box.front} stroke="#8A9099" strokeWidth="1.4" strokeDasharray="4 4" fill="none" strokeLinejoin="round" />
       </svg>
       <span className="foot">
-        <span className="num">e.g. 256 × 256 × 256 mm</span>
+        <span className="num">e.g. {unit === "in" ? "10.08 × 10.08 × 10.08 in" : "256 × 256 × 256 mm"}</span>
         <span className="chip c-unk">
           <i aria-hidden="true" />
           Not added

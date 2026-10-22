@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   envelopeOf,
+  sizeFieldsIn,
+  sizeFieldsToMm,
   hoursShort,
   loadFor,
   loadRows,
@@ -51,6 +53,32 @@ test("envelope reads the keys the API stores, lathe swing first", () => {
   assert.equal(legacy?.label, "Work area (declared X × Y × Z)");
   assert.equal(envelopeOf({ process: "cnc_3axis", capabilities: {} }), null);
   assert.equal(envelopeOf({ process: "cnc_3axis", capabilities: { x: "762", y: 406 } }), null);
+});
+
+test("work areas and lathe sizes read in the person's unit; the drawing stays in mm", () => {
+  const inch = envelopeOf(vf2, "in")!;
+  assert.equal(inch.text, "30.00 × 15.98 × 20.00 in");
+  assert.equal(inch.fig, "30.00×15.98×20.00");
+  assert.equal(inch.unit, "in");
+  assert.deepEqual([inch.w, inch.d, inch.h], [762, 406, 508], "the drawing's extents stay in mm");
+  assert.equal(envelopeOf(vf2, "mm")?.fig, "762×406×508");
+  assert.equal(envelopeOf({ process: "cnc_turning", capabilities: { swing_dia: 254, between_centers: 533 } }, "in")?.text, "Ø10.00 × 20.98 in");
+  assert.equal(envelopeOf({ process: "fdm", capabilities: { x: 256, y: 256, z: 256 } }, "in")?.text, "10.08 × 10.08 × 10.08 in");
+});
+
+test("the machine form shows sizes in inches and saves millimetres, exactly as they were when unchanged", () => {
+  const mm = { x: "762", y: "406", z: "508", swing: "", between: "" };
+  const shown = sizeFieldsIn(mm, "in");
+  assert.deepEqual(shown, { x: "30", y: "15.98", z: "20", swing: "", between: "" });
+  assert.deepEqual(sizeFieldsIn(mm, "mm"), mm);
+  // Nothing changed: the declared millimetres go back as they were, not 405.892 from a rounded 15.98 in.
+  assert.deepEqual(sizeFieldsToMm(shown, shown, mm, "in"), mm);
+  // A changed field is read in inches, or in the unit typed with it; a cleared one is cleared.
+  assert.deepEqual(sizeFieldsToMm({ ...shown, x: "40", y: "300 mm", z: "" }, shown, mm, "in"), { x: "1016", y: "300", z: "", swing: "", between: "" });
+  assert.deepEqual(sizeFieldsToMm({ ...shown, x: "12.5\"" }, shown, mm, "in").x, "317.5");
+  // Text that isn't a length goes on as typed, so the form's own check names the field.
+  assert.equal(sizeFieldsToMm({ ...shown, x: "wide" }, shown, mm, "in").x, "wide");
+  assert.deepEqual(sizeFieldsToMm({ ...mm, x: "800" }, mm, mm, "mm"), { ...mm, x: "800" });
 });
 
 test("the drawing fits the 300 × 150 view box for very different shapes", () => {

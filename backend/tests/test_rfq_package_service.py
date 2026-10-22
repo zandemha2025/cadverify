@@ -375,3 +375,97 @@ def test_supplier_brief_pdf_text_preserves_package_counts_and_warnings(tmp_path)
     assert "decision_stale: VALVE-A.step is stale." in extracted
     assert "raw_cad_unavailable:" in extracted
     assert "Raw CAD was requested but is not available for VALVE-B.step." in extracted
+
+
+def _sized_item(decision: CostDecision) -> dict:
+    return {
+        "decision": {"id": decision.ulid, "filename": decision.filename, "approval_status": "unreviewed",
+                     "is_stale": False, "unvalidated_confidence": True, "make_now_process": "cnc", "crossover_qty": 1000},
+        "cost_decision": {**decision.result_json, "geometry": {"bbox_mm": [300, 200, 100], "volume_cm3": 120.0}},
+        "declared_part": None,
+        "part_context": None,
+        "raw_cad": {"included": False, "reason": "not_requested"},
+    }
+
+
+def _sized_package(item: dict, metadata: dict) -> RfqPackage:
+    return RfqPackage(
+        ulid="01RFQSIZES", org_id="org_1", user_id=11, title="Bracket RFQ", supplier_name=None,
+        item_count=1, approved_count=0, stale_count=0, unvalidated_count=1, raw_cad_included=False,
+        live_supplier_send=False, items_json=[item], warnings_json=[], metadata_json=metadata,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.asyncio
+async def test_supplier_copy_leads_with_the_requesters_inches_and_keeps_mm(monkeypatch):
+    decision = _decision()
+    package = _sized_package(_sized_item(decision), {"length_unit": "in", "length_unit_basis": "requester"})
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_Result(first=decision))
+    monkeypatch.setattr(svc, "cached_cost_pdf", AsyncMock(return_value=b"%PDF-test"))
+    monkeypatch.setattr(svc, "_supplier_brief_pdf", AsyncMock(return_value=b"%PDF-brief"))
+
+    with zipfile.ZipFile(io.BytesIO(await svc.build_zip(session, package))) as zf:
+        brief = zf.read("supplier-brief.md").decode()
+        rows = list(csv.DictReader(io.StringIO(zf.read("line-items.csv").decode())))
+        records = json.loads(zf.read("cost-decisions.json"))
+    size = "11.81 × 7.874 × 3.937 in (300 × 200 × 100 mm)"
+    assert "## Part sizes" in brief and f"- VALVE-100.step: {size}" in brief
+    assert rows[0]["size"] == size
+    # The should-cost report and the brief PDF are rendered in the package's unit.
+    assert svc.cached_cost_pdf.call_args.kwargs["length_unit"] == "in"
+    assert svc._supplier_brief_pdf.call_args.args[2] == "in"
+    # The JSON records stay in mm: data, not prose.
+    assert records[0]["cost_decision"]["geometry"]["bbox_mm"] == [300, 200, 100]
+    assert size in svc._supplier_brief_html(package, [outbound_item(package)], "in")
+
+
+def outbound_item(package: RfqPackage) -> dict:
+    from src.services import outbound
+
+    return outbound.rfq_item(package.items_json[0])
+
+
+@pytest.mark.asyncio
+async def test_supplier_copy_in_mm_shows_mm_once_and_old_packages_use_the_requesters_choice(monkeypatch):
+    decision = _decision()
+    monkeypatch.setattr(svc, "cached_cost_pdf", AsyncMock(return_value=b"%PDF-test"))
+    monkeypatch.setattr(svc, "_supplier_brief_pdf", AsyncMock(return_value=b"%PDF-brief"))
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_Result(first=decision))
+    with zipfile.ZipFile(io.BytesIO(await svc.build_zip(session, _sized_package(_sized_item(decision), {"length_unit": "mm"})))) as zf:
+        assert "- VALVE-100.step: 300 × 200 × 100 mm\n" in zf.read("supplier-brief.md").decode()
+
+    # Saved before the unit was kept on the package: the requester's (package.user_id) current choice.
+    session.get = AsyncMock(return_value=SimpleNamespace(preferences={"length_unit": "in"}))
+    await svc.build_zip(session, _sized_package(_sized_item(decision), {}))
+    session.get.assert_awaited()
+    assert session.get.await_args.args[1] == 11
+    assert svc.cached_cost_pdf.call_args.kwargs["length_unit"] == "in"
+
+
+@pytest.mark.asyncio
+async def test_create_package_saves_the_requesters_unit(monkeypatch):
+    decision = _decision()
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.execute = AsyncMock(return_value=_Result(rows=[decision]))
+    session.get = AsyncMock(return_value=SimpleNamespace(preferences={"length_unit": "in"}))
+    monkeypatch.setattr(svc, "resolve_org", AsyncMock(return_value="org_1"))
+    monkeypatch.setattr(svc, "_manifest_match", AsyncMock(return_value=None))
+    monkeypatch.setattr(svc, "_part_context", AsyncMock(return_value=None))
+    monkeypatch.setattr(svc, "_raw_cad_payload", AsyncMock(return_value=(None, None, {"included": False, "reason": "not_requested"})))
+    monkeypatch.setattr(svc, "precompute_cost_pdf", AsyncMock(return_value=b"%PDF"))
+    before = set(svc._WARM_TASKS)
+
+    package = await svc.create_package(
+        session, AuthedUser(user_id=42, api_key_id=0, key_prefix="session", role="analyst"), ["01RFQDECISION"], svc.RfqPackageOptions())
+    assert package.metadata_json["length_unit"] == "in"
+    assert package.metadata_json["length_unit_basis"] == "requester"
+    assert session.get.await_args.args[1] == 42
+    for task in set(svc._WARM_TASKS) - before:
+        await task
+    assert svc.precompute_cost_pdf.call_args.args[2] == "in"

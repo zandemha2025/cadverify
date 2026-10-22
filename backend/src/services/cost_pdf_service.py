@@ -97,11 +97,14 @@ _jinja_env.filters["pdf_text"] = _pdf_text
 _jinja_env.filters["process_name"] = _process_name
 
 
-def _units(text, unit="mm"):
-    """Engine text in the person's length unit (mm figures → in when chosen)."""
+def _units(text, unit="mm", with_mm=False):
+    """Engine text in the person's length unit (mm figures → in when chosen).
+
+    ``with_mm`` (a supplier's copy) keeps each mm figure beside its inches.
+    """
     from src.services.length_units import in_text
 
-    return in_text(text, unit)
+    return in_text(text, unit, keep_mm=with_mm)
 
 
 _jinja_env.filters["units"] = _units
@@ -114,19 +117,23 @@ def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None,
     ``outbound`` makes the supplier's copy (RFQ package): ``decision.result_json``
     is then already an ``outbound.cost_record`` and ``outbound`` is its
     ``outbound.rfq_governance`` (review status, out of date, requested route), so
-    the report carries no approvers, recorded outcome, notes or file hash.
+    the report carries no approvers, recorded outcome, notes or file hash. A
+    supplier's copy in inches keeps every mm figure alongside its inches
+    ("11.81 × 7.874 × 3.937 in (300 × 200 × 100 mm)"): the drawing is in mm.
     """
     from src.services import length_units as lu
     from src.services.cost_decision_service import governance_fields
 
     unit = length_unit if length_unit in ("mm", "in") else "mm"
+    with_mm = outbound is not None and unit == "in"
     geo = (decision.result_json or {}).get("geometry") or {}
     return {
         "length_unit": unit,
+        "with_mm": with_mm,
         "geo_text": {
-            "volume": lu.volume_cm3(geo.get("volume_cm3"), unit),
-            "area": lu.area_cm2(geo.get("surface_area_cm2"), unit),
-            "bbox": lu.dims(geo.get("bbox_mm"), unit),
+            "volume": (lu.volume_with_cm3 if with_mm else lu.volume_cm3)(geo.get("volume_cm3"), unit),
+            "area": (lu.area_with_cm2 if with_mm else lu.area_cm2)(geo.get("surface_area_cm2"), unit),
+            "bbox": (lu.dims_with_mm if with_mm else lu.dims)(geo.get("bbox_mm"), unit),
         },
         "filename": decision.filename,
         "file_type": decision.file_type,
@@ -214,7 +221,7 @@ async def cached_cost_pdf(decision: CostDecision, outbound: dict | None = None,
 
 
 async def precompute_cost_pdf(
-    decision: CostDecision, outbound: dict | None = None
+    decision: CostDecision, outbound: dict | None = None, length_unit: str = "mm"
 ) -> bytes | None:
     """Warm the PDF cache for a decision (best-effort; never raises).
 
@@ -223,7 +230,7 @@ async def precompute_cost_pdf(
     stream stored bytes.
     """
     try:
-        return await cached_cost_pdf(decision, outbound)
+        return await cached_cost_pdf(decision, outbound, length_unit)
     except Exception:  # pragma: no cover - warming must not break the caller
         logger.warning(
             "Cost PDF precompute failed for %s", decision.ulid, exc_info=True

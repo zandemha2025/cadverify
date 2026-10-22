@@ -28,7 +28,6 @@ import {
   OTHER,
   SORTS,
   boardProgress,
-  bodyLine,
   breakdownOf,
   bucketCount,
   bucketDef,
@@ -41,6 +40,7 @@ import {
   materialWord,
   money,
   partLine,
+  rowWords,
   procName,
   sortRows,
   totalsText,
@@ -52,6 +52,8 @@ import {
 } from "./catalog-model";
 import "./catalog.css";
 import { rowMustHold, rowSignoffLine, rowSpecLine } from "./row-specs";
+import { useUnits } from "../units/use-units";
+import { inText } from "../units/units";
 
 const POLL_MS = 4000;
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
@@ -92,6 +94,8 @@ function useBoard(batchId: string) {
 
 export function CatalogBoard({ batchId }: { batchId: string }) {
   const { board, progress, err, reload } = useBoard(batchId);
+  // Lengths in the engine's words (walls, sizes, work areas) read in the person's unit.
+  const { unit } = useUnits();
   const tabs = useManyTabs();
   const [toastNode, toast] = useToast();
   const [bucket, setBucket] = React.useState<string>("all");
@@ -376,7 +380,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     <React.Fragment key={f.filename}>
                       <span>
                         {f.part_key ? <Link href={R.part(f.part_key)}>{f.filename}</Link> : f.filename}
-                        <small> · {f.summary}</small>
+                        <small> · {inText(f.summary, unit)}</small>
                       </span>
                       <b className="num">
                         {f.rows} {f.rows === 1 ? "row" : "rows"}
@@ -433,8 +437,11 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
 
 function PartRow({ r }: { r: BoardRow }) {
   const router = useRouter();
+  const { unit } = useUnits();
   const d = bucketDef(r.bucket);
   const line = partLine(r);
+  // The engine's words (reason, body, spec line, withheld price, note) in the person's unit.
+  const words = rowWords(r, unit, rowSpecLine(r));
   const href = r.part_key ? R.part(r.part_key) : null;
   const sub = (s: string) => {
     const i = s.indexOf(" · ");
@@ -443,7 +450,7 @@ function PartRow({ r }: { r: BoardRow }) {
   const [t1, t2] = sub(line.time);
   const [m1, m2] = sub(line.material);
   const [o1, o2] = sub(line.ownership);
-  const [p1, p2] = sub(line.price);
+  const [p1, p2] = sub(words.price);
   const sign = rowSignoffLine(r);
   return (
     <tr
@@ -471,13 +478,13 @@ function PartRow({ r }: { r: BoardRow }) {
           <span className="cr-why">
             <i style={{ background: d.color }} aria-hidden="true" />
             <span className="sr">{d.label}: </span>
-            {r.reason ?? d.label}
+            {words.reason ?? d.label}
           </span>
-          {bodyLine(r) ? <small className="cr-spec">{bodyLine(r)}</small> : null}
-          {rowSpecLine(r) ? <small className="cr-spec">{rowSpecLine(r)}</small> : null}
+          {words.body ? <small className="cr-spec">{words.body}</small> : null}
+          {words.spec ? <small className="cr-spec">{words.spec}</small> : null}
           {rowMustHold(r) ? <small className="cr-spec">{rowMustHold(r)}</small> : null}
           {sign ? <small className={cx("cr-sign", sign.tone)}>{sign.text}</small> : null}
-          {r.material.note ? <small className="cr-warn">{r.material.note}; priced in {r.material.class ? materialWord(r.material.class).toLowerCase() : "the run’s material"}</small> : null}
+          {words.note ? <small className="cr-warn">{words.note}; priced in {r.material.class ? materialWord(r.material.class).toLowerCase() : "the run’s material"}</small> : null}
         </span>
         </div>
       </td>
@@ -525,6 +532,7 @@ function RunSheet({
   onCopy: () => void;
   batchId: string;
 }) {
+  const { unit } = useUnits();
   if (!board) return <Loading rows={4} label="Loading this run" />;
   const sel = bucket !== "all" ? bucketDef(bucket) : null;
   const total = board.rows.length;
@@ -581,7 +589,7 @@ function RunSheet({
                 <div className="kv">
                   {groups.slice(0, 6).map((g) => (
                     <React.Fragment key={g.key}>
-                      <span>{g.text}</span>
+                      <span>{inText(g.text, unit)}</span>
                       <b className="num">{g.rows.length}</b>
                     </React.Fragment>
                   ))}
@@ -640,7 +648,7 @@ function RunSheet({
                 </div>
                 {groups.map((g) => (
                   <div key={g.key} className="cr-cap">
-                    <b>{g.text}</b>
+                    <b>{inText(g.text, unit)}</b>
                     <span>
                       {g.rows
                         .slice(0, 4)
@@ -661,7 +669,7 @@ function RunSheet({
                 <div className="kv">
                   {reasonsOf(selRows).map(([why, n]) => (
                     <React.Fragment key={why}>
-                      <span>{why}</span>
+                      <span>{inText(why, unit)}</span>
                       <b className="num">{n}</b>
                     </React.Fragment>
                   ))}

@@ -14,6 +14,7 @@ import { R } from "../routes";
 import { cx } from "../ui";
 import type { RateCardState } from "./common";
 import type { MachineLoad, RecordSummary } from "./shop-api";
+import { useUnits } from "../units/use-units";
 import { envelopeOf, hoursShort, loadRows, longDate, machineName, machineStatus, perHour, plain, procName, procShort, shortWhen } from "./shop-derive";
 
 const ENCLOSURE_TEXT: Record<string, string> = { none: "Open", enclosed: "Closed, not heated", heated: "Heated chamber" };
@@ -82,7 +83,10 @@ export function MachineSheet({
   const cancelRef = React.useRef<HTMLButtonElement>(null);
   const deleteBtn = React.useRef<HTMLButtonElement>(null);
   const name = machineName(m);
-  const env = envelopeOf(m);
+  // Work area and lathe sizes in the person's unit. Nozzle and layer heights stay in mm:
+  // printers are specified that way everywhere, inch shops included.
+  const { unit } = useUnits();
+  const env = envelopeOf(m, unit);
   const st = machineStatus(m);
   const method = procName(m.process);
   const cap = m.capabilities ?? {};
@@ -119,7 +123,7 @@ export function MachineSheet({
           <div className="fig">
             <span>{env?.label === "Swing × between centers" ? "Swing × length" : "Work area"}</span>
             <b className={cx("num", !env && "t")}>{env ? env.fig : "Not declared"}</b>
-            {env ? <small>mm</small> : null}
+            {env ? <small>{env.unit}</small> : null}
           </div>
           <div className="fig">
             <span>Max part</span>

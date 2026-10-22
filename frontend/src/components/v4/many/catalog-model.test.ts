@@ -14,6 +14,7 @@ import {
   materialLine,
   partLine,
   planFiles,
+  rowWords,
   sortRows,
   totalsText,
   zipEntryName,
@@ -190,4 +191,25 @@ test("a bucket's breakdown: hours by machine, material by grade, what a new mach
   const board = { rows, breakdown: { in_house: { machines: [], materials: [], missing: [] } } } as never;
   assert.deepEqual(breakdownOf(board, "in_house").machines, []);
   assert.equal(breakdownOf({ rows } as never, "in_house").machines.length, 2);
+});
+
+test("a row's engine words read in the person's unit; its file name never changes", () => {
+  const r = row({
+    filename: "150-fit-box-60mm.stl",
+    bucket: "outside",
+    reason: "24 faces (100.0%) below 0.8mm min wall for fdm",
+    unit_cost_usd: null,
+    price_withheld: "walls under 0.8 mm",
+    body: { file: "frame-40mm.stl", ids: [1], copies: 2, of: 4, shape: "Square tube 40 × 40 × 3 mm, 600 mm long", name: "Tube 600mm" },
+  } as Partial<BoardRow>);
+  const inch = rowWords(r, "in", "Flatness 0.05 mm");
+  assert.equal(inch.reason, "24 faces (100.0%) below 0.031 in min wall for fdm");
+  assert.equal(inch.body, "Tube 600mm of 4 in frame-40mm.stl · 2 per file · Square tube 1.575 × 1.575 × 0.118 in, 23.62 in long", "names keep their mm");
+  assert.equal(inch.spec, "Flatness 0.002 in");
+  assert.equal(inch.price, "Withheld: walls under 0.031 in");
+  assert.equal(r.filename, "150-fit-box-60mm.stl");
+  const mm = rowWords(r, "mm");
+  assert.equal(mm.reason, "24 faces (100.0%) below 0.8mm min wall for fdm");
+  assert.equal(mm.price, "Withheld: walls under 0.8 mm");
+  assert.equal(mm.spec, null);
 });
