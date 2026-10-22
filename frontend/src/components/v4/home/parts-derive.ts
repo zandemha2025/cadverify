@@ -270,6 +270,18 @@ export function peekFigs(row: PartRow, v: Verdict, d: DecisionLite | null): Peek
       figs.push({ k: "Range", v: `${money(c.low_usd)}–${money(c.high_usd)}`, s: `±${Math.round(c.half_width_pct)}%${c.validated ? ", from your real costs" : ", no real costs yet"}` });
     }
   }
+  // me-22: the price is the pick; when the pick is outside but a machine of yours makes it another way,
+  // the drawer says that way and its price, not "Outside" above "On your machines".
+  const pickInHouse = !!fit && (fit.verdict === "makeable_in_house" || fit.verdict === "makeable_with_secondary_op");
+  const alt = v.key === "in" && route && fit && !pickInHouse
+    ? Object.entries(d?.result?.verification?.per_route ?? {}).find(([p, r]) => p !== route && (r.verdict === "makeable_in_house" || r.verdict === "makeable_with_secondary_op") && r.best_machine)
+    : undefined;
+  if (alt) {
+    const [proc, r] = alt;
+    const e = (d?.result?.estimates ?? []).filter((x) => x.process === proc && x.quantity === uc?.qty).sort((a, b) => a.unit_cost_usd - b.unit_cost_usd)[0];
+    figs.push({ k: "In-house", v: e ? money(e.unit_cost_usd) : "Can make", s: `${wayName(proc)} on your ${r.best_machine}; outside is the pick${v.stale ? " · out of date" : ""}` });
+    return figs;
+  }
   figs.push({ k: "Machines", v: v.label, c: v.tone === "ok" ? "ok" : v.tone === "bad" ? "bad" : v.tone === "warn" ? "warn" : undefined, s: v.stale ? `${v.where} · out of date` : v.where });
   return figs;
 }

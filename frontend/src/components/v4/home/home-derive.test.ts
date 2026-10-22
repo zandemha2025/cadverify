@@ -202,6 +202,12 @@ test("peek figures: price, range and machine; withheld stays withheld", async ()
   const w = part({ unit_cost: { usd: null, qty: 10, withheld: true, withheld_reason: "thin", validated: false } });
   assert.equal(peekFigs(w, vo(w, null), null)[0].v, "Withheld");
   assert.equal(peekFigs(w, vo(w, null), null).length, 2, "no range for a withheld price");
+  // me-22: bracket.step, priced as sheet metal outside at 1 ($75.00), and a mill of yours can make it:
+  // the drawer says the in-house way and its price, not "Outside" above "On your machines".
+  const b = part({ recommended_route: { process: "sheet_metal", material: "304 SS (Sheet)" }, unit_cost: { usd: 75, qty: 1, withheld: false, withheld_reason: null, validated: false } } as never);
+  const bd = { result: { estimates: [{ process: "sheet_metal", quantity: 1, unit_cost_usd: 75 }, { process: "cnc_3axis", quantity: 1, unit_cost_usd: 193.01 }], verification: { per_route: { sheet_metal: { verdict: "makeable_outsource_only", best_machine: null }, cnc_3axis: { verdict: "makeable_in_house", best_machine: "Haas VF-2" } } } } };
+  const bf = peekFigs(b, vo(b, { verdict: "makeable_in_house", stale: false, gap: null }), bd);
+  assert.deepEqual(bf.map((x) => `${x.k}=${x.v}|${x.s}`), ["Each, at 1=$75.00|Outside", "In-house=$193.01|3-axis milling on your Haas VF-2; outside is the pick"]);
 });
 
 test("ce-19: the list's price is at the part page's quantity, and says when that's the yearly one", () => {

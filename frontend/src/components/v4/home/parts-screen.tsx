@@ -40,6 +40,8 @@ import {
 } from "./parts-derive";
 import type { MakeRow, MakeSummary, PartRow, RecordRow } from "./model";
 import { longDate, sizeText, wayName } from "./words";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 import "./home.css";
 
 const SHOW = 48;
@@ -403,6 +405,7 @@ function Peek({ row, v, onClose, onDeleted }: { row: PartRow; v: Verdict; onClos
     };
   }, [row.cost_decision]);
   const figs = peekFigs(row, v, d);
+  const { unit } = useUnits();
   const route = row.recommended_route;
   const post = row.provenance_posture;
   const f = row.findings;
@@ -411,9 +414,10 @@ function Peek({ row, v, onClose, onDeleted }: { row: PartRow; v: Verdict; onClos
   // A part never priced has no route of its own: the analysis's suggestion isn't shown as one (op-23).
   if (route && row.cost_decision) kv.push(["Process", [wayName(route.process), route.material].filter(Boolean).join(" · ")]);
   else if (row.lifecycle_state === "Drafted") kv.push(["Process", "Not chosen yet: not priced"]);
-  if (post && post.total) kv.push(["Cost inputs yours", `${post.shop + post.user} of ${post.total}`]);
+  // me-22: the same count, in the same words, as the part page's cost lines ("2 of 9 from your file or shop").
+  if (post && post.total) kv.push(["From your file or shop", `${post.measured + post.shop + post.user} of ${post.total} cost inputs`]);
   if (row.unit_cost?.qty != null) kv.push(["Shown at", `${row.unit_cost.qty.toLocaleString("en-US")} ${row.unit_cost.qty === 1 ? "part" : "parts"}`]);
-  if (size) kv.push(["Size", size]);
+  if (size) kv.push(["Size", inText(size, unit)]);
   return (
     <>
       <div className="top" style={{ position: "relative" }}>
