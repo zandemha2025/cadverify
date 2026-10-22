@@ -20,6 +20,7 @@ import { Palette, PaletteProvider, usePalette } from "./palette";
 import { cx } from "./ui";
 import { WorkBar } from "./work/work-bar";
 import { checkBlockedLine } from "./viewer-access";
+import { primeLengthUnit } from "./units/use-units";
 import { navOverflow } from "./nav-overflow";
 
 /** The Pilot tag on a nav section; Many parts says what a work-email account gets free instead. */
@@ -84,6 +85,8 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       .then((u) => setUsage(u))
       .catch(() => setUsage(null));
   }, []);
+  // The person's length unit, read first thing on every page of the app (me-15).
+  React.useEffect(() => primeLengthUnit(), []);
   React.useEffect(() => {
     refreshUsage();
     window.addEventListener("proofshape:usage-changed", refreshUsage);

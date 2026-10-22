@@ -75,6 +75,15 @@ function start() {
   refresh();
 }
 
+/**
+ * Read the account's unit as soon as the app opens, before a page's heavier
+ * requests take the browser's connections (me-15: the part page drew in mm
+ * while the read waited behind them).
+ */
+export function primeLengthUnit(): void {
+  start();
+}
+
 function subscribe(cb: () => void) {
   start();
   listeners.add(cb);
