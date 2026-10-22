@@ -146,6 +146,17 @@ test("methods carry the engine's verdicts, reasons and prices", () => {
   assert.equal(cheapestAt(methods, 100)!.code, "mjf", "a DFM-blocked route never wins cheapest");
 });
 
+test("a process the engine won't price for this part is ruled out in its words, not Can make (buyer-02)", () => {
+  const f = fixture();
+  const why = "Wire-arc printing (WAAM) is for large near-net metal parts: … under 100 mm on the longest side (this part: 20 mm).";
+  f.validation.process_scores.push({ process: "waam", score: 1, verdict: "pass", recommended_material: null, recommended_machine: null, estimated_cost_factor: null, issues: [] });
+  f.cost.engine_feasibility = [{ process: "waam", verdict: "pass", score: 1, costed: false, blockers: [], cost_exclusion_reason: why }];
+  const waam = buildMethods(f).find((m) => m.code === "waam")!;
+  assert.equal(waam.verdict, "out");
+  assert.equal(methodWhy(waam, "aluminum"), why);
+  assert.equal(cheapestAt([waam], 10), null);
+});
+
 test("unpriced metal-only methods collapse into one row; rows rank cheapest first per family", () => {
   const f = fixture();
   const grouped = groupUnpriced(buildMethods(f));

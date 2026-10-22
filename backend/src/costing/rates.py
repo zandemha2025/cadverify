@@ -422,7 +422,12 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=20,
             deposition_rate_kg_hr=1.0,  # feedstock deposited per hour (DEFAULT)
             feedstock_mult=1.15,        # near-net overbuild: deposited = net × 1.15 (DEFAULT)
-            finish_machining_frac=0.30),# finish-machining allowance as fraction of deposition cost (DEFAULT)
+            finish_machining_frac=0.30, # finish-machining allowance as fraction of deposition cost (DEFAULT)
+            # Size floor: 2–4 mm beads and 2–5 mm of machining stock on every face
+            # (the DED analyzer's citations) stop being near-net on a small part, so
+            # under this longest side the route is not priced (DEFAULT, not
+            # confirmed by a shop; overridable like every rate).
+            min_longest_side_mm=50.0),
         PT.WAAM: dict(
             machine_rate=90.0,          # $/hr loaded wire-arc cell (DEFAULT)
             setup_hr=1.00, post_hr=0.0, scrap=0.10,
@@ -431,7 +436,12 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=20,
             deposition_rate_kg_hr=3.0,  # wire-arc deposits FAST (DEFAULT)
             feedstock_mult=1.15,
-            finish_machining_frac=0.30),
+            finish_machining_frac=0.30,
+            # Size floor: wire-arc is for large near-net parts; 4–8 mm beads and
+            # 3–5 mm of machining stock on every face (the WAAM analyzer's
+            # citations) leave nothing near-net on a small block (DEFAULT, not
+            # confirmed by a shop; overridable like every rate).
+            min_longest_side_mm=100.0),
     },
     # Shop-specific material lot prices ($/kg). Empty by default → fall back to
     # the material-DB cost_per_kg (a generic DEFAULT). A calibrated shop binds its

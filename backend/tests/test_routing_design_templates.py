@@ -139,7 +139,8 @@ def test_report_routing_uses_actual_eligible_routes():
     from src.analysis.models import AnalysisResult, ProcessScore
     from src.costing import EstimateOptions, estimate_decision
 
-    mesh = trimesh.creation.box(extents=[40, 30, 25])
+    # Above wire-arc printing's 100 mm size floor, so its route is priced (buyer-02).
+    mesh = trimesh.creation.box(extents=[160, 120, 100])
     result = AnalysisResult(filename="routing.stl", file_type="stl",
                             geometry=analyze_geometry(mesh), process_scores=[
         ProcessScore(ProcessType.CNC_3AXIS, 0, "fail"),

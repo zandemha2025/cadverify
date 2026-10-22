@@ -1000,6 +1000,8 @@ export interface CostOptionSide {
   /** In-house side only: the machine of yours that clears every check, and how many you declared. */
   machine?: string | null;
   machine_count?: number | null;
+  /** Outside side only: your own process bought from a job shop at its fully loaded rate. */
+  same_process?: boolean;
 }
 
 export interface CostOptionPair {

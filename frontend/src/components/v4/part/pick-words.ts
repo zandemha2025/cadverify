@@ -38,3 +38,8 @@ export function problemsFigure(problems: { severity: string }[]): { k: string; v
   if (!n) return { k: "Problems", v: "0", s: "none found", tone: "ok" };
   return { k: "Problems", v: String(n), s: stopping ? `${stopping} ${stopping === 1 ? "stops" : "stop"} a process` : "none stops a process", tone: "warn" };
 }
+
+/** The outside side's process in words: "3-axis milling at a job shop" when it is your own process bought outside. */
+export function outsideName(side: { process: string; same_process?: boolean }): string {
+  return side.same_process ? `${methodName(side.process)} at a job shop` : methodName(side.process);
+}

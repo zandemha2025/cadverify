@@ -30,7 +30,7 @@ import { notListedKind, plainNumbers, problemForIssue } from "../fix/problems";
 import { pairAt, pickWhy, recordedChoice, enginePick } from "./choice";
 import { featureCells } from "../workbench/derive";
 import { useChoice } from "./choose";
-import { problemsFigure, rowNote } from "./pick-words";
+import { outsideName, problemsFigure, rowNote } from "./pick-words";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
 
@@ -266,9 +266,9 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
     const out = pair.outside;
     if (pair.pick === "in_house") {
       figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: money(mine.unit_cost_usd), s: `ScaleCAD’s pick · ${mine.machine ?? methodName(mine.process)} · ${days(mine.lead_low_days, mine.lead_high_days)}`, tone: "ok" });
-      if (out) figs.push({ k: "Cheapest outside", v: money(out.unit_cost_usd), s: `${methodName(out.process)} · ${days(out.lead_low_days, out.lead_high_days)}` });
+      if (out) figs.push({ k: "Cheapest outside", v: money(out.unit_cost_usd), s: `${outsideName(out)} · ${days(out.lead_low_days, out.lead_high_days)}` });
     } else {
-      if (out) figs.push({ k: `Outside at ${qtyWord(p.q)}`, v: money(out.unit_cost_usd), s: `ScaleCAD’s pick · ${methodName(out.process)} · ${days(out.lead_low_days, out.lead_high_days)}` });
+      if (out) figs.push({ k: `Outside at ${qtyWord(p.q)}`, v: money(out.unit_cost_usd), s: `ScaleCAD’s pick · ${outsideName(out)} · ${days(out.lead_low_days, out.lead_high_days)}` });
       figs.push({ k: `On your ${mine.machine ?? "machine"}`, v: money(mine.unit_cost_usd), s: `in-house · ${days(mine.lead_low_days, mine.lead_high_days)}` });
     }
     return { title: "Ways to make it", meta, figs };

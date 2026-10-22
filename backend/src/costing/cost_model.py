@@ -98,6 +98,38 @@ class BuildEnvelopeError(ValueError):
     """No fitting setup established for the machine being priced."""
 
 
+class BelowProcessSizeError(BuildEnvelopeError):
+    """The part is smaller than the process is run for (wire-arc and metal
+    deposition are large near-net routes): no price, like a part that doesn't fit."""
+
+
+# The bead width and per-face machining stock each deposition route cites
+# (src/analysis/processes/additive/{ded,waam}.py), said where its size floor bites.
+_DEPOSITION_WHY = {
+    PT.DED: ("lays 2–4 mm beads and leaves 2–5 mm to machine off every face"),
+    PT.WAAM: ("lays 4–8 mm beads and leaves 3–5 mm to machine off every face"),
+}
+
+
+def check_process_size_floor(process, drivers, rates) -> None:
+    """Raise ``BelowProcessSizeError`` when a deposition route's size floor rules the
+    part out. The longest side is read from the smallest box found around the part,
+    so it doesn't change with the file's orientation."""
+    floor = rates.pget(process, "min_longest_side_mm") if process in DED_FAMILY else 0.0
+    if not floor:
+        return
+    box = getattr(drivers, "billet_bbox_mm", None) or drivers.bbox_mm
+    longest = max(float(d) for d in box)
+    if longest >= floor:
+        return
+    raise BelowProcessSizeError(
+        f"{process_label(process)} is for large near-net metal parts: it "
+        f"{_DEPOSITION_WHY.get(process, 'leaves stock to machine off every face')}, so ScaleCAD "
+        f"doesn't price it under {floor:g} mm on the longest side (this part: {longest:.0f} mm). "
+        "A part this small is machined from bar or printed in a powder bed instead "
+        "(size floor: typical value, not confirmed by a shop).")
+
+
 def kg_text(kg: float) -> str:
     """A mass in kg for a derivation: 4 decimals, more under a gram so a tiny
     part never reads ``0.0000 kg`` (``0.0000412``); never scientific notation."""

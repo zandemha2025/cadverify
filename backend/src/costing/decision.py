@@ -416,8 +416,8 @@ def _in_house_clause(options: dict) -> str:
     for q, o in sorted(options.items()):
         i, out = o["in_house"], o["outside"]
         side = (f"at {q:,}: in-house {process_phrase(i['process'])} on {i['machine']} "
-                f"${i['unit_cost_usd']} each"
-                + (f", outside {process_phrase(out['process'])} ${out['unit_cost_usd']} each"
+                f"${i['unit_cost_usd']:,.2f} each"
+                + (f", outside {process_phrase(out['process'])} ${out['unit_cost_usd']:,.2f} each"
                    if out else ""))
         pick = ("in-house" if o["pick"] == "in_house" else "outside")
         bits.append(f"{side}; pick {pick} ({_BASIS_TEXT[o['basis']]})")

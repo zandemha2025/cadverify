@@ -245,6 +245,9 @@ export function buildMethods(input: PartInputs): Method[] {
     const all = estimates.filter((e) => e.process === code);
     const excluded = all.length > 0 && all.every((e) => e.environment_excluded || e.spec_excluded);
     const bySpecs = excluded && all.every((e) => e.spec_excluded && !e.environment_excluded);
+    // The engine withheld every price for this process (a 20 mm block is under wire-arc printing's
+    // size floor, or no setup fits the work area): ruled out in its words, not "Can make" with no price.
+    const withheld = !excluded && all.length === 0 ? feas?.cost_exclusion_reason ?? null : null;
     const fit = verification?.per_route?.[code] ?? null;
     const dfm = (ps?.verdict ?? (feas?.verdict as ProcessScore["verdict"] | undefined) ?? null) as Method["dfm"];
     const score = ps?.score ?? feas?.score ?? null;
@@ -252,6 +255,7 @@ export function buildMethods(input: PartInputs): Method[] {
     let verdict: Verdict;
     if (excluded) verdict = "out";
     else if (dfm === "fail" || fit?.verdict === "not_makeable" || universalError) verdict = "bad";
+    else if (withheld) verdict = "out";
     else if (issues.some((i) => i.severity === "warning" && /_UNVERIFIED$/.test(i.code))) verdict = "warn";
     else if (dfm == null && prices.size === 0) verdict = "unk";
     else verdict = "ok";
@@ -274,7 +278,7 @@ export function buildMethods(input: PartInputs): Method[] {
       finding: primaryFinding(issues),
       blockedReason: verdict === "bad" ? universalError?.message ?? dfmFailureReason(fit) ?? blocker : null,
       excludedReason: !excluded
-        ? null
+        ? verdict === "out" ? withheld : null
         : bySpecs
           ? all.find((e) => e.spec_exclusion_reason)?.spec_exclusion_reason ?? "Can't meet the part's specs."
           : all.find((e) => e.environment_exclusion_reason)?.environment_exclusion_reason ?? "Ruled out by the declared service conditions.",

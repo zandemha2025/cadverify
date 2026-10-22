@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { chosenLine, problemsFigure, rowNote } = await import("./pick-words.ts");
+const { chosenLine, outsideName, problemsFigure, rowNote } = await import("./pick-words.ts");
 
 const cost = {
   quantities: [1, 10, 100],
@@ -33,4 +33,9 @@ test("the problems figure counts what the problem list counts", () => {
   const nine = [...Array(5).fill({ severity: "error" }), ...Array(4).fill({ severity: "warning" })];
   assert.deepEqual(problemsFigure(nine), { k: "Problems", v: "9", s: "5 stop a process", tone: "warn" });
   assert.equal(problemsFigure([{ severity: "warning" }]).s, "none stops a process");
+});
+
+test("the outside quote says when it is your process at a job shop (buyer-02)", () => {
+  assert.equal(outsideName({ process: "cnc_3axis", same_process: true }), "3-axis milling at a job shop");
+  assert.equal(outsideName({ process: "cnc_5axis" }), "5-axis milling");
 });

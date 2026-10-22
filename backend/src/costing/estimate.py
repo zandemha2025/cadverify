@@ -15,7 +15,7 @@ from src.analysis.models import Severity
 from src.costing.confidence import confidence_interval
 from src.costing.decision import Decision, make_vs_buy
 from src.costing.drivers import extract_drivers
-from src.costing.cost_model import BuildEnvelopeError, cost_breakdown
+from src.costing.cost_model import BuildEnvelopeError, check_process_size_floor, cost_breakdown
 from src.costing.leadtime import lead_time
 from src.costing.provenance import Driver, Provenance
 from src.costing.rates import COSTED_PROCESSES, RateCard, build_rate_card
@@ -411,6 +411,14 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         process = item["process"]
         material = item["material"]
         ps = item["score"]
+        try:
+            # Wire-arc and metal deposition are large near-net routes: a 20 mm block
+            # gets no price from them (its reason is the exclusion), like a part
+            # that fits no setup.
+            check_process_size_floor(process, drivers, rates)
+        except BuildEnvelopeError as exc:
+            cost_exclusions[process.value] = str(exc)
+            continue
         for q in options.quantities:
             try:
                 est = cost_breakdown(process, drivers, material, options.material_class,
