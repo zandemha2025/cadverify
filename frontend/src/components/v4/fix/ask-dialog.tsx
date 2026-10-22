@@ -357,9 +357,9 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <span>Checks</span>
           <b>Doesn’t use one</b>
           <span>From</span>
-          <b>{kept || !file ? "The file kept with this part · nothing to upload" : "The file in this browser"}</b>
+          <b>{kept ? "The file kept with this part · nothing to upload" : file ? "The file in this browser" : "The file kept with this part; if there isn’t one, ScaleCAD asks for it"}</b>
           <span>Your file</span>
-          <b>Unchanged · repair works on a copy{kept || !file ? ", saved as a new part" : ""}</b>
+          <b>Unchanged · repair works on a copy{kept ? ", saved as a new part" : ""}</b>
         </div>
       </div>
       <div className="df">
