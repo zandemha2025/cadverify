@@ -13,14 +13,19 @@ test("the upload line says the three true things, and only those", () => {
   assert.equal(UPLOAD_LINE, "Your file stays in your organization. Only your team can open it, and ScaleCAD doesn’t use it to train anything.");
 });
 
-test("share links say plainly who can see them, that they end after 30 days, and who can switch them off", () => {
+test("share links say plainly who can see them, that they end after 7 days, what a supplier sees, and who can switch them off", () => {
   const text = SHARE_LINKS.rows.map((r) => r.v).join(" ");
-  assert.match(text, /Anyone with the link, without signing in, can see the file name/);
+  assert.match(text, /Anyone with the link, without signing in/);
   assert.match(text, /findings/);
-  assert.match(text, /ends 30 days after it’s made/);
-  assert.match(text, /90 days, a year or no end date/);
+  assert.match(text, /ends 7 days after it’s made/);
+  assert.match(text, /1, 30 or 90 days or a date up to a year ahead/);
+  assert.match(text, /shows your cost estimate only when you turn it on/);
+  assert.match(text, /The CAD file only when you tick it/);
   assert.match(text, /The person who made a link, or an admin, can switch it off/);
-  assert.match(text, /The file, the 3D model/);
+  assert.doesNotMatch(text, /no end date/);
+  // The original file leaves only with a package or link that includes it.
+  const downloads = WHO.rows.find((r) => r.k === "Downloads")!.v;
+  assert.match(downloads, /leaves ScaleCAD only in an RFQ package/);
 });
 
 test("deleting says what goes, who may, what stays, and promises nothing about backups", () => {

@@ -15,12 +15,13 @@ import {
   downloadCostPdf,
   exportCostCsv,
   exportCostJson,
-  shareCostDecision,
 } from "@/lib/api";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { fileExt } from "@/lib/cad-file";
 import { parseCalibration } from "@/lib/cost-views";
 import { R } from "../routes";
+import { partFacts, shareRecord } from "../records/api";
+import { ShareDialog } from "../share/share-dialog";
 import { Empty, cx } from "../ui";
 import {
   CHART_H,
@@ -77,6 +78,7 @@ function SavedCard({ filename }: { filename: string }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [pkgBusy, setPkgBusy] = React.useState(false);
   const [share, setShare] = React.useState<{ url: string; msg: string; bad: boolean; copied: boolean } | null>(null);
+  const [dialog, setDialog] = React.useState(false);
   const id = s.decision?.id ?? null;
   React.useEffect(() => {
     if (!id || s.pkgId) return;
@@ -114,27 +116,20 @@ function SavedCard({ filename }: { filename: string }) {
     if (pkgBusy) return;
     setPkgBusy(true);
     try {
-      const pkg = await createRfqPackage({ decisionIds: [id], title: `RFQ package - ${filename}` });
+      const pkg = await createRfqPackage({ decisionIds: [id], title: `RFQ package - ${filename}`, includeRawCad: true });
       setPackage(pkg.id);
-      toast("Package built: the decision and its sources, without the CAD file.");
+      toast(pkg.raw_cad_included ? "RFQ package built: the part, its specs and the CAD file. None of your cost." : "RFQ package built: the part and its specs. ScaleCAD has no copy of the CAD file. None of your cost.");
     } catch (e) {
       toast(e instanceof Error ? e.message : "The package didn’t build.");
     } finally {
       setPkgBusy(false);
     }
   };
-  const openShare = async () => {
-    setBusy("share");
-    try {
-      const r = s.decision?.share_url ? { share_url: s.decision.share_url } : await shareCostDecision(id);
-      const url = /^https?:/.test(r.share_url) ? r.share_url : `${window.location.origin}${r.share_url}`;
-      markShared(r.share_url);
-      setShare({ url, msg: "", bad: false, copied: false });
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "The share link didn’t open.");
-    } finally {
-      setBusy(null);
-    }
+  // A link that is on opens as it is; otherwise the Share dialog asks how long and what the supplier sees.
+  const openShare = () => {
+    const on = s.decision?.share_url;
+    if (on) setShare({ url: /^https?:/.test(on) ? on : `${window.location.origin}${on}`, msg: "", bad: false, copied: false });
+    else setDialog(true);
   };
   const copy = async () => {
     if (!share) return;
@@ -175,12 +170,24 @@ function SavedCard({ filename }: { filename: string }) {
             {pkgBusy ? "Building…" : "Build package"}
           </button>
         )}
-        <button className="btn sm ink" type="button" onClick={() => void openShare()} disabled={busy === "share"}>
-          {busy === "share" ? "…" : "Share"}
+        <button className="btn sm ink" type="button" onClick={openShare}>
+          Share
         </button>
       </div>
       {s.pkgId ? <div className="pkg">Package built for this decision · building again opens it</div> : null}
       <p style={{ margin: 0, color: "var(--ink3)", fontSize: 12.5 }}>{label ? label[0].toUpperCase() + label.slice(1) + "." : "Assumption-based, not yet validated."}</p>
+      {dialog ? (
+        <ShareDialog
+          target={{ kind: "record", id, name: filename }}
+          loadPart={() => partFacts(id)}
+          create={async (link) => {
+            const r = await shareRecord(id, link);
+            markShared(r.share_url);
+            return r;
+          }}
+          onClose={() => setDialog(false)}
+        />
+      ) : null}
       {share ? (
         <Dialog labelledBy="sh-t" onClose={() => setShare(null)}>
           <div className="dh">
@@ -190,7 +197,7 @@ function SavedCard({ filename }: { filename: string }) {
             </button>
           </div>
           <div className="db">
-            <p>Anyone with the link sees a read-only copy: sources, tags and range. Not a validated quote.</p>
+            <p>Anyone with the link, without signing in, sees what you chose when you made it. Switch it off or make a new one in Share links.</p>
             <label className="field">
               Public link
               <span className="lf">

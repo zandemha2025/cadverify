@@ -51,6 +51,8 @@ export interface PartData {
 export interface Toast {
   text: string;
   link?: { label: string; href: string };
+  /** Stays until dismissed (a share link's toast: the way to Share links). */
+  sticky?: boolean;
 }
 
 export interface PartCtxValue {

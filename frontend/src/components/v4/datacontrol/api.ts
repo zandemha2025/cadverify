@@ -87,7 +87,7 @@ export function deletionStatus(id: string): Promise<Receipt> {
 
 /* ── share links ─────────────────────────────────────────────────────────── */
 
-export type LinkKind = "check" | "record";
+export type LinkKind = "check" | "record" | "package";
 
 export interface ShareLinkFields {
   is_public: boolean;
@@ -102,7 +102,10 @@ export interface ShareLinkFields {
 export interface ShareLinkRow {
   kind: LinkKind;
   id: string;
-  part_key: string;
+  /** null for a package's link. */
+  part_key: string | null;
+  /** What a part's or package's link shows (null for a check's, or one made before the choice). */
+  shows?: { include_cost?: boolean; include_cad?: boolean } | null;
   name: string;
   url: string;
   status: LinkStatus;
@@ -123,6 +126,7 @@ export interface ShareLinkList {
 }
 
 function sharePath(kind: LinkKind, id: string): string {
+  if (kind === "package") return `/rfq-packages/${enc(id)}/share`;
   return kind === "check" ? `/analyses/${enc(id)}/share` : `/cost-decisions/${enc(id)}/share`;
 }
 

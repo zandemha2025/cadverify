@@ -1,16 +1,17 @@
 /**
  * Frame for public shared links in the v4 look (boards P7, P9, P8 "turned
- * off"). No session, no app nav, no account menu: the brand, what this page is
- * ("view only"), and Check a part (which asks a visitor to sign in first).
+ * off"). A share link is what a buyer sends a supplier, so the page is the
+ * buyer's, not ScaleCAD's: no session, no app nav, no sign-up call to action,
+ * only what this page is ("view only") and a small "Sent with ScaleCAD" line
+ * (buyer-14).
  */
 import type * as React from "react";
-import Link from "next/link";
 import { Instrument_Sans, Sora } from "next/font/google";
-import { R } from "../routes";
 import { PartGlyph } from "./thumb";
 import { LinkOff, type LinkOffReason } from "./states";
 import "../v4.css";
 import "./home.css";
+import "./supplier.css";
 
 const sans = Instrument_Sans({ variable: "--font-v4-sans", subsets: ["latin"], display: "swap" });
 const disp = Sora({ variable: "--font-v4-disp", subsets: ["latin"], weight: ["500", "600"], display: "swap" });
@@ -20,17 +21,8 @@ export function SharedFrame({ kind, children }: { kind: string | null; children:
     <div className={`${sans.variable} ${disp.variable}`}>
       <div className="ob" data-ui="v4">
         <header className="bar">
-          <Link className="brand" href="/">
-            <svg width="20" height="20" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-              <path d="M13 2.6 22.4 8v10L13 23.4 3.6 18V8L13 2.6Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-              <path d="M3.6 8 13 13.4 22.4 8M13 13.4v10" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-            </svg>
-            ScaleCAD
-          </Link>
           {kind ? <span className="h-ro">{kind} · view only</span> : null}
-          <Link className="btn go sm" href={R.check} style={{ marginLeft: "auto" }}>
-            Check a part
-          </Link>
+          <span className="h-sent">Sent with ScaleCAD</span>
         </header>
         {children}
       </div>
@@ -52,8 +44,7 @@ export function SharedStage({ title, facts, foot }: { title: string; facts: stri
         <small>3D preview isn&apos;t shared</small>
       </div>
       <p className="h-foot2">
-        <span>{foot} ·</span>
-        <Link href="/">View on ScaleCAD</Link>
+        <span>{foot}</span>
       </p>
     </section>
   );
@@ -68,7 +59,7 @@ export function SharedOff({ reason = "missing", endedOn = "" }: { reason?: LinkO
         <div className="h-wrap">
           <div className="h-col" style={{ width: "min(520px, 100%)", marginTop: 80 }}>
             <section className="panel">
-              <LinkOff reason={reason} endedOn={endedOn} />
+              <LinkOff reason={reason} endedOn={endedOn} cta={false} />
             </section>
           </div>
         </div>

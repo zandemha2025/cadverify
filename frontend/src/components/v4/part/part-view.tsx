@@ -9,7 +9,10 @@ import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { downloadCostPdf, shareCostDecision } from "@/lib/api";
+import { downloadCostPdf } from "@/lib/api";
+import { partFacts, shareRecord } from "../records/api";
+import { ShareDialog } from "../share/share-dialog";
+import { madeText } from "../share/words";
 import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { cx } from "../ui";
@@ -41,7 +44,6 @@ import { OrientChip, OrientTool } from "../orient/panel";
 import { useOrientView } from "../orient/state";
 import { DeletePartButton } from "../datacontrol/delete-part";
 import { BodiesChip, BodiesSheet, bodyHighlight, useBodies } from "./bodies";
-import { day } from "../datacontrol/words";
 import "./part.css";
 import { UnitSwitch } from "../units/unit-switch";
 import { dims as unitDims, volume as unitVolume } from "../units/units";
@@ -175,7 +177,7 @@ export function PartView({
   const toast = React.useCallback((t: Toast) => {
     setToastState(t);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToastState(null), 3600);
+    if (!t.sticky) toastTimer.current = window.setTimeout(() => setToastState(null), 3600);
   }, []);
   React.useEffect(() => () => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -315,19 +317,10 @@ export function PartView({
   const revLine = revisionLine(revisions ?? null, data.decisionId ?? null);
   const hudCtx = [ctx?.program ? `Program ${ctx.program}` : "No program", ctx?.parent_assembly ? `in ${ctx.parent_assembly}` : "not in an assembly", annual ? `${qtyWord(annual)} a year` : "no yearly volume"].join(" · ");
 
-  const share = async () => {
-    if (!data.decisionId) return;
-    try {
-      const r = await shareCostDecision(data.decisionId);
-      await navigator.clipboard?.writeText(new URL(r.share_url, window.location.origin).toString()).catch(() => undefined);
-      const ends = (r as { share_expires_at?: string | null }).share_expires_at;
-      toast({
-        text: `Share link copied. View only, no sign-in needed. ${ends ? `It ends ${day(ends)}.` : "It has no end date."}`,
-        link: { label: "Share links", href: R.links },
-      });
-    } catch (e) {
-      toast({ text: e instanceof Error ? e.message : "The share link wasn't made." });
-    }
+  // Share opens the Share dialog: who, how long, what the supplier sees (never an instant link).
+  const [sharing, setSharing] = React.useState(false);
+  const share = () => {
+    if (data.decisionId) setSharing(true);
   };
   const pdf = async () => {
     if (!data.decisionId) return;
@@ -426,7 +419,7 @@ export function PartView({
             <Link className="btn sm" href={R.fit} title="Load the assembly around this part to measure interference and clearance">
               Fit in assembly
             </Link>
-            <button className="btn sm" type="button" onClick={() => void share()} disabled={!data.decisionId} title={data.decisionId ? "Copy a view-only link to this record" : "Saved records only"}>
+            <button className="btn sm" type="button" onClick={share} disabled={!data.decisionId} title={data.decisionId ? "A view-only link for a supplier: you pick how long and what they see" : "Saved records only"}>
               Share
             </button>
             <button className="btn sm" type="button" onClick={() => void pdf()} disabled={!data.decisionId} title={data.decisionId ? "The record as a PDF" : "Saved records only"}>
@@ -532,7 +525,21 @@ export function PartView({
                   {toastState.link.label}
                 </Link>
               ) : null}
+              {toastState.sticky ? (
+                <button type="button" className="btn sm ghost" onClick={() => setToastState(null)} aria-label="Dismiss" style={{ marginLeft: toastState.link ? 0 : "auto" }}>
+                  Dismiss
+                </button>
+              ) : null}
             </div>
+          ) : null}
+          {sharing && data.decisionId ? (
+            <ShareDialog
+              target={{ kind: "record", id: data.decisionId, name: data.fileName }}
+              loadPart={() => partFacts(data.decisionId as string)}
+              create={(link) => shareRecord(data.decisionId as string, link)}
+              onMade={(m) => toast({ text: madeText(m.share_expires_at), link: { label: "Share links", href: R.links }, sticky: true })}
+              onClose={() => setSharing(false)}
+            />
           ) : null}
         </section>
         {fixOn ? <FixStage has3d={has3d} part="key" /> : null}

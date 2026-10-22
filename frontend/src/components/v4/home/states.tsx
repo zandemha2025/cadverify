@@ -125,17 +125,20 @@ export function linkOffWords(reason: LinkOffReason, endedOn: string): { title: s
   return { title: "This link isn't available", body: "It may have ended, been switched off, or the part was deleted. Ask whoever sent it for a new one." };
 }
 
-export function LinkOff({ home = "/", reason = "off", endedOn = "" }: { home?: string; reason?: LinkOffReason; endedOn?: string }) {
+/** `cta={false}` on a supplier's page: the link was the buyer's, so no "Go to ScaleCAD" (buyer-14). */
+export function LinkOff({ home = "/", reason = "off", endedOn = "", cta = true }: { home?: string; reason?: LinkOffReason; endedOn?: string; cta?: boolean }) {
   const w = linkOffWords(reason, endedOn);
   return (
     <div className="empty" role="alert">
       <b>{w.title}</b>
       <span>{w.body}</span>
-      <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
-        <Link className="btn sm ink" href={home}>
-          Go to ScaleCAD
-        </Link>
-      </span>
+      {cta ? (
+        <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <Link className="btn sm ink" href={home}>
+            Go to ScaleCAD
+          </Link>
+        </span>
+      ) : null}
     </div>
   );
 }

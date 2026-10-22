@@ -70,6 +70,7 @@ export function useRegisterPaletteItems(owner: string, items: PaletteItem[]) {
 }
 
 type Rec = { id: string; filename: string; created_at: string; approval_status?: string };
+type Pkg = { id: string; title: string; supplier_name?: string | null; item_count?: number; created_at?: string };
 type Mach = { id: string; name: string; process?: string };
 
 /** Go-to rows: label, detail, where, shortcut key, older names people may type. */
@@ -82,7 +83,8 @@ const GO: [string, string, string, string?, string[]?][] = [
   ["Machines and printers", "Your shop", R.shop, "M"],
   ["Make or buy", "In-house, outside or invest, across parts", R.triage, "T", ["triage"]],
   ["Rates and actual costs", "Rates in effect, logged jobs, changes to review", R.rates, "C", ["real costs"]],
-  ["RFQ packages", "Files and findings for supplier quotes", R.packages, undefined, ["supplier packages"]],
+  ["RFQ packages", "Ask suppliers to quote: parts, specs, quantities and CAD", R.packages, undefined, ["supplier packages", "rfq", "quote", "packages"]],
+  ["Share links", "Every public link you made: what it shows, when it ends, switch it off", R.links, undefined, ["share", "revoke", "links", "public link", "switch off", "supplier link"]],
   ["Batch runs", "Many parts at once · Pilot", R.many],
   ["Imports", "SAP, Windchill or CSV, read only", R.imports],
   ["Cost breakdown", "Every cost line of a part · open a part’s cost record", R.records, undefined, ["workbench", "glass box", "should-cost"]],
@@ -100,6 +102,7 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
   const [sel, setSel] = React.useState(-1);
   const [recs, setRecs] = React.useState<Rec[] | null>(null);
   const [machines, setMachines] = React.useState<Mach[] | null>(null);
+  const [pkgs, setPkgs] = React.useState<Pkg[] | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const returnTo = React.useRef<HTMLElement | null>(null);
 
@@ -118,7 +121,12 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
         .then((r) => (r.ok ? r.json() : null))
         .then((b) => setMachines(Array.isArray(b) ? b : (b?.machines ?? b?.items ?? [])))
         .catch(() => setMachines([]));
-  }, [open, recs, machines]);
+    if (pkgs == null)
+      fetch(`${API_BASE}/rfq-packages?limit=50`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => setPkgs(b?.packages ?? []))
+        .catch(() => setPkgs([]));
+  }, [open, recs, machines, pkgs]);
 
   const close = React.useCallback(() => {
     setOpen(false);
@@ -148,6 +156,13 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
   const recItems: PaletteItem[] = q
     ? (recs ?? []).filter((r) => hit(r.filename, r.id)).slice(0, 4).map((r) => ({ id: `r-${r.id}`, group: "Cost records", label: r.filename, sub: `Cost record ${r.id.slice(0, 8)} · ${new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}${r.approval_status === "approved" ? " · approved" : " · not reviewed"}`, href: R.record(r.id) }))
     : [];
+  // Packages by title or supplier; "rfq" or "package" lists the newest.
+  const pkgItems: PaletteItem[] = q
+    ? (pkgs ?? [])
+        .filter((p) => hit(p.title, p.supplier_name ?? undefined) || /^(rfq|packages?|rfq packages?)$/.test(q))
+        .slice(0, 3)
+        .map((p) => ({ id: `k-${p.id}`, group: "RFQ packages", label: p.title || "RFQ package", sub: [p.item_count != null ? `${p.item_count} ${p.item_count === 1 ? "part" : "parts"}` : null, p.supplier_name, p.created_at ? new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null].filter(Boolean).join(" · "), href: R.pkg(p.id) }))
+    : [];
   const machItems: PaletteItem[] = q
     ? (machines ?? []).filter((m) => hit(m.name, m.process)).slice(0, 3).map((m) => ({ id: `m-${m.id}`, group: "Your machines", label: m.name, sub: m.process ?? "", href: `${R.shop}?machine=${encodeURIComponent(m.id)}` }))
     : [];
@@ -157,6 +172,7 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
   for (const g of extraGroups) groups.push([g, extra.filter((e) => e.group === g && hit(e.label, e.sub, e.words, e.answer?.text)), q ? 3 : 2]);
   groups.push(["Actions", actions.filter((a) => hit(a.label, a.sub, a.words)), q ? 4 : 5]);
   groups.push(["Cost records", recItems, 4]);
+  groups.push(["RFQ packages", pkgItems, 3]);
   groups.push(["Your machines", machItems, 3]);
   groups.push(["Go to", go.filter((g) => hit(g.label, g.sub, g.words)), q ? 5 : 8]);
 

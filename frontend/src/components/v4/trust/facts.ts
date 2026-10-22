@@ -41,26 +41,27 @@ export const WHERE: FactSection = {
 export const WHO: FactSection = {
   id: "who",
   title: "Who can see them",
-  short: "Only your team can open your parts. Nobody can download your original back out.",
+  short: "Only your team can open your parts. Your original file leaves ScaleCAD only in a package or link your team sends with it.",
   rows: [
     { k: "Your organization", v: "Everyone in it can see its parts, checks and records and open a saved part in 3D. Viewers can’t change anything." },
     { k: "Other organizations", v: "No one outside your organization can open your parts in ScaleCAD, or see that they exist." },
-    { k: "Downloads", v: "No one can download your original file back out of ScaleCAD. Your team can download copies ScaleCAD made, Design Studio files and record exports." },
+    { k: "Downloads", v: "Your original file leaves ScaleCAD only in an RFQ package your team builds with the CAD files included, or a share link made with the CAD file ticked. Your team can also download copies ScaleCAD made, Design Studio files and record exports." },
     { k: "ScaleCAD staff", v: "Platform administrators see account and activity details for every organization: names, emails, file names, check results and network addresses. They can’t open your files or 3D views in ScaleCAD." },
     { k: "Server operators", v: "People who run ScaleCAD’s servers can reach the storage and the database, as with any hosted service." },
   ],
 };
 
-/** Share links today: public, no sign-in, no expiry. Replace when expiring links land. */
+/** Share links as the Share dialog makes them (backend share_links.py, supplier_links.py). */
 export const SHARE_LINKS: FactSection = {
   id: "share",
   title: "Share links",
-  short: "Anyone with a share link can see the file name and findings. A link ends after 30 days unless you pick longer.",
+  short: "Anyone with a share link can open it without signing in. It ends after 7 days unless you pick another length, and shows your cost only if you include it.",
   link: { label: "Your share links", href: "/app/account/links" },
   rows: [
-    { k: "Who sees it", v: "Anyone with the link, without signing in, can see the file name, the verdicts, the findings and the measurements." },
-    { k: "Never included", v: "The file, the 3D model, who uploaded it and their email." },
-    { k: "How long", v: "A link ends 30 days after it’s made, unless whoever makes it picks 90 days, a year or no end date. Links made before end dates existed were given one, 30 days after the change." },
+    { k: "Who sees it", v: "Anyone with the link, without signing in. A check’s link shows the file name, the verdicts, the findings and the measurements. A part’s link, for a supplier, shows the part, its size, material and specs, the quantity and your note. A package’s link shows the package." },
+    { k: "Your cost", v: "A part’s link shows your cost estimate only when you turn it on in the Share dialog; a package’s link only when the package was built with it. Links made before that choice existed show no cost." },
+    { k: "Never included", v: "Your machines, rates, approvals and notes, the 3D model, who uploaded the file and their email. The CAD file only when you tick it." },
+    { k: "How long", v: "A link ends 7 days after it’s made, unless whoever makes it picks 1, 30 or 90 days or a date up to a year ahead. Links made before end dates existed were given one, 30 days after the change." },
     { k: "Switching off", v: "The person who made a link, or an admin, can switch it off at any time in Share links. It stops working at once; anyone who opens it then sees only that it ended or was switched off." },
   ],
 };

@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Reads and writes for Records, Compare, Analyses, Supplier packages and
+ * Reads and writes for Records, Compare, Analyses, RFQ packages and
  * Programs. Same-origin through the authed proxy (`API_BASE`).
  *
  * The record and analysis lists are rate-limited server-side (60 an hour), so
  * one shared, paged copy of each list lives here for the whole session: Records,
- * Compare and Supplier packages read the same records; a write patches the copy
+ * Compare and RFQ packages read the same records; a write patches the copy
  * instead of reloading. Retry and "Load more" are the only extra reads. A
  * record's engine result never changes, so a loaded record is kept too (its
  * approval and outcome are patched from each write's response).
@@ -24,7 +24,7 @@ import type {
 } from "@/lib/api";
 import type { AnalysisListRow } from "@/lib/recent-parts";
 import type { ShareLinkFields } from "../datacontrol/api";
-import type { ExpiryChoice } from "../datacontrol/words";
+import type { LinkPayload } from "../share/words";
 import type { Portfolio, PortfolioDelta } from "@/lib/verify/program-rollup";
 import { applyPortfolioDelta } from "@/lib/verify/program-rollup";
 
@@ -41,6 +41,11 @@ function detailText(body: unknown, status: number): string {
   const b = body as { detail?: unknown; message?: unknown; title?: unknown } | null;
   const d = b?.detail;
   if (typeof d === "string" && d.trim()) return d;
+  if (Array.isArray(d) && d.length) {
+    // A refused field (422): its own words, without the validator's prefix.
+    const m = (d[0] as { msg?: unknown })?.msg;
+    if (typeof m === "string" && m.trim()) return m.replace(/^Value error, /, "");
+  }
   if (d && typeof d === "object") {
     const m = (d as { message?: unknown }).message;
     if (typeof m === "string" && m.trim()) return m;
@@ -293,11 +298,13 @@ function linkPatch(r: Partial<ShareLinkFields> & { share_url: string }): LinkPat
 
 const SWITCHED_OFF = (): LinkPatch => ({ is_public: false, share_url: null, share_status: "off", share_ended_at: new Date().toISOString() });
 
-/** A public link to the record that ends after `days` (null: the explicit "no end date"). */
-export async function shareRecord(id: string, days: ExpiryChoice = 30): Promise<string> {
-  const r = await json<ShareLinkFields & { share_url: string }>(`/cost-decisions/${encodeURIComponent(id)}/share`, body("POST", { expires_in_days: days }));
+export type MadeShare = ShareLinkFields & { share_url: string; share_shows?: Record<string, unknown> | null };
+
+/** A public link to the record, as the Share dialog set it (how long, and what the supplier sees). */
+export async function shareRecord(id: string, link: LinkPayload): Promise<MadeShare> {
+  const r = await json<MadeShare>(`/cost-decisions/${encodeURIComponent(id)}/share`, body("POST", link));
   applyGovernance(id, linkPatch(r));
-  return r.share_url;
+  return r;
 }
 
 export async function unshareRecord(id: string): Promise<void> {
@@ -494,12 +501,12 @@ function patchAnalysis(id: string, patch: Partial<AnalysisFull>): void {
   });
 }
 
-/** A public link to the check that ends after `days` (null: the explicit "no end date"). */
-export async function shareAnalysis(id: string, days: ExpiryChoice = 30): Promise<string> {
-  const r = await json<ShareLinkFields & { share_url: string }>(`/analyses/${encodeURIComponent(id)}/share`, body("POST", { expires_in_days: days }));
+/** A public link to the check, as the Share dialog set it (how long it lasts). */
+export async function shareAnalysis(id: string, link: LinkPayload): Promise<MadeShare> {
+  const r = await json<MadeShare>(`/analyses/${encodeURIComponent(id)}/share`, body("POST", { expires_in_days: link.expires_in_days, expires_on: link.expires_on }));
   const p = linkPatch(r);
   patchAnalysis(id, { ...p, is_public: p.is_public ?? true, share_url: r.share_url });
-  return r.share_url;
+  return r;
 }
 
 export async function unshareAnalysis(id: string): Promise<void> {
@@ -577,7 +584,7 @@ export function usePartKeyForAnalysis(analysisId: string, linkIds: string[]): st
   return fromCatalog && fromCatalog.id === analysisId ? fromCatalog.key : undefined;
 }
 
-/* ── supplier packages ──────────────────────────────────────────────────── */
+/* ── RFQ packages ───────────────────────────────────────────────────────── */
 
 export async function listPackages(): Promise<RfqPackageSummary[]> {
   const b = await json<{ packages: RfqPackageSummary[] }>(`/rfq-packages?limit=100`);
@@ -589,7 +596,21 @@ export async function getPackage(id: string): Promise<RfqPackageDetail> {
   return b.package;
 }
 
-export async function buildPackage(input: { ids: string[]; title: string; supplier: string; note: string; cad: boolean }): Promise<RfqPackageDetail> {
+export interface PackageInput {
+  ids: string[];
+  title: string;
+  supplier: string;
+  note: string;
+  cad: boolean;
+  /** Our should-cost goes to the supplier only when this is on. */
+  cost: boolean;
+  replyBy: string;
+  requestedBy: { name: string; company: string; email: string };
+  /** decision id → the quantity to ask for. */
+  quantities: Record<string, number>;
+}
+
+export async function buildPackage(input: PackageInput): Promise<RfqPackageDetail> {
   const b = await json<{ package: RfqPackageDetail }>(
     `/rfq-packages`,
     body("POST", {
@@ -598,9 +619,61 @@ export async function buildPackage(input: { ids: string[]; title: string; suppli
       supplier_name: input.supplier.trim() || null,
       note: input.note.trim() || null,
       include_raw_cad: input.cad,
+      include_cost_estimate: input.cost,
+      reply_by: input.replyBy || null,
+      requested_by: {
+        name: input.requestedBy.name.trim() || null,
+        company: input.requestedBy.company.trim() || null,
+        email: input.requestedBy.email.trim() || null,
+      },
+      quantities: input.quantities,
     }),
   );
   return b.package;
+}
+
+/** Each picked record as the supplier would be asked to quote it (POST /rfq-packages/preview). */
+export interface PackagePreviewItem {
+  id: string;
+  name: string;
+  part_number: string | null;
+  material: string | null;
+  quantity: number | null;
+  quantity_source: "package" | "outside_route" | "yearly_volume" | "run" | "record" | null;
+  yearly_volume: number | null;
+  specs: string[];
+  /** Our price and the engine's pick at that quantity, for the buyer (null when that quantity wasn't priced). */
+  price: { quantity: number; unit_cost_usd: number; process: string | null; dfm_ready: boolean | null; basis?: "asked" | "part_page" } | null;
+  /** null when not looked at (cad: false). */
+  cad_kept: boolean | null;
+  cad_too_large: boolean;
+}
+
+export interface Requester {
+  name: string | null;
+  company: string | null;
+  email: string | null;
+}
+
+export async function previewPackage(ids: string[], cad = true): Promise<{ items: PackagePreviewItem[]; requested_by: Requester | null }> {
+  if (!ids.length) return { items: [], requested_by: null };
+  const b = await json<{ items: PackagePreviewItem[]; requested_by?: Requester }>(`/rfq-packages/preview`, body("POST", { decision_ids: ids, cad }));
+  return { items: b.items ?? [], requested_by: b.requested_by ?? null };
+}
+
+/** A record's facts for the Share dialog: the quantity it would ask for, its specs, whether its CAD is kept. */
+export async function partFacts(id: string): Promise<{ quantity: number | null; specs: string[]; cadKept: boolean } | null> {
+  const [x] = (await previewPackage([id])).items;
+  return x ? { quantity: x.quantity, specs: x.specs, cadKept: x.cad_kept === true } : null;
+}
+
+/** One package shared as a link (how long it lasts; it shows the package as built). */
+export async function sharePackage(id: string, link: LinkPayload): Promise<MadeShare> {
+  return json<MadeShare>(`/rfq-packages/${encodeURIComponent(id)}/share`, body("POST", { expires_in_days: link.expires_in_days, expires_on: link.expires_on }));
+}
+
+export async function unsharePackage(id: string): Promise<void> {
+  await send(`/rfq-packages/${encodeURIComponent(id)}/share`, { method: "DELETE" });
 }
 
 export async function downloadPackage(id: string, title: string | null): Promise<string> {

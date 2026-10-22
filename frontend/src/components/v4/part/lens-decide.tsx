@@ -4,9 +4,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/ui/auth-provider";
-import { createRfqPackage, downloadRfqPackage, shareCostDecision } from "@/lib/api";
+import { createRfqPackage, downloadRfqPackage } from "@/lib/api";
+import { partFacts, shareRecord } from "../records/api";
+import { ShareDialog } from "../share/share-dialog";
+import { madeText } from "../share/words";
 import { R } from "../routes";
-import { day } from "../datacontrol/words";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
 import { days, decideOptions, methodName, money, qtyWord, shortId, type DecideOption } from "./model";
@@ -197,28 +199,16 @@ export function DecideSheet() {
       p.patchData({ decisionError: e instanceof Error ? e.message : "Still didn't load." });
     }
   };
-  const share = async () => {
-    if (!id) return;
-    setBusy("share");
-    try {
-      const r = await shareCostDecision(id);
-      const url = new URL(r.share_url, window.location.origin).toString();
-      await navigator.clipboard?.writeText(url).catch(() => undefined);
-      const ends = (r as { share_expires_at?: string | null }).share_expires_at;
-      p.toast({ text: `Share link copied. View only, no sign-in needed. ${ends ? `It ends ${day(ends)}.` : "It has no end date."}`, link: { label: "Share links", href: R.links } });
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "The share link wasn't made.");
-    } finally {
-      setBusy(null);
-    }
-  };
+  // Share opens the Share dialog: who, how long, what the supplier sees (never an instant link).
+  const [sharing, setSharing] = React.useState(false);
   const pkg = async () => {
     if (!id) return;
     setBusy("zip");
     try {
-      const made = await createRfqPackage({ decisionIds: [id], title: `RFQ package - ${p.data.fileName}` });
+      // The supplier's copy: the part, its specs and quantity, and the CAD ScaleCAD kept; none of our cost.
+      const made = await createRfqPackage({ decisionIds: [id], title: `RFQ package - ${p.data.fileName}`, includeRawCad: true });
       await downloadRfqPackage(made.id, made.title);
-      p.toast({ text: "Supplier package downloaded.", link: { label: "Packages", href: R.pkg(made.id) } });
+      p.toast({ text: "RFQ package downloaded.", link: { label: "RFQ packages", href: R.pkg(made.id) } });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "The package wasn't made.");
     } finally {
@@ -420,16 +410,25 @@ export function DecideSheet() {
             </div>
             <div className="note" style={{ marginTop: 2 }}>
               <span>
-                ZIP: estimate, material and conditions, {specsMust.length ? "specs, " : ""}quantities, findings. Original CAD only for parts checked in a batch. Not sent by ScaleCAD; replies aren&apos;t tracked.
+                ZIP: the part, material, quantity, {specsMust.length ? "specs, " : ""}your note and the CAD file. None of your cost. Not sent by ScaleCAD; replies aren&apos;t tracked.
                 {specsMust.length ? <b style={{ display: "block", fontWeight: 600, marginTop: 4 }}>The supplier must hold {specsMust.join(", ")}.</b> : null}
               </span>
               <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn sm" type="button" disabled={!id || busy === "zip"} onClick={() => void pkg()}>
                   {busy === "zip" ? "Building…" : "Download package (ZIP)"}
                 </button>
-                <button className="btn sm" type="button" disabled={!id || busy === "share"} onClick={() => void share()}>
-                  Copy a share link
+                <button className="btn sm" type="button" disabled={!id} onClick={() => setSharing(true)}>
+                  Share a link
                 </button>
+                {sharing && id ? (
+                  <ShareDialog
+                    target={{ kind: "record", id, name: p.data.fileName }}
+                    loadPart={() => partFacts(id)}
+                    create={(link) => shareRecord(id, link)}
+                    onMade={(m) => p.toast({ text: madeText(m.share_expires_at), link: { label: "Share links", href: R.links }, sticky: true })}
+                    onClose={() => setSharing(false)}
+                  />
+                ) : null}
               </span>
             </div>
             <div className="gh" style={{ marginTop: 8 }}>

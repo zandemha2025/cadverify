@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Share links (Account): every public link you made, whether it still works,
- * when it ends, and Switch off. Admins also see everyone's links in the
- * organization and can switch any of them off. A link shows the file name,
- * verdicts, findings and geometry figures, never the file or the 3D model.
+ * Share links (Account): every public link you made (to a check, a part for a
+ * supplier, or an RFQ package), whether it still works, when it ends, what it
+ * shows, and Switch off. Admins also see everyone's links in the organization
+ * and can switch any of them off. A part's link shows your cost and the CAD
+ * file only when its maker included them (backend supplier_links.py).
  */
 import * as React from "react";
 import Link from "next/link";
@@ -62,7 +63,7 @@ export function LinksScreen() {
             Working <b className="num">{data ? on : "—"}</b>
           </span>,
           <span key="d">
-            New links end after <b>{data?.default_days ?? 30} days</b> unless you pick longer
+            New links end after <b>{data?.default_days ?? 7} days</b> unless you pick another length
           </span>,
         ]}
       />
@@ -102,7 +103,7 @@ export function LinksScreen() {
           ) : data.links.length === 0 ? (
             <div className="empty" style={{ padding: "18px 24px" }}>
               <b>No share links</b>
-              <span>Make one from a check or a cost record: Share, then pick how long it lasts.</span>
+              <span>Make one from a part, a record or an RFQ package: Share, then pick what the supplier sees and how long it lasts.</span>
             </div>
           ) : (
             <div className="dc-links" role="table" aria-label="Share links">
@@ -118,12 +119,14 @@ export function LinksScreen() {
                 <div className="dc-row" role="row" key={`${l.kind}-${l.id}`}>
                   <span role="cell" style={{ minWidth: 0 }}>
                     <b title={l.name}>
-                      <Link href={R.part(l.part_key)} style={{ color: "inherit", textDecoration: "none" }}>
+                      <Link href={l.kind === "package" ? R.pkg(l.id) : l.part_key ? R.part(l.part_key) : R.record(l.id)} style={{ color: "inherit", textDecoration: "none" }}>
                         {l.name}
                       </Link>
                     </b>
                     <small>
-                      {l.kind === "check" ? "Check" : "Cost record"}
+                      {l.kind === "check" ? "Check" : l.kind === "package" ? "RFQ package" : "Part, for a supplier"}
+                      {l.kind === "record" ? (l.shows?.include_cost ? " · with your cost" : " · no cost") : ""}
+                      {l.kind === "record" && l.shows?.include_cad ? " · CAD" : ""}
                       {l.created_at ? ` · made ${day(l.created_at)}` : ""}
                       {scope === "org" && l.made_by ? ` · by ${l.made_by}` : ""}
                     </small>

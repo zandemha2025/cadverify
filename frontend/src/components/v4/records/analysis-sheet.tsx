@@ -366,7 +366,8 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           shareUrl={detail.is_public ? detail.share_url : null}
           canShare={canEdit}
           blurb="Anyone with the link sees the checks, not your machines."
-          onCreate={(days) => shareAnalysis(detail.id, days)}
+          target={{ kind: "check", id: detail.id, name: detail.filename }}
+          onCreate={(link) => shareAnalysis(detail.id, link)}
           onTurnOff={() => unshareAnalysis(detail.id)}
           link={linkStateOf(detail)}
           toast={toast}

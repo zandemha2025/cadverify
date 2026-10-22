@@ -8,7 +8,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { World } from "../ui";
-import { EXPIRY_CHOICES, choiceFromKey, choiceKey, endDateAddedNote, linkEndText, type ExpiryChoice, type LinkStatus } from "../datacontrol/words";
+import { endDateAddedNote, linkEndText, type LinkStatus } from "../datacontrol/words";
+import { ShareDialog, type MadeLink, type PartFacts, type ShareTarget } from "../share/share-dialog";
+import type { LinkPayload } from "../share/words";
 import "./records.css";
 
 /** The page frame, marked so this area's phone rules (wrapping panel heads) apply only here. */
@@ -155,14 +157,17 @@ export function linkStateOf(d: unknown): LinkState {
 }
 
 /**
- * The record's public link. A new link ends after 30 days unless the sharer
- * picks 90 days, a year or no end date; the person who made it (or an admin)
+ * The record's public link. Share opens the Share dialog (../share): who can
+ * open it, what they will see, and how long it lasts (7 days unless 1, 30 or
+ * 90 days or a date); the person who made it (or an admin)
  * can switch it off, and the server says who may.
  */
 export function PublicLink({
   shareUrl,
   canShare,
   blurb,
+  target,
+  loadPart,
   onCreate,
   onTurnOff,
   toast,
@@ -171,35 +176,25 @@ export function PublicLink({
   shareUrl: string | null;
   canShare: boolean;
   blurb: string;
-  onCreate: (days: ExpiryChoice) => Promise<unknown>;
+  /** What is shared (a record or a check), for the Share dialog. */
+  target: ShareTarget;
+  /** Reads a record's facts, so the dialog prefills its quantity and CAD. */
+  loadPart?: () => Promise<PartFacts | null>;
+  onCreate: (link: LinkPayload) => Promise<MadeLink>;
   onTurnOff: () => Promise<unknown>;
   toast: (m: string) => void;
   link?: LinkState;
 }) {
-  const [busy, setBusy] = React.useState(false);
   const [asking, setAsking] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
-  const [days, setDays] = React.useState<ExpiryChoice>(30);
+  const [dialog, setDialog] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const full = shareUrl ? (typeof window !== "undefined" && shareUrl.startsWith("/") ? window.location.origin + shareUrl : shareUrl) : null;
-  const pickId = React.useId();
   React.useEffect(() => {
     setCopied(false);
     setAsking(false);
   }, [shareUrl]);
 
-  const create = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      await onCreate(days);
-      toast(days == null ? "Link created. It has no end date." : `Link created. It ends in ${days === 365 ? "a year" : `${days} days`}.`);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "The link wasn't created.");
-    } finally {
-      setBusy(false);
-    }
-  };
   const copy = async () => {
     if (!full) return;
     try {
@@ -234,18 +229,8 @@ export function PublicLink({
           <>
             {ended ? <p className="ro-note">{link?.status === "expired" ? "The last link has ended." : "The last link was switched off."} Anyone who opens it sees that.</p> : null}
             <div className="bar2">
-              <label htmlFor={pickId} className="sr">
-                How long the link lasts
-              </label>
-              <select id={pickId} value={choiceKey(days)} onChange={(e) => setDays(choiceFromKey(e.target.value))} disabled={busy} style={{ height: 32, borderRadius: 999, border: "1px solid var(--rule2)", padding: "0 10px", background: "#fff" }}>
-                {EXPIRY_CHOICES.map((c) => (
-                  <option key={choiceKey(c.value)} value={choiceKey(c.value)}>
-                    {c.value === 30 ? "Lasts 30 days" : c.value == null ? "No end date" : `Lasts ${c.label}`}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="btn sm" onClick={create} disabled={busy}>
-                {busy ? "Creating…" : "Create link"}
+              <button type="button" className="btn sm" onClick={() => setDialog(true)}>
+                Share
               </button>
               <span>{blurb}</span>
             </div>
@@ -271,6 +256,11 @@ export function PublicLink({
                 Open
               </a>
               {canShare ? (
+                <button type="button" className="btn sm ghost" onClick={() => setDialog(true)}>
+                  New link
+                </button>
+              ) : null}
+              {canShare ? (
                 <button type="button" className="btn sm ghost" onClick={() => setAsking(true)}>
                   Switch off
                 </button>
@@ -286,6 +276,15 @@ export function PublicLink({
         <p className="err2" role="alert">
           {err}
         </p>
+      ) : null}
+      {dialog ? (
+        <ShareDialog
+          target={target}
+          loadPart={loadPart}
+          current={shareUrl ? { expiresAt: link?.expiresAt ?? null } : null}
+          create={onCreate}
+          onClose={() => setDialog(false)}
+        />
       ) : null}
     </>
   );

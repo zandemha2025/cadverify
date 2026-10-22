@@ -12,7 +12,7 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { canMutateWorkspace } from "@/lib/role-capabilities";
 import { R } from "../routes";
 import { Chip, Src, cx } from "../ui";
-import { approve, errorText, exportRecord, reopen, setOutcome, shareRecord, unshareRecord, useMembers, usePartContext, useRecord } from "./api";
+import { approve, errorText, exportRecord, partFacts, reopen, setOutcome, shareRecord, unshareRecord, useMembers, usePartContext, useRecord } from "./api";
 import { Confirm, Glyph, NotFound, PublicLink, RecSheet, Skeleton, linkStateOf } from "./common";
 import {
   cheapestAt,
@@ -375,8 +375,10 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
         <PublicLink
           shareUrl={detail.is_public ? detail.share_url : null}
           canShare={canEdit}
-          blurb="Anyone with the link sees prices and assumptions."
-          onCreate={(days) => shareRecord(detail.id, days)}
+          blurb="For a supplier: the part, specs and quantity. Your cost only if you turn it on."
+          target={{ kind: "record", id: detail.id, name: detail.label || detail.filename }}
+          loadPart={() => partFacts(detail.id)}
+          onCreate={(link) => shareRecord(detail.id, link)}
           onTurnOff={() => unshareRecord(detail.id)}
           toast={toast}
           link={linkStateOf(detail)}
