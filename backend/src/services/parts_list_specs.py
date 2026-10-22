@@ -155,7 +155,7 @@ def attach(rows: list[dict], text: str) -> list[dict]:
         return rows
     ra_head = headers[spec_cols["ra"]].lower() if spec_cols["ra"] is not None else ""
     ra_header_unit = ("uin" if re.search(r"uin|µin|micro\s*inch", ra_head)
-                      else "um" if re.search(r"\bum\b|µm|micron", ra_head) else None)
+                      else "um" if re.search(r"(?:^|[^a-z])um\b|µm|micron", ra_head) else None)
 
     def cell(row: list, i: Optional[int]) -> str:
         return row[i].strip() if i is not None and i < len(row) and row[i] is not None else ""

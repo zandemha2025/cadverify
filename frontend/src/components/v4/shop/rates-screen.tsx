@@ -35,6 +35,7 @@ import {
   type RecordDetail,
 } from "./shop-api";
 import { longDate, procName, shortWhen, type RateVersionLike } from "./shop-derive";
+import { SpecRates } from "./spec-rates";
 import {
   PROV_TAG,
   countInputs,
@@ -208,6 +209,16 @@ export function RatesScreen() {
             }}
           />
         </Panel>
+
+        <SpecRates
+          org={org}
+          baseVersion={governed ? rc.view?.inEffect ?? null : null}
+          inEffectName={inEffectName}
+          onSent={() => {
+            rc.reload();
+            setNc((x) => x + 1);
+          }}
+        />
 
         {versions.length ? (
           <Panel title="Versions" note={`${versions.length} authored`}>

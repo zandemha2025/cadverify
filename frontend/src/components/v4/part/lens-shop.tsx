@@ -7,13 +7,15 @@ import { listMachines, type OwnedMachine } from "@/lib/verify/machine-api";
 import { R } from "../routes";
 import { Empty, cx } from "../ui";
 import { usePart } from "./ctx";
-import { dimsText, machineViews, money, priceMeta, qtyWord, trimNum, type MachineView } from "./model";
+import { dimsText, machineViews, money, priceMeta, qtyWord, type MachineView } from "./model";
 import { CostLines } from "./lens-cost";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { useChoice } from "./choose";
 import { hoursText, massText, routeResources, runLine } from "./resources";
 import { useFix } from "../fix/ctx";
 import { problemForIssue } from "../fix/problems";
+import { dims as unitDims, inText, len } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 function bboxOf(p: ReturnType<typeof usePart>): [number, number, number] | null {
   const b = p.data.validation?.geometry.bounding_box_mm ?? p.data.cost?.geometry.bbox_mm ?? null;
@@ -41,6 +43,7 @@ export function ShopLayer() {
   const on = p.lens === "shop" && !p.interrupted;
   const part = bboxOf(p);
   const env = m?.envelope ?? null;
+  const { unit } = useUnits();
   let drawing: React.ReactNode = null;
   if (m && env && part) {
     const [W, D, H] = env;
@@ -58,7 +61,7 @@ export function ShopLayer() {
     const pc = P(px0 + bx / 2, py0 + by / 2, bz / 2);
     drawing = (
       <>
-        <svg width="948" height="944" viewBox="0 0 948 944" role="img" aria-label={`${m.name} work area ${env.map((n) => trimNum(n, 0)).join(" by ")} mm, with the ${part.map((n) => trimNum(n, 1)).join(" by ")} mm part drawn to scale inside`} style={{ position: "absolute", left: 0, top: 0 }}>
+        <svg width="948" height="944" viewBox="0 0 948 944" role="img" aria-label={`${m.name} work area ${(unitDims(env, unit, 0) ?? "").replace(/ × /g, " by ")}, with the ${(unitDims(part, unit) ?? "").replace(/ × /g, " by ")} part drawn to scale inside`} style={{ position: "absolute", left: 0, top: 0 }}>
           <polygon points={[c.o, c.x, c.xy, c.y].map(pt).join(" ")} fill="#E3E7EC" fillOpacity="0.85" />
           <path d={[L(c.o, c.x), L(c.o, c.y), L(c.o, c.z)].join(" ")} stroke="#AEB5BE" strokeWidth="1.2" strokeDasharray="4 5" fill="none" />
           <path d={[L(c.x, c.xy), L(c.y, c.xy), L(c.x, c.xz), L(c.y, c.yz), L(c.xy, c.xyz), L(c.z, c.xz), L(c.z, c.yz), L(c.xz, c.xyz), L(c.yz, c.xyz)].join(" ")} stroke="#5F656E" strokeWidth="1.6" fill="none" strokeLinejoin="round" />
@@ -67,9 +70,9 @@ export function ShopLayer() {
           <circle cx="661" cy="226" r="118" fill="none" stroke="#141414" strokeOpacity="0.28" strokeWidth="1.2" />
         </svg>
         {[
-          { x: (c.x[0] + c.xy[0]) / 2 + 26, y: (c.x[1] + c.xy[1]) / 2 + 20, t: `${trimNum(D, 0)} mm` },
-          { x: (c.y[0] + c.xy[0]) / 2 - 20, y: (c.y[1] + c.xy[1]) / 2 + 24, t: `${trimNum(W, 0)} mm` },
-          { x: c.xy[0] + 36, y: (c.xy[1] + c.xyz[1]) / 2, t: `${trimNum(H, 0)} mm` },
+          { x: (c.x[0] + c.xy[0]) / 2 + 26, y: (c.x[1] + c.xy[1]) / 2 + 20, t: len(D, unit, 0) },
+          { x: (c.y[0] + c.xy[0]) / 2 - 20, y: (c.y[1] + c.xy[1]) / 2 + 24, t: len(W, unit, 0) },
+          { x: c.xy[0] + 36, y: (c.xy[1] + c.xyz[1]) / 2, t: len(H, unit, 0) },
         ].map((d) => (
           <span key={d.t + d.x} className="num" style={{ position: "absolute", left: d.x, top: d.y, transform: "translate(-50%, -50%)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)", whiteSpace: "nowrap" }}>
             {d.t}
@@ -125,7 +128,9 @@ export function ShopSheet() {
   const warn = views.filter((v) => v.tone === "warn");
   if (cant.length) figs.push({ k: "Can't", v: cant.map((v) => v.name).join(", "), s: cant.map((v) => (v.verdict === "Can't" ? "can't make it as drawn" : v.verdict.toLowerCase())).join(" · "), tone: "bad" });
   else if (warn.length) figs.push({ k: "Not set up", v: warn.map((v) => v.name).join(", "), tone: "warn" });
-  const dims = dimsText(bboxOf(p));
+  const { unit } = useUnits();
+  const box = bboxOf(p);
+  const dims = box ? unitDims(box, unit) : dimsText(box);
   const est = m && m.tone === "ok" && !p.costOff ? m.method?.prices.get(p.q) ?? null : null;
   const ch = useChoice();
   const fx = useFix();
@@ -154,7 +159,7 @@ export function ShopSheet() {
                 <button key={v.id} type="button" className={cx("mr", m?.id === v.id && "on")} aria-pressed={m?.id === v.id} onClick={() => p.setMachinePick(v.id)}>
                   <span>
                     <b>{v.name}</b>
-                    <small>{v.sub}</small>
+                    <small>{inText(v.sub, unit)}</small>
                     {v.tone === "ok" && v.method && !p.costOff ? (
                       (() => {
                         const takes = runLine(routeResources(v.method.prices.get(p.q), vol));
@@ -221,7 +226,7 @@ export function ShopSheet() {
                 <b>
                   {m.name}: {m.verdict.toLowerCase()}
                 </b>
-                <span>{m.why}</span>
+                <span>{inText(m.why, unit)}</span>
                 {m.checks ? <span className="num" style={{ color: "var(--ink3)", fontSize: 12.5 }}>{m.checks}</span> : null}
                 {blockedBy && m.method ? (
                   <span>

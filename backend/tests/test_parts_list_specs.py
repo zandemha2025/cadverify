@@ -40,6 +40,19 @@ def test_spec_columns_map_loose_words_to_the_vocabulary():
     assert "part_specs" not in c
 
 
+def test_the_template_headers_read_with_their_unit():
+    text = ("file,part_number,quantity,material,finish,ra_um,heat_treatment,inspection,certifications\n"
+            "bracket.step,BRK-100,25,6061-T6 aluminum,Type II anodize,1.6,,FAI,AS9100\n"
+            "housing.stl,HSG-200,500,PETG,,,,,\n"
+            'cover.iges,CVR-300,40,304 stainless,Passivation,0.8,Stress relief,CMM report,"AS9100, NADCAP (chemical processing)"\n')
+    a, b, c = _rows(text)
+    assert a["part_specs"] == {"finishes": ["anodize_ii"], "inspection": ["fai_as9102"], "certifications": ["as9100"],
+                               "ra_um": 1.6, "ra_unit": "um"}
+    assert "part_specs" not in b
+    assert c["part_specs"]["nadcap_processes"] == ["chemical_processing"]
+    assert c["part_specs"]["heat_treatments"] == ["stress_relief"]
+
+
 @pytest.mark.parametrize("cells, header_unit, expect", [
     ({"ra": "0.8 µm"}, None, (0.8, "um")),
     ({"ra": "Ra 1.6um"}, None, (1.6, "um")),
