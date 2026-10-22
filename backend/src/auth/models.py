@@ -240,7 +240,8 @@ async def create_password_user(
         from src.auth.org_context import ensure_personal_org
 
         uid = int(row[0])
-        await ensure_personal_org(s, uid, email)
+        # Named after the work email's company, or "<name>'s workspace" (renamable).
+        await ensure_personal_org(s, uid, email, full_name)
         from src.services.audit_service import append_audit_entry
 
         await append_audit_entry(

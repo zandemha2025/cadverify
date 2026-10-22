@@ -157,6 +157,31 @@ async def create_org(
     return org
 
 
+async def rename_org(session: AsyncSession, org_id: str, name: str) -> tuple[Organization, str]:
+    """Rename an org; return ``(org, previous name)``. Whitespace is collapsed.
+
+    Only the name changes: the slug, members and the personal marker
+    (``is_personal``) stay, so a renamed personal org is still refused by SAML
+    group mappings and SCIM.
+    """
+    from src.auth.org_context import ORG_NAME_MAX
+
+    clean = " ".join((name or "").split())
+    if not clean:
+        raise _400("Organization name is required.")
+    if len(clean) > ORG_NAME_MAX:
+        raise _400(f"Organization name is too long (max {ORG_NAME_MAX} characters).")
+    if any(ord(c) < 32 or ord(c) == 127 for c in clean):
+        raise _400("Organization name can't contain control characters.")
+    org = await session.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    previous = org.name
+    org.name = clean
+    await session.flush()
+    return org, previous
+
+
 # ---------------------------------------------------------------------------
 # Invites
 # ---------------------------------------------------------------------------

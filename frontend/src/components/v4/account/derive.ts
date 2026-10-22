@@ -185,6 +185,7 @@ const ACTION: Record<string, string> = {
   "api_key.renamed": "API key renamed",
   "org.created": "Organization created",
   "org.switched": "Organization switched",
+  "org.renamed": "Organization renamed",
   "member.invited": "Member invited",
   "member.joined": "Member joined",
   "member.role_changed": "Org role changed",

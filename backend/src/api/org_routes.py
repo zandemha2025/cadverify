@@ -423,6 +423,31 @@ async def revoke_invite(
     return svc.serialize_invite(inv)
 
 
+# ── the org's name ───────────────────────────────────────────────────────────
+class RenameBody(BaseModel):
+    name: str
+
+
+@router.patch("/current", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("30/hour;120/day")
+async def rename_current_org(
+    request: Request,
+    response: Response,
+    body: RenameBody,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Rename the caller's active org (org admins only). Invites, the header and
+    the member list show the new name; the org keeps its id, slug and members."""
+    org_id = await _ctx_org(ctx, session)
+    org, previous = await svc.rename_org(session, org_id, body.name)
+    if org.name != previous:
+        await _emit(session, ctx.user_id, "org.renamed", org_id,
+                    {"org_id": org_id, "from": previous, "to": org.name}, org_id=org_id)
+    await session.commit()
+    return {"org_id": org.id, "name": org.name, "slug": org.slug, "org_role": ctx.org_role}
+
+
 # ── who may sign off a make-or-buy decision ──────────────────────────────────
 class SignoffBody(BaseModel):
     # "member" (members and admins, the default) | "admin" (admins only); null

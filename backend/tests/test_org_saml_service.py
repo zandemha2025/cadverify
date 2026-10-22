@@ -323,7 +323,7 @@ async def test_mapping_creation_is_limited_to_the_idp_owner(monkeypatch, _pg_eng
     try:
         async with eng.get_session_factory()() as session:
             for oid, name, slug in orgs:
-                session.add(Organization(id=oid, name=name, slug=slug))
+                session.add(Organization(id=oid, name=name, slug=slug, is_personal=oid == personal))
             await session.commit()
 
         monkeypatch.setenv("SSO_ORG_ID", owner)

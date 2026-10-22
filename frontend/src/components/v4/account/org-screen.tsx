@@ -226,6 +226,16 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
                 {accessErr}
               </Banner>
             ) : null}
+            {isAdmin ? (
+              <NamePanel
+                key={active.org_id}
+                name={active.name}
+                onRenamed={async () => {
+                  await load();
+                  router.refresh();
+                }}
+              />
+            ) : null}
             <SwitchPanel orgs={orgs} activeId={active.org_id} onSwitched={async () => {
               setSelected(null);
               setAsk(null);
@@ -567,6 +577,70 @@ function MembersTable(props: {
         );
       })}
     </div>
+  );
+}
+
+/** The organization's name (admins): what the header, invites and members see. */
+function NamePanel({ name, onRenamed }: { name: string; onRenamed: () => Promise<void> }) {
+  const [value, setValue] = React.useState(name);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [saved, setSaved] = React.useState(false);
+  const clean = value.split(/\s+/).filter(Boolean).join(" ");
+  const changed = clean !== name;
+  return (
+    <Panel title="Name" note="Admins only · the header, invitations and members see it">
+      <form
+        className="a-frow"
+        style={{ gridTemplateColumns: "minmax(0,1fr) auto" }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!clean || !changed || busy) return;
+          setBusy(true);
+          setErr(null);
+          setSaved(false);
+          try {
+            await api.renameOrg(clean);
+            setSaved(true);
+            await onRenamed();
+          } catch (e2) {
+            setErr(api.errText(e2, "The name wasn’t changed. Try again."));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="field">
+          Organization name
+          <input
+            type="text"
+            required
+            maxLength={80}
+            autoComplete="organization"
+            value={value}
+            aria-invalid={err ? true : undefined}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </label>
+        <button className="btn ink" type="submit" disabled={busy || !clean || !changed} aria-busy={busy}>
+          {busy ? "Saving…" : "Rename"}
+        </button>
+      </form>
+      <div aria-live="polite">
+        {err ? (
+          <p className="a-err" role="alert" style={{ margin: "-4px 16px 10px" }}>
+            {err}
+          </p>
+        ) : saved ? (
+          <p className="smeta" role="status" style={{ margin: "-4px 16px 12px" }}>
+            Renamed. Members see the new name next time a page loads.
+          </p>
+        ) : null}
+      </div>
+    </Panel>
   );
 }
 

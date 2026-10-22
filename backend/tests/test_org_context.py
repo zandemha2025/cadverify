@@ -12,7 +12,9 @@ import pytest
 
 from src.auth.org_context import (
     ORG_ROLES,
+    company_from_domain,
     ensure_personal_org,
+    personal_org_display_name,
     personal_org_name,
     personal_org_slug,
     resolve_org,
@@ -47,6 +49,21 @@ def test_slug_empty_local_falls_back():
 
 def test_personal_org_name():
     assert personal_org_name("carol@acme.io") == "carol's Organization"
+
+
+def test_company_from_domain():
+    assert company_from_domain("ridgelinefluid.com") == "Ridgelinefluid"
+    assert company_from_domain("mail.acme-aero.co.uk") == "Acme Aero"
+    assert company_from_domain("plant2.northfield_tool.com") == "Northfield Tool"
+    assert company_from_domain("localhost") is None
+    assert company_from_domain("123.com") is None
+
+
+def test_new_accounts_org_is_named_after_the_company_or_the_person():
+    assert personal_org_display_name("dana.ruiz.13894715@ridgelinefluid.com", "Dana Ruiz") == "Ridgelinefluid"
+    assert personal_org_display_name("jordan.pike.8beel@gmail.com", "  Jordan   Pike ") == "Jordan Pike's workspace"
+    assert personal_org_display_name("jordan.pike@gmail.com") == "jordan.pike's workspace"
+    assert len(personal_org_display_name("x@gmail.com", "N" * 200)) == 80
 
 
 def test_org_roles_constant():
@@ -108,7 +125,7 @@ async def test_ensure_personal_org_create_path():
     res.first.return_value = None  # no existing membership
     session.execute.return_value = res
 
-    org_id = await ensure_personal_org(session, 5, "erin@x.com")
+    org_id = await ensure_personal_org(session, 5, "erin@northfield.com", "Erin Lee")
 
     assert isinstance(org_id, str) and len(org_id) == 26  # a ULID
     # 1 lookup + org insert + membership insert + users update
@@ -121,3 +138,7 @@ async def test_ensure_personal_org_create_path():
     assert "update users set current_org_id" in sql_blob
     # membership is created as admin
     assert "'admin'" in sql_blob
+    # the org is marked personal by its column and named after the company
+    org_insert = next(c for c in session.execute.await_args_list if "insert into organizations" in str(c.args[0]).lower())
+    assert "is_personal" in str(org_insert.args[0]).lower() and "true" in str(org_insert.args[0]).lower()
+    assert org_insert.args[1]["name"] == "Northfield"

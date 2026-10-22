@@ -30,6 +30,8 @@ from src.api import scim
 from src.auth.org_context import (
     ensure_personal_org,
     is_personal_org,
+    matches_legacy_personal_naming,
+    org_is_personal,
     personal_org_name,
     personal_org_slug,
 )
@@ -56,7 +58,8 @@ USER = svc.CORE_USER_SCHEMA
     ["pat@corp.example", "Pat.Smith+x@corp.example", "o'neil@corp.example", "@odd", "x@y"],
 )
 def test_personal_org_names_are_recognised(email):
-    assert is_personal_org(personal_org_name(email), personal_org_slug(email)) is True
+    # The pre-0060 naming rule (migration 0060's backfill keeps its own copy).
+    assert matches_legacy_personal_naming(personal_org_name(email), personal_org_slug(email)) is True
 
 
 @pytest.mark.parametrize(
@@ -66,12 +69,18 @@ def test_personal_org_names_are_recognised(email):
 def test_named_orgs_are_not_personal(name):
     # The exact slug create_org derives for a named org.
     slug = personal_org_slug(name.strip().replace(" ", "-"))
-    assert is_personal_org(name, slug) is False
+    assert matches_legacy_personal_naming(name, slug) is False
 
 
 def test_personal_org_check_ignores_non_text():
-    assert is_personal_org(None, None) is False
-    assert is_personal_org("pat's Organization", None) is False
+    assert matches_legacy_personal_naming(None, None) is False
+    assert matches_legacy_personal_naming("pat's Organization", None) is False
+
+
+def test_personal_is_the_column_never_the_name():
+    assert is_personal_org(True) is True
+    for value in (False, None, "true", 1):
+        assert is_personal_org(value) is False
 
 
 @pytest.mark.parametrize(
@@ -123,9 +132,9 @@ def test_mount_scim_logs_and_includes_routes_only_when_enabled(monkeypatch, capl
 
 @pytest.mark.asyncio
 async def test_personal_org_key_is_refused_before_any_scim_work():
-    email = "pat@corp.example"
     org_row = MagicMock()
-    org_row.first.return_value = (personal_org_name(email), personal_org_slug(email))
+    # The org's is_personal column (its name no longer matters).
+    org_row.first.return_value = (True,)
     session = AsyncMock()
     session.execute = AsyncMock(return_value=org_row)
 
@@ -713,6 +722,44 @@ async def test_group_add_of_this_orgs_own_member_still_works():
 # ══════════════════════════════════════════════════════════════════════════
 # Personal orgs never use SCIM
 # ══════════════════════════════════════════════════════════════════════════
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_a_renamed_personal_org_is_still_refused_by_scim_and_sso_mappings(monkeypatch):
+    """Renaming a personal org (to a company's name) never makes it read as shared."""
+    import src.db.engine as eng
+    from fastapi import HTTPException
+
+    from src.services import org_service
+    from src.services.org_saml_service import create_saml_group_mapping
+
+    world = await _world_with_outsider(eng)
+    try:
+        async with eng.get_session_factory()() as s:
+            org, previous = await org_service.rename_org(s, world.victim_personal, f"Acme Corp {world.tag}")
+            await s.commit()
+        assert org.name == f"Acme Corp {world.tag}" and previous != org.name
+        async with eng.get_session_factory()() as s:
+            assert await org_is_personal(s, world.victim_personal) is True
+            assert await org_is_personal(s, world.org_a) is False
+        async with _scim_client(eng, world.victim_personal, world.victim) as client:
+            resp = await client.get("/scim/v2/Users")
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "scim_org_required"
+        # Even named as the SSO owner, a renamed personal org takes no group mappings.
+        monkeypatch.setenv("SSO_ORG_ID", world.victim_personal)
+        async with eng.get_session_factory()() as s:
+            with pytest.raises(HTTPException) as exc:
+                await create_saml_group_mapping(
+                    s, world.victim_personal, attribute_name="memberOf",
+                    group_value=f"cn=engineers-{world.tag}", org_role="member", created_by=None,
+                )
+        assert exc.value.status_code == 403
+        assert exc.value.detail["code"] == "sso_org_required"
+    finally:
+        await _teardown(eng, world)
+        await eng.dispose_engine()
 
 
 @_requires_pg

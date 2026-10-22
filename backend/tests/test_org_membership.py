@@ -1569,3 +1569,60 @@ async def test_product_audit_events_persist():
     finally:
         await _teardown(eng, users, orgs)
         await eng.dispose_engine()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Renaming the org: admins only, audited, the org keeps everything else
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_rename_current_org_admin_only_with_audit():
+    import src.db.engine as eng
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from src.api.org_routes import router as org_router
+    from src.auth.rate_limit import limiter
+
+    tag = uuid.uuid4().hex[:10]
+    users: list[int] = []
+    orgs: list[str] = []
+    try:
+        async with eng.get_session_factory()() as s:
+            org = await _mk_org(s, tag, "rename")
+            orgs.append(org)
+            admin = await _mk_user(s, tag, "admin")
+            member = await _mk_user(s, tag, "member")
+            users += [admin, member]
+            await _mk_membership(s, org, admin, "admin")
+            await _mk_membership(s, org, member, "member")
+            slug = (await s.execute(text("SELECT slug FROM organizations WHERE id = :o"), {"o": org})).scalar_one()
+            await s.commit()
+
+        app = FastAPI()
+        app.state.limiter = limiter
+        app.include_router(org_router, prefix="/api/v1/orgs")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            _act_as(app, member)
+            refused = await ac.patch("/api/v1/orgs/current", json={"name": "Not Mine"})
+            assert refused.status_code == 403
+
+            _act_as(app, admin)
+            assert (await ac.patch("/api/v1/orgs/current", json={"name": "   "})).status_code == 400
+            assert (await ac.patch("/api/v1/orgs/current", json={"name": "x" * 81})).status_code == 400
+            ok = await ac.patch("/api/v1/orgs/current", json={"name": f"  Ridgeline   Fluid {tag} "})
+            assert ok.status_code == 200, ok.text
+            assert ok.json()["name"] == f"Ridgeline Fluid {tag}" and ok.json()["slug"] == slug
+            listed = (await ac.get("/api/v1/orgs")).json()
+            assert any(o["org_id"] == org and o["name"] == f"Ridgeline Fluid {tag}" for o in listed["organizations"])
+
+        async with eng.get_session_factory()() as s:
+            row = (await s.execute(text("SELECT name, slug, is_personal FROM organizations WHERE id = :o"), {"o": org})).one()
+        assert row == (f"Ridgeline Fluid {tag}", slug, False)
+        seen = await _wait_for_audit(eng, {"org.renamed"}, org_ids=[org])
+        assert "org.renamed" in seen
+    finally:
+        await _teardown(eng, users, orgs)
+        await eng.dispose_engine()

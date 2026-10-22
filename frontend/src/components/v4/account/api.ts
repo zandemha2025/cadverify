@@ -70,6 +70,8 @@ export type PlatformUser = { id: number; email: string; role: string; org_id: st
 export type SamlMapping = { id: number; attribute_name: string; group_value: string; org_role: OrgRole; created_at: string | null };
 
 export const getOrgs = () => call<OrgList>("/orgs");
+/** Rename the active organization (org admins only); invites and the header use the new name. */
+export const renameOrg = (name: string) => call<{ org_id: string; name: string; slug: string }>("/orgs/current", { method: "PATCH", body: { name } });
 export const getMembers = () => call<{ members: OrgMember[] }>("/orgs/members").then((b) => b.members ?? []);
 export const getInvites = () => call<{ invites: OrgInvite[] }>("/orgs/invites").then((b) => b.invites ?? []);
 export const getMappings = () => call<{ mappings: SamlMapping[] }>("/orgs/saml/group-mappings").then((b) => b.mappings ?? []);

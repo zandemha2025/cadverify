@@ -52,24 +52,57 @@ def personal_org_slug(email: str) -> str:
 
 
 def personal_org_name(email: str) -> str:
-    """Human-readable default name for a user's personal org."""
+    """The name personal orgs had before 0060 (and the 0009 backfill gave)."""
     local = email.split("@", 1)[0]
     return f"{local}'s Organization"
+
+
+# Second-level labels under a country code ("acme.co.uk"): the company is the label before them.
+_SECOND_LEVEL = {"co", "com", "org", "net", "ac", "gov", "edu", "ltd", "plc", "or", "ne", "go"}
+ORG_NAME_MAX = 80
+
+
+def company_from_domain(domain: str) -> str | None:
+    """The company word in a work email's domain: "ridgelinefluid.com" -> "Ridgelinefluid",
+    "mail.acme-aero.co.uk" -> "Acme Aero". None when there's no usable label."""
+    labels = [label for label in domain.strip().lower().rstrip(".").split(".") if label]
+    if len(labels) < 2:
+        return None
+    pick = labels[-3] if len(labels) >= 3 and labels[-2] in _SECOND_LEVEL and len(labels[-1]) == 2 else labels[-2]
+    words = [w for w in re.split(r"[-_]+", pick) if w and not w.isdigit()]
+    if not words:
+        return None
+    return " ".join(w[:1].upper() + w[1:] for w in words)[:ORG_NAME_MAX]
+
+
+def personal_org_display_name(email: str, full_name: str | None = None) -> str:
+    """What a new account's own organization is called.
+
+    A work email: the company from its domain ("Ridgelinefluid"). A personal
+    email: the person's workspace ("Jordan Pike's workspace", else the email's
+    local part). Either can be renamed later (PATCH /orgs/current).
+    """
+    from src.auth.email_tiers import email_tier
+
+    domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+    if email_tier(email) == "work":
+        company = company_from_domain(domain)
+        if company:
+            return company
+    who = " ".join((full_name or "").split()) or email.split("@", 1)[0] or "Your"
+    return f"{who}'s workspace"[:ORG_NAME_MAX]
 
 
 _PERSONAL_NAME_SUFFIX = "'s Organization"
 _SHORT_ULID_RE = re.compile(r"[0-9a-z]{8}")
 
 
-def is_personal_org(name: object, slug: object) -> bool:
-    """True when ``(name, slug)`` is the pair ``ensure_personal_org`` writes.
+def matches_legacy_personal_naming(name: object, slug: object) -> bool:
+    """True when ``(name, slug)`` is the pair personal orgs were created with before 0060.
 
-    A personal org is named ``"<local>'s Organization"`` and slugged
-    ``"<sanitized local>-<8 ulid chars>"`` from the same email local part. A
-    named org from ``org_service.create_org`` derives its slug from its whole
-    name, so its slug carries ``-s-organization`` before the suffix and never
-    matches. Organizations have no rename path, so the pair stays a reliable
-    marker for the lifetime of the org.
+    Only migration 0060's backfill uses this rule (it keeps its own copy). The
+    marker is ``organizations.is_personal``: a personal org can be renamed, so
+    its name proves nothing.
     """
     if not isinstance(name, str) or not isinstance(slug, str):
         return False
@@ -81,16 +114,21 @@ def is_personal_org(name: object, slug: object) -> bool:
     return slug.startswith(prefix) and _SHORT_ULID_RE.fullmatch(slug[len(prefix):]) is not None
 
 
+def is_personal_org(is_personal: object) -> bool:
+    """True for a personal org, read from its ``is_personal`` column (never its name)."""
+    return is_personal is True
+
+
 async def org_is_personal(session: AsyncSession, org_id: str) -> bool:
-    """True for a personal org (the one every account gets at sign-up)."""
+    """True for a personal org (the one every account gets at sign-up), by its column."""
     row = (
         await session.execute(
-            select(Organization.name, Organization.slug).where(Organization.id == org_id)
+            select(Organization.is_personal).where(Organization.id == org_id)
         )
     ).first()
     if row is None:
         return False
-    return is_personal_org(row[0], row[1])
+    return is_personal_org(row[0])
 
 
 def caller_org_subquery(user_id: int):
@@ -195,7 +233,7 @@ async def revoke_org_api_keys(
 
 
 async def ensure_personal_org(
-    session: AsyncSession, user_id: int, email: str
+    session: AsyncSession, user_id: int, email: str, full_name: str | None = None
 ) -> str:
     """Get-or-create the user's personal org; return its org_id.
 
@@ -222,10 +260,10 @@ async def ensure_personal_org(
     org_id = str(ULID())
     await session.execute(
         text(
-            "INSERT INTO organizations (id, name, slug, created_at) "
-            "VALUES (:id, :name, :slug, now())"
+            "INSERT INTO organizations (id, name, slug, is_personal, created_at) "
+            "VALUES (:id, :name, :slug, true, now())"
         ),
-        {"id": org_id, "name": personal_org_name(email), "slug": personal_org_slug(email)},
+        {"id": org_id, "name": personal_org_display_name(email, full_name), "slug": personal_org_slug(email)},
     )
     await session.execute(
         text(

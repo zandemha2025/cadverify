@@ -83,6 +83,12 @@ class Organization(Base):
     # organization role ``member`` or ``admin``. NULL keeps the default: anyone
     # who can record an outcome can sign it off.
     signoff_role: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # The account's own organization from sign-up (migration 0060). The one
+    # marker of a personal org: its name can be changed, this can't. SAML
+    # group mappings and SCIM refuse an org with it set.
+    is_personal: Mapped[bool] = mapped_column(
+        Boolean, server_default="false", nullable=False, default=False
+    )
 
     # relationships
     teams: Mapped[List[Team]] = relationship(
