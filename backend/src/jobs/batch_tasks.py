@@ -1497,30 +1497,46 @@ async def _check_catalog_part(
         await _declare_list_specs(session, batch_org_id, batch_user_id, file_bytes, list_specs)
     geometry_invalid: str | None = None
     decision_id = None
-    try:
-        report = await _run_cost_decision(
-            file=upload,
-            qty=qty,
-            region=None,
-            cavities=1,
-            complexity="moderate",
-            material_class=item_material_class or "polymer",
-            owned_processes=owned or None,
-            user=user,
-            session=session,
-        )
-        saved = (report or {}).get("saved") or {}
-        if saved.get("id"):
-            decision_id = (await session.execute(
-                select(CostDecision.id).where(CostDecision.ulid == saved["id"])
-            )).scalar_one_or_none()
-    except HTTPException as exc:
-        detail = exc.detail if isinstance(exc.detail, dict) else {}
-        if exc.status_code == 400 and detail.get("code") == "GEOMETRY_INVALID":
-            geometry_invalid = str(detail.get("message") or "the geometry needs repair")
-        else:
-            message = detail.get("message") if detail else exc.detail
-            raise RuntimeError(f"Pricing didn't finish: {message}") from exc
+    # A file of several bodies isn't priced as one block: each body shape becomes
+    # a part of its own on the board (services/catalog_bodies.py).
+    split = None
+    part_type = analysis_run.result.get("part_type") if isinstance(analysis_run.result, dict) else None
+    if isinstance(part_type, dict):
+        from src.services.catalog_bodies import check_file_bodies
+
+        try:
+            split = await check_file_bodies(
+                session, user=user, org_id=batch_org_id, file_bytes=file_bytes, filename=item_filename,
+                quantities=qty, material_class=item_material_class, owned=owned, part_type=part_type,
+            )
+        except Exception:
+            logger.warning("BatchItem %s: body by body check failed; priced as one file", item_ulid, exc_info=True)
+            split = None
+    if split is None:
+        try:
+            report = await _run_cost_decision(
+                file=upload,
+                qty=qty,
+                region=None,
+                cavities=1,
+                complexity="moderate",
+                material_class=item_material_class or "polymer",
+                owned_processes=owned or None,
+                user=user,
+                session=session,
+            )
+            saved = (report or {}).get("saved") or {}
+            if saved.get("id"):
+                decision_id = (await session.execute(
+                    select(CostDecision.id).where(CostDecision.ulid == saved["id"])
+                )).scalar_one_or_none()
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if exc.status_code == 400 and detail.get("code") == "GEOMETRY_INVALID":
+                geometry_invalid = str(detail.get("message") or "the geometry needs repair")
+            else:
+                message = detail.get("message") if detail else exc.detail
+                raise RuntimeError(f"Pricing didn't finish: {message}") from exc
     duration_ms = round((time.time() - start) * 1000, 1)
 
     # The analysis or a deduplicated decision may have rolled the session back.
@@ -1539,10 +1555,15 @@ async def _check_catalog_part(
     item.lease_started_at = None
     await batch_service.update_batch_counters(session, batch_id, "completed_items")
     batch_service.touch_batch_heartbeat(batch)
+    if split is not None:
+        from src.services.catalog_bodies import record_file_bodies
+
+        await record_file_bodies(batch_org_id, batch.ulid, split)
     if free_run:
         from src.auth.validation_caps import SAMPLE_PART_SHA256
         import hashlib
 
+        # One file is one part of the free run, however many bodies it holds.
         if hashlib.sha256(file_bytes).hexdigest() not in SAMPLE_PART_SHA256:
             await count_completed_part(session, batch_user_id, batch_id, item_id, file_identity(item_filename, file_bytes))
     await session.commit()

@@ -27,6 +27,7 @@ the quantity ladder, row derivation, totals, CSV) and the board read.
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import os
@@ -599,6 +600,110 @@ def _row_specs(block: Any, declared: Any) -> Optional[dict]:
             "excluded_processes": []}
 
 
+_SPLIT_KIND_WORDS = {
+    "separate_bodies": "separate bodies",
+    "weldment": "a weldment",
+    "assembly": "an assembly",
+    "bodies": "several bodies",
+}
+
+
+def body_rows(
+    *,
+    item: dict,
+    entry: dict,
+    parent_meta: Optional[dict],
+    analyses: dict,
+    decisions: dict,
+    machines: list[dict],
+    default_quantity: int,
+    governance_of=None,
+) -> list[dict]:
+    """A file split body by body (``catalog_bodies``): one row per body shape.
+
+    ``entry`` is the run manifest's record of the split; ``analyses`` maps an
+    analysis id to ``{ulid, mesh_hash}`` and ``decisions`` a decision ulid to
+    ``{ulid, mesh_hash, result_json}`` (the board's slice). The quantity is the
+    file's times the copies of that shape in the file. A weldment member has no
+    machining price: its row gives its stock and material, and says welding isn't
+    priced. Pure.
+    """
+    parent_meta = parent_meta or {}
+    base = int(parent_meta.get("quantity") or default_quantity)
+    kind = entry.get("kind")
+    out: list[dict] = []
+    for d in entry.get("designs") or []:
+        copies = max(1, int(d.get("copies") or 1))
+        meta = {**parent_meta, "quantity": base * copies}
+        status = d.get("status")
+        error = None
+        row_status = "completed"
+        if status in ("geometry_invalid", "open"):
+            error = GEOMETRY_INVALID_PREFIX + str(d.get("reason") or "the geometry needs repair")
+        elif status == "error":
+            row_status, error = "failed", str(d.get("reason") or "The body couldn't be checked.")
+        elif status == "not_checked":
+            row_status = "skipped"
+        decision = decisions.get(d.get("decision_ulid")) if d.get("decision_ulid") else None
+        row = derive_part_row(
+            item={"ulid": f"{item.get('ulid')}:{d.get('design')}", "filename": d.get("filename"),
+                  "status": row_status, "error_message": error, "duration_ms": None},
+            analysis=analyses.get(d.get("analysis_id")),
+            decision=decision,
+            meta=meta,
+            machines=machines,
+            default_quantity=default_quantity,
+            governance=governance_of(decision) if (governance_of and decision) else None,
+        )
+        row["quantity_source"] = "list" if parent_meta.get("quantity") else "run"
+        if status == "not_checked" and d.get("reason"):
+            row["reason"] = d["reason"]
+        row["body"] = {
+            "file": item.get("filename"),
+            "file_key": entry.get("parent_mesh_hash"),
+            "kind": kind,
+            "ids": d.get("bodies") or [],
+            "copies": copies,
+            "of": entry.get("body_count"),
+            "shape": d.get("shape"),
+            "name": d.get("name"),
+        }
+        if status == "member":
+            stock = d.get("stock_material") or {}
+            row["bucket"] = "not_sorted"
+            row["reason"] = f"Weldment member: {d.get('shape') or 'cut stock'}. Welding isn't priced yet"
+            row["price_withheld"] = "welding isn't priced yet"
+            if stock.get("mass_kg") is not None:
+                row["material"]["name"] = stock.get("material")
+                row["material"]["mass_kg_each"] = stock.get("mass_kg")
+                row["material"]["mass_basis"] = (f"measured volume × {stock.get('material')} "
+                                                 f"{stock.get('density_g_cm3')} g/cm³ (book value)")
+                row["mass_kg_total"] = round(float(stock["mass_kg"]) * row["quantity"], 4)
+        out.append(row)
+    return out
+
+
+def split_file_note(filename: str, entry: dict) -> dict:
+    """What the board says about a file it shows body by body."""
+    n = entry.get("body_count") or 0
+    shapes = entry.get("shapes") or len(entry.get("designs") or [])
+    what = _SPLIT_KIND_WORDS.get(entry.get("kind") or "", "several bodies")
+    words = (f"{filename} holds {n} bodies ({what}): on the board as {shapes} "
+             f"{'row' if shapes == 1 else 'rows'}, one per shape, at the file's quantity times its copies. "
+             "It counts as one part of the run's allowance.")
+    if entry.get("kind") == "weldment":
+        words += " Its members are cut stock; welding isn't priced yet."
+    return {
+        "filename": filename,
+        "part_key": entry.get("parent_mesh_hash"),
+        "kind": entry.get("kind"),
+        "summary": entry.get("summary"),
+        "bodies": n,
+        "rows": shapes,
+        "words": words,
+    }
+
+
 def bucket_totals(rows: list[dict]) -> dict:
     """Per bucket: parts, quantity, machine hours, material kg (the parts' own mass, and
     the material the engine charges for) and cost at quantity.
@@ -790,18 +895,42 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
     default_qty = int(meta.get("quantity") or DEFAULT_RUN_QUANTITY)
     from src.services import signoff_service
 
-    signers = await signoff_service.names_for(session, [it[12] for it in items])
+    # Files the run checked body by body: completed, no decision of their own.
+    from src.services.catalog_bodies import read_file_bodies
+
+    candidates = [(it[1], it[6]) for it in items if it[2] == "completed" and it[7] is None and not it[3] and it[6]]
+    found = await asyncio.gather(*(read_file_bodies(batch.org_id, batch.ulid, h) for _f, h in candidates))
+    split = {f: e for (f, _h), e in zip(candidates, found) if isinstance(e, dict)}
+    split_decisions, split_analyses = await _split_records(session, batch.org_id, split)
+    signers = await signoff_service.names_for(
+        session, [it[12] for it in items] + [d["governance"]["approved_by_user_id"] for d in split_decisions.values()])
     now = datetime.now(timezone.utc)
+
+    def _gov(approval, signer, signed_at, signoff_note, stale_at, stale_reason) -> dict:
+        if stale_at is not None and stale_at.tzinfo is None:
+            stale_at = stale_at.replace(tzinfo=timezone.utc)
+        return {"approval_status": approval, "approved_by_user_id": signer,
+                "approved_at": signed_at.isoformat() if signed_at else None, "approval_note": signoff_note,
+                "is_stale": stale_at is not None and stale_at <= now, "stale_reason": stale_reason,
+                "stale_at": stale_at.isoformat() if stale_at else None}
+
     rows = []
+    split_files = []
     for (item_ulid, filename, status, error_message, duration_ms,
          analysis_ulid, analysis_hash, decision_ulid, decision_hash, decision_slice,
          disposition, approval, signer, signed_at, signoff_note, stale_at, stale_reason) in items:
-        if stale_at is not None and stale_at.tzinfo is None:
-            stale_at = stale_at.replace(tzinfo=timezone.utc)
-        gov = {"approval_status": approval, "approved_by_user_id": signer,
-               "approved_at": signed_at.isoformat() if signed_at else None, "approval_note": signoff_note,
-               "is_stale": stale_at is not None and stale_at <= now, "stale_reason": stale_reason,
-               "stale_at": stale_at.isoformat() if stale_at else None}
+        entry = split.get(filename)
+        if entry and status == "completed":
+            # A file of several bodies: a row per body shape, never one block.
+            rows.extend(body_rows(
+                item={"ulid": item_ulid, "filename": filename}, entry=entry, parent_meta=per_file.get(filename),
+                analyses=split_analyses, decisions={k: v["decision"] for k, v in split_decisions.items()},
+                machines=machines, default_quantity=default_qty,
+                governance_of=lambda dec: {**split_decisions[dec["ulid"]]["governance"], "signers": signers},
+            ))
+            split_files.append(split_file_note(filename, entry))
+            continue
+        gov = _gov(approval, signer, signed_at, signoff_note, stale_at, stale_reason)
         rows.append(derive_part_row(
             item={"ulid": item_ulid, "filename": filename, "status": status,
                   "error_message": error_message, "duration_ms": duration_ms},
@@ -825,9 +954,44 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
         "rows": rows,
+        "split_files": split_files,
         "totals": bucket_totals(rows),
         "breakdown": bucket_breakdown(rows),
     }
+
+
+async def _split_records(session: AsyncSession, org_id: str, split: dict) -> tuple[dict, dict]:
+    """The decisions (board slice + sign-off) and analyses of the bodies the run split files into."""
+    ulids = [d["decision_ulid"] for e in split.values() for d in (e.get("designs") or []) if d.get("decision_ulid")]
+    ids = [int(d["analysis_id"]) for e in split.values() for d in (e.get("designs") or [])
+           if isinstance(d.get("analysis_id"), int)]
+    decisions: dict = {}
+    analyses: dict = {}
+    if ulids:
+        for (ulid, mesh_hash, slice_, disposition, approval, signer, signed_at, note, stale_at,
+             stale_reason) in (await session.execute(
+                select(CostDecision.ulid, CostDecision.mesh_hash, literal_column(_BOARD_DECISION_SQL, type_=JSONB),
+                       CostDecision.user_disposition, CostDecision.approval_status, CostDecision.approved_by_user_id,
+                       CostDecision.approved_at, CostDecision.approval_note, CostDecision.stale_at,
+                       CostDecision.stale_reason)
+                .where(CostDecision.ulid.in_(ulids), CostDecision.org_id == org_id))).all():
+            now = datetime.now(timezone.utc)
+            if stale_at is not None and stale_at.tzinfo is None:
+                stale_at = stale_at.replace(tzinfo=timezone.utc)
+            decisions[ulid] = {
+                "decision": {"ulid": ulid, "mesh_hash": mesh_hash, "result_json": slice_ or {}},
+                "governance": {"approval_status": approval, "approved_by_user_id": signer,
+                               "approved_at": signed_at.isoformat() if signed_at else None, "approval_note": note,
+                               "is_stale": stale_at is not None and stale_at <= now, "stale_reason": stale_reason,
+                               "stale_at": stale_at.isoformat() if stale_at else None,
+                               "user_disposition": disposition},
+            }
+    if ids:
+        for aid, ulid, mesh_hash in (await session.execute(
+                select(Analysis.id, Analysis.ulid, Analysis.mesh_hash)
+                .where(Analysis.id.in_(ids), Analysis.org_id == org_id))).all():
+            analyses[aid] = {"ulid": ulid, "mesh_hash": mesh_hash}
+    return decisions, analyses
 
 
 OUTCOME_WORDS = {"inhouse": "Make in-house", "outside": "Make outside",

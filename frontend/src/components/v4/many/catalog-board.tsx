@@ -28,6 +28,7 @@ import {
   OTHER,
   SORTS,
   boardProgress,
+  bodyLine,
   breakdownOf,
   bucketCount,
   bucketDef,
@@ -368,6 +369,27 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
 
             {TERMINAL.has(board.status) ? <AccuracyPanel run={batchId} compact /> : null}
 
+            {board.split_files?.length ? (
+              <Panel title="Files with several bodies" note={`${board.split_files.length}`}>
+                <div className="kv cr-un">
+                  {board.split_files.map((f) => (
+                    <React.Fragment key={f.filename}>
+                      <span>
+                        {f.part_key ? <Link href={R.part(f.part_key)}>{f.filename}</Link> : f.filename}
+                        <small> · {f.summary}</small>
+                      </span>
+                      <b className="num">
+                        {f.rows} {f.rows === 1 ? "row" : "rows"}
+                      </b>
+                    </React.Fragment>
+                  ))}
+                </div>
+                <p className="tfoot" style={{ padding: "0 8px 10px" }}>
+                  <span>Each body shape is a part on the board, at the file’s quantity times its copies. A file counts as one part of the run’s allowance, however many bodies it holds. A weldment’s members are cut stock: welding isn’t priced yet.</span>
+                </p>
+              </Panel>
+            ) : null}
+
             {board.unmatched.length ? (
               <Panel title="In the parts list, no file in the run" note={`${board.parts_list?.unmatched ?? board.unmatched.length}`}>
                 <div className="kv cr-un">
@@ -451,6 +473,7 @@ function PartRow({ r }: { r: BoardRow }) {
             <span className="sr">{d.label}: </span>
             {r.reason ?? d.label}
           </span>
+          {bodyLine(r) ? <small className="cr-spec">{bodyLine(r)}</small> : null}
           {rowSpecLine(r) ? <small className="cr-spec">{rowSpecLine(r)}</small> : null}
           {rowMustHold(r) ? <small className="cr-spec">{rowMustHold(r)}</small> : null}
           {sign ? <small className={cx("cr-sign", sign.tone)}>{sign.text}</small> : null}

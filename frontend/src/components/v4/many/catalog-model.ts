@@ -58,6 +58,39 @@ export interface BoardRow {
   outcome?: string | null;
   signoff?: import("./row-specs").RowSignoff | null;
   record_out_of_date?: boolean;
+  /** One body shape of a file the run checked body by body (a weldment, parts saved together). */
+  body?: BodyOfFile | null;
+}
+
+export interface BodyOfFile {
+  file: string;
+  file_key: string | null;
+  kind: string | null;
+  ids: number[];
+  copies: number;
+  of: number | null;
+  shape: string | null;
+  name: string | null;
+}
+
+/** A file the board shows body by body, and what it says about it. */
+export interface SplitFile {
+  filename: string;
+  part_key: string | null;
+  kind: string | null;
+  summary: string | null;
+  bodies: number;
+  rows: number;
+  words: string;
+}
+
+/** "Body 1 of 4 in frame.stl · 2 per file · Square tube 40 × 40 × 3 mm, 600 mm long" */
+export function bodyLine(r: BoardRow): string | null {
+  const b = r.body;
+  if (!b) return null;
+  const which = b.name ? `${b.name}` : b.ids.length > 1 ? `Bodies ${b.ids.join(", ")}` : `Body ${b.ids[0] ?? "?"}`;
+  const of = b.of ? ` of ${b.of}` : "";
+  return [`${which}${of} in ${b.file}`, b.copies > 1 ? `${b.copies} per file` : null, b.shape].filter(Boolean).join(" · ");
 }
 
 export interface BucketTotal {
@@ -117,6 +150,8 @@ export interface Board {
   created_at: string | null;
   completed_at: string | null;
   rows: BoardRow[];
+  /** Files with several bodies: on the board one row per body shape, counted once as a file. */
+  split_files?: SplitFile[];
   totals: Record<string, BucketTotal>;
   /** Present from the server; derived from the rows when it isn't. */
   breakdown?: Record<string, BucketBreakdown>;
