@@ -271,3 +271,16 @@ test("compare's cheapest is the cheapest way that works as drawn, the same one t
   assert.deepEqual(rows.filter((r) => r.pick).map((r) => r.process), ["injection_molding"]);
   assert.equal(cheapestWorkableAt(revB, 10), null);
 });
+
+test("a record's cost lines add up to its price, with a Rounding line (ce-01)", () => {
+  const e = {
+    ...routeOptions(report(), 10)[0].est,
+    unit_cost_usd: 23.82,
+    // The stepped shaft at 100 as she rebuilt it: three lines round up, $23.84 against $23.82.
+    line_items: { nre: 0.35, labor: 10.5, machine: 9.73, material: 1.5665, inspection: 1.015, consumables: 0.4865, amortized_fixed: 0.175 },
+  } as CostEstimate;
+  const lines = costLines(e);
+  assert.deepEqual(lines.map((l) => l.usd), [0.35, 10.5, 9.73, 1.57, 1.02, 0.49, 0.18, -0.02]);
+  assert.equal(lines.at(-1)!.label, "Rounding");
+  assert.equal(Math.round(lines.reduce((s, l) => s + l.usd, 0) * 100), 2382);
+});

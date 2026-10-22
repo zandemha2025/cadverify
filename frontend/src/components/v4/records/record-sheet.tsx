@@ -138,7 +138,9 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
 
   const est = route?.est ?? null;
   const lines = costLines(est);
-  const yours = lines.filter((l) => l.src === "yours").length;
+  // The Rounding line isn't an input: "N of M yours" counts the lines that are.
+  const inputs = lines.filter((l) => l.key !== "rounding");
+  const yours = inputs.filter((l) => l.src === "yours").length;
   const range = rangeOf(est);
   const ch = q != null ? cheapestAt(r, q) : null;
   const mine = q != null ? inHouseAt(r, q)[0] ?? null : null;
@@ -430,7 +432,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
         {/* Cost inputs */}
         <div className="gh">
           <span>{route && q != null ? `Cost inputs · ${way(route.process)} at ${num(q)}` : "Cost inputs"}</span>
-          <span>{lines.length ? `${yours} of ${lines.length} yours` : ""}</span>
+          <span>{inputs.length ? `${yours} of ${inputs.length} yours` : ""}</span>
         </div>
         {est && lines.length ? (
           <div className="lines">

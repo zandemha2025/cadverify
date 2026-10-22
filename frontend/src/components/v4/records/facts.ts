@@ -10,6 +10,7 @@
  */
 import type { CostDecisionDetail, CostDecisionSummary, CostEstimate, CostReport } from "@/lib/api";
 import { OUTCOMES, VERDICT, materialClass, money, num, way, wayLower, type OutcomeKey, type Tone } from "./words.ts";
+import { ROUNDING_KEY, footLines, lineDriver, roundingWords } from "../../../lib/cost-lines.ts";
 
 /* ── reading the result ─────────────────────────────────────────────────── */
 
@@ -362,18 +363,33 @@ export function srcOf(provenance: string | null | undefined, rateCard?: number |
 }
 
 /** The dollar inputs behind one estimate, each with where it came from. */
+/** The record's cost lines (ce-01): the engine's summing lines, each rounded to the cent and
+ *  told by its driver, then a Rounding line when they need one to add up to the price shown.
+ *  An estimate without its lines falls back to its dollar drivers. */
 export function costLines(e: CostEstimate | null | undefined): CostLine[] {
   if (!e) return [];
-  return (e.drivers ?? [])
-    .filter((d) => {
-      const u = String(d.unit ?? "").toLowerCase();
-      return (u === "$" || u === "usd") && Number.isFinite(d.value);
-    })
-    .map((d) => {
-      const s = srcOf(d.provenance, d.rate_card);
-      const base = driverLabel(d.name);
-      return { key: d.name, label: d.name === "material_cost" ? `${base}, ${e.material}` : base, usd: d.value, src: s.kind, srcLabel: s.label, source: d.source ?? "" };
-    });
+  const asLine = (d: CostEstimate["drivers"][number], usd: number): CostLine => {
+    const s = srcOf(d.provenance, d.rate_card);
+    const base = driverLabel(d.name);
+    return { key: d.name, label: d.name === "material_cost" ? `${base}, ${e.material}` : base, usd, src: s.kind, srcLabel: s.label, source: d.source ?? "" };
+  };
+  const items = e.line_items ?? {};
+  if (!Object.keys(items).length) {
+    return (e.drivers ?? [])
+      .filter((d) => {
+        const u = String(d.unit ?? "").toLowerCase();
+        return (u === "$" || u === "usd") && Number.isFinite(d.value);
+      })
+      .map((d) => asLine(d, d.value));
+  }
+  const f = footLines(items, e.unit_cost_usd);
+  const byName = new Map((e.drivers ?? []).map((d) => [d.name, d]));
+  const out: CostLine[] = f.lines.map((l) => {
+    const d = byName.get(lineDriver(l.key));
+    return d ? asLine(d, l.cents / 100) : { key: l.key, label: driverLabel(l.key), usd: l.cents / 100, src: "typ", srcLabel: "Typical", source: "" };
+  });
+  if (f.roundingCents && f.isRounding) out.push({ key: ROUNDING_KEY, label: "Rounding", usd: f.roundingCents / 100, src: "typ", srcLabel: "Arithmetic", source: roundingWords(f) });
+  return out;
 }
 
 /** "$15.77–$47.31" and "±50%" for an estimate; `validated` says whether real costs back the band. */
