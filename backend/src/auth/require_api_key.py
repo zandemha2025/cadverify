@@ -16,6 +16,7 @@ from src.auth.models import (
     lookup_session_user,
     touch_last_used,
 )
+from src.config.production import is_production
 
 
 class AuthedUser(BaseModel):
@@ -51,16 +52,26 @@ def _403_deactivated() -> HTTPException:
 
 
 async def _session_owner_state(user_id: int):
-    """Best-effort account/session-version check for dashboard-cookie auth.
+    """Account/session-version check for dashboard-cookie auth.
 
     API-key auth already gets owner state through the ``lookup_api_key`` JOIN.
     Cookie auth has no stored session row, so it validates against the user row's
-    active flag + session_version. Degrades OPEN only if the DB is momentarily
-    unavailable in a mocked/unit-test style environment.
+    active flag + session_version. A released process fails closed (503) when
+    that row cannot be read, exactly like ``require_dashboard_session``; only a
+    local/unit-test harness without a database keeps the no-DB convenience.
     """
     try:
         return await lookup_session_user(user_id), False
-    except Exception:
+    except Exception as exc:
+        if is_production():
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "auth_dependency_unavailable",
+                    "message": "Authentication is temporarily unavailable.",
+                    "doc_url": error_doc_url("auth_dependency_unavailable"),
+                },
+            ) from exc
         return None, True
 
 
