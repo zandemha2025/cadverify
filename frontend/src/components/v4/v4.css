@@ -270,3 +270,6 @@
 
 /* A page head with no right sheet spans the width (desktop only; phones already span it). */
 @media (min-width:901px){.ob .pagehead.wide{right:24px}}
+
+/* Keyboard hints (↑ ↓ move, ↵ open, esc) only on screens with a keyboard and a pointer (buyer-16). */
+@media (hover:none) and (pointer:coarse){.kb-only{display:none !important}}

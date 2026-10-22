@@ -44,6 +44,7 @@ import { OrientChip, OrientTool } from "../orient/panel";
 import { useOrientView } from "../orient/state";
 import { DeletePartButton } from "../datacontrol/delete-part";
 import { BodiesChip, BodiesSheet, bodyHighlight, useBodies } from "./bodies";
+import { normalizeSpecs, specLines } from "./specs";
 import "./part.css";
 import { UnitSwitch } from "../units/unit-switch";
 import { dims as unitDims, volume as unitVolume } from "../units/units";
@@ -315,6 +316,9 @@ export function PartView({
   const ctx = data.context;
   const annual = ctx?.resolved_annual_volume ?? ctx?.annual_volume ?? null;
   const revLine = revisionLine(revisions ?? null, data.decisionId ?? null);
+  // The part's specs near the top, one tap from the Specs view (buyer-15: a buyer on a supplier's call
+  // scrolled 1,800 px past sour gas and pressure fields to find the finish, and never found a tolerance).
+  const specsLine = specLines(normalizeSpecs(ctx?.part_specs ?? null)).join(" · ");
   const hudCtx = [ctx?.program ? `Program ${ctx.program}` : "No program", ctx?.parent_assembly ? `in ${ctx.parent_assembly}` : "not in an assembly", annual ? `${qtyWord(annual)} a year` : "no yearly volume"].join(" · ");
 
   // Share opens the Share dialog: who, how long, what the supplier sees (never an instant link).
@@ -379,6 +383,21 @@ export function PartView({
                 </>
               ) : null}
             </span>
+            {specsLine ? (
+              <span className="specline" title={specsLine}>
+                Specs:{" "}
+                <a
+                  className="speclink"
+                  href="?lens=use"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    pickLens("use");
+                  }}
+                >
+                  {specsLine}
+                </a>
+              </span>
+            ) : null}
             {revLine ? (
               <span className="revline">
                 {revLine.lead} <Link href={revLine.partHref}>{revLine.name}</Link>

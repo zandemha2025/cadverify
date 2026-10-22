@@ -60,7 +60,7 @@ function shapeItem(i: SureInput): SureItem | null {
 
 function materialItem(i: SureInput): SureItem {
   const cls = i.cost?.material_class ?? null;
-  if (!cls || cls === "polymer") return { kind: "typ", k: "Material", v: `${MATERIAL_CLASS_LABEL.polymer.toLowerCase()}, the default until you choose another in Conditions` };
+  if (!cls || cls === "polymer") return { kind: "typ", k: "Material", v: `${MATERIAL_CLASS_LABEL.polymer.toLowerCase()}, the default until you choose another in Specs` };
   return { kind: "yours", k: "Material", v: `${(MATERIAL_CLASS_LABEL[cls] ?? cls).toLowerCase()}, chosen for this check` };
 }
 

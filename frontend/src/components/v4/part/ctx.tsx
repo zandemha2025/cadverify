@@ -16,7 +16,9 @@ export type Lens = "make" | "cost" | "use" | "shop" | "decide";
 export const LENSES: [Lens, string, string][] = [
   ["make", "Process", "can it be made"],
   ["cost", "Cost", "by quantity"],
-  ["use", "Conditions", "where it’s used"],
+  // "Specs" first (buyer-06): finish, inspection, certifications and tolerance were halfway down a
+  // view called "Conditions, where it's used", under the sour gas and pressure fields.
+  ["use", "Specs", "finish, tolerance, use"],
   ["shop", "In-house", "your machines"],
   ["decide", "Decision", "make or buy"],
 ];

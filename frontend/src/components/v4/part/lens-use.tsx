@@ -25,6 +25,7 @@ import { recheckingLabel, useStoredRecheck } from "./recheck-state";
 import { MATERIAL_CLASS_LABEL, cheapestAt, money, priceAt, qtyWord } from "./model";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { SpecsSection } from "./specs-section";
+import { normalizeSpecs, specLines } from "./specs";
 
 const CLASSES: [string, string][] = [
   ["polymer", "Plastic"],
@@ -119,6 +120,9 @@ export function UseSheet() {
   const set = (k: keyof ServiceConditionsDraft, v: string | boolean) => setDraft((d) => ({ ...d, [k]: v }));
   const c = cheapestAt(p.methods, p.q);
   const figs: FigItem[] = [];
+  // The saved specs in a figure, so a phone shows them without scrolling (buyer-15).
+  const specsSaved = specLines(normalizeSpecs(p.data.context?.part_specs ?? null));
+  if (specsSaved.length) figs.push({ k: "Specs", v: specsSaved[0], s: specsSaved.slice(1).join(" · ") || "saved with this part" });
   if (!hasServiceConditions(stored)) figs.push({ k: "Material class", v: MATERIAL_CLASS_LABEL[cls] ?? cls, s: cls === "polymer" ? "default" : "this check" });
   else {
     figs.push({ k: "Checked in", v: MATERIAL_CLASS_LABEL[cls] ?? cls, s: c ? `${c.name.toLowerCase()} survives` : "nothing survives", tone: c ? "ok" : "bad" });
@@ -136,7 +140,7 @@ export function UseSheet() {
   };
   return (
     <>
-      <SheetTop title="Service conditions" meta={hasServiceConditions(stored) ? "Saved with this part" : "Not set · nothing ruled out"} figs={figs} sure="use" />
+      <SheetTop title="Specs and conditions" meta={`${specsSaved.length ? "Specs saved" : "No specs"} · ${hasServiceConditions(stored) ? "conditions saved" : "no service conditions"}`} figs={figs} sure="use" />
       <div className="scroll">
         <RunNotice />
         {p.interrupted ? null : (
@@ -157,6 +161,8 @@ export function UseSheet() {
                 {running ? <span style={{ color: "var(--ink2)", fontSize: 12.5 }}>{running.worker ? "On ScaleCAD’s worker, which has more time" : "From the file kept with this part"} · no check used</span> : null}
               </div>
             ) : null}
+            {/* Specs first (buyer-06, buyer-15): what a supplier is asked for, above the service conditions. */}
+            <SpecsSection />
             <div className="gh">
               <span>Where it&apos;s used</span>
               <span>{hasServiceConditions(stored) ? "Saved with this part" : "Not set"}</span>
@@ -239,7 +245,6 @@ export function UseSheet() {
                 </div>
               </>
             ) : null}
-            <SpecsSection />
             <div className="gh">
               <span>
                 Material class <span className={cx("src", cls === "polymer" ? "s-typ" : "s-yours")} style={{ marginLeft: 6 }}>{cls === "polymer" ? "Default" : "Yours"}</span>

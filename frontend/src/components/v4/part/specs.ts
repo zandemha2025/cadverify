@@ -19,6 +19,33 @@ export interface PartSpecs {
   inspection?: string[];
   certifications?: string[];
   nadcap_processes?: string[];
+  /** The general tolerance for undimensioned features: an ISO 2768-1 class, or ± in mm or inches. Sent to the supplier; not priced. */
+  general_tolerance?: GeneralTolerance;
+}
+
+export type GeneralTolerance = { iso2768: "f" | "m" | "c" | "v" } | { plus_minus: number; unit: "mm" | "in" };
+
+export const ISO_2768: [string, string][] = [
+  ["f", "fine"],
+  ["m", "medium"],
+  ["c", "coarse"],
+  ["v", "very coarse"],
+];
+
+/** "ISO 2768-m (medium)", "±0.1 mm", "±0.005 in (0.127 mm)": the engine's own words (part_specs.tolerance_text). */
+export function toleranceText(t: GeneralTolerance | null | undefined): string | null {
+  if (!t) return null;
+  if ("iso2768" in t) return `ISO 2768-${t.iso2768} (${ISO_2768.find(([k]) => k === t.iso2768)?.[1] ?? ""})`;
+  if (!(t.plus_minus > 0)) return null;
+  return t.unit === "in" ? `±${trim(t.plus_minus)} in (${Number((t.plus_minus * 25.4).toPrecision(3))} mm)` : `±${trim(t.plus_minus)} mm`;
+}
+
+function tolerance(raw: unknown): GeneralTolerance | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.iso2768 === "string" && ISO_2768.some(([k]) => k === t.iso2768)) return { iso2768: t.iso2768 as "f" | "m" | "c" | "v" };
+  if (typeof t.plus_minus === "number" && Number.isFinite(t.plus_minus) && t.plus_minus > 0) return { plus_minus: t.plus_minus, unit: t.unit === "in" ? "in" : "mm" };
+  return null;
 }
 
 export const FINISHES: [string, string][] = [
@@ -92,6 +119,8 @@ export function normalizeSpecs(raw: unknown): PartSpecs | null {
     out.ra_um = s.ra_um;
     out.ra_unit = s.ra_unit === "uin" ? "uin" : "um";
   }
+  const tol = tolerance(s.general_tolerance);
+  if (tol) out.general_tolerance = tol;
   return Object.keys(out).length ? out : null;
 }
 
@@ -99,11 +128,20 @@ export function hasSpecs(s: unknown): boolean {
   return !!normalizeSpecs(s);
 }
 
+/** The specs the price uses: all but the general tolerance (the engine leaves it out). */
+export function pricedSpecs(s: unknown): PartSpecs | null {
+  const n = normalizeSpecs(s);
+  if (!n) return null;
+  const { general_tolerance: _t, ...rest } = n;
+  return Object.keys(rest).length ? rest : null;
+}
+
 /** Two declarations are the same when their canonical shapes match (order kept). */
 export function sameSpecs(a: unknown, b: unknown): boolean {
   const x = normalizeSpecs(a);
   const y = normalizeSpecs(b);
   if (!x || !y) return !x && !y;
+  if (toleranceText(x.general_tolerance) !== toleranceText(y.general_tolerance)) return false;
   const keys = ["finishes", "heat_treatments", "inspection", "certifications", "nadcap_processes"] as SpecKey[];
   if (keys.some((k) => (x[k] ?? []).join("|") !== (y[k] ?? []).join("|"))) return false;
   if ((x.ra_um == null) !== (y.ra_um == null)) return false;
@@ -159,6 +197,8 @@ export function specLines(s: PartSpecs | null | undefined): string[] {
   if (n.inspection?.length) lines.push(n.inspection.map(specLabel).join(", "));
   const must = mustHold(n);
   if (must.length) lines.push(`Supplier must hold ${must.join(", ")}`);
+  const tol = toleranceText(n.general_tolerance);
+  if (tol) lines.push(`General tolerance ${tol}`);
   return lines;
 }
 
@@ -172,6 +212,11 @@ export interface SpecsDraft {
   inspection: string[];
   certs: string[];
   nadcap: string[];
+  /** none, an ISO 2768 class, or a ± value typed in `tolUnit`. */
+  tolKind: "none" | "iso" | "pm";
+  tolIso: "f" | "m" | "c" | "v";
+  tolValue: string;
+  tolUnit: "mm" | "in";
 }
 
 export function draftFrom(s: PartSpecs | null | undefined): SpecsDraft {
@@ -186,6 +231,10 @@ export function draftFrom(s: PartSpecs | null | undefined): SpecsDraft {
     inspection: n?.inspection ?? [],
     certs: n?.certifications ?? [],
     nadcap: n?.nadcap_processes ?? [],
+    tolKind: !n?.general_tolerance ? "none" : "iso2768" in n.general_tolerance ? "iso" : "pm",
+    tolIso: n?.general_tolerance && "iso2768" in n.general_tolerance ? n.general_tolerance.iso2768 : "m",
+    tolValue: n?.general_tolerance && "plus_minus" in n.general_tolerance ? trim(n.general_tolerance.plus_minus) : "",
+    tolUnit: n?.general_tolerance && "plus_minus" in n.general_tolerance ? n.general_tolerance.unit : "mm",
   };
 }
 
@@ -228,6 +277,13 @@ export function specsFromDraft(d: SpecsDraft): { specs: PartSpecs | null; errors
     if (d.nadcap.length) out.nadcap_processes = [...d.nadcap];
     else if (!derivedNadcap(out).length) errors.push("Name the NADCAP special process, for example heat treating.");
   }
+  if (d.tolKind === "iso") out.general_tolerance = { iso2768: d.tolIso };
+  else if (d.tolKind === "pm" && d.tolValue.trim()) {
+    const v = Number(d.tolValue.trim().replace(/^±/, "").replace(",", "."));
+    if (!(v > 0) || !Number.isFinite(v)) errors.push("The general tolerance must be a number above 0, for example 0.1.");
+    else if (v * (d.tolUnit === "in" ? 25.4 : 1) > 10) errors.push("The general tolerance can be at most ±10 mm (±0.39 in).");
+    else out.general_tolerance = { plus_minus: v, unit: d.tolUnit };
+  }
   return { specs: Object.keys(out).length ? out : null, errors };
 }
 
@@ -267,8 +323,8 @@ export function runSpecs(cost: { specs?: { declared?: unknown } | null } | null 
   return normalizeSpecs(cost?.specs?.declared ?? null);
 }
 
-/** Saved specs differ from the ones the shown prices were computed with. */
+/** Saved specs differ from the ones the shown prices were computed with (the tolerance isn't priced, so it doesn't count). */
 export function specsChangedSinceRun(cost: { specs?: { declared?: unknown } | null } | null | undefined, stored: unknown): boolean {
   if (!cost) return false;
-  return !sameSpecs(runSpecs(cost), stored);
+  return !sameSpecs(pricedSpecs(runSpecs(cost)), pricedSpecs(stored));
 }

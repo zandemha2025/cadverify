@@ -12,6 +12,7 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
 import { R } from "./routes";
 import { cx } from "./ui";
+import { findParts, findRecords, type SearchPart } from "./palette-search";
 
 export type PaletteItem = {
   id: string;
@@ -103,14 +104,21 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
   const [recs, setRecs] = React.useState<Rec[] | null>(null);
   const [machines, setMachines] = React.useState<Mach[] | null>(null);
   const [pkgs, setPkgs] = React.useState<Pkg[] | null>(null);
+  const [parts, setParts] = React.useState<SearchPart[] | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const returnTo = React.useRef<HTMLElement | null>(null);
 
+  // Opening starts with an empty box, once. It used to clear the box again each time one of the
+  // lists below arrived, so on a slow phone "plate" typed straight away became "ate" (buyer-16).
   React.useEffect(() => {
     if (!open) return;
     returnTo.current = document.activeElement as HTMLElement | null;
     setQuery("");
     setSel(-1);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
     if (recs == null)
       fetch(`${API_BASE}/cost-decisions?limit=50`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
@@ -126,7 +134,28 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
         .then((r) => (r.ok ? r.json() : null))
         .then((b) => setPkgs(b?.packages ?? []))
         .catch(() => setPkgs([]));
-  }, [open, recs, machines, pkgs]);
+    // Parts by file name, program and declared specs (GET /part-context).
+    if (parts == null)
+      fetch(`${API_BASE}/part-context?limit=300`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => setParts(b?.parts ?? []))
+        .catch(() => setParts([]));
+  }, [open, recs, machines, pkgs, parts]);
+
+  // A key typed while the box opens (focus not there yet) goes into the box, not nowhere.
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      const input = inputRef.current;
+      if (!input || document.activeElement === input || e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      e.preventDefault();
+      setQuery((q) => q + e.key);
+      setSel(-1);
+      input.focus();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open]);
 
   const close = React.useCallback(() => {
     setOpen(false);
@@ -151,11 +180,21 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
   ];
   const go: PaletteItem[] = [
     ...(currentPart ? [{ id: "g-part", group: "Go to", label: "Part", sub: `${currentPart.label}, the part you have open`, href: currentPart.href, key: "V" }] : []),
+    ...(currentPart
+      ? [{
+          id: "g-specs",
+          group: "Go to",
+          label: "Specs",
+          sub: `Finish, inspection, certifications and tolerance of ${currentPart.label}`,
+          href: `${currentPart.href.split("?")[0]}?lens=use`,
+          words: "spec specs requirements finish anodize ra roughness heat treatment inspection fai first article as9102 cmm certification certifications as9100 iso 9001 nadcap itar tolerance tolerances iso 2768",
+        }]
+      : []),
     ...GO.map(([label, sub, href, key, alias]) => ({ id: `g-${href}`, group: "Go to", label, sub, href, key, alias, words: alias?.join(" ") })),
   ];
-  const recItems: PaletteItem[] = q
-    ? (recs ?? []).filter((r) => hit(r.filename, r.id)).slice(0, 4).map((r) => ({ id: `r-${r.id}`, group: "Cost records", label: r.filename, sub: `Cost record ${r.id.slice(0, 8)} · ${new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}${r.approval_status === "approved" ? " · approved" : " · not reviewed"}`, href: R.record(r.id) }))
-    : [];
+  const recItems: PaletteItem[] = findRecords(recs ?? [], q).map((f) => ({ ...f, group: "Cost records" }));
+  // Parts first: by file name or program, then by a declared spec ("anodize", "AS9100", "2768").
+  const partItems: PaletteItem[] = findParts(parts ?? [], q).map((f) => ({ ...f, group: "Parts" }));
   // Packages by title or supplier; "rfq" or "package" lists the newest.
   const pkgItems: PaletteItem[] = q
     ? (pkgs ?? [])
@@ -168,6 +207,7 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
     : [];
 
   const groups: [string, PaletteItem[], number][] = [];
+  groups.push(["Parts", partItems, 4]);
   const extraGroups = Array.from(new Set(extra.map((e) => e.group)));
   for (const g of extraGroups) groups.push([g, extra.filter((e) => e.group === g && hit(e.label, e.sub, e.words, e.answer?.text)), q ? 3 : 2]);
   groups.push(["Actions", actions.filter((a) => hit(a.label, a.sub, a.words)), q ? 4 : 5]);
@@ -244,7 +284,7 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
             }}
             style={{ flex: 1, height: 58, border: 0, outline: 0, fontSize: 17, background: "transparent" }}
           />
-          <kbd style={{ fontFamily: "inherit", fontSize: 12, color: "var(--ink2)", border: "1px solid var(--rule2)", borderRadius: 6, padding: "1px 6px" }}>esc</kbd>
+          <kbd className="kb-only" style={{ fontFamily: "inherit", fontSize: 12, color: "var(--ink2)", border: "1px solid var(--rule2)", borderRadius: 6, padding: "1px 6px" }}>esc</kbd>
         </div>
         <div id="v4-pal-res" role="listbox" aria-label="Results" style={{ overflow: "auto", padding: "6px 8px 10px" }}>
           {rendered.map((g) => (
@@ -265,7 +305,7 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
                       style={{ minHeight: 44 }}
                     >
                       <span style={{ width: 28, height: 28, borderRadius: 8, background: "#F1F2F4", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink2)", flex: "none" }} aria-hidden="true">
-                        {it.answer ? "?" : it.group === "Go to" ? "→" : it.group === "Cost records" ? "R" : it.group === "Your machines" ? "M" : "+"}
+                        {it.answer ? "?" : it.group === "Go to" ? "→" : it.group === "Cost records" ? "R" : it.group === "Your machines" ? "M" : it.group === "Parts" ? "P" : "+"}
                       </span>
                       <span style={{ minWidth: 0 }}>
                         <b style={{ fontSize: 14 }}>{it.label}</b>
@@ -288,10 +328,11 @@ export function Palette({ onPickFile, onShortcuts, checkBlocked = null }: { onPi
           ))}
           {flat.length === 0 ? <p style={{ padding: "24px 16px", color: "var(--ink3)", textAlign: "center", fontSize: 14 }}>No matches for “{query}”</p> : null}
         </div>
-        <div style={{ display: "flex", gap: 16, padding: "10px 16px", borderTop: "1px solid var(--rule)", color: "var(--ink3)", fontSize: 12, flexWrap: "wrap" }}>
-          <span>↑ ↓ move</span>
-          <span>↵ open</span>
-          <span>esc close</span>
+        {/* Keyboard hints only where there is a keyboard (buyer-16: they showed on a phone). */}
+        <div className={cx(!extra.some((e) => e.answer) && "kb-only")} style={{ display: "flex", gap: 16, padding: "10px 16px", borderTop: "1px solid var(--rule)", color: "var(--ink3)", fontSize: 12, flexWrap: "wrap" }}>
+          <span className="kb-only">↑ ↓ move</span>
+          <span className="kb-only">↵ open</span>
+          <span className="kb-only">esc close</span>
           {extra.some((e) => e.answer) ? <span>Answers use this part&apos;s results only</span> : null}
         </div>
       </section>

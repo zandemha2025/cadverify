@@ -19,6 +19,7 @@ import {
   FINISHES,
   HEAT_TREATMENTS,
   INSPECTIONS,
+  ISO_2768,
   NADCAP_PROCESSES,
   derivedNadcap,
   draftFrom,
@@ -34,6 +35,7 @@ import {
   type SpecsDraft,
 } from "./specs";
 import { savePartSpecs } from "./specs-api";
+import { useUnits } from "../units/use-units";
 
 function Pick({ label, options, values, onToggle, derived }: { label: string; options: [string, string][]; values: string[]; onToggle: (v: string) => void; derived?: string[] }) {
   return (
@@ -55,6 +57,7 @@ function Pick({ label, options, values, onToggle, derived }: { label: string; op
 
 export function SpecsSection() {
   const p = usePart();
+  const { unit } = useUnits();
   const key = p.data.key;
   const stored = React.useMemo(() => normalizeSpecs(p.data.context?.part_specs ?? null), [p.data.context]);
   const storedDraft = React.useMemo(() => draftFrom(stored), [stored]);
@@ -137,7 +140,39 @@ export function SpecsSection() {
       {draft.certs.includes("nadcap") ? (
         <Pick label="NADCAP for" options={NADCAP_PROCESSES} values={draft.nadcap} derived={derived} onToggle={(v) => set({ nadcap: toggle(draft.nadcap, v) })} />
       ) : null}
-      {parsed.errors.length && (draft.ra.trim() || draft.certs.includes("nadcap")) ? (
+      <div className="pickset" role="group" aria-label="General tolerance">
+        <span className="lab">General tolerance, where the drawing gives none</span>
+        <button type="button" aria-pressed={draft.tolKind === "none"} onClick={() => set({ tolKind: "none" })}>
+          Not set
+        </button>
+        {ISO_2768.map(([k, name]) => (
+          <button key={k} type="button" aria-pressed={draft.tolKind === "iso" && draft.tolIso === k} title={`ISO 2768-1 class ${k}, ${name}`} onClick={() => set({ tolKind: "iso", tolIso: k as "f" | "m" | "c" | "v" })}>
+            ISO 2768-{k}
+          </button>
+        ))}
+        <button type="button" aria-pressed={draft.tolKind === "pm"} onClick={() => set({ tolKind: "pm", tolUnit: draft.tolValue ? draft.tolUnit : unit })}>
+          ± value
+        </button>
+      </div>
+      {draft.tolKind === "pm" ? (
+        <div className="ra-row">
+          <label className="field">
+            General tolerance, ±
+            <input type="text" inputMode="decimal" value={draft.tolValue} placeholder={draft.tolUnit === "in" ? "for example 0.005" : "for example 0.1"} onChange={(e) => set({ tolValue: e.target.value })} />
+          </label>
+          <span className="seg" role="group" aria-label="Tolerance unit">
+            {(["mm", "in"] as const).map((u) => (
+              <button key={u} type="button" className={cx(draft.tolUnit === u && "on")} aria-pressed={draft.tolUnit === u} onClick={() => set({ tolUnit: u })}>
+                {u}
+              </button>
+            ))}
+          </span>
+        </div>
+      ) : null}
+      {draft.tolKind !== "none" ? (
+        <p style={{ margin: "-4px 12px 6px", color: "var(--ink3)", fontSize: 12 }}>Goes to the supplier with the specs. The price doesn&apos;t use it.</p>
+      ) : null}
+      {parsed.errors.length && (draft.ra.trim() || draft.certs.includes("nadcap") || draft.tolKind === "pm") ? (
         <p role="alert" style={{ margin: "0 12px 6px", color: "var(--bad)", fontSize: 12.5 }}>
           {parsed.errors.join(" ")}
         </p>
@@ -213,7 +248,7 @@ export function SpecsSection() {
       ) : null}
       {must.length ? (
         <p style={{ margin: "8px 12px 0", color: "var(--ink2)", fontSize: 12.5 }}>
-          Bought outside, the supplier must hold {must.join(", ")}. It goes in the supplier package. In-house, your shop is checked against what it declared on Your shop.
+          Bought outside, the supplier must hold {must.join(", ")}. It goes in the RFQ package. In-house, your shop is checked against what it declared on Your shop.
         </p>
       ) : null}
     </>

@@ -190,7 +190,7 @@ export function Tips({
       : {
           id: "nb-tip3",
           title: "Five views of the same part",
-          text: `Process: can it be made, and how (DFM). Cost: price by quantity. Conditions: where it’s used. In-house: your machines. Decision: make or buy.${p.data.machines.length ? "" : " In-house is empty until you add machines."}`,
+          text: `Process: can it be made, and how (DFM). Cost: price by quantity. Specs: finish, tolerance and where it’s used. In-house: your machines. Decision: make or buy.${p.data.machines.length ? "" : " In-house is empty until you add machines."}`,
           live: `Tip ${num.n} of ${num.of}: five views of the same part.`,
         };
     if (a.dial && a.host) {

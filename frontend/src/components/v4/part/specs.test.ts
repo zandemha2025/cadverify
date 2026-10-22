@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { derivedNadcap, draftFrom, mustHold, normalizeSpecs, parseRa, raText, sameSpecs, specExclusions, specLines, specsChangedSinceRun, specsFromDraft, toggle } from "./specs.ts";
+import { derivedNadcap, draftFrom, mustHold, normalizeSpecs, parseRa, raText, sameSpecs, specExclusions, specLines, specsChangedSinceRun, specsFromDraft, toggle, toleranceText } from "./specs.ts";
 
 test("stored specs normalize: duplicates and standard inspection drop, Ra keeps its unit", () => {
   assert.equal(normalizeSpecs(null), null);
@@ -71,4 +71,21 @@ test("routes the specs rule out, once each", () => {
   assert.equal(ex.length, 1);
   assert.equal(ex[0].process, "fdm");
   assert.equal(ex[0].findings[0].code, "SPEC_RA_UNREACHABLE");
+});
+
+test("a general tolerance is an ISO 2768 class or a ± value; it reaches the specs line but not the stale check (buyer-06, buyer-15)", () => {
+  const iso = specsFromDraft({ ...draftFrom(null), tolKind: "iso", tolIso: "m" });
+  assert.deepEqual(iso, { specs: { general_tolerance: { iso2768: "m" } }, errors: [] });
+  assert.deepEqual(specLines(iso.specs), ["General tolerance ISO 2768-m (medium)"]);
+  const inch = specsFromDraft({ ...draftFrom(null), tolKind: "pm", tolValue: "±0.005", tolUnit: "in" });
+  assert.deepEqual(inch.specs, { general_tolerance: { plus_minus: 0.005, unit: "in" } });
+  assert.equal(toleranceText(inch.specs!.general_tolerance), "±0.005 in (0.127 mm)");
+  assert.deepEqual(draftFrom(inch.specs).tolValue, "0.005");
+  assert.match(specsFromDraft({ ...draftFrom(null), tolKind: "pm", tolValue: "20", tolUnit: "mm" }).errors[0], /at most ±10 mm/);
+  assert.match(specsFromDraft({ ...draftFrom(null), tolKind: "pm", tolValue: "abc", tolUnit: "mm" }).errors[0], /number above 0/);
+  // The price doesn't use the tolerance: a record priced without it isn't out of date.
+  const cost = { specs: { declared: { finishes: ["anodize_ii"] } } };
+  assert.equal(specsChangedSinceRun(cost, { finishes: ["anodize_ii"], general_tolerance: { iso2768: "f" } }), false);
+  assert.equal(specsChangedSinceRun(cost, { finishes: ["bead_blast"], general_tolerance: { iso2768: "f" } }), true);
+  assert.equal(sameSpecs({ general_tolerance: { iso2768: "f" } }, { general_tolerance: { iso2768: "m" } }), false);
 });
