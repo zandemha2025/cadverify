@@ -50,7 +50,7 @@ export function keptWorkLine(s: KeptJobStatus): { state: "running" | "done" | "s
   const repair = s.action === "repair";
   const partHref = s.mesh_hash ? `/app/part/${encodeURIComponent(s.mesh_hash)}` : "/app/parts";
   if (s.status === "done") {
-    return { state: "done", label: repair ? `Mesh repair of ${name}` : `Re-priced ${name}`, detail: s.summary || (repair ? "Finished" : "Ready"), href: s.part_url || partHref, progress: 1 };
+    return { state: "done", label: repair ? `Mesh repair of ${name}` : `Re-priced ${name}`, detail: repair ? s.summary || "Finished" : "Ready", href: s.part_url || partHref, progress: 1 };
   }
   if (s.status === "failed") {
     const first = s.error?.message?.split(". ")[0];

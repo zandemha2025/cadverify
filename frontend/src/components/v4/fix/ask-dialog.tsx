@@ -33,11 +33,14 @@ export function failureText(f: Failure | null | undefined): string {
 }
 import { useUploadFixed } from "./problem-sheet";
 import { repairFailedReason } from "../part/repair";
+import { keptStageWord } from "../part/kept-job-model";
 import { nextSteps, openingsNote, outcomeOf, repairHead, type NextStep } from "./repair-outcome";
 import "./fix.css";
 
 const REPAIR_MAX_FACES = 500_000;
 const REPAIR_TIMEOUT_S = 30;
+// A large kept file is repaired on ScaleCAD's worker (backend kept_part_jobs; REPAIR_MAX_FACES_WORKER).
+const WORKER_REPAIR_MAX_FACES = 5_000_000;
 
 /** Focus in on open, back on close; Tab stays inside. */
 function useDialogFocus(ref: React.RefObject<HTMLDivElement | null>) {
@@ -235,7 +238,7 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
         <div className="db" aria-live="polite">
           <div className="gh">
             <span>Progress</span>
-            <span>up to {REPAIR_TIMEOUT_S} s</span>
+            <span>{rr.worker ? (rr.s === "running" ? `On ScaleCAD’s worker · ${keptStageWord(rr.worker).toLowerCase()}` : "On ScaleCAD’s worker") : `up to ${REPAIR_TIMEOUT_S} s`}</span>
           </div>
           <Steps steps={steps} />
           {result && head ? (
@@ -351,9 +354,10 @@ function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: 
           <span>Faces</span>
           <b className="num" style={big ? { color: "var(--bad)" } : undefined}>
             {faces != null ? `${faces.toLocaleString("en-US")} of ${REPAIR_MAX_FACES.toLocaleString("en-US")}` : `up to ${REPAIR_MAX_FACES.toLocaleString("en-US")}`}
+            {kept ? ` · a large kept file: up to ${WORKER_REPAIR_MAX_FACES.toLocaleString("en-US")}, on ScaleCAD’s worker` : ""}
           </b>
           <span>Time limit</span>
-          <b className="num">{REPAIR_TIMEOUT_S} s</b>
+          <b className="num">{REPAIR_TIMEOUT_S} s{kept ? " · a large kept file: longer, on ScaleCAD’s worker" : ""}</b>
           <span>Checks</span>
           <b>Doesn’t use one</b>
           <span>From</span>

@@ -30,6 +30,7 @@ test("a re-price reads as re-pricing, then re-priced, linking to the part", () =
   assert.deepEqual(running, { state: "running", label: "Re-pricing housing.step", detail: "Pricing", href: `/app/part/${"a".repeat(64)}`, progress: null });
   const done = keptWorkLine({ ...JOB, status: "done", stage: "done", summary: "Re-priced", part_url: `/app/part/${"a".repeat(64)}` });
   assert.equal(done.label, "Re-priced housing.step");
+  assert.equal(done.detail, "Ready", "not the label twice");
   assert.equal(done.state, "done");
 });
 

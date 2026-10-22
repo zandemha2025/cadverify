@@ -15,7 +15,8 @@ import { startCheck } from "../part/store";
 import type { ServerFix, StudioOrigin, StudioParam } from "./capabilities";
 import { applyServerFix, type ServerFixOutcome } from "./server";
 
-export type RepairRun = { kind: "repair"; problem: string; startedAt: number; sourceName: string } & ({ s: "running" } | RepairOutcome);
+// worker: the stage, when the kept file is large enough to be repaired on ScaleCAD's worker (kept once it ends).
+export type RepairRun = { kind: "repair"; problem: string; startedAt: number; sourceName: string; worker?: string } & ({ s: "running" } | RepairOutcome);
 
 export interface StudioRun {
   kind: "studio";
@@ -108,14 +109,18 @@ export function startRepair(key: string, problem: string, file: File | null, opt
   const startedAt = Date.now();
   const sourceName = file?.name ?? opts.name;
   put(key, { kind: "repair", problem, startedAt, sourceName, s: "running" });
-  void repairPart(key, file, { qty: opts.qty, materialClass: opts.materialClass }).then((out) => {
+  const onWorker = (stage: string) => {
+    const cur = runs.get(key);
+    if (cur?.kind === "repair" && cur.s === "running" && cur.startedAt === startedAt) put(key, { ...cur, worker: stage });
+  };
+  void repairPart(key, file, { qty: opts.qty, materialClass: opts.materialClass, onWorker }).then((out) => {
     const cur = runs.get(key);
     // Discarded, or a newer repair started meanwhile: drop this answer.
     if (!cur || cur.kind !== "repair" || cur.startedAt !== startedAt) {
       if (out.s === "fixed") revoke(out.url);
       return;
     }
-    put(key, { kind: "repair", problem, startedAt, sourceName, ...out } as RepairRun);
+    put(key, { kind: "repair", problem, startedAt, sourceName, ...(cur.worker ? { worker: cur.worker } : {}), ...out } as RepairRun);
   });
 }
 
