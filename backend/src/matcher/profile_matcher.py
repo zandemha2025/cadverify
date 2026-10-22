@@ -236,6 +236,10 @@ def best_process_for_material(
     top_score = ranked[0].score
     top = [s for s in ranked if s.score == top_score]
     if prefer:
-        prefer_order = {v: i for i, v in enumerate(prefer)}
-        top.sort(key=lambda s: prefer_order.get(s.process.value, len(prefer_order)))
+        # First mention wins, and anything not named sorts after every named one
+        # (["cnc_turning", "cnc_turning"] used to rank turning level with the rest).
+        prefer_order: dict[str, int] = {}
+        for i, v in enumerate(prefer):
+            prefer_order.setdefault(v, i)
+        top.sort(key=lambda s: prefer_order.get(s.process.value, len(prefer)))
     return top[0].process
