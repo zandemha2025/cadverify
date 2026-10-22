@@ -21,6 +21,7 @@ Org scoping: every read of parts, part numbers and machines is
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import math
@@ -966,11 +967,12 @@ def summarize(results: list[RowResult]) -> dict:
 
 async def preview(session: AsyncSession, org_id: str, filename: str, data: bytes,
                   mapping: Optional[dict], choices: Optional[dict]) -> dict:
-    table = read_table(filename, data)
+    # Reading and matching are CPU work: off the event loop.
+    table = await asyncio.to_thread(read_table, filename, data)
     m = Mapping.from_json(mapping, table)
     index = await load_part_index(session, org_id)
     machines = await load_machines(session, org_id)
-    results = evaluate_rows(table, m, index, machines, choices)
+    results = await asyncio.to_thread(evaluate_rows, table, m, index, machines, choices)
     return {
         "file": {"name": filename, "kind": table.kind, "rows": len(table.rows), "notes": table.notes},
         "headers": table.headers,
@@ -1019,11 +1021,11 @@ async def import_rows(session: AsyncSession, org_id: str, user_id: Optional[int]
     """Import every matched row without errors; report the rest. Caller commits."""
     from src.services import groundtruth_service as gts
 
-    table = read_table(filename, data)
+    table = await asyncio.to_thread(read_table, filename, data)
     m = Mapping.from_json(mapping, table)
     index = await load_part_index(session, org_id)
     machines = await load_machines(session, org_id)
-    results = evaluate_rows(table, m, index, machines, choices)
+    results = await asyncio.to_thread(evaluate_rows, table, m, index, machines, choices)
     ready = [r for r in results if r.status == "matched" and r.part is not None]
     imported = 0
     failed: list[dict] = []
