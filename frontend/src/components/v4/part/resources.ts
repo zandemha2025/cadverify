@@ -143,6 +143,13 @@ export function materialSub(r: RouteResources): string {
   return bits.join(" · ");
 }
 
+/** "Mild Steel, 6.60 cm³ of stock", "PLA, 11.0 cm³ printed", "PA12 (Nylon 12), 23.8 cm³": the grade and the volume it uses. */
+export function materialShort(r: RouteResources): string {
+  if (r.cm3Each == null) return r.grade;
+  const same = r.partCm3 == null || Math.abs(r.cm3Each - r.partCm3) <= 0.02 * r.partCm3;
+  return `${r.grade}, ${cm3Text(r.cm3Each)}${same ? "" : ` ${feedWord(r.process)}`}`;
+}
+
 /** "31 min each · 52 h for 100" (just "each" for one part). */
 export function timeLine(r: RouteResources): string {
   if (r.hoursEach == null) return "—";

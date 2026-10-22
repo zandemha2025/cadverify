@@ -1,6 +1,10 @@
 "use client";
 
-/** Cost: price by quantity. A chart you can drag, cheapest first, where the money goes, tooling, and the way into the cost breakdown. */
+/**
+ * Cost: what the part takes on each route, then its price. Machine time (each and for the run), the material it
+ * uses (mass, volume, grade) and whose machine it runs on lead; the model price and its range follow. A chart you
+ * can drag, every process at the quantity, where the money goes, tooling, and the way into the cost breakdown.
+ */
 import * as React from "react";
 import Link from "next/link";
 import { R } from "../routes";
@@ -28,6 +32,7 @@ import { problemForIssue } from "../fix/problems";
 import { wbHref } from "../workbench/chrome";
 import { followed, recordedChoice } from "./choice";
 import { PartActuals } from "../validation/part-actuals";
+import { cm3Text, hoursText, massText, materialShort, ownershipOf, routeResources, type RouteResources } from "./resources";
 
 /** The process the chart and its lines show: one you picked here, else your choice for the part, else ScaleCAD's pick, else the cheapest. */
 export function useChartSel(): Method | null {
@@ -56,6 +61,7 @@ export function CostLayer() {
   const qi = p.qs.indexOf(p.q);
   const priced = p.methods.filter(isPriced);
   const lblY = sel && priceAt(sel, p.q) != null ? chart.y(priceAt(sel, p.q)!) : null;
+  const selHours = routeResources(sel?.prices.get(p.q), null)?.hoursEach ?? null;
   const crossName = d?.tooling_process ? p.methods.find((m) => m.code === d.tooling_process)?.name.toLowerCase() ?? "tooling" : "tooling";
   return (
     <div className={cx("layer", !on && "off")} style={{ left: 64, top: 270, width: 800, height: 480 }} aria-hidden={!on}>
@@ -111,7 +117,8 @@ export function CostLayer() {
           <span style={{ position: "absolute", right: 20, top: 376, fontSize: 11.5, color: "var(--ink3)" }}>parts per order, log scale</span>
           {sel && lblY != null ? (
             <span className="lbl num" style={{ left: chart.x(p.q), top: lblY }}>
-              {sel.name} · {money(priceAt(sel, p.q))}
+              {sel.name} · {selHours != null ? `${hoursText(selHours)} · ` : ""}
+              {money(priceAt(sel, p.q))}
             </span>
           ) : null}
           <div
@@ -203,8 +210,46 @@ export function CostLines({ estimate, where, max = 12 }: { estimate: NonNullable
   );
 }
 
+/** Why the sheet shows this route: picked here, your recorded choice, ScaleCAD's pick, or the cheapest. */
+function selWhy(p: ReturnType<typeof usePart>, sel: Method): string {
+  if (p.costPick === sel.code) return "picked here";
+  const choice = recordedChoice(p.data.decision);
+  if (choice?.process === sel.code) return "your choice";
+  const f = followed(p.data.cost, p.q, choice);
+  if (f?.process === sel.code) return "ScaleCAD’s pick";
+  return cheapestAt(p.methods, p.q)?.code === sel.code ? "cheapest" : "";
+}
+
+/** The sheet's top: what the shown route takes at this quantity (machine time, material, whose machine), then its price and range. */
 export function costTop(p: ReturnType<typeof usePart>, sel: Method | null): { title: string; meta: string; figs: FigItem[] } {
   if (p.costOff) return { title: "Cost per part", meta: "Prices didn’t finish", figs: [] };
+  const e = sel?.prices.get(p.q) ?? null;
+  if (!sel || !e) return { title: "Cost per part", meta: "Machine time, material and price by process · model estimates, not quotes", figs: [] };
+  const r = routeResources(e, p.data.cost?.geometry?.volume_cm3 ?? null);
+  const d = p.data.cost?.decision ?? null;
+  const own = ownershipOf(sel, r, p.data.machines.length, d?.tooling_process === sel.code ? d.crossover_qty : null);
+  const figs: FigItem[] = [];
+  const many = p.q > 1 ? ` for ${qtyWord(p.q)}` : "";
+  figs.push({ k: "Machine time", v: r?.hoursEach != null ? hoursText(r.hoursEach) : "Not estimated", s: r?.hoursEach != null ? `each${r.hoursRun != null && p.q > 1 ? ` · ${hoursText(r.hoursRun)}${many}` : ""}` : undefined });
+  figs.push({
+    k: "Material",
+    v: r?.kgEach != null ? massText(r.kgEach) : e.material,
+    s: r?.kgEach != null ? `${materialShort(r)} each${r.kgRun != null && p.q > 1 ? ` · ${massText(r.kgRun)}${many}` : ""}` : r?.partCm3 != null ? `part ${cm3Text(r.partCm3)}` : undefined,
+  });
+  figs.push({ k: "Machine", v: own.v, s: own.s, tone: own.kind === "owned" ? "ok" : undefined });
+  const lo = e.confidence?.low_usd;
+  const hi = e.confidence?.high_usd;
+  figs.push({
+    k: "Price each",
+    v: money(e.unit_cost_usd),
+    s: lo != null && hi != null ? `${money(lo)}–${money(hi)} · ±${trimNum(e.confidence!.half_width_pct, 0)}%, ${e.confidence!.validated ? "checked against your jobs" : "typical values"}` : undefined,
+  });
+  const why = selWhy(p, sel);
+  return { title: "Cost per part", meta: `${sel.name} at ${qtyWord(p.q)}${why ? `, ${why}` : ""} · drag the chart or pick a process · model estimates, not quotes`, figs };
+}
+
+/** The price comparison under the routes: the cheapest at this quantity, its range, and your choice or your machine. */
+function priceFigs(p: ReturnType<typeof usePart>): FigItem[] {
   const figs: FigItem[] = [];
   const c = cheapestAt(p.methods, p.q);
   if (c) {
@@ -219,8 +264,17 @@ export function costTop(p: ReturnType<typeof usePart>, sel: Method | null): { ti
   const ih = p.methods.find((m) => m.inHouse && m.prices.has(p.q));
   if (mine && mine.code !== c?.code) figs.push({ k: "Your choice", v: money(priceAt(mine, p.q)), s: `${mine.name}${mine.inHouse ? ` · your ${mine.inHouse}` : " · outside"}` });
   else if (ih) figs.push({ k: ih.inHouse!, v: money(priceAt(ih, p.q)), s: `in-house · ${days(ih.prices.get(p.q)!.lead_time?.low_days, ih.prices.get(p.q)!.lead_time?.high_days)}` });
-  void sel;
-  return { title: "Cost per part", meta: "Drag the chart, pick a quantity or type one · model prices, not quotes", figs };
+  return figs;
+}
+
+/** One route's row line: "MJF · 33 min · your HP Jet Fusion 5200 · 24 g PA12", "FDM/FFF · 31 min · 13.6 g PLA · outside". */
+function rowLine(m: Method, r: RouteResources | null, material: string): string {
+  const bits: string[] = [m.short];
+  if (r?.hoursEach != null) bits.push(hoursText(r.hoursEach));
+  if (m.inHouse) bits.push(`your ${m.inHouse}`);
+  bits.push(r?.kgEach != null ? `${massText(r.kgEach)} ${material}` : material);
+  if (!m.inHouse) bits.push("outside");
+  return bits.join(" · ");
 }
 
 function insightOf(p: ReturnType<typeof usePart>, fx: ReturnType<typeof useFix>) {
@@ -292,6 +346,11 @@ export function CostSheet() {
   const ctx = p.data.context;
   const annual = ctx?.resolved_annual_volume ?? ctx?.annual_volume ?? null;
   const selEst = sel?.prices.get(p.q) ?? null;
+  const vol = cost?.geometry?.volume_cm3 ?? null;
+  const pf = priceFigs(p);
+  const selRes = routeResources(selEst, vol);
+  const own = sel && selEst ? ownershipOf(sel, selRes, p.data.machines.length, d?.tooling_process === sel.code ? d.crossover_qty : null) : null;
+  const annualRes = annual != null && p.qs.includes(annual) && cheapestAt(p.methods, annual) ? routeResources(cheapestAt(p.methods, annual)!.prices.get(annual), vol) : null;
   return (
     <>
       <SheetTop {...top} sure="cost" />
@@ -320,11 +379,13 @@ export function CostSheet() {
         ) : (
           <div className="swap">
             <div className="gh">
-              <span>Cheapest first, at {qtyWord(p.q)}</span>
-              <span>each</span>
+              <span>At {qtyWord(p.q)}, cheapest first</span>
+              <span>price each</span>
             </div>
             <div className="rank" style={{ height: priced.length * 56 }}>
-              {stable.map((m) => (
+              {stable.map((m) => {
+                const line = rowLine(m, routeResources(m.prices.get(p.q), vol), m.prices.get(p.q)!.material);
+                return (
                 <button
                   key={m.code}
                   type="button"
@@ -338,9 +399,8 @@ export function CostSheet() {
                 >
                   <span>
                     <b>{m.name}</b>
-                    <small title={`${m.short} · ${m.prices.get(p.q)!.material}${m.inHouse ? ` · your ${m.inHouse}` : ""}`}>
-                      {m.short} · {m.prices.get(p.q)!.material}
-                      {m.inHouse ? ` · your ${m.inHouse}` : ""}
+                    <small className="num" title={line}>
+                      {line}
                     </small>
                   </span>
                   <span className={`chip c-${m.verdict === "bad" ? "bad" : m.verdict}`}>
@@ -349,8 +409,53 @@ export function CostSheet() {
                   </span>
                   <span className="c num">{money(priceAt(m, p.q))}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
+            {pf.length ? (
+              <>
+                <div className="gh" style={{ marginTop: 4 }}>
+                  <span>Price at {qtyWord(p.q)}</span>
+                  <span>each</span>
+                </div>
+                <div className="kv">
+                  {pf.map((f) => (
+                    <React.Fragment key={f.k}>
+                      <span>
+                        {f.k}
+                        {f.s ? <small style={{ display: "block", fontSize: 12 }}>{f.s}</small> : null}
+                      </span>
+                      <b className="num">{f.v}</b>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </>
+            ) : null}
+            {own && sel && own.kind !== "owned" ? (
+              <div className="note">
+                <b>{own.kind === "not_owned" ? `${sel.name} isn’t on a machine you own` : own.kind === "no_machines" ? "No machines of yours to compare" : `${sel.name} doesn’t fit a machine of yours as declared`}</b>
+                <span>
+                  {own.kind === "no_machines"
+                    ? "Add your machines and their rates: a route on a machine you own is priced at its running cost, with the machine itself already paid for."
+                    : `${own.s[0].toUpperCase()}${own.s.slice(1)}. ScaleCAD doesn’t price machines, so no purchase cost or payback is shown for one${d?.tooling_process === sel.code && d.crossover_qty ? "; the payback above is the mold or die against routes without tooling" : ""}.`}
+                </span>
+                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {own.kind === "no_machines" ? (
+                    <Link className="btn sm" href={`${R.shop}?add=1`}>
+                      Add machines
+                    </Link>
+                  ) : own.kind === "not_owned" ? (
+                    <Link className="btn sm" href={R.triage}>
+                      Weigh a new machine
+                    </Link>
+                  ) : (
+                    <button className="btn sm" type="button" onClick={() => p.setLens("shop")}>
+                      See your machines
+                    </button>
+                  )}
+                </span>
+              </div>
+            ) : null}
             <p style={{ margin: "6px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
               {cheapest ? `${days(cheapest.prices.get(p.q)!.lead_time?.low_days, cheapest.prices.get(p.q)!.lead_time?.high_days)} for the cheapest. ` : ""}
               {p.methods.some((m) => m.inHouse && m.prices.has(p.q)) ? "In-house lead time is print time on the machines you declared, with no shipping; your own queue isn’t included. " : ""}
@@ -419,7 +524,7 @@ export function CostSheet() {
               {annual == null
                 ? "Not declared, so no cost per year is shown. Prices are per order."
                 : p.qs.includes(annual) && cheapestAt(p.methods, annual)
-                  ? `${qtyWord(annual)} a year (${ctx?.annual_volume_basis === "bom_rollup" ? "from your BOM" : "declared"}): ${money(priceAt(cheapestAt(p.methods, annual)!, annual)! * annual)} a year by ${cheapestAt(p.methods, annual)!.name.toLowerCase()}.`
+                  ? `${qtyWord(annual)} a year (${ctx?.annual_volume_basis === "bom_rollup" ? "from your BOM" : "declared"}): ${annualRes?.hoursRun != null ? `${hoursText(annualRes.hoursRun)} machine time${annualRes.kgRun != null ? ` and ${massText(annualRes.kgRun)} of ${annualRes.grade}` : ""}, ` : ""}${money(priceAt(cheapestAt(p.methods, annual)!, annual)! * annual)} a year by ${cheapestAt(p.methods, annual)!.name.toLowerCase()}.`
                   : `${qtyWord(annual)} a year (${ctx?.annual_volume_basis === "bom_rollup" ? "from your BOM" : "declared"}). Not a computed quantity in this record, so no cost per year is shown; a new check prices it exactly.`}
             </p>
             {d?.note ? (

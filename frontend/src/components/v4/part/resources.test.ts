@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cm3Text, hoursText, massLine, massText, materialFromSource, materialSub, ownershipOf, routeResources, runLine, timeLine } from "./resources.ts";
+import { cm3Text, hoursText, massLine, massText, materialFromSource, materialShort, materialSub, ownershipOf, routeResources, runLine, timeLine } from "./resources.ts";
 
 type AnyObj = Record<string, unknown>;
 
@@ -73,6 +73,8 @@ test("same volume as the part reads once; machining names its stock", () => {
   assert.equal(mjf.runningCostOnly, true);
   const cnc = routeResources(est("cnc_3axis", "Delrin (POM)", 10, [{ name: "material_cost", source: CNC_SRC }]), 23.76)!;
   assert.equal(materialSub(cnc), "Delrin (POM) · 119 cm³ of stock · part 23.8 cm³");
+  assert.equal(materialShort(cnc), "Delrin (POM), 119 cm³ of stock");
+  assert.equal(materialShort(mjf), "PA12 (Nylon 12), 23.8 cm³");
   assert.equal(cnc.hoursEach, null);
   assert.equal(timeLine(cnc), "—");
 });
