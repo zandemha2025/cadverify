@@ -2185,8 +2185,17 @@ async def _check_catalog_part(
 
 async def _resolve_transient_batch_item_failure(
     item_ulid: str,
+    *,
+    stopped_before: bool = False,
 ) -> tuple[str, int]:
-    """Persist retry, exhaustion, or terminal-parent state in a fresh session."""
+    """Persist retry, exhaustion, or terminal-parent state in a fresh session.
+
+    ``stopped_before``: an earlier try of this item was stopped part way (a
+    worker restart or out-of-memory kill, a reclaimed lease). Then the tries
+    weren't all spent on storage or database failures, and an item that runs
+    out of them says it was stopped (``batch_service.exhausted_reason``); the
+    note stays on the item across this retry so the next try knows it too.
+    """
 
     from src.services import batch_service
 
@@ -2222,12 +2231,13 @@ async def _resolve_transient_batch_item_failure(
             await session.commit()
             return "terminal", attempts
 
+        stopped_before = stopped_before or (item.error_message or "").startswith(
+            batch_service.STOPPED_MID_CHECK)
         if attempts >= BATCH_ITEM_MAX_ATTEMPTS:
             item.status = "failed"
-            item.error_message = (
-                "Temporary storage or database failure persisted after "
-                f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
-            )
+            # What spent the tries: the storage/database wording only when no
+            # earlier try was stopped part way.
+            item.error_message = batch_service.exhausted_reason(item, stopped=stopped_before)
             item.completed_at = now
             item.lease_started_at = None
             await batch_service.update_batch_counters(
@@ -2245,7 +2255,7 @@ async def _resolve_transient_batch_item_failure(
         item.started_at = None
         item.completed_at = None
         item.lease_started_at = now
-        item.error_message = None
+        item.error_message = batch_service.STOPPED_MID_CHECK if stopped_before else None
         await session.commit()
         return "retry", attempts
 
@@ -2340,7 +2350,12 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
         item.attempt_count = attempts
         item.started_at = datetime.now(timezone.utc)
         item.lease_started_at = item.started_at
-        # A note from a stopped earlier try isn't this try's outcome.
+        # A note from a stopped earlier try isn't this try's outcome, but it is
+        # part of why the tries ran out if this one fails on storage or the
+        # database too. A processing row this delivery reclaims was left by a
+        # try that stopped before it could record anything.
+        stopped_before = retry_reclaim or (item.error_message or "").startswith(
+            batch_service.STOPPED_MID_CHECK)
         item.error_message = None
 
         # Cost items carry engine-number webhook extras; DFM items carry none.
@@ -2493,7 +2508,7 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     )
                 try:
                     action, next_attempt = await _resolve_transient_batch_item_failure(
-                        item_ulid
+                        item_ulid, stopped_before=stopped_before
                     )
                 except Exception:
                     # The database may still be unavailable. Preserve ARQ retry

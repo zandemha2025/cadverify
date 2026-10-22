@@ -262,6 +262,66 @@ async def test_transient_resolution_retry_exhaustion_and_terminal_parent(
     session.commit.assert_awaited_once()
 
 
+async def _resolve(item, batch, **kwargs):
+    session = AsyncMock()
+    session.execute.side_effect = [_result(first=item), _result(first=batch)]
+    with patch("src.jobs.batch_tasks.get_session_factory", return_value=_session_factory(session)), \
+            patch.object(batch_service, "update_batch_counters", new_callable=AsyncMock):
+        return await batch_tasks._resolve_transient_batch_item_failure(item.ulid, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_tries_spent_by_stops_fail_as_stopped_not_as_a_storage_fault():
+    # Staging, batch 23 (RFS-21241, RFS-21247): out-of-memory kills and reclaimed
+    # leases used the tries, then the last one met a storage blip.
+    item = _item(1, status="processing", attempts=3)
+    action, _ = await _resolve(item, _batch(), stopped_before=True)
+    assert (action, item.status) == ("failed", "failed")
+    assert item.error_message == ("Checking was stopped before it finished 3 times; "
+                                  "the worker was busy or restarting. Check it again.")
+    assert "storage" not in item.error_message and "database" not in item.error_message
+
+
+@pytest.mark.asyncio
+async def test_a_stop_is_remembered_across_a_storage_retry():
+    item = _item(1, status="processing", attempts=1)
+    action, attempts = await _resolve(item, _batch(), stopped_before=True)
+    assert (action, attempts, item.status) == ("retry", 2, "queued")
+    assert item.error_message == batch_service.STOPPED_MID_CHECK
+
+
+@pytest.mark.asyncio
+async def test_tries_all_spent_on_storage_still_say_storage():
+    item = _item(1, status="processing", attempts=3)
+    await _resolve(item, _batch())
+    assert item.error_message == "Temporary storage or database failure persisted after 3 attempts."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["lease reclaimed", "delivery reclaimed"])
+async def test_an_item_whose_tries_went_to_reclaims_fails_with_the_stopped_wording(how):
+    """End to end through run_batch_item and the real resolver."""
+    if how == "lease reclaimed":
+        # The lease sweeper put it back twice (note kept), the coordinator queued try 3.
+        item = _item(1, status="queued", attempts=3)
+        item.error_message = batch_service.STOPPED_MID_CHECK
+        ctx = {"job_try": 1}
+    else:
+        # The worker died mid-try; arq delivered the same job again.
+        item = _item(1, status="processing", attempts=2)
+        ctx = {"job_try": 3}
+    batch = _batch()
+    session = AsyncMock()
+    session.execute.side_effect = [_result(first=item), _result(first=batch),
+                                   _result(first=item), _result(first=batch)]
+    with patch("src.jobs.batch_tasks.get_session_factory", return_value=_session_factory(session)), \
+            patch.object(batch_service, "read_batch_blob", side_effect=TimeoutError("S3 read timed out")), \
+            patch.object(batch_service, "update_batch_counters", new_callable=AsyncMock):
+        await batch_tasks.run_batch_item(ctx, item.ulid)
+    assert item.status == "failed"
+    assert item.error_message.startswith("Checking was stopped before it finished 3 times")
+
+
 @pytest.mark.asyncio
 @patch("src.jobs.batch_tasks.get_session_factory")
 async def test_real_item_task_retries_storage_timeout_without_terminalizing(mock_gsf):
@@ -288,7 +348,7 @@ async def test_real_item_task_retries_storage_timeout_without_terminalizing(mock
         with pytest.raises(Retry):
             await batch_tasks.run_batch_item({"job_try": 1}, item.ulid)
 
-    resolve.assert_awaited_once_with(item.ulid)
+    resolve.assert_awaited_once_with(item.ulid, stopped_before=False)
     counters.assert_not_awaited()
     assert item.status == "processing"
 
@@ -327,7 +387,7 @@ async def test_real_item_task_retries_operational_db_failure(mock_gsf):
         with pytest.raises(Retry):
             await batch_tasks.run_batch_item({"job_try": 1}, item.ulid)
 
-    resolve.assert_awaited_once_with(item.ulid)
+    resolve.assert_awaited_once_with(item.ulid, stopped_before=False)
     counters.assert_not_awaited()
 
 
