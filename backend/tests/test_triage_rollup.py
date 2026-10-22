@@ -105,8 +105,9 @@ def _row(part_key, *, analysis=None, cost=None):
 
 
 def test_process_label_known_and_fallback():
-    assert svc.process_label("cnc_3axis") == "CNC Milling (3-axis)"
-    assert svc.process_label("injection_molding") == "Injection Molding"
+    assert svc.process_label("cnc_3axis") == "3-axis milling"
+    assert svc.process_label("injection_molding") == "Injection molding"
+    assert svc.process_label("fdm") == "Filament printing (FDM/FFF)"
     # unknown id → titleized fallback, never dropped
     assert svc.process_label("some_new_proc") == "Some New Proc"
     assert svc.process_label(None) == "Unrouted"
@@ -193,10 +194,10 @@ def test_rollup_counts_per_process_are_correct():
     by = {p["process"]: p for p in out["by_process"]}
     # cnc_3axis: m-mk-cnc + m-nr-cnc + m-unk-costed = 3 routed
     assert by["cnc_3axis"]["count"] == 3
-    assert by["cnc_3axis"]["label"] == "CNC Milling (3-axis)"
+    assert by["cnc_3axis"]["label"] == "3-axis milling"
     # injection_molding: m-mk-im = 1 routed
     assert by["injection_molding"]["count"] == 1
-    assert by["injection_molding"]["label"] == "Injection Molding"
+    assert by["injection_molding"]["label"] == "Injection molding"
     # the no-route unknown contributes to no process
     assert set(by) == {"cnc_3axis", "injection_molding"}
     # sorted by count desc then id

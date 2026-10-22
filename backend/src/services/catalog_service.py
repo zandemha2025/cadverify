@@ -40,7 +40,7 @@ from typing import Any, Optional
 from sqlalchemy import and_, func, select, true, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.analysis.models import ProcessType
+from src.analysis.process_names import PROCESS_NAME, process_label as shared_process_label
 from src.db.models import Analysis, CostDecision, PartContext, PartSummary
 from src.services import part_context_service as pcsvc
 
@@ -1008,32 +1008,11 @@ async def portfolio_delta(
 # ---------------------------------------------------------------------------
 
 
-# Human labels for every real engine process id (ProcessType). Keeps the rollup
-# honest: buckets key off the engine's own category, and the label is a display
-# string only — an unrecognized id falls back to a titleized form, never dropped.
-_PROCESS_LABELS: dict[str, str] = {
-    ProcessType.FDM.value: "FDM 3D Printing",
-    ProcessType.SLA.value: "SLA 3D Printing",
-    ProcessType.DLP.value: "DLP 3D Printing",
-    ProcessType.SLS.value: "SLS 3D Printing",
-    ProcessType.MJF.value: "MJF 3D Printing",
-    ProcessType.DMLS.value: "DMLS Metal 3D Printing",
-    ProcessType.SLM.value: "SLM Metal 3D Printing",
-    ProcessType.EBM.value: "EBM Metal 3D Printing",
-    ProcessType.BINDER_JET.value: "Binder Jetting",
-    ProcessType.DED.value: "Directed Energy Deposition",
-    ProcessType.WAAM.value: "Wire-Arc Additive (WAAM)",
-    ProcessType.CNC_3AXIS.value: "CNC Milling (3-axis)",
-    ProcessType.CNC_5AXIS.value: "CNC Milling (5-axis)",
-    ProcessType.CNC_TURNING.value: "CNC Turning",
-    ProcessType.WIRE_EDM.value: "Wire EDM",
-    ProcessType.INJECTION_MOLDING.value: "Injection Molding",
-    ProcessType.DIE_CASTING.value: "Die Casting",
-    ProcessType.INVESTMENT_CASTING.value: "Investment Casting",
-    ProcessType.SAND_CASTING.value: "Sand Casting",
-    ProcessType.SHEET_METAL.value: "Sheet Metal",
-    ProcessType.FORGING.value: "Forging",
-}
+# Human labels for every real engine process id come from one table shared with the
+# v4 screens (src/analysis/process_names.py, mirroring process-names.ts): plain words
+# first, then the acronym engineers search for ("Filament printing (FDM/FFF)",
+# "3-axis milling"). Buckets key off the engine's own category; the label is a
+# display string only, and an unrecognized id falls back to a titleized form.
 
 # The three makeability postures. Every part lands in EXACTLY one (see
 # ``triage_bucket``); they are mutually exclusive and sum to ``total``.
@@ -1044,7 +1023,9 @@ def process_label(process_id: Optional[str]) -> str:
     """Human label for an engine process id (display only, never a category)."""
     if not process_id:
         return "Unrouted"
-    return _PROCESS_LABELS.get(process_id) or process_id.replace("_", " ").title()
+    if process_id in PROCESS_NAME:
+        return shared_process_label(process_id)
+    return process_id.replace("_", " ").title()
 
 
 def triage_bucket(row: dict) -> str:
