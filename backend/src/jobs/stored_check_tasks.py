@@ -499,6 +499,9 @@ async def _check_stored_part(ctx: dict, job_ulid: str, room) -> dict:
                         owned_processes=await _owned_processes(session, meta["org_id"]),
                         units=params.get("units"), user=user, session=session,
                         orientation=params.get("orientation"),
+                        # The job's organization, never the person's active one: they
+                        # may have switched while the check waited.
+                        org_id=meta["org_id"],
                     )
                     saved = (report or {}).get("saved") or {}
                     result["cost_decision_id"] = saved.get("id")

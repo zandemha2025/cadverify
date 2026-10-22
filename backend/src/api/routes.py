@@ -674,8 +674,11 @@ def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
     )
 
 
-async def _resolve_governed_shop(session, user_id, shop):
+async def _resolve_governed_shop(session, user_id, shop, org_id: Optional[str] = None):
     """Governed (DB) shop binding for the caller's org + slug, or None (W4 slice 2).
+
+    ``org_id``: the organization to read it in (a worker job's own); else the
+    caller's active one.
 
     When ``SHOP_LIBRARY_ENABLED`` is on AND the caller's org has a PUBLISHED shop
     profile for the requested slug in effect now, return a ShopProfile-like
@@ -698,7 +701,8 @@ async def _resolve_governed_shop(session, user_id, shop):
     from src.auth.org_context import resolve_org
     from src.costing.shop_profile import _slug
 
-    org_id = await resolve_org(session, user_id)
+    if org_id is None:
+        org_id = await resolve_org(session, user_id)
     if not isinstance(org_id, str) or not org_id:
         return None
     slug = _slug(raw)
@@ -1680,10 +1684,18 @@ async def _cost_decision(
     response: Optional[Response] = None,
     orientation: Optional[str] = None,
     material_name: Optional[str] = None,
+    org_id: Optional[str] = None,
     room: "compute_budget.DeferredHold | None" = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
+
+    ``org_id`` (worker callers: a big file's check, a kept part's re-price, a
+    catalog part): the job's own organization. Every org read and every save
+    here (machines, shop, rates, materials, calibration, analogy records, the
+    kept source, the cost decision, identity) uses it, never the person's
+    active organization, which may have changed while the job waited. A web
+    request passes none: the caller's active organization, as before.
 
     ``material_name`` (internal callers only, the catalog run): the material a
     parts list names; each route is priced in that grade where it runs it
@@ -1769,7 +1781,7 @@ async def _cost_decision(
     # path (and its 400 on an unknown shop) is used unchanged.
     governed_shop = None
     if user is not None and session is not None:
-        governed_shop = await _resolve_governed_shop(session, user.user_id, shop)
+        governed_shop = await _resolve_governed_shop(session, user.user_id, shop, org_id=org_id)
     if governed_shop is not None:
         shop_slug = governed_shop.slug           # string slug for logging / params_hash
         shop_binding = governed_shop             # ShopProfile-like object bound to engine
@@ -1901,7 +1913,7 @@ async def _cost_decision(
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
 
-        cal_org_id = await resolve_org(session, user.user_id)
+        cal_org_id = org_id if org_id is not None else await resolve_org(session, user.user_id)
         # resolve_org's contract is Optional[str]; guard on the concrete type so
         # a mocked/unprovisioned session (no real org_id) is treated as "no
         # calibration" — leaving behaviour byte-identical to pre-W5.
@@ -2341,6 +2353,7 @@ async def _cost_decision(
                     filename=file.filename or "unknown",
                     file_type=suffix.lstrip("."),
                     result_json=result_dict,
+                    org_id=org_id,
                 )
                 # Non-destructive: the decision JSON is unchanged; we only add a
                 # pointer to the saved artifact so the caller can open/export it.
@@ -2354,7 +2367,7 @@ async def _cost_decision(
                 # sees (graceful degrade, unchanged) — but the failure must
                 # be observable, not silent: warning log + usage_events row.
                 await record_persist_failure(
-                    session, user, mesh_hash=mesh_hash, error=exc
+                    session, user, mesh_hash=mesh_hash, error=exc, org_id=org_id
                 )
 
     # RESPONSE-ONLY: attach the ensemble band (when the flag produced one) after
@@ -2378,7 +2391,7 @@ async def _cost_decision(
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
 
-        _identity_org = await resolve_org(session, user.user_id)
+        _identity_org = org_id if org_id is not None else await resolve_org(session, user.user_id)
         if isinstance(_identity_org, str) and _identity_org:
             try:
                 from src.services import identity_retrieval_service

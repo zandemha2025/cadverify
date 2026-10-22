@@ -236,6 +236,7 @@ async def recheck_kept(
         material_class=material_class, shop=shop, overrides=overrides,
         owned_processes=owned_processes, tolerance_class=tolerance_class, units=units,
         user=user, session=session, response=response, orientation=orientation,
+        org_id=org_id,  # the kept part's organization (a worker's job may outlive an org switch)
     )
     result = dict(result)
     result["recheck"] = {

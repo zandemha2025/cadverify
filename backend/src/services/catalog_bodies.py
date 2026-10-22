@@ -174,6 +174,7 @@ async def check_file_bodies(
                 file=upload, qty=scaled_ladder(quantities, len(members)), region=None, cavities=1,
                 complexity="moderate", material_class=mclass, owned_processes=owned or None,
                 user=user, session=session, material_name=material_name if mclass == material_class else None,
+                org_id=org_id,
             )
             entry["decision_ulid"] = ((report or {}).get("saved") or {}).get("id")
             entry["status"] = "ok"

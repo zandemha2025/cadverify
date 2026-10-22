@@ -401,8 +401,11 @@ async def record_persist_failure(
     *,
     mesh_hash: Optional[str],
     error: BaseException,
+    org_id: Optional[str] = None,
 ) -> None:
     """Best-effort observability for a failed cost-decision persist.
+
+    ``org_id``: a worker job's own organization; else the caller's active one.
 
     Called from the graceful-degrade ``except`` in routes.py: persistence
     must never break the live decision the buyer sees, so this function is
@@ -432,7 +435,7 @@ async def record_persist_failure(
         session.add(
             UsageEvent(
                 user_id=user.user_id,
-                org_id=await resolve_org(session, user.user_id),
+                org_id=org_id if org_id is not None else await resolve_org(session, user.user_id),
                 api_key_id=user.api_key_id or None,
                 event_type="cost_persist_failed",
                 mesh_hash=mesh_hash,

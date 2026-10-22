@@ -2125,6 +2125,7 @@ async def _check_catalog_part(
                 user=user,
                 session=session,
                 material_name=material_name,
+                org_id=batch_org_id,
             )
             saved = (report or {}).get("saved") or {}
             if saved.get("id"):
