@@ -139,8 +139,29 @@ def merge_materials(
     return merged
 
 
+def load_yaml_aliases() -> dict[str, list[str]]:
+    """``{material name: [aliases]}`` from the material files (src.profiles.identity)."""
+    try:
+        import yaml  # noqa: F811
+    except ImportError:
+        return {}
+    out: dict[str, list[str]] = {}
+    if not _MATERIALS_DIR.is_dir():
+        return out
+    for filepath in sorted(_MATERIALS_DIR.glob("*.yaml")):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("name"):
+            out[str(data["name"])] = [str(a) for a in (data.get("aliases") or [])]
+    return out
+
+
 # Eagerly load at import time
 _YAML_MATERIALS: list[MaterialProfile] = load_yaml_materials()
+_YAML_MATERIALS_RAW_ALIASES: dict[str, list[str]] = load_yaml_aliases()
 
 #: Structured materials from YAML only (for new code that wants rich data)
 MATERIALS_STRUCTURED: list[MaterialProfile] = list(_YAML_MATERIALS)

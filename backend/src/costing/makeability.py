@@ -524,10 +524,26 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     return fails
 
 
+def material_declared(material_name: str, material_class: str, materials) -> bool:
+    """Whether a machine declared for ``materials`` runs this material: under any
+    of its names, or by its class.
+
+    The registry keeps some materials as several rows (Ti6Al4V powder and
+    Ti-6Al-4V Grade 5 bar; PP (MJF) and PP (Polypropylene)); a machine declared
+    for one is qualified for the material (``src.profiles.identity``)."""
+    from src.profiles.identity import material_identity
+
+    tokens = {str(m).strip().lower().lstrip("@") for m in materials or ()}
+    name = (material_name or "").strip().lower()
+    cls = (material_class or "").strip().lower()
+    if (name and name in tokens) or (cls and cls in tokens):
+        return True
+    want = material_identity(name) if name else ""
+    return bool(want) and any(material_identity(t) == want for t in tokens)
+
+
 def _material_qualified(part: PartReq, materials: tuple) -> bool:
-    tokens = {str(m).strip().lower().lstrip("@") for m in materials}
-    return (part.material_name.strip().lower() in tokens
-            or part.material_class.strip().lower() in tokens)
+    return material_declared(part.material_name, part.material_class, materials)
 
 
 # Printers whose part is bounded by the build volume, not a rated plate load.

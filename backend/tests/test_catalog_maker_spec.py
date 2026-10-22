@@ -109,7 +109,7 @@ def test_an_edit_makes_the_value_the_shops_own():
     fit = fit_machine(_aluminum_block(), _cap(both))
     assert fit.passes and "maker_spec" not in fit.resource_hint
     # Same materials in another order is still the maker's list.
-    reordered = _saved("Haas VF-2", materials=["steel", "aluminum"])
+    reordered = _saved("Haas VF-2", materials=["polymer", "steel", "aluminum"])
     assert reordered["capabilities"]["maker_spec"]["fields"] == ["max_workpiece_kg", "materials"]
 
 

@@ -223,10 +223,12 @@ MACHINES: list[MachineProfile] = [
             kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
             materials_note="Desktop Metal qualifies 17-4 PH and 316L on the Shop System.",
             checked=_CHECKED)),
-    # CNC: ``materials`` are engine material classes, kept conservative.
+    # CNC: ``materials`` are engine material classes, kept conservative: plastics
+    # (Delrin, PEEK) cut on any mill or lathe that cuts aluminum; stainless and
+    # titanium are left for the shop to add.
     MachineProfile(
         "Haas VF-2", "Haas", ProcessType.CNC_3AXIS, (762, 406, 508), notes="30x16x20 inches, 8100 RPM",
-        materials=["aluminum", "steel"],
+        materials=["aluminum", "steel", "polymer"],
         spec=MakerSpec(
             "https://www.haascnc.com/machines/vertical-mills/vf-series/models/small/vf-2.html",
             max_workpiece_kg=1361.0,
@@ -234,12 +236,12 @@ MACHINES: list[MachineProfile] = [
             materials_basis=MAKER_DESCRIBED,
             materials_url="https://www.haascnc.com/productivity/spindles/8-1k-40t-in.html",
             materials_note=("Haas lists no materials; it calls the standard 8100-rpm 40-taper spindle "
-                            "all-purpose. Aluminum and steel only: add stainless or titanium if you cut them."),
+                            "all-purpose. Aluminum, steel and plastics: add stainless or titanium if you cut them."),
             checked=_CHECKED)),
     MachineProfile(
         "DMG MORI DMU 50", "DMG MORI", ProcessType.CNC_5AXIS, (650, 520, 475),
         notes="3rd generation, 5-axis simultaneous",
-        materials=["aluminum", "steel", "stainless"],
+        materials=["aluminum", "steel", "stainless", "polymer"],
         spec=MakerSpec(
             "https://us.dmgmori.com/products/machines/milling/5-axis-milling/dmu/dmu-50",
             max_workpiece_kg=300.0,
@@ -247,12 +249,12 @@ MACHINES: list[MachineProfile] = [
             materials_basis=MAKER_DESCRIBED,
             materials_url="https://us.dmgmori.com/news-and-media/news/dmu-50-3rd-generation",
             materials_note=("DMG MORI lists no materials; it names general mechanical engineering, fixture "
-                            "construction, aerospace, medical and automotive work. Aluminum, steel and "
-                            "stainless: add titanium if you cut it."),
+                            "construction, aerospace, medical and automotive work. Aluminum, steel, "
+                            "stainless and plastics: add titanium if you cut it."),
             checked=_CHECKED)),
     MachineProfile(
         "Haas ST-20", "Haas", ProcessType.CNC_TURNING, (254, 254, 533), notes="8.3-inch chuck, 4000 RPM",
-        materials=["aluminum", "steel"],
+        materials=["aluminum", "steel", "polymer"],
         spec=MakerSpec(
             "https://www.haascnc.com/service/troubleshooting-and-how-to/reference-documents/lathe-work-piece-weight-limits.html",
             max_workpiece_kg=68.0,
@@ -260,7 +262,7 @@ MACHINES: list[MachineProfile] = [
                      "centers needs a tailstock. Haas calls these estimates, not a safe setup."),
             materials_basis=MAKER_DESCRIBED,
             materials_url="https://www.haascnc.com/machines/lathes/st/models/standard/st-20.html",
-            materials_note="Haas lists no materials for the ST-20. Aluminum and steel only: add stainless or titanium if you turn them.",
+            materials_note="Haas lists no materials for the ST-20. Aluminum, steel and plastics: add stainless or titanium if you turn them.",
             checked=_CHECKED)),
     MachineProfile(
         "Sodick ALC600G", "Sodick", ProcessType.WIRE_EDM, (600, 400, 350), notes="Linear motor, 0.01mm accuracy",

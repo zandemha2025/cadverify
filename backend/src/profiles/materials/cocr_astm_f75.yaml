@@ -2,7 +2,8 @@ name: CoCr ASTM F75
 aliases: [CoCrMo, Vitallium, Stellite 21]
 alloy_designation: ASTM F75
 standards: [ASTM F75, ISO 5832-4, ASTM F1537, ISO 22674]
-processes: [dmls, slm, ebm, investment_casting, cnc_5axis]
+# Printed cobalt-chrome is the CoCr powder row in profiles/database.py (same alloy, src.profiles.identity).
+processes: [investment_casting, cnc_5axis]
 mechanical:
   density_g_cm3: 8.3
   tensile_mpa: 1050

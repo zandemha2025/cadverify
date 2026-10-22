@@ -339,15 +339,20 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     verification = None
     machine_override_by_pv: dict = {}
     env_excluded: dict = {}
+    if options.inventory:
+        # A route a machine you own runs is priced in a material that machine
+        # is declared for (the part's class), not the class's cheapest row.
+        elig = _prefer_owned_materials(elig, options)
     if options.inventory or options.service_environment:
         verification, machine_override_by_pv, env_excluded = _build_verification(
             elig, drivers, options, rates)
     if options.inventory and verification is not None:
-        # A declared process cannot grant in-house savings when the actual
-        # inventory fails (or cannot establish) fit for this part and material.
+        # The inventory decides what is owned: a route a machine of yours clears
+        # is priced as owned (capital sunk), declared or not; a declared process
+        # cannot grant in-house savings when no machine of yours establishes fit.
         options = replace(options, owned_processes=frozenset(
-            p for p in options.owned_processes
-            if verification["per_route"].get(p.value, {}).get("verdict")
+            item["process"] for item in elig
+            if verification["per_route"].get(item["process"].value, {}).get("verdict")
             in {"makeable_in_house", "makeable_with_secondary_op"}
         ))
 
@@ -544,6 +549,44 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
 
 
 _IN_HOUSE_VERDICTS = ("makeable_in_house", "makeable_with_secondary_op")
+
+
+def _prefer_owned_materials(elig: list, options) -> list:
+    """Price a route your machine runs in a material that machine is declared for.
+
+    The shortlist prices each route in the cheapest registry material of the
+    part's class (PLA for plastic on a filament printer). When the shop owns
+    machines for that route and none is declared for that material, the route is
+    re-priced in the cheapest material of the same class that one of them is
+    declared for (ABS on a Stratasys F900), so the fit and the price are about
+    the material the shop would actually use. No such material: unchanged, and
+    the fit says the machine isn't declared for it.
+    """
+    from src.costing.makeability import material_declared
+    from src.costing.rates import MATERIAL_FAMILY
+    from src.costing.routing import _env_preferred_materials
+    from src.analysis.models import ProcessType as _PT
+    from src.profiles.database import get_materials_for_process
+
+    out = []
+    cls = options.material_class
+    for item in elig:
+        process = item["process"]
+        machines = [m for m in options.inventory
+                    if getattr(m.process, "value", m.process) == process.value and m.materials]
+        mat = item["material"]
+        if (not machines or process == _PT.SHEET_METAL
+                or any(material_declared(mat.name, MATERIAL_FAMILY.get(mat.name, ""), m.materials)
+                       for m in machines)):
+            out.append(item)
+            continue
+        cands = [m for m in get_materials_for_process(process)
+                 if MATERIAL_FAMILY.get(m.name) == cls and m.density and m.cost_per_kg
+                 and any(material_declared(m.name, cls, mc.materials) for mc in machines)]
+        if options.service_environment and cands:
+            cands = _env_preferred_materials(process, cands, options.service_environment)
+        out.append({**item, "material": min(cands, key=lambda m: m.cost_per_kg)} if cands else item)
+    return out
 # A note that names the shop's own machine starts with this (public shares drop it).
 OWNED_PICK_NOTE_PREFIX = "Note: on a machine you own, the make-as-is pick at low qty is "
 

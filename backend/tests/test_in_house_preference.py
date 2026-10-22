@@ -88,50 +88,86 @@ def test_in_house_lead_time_runs_on_the_shops_own_machines_and_ships_nothing():
     assert "Bambu Lab X1C" in one.capacity["basis"] and "no shipping" in one.capacity["basis"]
 
 
+# ── the decision layer, on fixed estimates ────────────────────────────────────
+def _est(process, q, unit, band=40.0):
+    from src.costing.provenance import CostEstimate
+    return CostEstimate(process=process, material="M", quantity=q, unit_cost_usd=unit,
+                        fixed_cost_usd=0.0, variable_cost_usd=unit, drivers=[], line_items={"x": unit},
+                        est_error_band_pct=band, dfm_ready=True, dfm_verdict="issues")
+
+
+def _lt(lo, hi):
+    from src.costing.leadtime import LeadTime
+    return LeadTime(process="x", quantity=1, low_days=lo, high_days=hi, mid_days=(lo + hi) / 2)
+
+
+def test_make_vs_buy_weighs_the_owned_route_at_each_quantity():
+    from src.costing.decision import make_vs_buy
+
+    # fdm on your X1C; mjf outside. Numbers as the engine gave for the bracket.
+    ests = {("fdm", 100): _est("fdm", 100, 15.66), ("mjf", 100): _est("mjf", 100, 12.16),
+            ("fdm", 1000): _est("fdm", 1000, 15.58), ("mjf", 1000): _est("mjf", 1000, 12.07),
+            ("fdm", 5000): _est("fdm", 5000, 25.0), ("mjf", 5000): _est("mjf", 5000, 12.0)}
+    lts = {("fdm", 100): _lt(4.9, 9.1), ("mjf", 100): _lt(5.6, 10.4),
+           ("fdm", 1000): _lt(42.7, 79.3), ("mjf", 1000): _lt(7.0, 13.0),
+           ("fdm", 5000): _lt(5.0, 9.0), ("mjf", 5000): _lt(6.0, 11.0)}
+    owned = {"fdm": {"machine": "Bambu Lab X1C", "count": 1}}
+    base = make_vs_buy(ests, [100, 1000, 5000], lts)
+    assert base.recommendation[100]["process"] == "mjf" and not base.options  # before: cheapest only
+    d = make_vs_buy(ests, [100, 1000, 5000], lts, in_house=owned)
+    assert (d.options[100]["pick"], d.options[100]["basis"]) == ("in_house", "in_house_within_range")
+    rec = d.recommendation[100]
+    assert (rec["process"], rec["in_house"], rec["machine"], rec["basis"]) == (
+        "fdm", True, "Bambu Lab X1C", "in_house_within_range")
+    assert (d.options[1000]["pick"], d.options[1000]["basis"]) == ("outside", "outside_sooner")
+    assert d.recommendation[1000]["process"] == "mjf" and d.recommendation[1000]["in_house"] is False
+    assert (d.options[5000]["pick"], d.options[5000]["basis"]) == ("outside", "outside_cheaper")
+    assert d.options[100]["in_house"]["low_usd"] == round(15.66 * 0.6, 2)
+    assert d.options[100]["outside"]["lead_high_days"] == 10.4
+    assert d.make_now_process == "fdm" and d.rule == IN_HOUSE_RULE
+    assert "Owned machines:" in d.note
+
+
 # ── on the real cost path ─────────────────────────────────────────────────────
-def test_owned_x1c_is_recommended_when_outside_is_cheaper_only_inside_the_range():
+def test_an_owned_x1c_that_fits_puts_both_sides_on_the_answer():
     rep = _report(inventory=[_x1c()])
     dec = rep["decision"]
     assert rep["verification"]["per_route"]["fdm"]["verdict"] == "makeable_in_house"
-    opt = dec["options"][100]
-    # Before: qty 100 recommended outside MJF at $12.16 against $15.66 on the X1C.
-    assert opt["outside"]["process"] == "mjf"
-    assert opt["outside"]["unit_cost_usd"] < opt["in_house"]["unit_cost_usd"]
-    assert opt["outside"]["unit_cost_usd"] >= opt["in_house"]["low_usd"]
-    assert (opt["pick"], opt["basis"]) == ("in_house", "in_house_within_range")
-    rec = dec["recommendation"][100]
-    assert (rec["process"], rec["in_house"], rec["machine"]) == ("fdm", True, "Bambu Lab X1C")
-    assert rec["unit_cost_usd"] == opt["in_house"]["unit_cost_usd"]
-    # Both sides carry their own range and lead time, from the served estimates.
-    fdm100 = next(e for e in rep["estimates"] if e["process"] == "fdm" and e["quantity"] == 100)
-    assert opt["in_house"]["low_usd"] == fdm100["confidence"]["low_usd"]
-    assert opt["in_house"]["lead_high_days"] == fdm100["lead_time"]["high_days"]
-    assert fdm100["lead_time"]["components"]["ship"] == 0
+    for q in QTYS:
+        opt = dec["options"][q]
+        rec = dec["recommendation"][q]
+        assert opt["in_house"]["process"] == "fdm" and opt["in_house"]["machine"] == "Bambu Lab X1C"
+        # The pick follows the stated rule applied to the two sides shown.
+        assert (opt["pick"], opt["basis"]) == prefer_in_house(opt["in_house"], opt["outside"])
+        side = opt["in_house"] if opt["pick"] == "in_house" else opt["outside"]
+        assert (rec["process"], rec["unit_cost_usd"]) == (side["process"], side["unit_cost_usd"])
+        fdm = next(e for e in rep["estimates"] if e["process"] == "fdm" and e["quantity"] == q)
+        assert opt["in_house"]["low_usd"] == fdm["confidence"]["low_usd"]
+        assert opt["in_house"]["lead_high_days"] == fdm["lead_time"]["high_days"]
+        # made in your building: no shipping, and priced as owned (capital sunk)
+        assert fdm["lead_time"]["components"]["ship"] == 0
+        assert fdm.get("owned_in_house") is True
     assert dec["rule"] == IN_HOUSE_RULE
-    # The headline make process is the qty-1 pick, single-sourced.
-    assert dec["make_now_process"] == dec["recommendation"][1]["process"] == "fdm"
+    assert dec["make_now_process"] == dec["recommendation"][1]["process"]
 
 
-def test_a_long_in_house_run_goes_outside_when_outside_is_cheaper_and_sooner():
-    dec = _report(inventory=[_x1c()])["decision"]
-    opt = dec["options"][1000]
-    assert (opt["pick"], opt["basis"]) == ("outside", "outside_sooner")
-    assert opt["outside"]["lead_high_days"] < opt["in_house"]["lead_low_days"]
-    assert dec["recommendation"][1000]["process"] == opt["outside"]["process"]
-    assert dec["recommendation"][1000]["in_house"] is False
-    # More printers shorten the in-house run; the rule reads the new lead time.
-    more = _report(inventory=[_x1c(count=8)])["decision"]["options"][1000]
-    assert more["in_house"]["lead_low_days"] < opt["in_house"]["lead_low_days"]
-    assert (more["pick"], more["basis"]) == ("in_house", "in_house_within_range")
+def test_an_owned_route_far_dearer_than_outside_goes_outside():
+    result, mesh, feats = _analyze(_bracket())
+    opts = EstimateOptions(quantities=[100], inventory=(_x1c(),),
+                           rate_overrides={"machine_rate.FDM": 400.0})
+    dec = report_to_dict(estimate_decision(result, mesh, feats, opts))["decision"]
+    opt = dec["options"][100]
+    assert opt["pick"] == "outside" and opt["basis"] in ("outside_cheaper", "outside_sooner")
+    assert dec["recommendation"][100]["in_house"] is False
+    assert dec["recommendation"][100]["process"] == opt["outside"]["process"]
 
 
 def test_no_owned_machine_that_fits_leaves_the_decision_unchanged():
     base = _report()
     assert "options" not in base["decision"] and "rule" not in base["decision"]
     assert all("basis" not in r for r in base["decision"]["recommendation"].values())
-    assert base["decision"]["recommendation"][100]["process"] == "mjf"
     # A printer declared for other materials doesn't clear the check: same decision.
-    other = _report(inventory=[_x1c(materials=("PEEK",))])
+    other = _report(inventory=[_x1c(materials=("aluminum",))])
     assert other["verification"]["per_route"]["fdm"]["verdict"] != "makeable_in_house"
     assert other["decision"] == base["decision"]
 
