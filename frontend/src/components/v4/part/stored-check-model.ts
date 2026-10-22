@@ -1,7 +1,8 @@
 /**
  * What a big file's check shows, step by step, from the real state: the
- * browser's upload, then the worker's stages (``stored_check_tasks``). Pure (no
- * React, no fetch) so it runs under node --test.
+ * browser's upload (or, for a part imported from a share link, the worker's
+ * fetch), then the worker's stages (``stored_check_tasks``). Pure (no React,
+ * no fetch) so it runs under node --test.
  */
 import { sizeText } from "../../../lib/upload-limit.ts";
 
@@ -11,6 +12,7 @@ export type StoredPhaseName =
   | "finishing"
   | "starting"
   | "queued"
+  | "fetching"
   | "verifying"
   | "unpacking"
   | "sizing"
@@ -32,23 +34,27 @@ export interface StoredStateIn {
   memory: { need_bytes: number; budget_bytes: number } | null;
   geometryInvalid: string | null;
   failure: { title: string; detail: string; code: string | null } | null;
+  /** A part imported from a share link: where from ("Dropbox"), and the bytes fetched. */
+  linkLabel?: string | null;
+  fetchedBytes?: number | null;
 }
 
 export type StepState = "done" | "now" | "wait" | "bad" | "skip";
 export interface StoredStep {
-  key: "upload" | "verify" | "unpack" | "size" | "measure" | "price";
+  key: "upload" | "fetch" | "verify" | "unpack" | "size" | "measure" | "price";
   t: string;
   d: string;
   state: StepState;
 }
 
-const ORDER: StoredPhaseName[] = ["hashing", "uploading", "finishing", "starting", "queued", "verifying", "unpacking", "sizing", "measuring", "pricing", "done"];
+const ORDER: StoredPhaseName[] = ["hashing", "uploading", "finishing", "starting", "queued", "fetching", "verifying", "unpacking", "sizing", "measuring", "pricing", "done"];
 const STEP_OF: Record<StoredPhaseName, StoredStep["key"]> = {
   hashing: "upload",
   uploading: "upload",
   finishing: "upload",
   starting: "verify",
   queued: "verify",
+  fetching: "fetch",
   verifying: "verify",
   unpacking: "unpack",
   sizing: "size",
@@ -64,9 +70,10 @@ export function compressed(name: string): boolean {
 }
 
 /** Which step a server failure belongs to, from its code. */
-export function failedStep(code: string | null, uploadedToServer: boolean): StoredStep["key"] {
-  if (!uploadedToServer) return "upload";
+export function failedStep(code: string | null, uploadedToServer: boolean, link = false): StoredStep["key"] {
   const c = code ?? "";
+  if (link && (!uploadedToServer || c.startsWith("LINK_") || c.startsWith("DIRECT_UPLOAD_") || c === "UPLOAD_GONE")) return "fetch";
+  if (!uploadedToServer) return "upload";
   if (c.startsWith("DIRECT_UPLOAD_") || c === "UPLOAD_GONE") return "verify";
   if (c.startsWith("ARCHIVE_")) return "unpack";
   if (c === "CHECK_TOO_LARGE") return "size";
@@ -78,11 +85,13 @@ function pct(f: number): string {
 }
 
 export function storedSteps(c: StoredStateIn): StoredStep[] {
+  const link = c.linkLabel != null;
   const zipped = compressed(c.name);
   const failed = c.phase === "failed";
-  const badKey = failed ? failedStep(c.failure?.code ?? null, !!c.checkId) : null;
-  const atKey = failed ? badKey! : STEP_OF[c.phase];
-  const keys: StoredStep["key"][] = ["upload", "verify", ...(zipped ? (["unpack"] as const) : []), "size", "measure", "price"];
+  const badKey = failed ? failedStep(c.failure?.code ?? null, !!c.checkId, link) : null;
+  // A link's fetch takes the file's size and SHA-256 as it streams: one step for both.
+  const atKey = failed ? badKey! : link && (c.phase === "starting" || c.phase === "queued" || c.phase === "fetching") ? "fetch" : STEP_OF[c.phase];
+  const keys: StoredStep["key"][] = [...(link ? (["fetch"] as const) : (["upload", "verify"] as const)), ...(zipped ? (["unpack"] as const) : []), "size", "measure", "price"];
   const at = keys.indexOf(atKey);
   const stateOf = (k: StoredStep["key"]): StepState => {
     const i = keys.indexOf(k);
@@ -93,8 +102,24 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
   const steps: StoredStep[] = [];
   const st = (key: StoredStep["key"], t: string, d: string) => steps.push({ key, t, d, state: stateOf(key) });
 
-  const up = stateOf("upload");
-  st(
+  if (link) {
+    const f = stateOf("fetch");
+    st(
+      "fetch",
+      `From ${c.linkLabel}`,
+      f === "bad"
+        ? c.failure?.detail ?? "The file didn’t arrive."
+        : f === "done"
+          ? `${c.fetchedBytes ? `${sizeText(c.fetchedBytes)} fetched` : "Fetched"} · its SHA-256 taken as it arrived`
+          : c.phase === "fetching"
+            ? `Fetching on the server${c.fetchedBytes ? ` · ${sizeText(c.fetchedBytes)}` : ""} · nothing downloads to this browser`
+            : c.phase === "starting"
+              ? "Sending the link"
+              : "Waiting for a worker",
+    );
+  }
+  const up = link ? null : stateOf("upload");
+  if (up) st(
     "upload",
     "Upload",
     up === "bad"
@@ -107,8 +132,8 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
             ? "Joining the parts in storage"
             : `${sizeText(c.sent)} of ${sizeText(c.size)}${c.resumed ? ` · ${c.resumed} ${c.resumed === 1 ? "part was" : "parts were"} already there` : ""} · resumes if the connection drops`,
   );
-  const v = stateOf("verify");
-  st(
+  const v = link ? null : stateOf("verify");
+  if (v) st(
     "verify",
     "Fingerprint",
     v === "bad" ? c.failure?.detail ?? "The upload didn’t match." : v === "done" ? "Matches the file this browser sent" : c.phase === "queued" || c.phase === "starting" ? "Waiting for a worker" : "The server reads the whole file and checks its SHA-256",
@@ -150,6 +175,9 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
 export function overallFraction(c: StoredStateIn): number | null {
   if (c.phase === "done") return 1;
   if (c.phase === "failed") return null;
+  if (c.linkLabel != null && (c.phase === "starting" || c.phase === "queued")) return 0.03;
+  // A link's fetch is most of the wait before the check: up to 0.6, by the worker's own fraction.
+  if (c.linkLabel != null && c.phase === "fetching") return 0.05 + 0.55 * (c.frac ?? 0);
   const i = ORDER.indexOf(c.phase);
   if (c.phase === "hashing") return 0.05 * (c.size ? c.sent / c.size : 0);
   if (c.phase === "uploading") return 0.05 + 0.6 * (c.size ? c.sent / c.size : 0);

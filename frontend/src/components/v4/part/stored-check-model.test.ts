@@ -54,3 +54,33 @@ test("the bar moves with the upload, then the worker", () => {
   assert.ok(measuring > 0.65 && measuring < 0.98);
   assert.equal(overallFraction({ ...base, phase: "done" }), 1);
 });
+
+test("a share link: one fetch step, on the server, then the worker's stages", () => {
+  const link = { ...base, name: "File from Dropbox", size: 0, sent: 0, phase: "starting" as const, linkLabel: "Dropbox", fetchedBytes: null };
+  assert.deepEqual(states(link), ["fetch:now", "size:wait", "measure:wait", "price:wait"]);
+  assert.equal(storedSteps(link)[0].t, "From Dropbox");
+  assert.equal(storedSteps(link)[0].d, "Sending the link");
+  assert.equal(storedSteps({ ...link, phase: "queued", checkId: "C" })[0].d, "Waiting for a worker");
+  const fetching = { ...link, phase: "fetching" as const, checkId: "C", frac: 0.5 };
+  assert.match(storedSteps(fetching)[0].d, /^Fetching on the server · nothing downloads to this browser$/);
+  const f = overallFraction(fetching)!;
+  assert.ok(f > 0.3 && f < 0.6, String(f));
+  const measuring = { ...link, name: "bracket.step", phase: "measuring" as const, checkId: "C", fetchedBytes: 12 * 1024 * 1024 };
+  assert.deepEqual(states(measuring), ["fetch:done", "size:done", "measure:now", "price:wait"]);
+  assert.equal(storedSteps(measuring)[0].d, "12 MB fetched · its SHA-256 taken as it arrived");
+  const zipped = { ...measuring, name: "bracket.step.gz", phase: "unpacking" as const };
+  assert.deepEqual(states(zipped), ["fetch:done", "unpack:now", "size:wait", "measure:wait", "price:wait"]);
+});
+
+test("a link's failure lands on the fetch step with the server's words", () => {
+  const failed = {
+    ...base, name: "File from Dropbox", size: 0, phase: "failed" as const, checkId: "C", linkLabel: "Dropbox", fetchedBytes: null,
+    failure: { title: "The link opens a page, not a file", detail: "That link opens a page, not a file. Share the file itself, or download it and upload the file. Nothing was charged.", code: "LINK_IS_A_PAGE" },
+  };
+  assert.deepEqual(states(failed), ["fetch:bad", "size:wait", "measure:wait", "price:wait"]);
+  assert.equal(storedSteps(failed)[0].d, failed.failure.detail);
+  // Refused before a check existed (a link off the allowlist): the fetch step too.
+  assert.equal(failedStep("LINK_NOT_SUPPORTED", false, true), "fetch");
+  assert.equal(failedStep("CHECK_TOO_LARGE", true, true), "size");
+  assert.equal(failedStep("CHECK_UNREADABLE", true, true), "measure");
+});

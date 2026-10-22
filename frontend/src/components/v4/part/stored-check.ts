@@ -10,11 +10,18 @@
  * every page: uploading (resumes after a dropped connection; after a reload,
  * picking the same file again sends only the missing parts), then the
  * worker's own stages, then "Ready" linking to the part's page.
+ *
+ * A part imported from a share link (startLinkCheck) is the same check without
+ * the browser's half: the link goes to POST /uploads/from-link, the worker
+ * fetches the file ("Fetching from Dropbox") and checks it. The link itself
+ * stays in this tab's memory only (for Try again); the server keeps it sealed
+ * until its worker reads it.
  */
 import * as React from "react";
 import { API_BASE } from "@/lib/api-base";
 import { forgetResume, PartUploadError, uploadPart, type UploadProgress } from "@/lib/api/part-upload";
 import { sizeText } from "@/lib/upload-limit";
+import { LINK_FAILURE_TITLE, readLink } from "@/lib/link-import";
 import { markWorkSeen, pausedUploadKey, registerWork, removeWork } from "../work/work-bar";
 import { R } from "../routes";
 import type { StoredPhaseName } from "./stored-check-model";
@@ -53,6 +60,10 @@ export interface StoredCheck {
   startedAt: number;
   finishedAt: number | null;
   opened?: boolean;
+  /** A part imported from a share link: the link (this tab's memory only) and its source. */
+  link: { url: string; filename: string | null } | null;
+  linkLabel: string | null;
+  fetchedBytes: number | null;
 }
 
 const checks = new Map<number, StoredCheck>();
@@ -73,6 +84,7 @@ const STAGE_WORD: Record<StoredPhase, string> = {
   finishing: "Finishing the upload",
   starting: "Starting the check",
   queued: "Waiting for a worker",
+  fetching: "Fetching the file",
   verifying: "Checking the upload",
   unpacking: "Unpacking",
   sizing: "Sizing the check",
@@ -82,7 +94,8 @@ const STAGE_WORD: Record<StoredPhase, string> = {
   failed: "Not checked",
 };
 
-export function stageWord(p: StoredPhase): string {
+export function stageWord(p: StoredPhase, linkLabel?: string | null): string {
+  if (p === "fetching" && linkLabel) return `Fetching from ${linkLabel}`;
   return STAGE_WORD[p];
 }
 
@@ -95,6 +108,7 @@ function workItem(c: StoredCheck) {
   }
   const name = c.partName ?? c.name;
   const browser = c.phase === "hashing" || c.phase === "uploading" || c.phase === "finishing";
+  const fetching = !!c.linkLabel && (c.phase === "starting" || c.phase === "queued" || c.phase === "fetching");
   const href = c.phase === "done" && c.key && !c.geometryInvalid ? R.part(c.key) : c.checkId ? `${R.check}?job=${encodeURIComponent(c.checkId)}` : R.check;
   if (c.phase === "done") {
     registerWork({ key, href, persist: true, state: "done", label: `Checked ${name}`, detail: c.geometryInvalid ? "Not a closed solid" : "Ready", progress: 1 });
@@ -107,8 +121,8 @@ function workItem(c: StoredCheck) {
       // Until the server has the check it lives in this tab only; then it outlives the tab.
       persist: !!c.checkId,
       state: "running",
-      label: browser ? `Uploading ${name}` : `Checking ${name}`,
-      detail: browser ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : STAGE_WORD[c.phase],
+      label: browser ? `Uploading ${name}` : fetching ? `Importing ${name}` : `Checking ${name}`,
+      detail: browser ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : fetching ? `Fetching from ${c.linkLabel}` : stageWord(c.phase, c.linkLabel),
       progress: browser ? (c.size ? c.sent / c.size : null) : c.frac,
     });
   }
@@ -147,6 +161,7 @@ const SERVER_FAILURE: Record<string, string> = {
   CHECK_INTERRUPTED: "The check was interrupted",
   ARCHIVE_MANY_PARTS: "More than one part in the ZIP",
   ARCHIVE_NO_PART: "No part in the ZIP",
+  ...LINK_FAILURE_TITLE,
 };
 
 interface ServerCheck {
@@ -162,11 +177,20 @@ interface ServerCheck {
   memory: { need_bytes: number; budget_bytes: number } | null;
   geometry_invalid: string | null;
   error: { code: string; message: string } | null;
+  source?: string;
+  link?: { provider: string; label: string; host: string } | null;
+  fetched_bytes?: number | null;
 }
+
+/** A link's fetch that stopped for a passing reason: the same link again can work. */
+const LINK_RETRY = new Set(["LINK_TIMEOUT", "LINK_CONNECT_FAILED", "LINK_PROVIDER_ERROR", "LINK_RATE_LIMITED", "LINK_FETCH_FAILED", "LINK_DISK"]);
 
 function fromServer(s: ServerCheck): Partial<StoredCheck> {
   const phase: StoredPhase = s.status === "done" ? "done" : s.status === "failed" ? "failed" : (s.stage ?? "queued");
+  const link = s.source === "link" && s.link ? s.link : null;
   return {
+    // A link's name is known once fetched (or from the link itself).
+    ...(link ? { linkLabel: link.label, fetchedBytes: s.fetched_bytes ?? null, ...(s.filename ? { name: s.filename } : {}), ...(s.size_bytes ? { size: s.size_bytes } : {}) } : {}),
     phase,
     frac: s.progress ?? null,
     partName: s.part_filename,
@@ -174,7 +198,7 @@ function fromServer(s: ServerCheck): Partial<StoredCheck> {
     key: s.mesh_hash,
     memory: s.memory ? { need_bytes: s.memory.need_bytes, budget_bytes: s.memory.budget_bytes } : null,
     geometryInvalid: s.geometry_invalid ?? null,
-    failure: s.status === "failed" && s.error ? { title: SERVER_FAILURE[s.error.code] ?? "The check didn’t finish", detail: s.error.message, code: s.error.code, retry: s.error.code === "CHECK_FAILED" || s.error.code === "CHECK_INTERRUPTED" } : null,
+    failure: s.status === "failed" && s.error ? { title: SERVER_FAILURE[s.error.code] ?? "The check didn’t finish", detail: s.error.message, code: s.error.code, retry: s.error.code === "CHECK_FAILED" || s.error.code === "CHECK_INTERRUPTED" || LINK_RETRY.has(s.error.code) } : null,
     finishedAt: s.status === "done" || s.status === "failed" ? Date.now() : null,
   };
 }
@@ -243,6 +267,78 @@ async function run(id: number) {
   void follow(id);
 }
 
+function linkFailure(status: number, d: { code?: string; message?: string } | undefined): StoredFailure {
+  const code = d?.code ?? null;
+  const detail = d?.message ?? `The server answered ${status}.`;
+  if (status === 429) return { title: "Uploads are busy for your organization", detail, code, retry: true };
+  if (status === 422) return { title: "Can’t import this link", detail, code, retry: false };
+  if (status === 403) return { title: code === "LINK_IMPORT_OFF" ? "Import from a link is off" : "The check didn’t start", detail, code, retry: false };
+  return { title: "The check didn’t start", detail, code, retry: status >= 500 };
+}
+
+async function runLink(id: number) {
+  const c0 = checks.get(id);
+  if (!c0?.link) return;
+  try {
+    const res = await fetch(`${API_BASE}/uploads/from-link`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: c0.link.url, filename: c0.link.filename ?? undefined, material_class: c0.materialClass, orientation: c0.orientation ?? undefined }),
+    });
+    const body = (await res.json().catch(() => null)) as ServerCheck & { detail?: { code?: string; message?: string }; code?: string; message?: string };
+    if (!res.ok || !body?.check_id) {
+      const d = body?.detail ?? (body ? { code: body.code, message: body.message } : undefined);
+      patch(id, { phase: "failed", finishedAt: Date.now(), failure: linkFailure(res.status, d) });
+      return;
+    }
+    patch(id, { checkId: body.check_id, ...fromServer(body) });
+  } catch {
+    patch(id, { phase: "failed", finishedAt: Date.now(), failure: { title: "The check didn’t start", detail: "The server couldn’t be reached. Try again.", code: "network", retry: true } });
+    return;
+  }
+  void follow(id);
+}
+
+/**
+ * Import the part a share link points at and check it on the worker. The link
+ * is read here only to name its source; the server applies the rules.
+ */
+export function startLinkCheck(url: string, opts: { filename?: string | null; materialClass?: string; orientation?: string | null } = {}): number {
+  const id = nextId++;
+  const read = readLink(url);
+  const label = read.ok ? read.label : "the link";
+  const name = opts.filename?.trim() || (read.ok ? read.nameHint : null) || `File from ${label}`;
+  checks.set(id, {
+    id,
+    file: null,
+    name,
+    size: 0,
+    materialClass: opts.materialClass ?? "polymer",
+    orientation: opts.orientation ?? null,
+    phase: "starting",
+    sent: 0,
+    resumed: 0,
+    frac: null,
+    uploadId: null,
+    checkId: null,
+    partName: null,
+    partBytes: null,
+    key: null,
+    memory: null,
+    geometryInvalid: null,
+    failure: null,
+    startedAt: Date.now(),
+    finishedAt: null,
+    link: { url: url.trim(), filename: opts.filename?.trim() || null },
+    linkLabel: label,
+    fetchedBytes: null,
+  });
+  workItem(checks.get(id)!);
+  emit();
+  void runLink(id);
+  return id;
+}
+
 /** Upload ``file`` and check it on the worker. Returns the id the pages subscribe to. */
 export function startStoredCheck(file: File, opts: { materialClass?: string; orientation?: string | null } = {}): number {
   const id = nextId++;
@@ -267,6 +363,9 @@ export function startStoredCheck(file: File, opts: { materialClass?: string; ori
     failure: null,
     startedAt: Date.now(),
     finishedAt: null,
+    link: null,
+    linkLabel: null,
+    fetchedBytes: null,
   });
   workItem(checks.get(id)!);
   emit();
@@ -300,19 +399,23 @@ export function followServerCheck(checkId: string): number {
     failure: null,
     startedAt: Date.now(),
     finishedAt: null,
+    link: null,
+    linkLabel: null,
+    fetchedBytes: null,
   });
   byServer.set(checkId, id);
   void readCheck(checkId)
-    .then((s) => patch(id, { name: s.filename ?? "Part", size: s.size_bytes ?? 0, sent: s.size_bytes ?? 0, ...fromServer(s) }))
+    .then((s) => patch(id, { name: s.filename ?? (s.link ? `File from ${s.link.label}` : "Part"), size: s.size_bytes ?? 0, sent: s.size_bytes ?? 0, ...fromServer(s) }))
     .catch(() => undefined)
     .finally(() => void follow(id));
   emit();
   return id;
 }
 
-/** The same file and options again, after a dropped upload or a server error. */
-export function retryStoredCheck(id: number, file?: File): number | null {
+/** The same file (or link) and options again, after a dropped upload or a server error. */
+export function retryStoredCheck(id: number, file?: File, filename?: string | null): number | null {
   const c = checks.get(id);
+  if (c?.link && !file) return startLinkCheck(c.link.url, { filename: filename ?? c.link.filename, materialClass: c.materialClass, orientation: c.orientation });
   const f = file ?? c?.file;
   if (!c || !f) return null;
   return startStoredCheck(f, { materialClass: c.materialClass, orientation: c.orientation });

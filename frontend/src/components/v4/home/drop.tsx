@@ -4,8 +4,9 @@
  * Home's drop target (board P1 "Start"): one CAD file goes to the check page
  * (gzipped, or a ZIP holding one part, too: the worker unpacks it); several
  * files, or a ZIP of several parts, go to a new catalog run, already picked;
- * anything else is named and refused.
- * Drag-over shows "Drop to check it". The file is handed over in memory only.
+ * anything else is named and refused. "Paste a link" takes a share link
+ * instead; the check page imports it (the server fetches the file).
+ * Drag-over shows "Drop to check it". The file or link is handed over in memory only.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -13,9 +14,11 @@ import { useRouter } from "next/navigation";
 import { R } from "../routes";
 import { FileTrustLine } from "../trust/file-line";
 import { overCadLimit, overCadLimitText } from "@/lib/upload-limit";
-import { setPendingFile } from "../pending-file";
+import { setPendingFile, setPendingLink } from "../pending-file";
+import { LinkForm, useLinkImportEnabled } from "../part/link-field";
 import { CAD_UPLOAD_ACCEPT, isUploadableCad } from "@/lib/cad-file";
 import { cx } from "../ui";
+import { useShell } from "../shell";
 import { useHandOffBatch } from "../many/catalog-entry";
 import { cadEntries, zipEntryNames } from "../many/catalog-zip";
 
@@ -41,6 +44,10 @@ export function DropZone() {
   const [drag, setDrag] = React.useState(false);
   const [drop, setDrop] = React.useState<Dropped | null>(null);
   const handOff = useHandOffBatch();
+  // An org viewer can't check new parts, so no link either (the shell's viewer line).
+  const { checkBlocked } = useShell();
+  const linkOn = useLinkImportEnabled() && !checkBlocked;
+  const [linking, setLinking] = React.useState(false);
 
   const take = async (files: FileList | null | undefined) => {
     setDrag(false);
@@ -94,15 +101,25 @@ export function DropZone() {
       }}
       data-testid="home-drop"
     >
-      <b>{title}</b>
+      <b>{linking ? "Paste a share link" : title}</b>
       <span>STEP, STL or IGES · one file, or a .zip or .gz of it</span>
+      {linking ? (
+        <LinkForm
+          compact
+          onCancel={() => setLinking(false)}
+          onSubmit={(url) => {
+            setPendingLink(url);
+            router.push(R.check);
+          }}
+        />
+      ) : null}
       <FileTrustLine />
       {msg ? (
         <span className={drop?.kind === "ok" ? "h-ok" : "h-msg"} role="status">
           {msg}
         </span>
       ) : null}
-      <span className="h-acts">
+      {linking ? null : <span className="h-acts">
         <label className="btn sm ink h-file">
           Choose file
           <input
@@ -116,6 +133,11 @@ export function DropZone() {
             }}
           />
         </label>
+        {linkOn ? (
+          <button className="btn sm" type="button" onClick={() => setLinking(true)}>
+            Paste a link
+          </button>
+        ) : null}
         {drop?.kind === "ok" ? (
           <Link className="btn sm" href={R.check}>
             Open
@@ -126,7 +148,7 @@ export function DropZone() {
             Check {drop.parts ?? drop.files.length} as a batch
           </button>
         ) : null}
-      </span>
+      </span>}
     </div>
   );
 }

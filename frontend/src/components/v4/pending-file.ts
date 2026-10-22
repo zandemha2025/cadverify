@@ -15,4 +15,17 @@ export function takePendingFile(): File | null {
   return file;
 }
 
+/** A share link pasted on Home, for the check page to import (memory only, never in a URL). */
+let pendingLink: string | null = null;
+
+export function setPendingLink(url: string): void {
+  pendingLink = url;
+}
+
+export function takePendingLink(): string | null {
+  const url = pendingLink;
+  pendingLink = null;
+  return url;
+}
+
 export const CAD_ACCEPT = ".step,.stp,.stl,.iges,.igs";

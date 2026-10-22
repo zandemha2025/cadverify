@@ -9,7 +9,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { sampleBracketFile } from "@/lib/verify/sample-cad";
-import { takePendingFile } from "../pending-file";
+import { takePendingFile, takePendingLink } from "../pending-file";
 import { R } from "../routes";
 import { markCheckOpened, readsAsBodies, resumableSession, startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
 import { StartScreen } from "./start";
@@ -24,7 +24,7 @@ import { RepairView } from "./repair";
 import { AssemblyView } from "./assembly";
 import { SampleFlow } from "../home/sample-result";
 import { needsStoredCheck } from "@/lib/upload-limit";
-import { followServerCheck, startStoredCheck } from "./stored-check";
+import { followServerCheck, startLinkCheck, startStoredCheck } from "./stored-check";
 import { StoredCheckView } from "./stored-check-view";
 import { checkContext, handoverHref, type CheckContext } from "./check-context";
 import { familyOf } from "../fix/problems";
@@ -71,6 +71,14 @@ export function CheckPage() {
     setSid(id);
   }, []);
 
+  // A pasted share link: the server fetches the file and checks it on the worker.
+  const beginLink = React.useCallback((url: string) => {
+    setPicked(null);
+    setDesign(null);
+    setSid(null);
+    setStored(startLinkCheck(url, { materialClass: carriedRef.current.material ?? undefined }));
+  }, []);
+
   // The sample never uses a check: the server knows its exact bytes, so it runs with none left.
   const beginSample = React.useCallback(() => {
     begin(sampleBracketFile(), { sample: true });
@@ -84,6 +92,8 @@ export function CheckPage() {
     setCarried(ctx);
     const f = takePendingFile();
     if (f) return begin(f);
+    const pastedLink = takePendingLink();
+    if (pastedLink) return beginLink(pastedLink);
     const search = window.location.search;
     if (new URLSearchParams(search).get("design") !== null) {
       // Read once, then drop the params so Back or a reload can't import (and check) it again.
@@ -117,7 +127,15 @@ export function CheckPage() {
     // finished and not yet looked at) carries on here, rather than a blank start.
     const resume = resumableSession();
     if (resume != null) setSid(resume);
-  }, [begin, beginSample]);
+  }, [begin, beginLink, beginSample]);
+
+  // Too heavy for the web process: the same file went to the worker's check; show that one.
+  React.useEffect(() => {
+    if (session?.failure?.kind !== "worker") return;
+    const storedId = session.failure.storedId;
+    setSid(null);
+    setStored(storedId);
+  }, [session?.failure]);
 
   // A finished check is on screen here: the work bar lets it go.
   React.useEffect(() => {
@@ -153,14 +171,14 @@ export function CheckPage() {
   if (stored != null) return <StoredCheckView id={stored} onPick={(file) => begin(file)} onRetried={setStored} />;
   const designBanner = design ? <DesignImportBanner state={design.state} name={design.name} revision={design.revision} detail={design.detail} onDismiss={design.state === "done" ? () => setDesign(null) : undefined} /> : null;
   if (!session) {
-    return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} notice={designBanner} carried={carried} />;
+    return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} onLink={beginLink} notice={designBanner} carried={carried} />;
   }
   const f = session.failure;
   if (session.status === "assembly" && session.assembly) return <AssemblyView session={session} onPick={(file) => begin(file)} />;
   if (f?.kind === "quota")
     return (
       <>
-        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} carried={carried} />
+        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} onLink={beginLink} carried={carried} />
         <OutOfChecks message={f.message} />
       </>
     );

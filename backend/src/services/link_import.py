@@ -708,7 +708,7 @@ def choose_filename(given: Optional[str], served: Optional[str], hint: Optional[
     raise LinkFetchError(
         "LINK_UNKNOWN_TYPE",
         "The linked file isn't named as a STEP, IGES or STL file (or a .zip or .gz of one). "
-        "Paste the link again with the file's name, for example bracket.step.",
+        "Give its name, for example bracket.step, and fetch it again.",
     )
 
 

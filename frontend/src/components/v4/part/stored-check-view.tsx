@@ -2,7 +2,8 @@
 
 /**
  * A big file's check on the check page: the upload (with what's sent, and that
- * it resumes), then the worker's stages, from the real state (stored-check.ts).
+ * it resumes), or a share link's fetch on the server, then the worker's
+ * stages, from the real state (stored-check.ts).
  * Hands over to the part's page when it's done. Leaving keeps it going: the
  * work bar shows it on every page.
  */
@@ -16,6 +17,7 @@ import { cx } from "../ui";
 import { MATERIALS } from "../onboard/first-run";
 import { markStoredOpened, retryStoredCheck, setStoredMaterial, stageWord, useStoredCheck } from "./stored-check";
 import { overallFraction, storedSteps } from "./stored-check-model";
+import { linkNameProblem } from "@/lib/link-import";
 import "../onboard/onboard.css";
 import "./stored-check.css";
 
@@ -45,6 +47,7 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
   const router = useRouter();
   const c = useStoredCheck(id);
   const input = React.useRef<HTMLInputElement>(null);
+  const [rename, setRename] = React.useState("");
 
   // Done on a closed solid: the part's own page, from its saved records.
   React.useEffect(() => {
@@ -71,8 +74,16 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
   const frac = overallFraction(c);
   const failed = c.phase === "failed";
   const name = c.partName ?? c.name;
-  const title = failed ? "Not checked" : c.phase === "done" ? "Checked" : uploading ? `Uploading ${name}` : `Checking ${name}`;
+  const fetching = !!c.linkLabel && (c.phase === "starting" || c.phase === "queued" || c.phase === "fetching");
+  const title = failed ? "Not checked" : c.phase === "done" ? "Checked" : uploading ? `Uploading ${name}` : fetching ? `Importing ${name}` : `Checking ${name}`;
   const manyParts = c.failure?.code === "ARCHIVE_MANY_PARTS";
+  // The link's file wasn't named as a CAD file: name it here and fetch it again.
+  const needsName = failed && !!c.link && c.failure?.code === "LINK_UNKNOWN_TYPE";
+  const renameProblem = rename.trim() ? linkNameProblem(rename) : null;
+  const retry = (filename?: string) => {
+    const next = retryStoredCheck(id, undefined, filename);
+    if (next != null) onRetried(next);
+  };
 
   return (
     <main className="world pv" aria-label={title}>
@@ -85,6 +96,7 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
           <p className="pmeta">
             <span style={{ overflowWrap: "anywhere" }}>{c.name}</span>
             {c.size ? <span>{sizeText(c.size)}</span> : null}
+            {c.linkLabel ? <span>From {c.linkLabel}</span> : null}
             <span>{MATERIAL[c.materialClass] ?? c.materialClass}</span>
             <span>Checked on the worker</span>
           </p>
@@ -102,6 +114,24 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
             <div className="sc-fail" role="alert">
               <b>{c.failure?.title ?? "The check didn’t finish"}</b>
               <span>{c.failure?.detail}</span>
+              {needsName ? (
+                <form
+                  className="sc-rename"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (rename.trim() && !renameProblem) retry(rename.trim());
+                  }}
+                >
+                  <label>
+                    <span>File name</span>
+                    <input value={rename} onChange={(e) => setRename(e.target.value)} placeholder="bracket.step" spellCheck={false} autoComplete="off" aria-invalid={!!renameProblem} />
+                  </label>
+                  <button className="btn ink sm" type="submit" disabled={!rename.trim() || !!renameProblem}>
+                    Fetch it again
+                  </button>
+                  {renameProblem ? <em role="alert">{renameProblem}</em> : null}
+                </form>
+              ) : null}
             </div>
           ) : (
             <>
@@ -109,22 +139,21 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
                 <i style={{ transform: `scaleX(${Math.max(0.02, frac ?? 0.02)})` }} />
               </div>
               <span className="sc-line num">
-                {uploading ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : stageWord(c.phase)}
+                {uploading ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : stageWord(c.phase, c.linkLabel)}
                 {c.phase === "done" && c.geometryInvalid ? " · not a closed solid" : null}
               </span>
               <span className="sc-note">
                 {uploading
                   ? "Keep this tab open while it uploads. If the connection drops, it carries on; if the tab closes, pick the same file again and only the missing parts are sent."
-                  : "You can leave this page. The check runs on the server; the bar at the foot of every page shows it, and opens the part when it’s ready."}
+                  : fetching
+                    ? `The server fetches the file from ${c.linkLabel}; nothing downloads to this browser. You can leave this page: the bar at the foot of every page shows it, and opens the part when it’s ready.`
+                    : "You can leave this page. The check runs on the server; the bar at the foot of every page shows it, and opens the part when it’s ready."}
               </span>
             </>
           )}
           <span className="sc-acts">
-            {failed && c.failure?.retry && c.file ? (
-              <button className="btn ink sm" type="button" onClick={() => {
-                const next = retryStoredCheck(id);
-                if (next != null) onRetried(next);
-              }}>
+            {failed && c.failure?.retry && (c.file || c.link) ? (
+              <button className="btn ink sm" type="button" onClick={() => retry()}>
                 Try again
               </button>
             ) : null}
@@ -185,9 +214,9 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
               </li>
             ))}
           </ol>
-          {failed ? null : <StoredMaterial id={id} current={c.materialClass} open={!c.checkId} />}
+          {failed ? null : <StoredMaterial id={id} current={c.materialClass} open={!c.checkId && !c.link} />}
           <div className="ft">
-            <span>{failed ? (c.failure?.code === "CHECK_TOO_LARGE" || !c.checkId ? "Nothing was charged." : "Nothing after this step ran.") : "The same file always gets the same result."}</span>
+            <span>{failed ? (c.failure?.code === "CHECK_TOO_LARGE" || c.failure?.code?.startsWith("LINK_") || !c.checkId ? "Nothing was charged." : "Nothing after this step ran.") : "The same file always gets the same result."}</span>
           </div>
         </section>
       </section>

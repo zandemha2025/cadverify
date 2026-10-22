@@ -1,6 +1,6 @@
 "use client";
 
-/** O1: check a part. Drop or choose a file, or run the sample. */
+/** O1: check a part. Drop or choose a file, paste a share link, or run the sample. */
 import * as React from "react";
 import Link from "next/link";
 import { listMachines } from "@/lib/verify/machine-api";
@@ -15,6 +15,7 @@ import { FileTrustLine } from "../trust/file-line";
 import { CAD_LIMIT, needsStoredCheck, overCadLimit, overCadLimitText } from "@/lib/upload-limit";
 import { contextLine, type CheckContext } from "./check-context";
 import { LENSES } from "./ctx";
+import { LinkForm, useLinkImportEnabled } from "./link-field";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`;
@@ -34,6 +35,7 @@ export function StartScreen({
   onClear,
   onCheck,
   onSample,
+  onLink,
   notice,
   carried,
 }: {
@@ -42,6 +44,8 @@ export function StartScreen({
   onClear: () => void;
   onCheck: () => void;
   onSample: () => void;
+  /** A pasted share link: the server fetches the file and checks it. */
+  onLink?: (url: string) => void;
   notice?: React.ReactNode;
   /** What the cost breakdown's Check another part (or an old issue link) carried. */
   carried?: CheckContext;
@@ -53,6 +57,8 @@ export function StartScreen({
   const [checked, setChecked] = React.useState<number | null>(null);
   const [rates, setRates] = React.useState<string | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
+  const linkOn = useLinkImportEnabled() && !!onLink;
+  const [linking, setLinking] = React.useState(false);
   // Over the API's limit: say so now instead of after the upload.
   const tooBig = !!file && overCadLimit(file.size);
   // A file checked before doesn't use another check (a check means a part). The sample never uses one.
@@ -144,7 +150,7 @@ export function StartScreen({
               <path d="M10 13V3.5M6 7.5l4-4 4 4M3.5 12.5v2.5a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
-          <b aria-live="polite">{file ? file.name : over ? "Drop to check it" : "Drop a STEP, STL or IGES file"}</b>
+          <b aria-live="polite">{file ? file.name : over ? "Drop to check it" : linking ? "Paste a share link" : "Drop a STEP, STL or IGES file"}</b>
           <span role={tooBig ? "alert" : undefined}>{file ? (tooBig ? overCadLimitText(file.size) : `${mb(file.size)} · ready to check${uses}`) : `STEP, STL or IGES, ${CAD_LIMIT} · .zip or .gz too`}</span>
           {file ? (
             <span className="swap" style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -157,12 +163,19 @@ export function StartScreen({
                 Choose another
               </button>
             </span>
+          ) : linking && onLink ? (
+            <LinkForm onSubmit={(url) => onLink(url)} onCancel={() => setLinking(false)} />
           ) : (
             <>
               <span style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" }}>
                 <button className="btn ink" type="button" onClick={() => input.current?.click()}>
                   Choose a file
                 </button>
+                {linkOn ? (
+                  <button className="btn" type="button" onClick={() => setLinking(true)}>
+                    Paste a link
+                  </button>
+                ) : null}
                 <button className="btn" type="button" onClick={onSample}>
                   Try a sample part
                 </button>
