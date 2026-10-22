@@ -166,3 +166,24 @@ def test_fdm_needs_no_drain_for_a_sealed_void_but_resin_and_powder_do():
         assert "TRAPPED_VOLUME" in _codes(ctx, process), process
 
 
+# ── M4 / M5: a binary STL cube is a clean pass, as its exact twin is ─────────
+@pytest.mark.parametrize("offset", [(0, 0, 0), (1234.5, -567.8, 250.0)])
+def test_a_binary_stl_cube_reads_like_the_exact_cube(offset):
+    exact = _box((10, 10, 10), at=offset)
+    stl = _stl(exact)
+    assert stl.metadata["coordinate_error"] > 0
+    for mesh in (exact, stl):
+        ctx = _ctx(mesh)
+        assert "SETUP_ACCESS_UNVERIFIED" not in _codes(ctx, "cnc_3axis")
+        assert "WALL_THICKNESS_PRECISION" not in _codes(ctx, "fdm")
+        assert _verdict(ctx, "fdm") == "pass"
+        assert _verdict(ctx, "cnc_3axis") == "pass"
+
+
+def test_a_wall_on_the_limit_still_says_the_file_cannot_settle_it():
+    ctx = _ctx(_stl(_box((60, 40, 0.8), at=(100, 200, 300))))
+    issue = next(i for i in _issues(ctx, "fdm") if i.code == "WALL_THICKNESS_PRECISION")
+    assert issue.severity == Severity.WARNING
+    assert issue.required_value == 0.8 and abs(issue.measured_value - 0.8) < 1e-3
+
+

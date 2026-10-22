@@ -45,18 +45,73 @@ def _wall_upper(ctx: GeometryContext) -> np.ndarray:
     return np.where(np.isfinite(ctx.wall_thickness), upper, np.inf)
 
 
-def _wall_precision_issues(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
+def _wall_measured(ctx: GeometryContext) -> np.ndarray:
+    """Faces whose own inward ray was cast (the others copy a nearby face's value)."""
+    sampled = ctx.wall_thickness_sampled
+    if sampled is None or len(sampled) != len(ctx.wall_thickness):
+        return np.ones(len(ctx.wall_thickness), dtype=bool)
+    return np.asarray(sampled, dtype=bool)
+
+
+def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_mm: float) -> list[Issue]:
+    """Say when a wall reading can't settle the limit, and only then.
+
+    A WARNING when a reading sits below the limit without proof (an ambiguous
+    hit, a decimated copy) or within its own rounding margin of the limit: the
+    answer could go either way. An INFO when some measured faces gave no stable
+    reading (a ray met an edge or nothing) but no reading is near the limit.
+    Nothing when every measured face has a stable reading clear of the limit,
+    so a clean part stays a clean pass.
+    """
+    wt = ctx.wall_thickness
+    if len(wt) == 0:
+        return []
     upper = _wall_upper(ctx)
-    if not ctx.mesh.metadata.get("coordinate_error") and np.all(np.isfinite(upper)):
+    measured = _wall_measured(ctx)
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    error = float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+    finite = np.isfinite(wt) & measured
+    stable = finite & np.isfinite(upper)
+    limit = min_wall_mm - tolerance
+    proven_thin = stable & (upper < limit)
+    # How far the true wall may sit below / above a reading: a stable
+    # reading's proved rounding bound; an ambiguous binary-STL hit, the
+    # coordinate rounding; on a decimated copy a reading below the limit
+    # proves nothing (the true wall may be anywhere above it).
+    with np.errstate(invalid="ignore"):
+        below = np.where(stable, upper - wt, 4.0 * error + tolerance)
+    above = below.copy()
+    if ctx.metadata.get("decimation", {}).get("succeeded"):
+        below = np.where(stable, below, 0.0)
+        above = np.where(stable, above, np.inf)
+    near = finite & ~proven_thin & (wt - below < limit) & (wt + above >= limit)
+    if np.any(near):
+        closest = float(wt[near][np.argmin(np.abs(wt[near] - min_wall_mm))])
+        return [Issue(
+            code="WALL_THICKNESS_PRECISION", severity=Severity.WARNING, process=process,
+            measurement_unit="mm", measured_value=closest, required_value=min_wall_mm,
+            message=(
+                f"{int(near.sum())} wall readings are within measuring precision of the {min_wall_mm}mm "
+                f"limit for {process.value} (closest {format_measurement(closest, min_wall_mm)}mm), "
+                "so this file can't settle whether those walls pass."
+            ),
+            fix_suggestion="Confirm these walls in the source CAD; a STEP export carries exact coordinates.",
+        )]
+    unsettled = int(measured.sum() - stable.sum())
+    copied = int(len(wt) - measured.sum())
+    if unsettled == 0 and copied == 0:
         return []
     return [Issue(
-        code="WALL_THICKNESS_PRECISION", severity=Severity.WARNING, process=process,
+        code="WALL_THICKNESS_PRECISION", severity=Severity.INFO, process=process,
         message=(
-            f"Wall checks have stable measurements for {int(np.isfinite(upper).sum())} of {len(upper)} faces. "
-            "Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and "
-            "unsampled faces cannot verify a minimum wall; a result near the limit is uncertain."
+            f"Walls measured on {int(measured.sum())} of {len(wt)} faces"
+            + (f"; {unsettled} of those gave no stable reading (the ray met an edge or nothing) and are left out"
+               if unsettled else "")
+            + ". "
+            + (f"The other {copied} faces take the nearest measured face's value. " if copied else "")
+            + f"No reading is near the {min_wall_mm}mm limit."
         ),
-        fix_suggestion="Confirm critical wall thicknesses in the source CAD before manufacturing.",
+        fix_suggestion="Confirm critical wall thicknesses in the source CAD.",
     )]
 
 
@@ -71,10 +126,11 @@ def check_wall_thickness(
     finite = np.isfinite(wt)
     thin = finite & (_wall_upper(ctx) < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
     thin_faces = np.where(thin)[0]
-    issues = _wall_precision_issues(ctx, process)
+    issues = _wall_precision_issues(ctx, process, min_wall_mm)
     if len(thin_faces) == 0:
         return issues
-    pct = len(thin_faces) / max(len(ctx.centroids), 1) * 100
+    # Share of the faces actually measured: only those can prove a thin wall.
+    pct = len(thin_faces) / max(int(_wall_measured(ctx).sum()), 1) * 100
     min_measured = float(wt[thin].min())
     region = _region_center(ctx, thin_faces)
     sev = Severity.ERROR if pct > 10 else Severity.WARNING
@@ -882,7 +938,7 @@ def check_wall_uniformity(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    issues = _wall_precision_issues(ctx, process)
+    issues = _wall_precision_issues(ctx, process, min_wall)
     wt = ctx.wall_thickness
     upper = _wall_upper(ctx)
     t_min_upper = float(upper.min()) if len(upper) else float("inf")
@@ -945,6 +1001,21 @@ def check_wall_uniformity(
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
+    elif np.isfinite(diameter_error) and diameter_error > 0 and t_max + diameter_error > max_wall + tolerance:
+        issues.append(Issue(
+            code="THICK_WALL_PRECISION",
+            measurement_unit="mm",
+            severity=Severity.WARNING,
+            message=(
+                f"Thickest sampled section {format_measurement(t_max, max_wall)}mm is within source-coordinate "
+                f"rounding of the {max_wall}mm limit for {process.value}, so this file can't settle whether it passes."
+            ),
+            process=process,
+            measured_value=t_max,
+            required_value=max_wall,
+            fix_suggestion="Confirm the thickest section in the source CAD; a STEP export carries exact coordinates.",
+        ))
+    # The thin end of the ratio: proved readings, plus binary-STL readings whose
     if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max_lower > 2.0 * t_min_upper + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",

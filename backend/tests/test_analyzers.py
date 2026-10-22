@@ -212,7 +212,10 @@ def test_setup_search_accepts_rotated_boss_and_retains_uncertain_geometry():
 
     mesh = trimesh.creation.box(extents=[80, 12, 12])
     rounded = parse_stl_from_bytes(mesh.export(file_type="stl"))
-    assert check_setup_access(_build_ctx(rounded), ProcessType.CNC_3AXIS)[0].code == "SETUP_ACCESS_UNVERIFIED"
+    # float32 rounding (nanometres) is not a re-entrant surface: a binary STL
+    # box gets the same answer as the exact box.
+    assert rounded.metadata["coordinate_error"] > 0
+    assert check_setup_access(_build_ctx(rounded), ProcessType.CNC_3AXIS) == []
     ctx = _build_ctx(mesh); ctx.metadata["decimation"] = {"succeeded": True}
     issue = check_setup_access(ctx, ProcessType.CNC_3AXIS)[0]
     assert issue.code == "SETUP_ACCESS_UNVERIFIED" and not issue.affected_faces

@@ -79,6 +79,22 @@ _MAX_SIZE_MM = 50.0          # ceiling so huge parts don't vanish
 _FIT_TARGET = 0.9            # coarsening target, as a fraction of the budget
 _FIT_MAX_COARSEN = 2.0       # MeshSizeMax may grow to at most 2x (diag / 100)
 _FIT_INFLATED = 1.2          # flat faces this much denser than asked: pass 2
+#
+# Predicted over the budget: thin-walled parts. Flat faces at diag / 200 make
+# a 40 x 40 x 30 mm open box with 0.5 mm walls 286,290 triangles; that first
+# pass alone took ~28 s, past the refit time cap, so it went to the engine's
+# vertex-clustering decimation, whose grid is coarser than the 0.5 mm walls:
+# the walls disappeared and every thin-wall check passed. The B-rep tells the
+# count before meshing (every face's area over the triangle size; curvature
+# and boundary refinement only add to it). When that is clearly over the
+# budget, the first pass would be over it anyway and is skipped: flat faces and
+# the straight edges between them are meshed at diag / _FLAT_DIAG_SEGMENTS
+# (a flat face needs no interior refinement to be exact), curved faces keep
+# their curvature sizing under the usual MeshSizeMax. The open box meshes to
+# 3,726 triangles in under a second with its walls intact. Parts predicted
+# under the budget never take this path, so their first pass stays byte for byte.
+_PREDICT_OVER = 1.05         # predicted first pass this far over the budget: skip it
+_FLAT_DIAG_SEGMENTS = 20     # flat faces in that case: diag / this (10x the usual size)
 
 
 def _fit_budget_enabled() -> bool:
@@ -113,6 +129,57 @@ def _flat_inflation(size_max: float) -> float:
     return actual / expected if expected > 0 else 1.0
 
 
+def _predicted_faces(size_max: float) -> float:
+    """Triangles a first pass at ``size_max`` makes at least: each face's area
+    over an equilateral triangle of that edge (the open box: 283,941 predicted,
+    286,290 made)."""
+    per_tri = 0.433 * size_max * size_max
+    area = sum(float(gmsh.model.occ.getMass(2, tag)) for _dim, tag in gmsh.model.getEntities(2))
+    return area / per_tri if per_tri > 0 else 0.0
+
+
+def _flat_coarse_sizing(size_max: float, diag: float) -> dict | None:
+    """Mesh flat faces coarse and curved ones as usual, when the first pass is
+    predicted clearly over the budget (see ``_PREDICT_OVER``). Returns the
+    sizing record (its ``curved`` cap is what later coarsening grows), or None
+    when the first pass should run as always."""
+    if not _fit_budget_enabled():
+        return None
+    budget = _analysis_face_budget()
+    predicted = _predicted_faces(size_max)
+    if predicted < _PREDICT_OVER * budget:
+        return None
+    planes = {int(tag) for _dim, tag in gmsh.model.getEntities(2) if gmsh.model.getType(2, tag) == "Plane"}
+    if not planes:
+        return None
+    flat_curves = set()
+    for _dim, curve in gmsh.model.getEntities(1):
+        if gmsh.model.getType(1, curve) != "Line":
+            continue
+        surfaces, _points = gmsh.model.getAdjacencies(1, curve)
+        if len(surfaces) and all(int(s) in planes for s in surfaces):
+            flat_curves.add(int(curve))
+    flat_points = set()
+    curved_points = set()
+    for _dim, curve in gmsh.model.getEntities(1):
+        _surfaces, points = gmsh.model.getAdjacencies(1, curve)
+        (flat_points if int(curve) in flat_curves else curved_points).update(int(p) for p in points)
+    flat_points -= curved_points
+    coarse = max(size_max, min(diag / _FLAT_DIAG_SEGMENTS, _MAX_SIZE_MM))
+    sizing = {"predicted": int(predicted), "flat_size": coarse, "curved": size_max}
+
+    def size_at(dim, tag, _x, _y, _z, lc):
+        if ((dim == 2 and tag in planes) or (dim == 1 and tag in flat_curves)
+                or (dim == 0 and tag in flat_points)):
+            return lc
+        return min(lc, sizing["curved"])
+
+    gmsh.option.setNumber("Mesh.MeshSizeMax", coarse)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.model.mesh.setSizeCallback(size_at)
+    return sizing
+
+
 def _fit_time_cap_sec() -> float:
     """Wall-clock a refit may bring one tessellation to: 80% of the pool's rung-0
     cap (the same cap the in-thread ladder is held to), so a refit never turns
@@ -122,7 +189,8 @@ def _fit_time_cap_sec() -> float:
     return 0.8 * _rung_caps(_budget_sec(), len(_MESH_RUNGS))[0]
 
 
-def _fit_to_budget(size_max: float, started: float, first_pass_sec: float) -> dict | None:
+def _fit_to_budget(size_max: float, started: float, first_pass_sec: float,
+                   flat: dict | None = None) -> dict | None:
     """Re-mesh the loaded model until it fits the analysis budget.
 
     Called after the first ``generate(2)``. Returns None when the first pass
@@ -136,6 +204,8 @@ def _fit_to_budget(size_max: float, started: float, first_pass_sec: float) -> di
     """
     budget = _analysis_face_budget()
     count = _triangle_count()
+    if flat is not None:
+        return _fit_flat_coarse(size_max, started, first_pass_sec, flat, budget, count)
     if count <= budget or not _fit_budget_enabled():
         return None
     first = count
@@ -172,6 +242,36 @@ def _fit_to_budget(size_max: float, started: float, first_pass_sec: float) -> di
         count = _triangle_count()
         passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
                        "extend_from_boundary": 0})
+    record["fits"] = count <= budget
+    return record
+
+
+def _fit_flat_coarse(size_max: float, started: float, first_pass_sec: float, flat: dict,
+                     budget: int, count: int) -> dict:
+    """The flat-coarse pass is meshed; if curved faces alone still put it over
+    the budget, grow their size cap (at most ``_FIT_MAX_COARSEN``) under the
+    same time cap as any refit. Always returns the record, so the log says
+    which path a part took."""
+    first = count
+    cap = _fit_time_cap_sec()
+    passes = [{"pass": 1, "faces": count, "size_max": size_max, "flat_size": flat["flat_size"],
+               "predicted_first_pass": flat["predicted"], "extend_from_boundary": 0,
+               "seconds": round(first_pass_sec, 2)}]
+    record = {"budget": budget, "passes": passes, "fits": False, "flat_coarse": True}
+    size = size_max
+    while count > budget and size < _FIT_MAX_COARSEN * size_max - 1e-12:
+        estimate = first_pass_sec * _FIT_TARGET * budget / max(first, 1)
+        if (time.perf_counter() - started) + estimate > cap:
+            record["stopped"] = "time"
+            break
+        factor = max(1.05, (count / (_FIT_TARGET * budget)) ** 0.5)
+        size = min(size * factor, _FIT_MAX_COARSEN * size_max)
+        flat["curved"] = size
+        gmsh.model.mesh.clear()
+        gmsh.model.mesh.generate(2)
+        count = _triangle_count()
+        passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
+                       "flat_size": flat["flat_size"], "extend_from_boundary": 0})
     record["fits"] = count <= budget
     return record
 
@@ -432,10 +532,13 @@ def _tessellate_once(
         if algorithm is not None:               # rung 0 keeps gmsh's default algo
             gmsh.option.setNumber("Mesh.Algorithm", algorithm)
 
+        # None (and no change at all) unless the B-rep predicts a first pass
+        # clearly over the analysis budget; see _PREDICT_OVER.
+        flat = _flat_coarse_sizing(size_max, diag)
         first_pass = time.perf_counter()
         gmsh.model.mesh.generate(2)          # 2D surface mesh = triangulated shell
         fit = _fit_to_budget(               # no-op unless over the analysis budget
-            size_max, started, time.perf_counter() - first_pass)
+            size_max, started, time.perf_counter() - first_pass, flat)
         if fit is not None:
             logger.info("STEP mesh refit to the analysis budget: %s", fit)
 

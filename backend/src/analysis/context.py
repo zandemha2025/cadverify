@@ -312,6 +312,8 @@ class GeometryContext:
     # Upper bounds apply only to persistent, directly cast hits. They are not
     # two-sided intervals: a perturbed ray can encounter another surface first.
     wall_thickness_upper: np.ndarray | None = None
+    # Faces whose own inward ray was cast (the rest copy a nearby sample).
+    wall_thickness_sampled: np.ndarray | None = None
     edge_length_precision: np.ndarray | None = None
     edge_topology_stable: bool = True
 
@@ -414,17 +416,36 @@ class GeometryContext:
                 logger.warning("Convex setup verification failed", exc_info=True)
         return None
 
+    def _rounding_tolerances(self) -> tuple[float, np.ndarray]:
+        """Distance tolerance and per-face normal uncertainty from source rounding.
+
+        A binary STL stores float32 coordinates (``coordinate_error``, a few
+        nanometres on a 30 mm part). Convexity and setup proofs allow for that
+        rounding instead of refusing every binary STL, so an STL and a STEP of
+        the same simple part get the same answer.
+        """
+        mesh = self.mesh
+        error = float(mesh.metadata.get("coordinate_error", 0.0))
+        tol = wall_thickness_tolerance(mesh, self.scale_eps)
+        if not error or not np.isfinite(error):
+            return tol, np.zeros(len(self.normals))
+        # A vertex moves <= error; a plane through three rounded vertices also
+        # tilts. The allowance is capped at _ROUNDING_TILT_CAP (one part per
+        # million): a sliver whose rounding tilt is larger keeps the strict
+        # test and can only read as "not verified", never as a false proof.
+        normal_error = np.minimum(_normal_precision(mesh, error), _ROUNDING_TILT_CAP)
+        return tol + 2.0 * error + self.bbox_diag * _ROUNDING_TILT_CAP, normal_error
+
     @cached_property
     def undercut_free_geometry(self) -> bool:
         """Positive geometry evidence with reorientation; not a toolpath/fixture check."""
         mesh = self.mesh
         if (self.metadata.get("decimation", {}).get("succeeded")
-                or mesh.metadata.get("coordinate_error", 0.0) != 0
                 or not mesh.is_volume or mesh.body_count != 1
                 or np.any(self.face_areas <= 0)
                 or not np.all(np.linalg.norm(self.normals, axis=1) > .99)):
             return False
-        tol = wall_thickness_tolerance(mesh, self.scale_eps)
+        tol, normal_error = self._rounding_tolerances()
         if self.convex_support_planes is not None:
             return True
         if self.straight_profile_geometry is not None:
@@ -434,9 +455,11 @@ class GeometryContext:
         # other orientations unverified until explicit CAM setup axes exist.
         facets = sorted(self.facet_groups, key=lambda f: -float(self.face_areas[f].sum()))[:8]
         for facet in facets:
-            normal = self.normals[int(facet[np.argmax(self.face_areas[facet])])]
+            reference = int(facet[np.argmax(self.face_areas[facet])])
+            normal = self.normals[reference]
             for axis in (normal, -normal):
-                downward = self.normals @ axis < -1e-7
+                # A wall square to the axis within source rounding is not a downward face.
+                downward = self.normals @ axis < -1e-7 - normal_error - normal_error[reference]
                 heights = vertices @ axis
                 # Only the actual planar base is exempt. A percentage band
                 # near the bottom can contain a real pocket or closed cavity.
@@ -629,6 +652,7 @@ class GeometryContext:
 
         wall_upper = np.full(len(centroids), np.inf)
         wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps, wall_upper)
+        wall_sampled = _wall_sampled_mask(mesh, len(centroids))
 
         edge_lengths, edge_precision, edge_stable = manufacturing_edge_measurements(mesh)
         if decimation and decimation.get("succeeded"):
@@ -698,6 +722,7 @@ class GeometryContext:
             angles_from_up_deg=angles_from_up_deg,
             wall_thickness=wall_thickness,
             wall_thickness_upper=wall_upper,
+            wall_thickness_sampled=wall_sampled,
             edge_lengths=np.asarray(edge_lengths, dtype=np.float64),
             edge_length_precision=edge_precision,
             edge_topology_stable=edge_stable and not bool(decimation and decimation.get("succeeded")),
@@ -842,6 +867,9 @@ def _count_connected_components(mesh: trimesh.Trimesh) -> int:
 
 
 _MAX_NESTING_SHELLS = 64
+# Largest normal tilt (radians) a convexity or setup proof forgives as source
+# rounding: 1 µm over a metre, far below any machined feature.
+_ROUNDING_TILT_CAP = 1e-6
 
 
 def shell_nesting_depths(bodies: list[trimesh.Trimesh]) -> list[int] | None:
@@ -1063,6 +1091,39 @@ def _wall_sample_points(mesh: trimesh.Trimesh) -> np.ndarray:
     return np.asarray(mesh.triangles_center)
 
 
+def _fast_rays(mesh: trimesh.Trimesh) -> bool:
+    """True when rays run on Embree (production installs embreex via trimesh[easy])."""
+    try:
+        return "embree" in type(mesh.ray).__module__
+    except Exception:
+        return False
+
+
+# Rays per call on Embree: its memory is a few hits per ray, not rays x triangles.
+_EMBREE_RAY_BATCH = 16384
+# A wall's far side faces back along the ray; a first hit on a face turned more
+# than 75 degrees from the ray is a ray slipping out past an edge.
+_GRAZING_COS = float(np.cos(np.radians(75.0)))
+
+
+def _wall_sample_threshold(mesh: trimesh.Trimesh) -> int:
+    threshold = _raycast_sample_threshold()
+    if _fast_rays(mesh):
+        # Embree casts every face of an analysed mesh in about a second
+        # (127k faces: 1.2 s), so nothing is left to a nearby sample's value.
+        threshold = max(threshold, _max_analysis_faces())
+    return threshold
+
+
+def _wall_sampled_mask(mesh: trimesh.Trimesh, n: int) -> np.ndarray:
+    """Faces whose own inward ray ``_compute_wall_thickness`` casts."""
+    if n <= _wall_sample_threshold(mesh):
+        return np.ones(n, dtype=bool)
+    mask = np.zeros(n, dtype=bool)
+    mask[np.arange(0, n, max(1, n // 5000))] = True
+    return mask
+
+
 def _compute_wall_thickness(
     mesh: trimesh.Trimesh,
     normals: np.ndarray,
@@ -1086,8 +1147,7 @@ def _compute_wall_thickness(
     if n == 0:
         return thickness
 
-    threshold = _raycast_sample_threshold()
-    if n > threshold:
+    if n > _wall_sample_threshold(mesh):
         return _compute_wall_thickness_sampled(mesh, normals, centroids, eps, n, upper_bounds)
 
     # Below threshold we cast one ray per face — but in memory-bounded batches,
@@ -1132,6 +1192,8 @@ def _cast_inward_rays_batched(
     max_batch = _wall_thickness_ray_batch()
     budget = _wall_thickness_ray_budget()
     batch = int(min(max_batch, max(8, budget // n_faces)))
+    if _fast_rays(mesh):
+        batch = max(batch, _EMBREE_RAY_BATCH)
     # Reject numerical self-hits without discarding walls thinner than the
     # scale-dependent ray offset. Account for translated CAD coordinates too.
     surface_tol = wall_thickness_tolerance(mesh, eps)
@@ -1164,6 +1226,20 @@ def _cast_inward_rays_batched(
         offsets = locs - reference[idx_ray]
         dists = np.einsum("ij,ij->i", offsets, b_directions[idx_ray])
         valid = (idx_tri != b_source[idx_ray]) & (dists > surface_tol)
+        if np.any(valid):
+            # A ray that leaves through a face it runs almost along started at
+            # an edge and slipped out through the next face (a facet beside a
+            # hole's rim, tilted by tessellation, exits the floor 0.78 mm away
+            # from a 4.5 mm wall). That distance is not a wall: the face is
+            # left unmeasured rather than read as thin.
+            rays_v = idx_ray[valid]
+            order = np.lexsort((dists[valid], rays_v))
+            _, first_hit = np.unique(rays_v[order], return_index=True)
+            nearest = np.flatnonzero(valid)[order[first_hit]]
+            cosine = np.einsum("ij,ij->i", b_directions[idx_ray[nearest]], mesh.face_normals[idx_tri[nearest]])
+            grazing = idx_ray[nearest][np.abs(cosine) < _GRAZING_COS]
+            if len(grazing):
+                valid &= ~np.isin(idx_ray, grazing)
         if np.any(valid):
             np.minimum.at(out, start + idx_ray[valid], dists[valid])
             if upper_bounds is not None:

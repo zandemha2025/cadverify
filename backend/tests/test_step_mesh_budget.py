@@ -94,6 +94,10 @@ def test_coarsening_is_bounded_and_the_fewest_faces_win(tmp_path, monkeypatch, c
     part = _rounded_pocket(tmp_path / "rounded-pocket.step")
     monkeypatch.setenv("STEP_MESH_FIT_ANALYSIS_BUDGET", "1")
     monkeypatch.setenv("MAX_ANALYSIS_FACES", "1000")  # unreachable at 2x
+    # A 1,000-face budget is far under this part's predicted first pass, which
+    # would mesh its flat faces coarse up front (test_step_thin_walls.py); this
+    # test is about the refit after a first pass.
+    monkeypatch.setattr(sm, "_PREDICT_OVER", float("inf"))
     with caplog.at_level(logging.INFO, logger="cadverify.step_mesher"):
         fitted = _mesh(part)
     fit = _refit_record(caplog)
