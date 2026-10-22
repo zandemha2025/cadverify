@@ -465,7 +465,10 @@ async def test_a_stopped_run_sends_one_notification_saying_so(run_world):
     assert len(rows) == 1
     assert rows[0]["kind"] == "catalog.run_stopped"
     assert rows[0]["title"] == "Catalog run stopped - Reliability run"
-    assert rows[0]["body"] == "1 of 4 checked; 3 not checked. Check them again on the run's page."
+    # The run page's breakdown and the reason the run kept (op-25, op-28).
+    assert rows[0]["body"] == ("1 of 4 checked; 3 not checked. The run stopped before every part was checked: its "
+                               "files are no longer stored, so its parts can't be checked again here. Start a new "
+                               "run with them.")
 
 
 # ---------------------------------------------------------------------------
@@ -603,6 +606,90 @@ async def test_check_again_on_a_run_whose_zip_was_never_unpacked(run_world, api)
     r = await _recheck(api["app"], ulid)
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "catalog_run_not_ready"
+
+
+async def _board(app, ulid: str) -> dict:
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        return (await ac.get(f"/api/v1/batch/{ulid}/catalog")).json()
+
+
+@pytest.mark.asyncio
+async def test_a_run_the_sweep_stops_says_why_on_its_board_and_every_skipped_part_with_one_notification(run_world, api):
+    """op-25: a run stopped under the new code keeps its reason, and its owner hears once."""
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs import batch_tasks
+
+    pool = FakeArq()
+    ulid = await run_world["make_run"](4, blobs=False)
+    await _age_run(ulid, heartbeat_minutes=15)
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text("UPDATE batches SET completed_items = 1 WHERE ulid = :u"), {"u": ulid})
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'completed', completed_at = now() WHERE id = (SELECT min(bi.id) "
+            "FROM batch_items bi JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u)"), {"u": ulid})
+
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 1
+    assert await batch_tasks.sweep_orphaned_batches({"redis": pool}) == 0  # the next sweep finds it stopped
+    board = await _board(api["app"], ulid)
+    assert board["status"] == "failed"
+    assert board["failure"]["message"] == (
+        "The run stopped before every part was checked: its files are no longer stored, so its parts "
+        "can't be checked again here. Start a new run with them.")
+    skipped = [r for r in board["rows"] if r["bucket"] == "not_checked"]
+    assert len(skipped) == 3
+    for r in skipped:
+        assert r["reason"] == ("The run stopped before this part was checked: the run's files are no longer "
+                               "stored")
+    async with eng.get_session_factory()() as s:
+        notes = (await s.execute(text(
+            "SELECT kind, body, metadata_json FROM notifications WHERE org_id = :o AND source_id = :u"
+        ), {"o": run_world["org"], "u": ulid})).mappings().all()
+    assert [n["kind"] for n in notes] == ["catalog.run_stopped"]
+    assert "no longer stored" in (notes[0]["metadata_json"] or {}).get("reason", "")
+
+
+@pytest.mark.asyncio
+async def test_a_stale_run_that_cant_be_resumed_always_keeps_a_reason(run_world):
+    """A run the sweep can't resume (not unpacked parts) stops with why, never without one."""
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs import batch_tasks
+
+    ulid = await run_world["make_run"](2)
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text("UPDATE batches SET input_mode = 'manifest' WHERE ulid = :u"), {"u": ulid})
+    await _age_run(ulid, heartbeat_minutes=15)
+    assert await batch_tasks.sweep_orphaned_batches({"redis": FakeArq()}) == 1
+    state = await _batch(ulid)
+    assert state["manifest_json"]["failure"] == {
+        "code": "run_stopped",
+        "message": "The run stopped before every part was checked: its worker stopped and the run couldn't be "
+                   "resumed. Check the parts again."}
+
+
+@pytest.mark.asyncio
+async def test_a_run_the_old_code_stopped_says_it_kept_no_reason(run_world, api):
+    """op-25: batch 23 was stopped before runs kept a reason; its parts say so instead of "Skipped"."""
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    ulid = await run_world["make_run"](3)
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text(
+            "UPDATE batch_items SET status = 'skipped', completed_at = now(), error_message = NULL "
+            "WHERE batch_id = (SELECT id FROM batches WHERE ulid = :u)"), {"u": ulid})
+        await s.execute(text(
+            "UPDATE batches SET status = 'failed', completed_at = now(), "
+            "manifest_json = manifest_json || '{\"failure_reason\": \"orphaned\"}'::jsonb WHERE ulid = :u"), {"u": ulid})
+    board = await _board(api["app"], ulid)
+    assert board["failure"] is None
+    assert {r["reason"] for r in board["rows"]} == {"The run stopped before ScaleCAD kept a reason"}
 
 
 @pytest.mark.asyncio

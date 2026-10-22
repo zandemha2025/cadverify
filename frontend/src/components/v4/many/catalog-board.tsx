@@ -18,7 +18,7 @@ import { R } from "../routes";
 import { Content, Empty, Fig, Figs, Loading, PageHead, Panel, Sheet, cx } from "../ui";
 import { markWorkSeen, registerWork, runKey } from "../work/work-bar";
 import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useToast, whenLabel } from "./common";
-import { apartLine, etaText, notCheckedLine, runCounts, runCountsLine, runWork, stoppedLine } from "./batch-model";
+import { apartLine, etaText, notCheckedLine, runCounts, runCountsLine, runWork, stopWhy, stoppedLine } from "./batch-model";
 import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { CatalogRunError, downloadBoardCsv, fetchBoard, inviteToRun, recheckParts } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
@@ -318,8 +318,9 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
 
             {failed.length && !running ? (
               <div className="panel cr-note cr-again" role="note">
-                <b>{board.status === "failed" ? stoppedLine(counts, stopTime(board.completed_at)) : (notCheckedLine(counts) ?? apartLine(counts))}</b>
-                {stopReason(board) ? <span>{stopReason(board)}</span> : null}
+                <b>{board.status === "failed" ? stoppedLine(counts) : (notCheckedLine(counts) ?? apartLine(counts))}</b>
+                {/* When and why it stopped: its stored reason, or that it stopped before reasons were kept (op-25). */}
+                {board.status === "failed" ? <span>{stopWhy(stopTime(board.completed_at), failureOf(board))}</span> : null}
                 {apartLine(counts) && (board.status === "failed" || counts.notChecked) ? <span>{apartLine(counts)}</span> : null}
                 <span>{failed.length === 1 ? "It goes" : "They go"} back in this run at {failed.length === 1 ? "its" : "their"} listed quantity and land on {failed.length === 1 ? "its own row" : "their own rows"}.</span>
                 <span>
@@ -951,10 +952,7 @@ function stopTime(iso: string | null | undefined): string | null {
   return today ? d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : whenLabel(iso).replace(/^Yesterday/, "yesterday");
 }
 
-/** Why a stopped run stopped, from its failure ("The run stopped before every part was checked: why."). */
-function stopReason(board: Board): string | null {
-  const msg = (board as Board & { failure?: { message?: string | null } | null }).failure?.message;
-  if (board.status !== "failed" || !msg) return null;
-  const why = msg.includes(": ") ? msg.slice(msg.indexOf(": ") + 2) : msg;
-  return why ? why[0].toUpperCase() + why.slice(1) : null;
+/** The reason a stopped run kept ("The run stopped before every part was checked: why."), if it kept one. */
+function failureOf(board: Board): string | null {
+  return (board as Board & { failure?: { message?: string | null } | null }).failure?.message ?? null;
 }

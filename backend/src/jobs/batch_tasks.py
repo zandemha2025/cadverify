@@ -1230,7 +1230,7 @@ async def _notify_run_stopped(batch_ulid: str) -> None:
     checked again (the run's page). Best effort: a failure here never touches
     the run. Idempotent per run (the inbox keeps one row per source).
     """
-    from src.services import notification_service
+    from src.services import batch_service, notification_service
     from src.services.catalog_run_service import run_meta
 
     try:
@@ -1238,20 +1238,21 @@ async def _notify_run_stopped(batch_ulid: str) -> None:
             batch = (await session.execute(select(Batch).where(Batch.ulid == batch_ulid))).scalars().first()
             if batch is None or batch.job_type != "catalog":
                 return
-            counts = dict((await session.execute(
-                select(BatchItem.status, func.count(BatchItem.id))
-                .where(BatchItem.batch_id == batch.id)
-                .group_by(BatchItem.status)
-            )).all())
-            total = sum(int(n) for n in counts.values())
-            checked = int(counts.get("completed", 0))
+            # The run page's own breakdown (op-28) and the reason the run kept (op-25).
+            c = (await batch_service.catalog_run_counts(session, [batch])).get(batch.id) or {}
+            total = int(c.get("total") or 0) + int(c.get("unlisted") or 0)
+            checked = int(c.get("checked") or 0) + int(c.get("unlisted_checked") or 0)
             not_checked = total - checked
             name = run_meta(batch).get("name") or "Catalog run"
             failure = (batch.manifest_json or {}).get("failure") or {}
-            body = (
-                f"{checked:,} of {total:,} checked; {not_checked:,} not checked. "
-                f"Check {'it' if not_checked == 1 else 'them'} again on the run's page."
-            )
+            left = int(c.get("not_checked") or 0) + int(c.get("to_go") or 0)
+            line = f"{int(c.get('checked') or 0):,} of {int(c.get('total') or 0):,} checked; {left:,} not checked"
+            if c.get("unlisted"):
+                u = int(c["unlisted"])
+                line += f"; {u:,} {'file isn’t' if u == 1 else 'files aren’t'} on your parts list"
+            why = failure.get("message")
+            body = (f"{line}. {why}" if why else
+                    f"{line}. Check {'it' if left == 1 else 'them'} again on the run's page.")
             await notification_service.emit_notification(
                 session, org_id=batch.org_id, actor_user_id=batch.user_id, kind="catalog.run_stopped",
                 severity="cond", title=f"Catalog run stopped - {name}", body=body, dest="verify",

@@ -267,10 +267,25 @@ export function lastRunLine(b: Pick<BatchProgress, "total_items" | "completed_it
   return `${state} · ${runCountsLine(c)}`;
 }
 
-/** "28 of 296 checked; 268 not checked: the run stopped at 16:55. Check them again." (files not on the list: apartLine) */
-export function stoppedLine(c: RunCounts, at: string | null): string {
+/** "28 of 296 checked; 268 not checked. Check them again." (when and why: stopWhy; files not on the list: apartLine) */
+export function stoppedLine(c: RunCounts): string {
   const left = c.notChecked + c.toGo;
-  return `${num(c.checked)} of ${num(c.total)} checked; ${num(left)} not checked: the run stopped${at ? ` at ${at}` : ""}. Check ${left === 1 ? "it" : "them"} again.`;
+  return `${num(c.checked)} of ${num(c.total)} checked; ${num(left)} not checked. Check ${left === 1 ? "it" : "them"} again.`;
+}
+
+/**
+ * When and why a run stopped, from the reason it kept (op-25): "The run
+ * stopped at 16:55: its files are no longer stored, …". A run stopped before
+ * runs kept a reason says so: "The run stopped at 16:55 before ScaleCAD kept
+ * a reason." Never nothing.
+ */
+export function stopWhy(at: string | null, failureMessage: string | null | undefined): string {
+  const when = at ? ` at ${at}` : "";
+  const msg = (failureMessage ?? "").trim();
+  if (!msg) return `The run stopped${when} before ScaleCAD kept a reason.`;
+  const why = (msg.includes(": ") ? msg.slice(msg.indexOf(": ") + 2) : msg).replace(/\.$/, "");
+  const lead = why.length > 1 && /[a-z]/.test(why[1]) ? why[0].toLowerCase() + why.slice(1) : why;
+  return `The run stopped${when}: ${lead}.`;
 }
 
 /** The cancel question's body. Unfinished items include any in progress: the server skips those too. */

@@ -1528,7 +1528,8 @@ async def sweep_orphaned_batches(
         if not stale:
             continue
 
-        stop_reason: Optional[str] = None
+        # Every run the sweep stops keeps why (op-25): a run it can't resume says so.
+        stop_reason: Optional[str] = "its worker stopped and the run couldn't be resumed. Check the parts again"
         item_reason = "its worker stopped and the run couldn't be resumed."
         if batch.status != "extracting" and batch.input_mode == "zip":
             # Lock the row and look again: a tick or a part that finished since
@@ -1553,7 +1554,7 @@ async def sweep_orphaned_batches(
                 if resumed is not None:
                     resumed.append(locked.ulid)
                 continue
-            stop_reason = decision.reason
+            stop_reason = decision.reason or stop_reason
             item_reason = decision.item_reason or item_reason
 
         # Compare-and-swap both active status and the exact manifest observed

@@ -497,6 +497,8 @@ def _first_sentence(s: Optional[str]) -> Optional[str]:
 
 
 TIMED_OUT_WORDS = "Checking ran past its time limit; check it again"
+# A part a stopped run skipped before runs kept why they stopped (op-25).
+OLD_STOP_WORDS = "The run stopped before ScaleCAD kept a reason"
 _TIME_LIMIT = re.compile(r"parsing exceeded|exceeded \d+(\.\d+)?s (timeout|cap)|timed out|time limit|"
                          r"TIMEOUT_SEC|took longer than", re.I)
 _FAILURE_WORDS: tuple[tuple[re.Pattern, str], ...] = (
@@ -569,6 +571,7 @@ def derive_part_row(
     default_quantity: int,
     governance: Optional[dict] = None,
     buy_price: Optional[dict] = None,
+    run_status: Optional[str] = None,
 ) -> dict:
     """One part on the board: bucket, reason, resources first, price second.
 
@@ -584,7 +587,8 @@ def derive_part_row(
     mesh_hash, result_json}`` or None. ``meta``: the parts-list row for this
     file. ``machines``: the org's ``{name, process}`` list. ``governance``: the
     record's outcome and sign-off fields (``governance_fields`` shape plus
-    ``signers``: ``{user_id: name}``), or None. Pure.
+    ``signers``: ``{user_id: name}``), or None. ``run_status``: the run's own
+    status, for a part skipped with no reason of its own. Pure.
     """
     meta = meta or {}
     qty = int(meta.get("quantity") or default_quantity)
@@ -667,7 +671,13 @@ def derive_part_row(
         return row
     if status in ("failed", "skipped"):
         row["bucket"] = "not_checked"
-        row["reason"] = failure_words(error) or ("Skipped" if status == "skipped" else "Couldn't be checked")
+        skipped = "Skipped"
+        if status == "skipped" and run_status == "failed":
+            # A run stopped before runs kept a reason (batch 23, op-25) says that, not just "Skipped".
+            skipped = OLD_STOP_WORDS
+        elif status == "skipped" and run_status == "cancelled":
+            skipped = "Skipped: the run was cancelled"
+        row["reason"] = failure_words(error) or (skipped if status == "skipped" else "Couldn't be checked")
         row["error"] = error
         return row
 
@@ -1667,6 +1677,7 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
             default_quantity=default_qty,
             governance={**gov, "user_disposition": disposition, "signers": signers},
             buy_price=buy_prices.get(decision_hash) if decision_hash else None,
+            run_status=batch.status,
         ))
         rows[-1]["name"] = filename
     manifest = batch.manifest_json or {}

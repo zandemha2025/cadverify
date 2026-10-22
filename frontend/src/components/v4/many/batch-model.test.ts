@@ -161,8 +161,8 @@ test("a stopped run says when it stopped and what is left, in plain words (op-16
   const { stoppedLine } = await import("./batch-model.ts");
   const none = { checking: 0, unlisted: 0, unlistedChecked: 0, unlistedNotChecked: 0, unlistedToGo: 0 };
   const counts = { total: 298, checked: 28, notChecked: 270, toGo: 0, ...none };
-  assert.equal(stoppedLine(counts, "16:55"), "28 of 298 checked; 270 not checked: the run stopped at 16:55. Check them again.");
-  assert.equal(stoppedLine({ total: 3, checked: 2, notChecked: 1, toGo: 0, ...none }, null), "2 of 3 checked; 1 not checked: the run stopped. Check it again.");
+  assert.equal(stoppedLine(counts), "28 of 298 checked; 270 not checked. Check them again.");
+  assert.equal(stoppedLine({ total: 3, checked: 2, notChecked: 1, toGo: 0, ...none }), "2 of 3 checked; 1 not checked. Check it again.");
 });
 
 test("time left comes from the run's measured pace when the server has one (op-11)", () => {
@@ -206,7 +206,7 @@ test("one breakdown of a run's files everywhere: the parts list's, with files it
   const wire = { total: 296, checked: 28, not_checked: 268, to_go: 0, checking: 0, unlisted: 2, unlisted_checked: 0, unlisted_not_checked: 2, unlisted_to_go: 0 };
   const c = runCounts({ ...P({ status: "failed", total_items: 298, completed_items: 28, skipped_items: 270, failed_items: 0, pending_items: 0 }), run_counts: wire } as never);
   assert.equal(runCountsLine(c), "28 of 296 checked · 268 not checked · 2 files aren’t on your parts list");
-  assert.equal(stoppedLine(c, "16:55"), "28 of 296 checked; 268 not checked: the run stopped at 16:55. Check them again.");
+  assert.equal(stoppedLine(c), "28 of 296 checked; 268 not checked. Check them again.");
   assert.equal(apartLine(c), "2 files that aren’t on your parts list weren’t checked either.");
   assert.equal(lastRunLine({ status: "failed", total_items: 298, completed_items: 28, failed_items: 0, skipped_items: 270, run_counts: wire } as never), "Stopped · 28 of 296 checked · 268 not checked · 2 files aren’t on your parts list");
   // The board's own rows give the same counts when the server's aren't there (an older API).
@@ -222,4 +222,20 @@ test("one breakdown of a run's files everywhere: the parts list's, with files it
   assert.equal(runCountsLine(going), "1 of 3 checked · 2 to go · 1 file isn’t on your parts list");
   assert.equal(going.checking, 1);
   assert.equal(apartLine(going), null);
+});
+
+
+test("a stopped run says when and why it stopped, and a run stopped before reasons were kept says that (op-25)", async () => {
+  const { stopWhy } = await import("./batch-model.ts");
+  // Stopped by the sweep under the new code: its stored reason.
+  assert.equal(
+    stopWhy("16:55", "The run stopped before every part was checked: its files are no longer stored, so its parts can't be checked again here. Start a new run with them."),
+    "The run stopped at 16:55: its files are no longer stored, so its parts can't be checked again here. Start a new run with them.",
+  );
+  assert.equal(stopWhy("16:55", "The run stopped before every part was checked: it made no progress after 3 restarts. Check the parts again."), "The run stopped at 16:55: it made no progress after 3 restarts. Check the parts again.");
+  // Batch 23: stopped by the old code, no reason kept. Never nothing.
+  assert.equal(stopWhy("16:55", null), "The run stopped at 16:55 before ScaleCAD kept a reason.");
+  assert.equal(stopWhy(null, ""), "The run stopped before ScaleCAD kept a reason.");
+  // An acronym keeps its case.
+  assert.equal(stopWhy("09:10", "ZIP entries were unreadable"), "The run stopped at 09:10: ZIP entries were unreadable.");
 });
