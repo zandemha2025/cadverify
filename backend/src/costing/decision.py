@@ -195,7 +195,8 @@ def prefer_in_house(inside: dict, outside: Optional[dict]) -> tuple[str, str]:
 
 def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
                 unit_cost_fn=None, excluded_pv=None, env_note=None,
-                in_house=None, range_by_key=None) -> Optional[Decision]:
+                in_house=None, range_by_key=None,
+                outside_twins=None) -> Optional[Decision]:
     """estimates_by_pq: {(process_value, qty): CostEstimate} for every eligible
     (process, qty). Decision ranks by REAL per-qty unit cost (not a fixed/var
     reconstruction), so the headline make process and the low-qty recommendation
@@ -225,6 +226,11 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     range_by_key (optional): ``{(process_value, qty): (low_usd, high_usd)}``, the
     estimate's served confidence range, so the rule reads the same range the
     answer shows. Absent => the estimate's assumption band.
+    outside_twins (optional): ``{(process_value, qty): (estimate, lead_time,
+    (low, high))}``, each in-house route priced as an outside shop runs it. They
+    join the outside side's candidates (a plate milled on your mill is compared
+    with a job shop's 3-axis mill, not only with routes you don't own); that
+    side then says ``same_process: True``. None => unchanged.
     """
     if not estimates_by_pq:
         return None
@@ -272,14 +278,22 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         if not inside:
             return cheapest, cheapest, None
         i_est = inside[0]
-        outs = [e for e in make_ready_ranked(q) if e.process not in in_house]
-        o_est = outs[0] if outs else None
+        outs = [(e, leadtimes_by_key.get((e.process, q)), range_by_key.get((e.process, q)), False)
+                for e in make_ready_ranked(q) if e.process not in in_house]
+        for (pv, tq), (t_est, t_lt, t_rng) in (outside_twins or {}).items():
+            if tq == q and pv not in excluded_pv and _family(pv) in MAKE_NOW_FAMILIES and t_est.dfm_ready:
+                outs.append((t_est, t_lt, t_rng, True))
+        outs.sort(key=lambda o: o[0].unit_cost_usd)
+        o_est = outs[0][0] if outs else None
         i_side = _side(i_est, leadtimes_by_key.get((i_est.process, q)),
                        range_by_key.get((i_est.process, q)))
         i_side["machine"] = in_house[i_est.process].get("machine")
         i_side["machine_count"] = in_house[i_est.process].get("count")
-        o_side = (_side(o_est, leadtimes_by_key.get((o_est.process, q)),
-                        range_by_key.get((o_est.process, q))) if o_est else None)
+        o_side = None
+        if outs:
+            o_side = _side(o_est, outs[0][1], outs[0][2])
+            if outs[0][3]:
+                o_side["same_process"] = True
         pick, basis = prefer_in_house(i_side, o_side)
         entry = {"in_house": i_side, "outside": o_side, "pick": pick, "basis": basis}
         return (i_est if pick == "in_house" else o_est), cheapest, entry
@@ -314,15 +328,23 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     for q in quantities:
         tier1, _cheapest, entry = pick_at(q)
         lt = leadtimes_by_key.get((tier1.process, q))
+        lead = (lt.low_days if lt else None, lt.high_days if lt else None)
+        twin = (entry is not None and entry["pick"] == "outside"
+                and (entry.get("outside") or {}).get("same_process"))
+        if twin:
+            # Your machine's process, bought from a shop: its lead time, not yours.
+            lead = (entry["outside"]["lead_low_days"], entry["outside"]["lead_high_days"])
         recommendation[q] = {
             "process": tier1.process,
             "material": tier1.material,
             "unit_cost_usd": round(tier1.unit_cost_usd, 2),
             "dfm_ready": tier1.dfm_ready,
             "dfm_verdict": tier1.dfm_verdict,
-            "lead_low_days": lt.low_days if lt else None,
-            "lead_high_days": lt.high_days if lt else None,
+            "lead_low_days": lead[0],
+            "lead_high_days": lead[1],
         }
+        if twin:
+            recommendation[q]["same_process_outside"] = True
         if entry is not None:
             options[q] = entry
             recommendation[q]["in_house"] = entry["pick"] == "in_house"

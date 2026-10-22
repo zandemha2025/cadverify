@@ -510,6 +510,15 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         if isinstance(e.get("confidence"), dict)
         and e["confidence"].get("low_usd") is not None
     } if in_house_by_pv else None
+    # A process a machine of yours runs is also bought outside: a job shop mills
+    # a flat plate on its own 3-axis mill at its own fully loaded rate. Those
+    # prices are the outside side's candidates too, so in-house is never compared
+    # only with routes nobody would send it out for (a 5-axis mill for a plate).
+    # They live only in the decision's comparison; the estimates list keeps one
+    # price per process (yours, at your machine's rate).
+    outside_twins = _outside_twins(
+        in_house_by_pv, elig_by_pv, options, drivers, rates, region, specs,
+        set(env_excluded.get("excluded_pv") or ()) | spec_excluded) if in_house_by_pv else None
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
                            unit_cost_fn=_unit_cost_fn,
                            excluded_pv=(set(env_excluded.get("excluded_pv") or ()) | spec_excluded)
@@ -518,7 +527,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                                                           specs.note(spec_excluded) if specs else None)
                                               if n) or None,
                            in_house=in_house_by_pv,
-                           range_by_key=range_by_key)
+                           range_by_key=range_by_key,
+                           outside_twins=outside_twins)
 
     notes = list(cost_exclusions.values())
     if shop is not None:
@@ -664,6 +674,35 @@ def _in_house_routes(verification, inventory) -> dict:
         count = getattr(cap, "count", None)
         out[pv] = {"machine": name or pv,
                    "count": count if isinstance(count, int) and count > 0 else 1}
+    return out
+
+
+def _outside_twins(in_house_by_pv, elig_by_pv, options, drivers, rates, region, specs,
+                   excluded_pv) -> dict:
+    """``{(process_value, qty): (estimate, lead_time, (low, high))}``: each route a
+    machine of yours clears, priced as an outside shop would run it (its fully
+    loaded rate, no machine of yours), at every quantity. Engine numbers only."""
+    out: dict = {}
+    for pv in in_house_by_pv or {}:
+        item = elig_by_pv.get(pv)
+        if item is None or pv in excluded_pv:
+            continue
+        process, material = item["process"], item["material"]
+        for q in options.quantities:
+            try:
+                est = cost_breakdown(process, drivers, material, options.material_class, q, rates, region,
+                                     n_cavities=options.n_cavities, complexity=options.complexity,
+                                     process_score=item["score"], owned=False,
+                                     tolerance_class=options.tolerance_class, machine_override=None)
+            except BuildEnvelopeError:
+                break
+            cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
+            lt = lead_time(process, cycle_hr, q, rates, in_house=None)
+            if specs:
+                est, lt = specs.price(est, lt, process, material, options.material_class)
+            ci = _serialize(est, lt, drivers, options.residual_model, options.ci_level,
+                            options.calibration).get("confidence") or {}
+            out[(pv, q)] = (est, lt, (ci.get("low_usd"), ci.get("high_usd")))
     return out
 
 
