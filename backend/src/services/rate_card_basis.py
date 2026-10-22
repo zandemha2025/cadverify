@@ -232,6 +232,13 @@ def priced_version(result_json: Any, created_at: Optional[datetime], rows: Itera
     stamp = (result_json or {}).get("rate_card") if isinstance(result_json, dict) else None
     if isinstance(stamp, dict) and isinstance(stamp.get("version"), int):
         return int(stamp["version"])
+    # An adopted what-if was priced when the what-if was, not when it was adopted.
+    priced_at = (result_json or {}).get("priced_at") if isinstance(result_json, dict) else None
+    if isinstance(priced_at, str):
+        try:
+            created_at = datetime.fromisoformat(priced_at)
+        except ValueError:
+            pass
     if created_at is None:
         return 0
     return in_effect(rows, created_at)

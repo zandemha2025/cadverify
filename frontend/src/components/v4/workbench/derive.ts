@@ -856,15 +856,30 @@ export interface HistoryRow {
   cur: boolean;
 }
 
+/** A saved record's what-if label ("What if: overhead 15%"), or null for a price at the part's own inputs. */
+export function whatIfOf(d: { what_if?: unknown } | null | undefined): string | null {
+  const w = d?.what_if;
+  if (typeof w === "string" && w) return w;
+  if (w && typeof w === "object" && typeof (w as { label?: unknown }).label === "string") return (w as { label: string }).label;
+  return null;
+}
+
+/** The record a part opens on: the chosen one, else its newest that isn't a what-if, else its newest (ce-17). */
+export function currentRecord<T extends { id: string; what_if?: unknown }>(list: readonly T[], chosen: string | null): T | null {
+  return (chosen ? list.find((d) => d.id === chosen) : undefined) ?? list.find((d) => !whatIfOf(d)) ?? list[0] ?? null;
+}
+
 export function historyRows(list: readonly CostDecisionSummary[], currentId: string | null): HistoryRow[] {
   return list.map((d) => {
     const cur = d.id === currentId;
     const cross = d.crossover_qty && Number.isFinite(d.crossover_qty) ? ` · tooling pays off near ${qtyText(d.crossover_qty)}` : " · no tooling crossover";
     const approved = d.approval_status === "approved";
+    const wi = whatIfOf(d as CostDecisionSummary & { what_if?: unknown });
     return {
       id: d.id,
       created_at: d.created_at,
-      title: d.make_now_process ? `Make now: ${methodName(d.make_now_process)}` : "No make-now pick",
+      // A what-if is listed as one, never as the part's make-now answer (ce-17).
+      title: wi ?? (d.make_now_process ? `Make now: ${methodName(d.make_now_process)}` : "No make-now pick"),
       sub: `${qtyListText(d.quantities ?? [])}${cross}${cur ? " · this decision" : ""}`,
       chip: d.is_stale ? "c-warn" : approved ? "c-ok" : "c-unk",
       tag: d.is_stale ? "Out of date" : approved ? "Approved" : "Unreviewed",

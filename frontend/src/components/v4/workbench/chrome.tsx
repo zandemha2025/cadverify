@@ -18,7 +18,7 @@ import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { checkHref } from "../part/check-context";
 import { cx } from "../ui";
 import { rateChips } from "./derive";
-import { attachFile, canRecost, getWb, recost, useShops, useWb } from "./session";
+import { attachFile, canRecost, getWb, recost, adoptWhatIf, useShops, useWb } from "./session";
 import { shortSource } from "./words";
 import { tabOf, tabUrlName, wbHref, type WbTab } from "./cost-url";
 
@@ -499,6 +499,43 @@ function RatesStale() {
   );
 }
 
+/**
+ * A what-if on screen (ad-hoc overrides or a shop's rates) says so, and is the part's price only
+ * when the person chooses it (ce-17, ce-08).
+ */
+function WhatIfNote() {
+  const s = useWb();
+  const toast = useToast();
+  const [busy, setBusy] = React.useState(false);
+  const label = s.decision?.whatIf ?? null;
+  if (!label) return null;
+  return (
+    <div className="wb-stale wb-whatif" role="note">
+      <span>
+        <b>{label}.</b> Saved with the part&apos;s records; the part&apos;s price is still its last check without changes.
+      </span>
+      <button
+        className="btn sm ink"
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await adoptWhatIf();
+            toast("This is now the part’s price. The what-if stays in History.");
+          } catch (e) {
+            toast(e instanceof Error ? e.message : "It wasn’t saved as the part’s price.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Saving…" : "Use this as the part’s price"}
+      </button>
+    </div>
+  );
+}
+
 export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string; meta: React.ReactNode[]; wide?: boolean }) {
   const { shops } = useShops();
   const s = useWb();
@@ -533,6 +570,7 @@ export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string; me
         </div>
       </div>
       <RatesStale />
+      <WhatIfNote />
     </div>
   );
 }

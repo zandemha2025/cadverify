@@ -33,12 +33,13 @@ import {
   type ShopProfileInfo,
   type ValidationResult,
 } from "@/lib/api";
+import { API_BASE } from "@/lib/api-base";
 import { fetchSourceKept, recheckStored } from "../part/api";
 import { partCheckHeaders } from "@/lib/verify/check-id";
 import { computeMeshHash } from "@/lib/verify/part-context";
 import { fetchPartContext } from "@/lib/verify/part-context-read";
 import { environmentLabel } from "./words";
-import { optionsFromReport } from "./derive";
+import { currentRecord, optionsFromReport, whatIfOf } from "./derive";
 
 export type Phase = "idle" | "running" | "done" | "error";
 
@@ -67,7 +68,7 @@ export interface WbState {
   load: { phase: Phase; error: string | null };
   decisions: CostDecisionSummary[] | null;
   decisionsError: string | null;
-  decision: { id: string; created_at: string | null; approval_status?: string | null; is_public: boolean; share_url: string | null; rates?: RateBasis | null } | null;
+  decision: { id: string; created_at: string | null; approval_status?: string | null; is_public: boolean; share_url: string | null; rates?: RateBasis | null; whatIf?: string | null } | null;
   /** Is the part's file kept with its record in this organization? null until known. Re-costs use it when this tab has no file. */
   kept: boolean | null;
   /** The inputs behind `report` (never the editable draft). */
@@ -233,7 +234,7 @@ async function runCost(runFile: File | null, opts: CostOptions, g: number): Prom
       opts,
       baseline: noOverrides ? report : s.baseline,
       cost: { phase: "done", error: null, geom: null, pending: null },
-      decision: report.saved ? { id: report.saved.id, created_at: new Date().toISOString(), approval_status: "unreviewed", is_public: false, share_url: null, rates: freshRates(report) } : s.decision,
+      decision: report.saved ? { id: report.saved.id, created_at: new Date().toISOString(), approval_status: "unreviewed", is_public: false, share_url: null, rates: freshRates(report), whatIf: whatIfOf(report as CostReport & { what_if?: unknown }) } : s.decision,
       pkgId: report.saved && report.saved.id !== s.decision?.id ? null : s.pkgId,
     }));
     if (state.key) void refreshDecisions(state.key, g);
@@ -346,7 +347,8 @@ export async function loadSaved(key: string, decisionId: string | null): Promise
     const list = page.cost_decisions ?? [];
     const row = catalog?.rows?.find((r) => r.part_key === key) ?? null;
     set({ decisions: list, filename: state.filename ?? list[0]?.filename ?? row?.filename ?? null });
-    const pick = (decisionId && list.find((d) => d.id === decisionId)) || list[0] || null;
+    // The chosen record, else the part's current price (its newest that isn't a what-if).
+    const pick = currentRecord(list as (CostDecisionSummary & { what_if?: unknown })[], decisionId);
     const analysisId = row?.analysis?.id ?? null;
     const shops = await loadShops().catch(() => [] as ShopProfileInfo[]);
     const [detail, analysis] = await Promise.all([
@@ -365,7 +367,7 @@ export async function loadSaved(key: string, decisionId: string | null): Promise
       report,
       baseline: report,
       opts: report ? optionsFromReport(report, shops, units) : state.opts,
-      decision: detail ? { id: detail.id, created_at: detail.created_at, approval_status: detail.approval_status ?? null, is_public: detail.is_public, share_url: detail.share_url, rates: detail.rates ?? null } : null,
+      decision: detail ? { id: detail.id, created_at: detail.created_at, approval_status: detail.approval_status ?? null, is_public: detail.is_public, share_url: detail.share_url, rates: detail.rates ?? null, whatIf: whatIfOf(detail.result as CostReport & { what_if?: unknown }) } : null,
       validation,
       dfm: { phase: validation ? "done" : analysisId ? "error" : "idle", error: validation ? null : analysisId ? "The saved DFM analysis didn’t load." : null },
       cost: { phase: report ? "done" : "idle", error: null, geom: null, pending: null },
@@ -449,6 +451,25 @@ export async function findPackage(decisionId: string): Promise<string | null> {
 
 export function markShared(url: string): void {
   set((s) => ({ decision: s.decision ? { ...s.decision, is_public: true, share_url: url } : s.decision }));
+}
+
+/**
+ * "Use this as the part's price": the what-if on screen becomes the part's current price, as a new
+ * record (POST /cost-decisions/{id}/use-as-price); the what-if itself stays as it was (ce-17).
+ */
+export async function adoptWhatIf(): Promise<string | null> {
+  const s = state;
+  if (!s.decision?.whatIf) return null;
+  const res = await fetch(`${API_BASE}/cost-decisions/${encodeURIComponent(s.decision.id)}/use-as-price`, { method: "POST" });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => null)) as { detail?: { message?: string } | string } | null;
+    const d = b?.detail;
+    throw new Error(typeof d === "string" ? d : d?.message ?? "It wasn't saved as the part's price. Try again.");
+  }
+  const body = (await res.json()) as { id: string };
+  set((st) => ({ decision: st.decision ? { ...st.decision, id: body.id, created_at: new Date().toISOString(), approval_status: "unreviewed", is_public: false, share_url: null, whatIf: null } : st.decision }));
+  if (state.key) void refreshDecisions(state.key, gen);
+  return body.id;
 }
 
 /** Re-read this part's saved decisions (History's Retry). */

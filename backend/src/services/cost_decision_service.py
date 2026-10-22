@@ -117,6 +117,105 @@ def _denormalize(result_json: dict) -> tuple[Optional[str], Optional[float], lis
 
 
 # ---------------------------------------------------------------------------
+# What-ifs: a price with ad-hoc overrides or a sample shop's rates is saved and
+# listed, but never becomes the part's current price by itself
+# ---------------------------------------------------------------------------
+
+_PCT_KEYS = {"overhead", "margin", "utilization"}
+
+
+def _what_word(key: str, value) -> str:
+    """One override in words: 'overhead 15%', 'labor $58/h', '3-axis milling machine $82/h'."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return f"{key} {value}"
+    field, _, rest = str(key).partition(".")
+    if key in _PCT_KEYS:
+        return f"{key} {v * 100:g}%"
+    if key == "labor_rate":
+        return f"labor ${v:g}/h"
+    if field == "machine_rate":
+        from src.analysis.process_names import process_label
+
+        return f"{process_label(rest.lower()) or rest} machine ${v:g}/h"
+    if field == "post_hr_part":
+        from src.analysis.process_names import process_label
+
+        return f"{process_label(rest.lower()) or rest} hand work {v:g} h a part"
+    if field == "material_price":
+        return f"{rest.lstrip('@')} ${v:g}/kg"
+    return f"{key.replace('_', ' ')} {v:g}"
+
+
+def what_if_block(overrides: Optional[dict], shop: Optional[str], shop_name: Optional[str] = None) -> Optional[dict]:
+    """The marker a what-if record carries in its result (ce-17, ce-08): the overrides
+    and shop it was priced with and its label ("What if: overhead 15%"). None for a
+    price at the part's own inputs."""
+    ov = {k: v for k, v in (overrides or {}).items()}
+    if not ov and not shop:
+        return None
+    bits = [_what_word(k, v) for k, v in sorted(ov.items())]
+    if shop:
+        bits.append(f"{shop_name or shop} rates")
+    return {"overrides": ov, "shop": shop or None, "label": "What if: " + ", ".join(bits)}
+
+
+def what_if_of(result_json: Any) -> Optional[dict]:
+    """A record's what-if marker, or None when it is a price at the part's own inputs."""
+    w = result_json.get("what_if") if isinstance(result_json, dict) else None
+    return w if isinstance(w, dict) else None
+
+
+def current_price_clause():
+    """SQL: the record isn't a what-if (no ``what_if`` key in its result; PG and SQLite alike)."""
+    return CostDecision.result_json["what_if"].is_(None)
+
+
+def is_current_price(result_json: Any) -> bool:
+    """Can this record be the part's current price? Not a what-if (an adopted one is a new record)."""
+    return what_if_of(result_json) is None
+
+
+async def adopt_what_if(session: AsyncSession, user: AuthedUser, ulid: str) -> CostDecision:
+    """"Use this as the part's price": a what-if becomes the part's current price as a
+    NEW record (saved records stay as they were): the same engine result, without the
+    what-if marker, saying which what-if it adopted and when that was priced. 409 when
+    the record isn't a what-if."""
+    d = await get_owned(session, ulid, user.user_id)
+    w = what_if_of(d.result_json)
+    if w is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "not_a_what_if", "message": "This record is already a price at the part's own inputs."})
+    result = {k: v for k, v in (d.result_json or {}).items() if k not in ("what_if", "saved")}
+    result["adopted_what_if"] = {"from": d.ulid, "label": w.get("label"), "overrides": w.get("overrides") or {},
+                                 "shop": w.get("shop")}
+    # The rate card it was priced at is the what-if's (its stamp, else the card in effect then).
+    result.setdefault("priced_at", _iso(d.created_at))
+    return await persist_cost_decision(
+        session, user,
+        mesh_hash=d.mesh_hash,
+        params_hash=hashlib.sha256(f"adopt:{d.params_hash}".encode()).hexdigest(),
+        engine_version=d.engine_version,
+        filename=d.filename,
+        file_type=d.file_type,
+        result_json=result,
+        label=d.label,
+        org_id=d.org_id,
+    )
+
+
+async def newest_current(session: AsyncSession, org_id: str, mesh_hash: str) -> Optional[CostDecision]:
+    """The part's newest record that isn't a what-if (the part's current price), or None."""
+    return (await session.execute(
+        select(CostDecision)
+        .where(CostDecision.org_id == org_id, CostDecision.mesh_hash == mesh_hash, current_price_clause())
+        .order_by(CostDecision.ulid.desc())
+        .limit(1)
+    )).scalars().first()
+
+
+# ---------------------------------------------------------------------------
 # Persist
 # ---------------------------------------------------------------------------
 
@@ -357,7 +456,11 @@ async def record_persist_failure(
 
 
 def _list_item(d: CostDecision) -> dict:
+    rj = d.__dict__.get("result_json")
+    w = what_if_of(rj)
     return {
+        # A what-if's label ("What if: overhead 15%"); None for a price at the part's own inputs.
+        "what_if": w.get("label") if w else None,
         "id": d.ulid,
         "mesh_hash": d.mesh_hash,
         "filename": d.filename,
@@ -434,7 +537,8 @@ async def latest_per_part(
                 order_by=CostDecision.ulid.desc(),
             ).label("rn"),
         )
-        .where(CostDecision.org_id == caller_org_subquery(user_id))
+        # The part's current price: its newest record that isn't a what-if.
+        .where(CostDecision.org_id == caller_org_subquery(user_id), current_price_clause())
         .subquery()
     )
     newest = select(ranked.c.id).where(ranked.c.rn == 1)

@@ -272,21 +272,11 @@ async def _latest_analysis(
 async def _latest_cost(
     session: AsyncSession, org_id: str, mesh_hash: str
 ) -> Optional[CostDecision]:
-    return (
-        (
-            await session.execute(
-                select(CostDecision)
-                .where(
-                    CostDecision.org_id == org_id,
-                    CostDecision.mesh_hash == mesh_hash,
-                )
-                .order_by(CostDecision.ulid.desc())
-                .limit(1)
-            )
-        )
-        .scalars()
-        .first()
-    )
+    """The part's current price: its newest record that isn't a what-if (a price with
+    ad-hoc overrides or a sample shop's rates never becomes it by itself)."""
+    from src.services.cost_decision_service import newest_current
+
+    return await newest_current(session, org_id, mesh_hash)
 
 
 async def refresh_part_summary(

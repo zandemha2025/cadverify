@@ -67,9 +67,11 @@ export async function loadSavedPart(key: string, recordId: string | null = null)
       // Only a record of this part: another part's id in the URL is ignored.
       latest = await fetchCostDecision(recordId).then((d) => (d.mesh_hash === key ? d : null)).catch(() => null);
     }
-    if (!latest && decisions[0]) {
+    // The part's current price: its newest record that isn't a what-if (ce-17).
+    const current = decisions.find((d) => !(d as { what_if?: string | null }).what_if) ?? decisions[0];
+    if (!latest && current) {
       try {
-        latest = await fetchCostDecision(decisions[0].id);
+        latest = await fetchCostDecision(current.id);
       } catch (e) {
         return { latest: null, latestError: msg(e, "The saved record didn't load.") };
       }

@@ -2246,6 +2246,15 @@ async def _run_cost_decision(
         result_dict = dict(result_dict)
         result_dict["orientation"] = placed.record()
 
+    # A price with ad-hoc overrides or a shop's rates is a what-if: saved and listed with
+    # its label ("What if: overhead 15%"), never the part's current price by itself.
+    from src.services.cost_decision_service import what_if_block
+
+    _what_if = what_if_block(rate_overrides, shop_slug,
+                             getattr(governed_shop, "name", None) if governed_shop is not None else None)
+    if _what_if is not None:
+        result_dict = {**result_dict, "what_if": _what_if}
+
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------
     # Turns the flagship decision into a durable artifact (list/export/share/
     # compare). The /demo route passes no user/session, so it stays IP-local

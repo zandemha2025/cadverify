@@ -458,3 +458,18 @@ test("a record priced before tooling was its own line names its folded setup lin
   const now = { ...e, line_items: { labor: 21.0, machine: 3.5229, material: 0.8557, amortized_fixed: 0.35, tooling: 52.5 } };
   assert.equal(lineRows(now as never).find((r) => r.key === "amortized_fixed")!.label, "Setup");
 });
+
+test("ce-17: a what-if is listed as one and never opens as the part's price", async () => {
+  const { currentRecord, historyRows, whatIfOf } = await import("./derive.ts");
+  const base = { id: "01BASE", filename: "pocket-block.step", file_type: "step", label: null, make_now_process: "cnc_3axis", crossover_qty: null, quantities: [100], created_at: "2026-10-22T16:21:00Z", is_public: false, share_url: null, approval_status: "unreviewed" };
+  const wi = { ...base, id: "01WHATIF", created_at: "2026-10-22T16:25:00Z", what_if: "What if: overhead 15%" };
+  // newest first: the what-if is newer, the part opens on its own price
+  assert.equal(currentRecord([wi, base], null)?.id, "01BASE");
+  assert.equal(currentRecord([wi, base], "01WHATIF")?.id, "01WHATIF");
+  assert.equal(currentRecord([wi], null)?.id, "01WHATIF");
+  assert.equal(whatIfOf({ what_if: { label: "What if: labor $58/h" } }), "What if: labor $58/h");
+  assert.equal(whatIfOf({}), null);
+  const rows = historyRows([wi, base] as never, "01BASE");
+  assert.equal(rows[0].title, "What if: overhead 15%");
+  assert.equal(rows[1].title, "Make now: 3-axis milling");
+});

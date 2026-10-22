@@ -315,6 +315,22 @@ async def reopen_cost_decision_approval(
     }
 
 
+@router.post("/{decision_id}/use-as-price")
+@limiter.limit("60/hour;300/day")
+async def use_what_if_as_price(
+    decision_id: str,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_org_writer),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Make a what-if the part's current price (ce-17, ce-08): a new record with the
+    what-if's engine result and no what-if marker. The what-if itself is unchanged."""
+    d = await svc.adopt_what_if(session, user, decision_id)
+    await session.commit()
+    return {"id": d.ulid, "adopted_from": decision_id, **svc.governance_fields(d)}
+
+
 @router.get("/{decision_id}/pdf")
 @limiter.limit("60/hour;500/day")
 async def download_cost_pdf(
