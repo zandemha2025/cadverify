@@ -20,10 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import __version__ as _app_version
-from src.analysis.process_names import process_label as _process_label
 from src.auth.org_context import caller_org_subquery
 from src.db.models import CostDecision
-from src.services.pdf_service import _format_number
+from src.services.pdf_service import _format_number, _process_name
 
 logger = logging.getLogger("cadverify.cost_pdf")
 
@@ -95,7 +94,7 @@ _jinja_env.filters["format_number"] = _format_number
 _jinja_env.filters["format_money"] = _format_money
 _jinja_env.filters["pdf_text"] = _pdf_text
 # Engine process ids read as the same names the v4 screens use ("cnc_3axis" → "3-axis milling").
-_jinja_env.filters["process_name"] = lambda v: (_process_label(v) if v and v != "-" else v)
+_jinja_env.filters["process_name"] = _process_name
 
 
 def build_cost_pdf_context(decision: CostDecision, outbound: dict | None = None) -> dict:

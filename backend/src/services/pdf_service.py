@@ -81,12 +81,22 @@ def _merge_key(issue: dict, key: str, value: str) -> dict:
     return merged
 
 
-_jinja_env.filters["format_duration"] = _format_duration
-_jinja_env.filters["format_number"] = _format_number
-_jinja_env.filters["sort_by_severity"] = _sort_by_severity
-_jinja_env.filters["merge_key"] = _merge_key
-# Engine process ids read as the same names the v4 screens use ("cnc_3axis" → "3-axis milling").
-_jinja_env.filters["process_name"] = lambda v: (_process_label(v) if v and v != "-" else v)
+def _process_name(value):
+    """An engine process id in the words the v4 screens use ("cnc_3axis" → "3-axis milling")."""
+    return _process_label(value) if value and value != "-" else value
+
+
+def register_pdf_filters(env: Environment) -> Environment:
+    """Every filter the PDF templates use, for any Jinja environment that renders them."""
+    env.filters["format_duration"] = _format_duration
+    env.filters["format_number"] = _format_number
+    env.filters["sort_by_severity"] = _sort_by_severity
+    env.filters["merge_key"] = _merge_key
+    env.filters["process_name"] = _process_name
+    return env
+
+
+register_pdf_filters(_jinja_env)
 
 
 # ── Report context ─────────────────────────────────────────────
