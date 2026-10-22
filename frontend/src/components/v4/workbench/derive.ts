@@ -281,7 +281,8 @@ export function blockerSentence(text: string | null | undefined): string {
   const m = /([0-9]+) sidewall faces \(([0-9.]+)% of sidewall area\) below ([0-9.]+)° draft/.exec(t);
   if (!m) return t;
   const share = Number(m[2]) >= 100 ? "Every sidewall" : `${m[2]}% of the sidewall area`;
-  return `${share} is under ${Number(m[3])}° draft (${Number(m[1]).toLocaleString("en-US")} faces).`;
+  // The engine counts mesh triangles here, not the faces a CAD tool shows (de-03).
+  return `${share} is under ${Number(m[3])}° draft (${Number(m[1]).toLocaleString("en-US")} mesh triangles).`;
 }
 
 export function redesignNote(report: CostReport): { process: string; title: string; text: string; code: string | null } | null {

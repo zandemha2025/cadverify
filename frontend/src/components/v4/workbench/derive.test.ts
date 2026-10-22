@@ -217,8 +217,8 @@ test("the decision at a quantity: cheapest ready method, engine range when coste
 test("redesign note puts the draft blocker in plain words", () => {
   const n = redesignNote(report())!;
   assert.equal(n.title, "Forging needs a design change first");
-  assert.equal(n.text, "Every sidewall is under 5° draft (114,852 faces). Its cost is for a redesigned part, not a quote.");
-  assert.equal(blockerSentence("12 sidewall faces (40.5% of sidewall area) below 1.0° draft"), "40.5% of the sidewall area is under 1° draft (12 faces).");
+  assert.equal(n.text, "Every sidewall is under 5° draft (114,852 mesh triangles). Its cost is for a redesigned part, not a quote.");
+  assert.equal(blockerSentence("12 sidewall faces (40.5% of sidewall area) below 1.0° draft"), "40.5% of the sidewall area is under 1° draft (12 mesh triangles).");
   assert.equal(blockerSentence("Part lacks rotation."), "Part lacks rotation.");
   assert.equal(redesignNote(report({ decision: { ...report().decision!, tooling_dfm_ready: true } })), null);
 });
