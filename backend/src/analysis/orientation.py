@@ -16,15 +16,16 @@ The engine reads the analysed mesh's +Z as up. What depends on it:
 * The work-area note ``BUILD_REORIENTATION_REQUIRED`` compares the file's own
   axes with a machine's.
 
+FDM and SLA prices depend on it too: print time and material are
+slicer-calibrated estimates for the part as checked (layers from its height,
+support under the faces needing it, FDM bridges excluded:
+``src.costing.print_model``).
+
 What does not depend on it: work-area fit in the checks (the envelope checks
-and the machine fit try the ways the part can sit), and every price. The cost
-model prices a print at the lowest build height an enclosing box can take in
-the machine and doesn't price support material (metal powder beds carry a flat
-support allowance); CNC stock, molds and castings are sized from an enclosing
-box that doesn't depend on the file's axes. So prices are the same in every
-orientation. Pricing support and print height needs real quotes to tune it,
-and the overhang rule doesn't yet know that short spans bridge without
-support (see ``support_estimate``).
+and the machine fit try the ways the part can sit) and every other price.
+Powder beds, CNC stock, molds and castings are priced from a placement or an
+enclosing box the cost model chooses itself, so those prices are the same in
+every orientation.
 
 A chosen orientation is a proper rotation ``R`` applied to the mesh before
 analysis (``placed = R · file``; row 3 of ``R`` is the file direction that ends
@@ -45,6 +46,8 @@ from typing import Any, Iterable, Optional
 import numpy as np
 import trimesh
 
+from src.profiles.envelopes import COMMON_ENVELOPE_MM
+
 # The analyzers' own limits (backend/src/analysis/processes/*). A test runs every
 # analyzer and checks its OVERHANG / INSUFFICIENT_DRAFT findings against these.
 OVERHANG_LIMIT_DEG: dict[str, float] = {
@@ -56,11 +59,10 @@ DRAFT_MIN_DEG: dict[str, float] = {
 }
 # The work areas the analyzers check (check_build_volume), for "fits standing
 # this way". A test runs every analyzer and checks these are the ones it uses.
+_PRINTING = ("fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting", "ded", "waam")
+# The printing processes' work areas: the one envelope the check and the price share.
 BUILD_VOLUME_MM: dict[str, tuple[float, float, float]] = {
-    "fdm": (300, 300, 350), "sla": (200, 125, 210), "dlp": (218, 123, 250),
-    "sls": (340, 340, 600), "mjf": (380, 284, 380), "dmls": (400, 400, 400),
-    "slm": (500, 280, 365), "ebm": (350, 380, 380), "binder_jetting": (800, 500, 400),
-    "ded": (1500, 1500, 1500), "waam": (5000, 3000, 3000),
+    p.value: tuple(float(d) for d in env) for p, env in COMMON_ENVELOPE_MM.items() if p.value in _PRINTING
 }
 # A typical layer, only to count layers for the height (not a check rule).
 LAYER_MM: dict[str, float] = {
@@ -428,7 +430,8 @@ def placed_measures(placed: trimesh.Trimesh) -> dict[str, np.ndarray | float]:
 SUPPORT_RAY_CAP = 4000
 
 
-def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = None) -> dict[str, dict[str, float]]:
+def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = None, *,
+                     measures: dict | None = None) -> dict[str, dict[str, float]]:
     """The space under the faces the check's overhang rule marks, per process.
 
     For each marked face (``check_overhangs``' rule, the mesh as placed: +Z up)
@@ -450,7 +453,7 @@ def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = No
     out = {p: {"faces": 0, "area_mm2": 0.0, "volume_mm3": 0.0, "sampled": False} for p in limits}
     if not limits or len(mesh.faces) == 0:
         return out
-    m = placed_measures(mesh)
+    m = measures if measures is not None else placed_measures(mesh)
     angles, centroids, areas, normals = m["angles"], m["centroids"], m["areas"], m["normals"]
     diag = float(m["bbox_diag"])
     widest = overhang_faces(angles, centroids, diag, min(limits.values()))
@@ -518,7 +521,8 @@ _BRIDGE_BOXES = 64
 
 
 def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total_area: float,
-               extra: dict | None = None, facets: tuple[list[np.ndarray], np.ndarray] | None = None) -> dict:
+               extra: dict | None = None, facets: tuple[list[np.ndarray], np.ndarray] | None = None,
+               volume_mm3: float | None = None) -> dict:
     from src.analysis.processes.checks import cup_faces, draft_sidewalls, overhang_faces
     from src.analysis.support import support_regions
 
@@ -535,7 +539,7 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
     for proc, limit in OVERHANG_LIMIT_DEG.items():
         faces = overhang_faces(angles, centroids, float(m["bbox_diag"]), limit)
         support[proc] = {"faces": int(len(faces)), "area_mm2": round(float(areas[faces].sum()), 2)}
-    for proc, est in support_estimate(placed, OVERHANG_LIMIT_DEG).items():
+    for proc, est in support_estimate(placed, OVERHANG_LIMIT_DEG, measures=m).items():
         support[proc]["volume_cm3"] = round(est["volume_mm3"] / 1000.0, 3)
     # FDM bridges flat spans between walls, as its check does (check_overhangs(bridges=True)).
     fdm = support_regions(placed, OVERHANG_LIMIT_DEG["fdm"], measures=m, keep_regions=True)
@@ -552,6 +556,25 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
                       # Where the bridged faces' centres lie, as fractions of the placed box
                       # [x0, y0, z0, x1, y1, z1]: the 3D view leaves them uncoloured.
                       "bridge_boxes": boxes}
+    # One part printed this way, on its own (the price nests a plate: see the cost view).
+    from src.costing.print_model import FDM, PrintFeatures, fdm_estimate, layer_profile, resin_estimate
+
+    nz = normals[:, 2] if len(normals) else np.empty(0)
+    perimeter, section = layer_profile(placed, FDM["layer_mm"])
+    feats = PrintFeatures(
+        volume_cm3=abs(float(placed.volume if volume_mm3 is None else volume_mm3)) / 1000.0,
+        area_cm2=float(areas.sum()) / 100.0,
+        wall_cm2=float(areas[np.abs(nz) < 0.5].sum()) / 100.0, height_mm=float(ext[2]),
+        x_mm=float(ext[0]), y_mm=float(ext[1]), footprint_cm2=float(ext[0] * ext[1]) / 100.0,
+        fdm_need_cm2=fdm.area_mm2 / 100.0, fdm_column_cm3=fdm.column_mm3 / 1000.0, fdm_bridges=fdm.bridges,
+        resin_column_cm3=float(support["sla"]["volume_cm3"]),
+        layer_perimeter_mm=tuple(perimeter.round(4)), layer_area_mm2=tuple(section.round(4)),
+    )
+    f1, r1 = fdm_estimate(feats, 1), resin_estimate(feats, 1)
+    printed = {"fdm": {"hours_one": round(f1.hours_per_part, 3), "material_cm3": round(f1.material_cm3, 2),
+                       "support_cm3": round(f1.support_cm3, 2)},
+               "sla": {"hours_one": round(r1.hours_per_part, 3), "material_cm3": round(r1.material_cm3, 2),
+                       "support_cm3": round(r1.support_cm3, 2)}}
     sidewalls, draft = draft_sidewalls(angles)
     drafts = {}
     for proc, need in DRAFT_MIN_DEG.items():
@@ -594,6 +617,7 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
         "footprint_mm": [round(float(ext[0]), 3), round(float(ext[1]), 3)],
         "on_plate_area_mm2": round(float(areas[on_plate].sum()), 2),
         "support": support,
+        "print": printed,
         "draft": drafts,
         "downward_area_mm2": round(down_area, 2),
         "downward_share_pct": round(down_area / total_area * 100.0, 2) if total_area > 0 else None,
@@ -665,22 +689,28 @@ def orientation_options(mesh: trimesh.Trimesh, *, down: list[float] | None = Non
     The six sides of the file's box and up to two of its largest flat faces
     that aren't on a file axis, plus ``down`` when given (a face picked in the
     3D view). For each: the area and faces the overhang rule marks for support
-    per printing process, the wall area without draft per molding process (the
-    tool opening along the placed +Z), the height and footprint. Deterministic:
-    the same mesh always gives the same list and the same best choice.
+    per printing process (FDM bridges left out, as its check does), the wall
+    area without draft per molding process (the tool opening along the placed
+    +Z), the height and footprint, and for FDM and SLA the print model's time
+    and material for one part printed that way on its own (``print``; the
+    price nests a plate). Deterministic: the same mesh always gives the same
+    list and the same best choice.
     """
     from src.analysis.context import _max_analysis_faces, _maybe_decimate
 
     bounded, decimation = _maybe_decimate(mesh)
     total_area = float(np.asarray(bounded.area_faces, dtype=np.float64).sum())
     facets = _facet_info(bounded)
-    cands = [_candidate(cid, "side", rotation_down(d), bounded, total_area, facets=facets) for cid, d in _SIDES]
+    volume = abs(float(bounded.volume))  # the same in every orientation
+    cands = [_candidate(cid, "side", rotation_down(d), bounded, total_area, facets=facets, volume_mm3=volume)
+             for cid, d in _SIDES]
     for i, (n, a) in enumerate(_flat_faces(bounded), start=1):
         cands.append(_candidate(f"face-{i}", "flat_face", rotation_down(n), bounded, total_area,
-                                {"face_area_mm2": round(a, 2)}, facets=facets))
+                                {"face_area_mm2": round(a, 2)}, facets=facets, volume_mm3=volume))
     if down is not None:
         d = _unit(down)
-        cands.append(_candidate("picked", "picked", rotation_down(d), bounded, total_area, facets=facets))
+        cands.append(_candidate("picked", "picked", rotation_down(d), bounded, total_area, facets=facets,
+                                volume_mm3=volume))
 
     order = {c["id"]: i for i, c in enumerate(cands)}
     best: dict[str, str] = {}
@@ -710,7 +740,8 @@ def orientation_options(mesh: trimesh.Trimesh, *, down: list[float] | None = Non
         "work_areas_mm": {p: list(v) for p, v in BUILD_VOLUME_MM.items()},
         "layer_mm": dict(LAYER_MM),
         "limits": [
-            "Prices don't yet include support material or print height, so they're the same in every orientation.",
+            "FDM and SLA prices follow the orientation: print time and material are slicer-calibrated "
+            "estimates for the part as checked. Other prices don't depend on it.",
             "Support volume is an estimate: the space under the faces needing support, down to the part or the "
             "plate. Printed supports fill a fraction of it. For FDM, a flat span between walls prints as a "
             "bridge and isn't counted; resin and metal printers support it.",

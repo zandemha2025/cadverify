@@ -9,8 +9,9 @@ The engine reads +Z as the build direction (printing) and the opening direction
   its flat side, by the real FDM analyzer.
 * The comparison marks exactly the faces the analyzers mark, uses the
   analyzers' own limits, and picks the same orientation every time.
-* Prices don't change with orientation (the cost model picks the build
-  placement itself and doesn't price support material).
+* FDM and SLA prices follow the orientation (slicer-calibrated print time and
+  material read the part as checked); every other price doesn't (those cost
+  models place the part themselves).
 """
 from __future__ import annotations
 
@@ -186,9 +187,14 @@ def test_the_suggestion_is_deterministic():
     assert first["best"]["injection_molding"] in {c["id"] for c in first["candidates"]}
 
 
-def test_prices_do_not_change_with_orientation():
-    """The cost model picks the build placement itself and prices no support material,
-    so every price is the same in every orientation (the UI says so in one line)."""
+PRINT_PRICED = {"fdm", "sla"}  # slicer-calibrated: time and material read the part as checked
+
+
+def test_print_prices_follow_the_orientation_and_the_rest_do_not():
+    """FDM and SLA are priced from the part as checked (height, layers, support under what
+    overhangs: src.costing.print_model), so turning the part changes them; every other
+    process places the part itself, so its prices are the same in every orientation. A
+    spin on the plate changes nothing."""
     from src.api.routes import _run_cost_engine_ctx
     from src.costing import EstimateOptions, estimate_decision, report_to_dict
 
@@ -199,14 +205,28 @@ def test_prices_do_not_change_with_orientation():
         m = o.apply(mesh) if o is not None else mesh
         result, mm, ctx = _run_cost_engine_ctx(m, "gamma.stl", orientation=o)
         rep = report_to_dict(estimate_decision(result, mm, ctx.features, EstimateOptions(quantities=[1, 100])))
-        return {(e["process"], e["quantity"], e["material"]): e["unit_cost_usd"] for e in rep["estimates"]}, result
+        return {(e["process"], e["quantity"], e["material"]): e for e in rep["estimates"]}, result
+
+    def cost(rows, keep):
+        return {k: e["unit_cost_usd"] for k, e in rows.items() if (k[0] in PRINT_PRICED) == keep}
 
     base, base_result = prices(None)
-    for spec in ("down:0,-1,0", "turns:z90", "down:1,0,0", "turns:x180"):
+    assert cost(base, True) and cost(base, False)
+    spun, _ = prices("turns:z90")
+    assert cost(spun, True) == cost(base, True) and cost(spun, False) == cost(base, False)
+    for spec in ("down:0,-1,0", "down:1,0,0", "turns:x180"):
         turned, _ = prices(spec)
-        assert base and turned == base, spec
+        assert cost(turned, False) == cost(base, False), spec
     lying, lying_result = prices("down:0,-1,0")
-    # ...while the findings that read the build direction do change.
+    # Laid on its side the arm needs no support and the part is half as tall: FDM costs less.
+    q100 = lambda rows, p: next(e for k, e in rows.items() if k[0] == p and k[1] == 100)  # noqa: E731
+    assert q100(lying, "fdm")["unit_cost_usd"] < q100(base, "fdm")["unit_cost_usd"]
+    src = lambda e, name: next(d["source"] for d in e["drivers"] if d["name"] == name)  # noqa: E731
+    assert "support" in src(q100(base, "fdm"), "material_cost") and "+ no support" in src(q100(lying, "fdm"), "material_cost")
+    assert "slicer-calibrated estimate, not a quote" in src(q100(base, "fdm"), "machine_cost")
+    assert "200 layers of 0.2 mm (40.0 mm tall as checked)" in src(q100(base, "fdm"), "machine_cost")
+    assert "100 layers of 0.2 mm (20.0 mm tall as checked)" in src(q100(lying, "fdm"), "machine_cost")
+    # ...and the findings that read the build direction change with it.
     codes = lambda r, p: {i.code for ps in r.process_scores if ps.process.value == p for i in ps.issues}  # noqa: E731
     assert "OVERHANG" in codes(base_result, "fdm") and "OVERHANG" not in codes(lying_result, "fdm")
 
@@ -256,17 +276,17 @@ def test_work_areas_and_layers():
     assert checks_module.check_build_volume  # the shared check still exists
     for proc, env in BUILD_VOLUME_MM.items():
         assert seen[proc] == tuple(float(d) for d in env), proc
-    # A 360 mm bar is too tall for FDM's 350 mm work area standing up; lying down it fits.
-    bar = trimesh.creation.box((20, 30, 360))
-    bar.apply_translation((10, 15, 180))
+    # A 300 mm bar is too tall for FDM's 250 mm work area standing up; lying down it fits, turned.
+    bar = trimesh.creation.box((20, 30, 300))
+    bar.apply_translation((10, 15, 150))
     opts = orientation_options(bar)
     side = {c["id"]: c for c in opts["candidates"]}
     assert side["down-z"]["fits"]["fdm"] is False and side["down-x"]["fits"]["fdm"] is True
-    assert side["down-z"]["layers"]["fdm"] == 1800 and side["down-x"]["layers"]["fdm"] == 100
+    assert side["down-z"]["layers"]["fdm"] == 1500 and side["down-x"]["layers"]["fdm"] == 100
     assert opts["layer_mm"] == LAYER_MM
-    assert opts["limits"][0] == "Prices don't yet include support material or print height, so they're the same in every orientation."
-    # A diagonal fit on the plate counts: 380 mm long fits FDM's 300 × 300 bed only turned.
-    diag = trimesh.creation.box((380, 20, 10))
+    assert opts["limits"][0].startswith("FDM and SLA prices follow the orientation")
+    # A diagonal fit on the plate counts: 330 mm long fits FDM's 250 × 250 bed only turned.
+    diag = trimesh.creation.box((330, 20, 10))
     assert orientation_options(diag)["candidates"][0]["fits"]["fdm"] is True
 
 

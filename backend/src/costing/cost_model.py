@@ -33,6 +33,15 @@ from src.costing.rates import (
 
 PT = ProcessType
 
+# Priced from the slicer-calibrated print model when the part's mesh was measured.
+_PRINT_PROCESSES = {PT.FDM: "fdm", PT.SLA: "sla"}
+
+
+def _print_note() -> str:
+    from src.costing.print_model import CALIBRATION_NOTE
+
+    return CALIBRATION_NOTE
+
 # Master on/off for the volume/learning economics (S1 fix). Defaults ON (the
 # corrected behavior that fixes the demo path). Set CADVERIFY_CNC_LEARNING=0 to
 # recover the old flat, volume-invariant conversion cost. (A learning_rate=1.0
@@ -410,6 +419,25 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     drivers_out: list[Driver] = []
 
+    # ---- PRINT PLAN (FDM / SLA): slicer-calibrated, the part as checked ----
+    # Time and material follow the part's orientation: layers, support under
+    # what overhangs (FDM bridges excluded), resin supports and pad. Drivers
+    # built without a mesh keep the volume model below.
+    print_plan = None
+    if process in _PRINT_PROCESSES and getattr(drivers, "print_features", None) is not None:
+        from src.costing import print_model
+
+        envelope = tuple((machine_override or {}).get("build_env_mm") or rates.build_env(process))
+        print_plan = print_model.plan(_PRINT_PROCESSES[process], drivers, envelope,
+                                      rates.part_spacing(process), rates.xy_packing_density(process))
+        if print_plan is None:
+            f = drivers.print_features
+            raise BuildEnvelopeError(
+                f"{process.value}: price withheld — no way of laying the part on a side of its box "
+                f"fits the {tuple(envelope)}mm work area (as checked {f.x_mm:.1f} × {f.y_mm:.1f} × "
+                f"{f.height_mm:.1f} mm). Select a larger machine; this is not proof that every "
+                "possible orientation fails.")
+
     # ---- MATERIAL --------------------------------------------------------
     if process == PT.CNC_TURNING:
         # Buy the same enclosing round bar used by the rough-machining model.
@@ -481,6 +509,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     f"overbuild (CAD volume {drivers.volume_cm3:.2f} cm³ × {material.name} "
                     f"density {material.density:.2f} g/cm³) [DED/WAAM assumption, not "
                     f"shop-validated]")
+    elif print_plan is not None:
+        est, _placement = print_plan
+        input_mass = est.material_cm3 * material.density / 1000.0
+        mass_src = (f"{est.material_source} = {est.material_cm3:.2f} cm³ × {material.name} density "
+                    f"{material.density:.2f} g/cm³ ({_print_note()})")
     else:
         input_mass = drivers.mass_kg(material.density)
         mass_src = drivers.mass_source(material.density, material.name)
@@ -524,7 +557,18 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     # ---- MACHINE ---------------------------------------------------------
     finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
-    if family == "additive":
+    if family == "additive" and print_plan is not None:
+        est, placement = print_plan
+        machine_hr, n = est.hours_per_part, est.parts_per_plate
+        cycle_src = f"{est.source}; {placement}"
+        if (machine_override or {}).get("build_env_mm"):
+            cycle_src += f"; USER-declared envelope of '{(machine_override or {}).get('machine_name')}'"
+        drivers_out.append(Driver(
+            name="parts_per_build", value=float(n), unit="parts",
+            provenance=rates.prov_tag(f"xy_packing_density.{process.name}"),
+            source=cycle_src,
+        ))
+    elif family == "additive":
         machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
         pp_src = cycle_src
         pp_prov = rates.prov_tag(

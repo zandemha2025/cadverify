@@ -176,7 +176,7 @@ def _bridge(mesh: trimesh.Trimesh, faces: np.ndarray, centroids, tol: float) -> 
 
 def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm: float | None = None,
                     keep_regions: bool = False, measures: dict | None = None,
-                    columns: bool = True) -> SupportEstimate:
+                    columns: bool = True, bridging: bool = True) -> SupportEstimate:
     """Support for one process limit on a placed mesh (+Z up), bridging-aware.
 
     ``bridge_limit_mm``: the printer's longest unsupported bridge (None: no
@@ -185,7 +185,8 @@ def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm:
     (``placed_measures`` keys: angles, centroids, areas, normals, bbox_diag),
     so a check marks exactly the faces its context marks. ``columns=False``
     skips the drop under each face (no ray casts; the column volumes are 0):
-    a check only needs which faces bridge.
+    a check only needs which faces bridge. ``bridging=False``: every marked
+    face needs support (resin and metal printers don't bridge).
     """
     from trimesh.graph import connected_components
 
@@ -223,7 +224,7 @@ def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm:
         flat = float(np.average(normals[faces, 2], weights=areas[faces])) < FLAT_NZ
         reg = Region(faces=faces, area_mm2=float(areas[faces].sum()), footprint_mm2=float(footprint[rows].sum()),
                      column_mm3=float(column[rows].sum()), flat=flat)
-        if flat:
+        if flat and bridging:
             reg.covered, reg.span_mm = _bridge(mesh, faces, centroids, tol)
             reg.bridge = reg.covered >= COVERED and (bridge_limit_mm is None or reg.span_mm <= bridge_limit_mm)
         if reg.bridge:

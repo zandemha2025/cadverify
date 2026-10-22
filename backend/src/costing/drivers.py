@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import trimesh
@@ -56,6 +57,12 @@ class GeoDrivers:
     bbox_precision_mm: float = 0.0  # enclosing-dimension uncertainty, both sides
     minimum_width_bound_mm: float = 0.0  # hull-sphere diameter, before source-error allowance
     enclosing_cylinder_mm: tuple | None = None  # axial length, diameter; source-error padded
+    # ---- print drivers (MEASURED on the part as checked, +Z up) ---------
+    # src.costing.print_model.PrintFeatures: what FDM and SLA pricing reads
+    # (height, layers, support under the faces needing it). None for drivers
+    # built without a mesh; those keep the volume model.
+    print_features: Any = None
+    print_mesh: Any = field(default=None, repr=False, compare=False)  # for other ways down when it doesn't fit standing
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -236,4 +243,19 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         bbox_precision_mm=2 * float(mesh.metadata.get("coordinate_error", 0.0)),
         minimum_width_bound_mm=minimum_width_lower_bound(mesh),
         enclosing_cylinder_mm=enclosing_cylinder_dimensions(mesh, features),
+        print_features=_print_features(mesh),
+        print_mesh=mesh,
     )
+
+
+def _print_features(mesh):
+    """The print model's features of the part as checked, or None if they can't be measured."""
+    from src.costing.print_model import placed_features
+
+    try:
+        return placed_features(mesh)
+    except Exception:  # pragma: no cover - defensive: a mesh the support test can't read
+        import logging
+
+        logging.getLogger("cadverify.costing").warning("print features unavailable", exc_info=True)
+        return None

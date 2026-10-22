@@ -16,7 +16,7 @@
  */
 import type { CostReport, ValidationResult } from "@/lib/api";
 import type { OwnedMachine } from "@/lib/verify/machine-api";
-import { buildMethods, priceAt, trimNum, VERDICT_LABEL, type Method } from "../part/model.ts";
+import { buildMethods, money, priceAt, trimNum, VERDICT_LABEL, type Method } from "../part/model.ts";
 import { processLabel, processName } from "../process-names.ts";
 
 export type Mat = number[];
@@ -311,6 +311,8 @@ export interface Candidate {
   fits?: Record<string, boolean>;
   /** The findings that read the build direction this way would raise, per process. */
   flags?: Record<string, string[]>;
+  /** FDM and SLA: one part printed this way on its own (slicer-calibrated estimate; support included). */
+  print?: Record<string, { hours_one: number; material_cm3: number; support_cm3: number }>;
 }
 
 export interface Options {
@@ -328,8 +330,9 @@ export interface Options {
   layer_mm?: Record<string, number>;
 }
 
-/** Said wherever orientations are compared: the cost model doesn't price these yet. */
-export const PRICES_LINE = "Prices don't yet include support material or print height, so they're the same in every orientation.";
+/** Said wherever orientations are compared, when the engine doesn't say it itself (its first limit). */
+export const PRICES_LINE =
+  "FDM and SLA prices follow the orientation: print time and material are slicer-calibrated estimates for the part as checked. Other prices don't depend on it.";
 
 const FLAG_WORDS: Record<string, string> = {
   OVERHANG: "needs support",
@@ -396,7 +399,7 @@ export function rankedFor(options: Options | null, process: string | null): Cand
 /** The physical facts of a way, for the selected process: support, then height, layers and fit. */
 export function candidateFacts(c: Candidate, process: string | null, rules: Rules | null, options: Options | null = null): { main: string; sub: string } {
   const r = process && rules ? rules[process] : null;
-  const shape = [`${mm(c.height_mm)} tall`, layerWords(c, process, options), `${trimNum(c.footprint_mm[0], 0)} × ${trimNum(c.footprint_mm[1], 0)} mm on the plate`, fitWords(c, process, options)].filter(Boolean).join(" · ");
+  const shape = [`${mm(c.height_mm)} tall`, layerWords(c, process, options), `${trimNum(c.footprint_mm[0], 0)} × ${trimNum(c.footprint_mm[1], 0)} mm on the plate`, fitWords(c, process, options), printWords(c, process)].filter(Boolean).join(" · ");
   if (r?.overhang_deg != null && process) {
     const s = c.support[process];
     const vol = s.volume_cm3 != null && s.faces ? `, about ${trimNum(s.volume_cm3, s.volume_cm3 >= 10 ? 0 : 1)} cm³ under it (estimate)` : "";
@@ -407,6 +410,16 @@ export function candidateFacts(c: Candidate, process: string | null, rules: Rule
     return { main: d.faces ? `${area(d.area_mm2)} of wall without ${trimNum(r.draft_deg, 0)}° draft` : "Every wall has its draft", sub: `Tool opens along the file's ${axisWord(c.up_in_file)}` };
   }
   return { main: shape, sub: "" };
+}
+
+/** "about 41 min and 11 cm³ of filament for one on its own (estimate)" for FDM and SLA, else null. */
+export function printWords(c: Candidate, process: string | null): string | null {
+  const p = process ? c.print?.[process] : undefined;
+  if (!p) return null;
+  const h = p.hours_one;
+  const time = h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : `${trimNum(h, 1)} h`;
+  const stuff = process === "fdm" ? "filament" : "resin";
+  return `about ${time} and ${trimNum(p.material_cm3, p.material_cm3 >= 10 ? 0 : 1)} cm³ of ${stuff} for one on its own (estimate)`;
 }
 
 /** "; a flat span bridges 20 mm" / "; 3 flat spans bridge, up to 60 mm" (FDM), or "". */
@@ -555,6 +568,13 @@ export function compare(before: Side, now: Side, q: number, process: string | nu
     if ([...m.prices.keys()].some((qq) => o.prices.has(qq) && priceAt(o, qq) !== priceAt(m, qq))) pricesChanged.push(m.code);
   }
   const pricesSame = pricesChanged.length === 0;
-  void q;
+  // The selected method's price each at this quantity, when both checks priced it.
+  const pb = process ? mb.find((m) => m.code === process) : undefined;
+  const pn = process ? mn.find((m) => m.code === process) : undefined;
+  const xb = pb && pb.prices.has(q) ? priceAt(pb, q) : null;
+  const xn = pn && pn.prices.has(q) ? priceAt(pn, q) : null;
+  if (process && xb != null && xn != null) {
+    rows.push({ what: `${processName(process)} price each at ${q.toLocaleString("en-US")}`, before: money(xb), now: money(xn), tone: xn < xb ? "ok" : xn > xb ? "warn" : "" });
+  }
   return { rows, findings, methods, pricesSame, pricesChanged, process };
 }

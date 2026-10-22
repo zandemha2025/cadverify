@@ -4,6 +4,7 @@ import {
   IDENTITY,
   bridgeWords,
   candidateFacts,
+  printWords,
   candidateFor,
   candidateName,
   compare,
@@ -125,6 +126,11 @@ test("FDM shading leaves the engine's bridged spans uncoloured, also after a spi
   const c = cand("down-z", [0, 0, 1], 0, 35, 0, {});
   c.support.fdm = { faces: 0, area_mm2: 0, bridges: 1, longest_bridge_mm: 20, bridge_boxes: [[0, 0, 0, 1, 1, 1]] };
   assert.equal(candidateFacts(c, "fdm", rules).main, "No support needed; a flat span bridges 20 mm");
+  c.print = { fdm: { hours_one: 0.68, material_cm3: 11.04, support_cm3: 0 }, sla: { hours_one: 1.4, material_cm3: 27.5, support_cm3: 3.7 } };
+  assert.equal(printWords(c, "fdm"), "about 41 min and 11 cm³ of filament for one on its own (estimate)");
+  assert.equal(printWords(c, "sla"), "about 1.4 h and 28 cm³ of resin for one on its own (estimate)");
+  assert.equal(printWords(c, "sls"), null);
+  assert.match(candidateFacts(c, "fdm", rules).sub, /35 mm tall · 60 × 40 mm on the plate · about 41 min and 11 cm³ of filament/);
 });
 
 const rules = { fdm: { overhang_deg: 45 }, sla: { overhang_deg: 19 }, injection_molding: { draft_deg: 1 } };
@@ -163,7 +169,7 @@ test("ways to lay it down rank like the backend and read in plain words", () => 
   assert.equal(flagWords(upside, "cnc_3axis"), "");
   assert.equal(fitWords({ ...upside, fits: { fdm: false } }, "fdm", full), "doesn't fit the 300 × 300 × 350 mm work area standing this way");
   assert.equal(layerWords(upside, "sla", full), null);
-  assert.match(PRICES_LINE, /don't yet include support material or print height/);
+  assert.match(PRICES_LINE, /FDM and SLA prices follow the orientation/);
   assert.equal(candidateFacts(options.candidates[2], "fdm", rules).main, "No support needed");
   assert.equal(candidateFacts(options.candidates[0], "injection_molding", rules).main, "4,788 mm² of wall without 1° draft");
   assert.equal(candidateName(options.candidates[0]), "As in the file");
@@ -235,8 +241,10 @@ test("before and after a re-check: findings, methods and prices from the two res
   more.cost.estimates.push(est("fdm", 2000, 19.1));
   const c4 = compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: more.validation as never, cost: more.cost as never, rotation: matOf(rec) }, 100, "fdm");
   assert.deepEqual(c4.pricesChanged, []);
-  assert.equal(c2.rows.find((r) => /\$/.test(r.now)), undefined);
-  assert.equal(row("Filament printing at 100"), undefined); // no price rows: prices don't depend on it
+  // The selected method's price each, before and now (FDM and SLA prices follow the orientation).
+  assert.deepEqual(c2.rows.find((r) => /\$/.test(r.now)), { what: "Filament printing price each at 100", before: "$22.55", now: "$28.94", tone: "warn" });
+  assert.deepEqual(row("Filament printing price each at 100"), { what: "Filament printing price each at 100", before: "$22.55", now: "$22.55", tone: "" });
+  assert.equal(compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: n.validation as never, cost: null, rotation: matOf(rec) }, 100, "fdm").rows.find((r) => /price/.test(r.what)), undefined);
   // With the comparison's figures: layers, work area and the space under the support faces.
   const opts2 = {
     ...options, layer_mm: { fdm: 0.2 },

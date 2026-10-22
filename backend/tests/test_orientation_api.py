@@ -133,8 +133,13 @@ async def test_a_turned_recheck_is_recorded_and_uses_no_check():
         assert c1.status_code == 200, c1.text
         c1 = c1.json()
         assert c1["orientation"]["key"] == o["key"]
-        price = lambda c: sorted((e["process"], e["quantity"], e["unit_cost_usd"]) for e in c["estimates"])  # noqa: E731
-        assert price(c1) == price(c0)
+        # FDM and SLA are priced from the part as checked (laid flat: no support, half as tall);
+        # every other process places the part itself and keeps its price.
+        price = lambda c, turned: sorted((e["process"], e["quantity"], e["unit_cost_usd"]) for e in c["estimates"]  # noqa: E731
+                                         if (e["process"] in ("fdm", "sla")) == turned)
+        assert price(c1, False) and price(c1, False) == price(c0, False)
+        fdm100 = lambda c: next(e["unit_cost_usd"] for e in c["estimates"] if e["process"] == "fdm" and e["quantity"] == 100)  # noqa: E731
+        assert fdm100(c1) < fdm100(c0)
         assert c1["saved"]["id"] != c0["saved"]["id"]
         # Asking again in that orientation is the saved answer.
         v2 = await client.post("/api/v1/validate", params={"orientation": "turns:x90"}, files=files(), headers=run())
