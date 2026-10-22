@@ -78,12 +78,17 @@
       "class": "trapped-volume",
       "expect": {
         "fdm": {
+          "gates_absent": [
+            "trapped_volumes"
+          ]
+        },
+        "sla": {
           "gates_trip": [
             "trapped_volumes"
           ]
         }
       },
-      "note": "watertight hollow solid: closed r15 outer boundary + inverted r13 inner boundary, 2mm wall, zero drain"
+      "note": "watertight hollow solid: closed r15 outer boundary + inverted r13 inner boundary, 2mm wall, zero drain | 2026-10-21: FDM leaves a sealed void empty (nothing to drain), so FDM no longer reports TRAPPED_VOLUME; the trapped-material gate is held on SLA (uncured resin), which still trips it."
     },
     {
       "file": "trap-inch-cube-25.4mm.stl",
@@ -423,7 +428,7 @@
       "class": "organic-trapped-volume",
       "expect": {
         "fdm": {
-          "gates_trip": [
+          "gates_absent": [
             "trapped_volumes"
           ]
         },
@@ -436,7 +441,7 @@
           "is_watertight": true
         }
       },
-      "note": "Lathed egg with a sealed inner void (nested inverted shell, same convention as v1.1 hollow sphere): split() yields 2 bodies, void centroid contained. Wall 3.1, small 3.7% (<5). NOTE FOR ASTRA: the inner shell's inverted normals give downward-facing inner-ceiling triangles - expect the overhang gate to count ~72 faces for FDM / ~144 SLA unless the check learns to ignore internal voids. Decide deliberately whether that is a bug (then this row pins it open) or accepted behavior."
+      "note": "Lathed egg with a sealed inner void (nested inverted shell, same convention as v1.1 hollow sphere): split() yields 2 bodies, void centroid contained. Wall 3.1, small 3.7% (<5). NOTE FOR ASTRA: the inner shell's inverted normals give downward-facing inner-ceiling triangles - expect the overhang gate to count ~72 faces for FDM / ~144 SLA unless the check learns to ignore internal voids. Decide deliberately whether that is a bug (then this row pins it open) or accepted behavior. | 2026-10-21: FDM leaves a sealed void empty; FDM reports SEALED_VOID_SUPPORT (support under the void's ceiling stays sealed in), not TRAPPED_VOLUME. SLA still trips the gate."
     },
     {
       "file": "trap-assembly-adjacent-dumbbell-0.6neck.stl",
@@ -485,15 +490,20 @@
       "expect": {
         "fdm": {
           "gates_trip": [
-            "trapped_volumes",
             "overhangs"
           ],
           "gates_absent": [
-            "small_features"
+            "small_features",
+            "trapped_volumes"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "trapped_volumes"
           ]
         }
       },
-      "note": "Sealed hollow 24 mm box with a 2 mm drain hole. The drain is below the 3 mm drainage requirement, so trapped material must be reported, and the internal ceiling requires supports. The 2 mm bore is above the 0.4 mm FDM feature threshold; its short tessellation chords must not trigger SMALL_FEATURES."
+      "note": "Sealed hollow 24 mm box with a 2 mm drain hole. The drain is below the 3 mm drainage requirement, so trapped material must be reported, and the internal ceiling requires supports. The 2 mm bore is above the 0.4 mm FDM feature threshold; its short tessellation chords must not trigger SMALL_FEATURES. | 2026-10-21: the undersized-drain gate is held on SLA (3.5 mm resin drain); FDM leaves the cavity empty and needs no drain."
     },
     {
       "file": "trap-degenerate-duplicate-face.stl",

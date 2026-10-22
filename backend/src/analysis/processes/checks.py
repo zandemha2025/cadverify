@@ -418,6 +418,217 @@ def check_trapped_volumes(
     return issues
 
 
+def _void_summary(voids: list[dict]) -> tuple[str, tuple[float, float, float]]:
+    total = sum(v["volume_mm3"] for v in voids)
+    largest = max(voids, key=lambda v: v["volume_mm3"])
+    what = "a sealed internal void" if len(voids) == 1 else f"{len(voids)} sealed internal voids"
+    return f"{what} ({total:,.0f}mm³)", largest["center"]
+
+
+def check_sealed_voids(
+    ctx: GeometryContext,
+    process: ProcessType,
+    *,
+    cite: str = "",
+) -> list[Issue]:
+    """Material removal from outside cannot reach a void with no opening.
+
+    A sealed void is a closed shell nested inside the material
+    (``ctx.sealed_voids``). No cutter, drill or wire passes through solid
+    material to reach its surface, so a part drawn with one cannot be milled,
+    turned or wire-cut as drawn.
+    """
+    voids = ctx.sealed_voids
+    if not voids:
+        return []
+    what, center = _void_summary(voids)
+    tool = "wire" if process == ProcessType.WIRE_EDM else "cutting tool"
+    return [Issue(
+        code="SEALED_VOID_NO_ACCESS",
+        severity=Severity.ERROR,
+        message=(
+            f"The part has {what} with no opening to the outside. No {tool} can reach "
+            f"{'it' if len(voids) == 1 else 'them'}, so {process.value} can't make the part as drawn."
+        ),
+        process=process,
+        region_center=center,
+        fix_suggestion=(
+            "Open the void to the outside, or make it in two pieces joined after machining; "
+            f"a printed or cast route can form a sealed void. {cite}"
+        ).strip(),
+        citation=parse_citation(cite),
+    )]
+
+
+def check_sealed_voids_fdm(
+    ctx: GeometryContext,
+    process: ProcessType,
+    *,
+    max_overhang_deg: float,
+) -> list[Issue]:
+    """FDM leaves a sealed void empty: nothing in it needs draining.
+
+    Extrusion deposits material only along its toolpaths, so a sealed void
+    holds air, not loose powder or liquid resin. What it can hold is support:
+    if the void's ceiling faces down past the overhang limit, support printed
+    under it is sealed in with it.
+    """
+    voids = ctx.sealed_voids
+    if not voids:
+        return []
+    what, center = _void_summary(voids)
+    ceiling = False
+    for void in voids:
+        shell = void["shell"]
+        normals = np.asarray(shell.face_normals, dtype=np.float64)
+        # The void's faces seen from the material point into the void; its
+        # ceiling is the part of that shell whose material-side normal faces down.
+        outward = normals if _finite_signed_volume(shell) < 0 else -normals
+        z = np.asarray(shell.triangles_center)[:, 2]
+        downward = outward[:, 2] < -math.cos(math.radians(90.0 - max_overhang_deg)) - 1e-9
+        above_floor = z > float(z.min()) + max(0.1, ctx.bbox_diag * 1e-3)
+        if np.any(downward & above_floor):
+            ceiling = True
+            break
+    if ceiling:
+        return [Issue(
+            code="SEALED_VOID_SUPPORT",
+            severity=Severity.WARNING,
+            message=(
+                f"The part has {what}. FDM leaves it empty, so nothing needs draining, but its "
+                f"ceiling faces down past {max_overhang_deg:g}°: support printed under it stays sealed inside."
+            ),
+            process=process,
+            region_center=center,
+            fix_suggestion=(
+                "Give the void a self-supporting roof (a 45° peak or an arch), or accept the "
+                "sealed-in support. A drain hole is not needed for FDM."
+            ),
+        )]
+    return [Issue(
+        code="SEALED_VOID",
+        severity=Severity.INFO,
+        message=f"The part has {what}. FDM leaves it empty, so nothing needs draining.",
+        process=process,
+        region_center=center,
+    )]
+
+
+def _finite_signed_volume(mesh) -> float:
+    triangles = np.asarray(mesh.triangles, dtype=np.float64)
+    if triangles.ndim != 3 or len(triangles) == 0:
+        return 0.0
+    shifted = triangles - np.asarray(mesh.bounds, dtype=np.float64).mean(axis=0)
+    with np.errstate(all="ignore"):
+        six = np.einsum("ij,ij->i", shifted[:, 0], np.cross(shifted[:, 1], shifted[:, 2])).sum()
+    value = float(six) / 6.0
+    return value if np.isfinite(value) else 0.0
+
+
+# A wire touching a face lies along it, with its axis no more than a wire radius
+# off the face. Testing the plane this far out covers every wire of at least
+# twice this diameter (0.02 mm and up: all production wire sizes).
+_WIRE_PROBE_MM = 0.02
+_WIRE_MAX_SECTIONS = 32
+
+
+def check_wire_reach(
+    ctx: GeometryContext,
+    process: ProcessType,
+    *,
+    cite: str = "",
+) -> list[Issue]:
+    """A face a straight wire can't lie along cannot be wire-cut.
+
+    Every face of a wire-EDM part is either a face of the stock (so a plane
+    with the whole part on one side of it) or swept by the wire, which lies
+    along the face with its whole length clear of the finished part. On a flat
+    face that is not a stock face, the wire's line lies in a plane just off
+    the face. When that plane's section of the part closes all the way around
+    the face (the floor of a blind pocket or hole, the floor of a closed-bottom
+    cavity), every line through it runs into material, so no wire, tapered or
+    not, can cut that face. Only proved cases are reported; anything else is
+    left to the straight-profile check.
+    """
+    mesh = ctx.mesh
+    if (ctx.metadata.get("decimation", {}).get("succeeded") or not mesh.is_watertight
+            or not len(ctx.facet_groups)):
+        return []
+    try:
+        vertices = np.asarray(mesh.vertices, dtype=np.float64)
+        error = float(mesh.metadata.get("coordinate_error", 0.0))
+        tol = wall_thickness_tolerance(mesh, ctx.scale_eps) + 2.0 * error
+        probe = max(_WIRE_PROBE_MM, 4.0 * tol)
+        candidates = []
+        for facet in ctx.facet_groups:
+            face = int(facet[np.argmax(ctx.face_areas[facet])])
+            normal = ctx.normals[face]
+            point = ctx.centroids[face]
+            # A stock face bounds the whole part; nothing needed to cut it.
+            if float(np.max((vertices - point) @ normal)) <= probe:
+                continue
+            candidates.append((float(ctx.face_areas[facet].sum()), face, point, normal))
+        if not candidates:
+            return []
+        candidates.sort(key=lambda c: -c[0])
+        origins, directions, owners = [], [], []
+        for index, (_area, face, point, normal) in enumerate(candidates):
+            u = np.cross(normal, [1.0, 0.0, 0.0])
+            if np.linalg.norm(u) < 0.5:
+                u = np.cross(normal, [0.0, 1.0, 0.0])
+            u /= np.linalg.norm(u)
+            v = np.cross(normal, u)
+            for d in (u, -u, v, -v):
+                origins.append(point + normal * probe)
+                directions.append(d)
+                owners.append(index)
+        hit = np.asarray(mesh.ray.intersects_any(np.asarray(origins), np.asarray(directions)), dtype=bool)
+        owners = np.asarray(owners)
+        boxed = [candidates[i] for i in range(len(candidates)) if np.all(hit[owners == i])]
+        for _area, face, point, normal in boxed[:_WIRE_MAX_SECTIONS]:
+            if _closed_in_plane(mesh, point + normal * probe, normal):
+                return [Issue(
+                    code="WIRE_CANNOT_REACH",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"A face at ({point[0]:.1f}, {point[1]:.1f}, {point[2]:.1f}) is closed in on every "
+                        "side in its own plane, like the floor of a closed-bottom cavity or blind hole. "
+                        f"A wire has to run along a face it cuts, so {process.value} can't make it."
+                    ),
+                    process=process,
+                    affected_faces=[int(face)],
+                    region_center=(float(point[0]), float(point[1]), float(point[2])),
+                    fix_suggestion=(
+                        "Wire EDM cuts only through-profiles. Make this cavity through, or mill or "
+                        f"sinker-EDM it. {cite}"
+                    ).strip(),
+                    citation=parse_citation(cite),
+                )]
+    except Exception:
+        logger.warning("Wire-reach check failed for %s", process.value, exc_info=True)
+    return []
+
+
+def _closed_in_plane(mesh, origin: np.ndarray, normal: np.ndarray) -> bool:
+    """True when ``origin`` lies in a hole of the part's section by its plane."""
+    from shapely.geometry import Point, Polygon
+
+    section = mesh.section(plane_origin=origin, plane_normal=normal)
+    if section is None:
+        return False
+    flatten = getattr(section, "to_2D", None) or section.to_planar
+    planar, to_3d = flatten(normal=normal, check=False)
+    local = np.linalg.inv(to_3d) @ np.append(origin, 1.0)
+    point = Point(float(local[0]), float(local[1]))
+    for polygon in planar.polygons_full:
+        if polygon.contains(point):
+            return False  # in material: the probe left the void side
+        for ring in polygon.interiors:
+            if Polygon(ring).contains(point):
+                return True
+    return False
+
+
 def _undersized_cavity_drain(
     ctx: GeometryContext,
     min_drain_mm: float,

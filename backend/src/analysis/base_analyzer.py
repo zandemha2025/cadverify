@@ -172,9 +172,15 @@ def check_self_intersections(mesh: trimesh.Trimesh) -> list[Issue]:
 
 
 def check_disconnected_components(mesh: trimesh.Trimesh) -> list[Issue]:
-    """Check for multiple disconnected bodies."""
+    """Check for multiple disconnected bodies.
+
+    The shell of a sealed internal void is part of the solid around it, not a
+    second body: a 40 mm cube with a sealed 20 mm cavity is one part.
+    """
+    from src.analysis.context import solid_body_count
+
     issues = []
-    body_count = mesh.body_count if hasattr(mesh, "body_count") else len(mesh.split())
+    body_count = solid_body_count(mesh)
     if body_count > 1:
         issues.append(Issue(
             code="MULTIPLE_BODIES",

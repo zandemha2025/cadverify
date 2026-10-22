@@ -97,7 +97,8 @@ def _unsewn_box_step(tmp_path: Path) -> bytes:
 def test_drain_holes_open_a_sealed_stl_cavity_and_the_recheck_clears_it():
     raw = (TRAP / "trap-wall-0.5mm-shell.stl").read_bytes()
     before = _findings(raw, "shell.stl")
-    assert "TRAPPED_VOLUME" in _codes(before) and ("MULTIPLE_BODIES", "*") in before
+    # One solid with a sealed void: a powder/resin trap, not a second body.
+    assert "TRAPPED_VOLUME" in _codes(before) and ("MULTIPLE_BODIES", "*") not in before
 
     out = bf.run_fix("drain_holes", raw, ".stl", {"diameter_mm": 5.0})
     assert out.applied, out.reason
@@ -233,15 +234,17 @@ def test_can_fix_flags_for_an_stl_with_a_sealed_cavity():
     opts = svc.fix_options(result, ".stl")
     by = {g["code"]: g for g in opts["findings"]}
     assert by["TRAPPED_VOLUME"]["can_fix"] and by["TRAPPED_VOLUME"]["fix"] == "drain_holes"
-    # The rule's own numbers: 5 mm for MJF/metal powder, 3.5 resin/SLS, 3.0 filament.
+    # The rule's own numbers: 5 mm for MJF/metal powder, 3.5 resin/SLS. Filament
+    # leaves a sealed void empty, so FDM asks for no drain at all.
     assert by["TRAPPED_VOLUME"]["required"]["mjf"] == 5.0
-    assert by["TRAPPED_VOLUME"]["required"]["fdm"] == 3.0
+    assert "fdm" not in by["TRAPPED_VOLUME"]["required"]
     assert by["TRAPPED_VOLUME"]["params"] == {"diameter_mm": 5.0}
-    assert by["MULTIPLE_BODIES"]["can_fix"] and by["MULTIPLE_BODIES"]["whole_part"]
+    # One solid with a sealed void, not two bodies.
+    assert "MULTIPLE_BODIES" not in by
     for code in ("SHARP_INTERNAL_CORNERS", "MISSING_FILLETS", "INSUFFICIENT_DRAFT", "THIN_WALL"):
         assert by[code]["can_fix"] is False and by[code]["why_not"], code
-    assert opts["families"] == ["bodies", "drain"]
-    assert opts["can_fix_count"] == 2
+    assert opts["families"] == ["drain"]
+    assert opts["can_fix_count"] == 1
 
 
 def test_can_fix_flags_for_a_step_part_and_after_a_failed_attempt(monkeypatch):

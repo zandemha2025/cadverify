@@ -8,6 +8,7 @@ from src.analysis.processes.checks import (
     check_fixture_surfaces,
     check_hole_depth_ratio,
     check_internal_radii,
+    check_sealed_voids,
     check_setup_access,
     check_wall_thickness,
 )
@@ -24,6 +25,7 @@ class CNC3AxisAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
+        i.extend(check_sealed_voids(ctx, self.process))
         i.extend(check_setup_access(ctx, self.process,
                  cite="Protolabs CNC design guidance: 3-axis machining may use multiple setups."))
         i.extend(check_internal_radii(ctx, 0.5, self.process,

@@ -332,6 +332,28 @@ class GeometryContext:
         return flat_sheet_geometry(self.mesh)
 
     @cached_property
+    def sealed_voids(self) -> list[dict[str, Any]]:
+        """Sealed internal voids: closed shells nested inside the material.
+
+        Each is ``{"volume_mm3", "center", "bounds", "shell"}`` of the void's own shell
+        (``shell_nesting_depths``: an odd nesting depth). No opening reaches
+        it, so nothing outside the part can touch its surface.
+        """
+        depths = shell_nesting_depths(self.bodies)
+        if depths is None:
+            return []
+        voids = []
+        for body, volume, depth in zip(self.bodies, self.body_volumes, depths):
+            if depth % 2 == 1 and volume > 0:
+                voids.append({
+                    "volume_mm3": float(volume),
+                    "center": tuple(float(c) for c in np.asarray(body.bounds).mean(axis=0)),
+                    "bounds": np.asarray(body.bounds, dtype=np.float64),
+                    "shell": body,
+                })
+        return voids
+
+    @cached_property
     def straight_profile_geometry(self):
         """Verify extrusion geometry without treating the file's Z as the wire axis."""
         if self.metadata.get("decimation", {}).get("succeeded") or not self.mesh.is_volume:
@@ -817,6 +839,55 @@ def _count_connected_components(mesh: trimesh.Trimesh) -> int:
     )
     n_components, _ = _csgraph_cc(graph, directed=False)
     return int(n_components)
+
+
+_MAX_NESTING_SHELLS = 64
+
+
+def shell_nesting_depths(bodies: list[trimesh.Trimesh]) -> list[int] | None:
+    """How many of the other closed shells enclose each shell.
+
+    A solid with a sealed internal void is one body bounded by two shells: its
+    outer skin (depth 0) and the skin of the void inside it (depth 1). An island
+    sitting loose inside that void is depth 2, a void inside the island depth 3,
+    and so on: even depths are the outer skins of bodies, odd depths are sealed
+    voids. Decided by containment, not by face winding, so a void shell exported
+    with outward-facing triangles is still read as a void.
+
+    None when there is nothing to nest (one shell), when a shell is open (inside
+    and outside are then undefined), or past ``_MAX_NESTING_SHELLS`` shells.
+    """
+    if len(bodies) < 2 or len(bodies) > _MAX_NESTING_SHELLS:
+        return None
+    try:
+        if not all(body.is_watertight and len(body.faces) for body in bodies):
+            return None
+        probes = [np.asarray(body.vertices[int(body.faces[0][0])], dtype=np.float64) for body in bodies]
+        bounds = [np.asarray(body.bounds, dtype=np.float64) for body in bodies]
+        depths = []
+        for i, probe in enumerate(probes):
+            depth = 0
+            for j, other in enumerate(bodies):
+                if j == i or np.any(probe < bounds[j][0]) or np.any(probe > bounds[j][1]):
+                    continue
+                if bool(other.contains([probe])[0]):
+                    depth += 1
+            depths.append(depth)
+        return depths
+    except Exception:
+        logger.warning("Shell nesting could not be measured", exc_info=True)
+        return None
+
+
+def solid_body_count(mesh: trimesh.Trimesh) -> int:
+    """Separate solid bodies, not counting the shells of sealed internal voids."""
+    count = int(mesh.body_count) if len(mesh.faces) else 0
+    if count <= 1 or count > _MAX_NESTING_SHELLS:
+        return count
+    depths = shell_nesting_depths(list(mesh.split(only_watertight=False)))
+    if depths is None:
+        return count
+    return sum(1 for depth in depths if depth % 2 == 0)
 
 
 def _finite_body_volume(mesh: trimesh.Trimesh) -> float:

@@ -7,8 +7,8 @@ from src.analysis.processes.checks import (
     check_aspect_ratio,
     check_build_volume,
     check_overhangs,
+    check_sealed_voids_fdm,
     check_small_features,
-    check_trapped_volumes,
     check_wall_thickness,
 )
 
@@ -32,5 +32,6 @@ class FDMAnalyzer:
         i.extend(check_build_volume(ctx, (300, 300, 350), self.process,
                  cite="Bambu Lab X1C / Prusa MK4."))
         i.extend(check_aspect_ratio(ctx, 8.0, self.process))
-        i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=3.0))
+        # Extrusion leaves a sealed void empty: no loose powder or resin to drain.
+        i.extend(check_sealed_voids_fdm(ctx, self.process, max_overhang_deg=45.0))
         return i

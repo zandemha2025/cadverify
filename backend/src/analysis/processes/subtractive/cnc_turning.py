@@ -7,6 +7,7 @@ from src.analysis.processes.checks import (
     check_build_volume,
     check_length_diameter_ratio,
     check_rotational_symmetry,
+    check_sealed_voids,
     check_wall_thickness,
 )
 
@@ -21,6 +22,7 @@ class CNCTurningAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
+        i.extend(check_sealed_voids(ctx, self.process))
         i.extend(check_rotational_symmetry(ctx, self.process, tolerance=0.15))
         i.extend(check_length_diameter_ratio(ctx, 10.0, self.process))
         i.extend(check_wall_thickness(ctx, 1.0, self.process,
