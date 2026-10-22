@@ -1,13 +1,14 @@
 /** Narrow same-origin proxy for unauthenticated, sanitized share payloads. */
 import { type NextRequest } from "next/server";
 import { backendUrl } from "@/lib/api-base";
+import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 
 export const dynamic = "force-dynamic";
 
 const BASE62_ID = /^[A-Za-z0-9]{12}$/;
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
   const { path } = await ctx.params;
@@ -21,7 +22,11 @@ export async function GET(
     return Response.json({ detail: "Not found" }, { status: 404 });
   }
 
-  const upstream = await fetch(backendUrl(`/${path.join("/")}`), {
+  // The API limits share views per visitor IP; this server is one caller, so it
+  // signs the visitor's IP for this exact path (as the auth proxies do).
+  const backendPath = `/${path.join("/")}`;
+  const upstream = await fetch(backendUrl(backendPath), {
+    headers: signedAuthProxyHeaders(request, backendPath),
     cache: "no-store",
     redirect: "error",
   });
