@@ -7,10 +7,11 @@
 #     OTEL_TRACING_ENABLED=1 uvicorn main:app            # console/in-memory spans
 #     OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 uvicorn main:app  # OTLP export
 #
-# Pinned to the versions this packet was built + proven against (2026-07-08).
-opentelemetry-sdk==1.43.0
-opentelemetry-instrumentation-fastapi==0.64b0
+# Pinned to the versions this packet was built + proven against (2026-07-08;
+# bumped 2026-10-22 to 1.45.1 / 0.66b1 for CVE-2026-114603 in opentelemetry-api).
+opentelemetry-sdk==1.45.1
+opentelemetry-instrumentation-fastapi==0.66b1
 # OTLP/HTTP exporter — needed ONLY for the OTLP export path (endpoint set). The
 # console + in-memory exporters ship inside opentelemetry-sdk, so local proof
 # works without this line; keep it for exporting to a real collector/APM.
-opentelemetry-exporter-otlp-proto-http==1.43.0
+opentelemetry-exporter-otlp-proto-http==1.45.1
