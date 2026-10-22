@@ -89,6 +89,15 @@ def test_the_app_uses_the_docs_setting():
 
 
 # ── metrics ─────────────────────────────────────────────────────────────────
+@pytest.fixture(autouse=True)
+def _no_queue_scan(monkeypatch):
+    """/metrics refreshes queue gauges from the database; these tests need none."""
+    async def _skip(*_a, **_k):
+        raise RuntimeError("no database in this test")
+
+    monkeypatch.setattr("src.services.ops_health_service.summarize_queue_health", _skip)
+
+
 def _metrics_app() -> FastAPI:
     from src.api.metrics import router
 

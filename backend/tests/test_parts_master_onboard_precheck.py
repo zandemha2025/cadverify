@@ -30,6 +30,7 @@ def onboard(monkeypatch, tmp_path):
 
     from src.api import identity
     from src.auth.rate_limit import limiter
+    from src.auth.rbac import require_org_writer
     from src.auth.require_api_key import AuthedUser, require_api_key
     from src.db.engine import get_db_session
     from src.services import batch_service
@@ -37,9 +38,11 @@ def onboard(monkeypatch, tmp_path):
     app = FastAPI()
     app.state.limiter = limiter
     app.include_router(identity.router, prefix="/api/v1/identity")
-    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
-        user_id=1, api_key_id=0, key_prefix="session", role="analyst"
-    )
+    def _user():
+        return AuthedUser(user_id=1, api_key_id=0, key_prefix="session", role="analyst")
+
+    app.dependency_overrides[require_api_key] = _user
+    app.dependency_overrides[require_org_writer] = _user
     session = AsyncMock()
 
     async def fake_session():

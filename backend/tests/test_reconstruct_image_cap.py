@@ -16,6 +16,7 @@ from PIL import Image
 from starlette.datastructures import UploadFile
 
 from src.api.reconstruct_router import router
+from src.auth.rbac import require_org_checker
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.auth.validation_caps import require_paid_access
 from src.db.engine import get_db_session
@@ -31,9 +32,11 @@ def _client():
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[require_paid_access] = lambda: None
-    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
-        user_id=42, api_key_id=1, key_prefix="cv_live_test"
-    )
+    def _user():
+        return AuthedUser(user_id=42, api_key_id=1, key_prefix="cv_live_test")
+
+    app.dependency_overrides[require_api_key] = _user
+    app.dependency_overrides[require_org_checker] = _user
     app.dependency_overrides[get_db_session] = lambda: AsyncMock()
     return TestClient(app)
 

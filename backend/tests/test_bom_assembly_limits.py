@@ -20,6 +20,7 @@ def _app(monkeypatch, calls: list):
     from src.api import bom
     from src.auth.kill_switch import require_kill_switch_open
     from src.auth.org_limits import enforce_org_limits
+    from src.auth.rbac import require_org_writer
     from src.auth.rate_limit import limiter
     from src.auth.require_api_key import AuthedUser, require_api_key
     from src.auth.validation_caps import require_paid_access
@@ -42,6 +43,7 @@ def _app(monkeypatch, calls: list):
         yield _Session()
 
     app.dependency_overrides[require_api_key] = _user
+    app.dependency_overrides[require_org_writer] = _user
     app.dependency_overrides[get_db_session] = _session
     app.dependency_overrides[require_paid_access] = lambda: None
     app.dependency_overrides[require_kill_switch_open] = lambda: None
