@@ -89,6 +89,36 @@ class MagicLogin:
     redirect: str
     key_prefix: str | None = None
     mint_once: str | None = None
+    # Two-step sign-in owed: "verify" or "setup", with its signed challenge.
+    two_step: str | None = None
+    challenge: str | None = None
+
+
+async def _two_step_login(email_norm: str) -> MagicLogin | None:
+    """An existing account that owes a code gets a challenge, not provisioning.
+
+    Such an account already has its org and keys, so nothing is provisioned
+    (no key is minted whose secret could only be shown before the code), and
+    auth.login is written once the code is checked.
+    """
+    from src.auth.models import _account_deactivated
+    from src.auth.two_step import make_challenge, requirement_for_email
+
+    found = await requirement_for_email(email_norm)
+    if found is None:
+        return None
+    user_id, active, version, purpose = found
+    if not active:
+        raise _account_deactivated()
+    if purpose is None:
+        return None
+    return MagicLogin(
+        user_id=user_id,
+        session_version=version,
+        redirect="/login/two-step",
+        two_step=purpose,
+        challenge=make_challenge(user_id, version, purpose, "email_link"),
+    )
 
 
 def _secret() -> bytes:
@@ -275,6 +305,9 @@ async def _consume(token: str) -> MagicLogin:
         logger.warning("Could not clear consumed magic-link active pointer")
 
     try:
+        owed = await _two_step_login(email_norm)
+        if owed is not None:
+            return owed
         login = await provision_authenticated_login(
             email=email_norm,
             provider="magic_link",
@@ -409,6 +442,12 @@ async def magic_exchange(
     require_auth_proxy_if_enabled(request)
     result = await _consume(body.token)
     response.headers["Cache-Control"] = "no-store"
+    if result.challenge is not None:
+        return {
+            "two_step": result.two_step,
+            "challenge": result.challenge,
+            "redirect": result.redirect,
+        }
     return {
         "session": sign(
             result.user_id,
@@ -418,6 +457,21 @@ async def magic_exchange(
         "key_prefix": result.key_prefix,
         "mint_once": result.mint_once,
     }
+
+
+async def _owes_two_step(token: str) -> bool:
+    """Whether this (unconsumed) link's account owes a code before a session.
+
+    This legacy GET sets the session cookie itself, so such a link is sent to
+    the dashboard fragment flow instead, which asks for the code.
+    """
+    email_norm = _verify(token)
+    if email_norm is None:
+        return False
+    from src.auth.two_step import requirement_for_email
+
+    found = await requirement_for_email(email_norm)
+    return found is not None and found[3] is not None
 
 
 @router.get("/magic/verify")
@@ -434,7 +488,7 @@ async def magic_verify(
         "true",
         "yes",
         "on",
-    }:
+    } or await _owes_two_step(token):
         # Old links carried the token in a backend query string. With host-only
         # first-party cookies, consuming it here would set a cookie on the API
         # host and then redirect an unauthenticated browser to the dashboard.

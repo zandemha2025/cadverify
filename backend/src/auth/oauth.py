@@ -96,6 +96,28 @@ async def google_callback(request: Request):
     email_norm = normalize_email(email)
     user_id = await upsert_user(email, sub, email_norm, auth_provider="google")
 
+    # Google is a consumer sign-in, not the organization's identity provider:
+    # an account with two-step on (or in an org that requires it) is asked for
+    # its code exactly as after a password. No session and no key until then.
+    from src.auth.two_step import CHALLENGE_TTL, make_challenge, sign_in_requirement_for
+
+    two_step = await sign_in_requirement_for(user_id)
+    if two_step is not None:
+        from src.config.public_urls import dashboard_origin
+
+        resp = RedirectResponse(url=f"{dashboard_origin()}/login/two-step", status_code=303)
+        resp.set_cookie(
+            "cv_two_step",
+            make_challenge(user_id, await get_user_session_version(user_id), two_step, "google"),
+            max_age=CHALLENGE_TTL,
+            secure=True,
+            httponly=True,
+            samesite="lax",
+            domain=session_cookie_domain(),
+            path="/",
+        )
+        return resp
+
     # Mint a key only when the account has none active (S3). A returning user
     # keeps their existing key(s) — logging in must not spawn a fresh key nor
     # attempt a one-time reveal of a secret we can no longer show.

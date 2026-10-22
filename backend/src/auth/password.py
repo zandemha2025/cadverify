@@ -524,6 +524,22 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
         except Exception:
             pass
 
+    # Two-step sign-in: an account with it on (or in an organization that
+    # requires it) gets a short-lived challenge, never a session, until the
+    # code is checked (src/auth/two_step_routes.py writes auth.login then).
+    from src.auth.two_step import make_challenge, sign_in_requirement_for
+
+    two_step = await sign_in_requirement_for(user_id)
+    if two_step is not None:
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "user": {"id": user_id, "email": email, "role": role},
+            "two_step": two_step,
+            "challenge": make_challenge(
+                user_id, await get_user_session_version(user_id), two_step, "password"
+            ),
+        }
+
     from src.services.audit_service import log_action
 
     await log_action(
@@ -704,3 +720,10 @@ async def crm_location(
         ), {"uid": int(body.account_id.removeprefix("scalecad-user-")), "metadata": json.dumps(metadata)})
         await session.commit()
     return {"ok": True}
+
+
+# Two-step sign-in (challenge, account and organization-rule routes) rides this
+# router, which every deployment mounts at /auth.
+from src.auth.two_step_routes import router as _two_step_router  # noqa: E402
+
+router.include_router(_two_step_router)
