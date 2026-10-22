@@ -88,8 +88,11 @@ def shop_result():
     from tests.test_costing_model import _analyze
 
     inventory = (
+        # 80% of its rate pays for the printer itself, so its running rate makes the
+        # bracket for less than buying it at 10 ($8.78 vs $10.90): a clear in-house pick
+        # under the make-or-buy rule (op-07), not one that rests on the old range rule.
         MachineCap(process="fdm", name=MACHINES[0], count=2, max_workpiece_kg=None,
-                   hourly_rate_usd=FDM_RATE, capital_frac=0.4, materials=("PLA", "PETG"),
+                   hourly_rate_usd=FDM_RATE, capital_frac=0.8, materials=("PLA", "PETG"),
                    capabilities={"x": 256, "y": 256, "z": 256}),
         # Fits the envelope but isn't qualified for the plastic: named in the
         # machine check, never priced.

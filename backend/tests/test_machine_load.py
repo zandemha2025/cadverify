@@ -106,8 +106,10 @@ def test_a_part_cheaper_to_keep_buying_adds_no_hours():
     # Undecided, a machine of yours could make it, but what you pay today is below its range: bought, as the run sorts it.
     load = ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 12.0, "source": "parts_list"})
     assert load["basis"] == "bought" and (load["make_each"], load["buy_each"]) == (20.0, 12.0)
-    # Inside the range (a tie by the run's rule) it stays on your machine; above it, it's made.
-    assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 18.0})["basis"] == "checked"
+    # op-07: lower but inside the in-house range is still bought; within 2% is a tie and stays bought too.
+    assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 18.0})["basis"] == "bought"
+    assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 20.3})["basis"] == "bought"
+    assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 21.0})["basis"] == "checked"
     assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 33.0})["hours"] == 69.0
     # Recorded "Keep buying from our supplier": a buy outcome, never machine hours.
     assert ml.part_load(LISTED, "supplier", {"supplier": True, "quantity": 1000}) == {"basis": "other",

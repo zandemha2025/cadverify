@@ -826,9 +826,16 @@ def derive_part_row(
 
 
 # What decides make or buy, in one line (the board and the summary print it).
-BUCKET_RULE = ("Make in-house when one of your machines makes it for less than buying it: what you pay today "
-               "where you gave a price, else the cheapest outside price. A difference inside the in-house "
-               "estimate's range counts as a tie, and a tie stays on your machine.")
+def _bucket_rule() -> str:
+    from src.costing.decision import TIE_PCT
+
+    return ("Make in-house when one of your machines makes it for less than buying it: what you pay today "
+            "where you gave a price, else the cheapest outside price. A buy price that is lower is never made "
+            f"in-house. Within {TIE_PCT:g}% of each other it's a tie, either way with no saving: a part you "
+            "already buy stays bought, and it adds nothing to the saving.")
+
+
+BUCKET_RULE = _bucket_rule()
 
 
 def current_price(meta: Optional[dict], stored: Optional[dict]) -> Optional[dict]:
@@ -878,8 +885,10 @@ def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: O
     part's quantity; the buy side is what you pay today when known, else the
     engine's cheapest outside price (a job shop running the same process
     included). The engine's own rule decides (``decision.prefer_in_house``): a
-    difference inside the in-house estimate's range is a tie and stays on your
-    machine. A current price never changes the engine's figures, so it never
+    lower buy price is never made in-house, and within ``TIE_PCT`` the two are a
+    tie (``row["tie"]``), either way with no saving: against what you pay today
+    the part stays bought; against a model price it stays on your machine and
+    says so. A current price never changes the engine's figures, so it never
     marks the part's record out of date: it only moves the part between the two
     buckets and sets the saving. Sets ``make``, ``buy``, ``could_make`` and
     ``saving`` on the row and, when buying wins, the bucket, route and price.
@@ -910,12 +919,21 @@ def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: O
     else:
         pick, basis = (opt or {}).get("pick") or "in_house", (opt or {}).get("basis")
     row["make_or_buy_basis"] = basis
-    if pick == "in_house":
+    from src.costing.decision import TIE_PCT
+
+    tie = basis == "tie"
+    if tie:
+        row["tie"] = True
+    if pick == "in_house" and not (tie and price is not None):
         if price is not None:
             each = round(price["usd_each"] - make["unit_cost_usd"], 2)
             row["saving"] = {"each": each, "total": round(each * qty, 2), "vs": price["source"]}
+        if tie:
+            row["reason"] = (f"{row['reason']} · Either: no saving: within {TIE_PCT:g}% of the outside price "
+                             f"(${buy['unit_cost_usd']:,.2f})")
         return
-    # Buying wins: the part moves to "Buy outside" and says what making it would cost.
+    # Buying wins (or, on a tie with what you pay today, the part stays bought): it moves to
+    # "Buy outside" and says what making it would cost.
     times = make["unit_cost_usd"] / buy["unit_cost_usd"] if buy["unit_cost_usd"] else None
     row["could_make"] = {"process": make["process"], "machine": make["machine"],
                          "unit_cost_usd": make["unit_cost_usd"], "times": round(times, 1) if times else None}
@@ -923,7 +941,9 @@ def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: O
     row["route"] = {"process": buy.get("process"), "machine": None, "owned": False}
     who = make["machine"] or process_words(make["process"])
     ratio = f" ({row['could_make']['times']:g}× the buy price)" if times else ""
-    row["reason"] = f"Could make in-house at ${make['unit_cost_usd']:,.2f} on your {who}{ratio}"
+    row["reason"] = (f"Either: no saving: making it on your {who} costs ${make['unit_cost_usd']:,.2f}, within "
+                     f"{TIE_PCT:g}% of what you pay" if tie
+                     else f"Could make in-house at ${make['unit_cost_usd']:,.2f} on your {who}{ratio}")
     row["unit_cost_usd"] = buy["unit_cost_usd"]
     row["total_cost_usd"] = round(buy["unit_cost_usd"] * qty, 2)
     row["marginal"] = False
@@ -1697,6 +1717,8 @@ def make_or_buy_answer(rows: list[dict]) -> dict:
         "saving_usd": round(sum(r["saving"]["total"] for r in saved), 2) if saved else None,
         "saving_parts": len(saved),
         "make_without_price": len(make) - len(saved),
+        # Within TIE_PCT of what you pay: either way, no saving (counted in buy, never in the saving).
+        "ties": sum(1 for r in rows if r.get("tie") and r.get("bucket") == "outside"),
         "make_cost_usd": round(sum(r["total_cost_usd"] for r in make if _num(r.get("total_cost_usd")) is not None), 2)
         if make else None,
     }

@@ -21,13 +21,13 @@ function report(extra: AnyObj = {}): never {
       tooling_dfm_ready: true,
       crossover_qty: null,
       recommendation: {
-        "100": { process: "fdm", material: "PLA", unit_cost_usd: 15.66, dfm_ready: true, dfm_verdict: "issues", lead_low_days: 4.9, lead_high_days: 9.1, in_house: true, basis: "in_house_within_range", machine: "Bambu Lab X1C" },
+        "100": { process: "fdm", material: "PLA", unit_cost_usd: 15.66, dfm_ready: true, dfm_verdict: "issues", lead_low_days: 4.9, lead_high_days: 9.1, in_house: true, basis: "tie", machine: "Bambu Lab X1C" },
         "1000": { process: "mjf", material: "PP (Polypropylene)", unit_cost_usd: 12.07, dfm_ready: true, dfm_verdict: "issues", lead_low_days: 7, lead_high_days: 13, in_house: false, basis: "outside_sooner" },
       },
       if_redesigned: {},
       note: "",
       options: {
-        "100": { in_house: inside100, outside: outside100, pick: "in_house", basis: "in_house_within_range" },
+        "100": { in_house: inside100, outside: outside100, pick: "in_house", basis: "tie" },
         "1000": { in_house: inside1000, outside: outside1000, pick: "outside", basis: "outside_sooner" },
       },
       rule: "A machine you own that clears every check is recommended unless …",
@@ -38,7 +38,7 @@ function report(extra: AnyObj = {}): never {
 
 test("ScaleCAD's pick follows the engine's in-house rule, with both sides kept", () => {
   const r = report();
-  assert.deepEqual(enginePick(r, 100), { process: "fdm", material: "PLA", inHouse: true, machine: "Bambu Lab X1C", basis: "in_house_within_range" });
+  assert.deepEqual(enginePick(r, 100), { process: "fdm", material: "PLA", inHouse: true, machine: "Bambu Lab X1C", basis: "tie" });
   assert.equal(enginePick(r, 1000)?.inHouse, false);
   assert.equal(pairAt(r, 100)?.outside?.process, "mjf");
   assert.equal(pairAt(r, 5), null);
@@ -47,15 +47,16 @@ test("ScaleCAD's pick follows the engine's in-house rule, with both sides kept",
 
 test("the reason restates the engine's numbers", () => {
   const r = report();
-  const within = pickWhy(pairAt(r, 100)!, 100);
-  assert.match(within, /your Bambu Lab X1C/);
-  assert.match(within, /\$3\.50 less each \(22%\)/);
-  assert.match(within, /\$9\.40–\$21\.92/);
+  // op-07: a tie is said with its tolerance; a cheaper outside route is never "made on your machine".
+  const tie = pickWhy({ in_house: inside100, outside: { ...outside100, unit_cost_usd: 15.5 }, pick: "in_house", basis: "tie" } as never, 100);
+  assert.match(tie, /^Either: no saving\. Made on your Bambu Lab X1C at \$15\.66 each, within 2% of .+ outside at \$15\.50; your machine stays the pick\.$/);
+  const lower = pickWhy({ in_house: inside100, outside: outside100, pick: "outside", basis: "outside_cheaper" } as never, 100);
+  assert.match(lower, /costs \$3\.50 less \(22%\) than your Bambu Lab X1C at \$15\.66 \(\$9\.40–\$21\.92\)/);
   const sooner = pickWhy(pairAt(r, 1000)!, 1000);
   assert.match(sooner, /cheaper \(\$12\.07 against \$15\.58\) and sooner/);
   assert.match(sooner, /7–13 days against 43–79 days/);
   const cheaper = pickWhy({ in_house: inside100, outside: { ...outside100, unit_cost_usd: 5 }, pick: "outside", basis: "outside_cheaper" } as never, 100);
-  assert.match(cheaper, /below the low end of the in-house range/);
+  assert.match(cheaper, /costs \$10\.66 less/);
   assert.match(pickWhy({ in_house: inside100, outside: null, pick: "in_house", basis: "in_house_only" } as never, 100), /No outside process is priced/);
 });
 

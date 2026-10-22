@@ -49,21 +49,30 @@ export function buyCompareText(b: BuyPrice | null | undefined, make: { usd: numb
 
 export type MakeOrBuy = "make" | "buy";
 
+/** Within 2% of what you pay (or a cent): a tie, either way no saving (backend costing/decision.TIE_PCT). */
+export const TIE_PCT = 2;
+
+export function isTie(makeEach: number, priceEach: number): boolean {
+  return Math.abs(makeEach - priceEach) <= Math.max(0.01, (Math.abs(priceEach) * TIE_PCT) / 100);
+}
+
 /**
  * Making it on your machine against what you pay today, by the run's own rule
- * (catalog_run_service.make_or_buy_pick): make when your machine costs no more
- * than what you pay; buy when what you pay is below the low end of the in-house
- * range; in between, the two can't be told apart and it stays on your machine.
+ * (catalog_run_service.make_or_buy_pick, decision.prefer_in_house): make when
+ * your machine costs less; a lower price paid today is never made in-house; a
+ * tie (within 2%) is either way with no saving, and the part stays bought.
  */
 export function makeOrBuy(make: { usd: number; low?: number | null } | null, priceEach: number | null | undefined): MakeOrBuy | null {
   if (!make || priceEach == null || !Number.isFinite(priceEach) || priceEach <= 0 || !Number.isFinite(make.usd)) return null;
-  if (make.usd <= priceEach) return "make";
-  const low = make.low != null && Number.isFinite(make.low) ? make.low : make.usd;
-  return priceEach < low ? "buy" : "make";
+  if (isTie(make.usd, priceEach)) return "buy";
+  return make.usd < priceEach ? "make" : "buy";
 }
 
-/** Why ScaleCAD's pick is to keep buying: "What you pay, $33.05 each, is below making it on your Haas VF-2 ($33.92 each, $31.10–$36.80)." */
+/** Why ScaleCAD's pick is to keep buying: what you pay is lower, or the two are a tie. */
 export function keepBuyingWhy(make: { usd: number; low?: number | null; high?: number | null; machine: string }, priceEach: number): string {
+  if (isTie(make.usd, priceEach)) {
+    return `Either: no saving. Making it on your ${make.machine} costs ${money(make.usd)} each, within ${TIE_PCT}% of what you pay today (${money(priceEach)}), so it stays bought.`;
+  }
   const range = make.low != null && make.high != null ? `, ${money(make.low)}–${money(make.high)}` : "";
   return `What you pay today, ${money(priceEach)} each, is below making it on your ${make.machine} (${money(make.usd)} each${range}).`;
 }

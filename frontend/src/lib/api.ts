@@ -1001,8 +1001,8 @@ export interface CostRecommendation {
   same_process_outside?: boolean;
 }
 
-/** Why the engine picked in-house or outside when a machine you own clears a route (decision.IN_HOUSE_RULE). */
-export type CostPickBasis = "in_house_only" | "in_house_cheapest" | "in_house_within_range" | "outside_cheaper" | "outside_sooner";
+/** Why the engine picked in-house or outside when a machine you own clears a route (decision.IN_HOUSE_RULE). "tie": within 2% of each other. */
+export type CostPickBasis = "in_house_only" | "in_house_cheapest" | "tie" | "outside_cheaper" | "outside_sooner";
 
 /** One side of the in-house / outside comparison: the engine's own estimate, its range and lead time. */
 export interface CostOptionSide {

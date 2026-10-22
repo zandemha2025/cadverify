@@ -10,6 +10,9 @@
 import type { CostDecisionGovernance, CostDecisionSummary, CostEstimate, CostOptionPair, CostOptionSide, CostPickBasis, CostReport } from "@/lib/api";
 import { days, methodName, money, qtyWord } from "./model.ts";
 
+/** Within this share of the buy price (or a cent) making and buying are a tie: either way, no saving (backend decision.TIE_PCT). */
+export const TIE_PCT = 2;
+
 /** In-house and the cheapest outside route at one quantity, when a machine you own clears a route. */
 export function pairAt(cost: CostReport | null | undefined, q: number): CostOptionPair | null {
   const o = cost?.decision?.options?.[String(q)];
@@ -83,10 +86,10 @@ export function pickWhy(pair: CostOptionPair, q: number): string {
       return `Made on ${mine}: ${money(i.unit_cost_usd)} each, ${money(diff)} less than ${oName.toLowerCase()} outside.${
         o.lead_high_days != null && i.lead_low_days != null && o.lead_high_days < i.lead_low_days ? ` Outside arrives sooner: ${leadText(o)} against ${leadText(i)}.` : ""
       }`;
-    case "in_house_within_range":
-      return `Made on ${mine}. ${oName} outside is ${money(diff)} less each (${pct}%), inside the in-house estimate's range of ${range}, so the two prices can't be told apart.`;
+    case "tie":
+      return `Either: no saving. Made on ${mine} at ${money(i.unit_cost_usd)} each, within ${TIE_PCT}% of ${oName.toLowerCase()} outside at ${money(o.unit_cost_usd)}; your machine stays the pick.`;
     case "outside_cheaper":
-      return `${oName} outside, at ${money(o.unit_cost_usd)} each, is below the low end of the in-house range (${range}) on ${mine}.`;
+      return `${oName} outside, at ${money(o.unit_cost_usd)} each, costs ${money(diff)} less (${pct}%) than ${mine} at ${money(i.unit_cost_usd)} (${range}).`;
     case "outside_sooner":
       return `${oName} outside is cheaper (${money(o.unit_cost_usd)} against ${money(i.unit_cost_usd)}) and sooner: ${leadText(o)} against ${leadText(i)} for ${qtyWord(q)} on ${i.machine_count && i.machine_count > 1 ? `your ${i.machine_count} × ${i.machine}` : mine}.`;
     default:

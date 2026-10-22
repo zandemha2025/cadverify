@@ -292,6 +292,10 @@ def answer_words(a: Optional[dict], has_list: bool) -> Optional[dict]:
     rest = []
     if saving is not None and saved:
         rest.append(f"Buy {buy}")
+    if a.get("ties"):
+        from src.costing.decision import TIE_PCT
+
+        rest.append(f"{a['ties']} either way: no saving, within {TIE_PCT:g}% of what you pay")
     if a.get("new_machine"):
         rest.append(f"{a['new_machine']} need a new machine")
     if a.get("undecided"):

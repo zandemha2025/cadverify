@@ -41,18 +41,24 @@ MAKE_NOW_FAMILIES = (
 )
 TOOLING_FAMILIES = ("formative", "casting", "forging")
 
-# Why the owned machine is preferred inside the estimate's own range: two
-# should-cost estimates whose difference is smaller than their stated
-# uncertainty can't be told apart by this model, and making it on a machine
-# the shop owns keeps the schedule, the shipping and the file in-house.
+# Make or buy (op-07): a cheaper buy price is never "make in-house". Two prices
+# within TIE_PCT of the buy price (or a cent) are a tie: either way, no saving;
+# the machine you own stays the engine's pick, and a part you already buy at
+# that price is kept bought (catalog_run_service.decide_make_or_buy).
+TIE_PCT = 2.0
+TIE_MIN_USD = 0.01
 IN_HOUSE_RULE = (
-    "A machine you own that clears every check is recommended unless an outside "
-    "route is cheaper and either costs less than the low end of the in-house "
-    "estimate's range or arrives sooner beyond doubt (its slowest lead time is "
-    "quicker than the in-house quickest). Inside that range the model can't tell "
-    "the two prices apart, and your own machine keeps the schedule and the file "
-    "in-house."
+    "A machine you own that clears every check is recommended when it costs less "
+    "than the cheapest outside route. An outside route that costs less is "
+    f"recommended, as is one that is cheaper and arrives sooner beyond doubt. "
+    f"Within {TIE_PCT:g}% of each other the two are a tie: either way, no saving, "
+    "and your own machine stays the pick."
 )
+
+
+def is_tie(make_usd: float, buy_usd: float) -> bool:
+    """Making and buying within ``TIE_PCT`` of the buy price (or a cent) of each other."""
+    return abs(float(make_usd) - float(buy_usd)) <= max(TIE_MIN_USD, abs(float(buy_usd)) * TIE_PCT / 100.0)
 
 
 @dataclass
@@ -174,23 +180,24 @@ def prefer_in_house(inside: dict, outside: Optional[dict]) -> tuple[str, str]:
 
     pick: "in_house" | "outside". basis:
       in_house_only          no outside route is priced
-      in_house_cheapest      the owned machine is the cheapest way outright
-      in_house_within_range  outside is cheaper, but inside the in-house range
-                             and not sooner beyond doubt
-      outside_cheaper        outside costs less than the in-house range's low end
+      in_house_cheapest      the owned machine costs less than outside
+      tie                    within ``TIE_PCT`` of each other: either way, no
+                             saving; the owned machine stays the pick
+      outside_cheaper        outside costs less
       outside_sooner         outside is cheaper and its slowest lead time beats
                              the in-house quickest
     """
     if outside is None:
         return "in_house", "in_house_only"
-    if inside["unit_cost_usd"] <= outside["unit_cost_usd"]:
-        return "in_house", "in_house_cheapest"
+    i, o = inside["unit_cost_usd"], outside["unit_cost_usd"]
     o_hi, i_lo = outside.get("lead_high_days"), inside.get("lead_low_days")
-    if o_hi is not None and i_lo is not None and o_hi < i_lo:
+    if o < i and o_hi is not None and i_lo is not None and o_hi < i_lo:
         return "outside", "outside_sooner"
-    if outside["unit_cost_usd"] < inside["low_usd"]:
-        return "outside", "outside_cheaper"
-    return "in_house", "in_house_within_range"
+    if is_tie(i, o):
+        return "in_house", "tie"
+    if i < o:
+        return "in_house", "in_house_cheapest"
+    return "outside", "outside_cheaper"
 
 
 def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
@@ -410,8 +417,8 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
 _BASIS_TEXT = {
     "in_house_only": "no outside route is priced",
     "in_house_cheapest": "it is the cheapest route",
-    "in_house_within_range": "the outside route is cheaper but inside the in-house estimate's range",
-    "outside_cheaper": "the outside route costs less than the low end of the in-house range",
+    "tie": f"the two are within {TIE_PCT:g}% of each other: either way, no saving",
+    "outside_cheaper": "the outside route costs less",
     "outside_sooner": "the outside route is cheaper and arrives sooner beyond doubt",
 }
 

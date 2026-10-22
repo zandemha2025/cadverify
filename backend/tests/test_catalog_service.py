@@ -465,3 +465,21 @@ async def test_parts_list_rows_say_a_price_predates_the_published_rates(monkeypa
     rows = await svc.annotate_rates(None, "org", [old, new])
     assert rows[0]["rates"]["text"] == "Priced at rates v0; your rates are v1." and rows[0]["rates"]["out_of_date"]
     assert rows[1]["rates"]["out_of_date"] is False
+
+
+def test_the_parts_list_prices_scalecads_pick_at_the_opening_quantity():
+    """The stepped shaft: the list said "Wire EDM $56.68 at 100" while the part page picked
+    wire-arc at $31.48 at 100. Both now follow decision.recommendation at the opening quantity."""
+    cost = _cost_json(process="wire_edm", unit=56.68, qty=100)
+    cost["estimates"].append({"process": "waam", "material": "SS316L", "quantity": 100, "unit_cost_usd": 31.48,
+                              "dfm_ready": True, "dfm_blockers": [], "confidence": {"validated": False},
+                              "drivers": []})
+    cost["decision"]["recommendation"] = {"100": {"process": "waam", "material": "SS316L", "unit_cost_usd": 31.48}}
+    est = svc.make_now_estimate(cost, at_opening_qty=True)
+    assert (est["process"], est["unit_cost_usd"]) == ("waam", 31.48)
+    row = svc.derive_row(part_key="shaft", analysis=None, cost=_ref(cost, id="CD9"))
+    assert (row["unit_cost"]["qty"], row["unit_cost"]["usd"]) == (100, 31.48)
+    assert row["recommended_route"]["process"] == "waam" and row["recommended_route"]["material"] == "SS316L"
+    # No recommendation at that quantity: the make-now route there, as before.
+    cost["decision"]["recommendation"] = {}
+    assert svc.make_now_estimate(cost, at_opening_qty=True)["process"] == "wire_edm"

@@ -278,8 +278,9 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
         if price is not None and price > 0 and make is not None:
             from src.services.catalog_run_service import make_or_buy_pick
 
-            pick, _ = make_or_buy_pick({"unit_cost_usd": make, "low_usd": _num(inside.get("low_usd"))}, price)
-            if pick != "in_house":
+            pick, basis = make_or_buy_pick({"unit_cost_usd": make, "low_usd": _num(inside.get("low_usd"))}, price)
+            # A tie with what you pay today stays bought, as the run sorts it (op-07).
+            if pick != "in_house" or basis == "tie":
                 return {"basis": "bought", "machine": machine, "process": process, "quantity": qty,
                         "make_each": make, "buy_each": price}
         hours_each = _hours_each(result, process, qty) if process else None

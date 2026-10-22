@@ -210,15 +210,27 @@ def make_now_estimate(cost_result_json: dict, *, at_opening_qty: bool = False,
     the same ``pickEstimate`` convention the saved-decision hero and the resident
     Inspector use. None when there is no decision or no matching estimate.
 
-    ``at_opening_qty``: the make-now estimate at the quantity the part page opens
-    at (``opening_qty``), in the material the decision recommends there, so the
-    parts list and the part page show the same price (ce-19, me-22).
+    ``at_opening_qty``: ScaleCAD's pick at the quantity the part page opens at
+    (``opening_qty``): the estimate of ``decision.recommendation[q]``'s process
+    and material at that quantity, the one the part page's Decision picks there
+    (the in-house rule applied, a tie included), so the parts list and the part
+    page show the same route and price (ce-19, me-22). Without a recommendation
+    at that quantity, the make-now estimate there, as before.
     """
     decision = cost_result_json.get("decision") or {}
     proc = (decision.get("make_now_process") or "").strip()
     if not proc:
         return None
-    matches = [e for e in cost_result_json.get("estimates") or [] if e.get("process") == proc]
+    estimates = [e for e in cost_result_json.get("estimates") or [] if isinstance(e, dict)]
+    if at_opening_qty:
+        q = opening_qty(cost_result_json.get("quantities") or [e.get("quantity") for e in estimates], declared)
+        rec = (decision.get("recommendation") or {}).get(str(q)) or {}
+        if rec.get("process"):
+            picked = [e for e in estimates if e.get("process") == rec["process"] and e.get("quantity") == q]
+            if picked:
+                mat = rec.get("material")
+                return next((e for e in picked if mat and e.get("material") == mat), picked[0])
+    matches = [e for e in estimates if e.get("process") == proc]
     if not matches:
         return None
     if at_opening_qty:
@@ -291,6 +303,8 @@ def derive_row(
     if cost is not None:
         proc = (decision.get("make_now_process") or "").strip()
         if proc:
+            # ScaleCAD's pick at the opening quantity, the route the part page shows there.
+            proc = (est or {}).get("process") or proc
             scoped_process = proc
             recommended_route = {
                 "process": proc,
@@ -1768,7 +1782,9 @@ def route_at_quantity(result_json: dict, annual_volume: Optional[int],
         low = inside.get("low_usd") if isinstance(inside.get("low_usd"), (int, float)) else inside["unit_cost_usd"]
         pick, _basis = prefer_in_house({"unit_cost_usd": inside["unit_cost_usd"], "low_usd": low, "lead_low_days": None},
                                        {"unit_cost_usd": float(each), "lead_high_days": None})
-        out["in_house"] = pick == "in_house"
+        # A tie with what you pay today stays bought: either way, no saving (op-07).
+        out["in_house"] = pick == "in_house" and _basis != "tie"
+        out["tie"] = _basis == "tie"
         out["buy_price"] = {"usd_each": float(each), "source": buy_price.get("source")}
     return out
 

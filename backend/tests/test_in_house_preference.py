@@ -13,7 +13,7 @@ import trimesh
 
 from src.analysis.models import ProcessType
 from src.costing import EstimateOptions, estimate_decision, report_to_dict
-from src.costing.decision import IN_HOUSE_RULE, prefer_in_house
+from src.costing.decision import IN_HOUSE_RULE, TIE_PCT, is_tie, prefer_in_house
 from src.costing.leadtime import lead_time
 from src.costing.makeability import MachineCap
 from src.costing.rates import build_rate_card
@@ -56,13 +56,21 @@ def _side(cost, low=None, lead=(5.0, 9.0), process="x"):
 
 
 # ── the rule itself ───────────────────────────────────────────────────────────
-def test_rule_keeps_the_owned_machine_inside_the_estimate_range():
+def test_a_cheaper_buy_price_is_never_made_in_house_and_a_true_tie_is_said():
+    """op-07: RFS-21012 sat in Make in-house at $16.89 with a $10.09 outside price inside its range."""
     inside = _side(15.66, low=9.40, lead=(4.9, 9.1))
     assert prefer_in_house(inside, None) == ("in_house", "in_house_only")
     assert prefer_in_house(inside, _side(20.0)) == ("in_house", "in_house_cheapest")
-    assert prefer_in_house(inside, _side(12.16, lead=(5.6, 10.4))) == ("in_house", "in_house_within_range")
-    # Below the low end of the in-house range: outside is cheaper beyond doubt.
+    # Cheaper outside, inside the in-house range or not: outside.
+    assert prefer_in_house(inside, _side(12.16, lead=(5.6, 10.4))) == ("outside", "outside_cheaper")
+    assert prefer_in_house(_side(16.89, low=8.4), _side(10.09, lead=(5.6, 10.4))) == ("outside", "outside_cheaper")
     assert prefer_in_house(inside, _side(9.39, lead=(5.6, 10.4))) == ("outside", "outside_cheaper")
+    # Within 2% of each other either way (or a cent): a tie, and your machine stays the pick.
+    assert prefer_in_house(inside, _side(15.40)) == ("in_house", "tie")
+    assert prefer_in_house(inside, _side(15.96)) == ("in_house", "tie")
+    assert prefer_in_house(_side(0.10), _side(0.105)) == ("in_house", "tie")
+    assert prefer_in_house(inside, _side(15.30)) == ("outside", "outside_cheaper")
+    assert is_tie(33.05, 33.05) and not is_tie(33.92, 33.05)
     # Cheaper and its slowest delivery beats the in-house quickest.
     slow = _side(15.58, low=9.35, lead=(42.7, 79.3))
     assert prefer_in_house(slow, _side(12.07, lead=(7.0, 13.0))) == ("outside", "outside_sooner")
@@ -71,7 +79,8 @@ def test_rule_keeps_the_owned_machine_inside_the_estimate_range():
 
 
 def test_rule_is_stated_in_words():
-    assert "low end of the in-house" in IN_HOUSE_RULE and "sooner" in IN_HOUSE_RULE
+    assert "sooner" in IN_HOUSE_RULE and f"Within {TIE_PCT:g}% of each other" in IN_HOUSE_RULE
+    assert "no saving" in IN_HOUSE_RULE and "range" not in IN_HOUSE_RULE
 
 
 # ── in-house lead time ────────────────────────────────────────────────────────
@@ -115,16 +124,16 @@ def test_make_vs_buy_weighs_the_owned_route_at_each_quantity():
     base = make_vs_buy(ests, [100, 1000, 5000], lts)
     assert base.recommendation[100]["process"] == "mjf" and not base.options  # before: cheapest only
     d = make_vs_buy(ests, [100, 1000, 5000], lts, in_house=owned)
-    assert (d.options[100]["pick"], d.options[100]["basis"]) == ("in_house", "in_house_within_range")
+    # MJF outside at $12.16 against the X1C's $15.66: cheaper, so outside (op-07).
+    assert (d.options[100]["pick"], d.options[100]["basis"]) == ("outside", "outside_cheaper")
     rec = d.recommendation[100]
-    assert (rec["process"], rec["in_house"], rec["machine"], rec["basis"]) == (
-        "fdm", True, "Bambu Lab X1C", "in_house_within_range")
+    assert (rec["process"], rec["in_house"]) == ("mjf", False)
     assert (d.options[1000]["pick"], d.options[1000]["basis"]) == ("outside", "outside_sooner")
     assert d.recommendation[1000]["process"] == "mjf" and d.recommendation[1000]["in_house"] is False
     assert (d.options[5000]["pick"], d.options[5000]["basis"]) == ("outside", "outside_cheaper")
     assert d.options[100]["in_house"]["low_usd"] == round(15.66 * 0.6, 2)
     assert d.options[100]["outside"]["lead_high_days"] == 10.4
-    assert d.make_now_process == "fdm" and d.rule == IN_HOUSE_RULE
+    assert d.make_now_process == "mjf" and d.rule == IN_HOUSE_RULE
     assert "Owned machines:" in d.note
 
 

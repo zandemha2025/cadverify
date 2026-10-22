@@ -193,7 +193,7 @@ export function ownedAlternativeSub(
     basis === "outside_sooner"
       ? "the outside route is cheaper and arrives sooner than your machine could finish the run"
       : basis === "outside_cheaper"
-        ? "the outside route costs less than the low end of the in-house estimate"
+        ? "the outside route costs less, by more than 2%"
         : "the outside route is the pick at this quantity";
   return `Your ${machine} can make it${inHousePrice ? ` at ${inHousePrice}/unit` : ""}; ${why}. Both are priced below.`;
 }

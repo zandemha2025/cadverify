@@ -29,8 +29,14 @@ test("make or buy against what you pay follows the run's rule (op-08)", () => {
   // RFS-21039 at 500 a year: make $26.17 against $33.05 paid; at 100 the make price is $33.92.
   assert.equal(makeOrBuy({ usd: 26.17, low: 22.0 }, 33.05), "make");
   assert.equal(makeOrBuy({ usd: 33.92, low: 34.0 }, 33.05), "buy");
-  // Inside the in-house range: the two can't be told apart; it stays on your machine.
-  assert.equal(makeOrBuy({ usd: 33.92, low: 29.0 }, 33.05), "make");
+  // op-07: a lower price paid today is never made in-house, inside the in-house range or not.
+  assert.equal(makeOrBuy({ usd: 33.92, low: 29.0 }, 33.05), "buy");
+  // Within 2%: either way, no saving; it stays bought.
+  assert.equal(makeOrBuy({ usd: 33.5, low: 29.0 }, 33.05), "buy");
+  assert.equal(makeOrBuy({ usd: 32.6 }, 33.05), "buy");
+  assert.equal(makeOrBuy({ usd: 32.3 }, 33.05), "make");
+  assert.equal(keepBuyingWhy({ usd: 33.5, machine: "Haas VF-2" }, 33.05),
+    "Either: no saving. Making it on your Haas VF-2 costs $33.50 each, within 2% of what you pay today ($33.05), so it stays bought.");
   assert.equal(makeOrBuy(null, 33.05), null);
   assert.equal(makeOrBuy({ usd: 10 }, null), null);
   assert.equal(keepBuyingWhy({ usd: 33.92, low: 34.0, high: 40.1, machine: "Haas VF-2" }, 33.05),

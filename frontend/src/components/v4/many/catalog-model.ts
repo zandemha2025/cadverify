@@ -139,6 +139,10 @@ export interface RunAnswer {
   saving_parts: number;
   make_without_price: number;
   make_cost_usd: number | null;
+  /** Parts recorded "Make outside" or "Keep buying from our supplier": counted in buy. */
+  decided_buy?: number;
+  /** Within 2% of what you pay: either way, no saving (counted in buy, never in the saving). */
+  ties?: number;
   /** Of those not sorted, the parts in a material ScaleCAD doesn't price yet, once per material (op-03). */
   not_priced?: number;
   not_priced_materials?: { material: string; count: number; parts: string[] }[];
@@ -455,6 +459,7 @@ export function answerText(board: Board | null): { head: string; sub: string; mi
   else head = a.parts ? "No part could be decided yet" : "No parts yet";
   const rest: string[] = [];
   if (a.saving_usd != null && a.saving_parts) rest.push(`Buy ${a.buy}`);
+  if (a.ties) rest.push(`${a.ties} either way: no saving, within 2% of what you pay`);
   if (a.new_machine) rest.push(`${a.new_machine} need a new machine`);
   if (a.undecided) {
     const unsorted = a.not_sorted - (a.not_priced ?? 0);
