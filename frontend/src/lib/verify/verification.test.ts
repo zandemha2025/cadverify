@@ -135,6 +135,10 @@ test("gapText: preserve envelope evidence and units, quantify ordinary scalar ga
     "Part diameter is at least 400mm > chamber diagonal 346.41mm.");
   assert.equal(gapText({ gate: "mass", axis: "mass_kg", need: 40, have: 20, human: "mass" }),
     "need 40, have 20");
+  // A sheet thickness or press force miss keeps its units and material (me-02).
+  assert.equal(gapText({ gate: "thickness", axis: "cut_thickness_mm", need: 5, have: 4.76,
+    human: "thickness 5.00mm > machine max 4.7625mm for 304 SS (Sheet)" }),
+    "thickness 5.00mm > machine max 4.7625mm for 304 SS (Sheet)");
   // an unknown gate (have null) is NOT a fabricated number — falls to human/needs
   assert.equal(
     gapText({ gate: "mass", axis: "mass", need: null, have: null, human: "part mass unknown" }),

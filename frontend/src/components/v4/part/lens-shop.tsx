@@ -3,13 +3,13 @@
 /** Shop: your machines, whether each can make it and why, and the part drawn to scale inside one. */
 import * as React from "react";
 import Link from "next/link";
-import { listMachines, type OwnedMachine } from "@/lib/verify/machine-api";
 import { R } from "../routes";
 import { Empty, cx } from "../ui";
 import { usePart } from "./ctx";
 import { dimsText, machineViews, money, priceMeta, qtyWord, type MachineView } from "./model";
 import { CostLines } from "./lens-cost";
-import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
+import { RunNotice, SheetTop, useShopChange, type FigItem } from "./sheet-bits";
+import { asOfCheck } from "./shop-change";
 import { useChoice } from "./choose";
 import { hoursText, massText, routeResources, runLine } from "./resources";
 import { useFix } from "../fix/ctx";
@@ -38,10 +38,13 @@ export function useMachineViews(): MachineView[] {
   const p = usePart();
   const bbox = bboxOf(p);
   const side = pairAt(p.data.cost, p.q)?.in_house ?? null;
+  const change = useShopChange();
   return React.useMemo(() => {
-    const views = machineViews(p.data.machines, p.methods, p.data.cost, p.q, bbox);
+    // A machine changed since the check says its reason as of the check, never next to its new value as if current (me-11).
+    const since = new Set(change?.machines.map((m) => m.id) ?? []);
+    const views = machineViews(p.data.machines, p.methods, p.data.cost, p.q, bbox).map((v) => (since.has(v.id) && v.tone !== "ok" ? { ...v, why: asOfCheck(v.why, true) } : v));
     return rankMachines(views, pickedMachineId(views, side));
-  }, [p.data.machines, p.methods, p.data.cost, p.q, bbox, side]);
+  }, [p.data.machines, p.methods, p.data.cost, p.q, bbox, side, change]);
 }
 
 function useSelectedMachine(views: MachineView[]): MachineView | null {
@@ -96,9 +99,9 @@ export function ShopLayer() {
           <circle cx="661" cy="226" r="118" fill="none" stroke="#141414" strokeOpacity="0.28" strokeWidth="1.2" />
         </svg>
         {[
-          { x: (c.x[0] + c.xy[0]) / 2 + 26, y: (c.x[1] + c.xy[1]) / 2 + 20, t: len(D, unit, 0) },
-          { x: (c.y[0] + c.xy[0]) / 2 - 20, y: (c.y[1] + c.xy[1]) / 2 + 24, t: len(W, unit, 0) },
-          { x: c.xy[0] + 36, y: (c.xy[1] + c.xyz[1]) / 2, t: len(H, unit, 0) },
+          { x: (c.x[0] + c.xy[0]) / 2 + 26, y: (c.x[1] + c.xy[1]) / 2 + 20, t: whole(D, unit) },
+          { x: (c.y[0] + c.xy[0]) / 2 - 20, y: (c.y[1] + c.xy[1]) / 2 + 24, t: whole(W, unit) },
+          { x: c.xy[0] + 36, y: (c.xy[1] + c.xyz[1]) / 2, t: whole(H, unit) },
         ].map((d) => (
           <span key={d.t + d.x} className="num" style={{ position: "absolute", left: d.x, top: d.y, transform: "translate(-50%, -50%)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)", whiteSpace: "nowrap" }}>
             {d.t}
@@ -151,8 +154,8 @@ function LatheDrawing({ name, swing, between, part }: { name: string; swing: num
         <circle cx="661" cy="226" r="118" fill="none" stroke="#141414" strokeOpacity="0.28" strokeWidth="1.2" />
       </svg>
       {[
-        { x: (x0 + ex) / 2, y: bot + 24, t: `${len(between, unit, 0)} between centres` },
-        { x: ex + 70, y: (top + cy) / 2, t: `Swing Ø${len(swing, unit, 0)}` },
+        { x: (x0 + ex) / 2, y: bot + 24, t: `${whole(between, unit)} between centres` },
+        { x: ex + 70, y: (top + cy) / 2, t: `Swing Ø${whole(swing, unit)}` },
       ].map((d) => (
         <span key={d.t} className="num" style={{ position: "absolute", left: d.x, top: d.y, transform: "translate(-50%, -50%)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)", whiteSpace: "nowrap" }}>
           {d.t}
@@ -163,6 +166,11 @@ function LatheDrawing({ name, swing, between, part }: { name: string; swing: num
       </span>
     </>
   );
+}
+
+/** A machine size without trailing zeros: "120 in", "3048 mm". */
+function whole(mm: number, unit: "mm" | "in"): string {
+  return unit === "in" ? `${Number((mm / 25.4).toFixed(2))} in` : `${Number(mm.toFixed(1))} mm`;
 }
 
 /** Front view of a press brake: ram and bed over the bend length, with the part to scale on the bed. */
@@ -188,34 +196,19 @@ function BrakeDrawing({ name, bend, part }: { name: string; bend: number; part: 
         <circle cx="661" cy="226" r="118" fill="none" stroke="#141414" strokeOpacity="0.28" strokeWidth="1.2" />
       </svg>
       <span className="num" style={{ position: "absolute", left: (x0 + x1) / 2, top: bedTop + 96, transform: "translate(-50%, -50%)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)", whiteSpace: "nowrap" }}>
-        {len(bend, unit, 0)} bend length
+        {whole(bend, unit)} bend length
       </span>
       <span style={{ position: "absolute", left: 661, top: 360, transform: "translateX(-50%)", fontSize: 12.5, color: "var(--ink2)", whiteSpace: "nowrap" }}>
-        Your part, {len(longest, unit)} at its longest, magnified. It is drawn to true scale on the {name}’s bed.
+        Your part, {len(longest, unit)} at its longest, magnified. Drawn to true scale on the bed.
       </span>
     </>
   );
-}
-
-function sig(ms: OwnedMachine[]): string {
-  return ms.map((m) => `${m.id}:${m.updated_at ?? ""}`).sort().join("|");
 }
 
 export function ShopSheet() {
   const p = usePart();
   const views = useMachineViews();
   const m = useSelectedMachine(views);
-  const [current, setCurrent] = React.useState<OwnedMachine[] | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    listMachines()
-      .then((pg) => live && setCurrent(pg.machines))
-      .catch(() => live && setCurrent(null));
-    return () => {
-      live = false;
-    };
-  }, []);
-  const changed = current != null && p.data.cost != null && sig(current) !== sig(p.data.machines);
   const can = views.filter((v) => v.tone === "ok");
   const groups = machineSummary(views);
   const figs: FigItem[] = [];
@@ -289,21 +282,6 @@ export function ShopSheet() {
               <p style={{ margin: "6px 12px 0", color: "var(--ink3)", fontSize: 12.5 }}>
                 {dims ? `Part ${dims}, measured from the file. ` : ""}Fit checks work area (a press brake: bend length, press force and thickest sheet), weight and declared materials, from this check.
               </p>
-            ) : null}
-            {changed ? (
-              <div className="note" role="status">
-                <b>Your machines changed after this check</b>
-                <span>The fit above is from the check. Re-check to see it against the machines you have now.</span>
-                <span>
-                  {p.canRecheck ? (
-                    <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
-                      Re-check with your machines
-                    </button>
-                  ) : (
-                    <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Drop the file on the part to re-check it.</span>
-                  )}
-                </span>
-              </div>
             ) : null}
             {est && m?.method && (mine || ch.canChoose(m.method)) ? (
               <div className="note">

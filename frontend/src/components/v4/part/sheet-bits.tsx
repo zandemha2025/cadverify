@@ -16,6 +16,7 @@ import { CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../
 import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { isMultiBody } from "@/lib/verify/bodies";
+import { shopChangeText, shopChangedSince, type ShopChange } from "./shop-change";
 
 export interface FigItem {
   k: string;
@@ -120,8 +121,42 @@ export function RunNotice() {
     <>
       <BodiesNotice />
       <RunState />
+      <ShopNotice />
       <RatesNotice />
     </>
+  );
+}
+
+/** What changed in Your shop after the answer on this page was worked out (me-11), or null. */
+export function useShopChange(): ShopChange | null {
+  const p = usePart();
+  const d = p.data.decision;
+  return React.useMemo(
+    () => (p.checking || p.interrupted ? null : shopChangedSince(p.data.machines, d, d?.created_at ?? p.data.createdAt)),
+    [p.checking, p.interrupted, p.data.machines, d, p.data.createdAt],
+  );
+}
+
+/** A shop change after the check: the answer predates it, and Re-check is right here (me-11). */
+function ShopNotice() {
+  const p = usePart();
+  const c = useShopChange();
+  if (!c) return null;
+  return (
+    <div className="note swap" role="status" style={{ marginTop: 8 }}>
+      <b>{shopChangeText(c)}</b>
+      <span>
+        The answer on this page predates it.{" "}
+        {p.canRecheck ? "Re-check works it out again on the machines you have now, from the file kept with this part. No check used." : "Drop the file on the part to check it on the machines you have now."}
+      </span>
+      {p.canRecheck ? (
+        <span>
+          <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
+            Re-check
+          </button>
+        </span>
+      ) : null}
+    </div>
   );
 }
 

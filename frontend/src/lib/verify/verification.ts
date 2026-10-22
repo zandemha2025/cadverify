@@ -271,7 +271,8 @@ function fmtBound(v: unknown): string {
 export function gapText(f: FitFailure): string {
   // Envelope bounds can compare a diameter to a chamber diagonal, not an axis.
   // A route DFM blocker's own message names the rule, unit and measured value.
-  if ((f.gate === "envelope" || f.gate === "dfm") && f.human) return f.human;
+  // A sheet thickness or press force miss names its material, unit and limit (me-02: "need 5, have 4.76").
+  if ((f.gate === "envelope" || f.gate === "dfm" || f.gate === "thickness" || f.gate === "force") && f.human) return f.human;
   if (isNum(f.need) && isNum(f.have)) {
     return `need ${fmtBound(f.need)}, have ${fmtBound(f.have)}`;
   }

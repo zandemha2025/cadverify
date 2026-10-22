@@ -82,7 +82,7 @@ def test_her_0197_in_stainless_doesnt_clear_a_3_16_in_limit():
     assert not fit.passes
     [f] = fit.failures
     assert (f.gate, f.need, f.have) == ("thickness", 5.0, 4.76)
-    assert "5.0mm > machine max 4.8mm" in f.human
+    assert f.human == "thickness 5.00mm > machine max 4.7625mm for SS316L"
     # In 1/4 in mild steel it clears every brake check: bend length, force and thickness.
     fit = fit_machine(_req(_strip(BRACKET), material="Mild Steel"), _amada())
     assert fit.passes, fit.failures

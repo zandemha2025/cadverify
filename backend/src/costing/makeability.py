@@ -823,8 +823,8 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             failures.append(FitFailure(
                 "thickness", "cut_thickness_mm", round(part_req.thickness_mm, 2),
                 round(float(max_t), 2),
-                f"thickness {part_req.thickness_mm:.1f}mm > machine max "
-                f"{float(max_t):.1f}mm for "
+                f"thickness {part_req.thickness_mm:.2f}mm > machine max "
+                f"{float(max_t):g}mm for "
                 f"{part_req.material_name or part_req.material_class}"))
         elif (max_t is not None and _is_number(max_t) and part_req.geometry_precision_mm
               and part_req.thickness_mm + part_req.geometry_precision_mm >= max_t - part_req.geometry_tolerance_mm):
