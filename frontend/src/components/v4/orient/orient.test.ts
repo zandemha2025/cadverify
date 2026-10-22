@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   IDENTITY,
   bridgeWords,
+  notComparedWords,
   candidateFacts,
   printWords,
   candidateFor,
@@ -245,6 +246,23 @@ test("before and after a re-check: findings, methods and prices from the two res
   assert.deepEqual(c2.rows.find((r) => /\$/.test(r.now)), { what: "Filament printing price each at 100", before: "$22.55", now: "$28.94", tone: "warn" });
   assert.deepEqual(row("Filament printing price each at 100"), { what: "Filament printing price each at 100", before: "$22.55", now: "$22.55", tone: "" });
   assert.equal(compare({ validation: b.validation as never, cost: b.cost as never, rotation: IDENTITY }, { validation: n.validation as never, cost: null, rotation: matOf(rec) }, 100, "fdm").rows.find((r) => /price/.test(r.what)), undefined);
+  // An earlier record priced before print prices followed the orientation isn't compared with a new one.
+  const calibrated = side([60, 40, 45], [], rec);
+  for (const e of calibrated.cost.estimates as { process: string; drivers: unknown[] }[]) {
+    if (e.process === "fdm") e.drivers = [{ name: "machine_cost", value: 1, unit: "$", provenance: "DEFAULT", source: "0.4 hr × $8/hr [slicer-calibrated estimate, not a quote, …]", error_band_pct: null }];
+  }
+  (calibrated.cost.estimates[1] as { unit_cost_usd: number }).unit_cost_usd = 15.47;
+  const old = side([60, 40, 45], [], null);
+  for (const e of old.cost.estimates as { process: string; drivers: unknown[] }[]) {
+    if (e.process === "fdm") e.drivers = [{ name: "machine_cost", value: 1, unit: "$", provenance: "DEFAULT", source: "1.66 hr × $8/hr [serial XY nest: deposition V/16 …]", error_band_pct: null }];
+  }
+  const c5 = compare({ validation: old.validation as never, cost: old.cost as never, rotation: IDENTITY }, { validation: calibrated.validation as never, cost: calibrated.cost as never, rotation: matOf(rec) }, 100, "fdm");
+  assert.deepEqual(c5.pricesNotCompared, ["fdm"]);
+  assert.deepEqual(c5.pricesChanged, []);
+  assert.equal(c5.rows.find((r) => /price/.test(r.what)), undefined);
+  assert.match(notComparedWords(c5.pricesNotCompared) ?? "", /^The earlier check priced Filament printing \(FDM\/FFF\) before those prices followed the orientation/);
+  assert.deepEqual(cmp.pricesNotCompared, []);
+  assert.equal(notComparedWords([]), null);
   // With the comparison's figures: layers, work area and the space under the support faces.
   const opts2 = {
     ...options, layer_mm: { fdm: 0.2 },

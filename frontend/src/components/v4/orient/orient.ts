@@ -478,6 +478,11 @@ export interface Comparison {
   pricesSame: boolean;
   /** Methods whose price changed at some quantity (engine process codes). */
   pricesChanged: string[];
+  /**
+   * FDM/SLA priced by different models in the two checks (one before print prices followed the
+   * orientation): their prices aren't compared.
+   */
+  pricesNotCompared: string[];
   process: string | null;
 }
 
@@ -560,10 +565,17 @@ export function compare(before: Side, now: Side, q: number, process: string | nu
   }
   const methods = { before: canMake(mb), now: canMake(mn), changed };
   rows.push({ what: "Methods that can make it", before: `${methods.before} of ${mb.length}`, now: `${methods.now} of ${mn.length}`, tone: methods.now > methods.before ? "ok" : methods.now < methods.before ? "bad" : "" });
+  // An earlier record may have priced FDM/SLA before print prices followed the orientation:
+  // comparing those prices would show the model change, not the turn.
+  const pricesNotCompared = PRINT_PRICED.filter((code) => {
+    const b = printBasis(before.cost, code);
+    const n = printBasis(now.cost, code);
+    return b != null && n != null && b !== n;
+  });
   const pricesChanged: string[] = [];
   for (const m of mn) {
     const o = mb.find((x) => x.code === m.code);
-    if (!o) continue;
+    if (!o || pricesNotCompared.includes(m.code)) continue;
     // Only quantities both checks priced (an earlier record may have priced other ones).
     if ([...m.prices.keys()].some((qq) => o.prices.has(qq) && priceAt(o, qq) !== priceAt(m, qq))) pricesChanged.push(m.code);
   }
@@ -573,8 +585,24 @@ export function compare(before: Side, now: Side, q: number, process: string | nu
   const pn = process ? mn.find((m) => m.code === process) : undefined;
   const xb = pb && pb.prices.has(q) ? priceAt(pb, q) : null;
   const xn = pn && pn.prices.has(q) ? priceAt(pn, q) : null;
-  if (process && xb != null && xn != null) {
+  if (process && xb != null && xn != null && !pricesNotCompared.includes(process)) {
     rows.push({ what: `${processName(process)} price each at ${q.toLocaleString("en-US")}`, before: money(xb), now: money(xn), tone: xn < xb ? "ok" : xn > xb ? "warn" : "" });
   }
-  return { rows, findings, methods, pricesSame, pricesChanged, process };
+  return { rows, findings, methods, pricesSame, pricesChanged, pricesNotCompared, process };
+}
+
+const PRINT_PRICED = ["fdm", "sla"];
+
+/** Whether a check priced this method with the slicer-calibrated print model (null: not priced). */
+function printBasis(cost: CostReport | null, code: string): boolean | null {
+  const ests = (cost?.estimates ?? []).filter((e) => e.process === code);
+  if (!ests.length) return null;
+  return ests.some((e) => (e.drivers ?? []).some((d) => (d.source ?? "").includes("slicer-calibrated")));
+}
+
+/** "The earlier check priced Filament printing before …", or null. */
+export function notComparedWords(codes: string[]): string | null {
+  if (!codes.length) return null;
+  const names = codes.map((c) => processLabel(c)).join(" and ");
+  return `The earlier check priced ${names} before those prices followed the orientation, so they aren't compared here. Going back re-checks the earlier way priced the same way.`;
 }

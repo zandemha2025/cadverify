@@ -36,6 +36,7 @@ import {
   matOf,
   orientationParam,
   flagWords,
+  notComparedWords,
   priceBasis,
   PRICES_LINE,
   rankedFor,
@@ -472,6 +473,7 @@ function Rechecked({ rc, running, failed, onBack, canRecheck, options }: { rc: O
           {cmp.pricesSame
             ? priceBasis(options) ?? PRICES_LINE
             : `Prices changed for ${cmp.pricesChanged.map((c) => processLabel(c)).join(", ")}; the Cost view shows them at ${qtyWord(p.q)} and the other quantities.`}
+          {notComparedWords(cmp.pricesNotCompared) ? ` ${notComparedWords(cmp.pricesNotCompared)}` : ""}
         </p>
         <div className="or-actions" style={{ padding: "10px 12px 4px" }}>
           <button className="btn ink sm" type="button" onClick={closeOrient}>
