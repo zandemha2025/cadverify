@@ -31,7 +31,6 @@ import {
   methodMatrix,
   methodsAt,
   nearestQty,
-  newPartText,
   optionsFromReport,
   optionsToForm,
   posToQ,
@@ -343,8 +342,6 @@ test("small words", () => {
   assert.equal(environmentLabel({ medium: "sour gas (H2S)", sour_service: true }), "Sour gas");
   assert.equal(environmentLabel({ corrosive: true }), "Corrosive service");
   assert.equal(environmentLabel(null), null);
-  assert.equal(newPartText(0, 0), "This part’s saved cost record stays in Cost records.");
-  assert.equal(newPartText(2, 1), "Drops this session’s 2 overrides and 1 saved scenario. The saved cost record stays in Cost records.");
   assert.equal(scenarioLabel(null, {}), "Engine");
   assert.equal(scenarioLabel("Midwest Precision CNC", { labor_rate: 40 }), "Midwest Precision CNC · labor_rate 40");
 });

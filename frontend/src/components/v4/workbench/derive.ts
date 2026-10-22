@@ -858,15 +858,6 @@ export function decisionSummary(report: CostReport | null, v: ValidationResult |
 /*  Session words                                                      */
 /* ------------------------------------------------------------------ */
 
-export function newPartText(overrides: number, scenarios: number): string {
-  if (!overrides && !scenarios) return "This part’s saved cost record stays in Cost records.";
-  const bits = [
-    overrides ? `${overrides} override${overrides === 1 ? "" : "s"}` : "",
-    scenarios ? `${scenarios} saved scenario${scenarios === 1 ? "" : "s"}` : "",
-  ].filter(Boolean);
-  return `Drops this session’s ${bits.join(" and ")}. The saved cost record stays in Cost records.`;
-}
-
 export function scenarioLabel(shopName: string | null, overrides: Record<string, number> | undefined): string {
   const parts: string[] = [];
   if (shopName) parts.push(shopName);

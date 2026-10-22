@@ -2,9 +2,10 @@
 
 /**
  * Cost breakdown chrome shared by every tab: the header (the part it belongs to,
- * title, facts, tabs, the rates pill, Cost another file), dialogs, the toast, and
+ * title, facts, tabs, the rates pill, Check another part), dialogs, the toast, and
  * "choose the file again" for a part opened from its records. This page is the
  * detail behind a part's Cost view; problems and processes live on the part page.
+ * A new part comes in one way, through Check a part.
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -13,12 +14,13 @@ import { useRouter } from "next/navigation";
 import type { CostOptions, ShopProfileInfo } from "@/lib/api";
 import { parseCalibration } from "@/lib/cost-views";
 import { R } from "../routes";
-import { CAD_ACCEPT } from "../pending-file";
+import { CAD_ACCEPT, setPendingFile } from "../pending-file";
+import { checkHref } from "../part/check-context";
 import { cx } from "../ui";
-import { newPartText, rateChips } from "./derive";
-import { attachFile, getWb, recost, resetSession, useShops, useWb } from "./session";
+import { rateChips } from "./derive";
+import { attachFile, getWb, recost, useShops, useWb } from "./session";
 import { shortSource } from "./words";
-import { LEGACY_WORKBENCH, tabOf, tabUrlName, wbHref, type WbTab } from "./cost-url";
+import { tabOf, tabUrlName, wbHref, type WbTab } from "./cost-url";
 
 /* ---- tabs and links ------------------------------------------------ */
 
@@ -215,16 +217,21 @@ export function useNeedFile() {
   return React.useContext(NeedCtx);
 }
 
-let pendingNew: File | null = null;
-export function takeNewPartFile(): File | null {
-  const f = pendingNew;
-  pendingNew = null;
-  return f;
+/* ---- what Check another part carries ------------------------------ */
+
+/** The order quantity the open tab shows (set by the page; Check another part carries it). */
+export const WbQtyCtx = React.createContext<number | null>(null);
+let shownQty: number | null = null;
+
+/** Check a part, priced in this part's material at the quantity shown here (nothing carried before it's costed). */
+function carriedCheckHref(qty: number | null): string {
+  const s = getWb();
+  return checkHref(s.report ? { material: s.opts.material_class, qty } : {});
 }
 
 function NeedFileHost({ children }: { children: React.ReactNode }) {
   const s = useWb();
-  const nav = useWbNav();
+  const router = useRouter();
   const [ask, setAsk] = React.useState<Ask | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
   const need = React.useCallback((reason: string, run: () => void) => {
@@ -260,13 +267,13 @@ function NeedFileHost({ children }: { children: React.ReactNode }) {
                 className="btn"
                 type="button"
                 onClick={() => {
-                  pendingNew = ask.other;
+                  // A different file is another part: Check a part checks it, priced like this one.
+                  if (ask.other) setPendingFile(ask.other);
                   setAsk(null);
-                  resetSession();
-                  nav(LEGACY_WORKBENCH);
+                  router.push(carriedCheckHref(shownQty));
                 }}
               >
-                Open it as a new part
+                Check it as another part
               </button>
             ) : null}
             <button className="btn ink" type="button" onClick={() => input.current?.click()}>
@@ -426,48 +433,21 @@ function RatesPill({ shops }: { shops: ShopProfileInfo[] }) {
   );
 }
 
-function NewPartButton() {
-  const s = useWb();
-  const nav = useWbNav();
-  const [open, setOpen] = React.useState(false);
-  const keep = React.useRef<HTMLButtonElement>(null);
-  const nOv = Object.keys(s.opts.overrides ?? {}).length;
+/** Check another part: the one way in for a new part, carrying this part's material and quantity. */
+function CheckAnotherButton() {
+  useWb(); // re-render when the part's material changes
+  const qty = React.useContext(WbQtyCtx);
+  React.useEffect(() => {
+    shownQty = qty;
+  }, [qty]);
   return (
-    <>
-      <button className="btn sm" type="button" onClick={() => setOpen(true)}>
-        Cost another file
-      </button>
-      {open ? (
-        <Dialog role="alertdialog" labelledBy="np-t" describedBy="np-d" onClose={() => setOpen(false)} scrimLabel="Keep working" initialFocus={keep}>
-          <div className="dh">
-            <h2 id="np-t">Cost another file?</h2>
-          </div>
-          <div className="db">
-            <p id="np-d">{newPartText(nOv, s.scenarios.length)}</p>
-          </div>
-          <div className="df">
-            <button ref={keep} className="btn" type="button" onClick={() => setOpen(false)}>
-              Keep working
-            </button>
-            <button
-              className="btn ink"
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                resetSession();
-                nav(LEGACY_WORKBENCH);
-              }}
-            >
-              Cost another file
-            </button>
-          </div>
-        </Dialog>
-      ) : null}
-    </>
+    <Link className="btn sm" href={carriedCheckHref(qty)} title="Check a part, priced in this part’s material at this quantity">
+      Check another part
+    </Link>
   );
 }
 
-export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string | null; meta: React.ReactNode[]; wide?: boolean }) {
+export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string; meta: React.ReactNode[]; wide?: boolean }) {
   const { shops } = useShops();
   const s = useWb();
   const name = s.key === part ? s.filename : null;
@@ -475,16 +455,14 @@ export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string | n
     <div className={cx("pagehead", wide && "wide")}>
       <h1 className="ptitle">Cost breakdown</h1>
       <p className="pmeta">
-        {part ? (
-          <span>
-            <Link href={R.part(part)} title="Back to the part: problems, processes, conditions, your machines and the decision">
-              ‹ {name ?? "The part"}
-            </Link>
-          </span>
-        ) : null}
+        <span>
+          <Link href={R.part(part)} title="Back to the part: problems, processes, conditions, your machines and the decision">
+            ‹ {name ?? "The part"}
+          </Link>
+        </span>
         {meta
           .filter(Boolean)
-          .filter((m) => !(part && name && m === name))
+          .filter((m) => !(name && m === name))
           .map((m, i) => (
             <span key={i}>{m}</span>
           ))}
@@ -499,7 +477,7 @@ export function WbHead({ tab, part, meta, wide }: { tab: WbTab; part: string | n
         </nav>
         <div className="wbt">
           <RatesPill shops={shops} />
-          <NewPartButton />
+          <CheckAnotherButton />
         </div>
       </div>
     </div>

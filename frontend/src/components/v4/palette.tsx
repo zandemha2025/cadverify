@@ -11,7 +11,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
 import { R } from "./routes";
-import { LEGACY_WORKBENCH } from "./workbench/cost-url";
 import { cx } from "./ui";
 
 export type PaletteItem = {
@@ -86,7 +85,7 @@ const GO: [string, string, string, string?, string[]?][] = [
   ["RFQ packages", "Files and findings for supplier quotes", R.packages, undefined, ["supplier packages"]],
   ["Batch runs", "Many parts at once · Pilot", R.many],
   ["Imports", "SAP, Windchill or CSV, read only", R.imports],
-  ["Cost breakdown", "Every cost line of a part, its source and rate, editable", LEGACY_WORKBENCH, undefined, ["workbench", "glass box", "should-cost"]],
+  ["Cost breakdown", "Every cost line of a part · open a part’s cost record", R.records, undefined, ["workbench", "glass box", "should-cost"]],
   ["Organization", "Members and sign-in", R.org],
   ["API and keys", "For your own tools", R.api],
   ["Plan and billing", "Free checks, Pro, pilot", R.billing],

@@ -62,6 +62,8 @@ export interface CheckSession {
   askMaterial: boolean;
   /** The orientation this check turns the part to ("rotation:…"); null for the file's own. */
   orientation: string | null;
+  /** An order quantity priced exactly (carried from the cost breakdown's Check another part); null for the standard ladder. */
+  quantity: number | null;
   key: string | null;
   startedAt: number;
   validatedAt: number | null;
@@ -277,7 +279,7 @@ async function run(id: number) {
   let result: VerifyResult;
   try {
     result = await runVerification(
-      { file, materialClass: s0.materialClass, orientation: s0.orientation },
+      { file, materialClass: s0.materialClass, orientation: s0.orientation, quantity: s0.quantity },
       {
         onValidation: ({ validation }) => {
           if (validation) patch(id, { validation, validatedAt: Date.now() });
@@ -310,7 +312,7 @@ async function run(id: number) {
 }
 
 /** Start the real check for a file. Returns the session id the pages subscribe to. */
-export function startCheck(file: File, opts: { sample?: boolean; materialClass?: string; orientation?: string | null } = {}): number {
+export function startCheck(file: File, opts: { sample?: boolean; materialClass?: string; orientation?: string | null; quantity?: number | null } = {}): number {
   // A deliberate check gets its own allowance id; every request of it shares this File.
   const f = new File([file], file.name, { type: file.type, lastModified: file.lastModified });
   const id = nextId++;
@@ -322,6 +324,7 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
     pricedWith: null,
     askMaterial: !opts.sample && opts.materialClass == null,
     orientation: opts.orientation ?? null,
+    quantity: opts.quantity ?? null,
     key: null,
     startedAt: Date.now(),
     validatedAt: null,
@@ -348,7 +351,7 @@ export async function retryPrices(id: number) {
   const materialClass = s.materialClass;
   patch(id, { costRetrying: true, pricedWith: materialClass });
   try {
-    const retried = await retryVerificationCost({ file: s.file, materialClass, orientation: s.orientation }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
+    const retried = await retryVerificationCost({ file: s.file, materialClass, orientation: s.orientation, quantity: s.quantity }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
     patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
   } catch (e) {
     patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, costError: e instanceof Error ? e.message : "Prices didn’t finish." } : x.result }));

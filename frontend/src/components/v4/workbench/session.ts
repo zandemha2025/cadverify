@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * The Workbench session: one part at a time, held in memory for this browser
- * tab so switching Workbench tabs, or leaving and coming back, keeps the file,
+ * The cost breakdown session: one part at a time, held in memory for this
+ * browser tab so switching tabs, or leaving and coming back, keeps the file,
  * the results, overrides and scenarios. Nothing here is written to disk; a
- * reload starts from the part's saved records (`?part=<mesh hash>`), which
+ * reload starts from the part's saved records (/app/part/{key}/cost), which
  * carry the cost decision and DFM analysis but not the CAD bytes, so anything
  * that re-costs asks for the same file again.
  *
@@ -251,33 +251,6 @@ async function runDfm(runFile: File, units: CostOptions["units"], g: number) {
   }
 }
 
-/** Start a new part from a dropped file: hash it, then cost and check it in parallel. */
-export async function beginPart(file: File, opts: CostOptions): Promise<string | null> {
-  const g = ++gen;
-  const key = await computeMeshHash(file).catch(() => null);
-  if (g !== gen) return null;
-  state = { ...empty(), key, filename: file.name, file, source: "session", opts };
-  lastRunFile = file;
-  emit();
-  if (key) {
-    void loadEnv(key, g);
-  }
-  void runDfm(file, opts.units, g);
-  await runCost(file, opts, g);
-  return key;
-}
-
-/** Try the same file and options again after a failed first cost (F9 "Try again"). */
-export async function retryBegin(): Promise<void> {
-  const s = state;
-  if (!s.file) return;
-  const g = gen;
-  const runFile = fresh(s.file);
-  lastRunFile = runFile;
-  if (s.dfm.phase === "error" || !s.validation) void runDfm(runFile, s.opts.units, g);
-  await runCost(runFile, s.cost.pending ?? s.opts, g);
-}
-
 /** Re-cost with new inputs (a real engine run). Needs the file in this tab. */
 export async function recost(opts: CostOptions): Promise<CostReport | null> {
   const s = state;
@@ -369,13 +342,6 @@ export async function attachFile(file: File): Promise<"ok" | "different" | "unre
   lastRunFile = file;
   set({ file, filename: state.filename ?? file.name });
   return "ok";
-}
-
-export function resetSession(): void {
-  gen++;
-  lastRunFile = null;
-  state = empty();
-  emit();
 }
 
 /* ---- scenarios, rate sets, packages ------------------------------ */

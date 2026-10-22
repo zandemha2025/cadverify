@@ -26,6 +26,8 @@ import { SampleFlow } from "../home/sample-result";
 import { needsStoredCheck } from "@/lib/upload-limit";
 import { followServerCheck, startStoredCheck } from "./stored-check";
 import { StoredCheckView } from "./stored-check-view";
+import { checkContext, handoverHref, type CheckContext } from "./check-context";
+import { familyOf } from "../fix/problems";
 import "./part.css";
 
 export function liveMesh(s: CheckSession): MeshSource {
@@ -43,6 +45,11 @@ export function CheckPage() {
   const data = React.useMemo(() => (session ? liveData(session, null) : null), [session]);
   const mesh = React.useMemo(() => (session ? liveMesh(session) : null), [session]);
   const started = React.useRef(false);
+  // What the cost breakdown's Check another part (or an old issue link) carried: the
+  // material and quantity the next check prices with, or the problem to open.
+  const [carried, setCarried] = React.useState<CheckContext>({ material: null, qty: null, issue: null });
+  const carriedRef = React.useRef(carried);
+  const carriedFor = React.useRef<number | null>(null);
   // Design Studio's "Verify revision n" (?design=<id>&revision=<n>): the exact STEP revision, checked like an upload.
   const [design, setDesign] = React.useState<{ state: "loading" | "done" | "error"; name?: string; revision: number | null; detail?: string } | null>(null);
 
@@ -50,13 +57,18 @@ export function CheckPage() {
     setPicked(null);
     setDesign(null);
     setView("progress");
+    // The sample is the sample: it never takes the carried material or quantity.
+    const c = opts.sample ? null : carriedRef.current;
+    const materialClass = c?.material ?? undefined;
     if (!opts.sample && needsStoredCheck(f)) {
       setSid(null);
-      setStored(startStoredCheck(f));
+      setStored(startStoredCheck(f, { materialClass }));
       return;
     }
     setStored(null);
-    setSid(startCheck(f, opts));
+    const id = startCheck(f, { ...opts, materialClass, quantity: c?.qty ?? null });
+    carriedFor.current = c ? id : null;
+    setSid(id);
   }, []);
 
   // The sample never uses a check: the server knows its exact bytes, so it runs with none left.
@@ -67,6 +79,9 @@ export function CheckPage() {
   React.useEffect(() => {
     if (started.current) return;
     started.current = true;
+    const ctx = checkContext(window.location.search);
+    carriedRef.current = ctx;
+    setCarried(ctx);
     const f = takePendingFile();
     if (f) return begin(f);
     const search = window.location.search;
@@ -129,21 +144,23 @@ export function CheckPage() {
     if (!session?.key) return;
     const v = session.validation;
     if (v && (v.geometry.is_watertight || readsAsBodies(v, session.file.name)) && (session.status === "running" || session.status === "done")) {
-      router.replace(R.part(session.key));
+      // A check started with what the cost breakdown carried opens on Cost at that quantity (or on the carried problem).
+      const c = carriedFor.current === session.id ? carriedRef.current : null;
+      router.replace(c ? handoverHref(session.key, c, c.issue ? familyOf(c.issue).id : null) : R.part(session.key));
     }
-  }, [session?.key, session?.validation, session?.status, session?.file.name, router]);
+  }, [session?.key, session?.validation, session?.status, session?.file.name, session?.id, router]);
 
   if (stored != null) return <StoredCheckView id={stored} onPick={(file) => begin(file)} onRetried={setStored} />;
   const designBanner = design ? <DesignImportBanner state={design.state} name={design.name} revision={design.revision} detail={design.detail} onDismiss={design.state === "done" ? () => setDesign(null) : undefined} /> : null;
   if (!session) {
-    return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} notice={designBanner} />;
+    return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} notice={designBanner} carried={carried} />;
   }
   const f = session.failure;
   if (session.status === "assembly" && session.assembly) return <AssemblyView session={session} onPick={(file) => begin(file)} />;
   if (f?.kind === "quota")
     return (
       <>
-        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} />
+        <StartScreen file={null} onFile={(file) => setPicked(file)} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} carried={carried} />
         <OutOfChecks message={f.message} />
       </>
     );

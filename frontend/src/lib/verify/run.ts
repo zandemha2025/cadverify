@@ -34,6 +34,7 @@ import {
 } from "./service-conditions";
 import { readJsonOrNull, validationAllowsCost } from "./run-gates";
 import { resolvedAnnualVolume } from "./program-rollup";
+import { quantityLadderFor } from "./qty-ladder";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -49,6 +50,10 @@ export interface VerifyInput {
    *  its +Z is the build direction for printing and the opening direction for
    *  molding. Unset/null: the file's own axes. Same file, so no extra check. */
   orientation?: string | null;
+  /** An order quantity to price exactly (the one the cost breakdown showed when the
+   *  person chose Check another part): one of the six priced points, like a declared
+   *  annual volume. Unset: the standard ladder. */
+  quantity?: number | null;
 }
 
 /** What happened to `VerifyInput.declare`: "saved" (the record had none),
@@ -118,38 +123,10 @@ export interface VerifyResult {
   partContextError: string | null;
 }
 
-/** Log-spaced quantity ladder the scrub interpolates over — the crossover story
- *  needs real computed points on both sides of the tooling break-even.
- *  Capped at 6 points to honor the backend contract (`_MAX_QTYS = 6` in
- *  routes.py); these bracket the typical crossover (~1–2k) on both sides. */
-export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
-
-/** Keep the six-point engine contract while ensuring a declared annual volume
- *  becomes an exact computed point on the next verification. The closest
- *  interior ladder point is replaced because the declared point carries the
- *  same local curve information; the low/high anchors remain intact. */
-export function quantityLadderForAnnual(
-  annualVolume: number | null | undefined
-): number[] {
-  if (
-    annualVolume == null ||
-    !Number.isInteger(annualVolume) ||
-    annualVolume <= 0 ||
-    QTY_LADDER.includes(annualVolume)
-  ) {
-    return QTY_LADDER;
-  }
-  const replaceable = QTY_LADDER.slice(1, -1);
-  const nearest = replaceable.reduce((best, quantity) =>
-    Math.abs(Math.log(quantity) - Math.log(annualVolume)) <
-    Math.abs(Math.log(best) - Math.log(annualVolume))
-      ? quantity
-      : best
-  );
-  return [...QTY_LADDER.filter((quantity) => quantity !== nearest), annualVolume].sort(
-    (a, b) => a - b
-  );
-}
+// The six quantities a check prices (log-spaced, the backend's six-point limit)
+// live in qty-ladder.ts (pure, tested); declared volumes and a carried order
+// quantity become exact points on it.
+export { QTY_LADDER, quantityLadderFor, quantityLadderForAnnual } from "./qty-ladder";
 
 /**
  * POST /validate/cost directly so we can pass `owned_processes` (marginal
@@ -230,7 +207,7 @@ export async function retryVerificationCost(
   annualVolume?: number | null
 ): Promise<CostRetryResult> {
   const owned = ownedProcessesFrom(machines).filter((p) => KNOWN_ENGINE_PROCESSES.has(p));
-  const quantities = quantityLadderForAnnual(annualVolume);
+  const quantities = quantityLadderFor([annualVolume, input.quantity]);
   const costOut = await postCost(input, owned, quantities);
   return {
     cost: costOut.cost,
@@ -351,7 +328,7 @@ export async function runVerification(
   }
 
   const [floor, context] = await Promise.all([machinesPromise, contextPromise]);
-  const quantities = quantityLadderForAnnual(resolvedAnnualVolume(context.partContext));
+  const quantities = quantityLadderFor([resolvedAnnualVolume(context.partContext), input.quantity]);
 
   if (!validationAllowsCost(validationOut.v)) {
     return {

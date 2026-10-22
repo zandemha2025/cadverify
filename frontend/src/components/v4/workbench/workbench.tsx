@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * Cost breakdown (boards F3, F5, F7 to F9): the detail behind a part's Cost
+ * Cost breakdown (boards F3, F5, F7, F8): the detail behind a part's Cost
  * view, four tabs onto the same engine report, at /app/part/{key}/cost under
  * the part. `?tab=` picks the tab (summary | lines | compare | history; the
- * older decision and glass still work); without a part it's the F9 cold start.
- * The old DFM tab (`?tab=routing` or `dfm`) opens the part page's problem list,
- * so a part's problems live in one place. Tab moves use the history API, so
- * the session (file, results, overrides, scenarios) stays mounted.
+ * older decision and glass still work). The old DFM tab (`?tab=routing` or
+ * `dfm`) opens the part page's problem list, so a part's problems live in one
+ * place. A new part comes in through Check a part (Check another part in the
+ * header carries this part's material and quantity there). Tab moves use the
+ * history API, so the session (file, results, overrides, scenarios) stays
+ * mounted.
  */
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,9 +18,8 @@ import { usePalette, useRegisterPaletteItems } from "../palette";
 import { Failed, Loading } from "../ui";
 import { defaultQty } from "./derive";
 import { getWb, loadSaved, useWb } from "./session";
-import { WbHead, WbProviders, lastTab, rememberTab, tabOf, useWbNav, wbHref, WB_TABS, type WbTab } from "./chrome";
+import { WbHead, WbProviders, WbQtyCtx, lastTab, rememberTab, tabOf, useWbNav, wbHref, WB_TABS, type WbTab } from "./chrome";
 import { familyOf } from "../fix/problems";
-import { NewPart } from "./new-part";
 import { DecisionTab } from "./decision";
 import { GlassTab } from "./glass";
 import { CompareTab } from "./compare";
@@ -40,7 +41,7 @@ function Frame({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
-function Inner({ part }: { part: string | null }) {
+function Inner({ part }: { part: string }) {
   const sp = useSearchParams();
   const tabParam = sp.get("tab");
   const decisionId = sp.get("decision");
@@ -52,29 +53,20 @@ function Inner({ part }: { part: string | null }) {
   const asked = tabOf(tabParam);
 
   // The old DFM tab: the part's problems and processes are on its part page.
-  const toPart = part && asked === "routing";
+  const toPart = asked === "routing";
   React.useEffect(() => {
-    if (!toPart || !part) return;
+    if (!toPart) return;
     const issue = sp.get("issue")?.split("|")[0] ?? null;
     router.replace(`${R.part(part)}?${issue ? `problem=${encodeURIComponent(familyOf(issue).id)}` : "problems=all"}`);
   }, [toPart, part, sp, router]);
 
-  // Coming back to the cost breakdown with a part open resumes it.
-  const resume = React.useRef(!part && getWb().key && getWb().report ? getWb().key : null);
   React.useEffect(() => {
-    if (resume.current) nav(wbHref(asked && asked !== "routing" ? asked : lastTab(), resume.current), true);
-    resume.current = null;
-    // Only on arrival.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    if (part) void loadSaved(part, decisionId);
+    void loadSaved(part, decisionId);
   }, [part, decisionId]);
 
   // A part without a tab opens on the tab you used last.
   React.useEffect(() => {
-    if (part && !asked) {
+    if (!asked) {
       const extra: Record<string, string> = {};
       sp.forEach((v, k) => {
         if (k !== "tab" && k !== "part") extra[k] = v;
@@ -93,24 +85,15 @@ function Inner({ part }: { part: string | null }) {
   const setQty = React.useCallback((n: number) => setQtyState({ report: getWb().report, q: n }), []);
 
   React.useEffect(() => {
-    if (part && s.filename) palette.setCurrentPart({ label: s.filename, href: R.part(part) });
+    if (s.filename) palette.setCurrentPart({ label: s.filename, href: R.part(part) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part, s.filename]);
 
   useRegisterPaletteItems(
     "workbench",
-    part
-      ? WB_TABS.map((t) => ({ id: `wb-${t.tab}`, group: "This part", label: `Cost breakdown · ${t.label}`, sub: s.filename ?? undefined, href: wbHref(t.tab, part) }))
-      : [],
+    WB_TABS.map((t) => ({ id: `wb-${t.tab}`, group: "This part", label: `Cost breakdown · ${t.label}`, sub: s.filename ?? undefined, href: wbHref(t.tab, part) })),
   );
 
-  if (!part) {
-    return (
-      <Frame label="New part">
-        <NewPart />
-      </Frame>
-    );
-  }
   if (toPart) {
     return (
       <Frame label="Problems and processes">
@@ -155,16 +138,18 @@ function Inner({ part }: { part: string | null }) {
   const label = WB_TABS.find((t) => t.tab === tab)?.label ?? "Cost breakdown";
   return (
     <Frame label={label}>
-      {tab === "decision" ? <DecisionTab {...props} /> : null}
-      {tab === "glass" ? <GlassTab {...props} /> : null}
-      {tab === "compare" ? <CompareTab {...props} /> : null}
-      {tab === "history" ? <HistoryTab {...props} /> : null}
+      <WbQtyCtx.Provider value={q}>
+        {tab === "decision" ? <DecisionTab {...props} /> : null}
+        {tab === "glass" ? <GlassTab {...props} /> : null}
+        {tab === "compare" ? <CompareTab {...props} /> : null}
+        {tab === "history" ? <HistoryTab {...props} /> : null}
+      </WbQtyCtx.Provider>
     </Frame>
   );
 }
 
-/** `part`: the mesh hash from the path (/app/part/{key}/cost); null on the cold start. */
-export function Workbench({ part }: { part: string | null }) {
+/** `part`: the mesh hash from the path (/app/part/{key}/cost). */
+export function Workbench({ part }: { part: string }) {
   return (
     <WbProviders>
       <Inner part={part} />

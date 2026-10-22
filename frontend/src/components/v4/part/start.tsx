@@ -13,6 +13,8 @@ import { useShell } from "../shell";
 import { checkedBefore } from "../onboard/checked";
 import { FileTrustLine } from "../trust/file-line";
 import { CAD_LIMIT, needsStoredCheck, overCadLimit, overCadLimitText } from "@/lib/upload-limit";
+import { contextLine, type CheckContext } from "./check-context";
+import { LENSES } from "./ctx";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`;
@@ -33,6 +35,7 @@ export function StartScreen({
   onCheck,
   onSample,
   notice,
+  carried,
 }: {
   file: File | null;
   onFile: (f: File) => void;
@@ -40,6 +43,8 @@ export function StartScreen({
   onCheck: () => void;
   onSample: () => void;
   notice?: React.ReactNode;
+  /** What the cost breakdown's Check another part (or an old issue link) carried. */
+  carried?: CheckContext;
 }) {
   const { usage } = useShell();
   const [over, setOver] = React.useState(false);
@@ -81,8 +86,9 @@ export function StartScreen({
     ["First part", "The sample or your own file.", checked == null ? null : checked > 0, null],
     ["Service conditions", "Rules out materials that won't survive heat, pressure or chemicals.", null, R.setup],
     ["Machines and printers", "Answers name the machine and use your rates.", machines == null ? null : machines > 0, R.shop],
-    ["Real costs", "A method’s range turns measured with 3 held-out jobs; recalibration needs 8.", null, R.actuals],
+    ["Actual costs", "A process’s range turns measured with 3 held-out jobs; recalibration needs 8.", null, R.actuals],
   ];
+  const carriedLine = carried ? contextLine(carried) : null;
   const done = steps.filter((s) => s[2] === true).length;
   const nowIdx = steps.findIndex((s) => s[2] !== true);
   return (
@@ -95,6 +101,7 @@ export function StartScreen({
             {checksLine}
             {rates ? <span>{rates}</span> : null}
             {machines != null ? <span>{machines ? `${machines} machine${machines === 1 ? "" : "s"}` : "No machines yet"}</span> : null}
+            {carriedLine ? <span className="carried">From the cost breakdown: {carriedLine}</span> : null}
           </p>
         </div>
         {notice ? <div style={{ position: "absolute", left: "calc(33% - 300px)", width: 600, top: 96, zIndex: 3 }}>{notice}</div> : null}
@@ -148,6 +155,11 @@ export function StartScreen({
               <span>The sample doesn’t use a check.</span>
             </>
           )}
+          {carried?.issue ? (
+            <span className="carried-issue" role="note">
+              <b>Issue link · {carried.issue}</b> Check the same file to open that problem on its part. The link doesn’t contain the file.
+            </span>
+          ) : null}
           <FileTrustLine />
           <input
             ref={input}
@@ -219,15 +231,9 @@ export function StartScreen({
           ) : null}
         </div>
       </aside>
-      <div className="dial preview" aria-label="The five answers every part gets" role="group">
-        {[
-          ["Make", "how"],
-          ["Cost", "how many"],
-          ["Use", "where"],
-          ["Shop", "your machines"],
-          ["Decide", "what next"],
-        ].map(([a, b]) => (
-          <span key={a}>
+      <div className="dial preview" aria-label="The five views every part gets" role="group">
+        {LENSES.map(([k, a, b]) => (
+          <span key={k}>
             {a}
             <small>{b}</small>
           </span>

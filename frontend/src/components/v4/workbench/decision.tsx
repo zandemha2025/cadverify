@@ -42,7 +42,7 @@ import {
 import { findPackage, markShared, recost, retryCost, setPackage, useShops, useWb, type WbState } from "./session";
 import { Dialog, WbHead, WbLink, useNeedFile, useToast, wbHref } from "./chrome";
 import { familyOf } from "../fix/problems";
-import { OptionsForm } from "./new-part";
+import { OptionsForm } from "./options-form";
 import { Turntable } from "./turntable";
 import { daysRange, materialName, money, qtyListText, qtyText } from "./words";
 import type { TabProps } from "./workbench";
