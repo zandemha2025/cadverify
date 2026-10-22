@@ -219,3 +219,28 @@ def test_a_real_rib_is_measured_and_judged():
     assert "20mm tall" in molding.message
 
 
+# ── M11: the pull direction a check assumed, and a turned re-check ──────────
+def test_a_turned_recheck_uses_that_orientation_for_the_pull_and_says_so():
+    from src.analysis.orientation import Orientation, rotation_down
+
+    # A cup with 3-degree drafted walls, drawn lying on its side: its walls
+    # run along the file's X axis, its opening facing +X.
+    outer = trimesh.creation.cone(radius=30, height=400, sections=128)
+    outer = _diff(outer, _box((200, 200, 400), at=(-100, -100, 40)))  # a 40 mm frustum
+    inner = outer.copy()
+    inner.apply_scale(0.8)
+    inner.apply_translation((0, 0, 8.01))
+    cup = _diff(outer, inner)
+    side = cup.copy()
+    side.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, (0, 1, 0)))
+    as_drawn = _issues(_ctx(side), "injection_molding")
+    draft = next(i for i in as_drawn if i.code == "INSUFFICIENT_DRAFT")
+    assert "the file's +Z" in draft.message
+    # Re-check with the file's -X side down (+X up): the tool now opens along the walls.
+    turned = Orientation.of(rotation_down([-1.0, 0.0, 0.0])).apply(side)
+    after = _issues(_ctx(turned), "injection_molding")
+    assert "INSUFFICIENT_DRAFT" not in {i.code for i in after}
+    undercut = [i for i in after if i.code == "UNDERCUT_MOLDING"]
+    assert all("the file's +X" in i.message for i in undercut)
+
+

@@ -922,13 +922,14 @@ def check_draft_angles(
     smallest = _shown_draft(float(flagged_draft.min()), min_draft_deg)
     groups = _draft_groups(ctx, no_draft_faces, flagged_draft, min_draft_deg)
     breakdown = (" (" + ", ".join(f"{name} {value:.1f}°" for name, value in groups) + ")") if groups else ""
+    pull = _pull_direction(ctx)
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         measurement_unit="deg",
         severity=Severity.ERROR,
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-            f"below {min_draft_deg}° draft for {process.value}. "
+            f"below {min_draft_deg}° draft for {process.value}, with the tool opening along {pull}. "
             f"Smallest draft: {smallest:.1f}°{breakdown}."
         ),
         process=process,
@@ -936,10 +937,18 @@ def check_draft_angles(
         measured_value=smallest,
         required_value=min_draft_deg,
         fix_suggestion=(
-            f"Add >= {min_draft_deg}° draft to all walls in pull direction. {cite}"
+            f"Add >= {min_draft_deg}° draft to all walls along the pull direction ({pull}), "
+            f"or check the part turned so the tool opens along its drafted walls. {cite}"
         ),
         citation=parse_citation(cite),
     )]
+
+
+def _pull_direction(ctx: GeometryContext) -> str:
+    """The file direction this check took as the pull (or build) direction."""
+    from src.analysis.orientation import direction_in_file
+
+    return direction_in_file(ctx.mesh)
 
 
 def _shown_draft(value: float, limit: float) -> float:
@@ -1197,7 +1206,7 @@ def check_undercuts_molding(
         severity=Severity.WARNING,
         message=(
             f"{len(uc_faces)} faces form undercuts requiring side actions "
-            f"in {process.value} tooling."
+            f"in {process.value} tooling, with the mold opening along {_pull_direction(ctx)}."
         ),
         process=process,
         affected_faces=uc_faces.tolist(),

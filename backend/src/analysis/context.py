@@ -1525,8 +1525,9 @@ def _maybe_decimate(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, dict | None
         "via base_analyzer.decimation_issue.",
         n, len(reduced.faces), strategy, cap,
     )
-    if "coordinate_error" in mesh.metadata:
-        reduced.metadata["coordinate_error"] = mesh.metadata["coordinate_error"]
+    for key in ("coordinate_error", "placed_up_in_file"):
+        if key in mesh.metadata:
+            reduced.metadata[key] = mesh.metadata[key]
     return reduced, {
         "attempted": True,
         "succeeded": True,

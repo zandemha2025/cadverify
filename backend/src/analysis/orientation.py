@@ -75,6 +75,20 @@ _AXES = {"x": 0, "y": 1, "z": 2}
 _AXIS_NAMES = ("X", "Y", "Z")
 
 
+# Mesh metadata: the file direction that points up in a turned copy.
+PLACED_UP_KEY = "placed_up_in_file"
+
+
+def direction_in_file(mesh: trimesh.Trimesh) -> str:
+    """The file direction a check reads as up: the build direction for printing,
+    the direction the tool opens for molding and casting ("the file's +Z")."""
+    up = (mesh.metadata or {}).get(PLACED_UP_KEY)
+    if up is None:
+        return "the file's +Z"
+    v = np.asarray(up, dtype=float)
+    return "the file's " + (_axis_name(v) or _fmt_dir(v))
+
+
 class OrientationError(ValueError):
     """The orientation asked for can't be used (shown to the caller as a 400)."""
 
@@ -226,8 +240,14 @@ class Orientation:
         return f"Tilted: file direction {_fmt_dir(self.up)} up"
 
     def apply(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
-        """A turned copy with the same faces in the same order. The file mesh is untouched."""
-        return _turn(mesh, self.R)
+        """A turned copy with the same faces in the same order. The file mesh is untouched.
+
+        The copy remembers which file direction now points up, so findings that
+        read the build or pull direction can name it (``pull_direction_label``).
+        """
+        out = _turn(mesh, self.R)
+        out.metadata[PLACED_UP_KEY] = [float(c) for c in self.up]
+        return out
 
     def unapply(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         return _turn(mesh, self.R.T)
