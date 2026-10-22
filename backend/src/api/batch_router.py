@@ -128,7 +128,9 @@ def _apply_catalog_meta(
         it["material_class"] = cls
         if row is not None:
             per_file[it["filename"]] = {
-                k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class", "material_note", "row")
+                k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class",
+                                        "material_note", "row", "part_specs")
+                if k != "part_specs" or row.get(k)
             }
     manifest_json = dict(batch.manifest_json or {})
     manifest_json["catalog"] = {
@@ -360,7 +362,12 @@ async def create_batch(
     parts_list: list[dict] | None = None
     if catalog_run is not None and manifest_bytes is not None:
         try:
-            parts_list = catalog_run_service.parse_parts_list(_decode_text(manifest_bytes))
+            list_text = _decode_text(manifest_bytes)
+            parts_list = catalog_run_service.parse_parts_list(list_text)
+            # Finish, Ra, heat treatment, inspection and certification columns.
+            from src.services import parts_list_specs
+
+            parts_list = parts_list_specs.attach(parts_list, list_text)
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,

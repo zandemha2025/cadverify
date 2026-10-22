@@ -1425,6 +1425,25 @@ async def _run_catalog_item(session, batch, item) -> dict:
         )
 
 
+async def _declare_list_specs(session, org_id: str, user_id: int, file_bytes: bytes, specs: dict) -> None:
+    """Store a parts-list row's specs on the part's context (best effort, never breaks a run)."""
+    import copy
+
+    from src.services import cost_decision_service, part_context_service as pcs
+    from src.services.analysis_service import compute_mesh_hash
+
+    mesh_hash = compute_mesh_hash(file_bytes)
+    try:
+        async with session.begin_nested():
+            before = copy.deepcopy(pcs.engine_inputs(await pcs.get_context(session, org_id, mesh_hash)))
+            row = await pcs.upsert_context(session, org_id, mesh_hash, {"part_specs": specs}, created_by=user_id)
+            for reason in pcs.changed_input_reasons(before, pcs.engine_inputs(row))[:1]:
+                await cost_decision_service.mark_part_decisions_stale(session, org_id, mesh_hash, reason=reason)
+        await session.commit()
+    except Exception:
+        logger.warning("parts-list specs not stored for org %s part %.12s", org_id, mesh_hash, exc_info=True)
+
+
 async def _check_catalog_part(
     session, batch, item, file_bytes: bytes, user, *, batch_id: int, batch_org_id: str,
     batch_user_id: int, free_run: bool, item_id: int, item_ulid: str, item_filename: str,
@@ -1468,6 +1487,14 @@ async def _check_catalog_part(
         headers=Headers({"content-type": "application/octet-stream"}),
     )
     qty = ",".join(t for t in item_quantities.split(";") if t.strip()) or "1,100,1000,2000,5000,10000"
+    # The parts list's specs for this file become the part's declared specs, so
+    # the price, the gates and the part's page all read them (the newest
+    # declaration wins, as on the part's page).
+    from src.services.catalog_run_service import run_meta
+
+    list_specs = (((run_meta(batch).get("items") or {}).get(item_filename) or {}).get("part_specs"))
+    if list_specs:
+        await _declare_list_specs(session, batch_org_id, batch_user_id, file_bytes, list_specs)
     geometry_invalid: str | None = None
     decision_id = None
     try:

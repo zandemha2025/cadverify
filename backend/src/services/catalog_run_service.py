@@ -31,6 +31,7 @@ import csv
 import io
 import os
 import re
+from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
 from sqlalchemy import and_, literal_column, select
@@ -371,13 +372,16 @@ def derive_part_row(
     meta: Optional[dict],
     machines: list[dict],
     default_quantity: int,
+    governance: Optional[dict] = None,
 ) -> dict:
     """One part on the board: bucket, reason, resources first, price second.
 
     ``item``: the batch item's ``ulid``, ``filename``, ``status``,
     ``error_message``, ``duration_ms``. ``analysis`` / ``decision``: ``{ulid,
     mesh_hash, result_json}`` or None. ``meta``: the parts-list row for this
-    file. ``machines``: the org's ``{name, process}`` list. Pure.
+    file. ``machines``: the org's ``{name, process}`` list. ``governance``: the
+    record's outcome and sign-off fields (``governance_fields`` shape plus
+    ``signers``: ``{user_id: name}``), or None. Pure.
     """
     meta = meta or {}
     qty = int(meta.get("quantity") or default_quantity)
@@ -425,7 +429,22 @@ def derive_part_row(
         "cheaper_outside": None,
         "duration_ms": item.get("duration_ms"),
         "error": None,
+        # The part's declared specs as the run priced them (the record's specs
+        # block), else as the parts list declared them: plain lines and the
+        # certifications whoever makes it must hold.
+        "specs": _row_specs(result.get("specs"), meta.get("part_specs")),
+        # The outcome recorded on the part's record and its sign-off, said
+        # plainly when what was signed off has changed since.
+        "outcome": None,
+        "signoff": None,
+        "record_out_of_date": False,
     }
+    if decision is not None and governance:
+        from src.services.signoff_service import signoff_view
+
+        row["outcome"] = governance.get("user_disposition")
+        row["signoff"] = signoff_view(governance, governance.get("signers") or {})
+        row["record_out_of_date"] = bool(governance.get("is_stale"))
 
     if status in ("pending", "queued", "processing"):
         row["bucket"] = "checking"
@@ -562,6 +581,24 @@ def derive_part_row(
     return row
 
 
+def _row_specs(block: Any, declared: Any) -> Optional[dict]:
+    from src.costing.part_specs import normalize_part_specs, required_certifications, spec_summary
+
+    if isinstance(block, dict) and block.get("summary"):
+        return {"summary": list(block.get("summary") or []),
+                "supplier_must_hold": [c.get("label") for c in block.get("certifications") or [] if isinstance(c, dict)],
+                "excluded_processes": list(block.get("excluded_processes") or [])}
+    try:
+        specs = normalize_part_specs(declared) if isinstance(declared, dict) else None
+    except ValueError:
+        specs = None
+    if not specs:
+        return None
+    return {"summary": spec_summary(specs),
+            "supplier_must_hold": [c["label"] for c in required_certifications(specs)],
+            "excluded_processes": []}
+
+
 def bucket_totals(rows: list[dict]) -> dict:
     """Per bucket: parts, quantity, machine hours, material kg (the parts' own mass, and
     the material the engine charges for) and cost at quantity.
@@ -685,7 +722,7 @@ def run_meta(batch: Batch) -> dict:
 # Other keys are kept exactly as stored (present, absent or JSON null), so a row
 # reads the same as from the whole record (tests/test_catalog_run_e2e.py
 # compares them).
-_BOARD_DECISION_KEYS = ("status", "reason", "verification", "geometry")
+_BOARD_DECISION_KEYS = ("status", "reason", "verification", "geometry", "specs")
 _BOARD_DECISION_BLOCK_KEYS = ("recommendation", "make_now_process")
 _BOARD_ESTIMATE_KEYS = ("process", "quantity", "material", "unit_cost_usd", "dfm_ready", "dfm_blockers")
 _BOARD_DRIVERS = ("cycle_time", "machine_cost", "owned_in_house", "material_cost")
@@ -739,6 +776,8 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
             Analysis.ulid, Analysis.mesh_hash,
             CostDecision.ulid, CostDecision.mesh_hash,
             literal_column(_BOARD_DECISION_SQL, type_=JSONB),
+            CostDecision.user_disposition, CostDecision.approval_status, CostDecision.approved_by_user_id,
+            CostDecision.approved_at, CostDecision.approval_note, CostDecision.stale_at, CostDecision.stale_reason,
         )
         .select_from(BatchItem)
         .outerjoin(Analysis, and_(BatchItem.analysis_id == Analysis.id, Analysis.org_id == BatchItem.org_id))
@@ -749,9 +788,20 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
     machines = await _org_machines(session, batch.org_id)
     per_file = meta.get("items") or {}
     default_qty = int(meta.get("quantity") or DEFAULT_RUN_QUANTITY)
+    from src.services import signoff_service
+
+    signers = await signoff_service.names_for(session, [it[12] for it in items])
+    now = datetime.now(timezone.utc)
     rows = []
     for (item_ulid, filename, status, error_message, duration_ms,
-         analysis_ulid, analysis_hash, decision_ulid, decision_hash, decision_slice) in items:
+         analysis_ulid, analysis_hash, decision_ulid, decision_hash, decision_slice,
+         disposition, approval, signer, signed_at, signoff_note, stale_at, stale_reason) in items:
+        if stale_at is not None and stale_at.tzinfo is None:
+            stale_at = stale_at.replace(tzinfo=timezone.utc)
+        gov = {"approval_status": approval, "approved_by_user_id": signer,
+               "approved_at": signed_at.isoformat() if signed_at else None, "approval_note": signoff_note,
+               "is_stale": stale_at is not None and stale_at <= now, "stale_reason": stale_reason,
+               "stale_at": stale_at.isoformat() if stale_at else None}
         rows.append(derive_part_row(
             item={"ulid": item_ulid, "filename": filename, "status": status,
                   "error_message": error_message, "duration_ms": duration_ms},
@@ -761,6 +811,7 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
             meta=per_file.get(filename),
             machines=machines,
             default_quantity=default_qty,
+            governance={**gov, "user_disposition": disposition, "signers": signers},
         ))
     return {
         "batch_id": batch.ulid,
@@ -779,6 +830,9 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
     }
 
 
+OUTCOME_WORDS = {"inhouse": "Make in-house", "outside": "Make outside",
+                 "acquire": "Acquire capability", "redesign": "Redesign"}
+
 BUCKET_WORDS = {
     "in_house": "Make in-house",
     "outside": "Buy outside",
@@ -792,7 +846,8 @@ BUCKET_WORDS = {
 CSV_HEADER = (
     "file,part_number,bucket,reason,route,machine,owned,material,declared_material,quantity,"
     "machine_hours_each,machine_hours_total,part_mass_kg_each,material_kg_total,"
-    "unit_cost_usd,total_cost_usd,price_note,status,error,material_used_kg_each,material_used_kg_total\n"
+    "unit_cost_usd,total_cost_usd,price_note,status,error,material_used_kg_each,material_used_kg_total,"
+    "specs,supplier_must_hold,outcome,signed_off_by,signed_off_at,signoff_out_of_date\n"
 )
 
 
@@ -823,4 +878,9 @@ def board_csv_rows(board: dict) -> Iterable[str]:
             f(r.get("hours_each")), f(r.get("hours_total")), f(mat.get("mass_kg_each")), f(r.get("mass_kg_total")),
             f(r.get("unit_cost_usd")), f(r.get("total_cost_usd")), f(note), f(r.get("status")), f(r.get("error")),
             f(mat.get("used_kg_each")), f(r.get("used_kg_total")),
+            f("; ".join((r.get("specs") or {}).get("summary") or []) or None),
+            f("; ".join((r.get("specs") or {}).get("supplier_must_hold") or []) or None),
+            f(OUTCOME_WORDS.get(r.get("outcome"), r.get("outcome"))),
+            f((r.get("signoff") or {}).get("by")), f((r.get("signoff") or {}).get("at")),
+            f((r.get("signoff") or {}).get("stale")) if r.get("signoff") else "",
         ]) + "\n"

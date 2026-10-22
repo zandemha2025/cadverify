@@ -1,0 +1,128 @@
+"""Part specs in a catalog run's parts list (``src.services.parts_list_specs``).
+
+Unit: column names and cell words map to the spec vocabulary; anything ScaleCAD
+can't read names its row; a bare Ra needs a unit. End to end (live Postgres): a
+run's parts list declares specs per file, they are stored on each part's context
+and the part's record is priced and gated with them.
+"""
+from __future__ import annotations
+
+import os
+
+import pytest
+
+from src.services.catalog_run_service import parse_parts_list
+from src.services.parts_list_specs import attach, parse_spec_cells
+
+
+def _rows(text: str) -> list[dict]:
+    return attach(parse_parts_list(text), text)
+
+
+def test_a_list_without_spec_columns_is_unchanged():
+    text = "file,qty,material\na.step,10,6061\n"
+    assert _rows(text) == parse_parts_list(text)
+    assert "part_specs" not in _rows(text)[0]
+
+
+def test_spec_columns_map_loose_words_to_the_vocabulary():
+    text = ("Part Number;File;Qty;Surface finish;Ra (µin);Heat treat;Inspection;Certifications\n"
+            "BRK-1;a.step;10;Type II anodize + bead blast;32;stress relieve;FAI;AS9100, NADCAP (heat treating), ITAR\n"
+            "BRK-2;b.step;5;hard coat;;Q&T;CMM report, 100%;ISO 9001\n"
+            "BRK-3;c.step;5;;;;;\n")
+    a, b, c = _rows(text)
+    assert a["part_specs"] == {
+        "finishes": ["anodize_ii", "bead_blast"], "heat_treatments": ["stress_relief"],
+        "inspection": ["fai_as9102"], "certifications": ["as9100", "nadcap", "itar"],
+        "nadcap_processes": ["heat_treating"], "ra_um": pytest.approx(32 * 0.0254), "ra_unit": "uin"}
+    assert b["part_specs"] == {"finishes": ["anodize_iii"], "heat_treatments": ["quench_temper"],
+                               "inspection": ["cmm_report", "full_100"], "certifications": ["iso9001"]}
+    assert "part_specs" not in c
+
+
+@pytest.mark.parametrize("cells, header_unit, expect", [
+    ({"ra": "0.8 µm"}, None, (0.8, "um")),
+    ({"ra": "Ra 1.6um"}, None, (1.6, "um")),
+    ({"ra": "63 microinch"}, None, (pytest.approx(63 * 0.0254), "uin")),
+    ({"ra": "3.2"}, "um", (3.2, "um")),
+])
+def test_ra_cells_with_a_unit(cells, header_unit, expect):
+    specs = parse_spec_cells(cells, 2, ra_header_unit=header_unit)
+    assert (specs["ra_um"], specs["ra_unit"]) == expect
+
+
+@pytest.mark.parametrize("cells, words", [
+    ({"ra": "32"}, "needs a unit"),
+    ({"ra": "smooth"}, "isn't a number"),
+    ({"finish": "gold leaf"}, "finish 'gold leaf' isn't one ScaleCAD knows"),
+    ({"heat": "cryo"}, "heat treatment 'cryo'"),
+    ({"certs": "NADCAP"}, "NADCAP needs the special process"),
+    ({"finish": "as machined, anodize"}, "as_machined means no finish"),
+])
+def test_what_it_cant_read_names_the_row(cells, words):
+    with pytest.raises(ValueError, match="Row 7") as exc:
+        parse_spec_cells(cells, 7)
+    assert words in str(exc.value)
+
+
+def test_nadcap_without_a_named_process_takes_it_from_the_finish():
+    specs = parse_spec_cells({"finish": "passivate", "certs": "NADCAP"}, 2)
+    assert specs["certifications"] == ["nadcap"] and "nadcap_processes" not in specs
+
+
+# ── end to end: a catalog run whose parts list declares specs ────────────────
+
+_PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
+
+
+@pytest.mark.skipif(not _PG, reason="requires PostgreSQL at schema head")
+@pytest.mark.asyncio
+async def test_a_runs_parts_list_specs_price_and_gate_each_part(world):
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from tests.test_catalog_run_e2e import _as, _post, _run_all, _stl
+
+    app, uid = world["app"], world["users"]["work"]
+    _as(app, uid)
+    files = {"a.stl": _stl((40, 30, 20), seed=11), "b.stl": _stl((40, 30, 20), seed=12)}
+    parts_list = ("File,Qty,Material,Finish,Ra (um),Certifications\n"
+                  "a.stl,10,6061-T6,Type II anodize,,AS9100\n"
+                  "b.stl,10,PLA,,0.4,\n")
+    r = await _post(app, files, parts_list=parts_list, quantity=10)
+    assert r.status_code == 202, r.text
+    await _run_all(r.json()["batch_id"])
+    async with eng.get_session_factory()() as s:
+        ctx = dict((await s.execute(text(
+            "SELECT d.filename, c.part_specs FROM part_contexts c JOIN cost_decisions d "
+            "ON d.org_id = c.org_id AND d.mesh_hash = c.mesh_hash WHERE c.org_id = :o"), {"o": world["org"]})).all())
+        results = dict((await s.execute(text(
+            "SELECT filename, result_json FROM cost_decisions WHERE org_id = :o"), {"o": world["org"]})).all())
+    assert ctx["a.stl"] == {"finishes": ["anodize_ii"], "certifications": ["as9100"]}
+    assert ctx["b.stl"] == {"ra_um": 0.4, "ra_unit": "um"}
+    a = results["a.stl"]
+    assert a["specs"]["certifications"][0]["label"] == "AS9100"
+    cnc = next(e for e in a["estimates"] if e["process"] == "cnc_3axis")
+    assert "spec_anodize_ii" in cnc["line_items"]
+    # The Haas is owned, but whether the shop holds AS9100 or anodizes isn't declared: can't confirm.
+    assert a["verification"]["per_route"]["cnc_3axis"]["verdict"] == "unknown"
+    b = results["b.stl"]
+    fdm = [e for e in b["estimates"] if e["process"] == "fdm"]
+    assert fdm and all(e["spec_excluded"] for e in fdm)
+    assert b["verification"]["per_route"]["fdm"]["verdict"] == "not_makeable"
+
+
+@pytest.mark.skipif(not _PG, reason="requires PostgreSQL at schema head")
+@pytest.mark.asyncio
+async def test_a_parts_list_spec_it_cant_read_is_a_clean_400(world):
+    from tests.test_catalog_run_e2e import _as, _post, _stl
+
+    _as(world["app"], world["users"]["work"])
+    r = await _post(world["app"], {"a.stl": _stl((10, 10, 10))}, parts_list="file,qty,finish\na.stl,1,gold leaf\n")
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "INVALID_PARTS_LIST"
+    assert "Row 2: finish 'gold leaf'" in r.json()["detail"]["message"]
+
+
+# The live-Postgres fixture of the catalog run tests.
+from tests.test_catalog_run_e2e import world  # noqa: E402,F401

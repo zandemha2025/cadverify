@@ -1,6 +1,9 @@
 """Pure parts of the catalog run: parts lists, materials, quantities, board rows, CSV."""
 from __future__ import annotations
 
+import csv
+import io
+
 import pytest
 
 from src.services import catalog_run_service as cr
@@ -265,7 +268,10 @@ def test_a_row_carries_the_material_used_next_to_the_part_mass():
     assert r["material"]["used_kg_each"] == 0.0518 and r["used_kg_total"] == pytest.approx(0.518)
     assert r["material"]["mass_kg_each"] == pytest.approx(0.785)  # 100 cm³ × 7.85 g/cm³, the part itself
     line = list(cr.board_csv_rows({"rows": [r]}))[1]
-    assert line.rstrip("\n").endswith(",0.0518,0.518")
+    head = cr.CSV_HEADER.rstrip("\n").split(",")
+    cells = next(csv.reader(io.StringIO(line)))
+    assert cells[head.index("material_used_kg_each")] == "0.0518"
+    assert cells[head.index("material_used_kg_total")] == "0.518"
 
 
 def _brow(bucket, *, machine=None, process=None, owned=False, hours=None, material=None, used=None, part=None, cap=None):
@@ -302,3 +308,55 @@ def test_breakdown_sums_hours_by_machine_material_by_grade_and_what_is_missing()
         ("cnc_3axis", "material", "Delrin (POM)", 2, 3.0), ("cnc_turning", "envelope", None, 1, None)]
     assert b["cant_make"] == {"machines": [], "materials": [], "missing": []}
     assert b["checking"] == {"machines": [], "materials": [], "missing": []}
+
+
+# ── part specs and the sign-off on the board ──────────────────────────────────
+def test_a_row_carries_the_specs_the_run_priced_with():
+    d = _decision("makeable_outsource_only", estimates=[_est("cnc_3axis", 10, 30.0)])
+    d["result_json"]["specs"] = {"summary": ["Finish: Anodize, Type II", "Inspection: Standard inspection",
+                                             "Supplier must hold: AS9100"],
+                                 "certifications": [{"key": "as9100", "label": "AS9100", "shop_op": "as9100"}],
+                                 "excluded_processes": ["fdm"]}
+    r = _row(d)
+    assert r["specs"] == {"summary": ["Finish: Anodize, Type II", "Inspection: Standard inspection",
+                                      "Supplier must hold: AS9100"],
+                          "supplier_must_hold": ["AS9100"], "excluded_processes": ["fdm"]}
+    # Not yet priced: the parts list's declaration shows.
+    r = _row(None, meta={"part_specs": {"heat_treatments": ["hip"], "certifications": ["itar"]}},
+             item={**ITEM, "status": "pending"})
+    assert r["specs"]["supplier_must_hold"] == ["ITAR registration"]
+    assert r["specs"]["summary"][0] == "Heat treatment: HIP (hot isostatic pressing)"
+    assert _row(d, meta={})["specs"] is not None and _row(_decision("makeable_outsource_only", estimates=[]))["specs"] is None
+
+
+def test_csv_adds_specs_outcome_and_signoff_columns():
+    row = {"filename": "a.stl", "bucket": "outside", "quantity": 10, "material": {},
+           "specs": {"summary": ["Finish: Anodize, Type II", "Inspection: Standard inspection"],
+                     "supplier_must_hold": ["AS9100", "ITAR registration"]},
+           "outcome": "outside",
+           "signoff": {"by": "Ada Admin", "at": "2026-10-22T10:00:00+00:00", "stale": True}}
+    head = cr.CSV_HEADER.rstrip("\n").split(",")
+    assert head[-6:] == ["specs", "supplier_must_hold", "outcome", "signed_off_by", "signed_off_at",
+                         "signoff_out_of_date"]
+    cells = next(csv.reader(io.StringIO(list(cr.board_csv_rows({"rows": [row]}))[1])))
+    got = dict(zip(head, cells))
+    assert got["specs"] == "Finish: Anodize, Type II; Inspection: Standard inspection"
+    assert got["supplier_must_hold"] == "AS9100; ITAR registration"
+    assert (got["outcome"], got["signed_off_by"], got["signoff_out_of_date"]) == ("Make outside", "Ada Admin", "yes")
+    bare = dict(zip(head, next(csv.reader(io.StringIO(list(cr.board_csv_rows({"rows": [{**row, "specs": None,
+                                                                                         "outcome": None, "signoff": None}]}))[1])))))
+    assert (bare["specs"], bare["outcome"], bare["signed_off_by"], bare["signoff_out_of_date"]) == ("", "", "", "")
+
+
+def test_a_row_carries_the_outcome_and_a_signoff_that_went_out_of_date():
+    d = _decision("makeable_outsource_only", estimates=[_est("cnc_3axis", 10, 30.0)])
+    gov = {"user_disposition": "outside", "approval_status": "approved", "approved_by_user_id": 7,
+           "approved_at": "2026-10-22T10:00:00+00:00", "approval_note": None, "is_stale": True,
+           "stale_reason": "rate_library_published:v3", "stale_at": "2026-10-22T11:00:00+00:00", "signers": {7: "Ada"}}
+    r = cr.derive_part_row(item=ITEM, analysis=None, decision=d, meta=None, machines=MACHINES,
+                           default_quantity=10, governance=gov)
+    assert r["outcome"] == "outside" and r["record_out_of_date"] is True
+    assert r["signoff"]["by"] == "Ada" and r["signoff"]["stale"] is True
+    assert r["signoff"]["stale_reason"] == "rate_library_published:v3"
+    plain = _row(d)
+    assert (plain["outcome"], plain["signoff"], plain["record_out_of_date"]) == (None, None, False)
