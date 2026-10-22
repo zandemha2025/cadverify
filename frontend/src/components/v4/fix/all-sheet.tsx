@@ -179,7 +179,7 @@ export function AllProblemsSheet() {
             </span>
           ) : null}
         </div>
-        <p className="krule2">New lowest price first, then processes added, then warnings cleared · prices if redesigned · a row opens the problem on the part</p>
+        <p className="krule2">New lowest price first, then processes added, then warnings cleared · prices if redesigned</p>
       </div>
       <div className="scroll">
         {!n ? (
