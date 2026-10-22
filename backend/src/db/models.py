@@ -390,7 +390,13 @@ class AuthIdentity(Base):
 
 class ApiKey(Base):
     __tablename__ = "api_keys"
-    __table_args__ = (Index("ix_api_keys_org_id", "org_id"),)
+    __table_args__ = (
+        Index("ix_api_keys_org_id", "org_id"),
+        CheckConstraint(
+            "scope IS NULL OR scope IN ('read', 'read_write')",
+            name="ck_api_keys_scope",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -410,6 +416,13 @@ class ApiKey(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    # 0061: 'read' (GET/HEAD/OPTIONS only) or 'read_write'; NULL is read and
+    # write (keys made before 0061). A viewer's key is read only regardless.
+    scope: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 0061: when the key stops working; NULL never expires.
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
 
