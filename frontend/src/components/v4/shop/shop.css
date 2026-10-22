@@ -4,6 +4,8 @@
 
 /* phone: the foundation (World "page") keeps the stage as a background; content flows */
 @media (max-width:900px){.ob .shp .content{overflow:visible}}
+/* desktop: the content starts under the page head as drawn (ShopWorld measures it), never under its tab row */
+@media (min-width:901px){.ob .shp .content{top:max(132px,var(--shp-head,132px))}}
 
 .ob .shp .fh{font-size:12px;line-height:1.45;color:var(--ink3)}
 .ob .shp .err{font-size:12px;color:var(--bad)}

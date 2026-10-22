@@ -19,9 +19,25 @@ import "./shop.css";
 /* ------------------------------------------------------------------ */
 
 export function ShopWorld({ label, children }: { label: string; children: React.ReactNode }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  // On desktop the content sits at a fixed offset under the page head; a head that
+  // wraps (a long rate card chip, the buttons on two rows) would run its tab row over
+  // the first line of content, so the content starts below the head as it is drawn.
+  React.useLayoutEffect(() => {
+    const root = ref.current;
+    const head = root?.querySelector<HTMLElement>(".pagehead");
+    if (!root || !head || typeof ResizeObserver === "undefined") return;
+    const place = () => root.style.setProperty("--shp-head", `${head.offsetTop + head.offsetHeight + 8}px`);
+    const ro = new ResizeObserver(place);
+    ro.observe(head);
+    place();
+    return () => ro.disconnect();
+  }, []);
   return (
     <World label={label}>
-      <div className="shp">{children}</div>
+      <div className="shp" ref={ref}>
+        {children}
+      </div>
     </World>
   );
 }
