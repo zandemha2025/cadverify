@@ -328,7 +328,7 @@ def fdm_estimate(f: PrintFeatures, parts_per_plate: int = 1, cal: dict | None = 
                           else " + no support")
                        + bridges)
     source = (f"{CALIBRATION_NOTE}, {_calibration('fdm_time_supported' if support > 0 else 'fdm_time_no_supports', 'fdm_filament', 'filament')}; "
-              f"priced on the {c['printer']}: {layers} layers of {c['layer_mm']:g} mm "
+              f"layer times from the slicer fit on the {c['printer']}: {layers} layers of {c['layer_mm']:g} mm "
               f"({f.height_mm:.1f} mm tall as checked), {filament + support:.2f} cm³ laid; "
               f"{n} per plate: {plate_s / 3600:.3f} hr per plate"
               + (f" ({slowed:.0%} of layers slowed to the minimum layer time)" if slowed >= 0.005 else "")
@@ -350,7 +350,7 @@ def resin_estimate(f: PrintFeatures, parts_per_plate: int = 1, cal: dict | None 
                        f"(pad {pad_cm2:.1f} cm², the part's outline and {w:g} mm around it; supports under "
                        f"{f.resin_column_cm3:.1f} cm³ of overhang)")
     source = (f"{CALIBRATION_NOTE}, {_calibration('resin_time', 'resin', 'resin')}; "
-              f"priced on the {c['printer']}: {layers} layers of {c['layer_mm']:g} mm "
+              f"layer times from the slicer fit on the {c['printer']}: {layers} layers of {c['layer_mm']:g} mm "
               f"({f.height_mm:.1f} mm tall as checked + {c['lift_mm']:g} mm supports and pad), every layer "
               f"exposed at once: {plate_s / 3600:.3f} hr per plate ÷ {n} per plate = {hours:.3f} hr per part")
     return PrintEstimate(hours, resin, support, layers, n, source, material_source)
@@ -381,8 +381,11 @@ def plan(process: str, drivers, envelope, spacing_mm: float, packing: float) -> 
     f = drivers.print_features
     n = plate_capacity(f, envelope, spacing_mm, packing)
     X, Y, Z = (float(v) for v in envelope)
-    nest = (f"parts per plate from an XY nest: a spaced grid on the {X:g} × {Y:g} mm plate at {packing:g} "
-            "areal packing (an assumption, not a nesting plan)")
+    # de-23: the plate is the work area being priced (the process's typical one, or the
+    # owned printer's), not the calibration printer's bed; say so rather than imply it.
+    nest = (f"parts per plate from an XY nest: a spaced grid on the {X:g} × {Y:g} mm plate of the "
+            f"{X:g} × {Y:g} × {Z:g} mm work area priced, at {packing:g} areal packing "
+            "(an assumption, not a nesting plan)")
     if n:
         return estimate(f, n), f"standing as checked; {nest}"
     mesh = getattr(drivers, "print_mesh", None)

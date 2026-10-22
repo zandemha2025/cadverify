@@ -179,7 +179,14 @@ RATE_CARD_V0: dict = {
             machine_rate=8, setup_hr=0.25, post_hr=0.25, scrap=0.10,
             deposition=16, vert=25, finish=None, queue_days=2, post_days=1,
             build_env_mm=COMMON_ENVELOPE_MM[PT.FDM], packing_density=0.10, part_spacing_mm=4.0,
-            nesting_mode="serial", post_hr_part=0.20, post_hr_build=0.10,
+            # Finishing: post_hr_part is handling a part with nothing to remove (off
+            # the plate, brim and strings); support removal adds support_hr_per_cm2 for
+            # each cm² of surface the slicer supports (break the support away, clean the
+            # face): a clip with none is 3 min, 15 cm² of supported surface is 12 min.
+            # Without a measured mesh (no slicer plan) the support is unknown: the
+            # finishing stays the typical 0.2 h that assumes some support.
+            nesting_mode="serial", post_hr_part=0.05, post_hr_build=0.10,
+            support_hr_per_cm2=0.01, post_hr_part_unmeasured=0.20,
             lot_size="build", min_charge=30,
             xy_packing_density=0.50, n_machines=12, machine_hours_per_day=22),
         PT.SLA: dict(

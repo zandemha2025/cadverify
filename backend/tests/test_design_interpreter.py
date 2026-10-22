@@ -164,3 +164,18 @@ def test_out_of_range_draft_needs_input_with_its_prefill():
     assert result["status"] == "needs_input"
     assert result["prefill"]["draft_angle_deg"] == 12.0
     assert "plan" not in result
+
+
+def test_a_requested_feature_no_template_draws_is_said_not_silently_dropped():
+    """de-24: the 1 mm inside fillets were dropped without a word."""
+    result = interpret_design_prompt("open enclosure 80 x 60 x 40 mm, 2.5 mm wall, 2 deg draft, 1 mm inside fillets")
+    assert result["status"] == "ready"
+    assert result["plan"]["wall_thickness_mm"] == 2.5 and result["plan"]["draft_angle_deg"] == 2.0
+    assert result["not_applied"] == ["fillets or rounded edges"]
+    assert any(a.startswith("Not applied: the open enclosure template has no setting for fillets or rounded edges.")
+               for a in result["assumptions"])
+    # Holes are a plate setting; on an enclosure they are said not applied too.
+    boxed = interpret_design_prompt("open enclosure 80 x 60 x 40 mm, 2.5 mm wall with two holes and ribs")
+    assert boxed["not_applied"] == ["ribs", "holes"]
+    plain = interpret_design_prompt("80 x 50 x 6 mm mounting plate with four 6 mm corner holes")
+    assert plain["not_applied"] == []

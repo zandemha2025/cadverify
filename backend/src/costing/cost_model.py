@@ -11,7 +11,7 @@ V1 changes (the 8 weaknesses):
   #3     per-lot minimum charge clamp (adds a line item only when it bites).
   #4     region split: three vectors (labor / material / tooling) per line item.
   #5     tooling cavity^exponent × complexity; per-shot machine ÷ n_cavities.
-  #8     setup recurs per lot: ceil(qty / lot_size) setups, not one over the lot.
+  #8     setup: once per order on a machine, mould or die; once per plate when printing.
 
     line_items = {amortized_fixed, material, machine, labor}   (4-key shape kept)
     unit_cost  = Σ line_items   (+ min_charge_floor when the order floor bites)
@@ -647,6 +647,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # REUSE the build-job additive time model (full-build Z-sweep ÷ parts/build)
         # with metal params. Metal-only post (plate/support/stress-relief) added below.
         machine_hr, n, cycle_src = _additive_machine(process, drivers, rates, machine_override)
+        if process in (PT.DMLS, PT.SLM):
+            # de-20: two makers' names (EOS, SLM Solutions) for one process, so one price.
+            cycle_src += ("; DMLS and SLM are two makers' names for laser powder-bed fusion, "
+                          "so ScaleCAD prices them alike")
         drivers_out.append(Driver(
             name="parts_per_build", value=float(n), unit="parts",
             provenance=rates.prov_tag(f"packing_density.{process.name}"),
@@ -678,7 +682,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # the full-plate assumption the machine time already makes). Rounding the
     # lot count up made 50 parts on 20-part plates pay three whole setups and
     # cost more each than 20: the price per part rose with quantity.
-    n_setups = max(1.0, qty / lot_size)
+    # A machine, a mould or a die is set up once for the order and runs its
+    # whole quantity (de-19: a 1,000-off order read "setup, shared over 1,000"
+    # at the 100-off share, because it paid a setup every 100 parts). Printing
+    # sets up each plate: setups follow the plates the order fills.
+    per_plate = lot_raw == "build"
+    n_setups = max(1.0, qty / lot_size) if per_plate else 1.0
     learn_mult, learn_src = _learning_multiplier(family, qty, lot_size, rates)
 
     # formative: a multi-cavity tool makes n_cavities parts per machine cycle
@@ -794,15 +803,30 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # ---- LABOR (post-process) — AM split, CNC/molding single ------------
     post_hr_part = rates.p(process, "post_hr_part")
     post_hr_build = rates.p(process, "post_hr_build")
-    post_labor = (post_hr_part + post_hr_build / n) * labor_rate
+    # FDM: support removal follows the surface the slicer supports, as checked (laid
+    # another way with nothing to support, only the handling is left).
+    support_cm2 = 0.0
+    support_hr = 0.0
+    if process == PT.FDM and print_plan is not None:
+        support_cm2 = max(0.0, float(getattr(drivers.print_features, "fdm_need_cm2", 0.0) or 0.0))
+        support_hr = rates.pget(process, "support_hr_per_cm2") * support_cm2
+    elif process == PT.FDM:
+        post_hr_part = rates.pget(process, "post_hr_part_unmeasured", post_hr_part)
+    post_labor = (post_hr_part + support_hr + post_hr_build / n) * labor_rate
     post_labor_learned = post_labor * learn_mult         # attended-time learning (S1)
     labor_scaled = post_labor_learned * rl * mgn * burden
+    support_note = ""
+    if process == PT.FDM and print_plan is not None:
+        support_note = (f" + support removal {rates.pget(process, 'support_hr_per_cm2'):g}hr/cm² × "
+                        f"{support_cm2:.1f} cm² supported = {support_hr:.3g}hr" if support_cm2 > 0
+                        else " + no support to remove")
+        support_note += " (typical value, not confirmed by a shop)"
     if post_hr_build and n > 1:
-        labor_src = (f"finish {post_hr_part:g}hr/part + bulk {post_hr_build:g}hr/build "
-                     f"÷ {n} ≈ {post_hr_part + post_hr_build / n:.6g}hr × ${labor_rate:g}/hr"
+        labor_src = (f"finish {post_hr_part:g}hr/part{support_note} + bulk {post_hr_build:g}hr/build "
+                     f"÷ {n} ≈ {post_hr_part + support_hr + post_hr_build / n:.6g}hr × ${labor_rate:g}/hr"
                      f"{learn_note} × region-labor ×{rl:g}{conversion_note}")
     else:
-        labor_src = (f"post-process {post_hr_part + post_hr_build / n:g} hr × "
+        labor_src = (f"post-process {post_hr_part + support_hr + post_hr_build / n:.6g} hr{support_note} × "
                      f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}")
     if family in ("casting", "forging"):
         # Said plainly: this time is per piece and doesn't grow with the part, so at
@@ -830,8 +854,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     drivers_out.append(Driver(
         name="setup_cost", value=round(setup_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"),
-        source=(f"setup {setup_hr:g}hr × ${labor_rate:g}/hr × {qty}/{lot_size} lots "
-                f"= {n_setups:.4g} setups (at least one) ÷ {qty} × region-labor ×{rl:g}{conversion_note}"),
+        source=((f"setup {setup_hr:g}hr × ${labor_rate:g}/hr per plate × {qty}/{lot_size} parts a plate "
+                 f"= {n_setups:.4g} plates (at least one) ÷ {qty} × region-labor ×{rl:g}{conversion_note}")
+                if per_plate else
+                (f"setup {setup_hr:g}hr × ${labor_rate:g}/hr once for the order ÷ {qty} "
+                 f"× region-labor ×{rl:g}{conversion_note}")),
         error_band_pct=20.0,
     ))
 
@@ -866,15 +893,15 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             ))
         inspect_part = inspect_hr_part * learn_mult                   # per-part (learns/samples down at volume)
         fai_hr_order = fai_hr
-        fai_per_unit = fai_hr * n_setups / qty                       # first article per lot
+        fai_per_unit = fai_hr * n_setups / qty                       # first article per setup
         insp_hr_per_unit = fai_per_unit + inspect_part
         if insp_hr_per_unit > 0:
             inspection_scaled = insp_hr_per_unit * labor_rate * rl * mgn * burden
-            extra_variable += (fai_hr / lot_size + inspect_part) * labor_rate * rl * mgn * burden
+            extra_variable += ((fai_hr / lot_size if per_plate else 0.0) + inspect_part) * labor_rate * rl * mgn * burden
             drivers_out.append(Driver(
                 name="inspection_cost", value=round(inspection_scaled, 4), unit="$",
                 provenance=rates.prov_tag(f"fai_hr.{process.name}"),
-                source=(f"first-article {fai_hr:g}hr × {n_setups:.4g} lot(s) ÷ {qty} + in-process "
+                source=(f"first-article {fai_hr:g}hr × {n_setups:.4g} setup(s) ÷ {qty} + in-process "
                         f"{inspect_hr_part:g}hr/part{learn_note} = {insp_hr_per_unit:.4f}hr × "
                         f"${labor_rate:g}/hr × region-labor ×{rl:g}{conversion_note} "
                         f"(typical value, not confirmed by a shop)"),
@@ -924,7 +951,9 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         fin_lot_per_unit = fin_lot * n_setups / qty
         finishing_per_unit = fin_lot_per_unit + fin_part
         finishing_scaled = finishing_per_unit * rl * mgn             # outsourced invoice: regional service + margin (no internal overhead burden)
-        extra_variable += (fin_lot / lot_size + fin_part) * rl * mgn
+        extra_variable += ((fin_lot / lot_size if per_plate else 0.0) + fin_part) * rl * mgn
+        if not per_plate:
+            extra_fixed += fin_lot * rl * mgn                         # one finishing lot for the order
         drivers_out.append(Driver(
             name="finishing_cost", value=round(finishing_scaled, 4), unit="$",
             provenance=rates.prov_tag(f"finish_per_part.{process.name}"),
@@ -972,15 +1001,33 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             error_band_pct=band,
         ))
     elif family == "ded":
-        finish_frac = rates.p(process, "finish_machining_frac")
-        ded_finish_scaled = machine_scaled * finish_frac
-        extra_variable += ded_finish_scaled
+        # de-20: a deposited part is near-net (a bead surface, about ±1 mm): it is
+        # finished on a 3-axis mill, priced as that mill prices it. Mill off the
+        # overbuild and finish every surface, at the mill's rate, plus the mill's
+        # setup and programming once for the order. (It was 30% of the deposition
+        # cost, which put a wire-arc block level with milling it from solid.)
+        mill = PT.CNC_3AXIS
+        fm = rates.p(process, "feedstock_mult")
+        overbuild_cm3 = drivers.volume_cm3 * max(fm - 1.0, 0.0)
+        mrr = rates.mrr(material_class)
+        rough_hr = overbuild_cm3 / (mrr * 60.0) if mrr > 0 else 0.0
+        finish_hr = drivers.surface_area_cm2 / rates.p(mill, "finish")
+        mill_hr = rough_hr + finish_hr
+        mill_rate = rates.p(mill, "machine_rate")
+        per_part = mill_hr * mill_rate * rl_machine * mgn * burden
+        once_hr = rates.p(mill, "setup_hr") + rates.pget(mill, "nre_hr")
+        once = once_hr * labor_rate * rl * mgn * burden
+        ded_finish_scaled = per_part + once / qty
+        extra_variable += per_part
+        extra_fixed += once
         drivers_out.append(Driver(
             name="finish_machining", value=round(ded_finish_scaled, 4), unit="$",
             provenance=Provenance.DEFAULT,
-            source=(f"finish-machining allowance {finish_frac:g} × deposition machine "
-                    f"${machine_scaled:.2f} (a deposited part always needs finish machining) "
-                    f"(a rough allowance; typical value, not confirmed by a shop)"),
+            source=(f"finish machining on a 3-axis mill (a deposited part is near-net): mill off the "
+                    f"{overbuild_cm3:.1f} cm³ overbuild ({rough_hr:.3f} hr) and finish {drivers.surface_area_cm2:.1f} cm² "
+                    f"({finish_hr:.3f} hr) = {mill_hr:.3f} hr × ${mill_rate:g}/hr, + the mill's setup and "
+                    f"programming {once_hr:g} hr × ${labor_rate:g}/hr once for the order ÷ {qty}{conversion_note} "
+                    f"(typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
 

@@ -305,8 +305,9 @@ GOLDEN = {
                              "labor": 12.25}),
     PT.SAND_CASTING: (_ALU, "aluminum", 46.6775,
                       {"amortized_fixed": 21.35, "material": 1.0303, "machine": 3.2972, "labor": 21.0}),
-    PT.WIRE_EDM: (_ALU, "aluminum", 23.258,
-                  {"amortized_fixed": 0.525, "material": 0.7413, "machine": 16.45, "labor": 3.5,
+    # One setup for the order (de-19): 100 parts on a 50-part lot paid two setups before.
+    PT.WIRE_EDM: (_ALU, "aluminum", 22.9955,
+                  {"amortized_fixed": 0.2625, "material": 0.7413, "machine": 16.45, "labor": 3.5,
                    "consumables": 2.0417}),
 }
 

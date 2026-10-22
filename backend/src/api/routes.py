@@ -1083,9 +1083,11 @@ async def validate_fit(
         else:
             result["limits"].append("Automatic seating was ambiguous or high-residual; original file coordinates were retained before any manual offset.")
         if any(value != 0 for value in (nudge_x_mm, nudge_y_mm, nudge_z_mm)):
+            part_move = ", ".join(f"{(-v if v else 0.0):g}" for v in (nudge_x_mm, nudge_y_mm, nudge_z_mm))
             result["limits"].append(
                 f"Manual XYZ offset ({nudge_x_mm:g}, {nudge_y_mm:g}, {nudge_z_mm:g}) mm "
-                "is applied to the assembly after seating, in your part's coordinate frame."
+                "is applied to the assembly after seating, in your part's coordinate frame: "
+                f"the same as moving your part ({part_move}) mm."
             )
         for label, file, units in [("Your part", part_a, part_a_units), ("Assembly", part_b, part_b_units)]:
             source = f"source coordinates interpreted as {units}" if Path(file.filename or "").suffix.lower() in {".stl", ".obj"} else "embedded CAD units"

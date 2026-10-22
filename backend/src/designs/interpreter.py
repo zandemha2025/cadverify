@@ -84,6 +84,31 @@ def _hole_diameter(text: str) -> float | None:
     return None
 
 
+# What a description can ask for that no template draws (de-24: "1 mm inside fillets"
+# was dropped without a word). Each: (pattern, words for it). Holes are a plate's only.
+_NOT_DRAWN: tuple[tuple[str, str], ...] = (
+    (r"\bfillet(?:s|ed)?\b|\bradi(?:us|i)\b|\brounded\b|\bround(?:ed)?\s+(?:corners?|edges?)", "fillets or rounded edges"),
+    (r"\bchamfer(?:s|ed)?\b|\bbevel(?:s|led|ed)?\b", "chamfers"),
+    (r"\bribs?\b|\bgussets?\b", "ribs"),
+    (r"\bboss(?:es)?\b|\bstandoffs?\b", "bosses"),
+    (r"\bslots?\b", "slots"),
+    (r"\bthread(?:s|ed)?\b|\btapped\b|\bm\d+\b", "threads"),
+    (r"\blid\b|\bcover\b", "a lid"),
+    (r"\bsnap(?:-|\s)?fits?\b|\bclips?\b", "snap fits"),
+    (r"\bcounter(?:bore|sink)s?\b", "counterbores or countersinks"),
+    (r"\btext\b|\blogo\b|\bengrav", "lettering"),
+)
+_TEMPLATE_WORDS = {"plate": "plate", "bracket": "L bracket", "enclosure": "open enclosure"}
+
+
+def _not_drawn(text: str, kind: str) -> list[str]:
+    """Features the description asks for that the template has no setting for."""
+    found = [words for pattern, words in _NOT_DRAWN if re.search(pattern, text)]
+    if kind != "plate" and re.search(r"\bholes?\b", text) and "no holes" not in text:
+        found.append("holes")
+    return found
+
+
 def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
     prompt = " ".join(raw_prompt.strip().split())
     if not prompt:
@@ -184,6 +209,13 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
         }
 
     assumptions = ["All extracted dimensions are millimetres; review them before generation."]
+    not_drawn = _not_drawn(text, kind)
+    if not_drawn:
+        listed = not_drawn[0] if len(not_drawn) == 1 else ", ".join(not_drawn[:-1]) + " and " + not_drawn[-1]
+        assumptions.append(
+            f"Not applied: the {_TEMPLATE_WORDS[kind]} template has no setting for {listed}. "
+            "Add them in your CAD tool after downloading the STEP."
+        )
     if draft is not None and takes_draft and draft > 0:
         drafted = "Walls drafted" if kind == "enclosure" else "Edges and holes drafted"
         assumptions.append(f"{drafted} {draft:g}° so the part releases along +Z.")
@@ -268,5 +300,6 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
         "name": name,
         "plan": plan.model_dump(mode="json"),
         "assumptions": assumptions,
+        "not_applied": not_drawn,
         "message": "Safe dimensions extracted. Review the fields, then generate.",
     }
