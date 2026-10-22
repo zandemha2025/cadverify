@@ -5,11 +5,16 @@ For each part, its newest saved record (the cost decision with its machine
 fit), the newest outcome recorded on any of its records, and its declared
 facts (the yearly quantity and what the org pays for it today):
 
+* the record is the part's newest record that was priced: a re-check that
+  failed to price never wipes the last good hours (me-13);
 * the quantity is the part's yearly quantity (a catalog run's parts list, or
   declared on the part) when its record priced it (``quantity_basis:
   "yearly"``), else the one quantity the record priced off the standard ladder
-  (``"checked"``), else ``DEFAULT_QUANTITY`` (``"default"``). A recorded
-  outcome never changes it: a sign-off at another quantity is shown as such
+  (``"checked"``), else the quantity the part page opens at
+  (``catalog_service.opening_qty``: 10, else the first priced quantity of 10
+  or more, else the largest; ``"opening"``), so a part checked at 25 and 250
+  counts its hours at 25, never "not estimated". A recorded outcome never
+  changes it: a sign-off at another quantity is shown as such
   (``decided_quantity``), and the load stays at the yearly quantity, the same
   one the run and the pilot report count;
 * recorded "Make in-house" with a process: that process's machine time per part
@@ -202,21 +207,29 @@ def checked_quantity(result: dict) -> Optional[int]:
     return extra[0]
 
 
-def _priced(result: dict, qty: int) -> bool:
+def _priced_quantities(result: dict) -> list[int]:
+    """The quantities the record priced: its own list, else the quantities its estimates carry."""
     qs = result.get("quantities")
-    if isinstance(qs, list) and qs:
-        return qty in qs
-    return any(isinstance(e, dict) and e.get("quantity") == qty for e in result.get("estimates") or [])
+    if not (isinstance(qs, list) and qs):
+        qs = [e.get("quantity") for e in result.get("estimates") or [] if isinstance(e, dict)]
+    return sorted({int(q) for q in qs if isinstance(q, (int, float)) and not isinstance(q, bool) and q > 0})
 
 
 def load_quantity(result: dict, yearly: Any, default_quantity: int = DEFAULT_QUANTITY) -> tuple[int, str]:
-    """``(quantity, basis)``: the yearly quantity when the record priced it, else the checked one, else the default."""
+    """``(quantity, basis)``: the yearly quantity when the record priced it, else the checked one, else the
+    quantity the part page opens at (``catalog_service.opening_qty``), else the default (nothing priced)."""
+    from src.services.catalog_service import opening_qty
+
+    priced = _priced_quantities(result)
     y = int(yearly) if isinstance(yearly, (int, float)) and not isinstance(yearly, bool) and yearly > 0 else None
-    if y is not None and _priced(result, y):
+    if y is not None and y in priced:
         return y, "yearly"
     own = checked_quantity(result)
     if own is not None:
         return own, "checked"
+    opening = opening_qty(priced)
+    if opening is not None:
+        return opening, "opening"
     return default_quantity, "default"
 
 
@@ -241,7 +254,7 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
             decided_at = int(basis["quantity"])
         except (TypeError, ValueError):
             decided_at = None
-        if qty_basis == "default" and decided_at:
+        if qty_basis in ("opening", "default") and decided_at:
             qty, qty_basis = decided_at, "decided"  # no yearly or checked quantity: the one it was decided at
         route = per_route.get(process) if isinstance(per_route.get(process), dict) else {}
         machine = route.get("best_machine") if route.get("verdict") in IN_HOUSE else None
@@ -270,7 +283,7 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
                 return {"basis": "bought", "machine": machine, "process": process, "quantity": qty,
                         "make_each": make, "buy_each": price}
         hours_each = _hours_each(result, process, qty) if process else None
-        return {"basis": "checked" if qty_basis != "default" else "default", "machine": machine,
+        return {"basis": "checked" if qty_basis in ("yearly", "checked") else "default", "machine": machine,
                 "process": process, "quantity": qty, "quantity_basis": qty_basis, "hours_each": hours_each,
                 "hours": round(hours_each * qty, 4) if hours_each is not None else None}
     return None
@@ -337,7 +350,7 @@ def machine_load(parts: Iterable[dict], default_quantity: int = DEFAULT_QUANTITY
     return {
         "quantity": default_quantity,
         "quantity_rule": ("Each part at its yearly quantity (from a catalog run's parts list, or set on the part); "
-                          f"without one, at the quantity it was checked for, else {default_quantity} of it."),
+                          "without one, at the quantity it was checked for, else the one its page opens at."),
         "parts": n,
         "machines": rows,
         "overloaded": overloaded_words(rows) if capacity is not None else [],
@@ -353,15 +366,20 @@ def machine_load(parts: Iterable[dict], default_quantity: int = DEFAULT_QUANTITY
 
 
 async def org_machine_load(session: AsyncSession, org_id: str, default_quantity: int = DEFAULT_QUANTITY) -> dict:
-    """``machine_load`` over the org's parts: each part's newest record, newest recorded
+    """``machine_load`` over the org's parts: each part's newest priced record, newest recorded
     outcome, yearly quantity and current price, against the org's machine capacity."""
+    from sqlalchemy import text
+
     from src.db.models import CostDecision, PartContext
     from src.services.catalog_run_service import _BOARD_DECISION_SQL
 
+    # A re-check that failed to price (no estimates) never stands in for the last priced record (me-13).
+    priced = text("jsonb_array_length(CASE WHEN jsonb_typeof(cost_decisions.result_json -> 'estimates') = 'array' "
+                  "THEN cost_decisions.result_json -> 'estimates' ELSE '[]'::jsonb END) > 0")
     newest = (await session.execute(
         select(CostDecision.mesh_hash, CostDecision.ulid, CostDecision.filename, CostDecision.label,
                CostDecision.stale_at, CostDecision.quantities, literal_column(_BOARD_DECISION_SQL, type_=JSONB))
-        .where(CostDecision.org_id == org_id)
+        .where(CostDecision.org_id == org_id, priced)
         .distinct(CostDecision.mesh_hash)
         .order_by(CostDecision.mesh_hash, CostDecision.created_at.desc(), CostDecision.id.desc())
     )).all()

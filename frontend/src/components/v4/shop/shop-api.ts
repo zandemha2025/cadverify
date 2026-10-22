@@ -61,6 +61,10 @@ export type LoadPart = {
   process: string | null;
   quantity: number;
   basis: "decided" | "checked" | "default";
+  /** Where the quantity comes from: the part's yearly quantity, the one it was checked for, the one its page opens at. */
+  quantity_basis?: "yearly" | "checked" | "opening" | "decided" | "default" | null;
+  /** Recorded in-house at another quantity than the one counted (shown, never the load basis). */
+  decided_quantity?: number | null;
   hours_each: number | null;
   hours: number | null;
 };
@@ -77,6 +81,11 @@ export type MachineLoad = {
   default_hours: number | null;
   stale_parts: number;
   top: LoadPart[];
+  /** Capacity (op-13): hours a year (schedule × count, else the default), utilization, overloaded. */
+  available_hours?: number | null;
+  utilization_pct?: number | null;
+  overloaded?: boolean | null;
+  capacity?: { hours: number; count: number; shifts: number; hours_per_shift: number; days_per_year: number; set: boolean; text: string } | null;
 };
 
 export type ShopLoad = {
@@ -84,6 +93,10 @@ export type ShopLoad = {
   parts: number;
   machines: MachineLoad[];
   other_decisions: number;
+  /** "Haas VF-2: 12,400 h needed of 11,520 h a year (108%)" for each overloaded machine. */
+  overloaded?: string[];
+  /** Undecided parts a machine of yours could make that cost less to keep buying: no hours. */
+  bought?: number;
   decided_unplaced: { part_key: string | null; record_id: string | null; file_name: string | null; process: string | null; quantity: number | null }[];
   decided_unplaced_count: number;
 };

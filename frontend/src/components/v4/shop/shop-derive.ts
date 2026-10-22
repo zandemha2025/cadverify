@@ -374,6 +374,20 @@ export interface LoadLike {
   default_parts: number;
   default_hours: number | null;
   stale_parts: number;
+  available_hours?: number | null;
+  utilization_pct?: number | null;
+  overloaded?: boolean | null;
+  capacity?: { text: string; set: boolean } | null;
+}
+
+function pct(n: number): string {
+  if (n > 0 && n < 0.1) return "under 0.1%";
+  return `${n < 10 ? (Math.round(n * 10) / 10).toLocaleString("en-US") : Math.round(n).toLocaleString("en-US")}%`;
+}
+
+/** Hours needed as a share of the hours a year (from the two figures, so a sliver isn't "0%"). */
+function utilization(l: LoadLike): number | null {
+  return l.hours != null && l.available_hours ? (l.hours / l.available_hours) * 100 : l.utilization_pct ?? null;
 }
 
 function partsWord(n: number): string {
@@ -385,10 +399,15 @@ export function loadFor<T extends { machine: string }>(loads: readonly T[] | nul
   return (loads ?? []).find((l) => l.machine === name) ?? null;
 }
 
-/** The tile's line: "41 h of work · 12 parts", or "No checked parts" when none land on it. */
+/** The tile's line: "2,830 h of 11,520 h a year · 25% · 19 parts" ("Overloaded" first when over), or "No checked parts". */
 export function loadTile(l: LoadLike | null): string {
   if (!l || !l.parts) return "No checked parts on it";
-  return l.hours != null ? `${hoursShort(l.hours)} of work · ${partsWord(l.parts)}` : `${partsWord(l.parts)} · machine time not estimated`;
+  if (l.hours == null) return `${partsWord(l.parts)} · machine time not estimated`;
+  const u = utilization(l);
+  if (l.available_hours != null && u != null) {
+    return `${l.overloaded ? "Overloaded · " : ""}${hoursShort(l.hours)} of ${hoursShort(l.available_hours)} a year · ${pct(u)} · ${partsWord(l.parts)}`;
+  }
+  return `${hoursShort(l.hours)} of work · ${partsWord(l.parts)}`;
 }
 
 /** The sheet's rows: total, then recorded in-house (at their quantities) and not decided yet (at the quantity each was checked for, else `qty` of each). */
@@ -396,7 +415,16 @@ export function loadRows(l: LoadLike | null, qty: number): [string, string][] {
   if (!l || !l.parts) return [];
   const cover = l.hours_parts < l.parts ? ` (${l.hours_parts} of ${l.parts} parts)` : "";
   const rows: [string, string][] = [["Machine time", `${hoursShort(l.hours)}${cover} · ${partsWord(l.parts)}`]];
-  if (l.decided_parts) rows.push(["Recorded in-house", `${partsWord(l.decided_parts)} · ${hoursShort(l.decided_hours)} at their quantities`]);
-  if (l.default_parts) rows.push(["Not decided yet", `${partsWord(l.default_parts)} · ${hoursShort(l.default_hours)} at the quantity checked, else ${qty.toLocaleString("en-US")} of each`]);
+  if (l.available_hours != null && l.capacity) {
+    rows.push(["Hours available", l.capacity.text]);
+    const u = utilization(l);
+    if (u != null && l.hours != null) {
+      const over = l.hours - l.available_hours;
+      rows.push(["Utilization", l.overloaded ? `${pct(u)} · overloaded by ${hoursShort(over)} a year` : pct(u)]);
+    }
+  }
+  if (l.decided_parts) rows.push(["Recorded in-house", `${partsWord(l.decided_parts)} · ${hoursShort(l.decided_hours)} at their yearly quantities`]);
+  if (l.default_parts) rows.push(["Not decided yet", `${partsWord(l.default_parts)} · ${hoursShort(l.default_hours)} at their yearly quantities, else as checked`]);
+  void qty;
   return rows;
 }

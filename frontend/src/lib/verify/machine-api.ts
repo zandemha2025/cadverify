@@ -38,6 +38,10 @@ export interface OwnedMachine {
   materials: string[] | null;
   material_thickness_map: Record<string, unknown> | null;
   notes: string | null;
+  /** Hours available a year (shifts × hours a shift × days); null: the default, said as assumed. */
+  schedule?: { shifts: number; hours_per_shift: number; days_per_year: number } | null;
+  /** The hours it (× count) is available a year, and whether they are set or assumed. */
+  available?: { hours: number; count: number; shifts: number; hours_per_shift: number; days_per_year: number; set: boolean; text: string } | null;
   provenance: "user";
   /** Values still exactly as the maker publishes them, labelled. */
   field_provenance?: Partial<Record<"max_workpiece_kg" | "materials", FieldProvenance>>;
@@ -67,6 +71,7 @@ export interface MachineInput {
   materials?: string[] | null;
   material_thickness_map?: Record<string, unknown> | null;
   notes?: string | null;
+  schedule?: { shifts: number; hours_per_shift: number; days_per_year: number } | null;
 }
 
 export interface MachineImportSummary {

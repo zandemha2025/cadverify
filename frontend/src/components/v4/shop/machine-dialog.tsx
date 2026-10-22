@@ -26,6 +26,7 @@ import { LATHE, PROCS, SIZE_FIELDS, machineName, procName, sizeFieldsIn, sizeFie
 import { useUnits } from "../units/use-units";
 import type { LengthUnit } from "../units/units";
 import { runningRateLine } from "./running-rate";
+import { readSchedule, scheduleFields, scheduleText, type ScheduleText } from "./machine-hours";
 import {
   KG_PER_LB,
   PRESS_BRAKE,
@@ -72,6 +73,8 @@ type Form = {
   mats: string;
   notes: string;
   printer: PrinterText;
+  /** Hours available a year (op-13): blank is the default, said as assumed. */
+  hours: ScheduleText;
 };
 
 type Errors = Partial<Record<string, string>>;
@@ -97,6 +100,7 @@ function formFrom(m: Partial<MachineInput> | null, process = "cnc_3axis"): Form 
     mats: m?.materials?.join(", ") ?? "",
     notes: m?.notes ?? "",
     printer: printerFieldsFrom(cap),
+    hours: scheduleFields((m as { schedule?: MachineInput["schedule"] } | null)?.schedule ?? null),
   };
 }
 
@@ -288,7 +292,9 @@ export function MachineDialog({
     const thick = sheet ? thickMapToSave(thickBase.current, form.thick, sizeBase.current.thick, unit) : null;
     const capital = parseCapitalPercent(form.capital);
     const printer = parsePrinterDetails(form.printer, form.process);
+    const sched = readSchedule(form.hours);
     const errs: Errors = {};
+    for (const [k, v] of Object.entries(sched.errors)) errs[`hours_${k}`] = v;
     if (!nums.ok) {
       const e = nums.errors;
       if (e.count) errs.count = "Whole number, 1 or more.";
@@ -325,6 +331,7 @@ export function MachineDialog({
       materials: form.mats.trim() ? form.mats.split(",").map((s) => s.trim()).filter(Boolean) : null,
       capabilities: Object.keys(cap).length ? cap : null,
       notes: form.notes.trim() || null,
+      schedule: sched.value,
       ...(thick ? { material_thickness_map: thick.map } : {}),
     };
     setBusy(true);
@@ -631,11 +638,46 @@ export function MachineDialog({
           ) : null}
         </div>
       ) : null}
+      <div className="g3" role="group" aria-labelledby={`${ids}-hrs`}>
+        <span className="field" id={`${ids}-hrs`} style={{ gridColumn: "1 / -1", marginBottom: -6 }}>
+          Hours available a year
+        </span>
+        {(
+          [
+            ["shifts", "Shifts a day", "2"],
+            ["hours", "Hours a shift", "8"],
+            ["days", "Days a year", "240"],
+          ] as const
+        ).map(([k, label, ph]) => (
+          <label className="field" key={k}>
+            {label}
+            <input
+              aria-label={label}
+              type="text"
+              inputMode="decimal"
+              value={form.hours[k]}
+              placeholder={ph}
+              onChange={(e) => set("hours", { ...form.hours, [k]: e.target.value })}
+              {...inv(`hours_${k}`)}
+            />
+            {err(`hours_${k}`)}
+          </label>
+        ))}
+        <span className="fh" style={{ gridColumn: "1 / -1" }}>
+          {(() => {
+            const r = readSchedule(form.hours);
+            const n = Number.parseInt(form.count, 10);
+            return Object.keys(r.errors).length
+              ? "Machine load compares the hours your make parts need with these."
+              : `${scheduleText(Number.isFinite(n) && n > 0 ? n : 1, r.value)}. Machine load compares the hours your make parts need with these; it changes no price or fit.`;
+          })()}
+        </span>
+      </div>
       <label className="field">
         Notes
         <textarea aria-label="Notes" rows={2} value={form.notes} placeholder="Throughput, fixturing, secondary ops" onChange={(e) => set("notes", e.target.value)} />
       </label>
-      <span className="fh">Only the fields shown are checked when you save. Saving marks older decisions for re-costing.</span>
+      <span className="fh">Only the fields shown are checked when you save. A change to anything but its hours and notes marks older decisions for re-costing.</span>
       {discard ? (
         <div className="confirm" role="alertdialog" aria-label="Discard changes" style={{ margin: 0 }}>
           <b>Discard changes?</b>

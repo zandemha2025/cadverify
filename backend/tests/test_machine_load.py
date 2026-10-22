@@ -35,10 +35,22 @@ MILL = _result("makeable_in_house", machine="Haas VF-2", process="cnc_3axis",
                           "mjf": {"verdict": "makeable_in_house", "best_machine": "HP Jet Fusion 5200"}})
 
 
-def test_not_decided_lands_on_the_machine_the_record_sorts_it_onto_at_100_of_each():
+def test_not_decided_lands_on_the_machine_the_record_sorts_it_onto_at_the_quantity_its_page_opens_at():
+    # Priced at 10 and 100: the part page opens at 10, so the load counts 10 (catalog_service.opening_qty).
     load = ml.part_load(MILL, None, None)
-    assert load == {"basis": "default", "machine": "Haas VF-2", "process": "cnc_3axis", "quantity": 100,
-                    "quantity_basis": "default", "hours_each": 0.25, "hours": 25.0}
+    assert load == {"basis": "default", "machine": "Haas VF-2", "process": "cnc_3axis", "quantity": 10,
+                    "quantity_basis": "opening", "hours_each": 0.5, "hours": 5.0}
+
+
+def test_a_part_checked_at_its_own_quantities_counts_its_hours_never_not_estimated():
+    """me-13: the shaft checked at 25 and 250 showed "machine time not estimated" on the ST-20."""
+    lathe = _result("makeable_in_house", machine="Haas ST-20", process="cnc_turning",
+                    estimates=[_est("cnc_turning", 25, 0.116), _est("cnc_turning", 250, 0.104)])
+    lathe["quantities"] = [25, 250]
+    load = ml.part_load(lathe, None, None)
+    assert (load["machine"], load["quantity"], load["quantity_basis"], load["hours"]) == ("Haas ST-20", 25, "opening", 2.9)
+    # Nothing priced at all: the default quantity, and the hours stay unknown (never estimated here).
+    assert ml.load_quantity({"estimates": []}, None) == (100, "default")
 
 
 def test_not_decided_counts_at_the_quantity_the_part_was_checked_for():
@@ -77,7 +89,7 @@ def test_a_part_counts_at_its_yearly_quantity_also_when_the_ladder_already_has_i
     load = ml.part_load(LISTED, None, None, yearly=1000)
     assert (load["quantity"], load["quantity_basis"], load["hours"]) == (1000, "yearly", 69.0)
     # A yearly quantity the record didn't price: the checked one, else the default (never an estimate here).
-    assert ml.load_quantity(LISTED, 750) == (100, "default")
+    assert ml.load_quantity(LISTED, 750) == (100, "opening")
     assert ml.load_quantity({"quantities": [1, 100, 750, 2000, 5000, 10000]}, 750) == (750, "yearly")
 
 
@@ -168,11 +180,11 @@ def test_per_machine_sums_split_decided_from_not_yet_decided():
     assert out["decided_unplaced"][0]["file_name"] == "e.step"
     (haas,) = out["machines"]
     assert haas["machine"] == "Haas VF-2" and haas["process"] == "cnc_3axis"
-    assert (haas["parts"], haas["hours"], haas["hours_parts"]) == (3, 30.0, 2)
-    assert (haas["decided_parts"], haas["decided_hours"], haas["default_parts"], haas["default_hours"]) == (2, 5.0, 1, 25.0)
+    assert (haas["parts"], haas["hours"], haas["hours_parts"]) == (3, 10.0, 2)
+    assert (haas["decided_parts"], haas["decided_hours"], haas["default_parts"], haas["default_hours"]) == (2, 5.0, 1, 5.0)
     assert haas["stale_parts"] == 1
     assert [(t["file_name"], t["basis"], t["quantity"], t["hours"]) for t in haas["top"]] == [
-        ("a.step", "default", 100, 25.0), ("BRK-100", "decided", 10, 5.0), ("c.step", "decided", 250, None)]
+        ("BRK-100", "decided", 10, 5.0), ("a.step", "default", 10, 5.0), ("c.step", "decided", 250, None)]
 
 
 # ── Postgres: the endpoint, org-scoped ───────────────────────────────────────
@@ -222,6 +234,10 @@ async def orgs():
         # A newer check of the same part: its outcome stays the one recorded on the older record.
         s.add(rec("mine", "a" * 64, MILL, params="p2"))
         s.add(rec("mine", "b" * 64, MILL))
+        await s.flush()
+        # me-13: a newer re-check of b that failed to price never wipes its hours.
+        s.add(rec("mine", "b" * 64, {"status": "OK", "estimates": [], "cost_error": "timed out",
+                                     "verification": MILL["verification"]}, params="p3"))
         # A catalog-run part listed at 25: its record's ladder carries 25 in place of 100.
         listed = {**MILL, "estimates": [_est("cnc_3axis", 25, 0.3)]}
         s.add(rec("mine", "d" * 64, listed, quantities=[1, 25, 1000, 2000, 5000, 10000]))

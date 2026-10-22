@@ -402,6 +402,13 @@ function LoadSummary({ load, hours }: { load: ShopLoad; hours: number | null }) 
         </>
       ) : null}
       .
+      {load.overloaded?.length ? (
+        <>
+          {" "}
+          <b className="ld-over">Overloaded if every make part comes in-house: {load.overloaded.join("; ")}.</b>
+        </>
+      ) : on && load.machines.some((m) => m.available_hours != null) ? " Every machine has the hours for its make parts." : ""}
+      {load.bought ? ` ${load.bought === 1 ? "1 part costs" : `${load.bought} parts cost`} less to keep buying, so ${load.bought === 1 ? "it adds" : "they add"} no hours.` : ""}
     </p>
   );
 }

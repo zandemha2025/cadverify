@@ -646,6 +646,13 @@ async def test_a_machines_hours_a_year_are_set_without_marking_records_out_of_da
         assert body["schedule"] == {"shifts": 2, "hours_per_shift": 8.0, "days_per_year": 240}
         assert body["available"]["hours"] == 3840.0 and body["available"]["set"] is True
         assert marked == []
+        # The machine form sends every field: the same values plus new hours still mark nothing out of date.
+        same = {"name": "ST-20", "process": "cnc_turning", "count": 1, "max_workpiece_kg": 100.0,
+                "capabilities": {"swing_dia": 254.0, "between_centers": 533.0}, "materials": ["304 Stainless"],
+                "schedule": {"shifts": 1, "hours_per_shift": 10, "days_per_year": 250}}
+        r = await ac.patch("/api/v1/machine-inventory/m1", json=same)
+        assert r.status_code == 200, r.text
+        assert r.json()["available"]["hours"] == 2500.0 and marked == []
         bad = await ac.patch("/api/v1/machine-inventory/m1", json={"schedule": {"shifts": 3, "hours_per_shift": 9}})
         assert bad.status_code == 400 and "at most 24 hours a day" in bad.json()["detail"]
         r = await ac.patch("/api/v1/machine-inventory/m1", json={"hourly_rate_usd": 85})

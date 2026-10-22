@@ -188,6 +188,7 @@
 .ob .shp .mt.has-ld svg{top:70px;height:112px}
 .ob .shp .ld-sum{margin:0 0 10px;font-size:13.5px;color:var(--ink2)}
 .ob .shp .ld-sum b{color:var(--ink);font-weight:600}
+.ob .shp .ld-sum b.ld-over{color:#8A1C12}
 
 /* Sizes mm | in on the tab row: the work areas and machine sizes below follow it. */
 .ob .sizes{display:inline-flex;align-items:center;gap:6px;color:var(--ink3);font-size:12.5px}

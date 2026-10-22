@@ -174,9 +174,17 @@ test("machine load: the tile line, the sheet's rows, matched by machine name", (
   assert.equal(loadTile({ ...haas, hours: null, hours_parts: 0 }), "3 parts · machine time not estimated");
   assert.deepEqual(loadRows(haas, 100), [
     ["Machine time", "30 h (2 of 3 parts) · 3 parts"],
-    ["Recorded in-house", "2 parts · 5 h at their quantities"],
-    ["Not decided yet", "1 part · 25 h at the quantity checked, else 100 of each"],
+    ["Recorded in-house", "2 parts · 5 h at their yearly quantities"],
+    ["Not decided yet", "1 part · 25 h at their yearly quantities, else as checked"],
   ]);
+  // op-13: against the hours it has a year.
+  const cell = { ...haas, hours: 2830, available_hours: 11520, utilization_pct: 24.6, overloaded: false,
+    capacity: { text: "3 machines × 2 shifts × 8 h × 240 days = 11,520 h a year (assumed; set its hours in Your shop)", set: false } };
+  assert.equal(loadTile(cell), "2,830 h of 11,520 h a year · 25% · 3 parts");
+  assert.equal(loadTile({ ...cell, hours: 1.78, available_hours: 3840, utilization_pct: 0 }), "1.8 h of 3,840 h a year · under 0.1% · 3 parts");
+  const lathe = { ...haas, hours: 4200, available_hours: 3840, utilization_pct: 109.4, overloaded: true, capacity: { text: "2 shifts × 8 h × 240 days = 3,840 h a year", set: true } };
+  assert.equal(loadTile(lathe), "Overloaded · 4,200 h of 3,840 h a year · 109% · 3 parts");
+  assert.deepEqual(loadRows(lathe, 100).slice(1, 3), [["Hours available", "2 shifts × 8 h × 240 days = 3,840 h a year"], ["Utilization", "109% · overloaded by 360 h a year"]]);
   assert.deepEqual(loadRows({ ...haas, parts: 0 }, 100), []);
   assert.deepEqual([hoursShort(0.0002), hoursShort(0.5), hoursShort(2.41), hoursShort(1204.4), hoursShort(null)], ["<1 min", "30 min", "2.4 h", "1,204 h", "—"]);
 });

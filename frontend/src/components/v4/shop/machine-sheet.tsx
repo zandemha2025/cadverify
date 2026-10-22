@@ -380,7 +380,15 @@ function WorkOnIt({ load, error, onRetry, name }: { load: { qty: number; machine
                 {p.file_name ?? "Part"}
                 <small className="num">
                   {p.hours != null ? `${hoursShort(p.hours)} · ` : "machine time not priced at this quantity · "}
-                  {p.quantity.toLocaleString("en-US")} {p.basis === "decided" ? "recorded in-house" : p.basis === "checked" ? "as checked, not decided" : "of each, not decided"}
+                  {p.quantity.toLocaleString("en-US")}
+                  {p.quantity_basis === "yearly" ? " a year" : p.quantity_basis === "opening" || p.quantity_basis === "default" ? " of each" : ""}
+                  {p.basis === "decided"
+                    ? p.decided_quantity && p.decided_quantity !== p.quantity
+                      ? ` · recorded in-house at ${p.decided_quantity.toLocaleString("en-US")}`
+                      : " · recorded in-house"
+                    : p.quantity_basis === "checked"
+                      ? " as checked · not decided"
+                      : " · not decided"}
                 </small>
               </span>
               {p.part_key ? (
@@ -395,7 +403,7 @@ function WorkOnIt({ load, error, onRetry, name }: { load: { qty: number; machine
       )}
       {load && !error ? (
         <p className="sh-note">
-          Machine time is ScaleCAD&apos;s estimate per part × quantity: a part recorded &quot;Make in-house&quot; at its recorded quantity, else the quantity it was checked for (a catalog run&apos;s list, a declared yearly volume), else {load.qty.toLocaleString("en-US")} of each.
+          Machine time is ScaleCAD&apos;s estimate per part × quantity, each part at its yearly quantity (a catalog run&apos;s parts list, or set on the part), else the quantity it was checked for, else the one its page opens at, from its newest priced check. A sign-off at another quantity doesn&apos;t change it.
           {l?.stale_parts ? ` ${l.stale_parts} ${l.stale_parts === 1 ? "was" : "were"} checked before a machine change; check again for current hours.` : ""}
           {load.other ? ` ${load.other} ${load.other === 1 ? "part is" : "parts are"} recorded outside or another way and aren't counted.` : ""}
         </p>

@@ -17,6 +17,8 @@ coerced. Absent inventory → empty responses, byte-identical to the feature unu
 """
 from __future__ import annotations
 
+import copy
+
 import logging
 import os
 from typing import Any, AsyncIterator, Optional
@@ -415,15 +417,19 @@ async def patch_machine(
     result is re-validated. 404 when no such machine; 400 on a malformed field."""
     org_id = await _require_org(session, user)
     fields: dict[str, Any] = body.model_dump(exclude_unset=True)
+    # What decides fit and price before the edit. Its hours a year (schedule) and
+    # notes decide neither, so an edit of only those marks nothing out of date.
+    before = await svc.get_machine(session, org_id, machine_id)
+    priced = [k for k in svc._MUTABLE_FIELDS if k not in ("schedule", "notes")]
+    was = {k: copy.deepcopy(getattr(before, k, None)) for k in priced} if before is not None else None
     try:
         row = await svc.update_machine(session, org_id, machine_id, fields)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if row is None:
         raise HTTPException(status_code=404, detail="no such machine in org")
-    # An edited machine changes the §0 verdict for many parts → mark stale. Its
-    # hours a year (schedule) and notes change no verdict or price, so they don't.
-    if not set(fields) <= {"schedule", "notes"}:
+    # An edited machine changes the §0 verdict for many parts → mark stale.
+    if was is None or any(getattr(row, k, None) != was[k] for k in priced):
         await _mark_org_verdicts_stale(session, org_id)
     await _emit_machine_audit(
         session, user.user_id, org_id, "machine.updated", row.ulid
