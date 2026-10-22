@@ -489,7 +489,9 @@ def test_real_geometry_findings_serialize_ratio_and_angle_units():
     for issue, expected in [(ratio, "ratio"), (angle, "deg")]:
         assert serialize_issue(issue)["measurement_unit"] == expected
     assert 150 < angle.measured_value < 180
-    assert ratio.measured_value == 30
+    # As built: 10 mm tall on a sliver footprint whose narrowest width is the
+    # triangle's altitude onto its 30.02 mm side (0.9994 mm), not 30 / 1 from the box.
+    assert abs(ratio.measured_value - 10.0 * np.hypot(30.0, 1.0) / 30.0) < 1e-9
     # Old saved percentage findings remain readable; rotation is no longer one.
     historical = Issue("NOT_PRISMATIC", Severity.ERROR, "old finding", None,
                        measured_value=80., measurement_unit="percent")

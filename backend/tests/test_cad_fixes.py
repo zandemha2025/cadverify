@@ -362,7 +362,10 @@ def test_apply_drain_fix_end_to_end(store):
     assert fixed_hash != digest and body["fixed"]["sha256"] == fixed_hash
     assert body["original"]["sha256"] == digest
     cleared = {(f["code"], f["process"]) for f in body["findings_cleared"]}
-    assert ("MULTIPLE_BODIES", None) in cleared and ("TRAPPED_VOLUME", "mjf") in cleared
+    # The shell with a sealed void is one body (no MULTIPLE_BODIES to clear);
+    # opening the void clears the trapped powder and the unreachable void.
+    assert ("TRAPPED_VOLUME", "mjf") in cleared and ("SEALED_VOID_NO_ACCESS", "cnc_3axis") in cleared
+    assert ("MULTIPLE_BODIES", None) not in cleared
     assert {f["code"] for f in body["targeted"]["remaining"]} == set()
     assert body["volume_change_pct"] == pytest.approx(-1.72, abs=0.05)
     assert body["volume_warning"] is None
