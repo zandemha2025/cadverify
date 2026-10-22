@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from src.config.public_urls import dashboard_origin, error_doc_url
 
+import html
 import logging
 import os
 from typing import Optional
@@ -120,7 +121,9 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         import resend
 
         resend.api_key = os.environ["RESEND_API_KEY"]
-        who = f" to {org_name}" if org_name else ""
+        # Both values are escaped for HTML: an org name is user text.
+        who = f" to {html.escape(org_name)}" if org_name else ""
+        href = html.escape(link, quote=True)
         resend.Emails.send(
             {
                 "from": os.environ["RESEND_FROM"],
@@ -128,7 +131,7 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
                 "subject": "You've been invited to a ScaleCAD organization",
                 "html": (
                     f'<p>You\'ve been invited{who}.</p>'
-                    f'<p><a href="{link}">Accept the invitation</a> '
+                    f'<p><a href="{href}">Accept the invitation</a> '
                     f"(expires in {svc._invite_ttl_days()} days).</p>"
                 ),
             }
