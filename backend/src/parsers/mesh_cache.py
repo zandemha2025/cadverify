@@ -60,10 +60,15 @@ def _max_bytes() -> int:
 
 def mesh_nbytes(mesh) -> int:
     """Approximate resident size: the vertex + face arrays (the bulk of a
-    Trimesh). Robust to objects lacking those attributes (returns 0)."""
+    Trimesh) plus any arrays kept in its metadata (a STEP's per-triangle CAD
+    face ids and surface normals). Robust to objects lacking those attributes
+    (returns 0)."""
+    arrays = [getattr(mesh, attr, None) for attr in ("vertices", "faces")]
+    metadata = getattr(mesh, "metadata", None)
+    if isinstance(metadata, dict):
+        arrays.extend(metadata.values())
     total = 0
-    for attr in ("vertices", "faces"):
-        arr = getattr(mesh, attr, None)
+    for arr in arrays:
         nbytes = getattr(arr, "nbytes", None)
         if nbytes is not None:
             total += int(nbytes)
