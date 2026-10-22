@@ -90,6 +90,9 @@ def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
 # MACHINE sub-models. Additive returns (machine_hr, parts_per_build, src);
 # subtractive/formative return (cycle_hr, src) with parts_per_build = 1.
 # ──────────────────────────────────────────────────────────────────────────
+_CLASS_WORDS = {"polymer": "plastic", "stainless": "stainless steel", "nickel": "nickel alloy"}
+
+
 class BuildEnvelopeError(ValueError):
     """No fitting setup established for the machine being priced."""
 
@@ -177,8 +180,8 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
         allow = rates.g("stock_allowance")
         stock_vol = drivers.billet_volume_cm3(allow)
         if bbox_billet_enabled():
-            stock_src = (f"{drivers.billet_basis} "
-                         f"bbox billet {drivers.billet_volume_cm3(1):.1f} cm³ × {allow:.2f} "
+            stock_src = (f"a billet the size of {basis_words(drivers.billet_basis)}, "
+                         f"{drivers.billet_volume_cm3(1):.1f} cm³ × {allow:.2f} "
                          f"= {stock_vol:.1f} cm³ (typical value, not confirmed by a shop)")
         else:
             stock_src = (f"hull {drivers.hull_volume_cm3:.1f} cm³ × {allow:.2f} "
@@ -191,7 +194,7 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
     cycle = rough_hr + finish_hr
     src = (f"rough {removed:.1f} cm³ ÷ ({mrr:g} cm³/min·60) = {rough_hr:.3f} hr "
            f"+ finish {drivers.surface_area_cm2:.1f} cm² ÷ {finish_rate:g} cm²/hr "
-           f"= {finish_hr:.3f} hr  [stock {stock_src}; MRR {material_class}]")
+           f"= {finish_hr:.3f} hr (stock: {stock_src}; removal rate for {_CLASS_WORDS.get(material_class, material_class)})")
     # finish_hr is returned separately so the declared tolerance-class input
     # (Aramco gap #4) can scale ONLY the finish-pass share of machine time, not
     # roughing (roughing is not tolerance-driven).
@@ -702,7 +705,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         provenance=machine_prov_tag,
         source=(f"{machine_hr:.4f} hr × ${machine_rate_shown:g}/hr{machine_name_note}"
                 f"{owned_note}{cav_note}{util_note}{learn_note}{region_mach_note}{conversion_note}"
-                f"  [{cycle_src}]"),
+                f"; time: {cycle_src}"),
         error_band_pct=band,
     ))
     if owned_here:
