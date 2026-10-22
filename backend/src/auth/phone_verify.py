@@ -6,8 +6,20 @@ free account must verify a phone before its first check
 "new email, new free checks" loop.
 
 Twilio sends and checks the code; we never store codes. Phone numbers are
-never logged. Sends are throttled per account, per number and per IP, and
-SMS_ALLOWED_PREFIXES (for example "+1,+44") limits destinations.
+never logged. Sends are throttled per number (the main guard), per account and
+per IP, and SMS_ALLOWED_PREFIXES (for example "+1,+44") limits destinations.
+
+Only attempts that go ahead count: a refused request reserves nothing, and a
+send Twilio turns down gives its slot back. A refusal says how long until the
+limit that refused it frees up ("Try again in 9 minutes"), never "a few
+minutes". Limits are fixed one-hour windows from the first counted attempt.
+
+The per-IP limit is set for an office behind one address: 60 codes an hour
+(PHONE_CODES_PER_IP_PER_HOUR) lets a team of 30 to 60 people verify in the
+same hour, while the per-number limit (5 an hour) and the per-account limit
+(8 an hour, room for a mistyped number) keep any one number or account from
+being flooded. Each send also needs a signed-in account, and accounts are
+themselves limited per IP at sign-up.
 """
 from __future__ import annotations
 
@@ -38,8 +50,27 @@ _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _E164 = re.compile(r"^\+[1-9]\d{7,14}$")
 _CODE = re.compile(r"^\d{4,10}$")
 # (limit, window seconds)
-SEND_LIMITS = {"user": (5, 3600), "phone": (5, 3600), "ip": (10, 3600)}
+SEND_LIMITS = {"phone": (5, 3600), "user": (8, 3600), "ip": (60, 3600)}
 CHECK_LIMIT = (10, 3600)
+# Twilio Verify blocks a number for 10 minutes after its own send limit
+# (error 60203, "Max send attempts reached").
+TWILIO_BLOCK_SECONDS = 600
+
+
+def _ip_limit() -> tuple[int, int]:
+    try:
+        configured = int(os.getenv("PHONE_CODES_PER_IP_PER_HOUR", "").strip() or SEND_LIMITS["ip"][0])
+    except ValueError:
+        configured = SEND_LIMITS["ip"][0]
+    return max(10, min(1000, configured)), SEND_LIMITS["ip"][1]
+
+
+_WHO = {
+    "phone": "Too many codes sent to this number.",
+    "user": "Too many code requests from this account.",
+    "ip": "Too many code requests from this network.",
+    "check": "Too many tries for this code.",
+}
 
 
 class PhoneStartIn(BaseModel):
@@ -92,13 +123,69 @@ def _r() -> aioredis.Redis:
     return register_redis_client(client, _r.cache_clear)
 
 
-async def _hit(key: str, limit: int, window: int) -> None:
+def _limited(name: str, wait_seconds: int) -> HTTPException:
+    from src.auth.two_step import wait_words
+
+    wait = max(1, int(wait_seconds))
+    return HTTPException(
+        status_code=429,
+        headers={"Retry-After": str(wait)},
+        detail={
+            "code": "phone_rate_limited",
+            "message": f"{_WHO.get(name, _WHO['user'])} Try again in {wait_words(wait)}.",
+            "limit": name,
+            "retry_after_seconds": wait,
+        },
+    )
+
+
+async def _refusal(r, over: list[tuple[str, str, int]]) -> HTTPException:
+    """The refusal for the limit that frees up last (its real remaining wait)."""
+    worst = ("user", 0)
+    for name, key, window in over:
+        ttl = int(await r.ttl(key))
+        wait = ttl if ttl > 0 else window
+        if wait > worst[1]:
+            worst = (name, wait)
+    return _limited(*worst)
+
+
+async def _reserve(limits: list[tuple[str, str, int, int]]) -> list[str]:
+    """Count one attempt against every ``(name, key, limit, window)``, or none.
+
+    A request over any limit is refused before anything is counted. Two racing
+    requests can both pass the read; whichever pushes a counter past its limit
+    gives its counts back and is refused.
+    """
     r = _r()
-    count = await r.incr(key)
-    if count == 1:
-        await r.expire(key, window)
-    if count > limit:
-        raise _problem(429, "phone_rate_limited", "Too many code requests. Wait a few minutes and try again.")
+    keys = [key for _, key, _, _ in limits]
+    counts = await r.mget(keys)
+    over = [(name, key, window) for (name, key, limit, window), n in zip(limits, counts) if int(n or 0) >= limit]
+    if over:
+        raise await _refusal(r, over)
+    pipe = r.pipeline(transaction=True)
+    for key in keys:
+        pipe.incr(key)
+    results = await pipe.execute()
+    for (name, key, limit, window), n in zip(limits, results):
+        if int(n) == 1 or int(await r.ttl(key)) < 0:
+            await r.expire(key, window)
+    raced = [(name, key, window) for (name, key, limit, window), n in zip(limits, results) if int(n) > limit]
+    if raced:
+        await _release(keys)
+        raise await _refusal(r, raced)
+    return keys
+
+
+async def _release(keys: list[str]) -> None:
+    """Give back attempts that never reached the person (refused or failed sends)."""
+    r = _r()
+    for key in keys:
+        try:
+            if int(await r.get(key) or 0) > 0:
+                await r.decr(key)
+        except Exception:  # best effort: the window still expires on its own
+            logger.warning("phone throttle release failed")
 
 
 async def _twilio(path: str, data: dict[str, str]) -> dict:
@@ -113,7 +200,16 @@ async def _twilio(path: str, data: dict[str, str]) -> dict:
         # Twilio returns 404 once a verification expired or was used up.
         return {"status": "expired"}
     if response.status_code == 429:
-        raise _problem(429, "phone_rate_limited", "Too many code requests. Wait a few minutes and try again.")
+        raise HTTPException(
+            status_code=429,
+            headers={"Retry-After": str(TWILIO_BLOCK_SECONDS)},
+            detail={
+                "code": "phone_rate_limited",
+                "message": "The text service paused codes to this number after several sends. Try again in 10 minutes.",
+                "limit": "provider",
+                "retry_after_seconds": TWILIO_BLOCK_SECONDS,
+            },
+        )
     if response.status_code == 400:
         raise _problem(400, "phone_not_supported", "We can't send a code to that number. Check it, or try a mobile number.")
     if response.status_code >= 400:
@@ -174,10 +270,17 @@ async def phone_start(body: PhoneStartIn, request: Request, user: AuthedUser = D
         return {"status": "verified"}
     if owner is not None:
         raise _problem(409, "phone_in_use", "That number is already linked to another ScaleCAD account.")
-    await _hit(f"phone:send:user:{user.user_id}", *SEND_LIMITS["user"])
-    await _hit(f"phone:send:num:{hashlib.sha256(phone.encode()).hexdigest()[:32]}", *SEND_LIMITS["phone"])
-    await _hit(f"phone:send:ip:{client_ip(request)}", *SEND_LIMITS["ip"])
-    await _twilio("Verifications", {"To": phone, "Channel": "sms"})
+    counted = await _reserve([
+        ("phone", f"phone:send:num:{hashlib.sha256(phone.encode()).hexdigest()[:32]}", *SEND_LIMITS["phone"]),
+        ("user", f"phone:send:user:{user.user_id}", *SEND_LIMITS["user"]),
+        ("ip", f"phone:send:ip:{client_ip(request)}", *_ip_limit()),
+    ])
+    try:
+        await _twilio("Verifications", {"To": phone, "Channel": "sms"})
+    except HTTPException:
+        # No code went out (Twilio refused or failed): it doesn't count.
+        await _release(counted)
+        raise
     return {"status": "pending"}
 
 
@@ -190,8 +293,13 @@ async def phone_check(body: PhoneCheckIn, user: AuthedUser = Depends(require_api
     code = body.code.strip()
     if phone is None or not _CODE.match(code):
         raise _problem(400, "invalid_code", "That code didn't work. Check it and try again.")
-    await _hit(f"phone:check:user:{user.user_id}", *CHECK_LIMIT)
-    result = await _twilio("VerificationCheck", {"To": phone, "Code": code})
+    counted = await _reserve([("check", f"phone:check:user:{user.user_id}", *CHECK_LIMIT)])
+    try:
+        result = await _twilio("VerificationCheck", {"To": phone, "Code": code})
+    except HTTPException as exc:
+        if exc.status_code >= 500:
+            await _release(counted)  # the code was never checked
+        raise
     if result.get("status") == "expired":
         raise _problem(400, "code_expired", "That code expired. Send a new one.")
     if result.get("status") != "approved":

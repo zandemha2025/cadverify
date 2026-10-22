@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { CODE_FRESH_MS, clearSignupPhone, gateStart, readSignupPhone, rememberSignupPhone } = await import("./signup-phone.ts");
+const { CODE_FRESH_MS, ERROR_FRESH_MS, clearSignupPhone, gateStart, readSignupPhone, rememberSignupPhone } = await import("./signup-phone.ts");
 
 function memory() {
   const m = new Map<string, string>();
@@ -44,4 +44,18 @@ test("storage that throws or holds junk reads as nothing", () => {
   junk.setItem("scalecad.signup-phone", "{not json");
   assert.equal(readSignupPhone(junk), null);
   assert.equal(readSignupPhone(null), null);
+});
+
+test("a sign-up's refusal is said once, on the way in, never replayed on a later visit (it-01)", () => {
+  const store = memory();
+  const refusal = "Too many codes sent to this number. Try again in 9 minutes.";
+  rememberSignupPhone(store, { phone: "+1 616 555 0142", sentAt: null, error: refusal }, 5_000_000);
+  // Straight from sign-up: the server's words, with its real wait.
+  assert.equal(gateStart(readSignupPhone(store, 5_002_000), null).error, refusal);
+  // Coming back later: the number stays filled in, the stale wait doesn't.
+  const later = gateStart(readSignupPhone(store, 5_000_000 + ERROR_FRESH_MS + 1), null);
+  assert.deepEqual(later, { step: "phone", phone: "+1 616 555 0142", error: null, resendIn: 0 });
+  // A record from before this rule (no timestamp) shows no error.
+  store.setItem("scalecad.signup-phone", JSON.stringify({ phone: "+16165550142", sentAt: null, error: refusal }));
+  assert.equal(readSignupPhone(store, 5_000_000)?.error, null);
 });

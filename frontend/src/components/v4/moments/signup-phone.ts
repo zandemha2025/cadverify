@@ -7,6 +7,11 @@
  * what happened (the number, when the code went, or why it didn't) for a short
  * while; the server keeps the number itself (GET /account/phone), so a later
  * visit still finds it filled in.
+ *
+ * Why a code didn't go is shown only on the way from sign-up to the phone
+ * check (ERROR_FRESH_MS): a refusal such as "Try again in 9 minutes" is true
+ * when it's said, not on a visit an hour later. After that, Send code asks the
+ * server again and shows its current answer.
  */
 
 export type SignupPhone = {
@@ -15,6 +20,8 @@ export type SignupPhone = {
   sentAt: number | null;
   /** Why the code wasn't sent, in the server's words. */
   error: string | null;
+  /** When this was recorded (ms); set by rememberSignupPhone. */
+  at?: number;
 };
 
 export type GateStart = { step: "phone" | "code"; phone: string; error: string | null; resendIn: number };
@@ -25,10 +32,12 @@ const KEY = "scalecad.signup-phone";
 /** A code from sign-up is still worth typing for this long (Twilio Verify codes last 10 minutes). */
 export const CODE_FRESH_MS = 10 * 60 * 1000;
 export const RESEND_S = 30;
+/** A sign-up's reason for not sending is shown on the phone check only this soon after. */
+export const ERROR_FRESH_MS = 60 * 1000;
 
-export function rememberSignupPhone(store: KV | null, value: SignupPhone): void {
+export function rememberSignupPhone(store: KV | null, value: SignupPhone, now = Date.now()): void {
   try {
-    store?.setItem(KEY, JSON.stringify(value));
+    store?.setItem(KEY, JSON.stringify({ ...value, at: now }));
   } catch {
     // Private modes: the phone check simply asks for the number again.
   }
@@ -41,7 +50,8 @@ export function readSignupPhone(store: KV | null, now = Date.now()): SignupPhone
     const v = JSON.parse(raw) as Partial<SignupPhone>;
     if (typeof v.phone !== "string" || !v.phone.trim()) return null;
     const sentAt = typeof v.sentAt === "number" && now - v.sentAt < CODE_FRESH_MS && v.sentAt <= now ? v.sentAt : null;
-    return { phone: v.phone, sentAt, error: typeof v.error === "string" ? v.error : null };
+    const fresh = typeof v.at === "number" && v.at <= now && now - v.at < ERROR_FRESH_MS;
+    return { phone: v.phone, sentAt, error: fresh && typeof v.error === "string" ? v.error : null };
   } catch {
     return null;
   }
