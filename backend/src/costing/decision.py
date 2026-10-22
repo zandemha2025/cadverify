@@ -194,7 +194,7 @@ def prefer_in_house(inside: dict, outside: Optional[dict]) -> tuple[str, str]:
 
 
 def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
-                unit_cost_fn=None, excluded_pv=None, env_note=None,
+                unit_cost_fn=None, excluded_pv=None, env_note=None, env_regraded=None,
                 in_house=None, range_by_key=None,
                 outside_twins=None) -> Optional[Decision]:
     """estimates_by_pq: {(process_value, qty): CostEstimate} for every eligible
@@ -377,11 +377,17 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     # make-as-is headline: the cheapest make candidate over the FULL (unfiltered)
     # shortlist was environment-excluded, so the surviving pick differs. No
     # exclusion / unchanged headline => the note is byte-identical.
+    env_moved = False
     if excluded_pv and env_note:
         full_ready_lo = (make_ready_ranked(q_lo, pvs=all_pv)
                          or make_any_ranked(q_lo, pvs=all_pv))
-        if full_ready_lo and full_ready_lo[0].process != cheapest_lo.process:
-            note = note + " " + env_note
+        env_moved = bool(full_ready_lo and full_ready_lo[0].process != cheapest_lo.process)
+    # The environment moved the headline route itself into another grade (Mild Steel →
+    # AISI 4130 in sour service): the note says why its grade is that one.
+    if env_note and env_regraded and make_now.process in env_regraded:
+        env_moved = True
+    if env_moved:
+        note = note + " " + env_note
 
     # Last, so a public share can cut it off whole (it names the sharer's machines).
     if options:

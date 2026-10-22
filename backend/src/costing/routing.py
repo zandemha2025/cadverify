@@ -359,7 +359,18 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
         and _item_env_valid(item, env)
         for item in legacy
     )
-    return legacy if has_env_valid_make else build(env)
+    if has_env_valid_make:
+        return legacy
+    # Re-ranked against the environment: a route whose class pick the environment
+    # rules out (Mild Steel in sour service) is priced in a grade it allows, and says
+    # which grade it replaced, so the exclusion is still cited (estimate.py).
+    legacy_by_proc = {item["process"]: item for item in legacy}
+    ranked = build(env)
+    for item in ranked:
+        old = legacy_by_proc.get(item["process"])
+        if old is not None and old["material"].name != item["material"].name and not _item_env_valid(old, env):
+            item["env_replaced"] = old["material"]
+    return ranked
 
 
 # ──────────────────────────────────────────────────────────────────────────

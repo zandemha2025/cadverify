@@ -549,7 +549,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                                               if n) or None,
                            in_house=in_house_by_pv,
                            range_by_key=range_by_key,
-                           outside_twins=outside_twins)
+                           outside_twins=outside_twins,
+                           env_regraded={item["process"].value for item in elig if item.get("env_replaced")} or None)
 
     notes = list(cost_exclusions.values())
     if shop is not None:
@@ -959,6 +960,14 @@ def _build_verification(elig, drivers, options, rates, specs=None):
     _gate, direct_exclusions = environment_gate(routes, materials, env,
                                                 material_props)
     env_exclusions = verdict.env_exclusions or direct_exclusions
+    # The class's own grade the environment ruled out before pricing (routing re-ranked
+    # the route into a grade it allows): still cited, with the same words.
+    replaced = {item["env_replaced"].name: item["env_replaced"] for item in elig if item.get("env_replaced")}
+    if replaced:
+        rprops = {n: (asdict(m) if is_dataclass(m) else {"name": n}) for n, m in replaced.items()}
+        _g2, extra = environment_gate([], list(replaced), env, rprops)
+        have = {f.axis for f in env_exclusions}
+        env_exclusions = tuple(env_exclusions) + tuple(f for f in extra if f.axis not in have)
 
     # Per-process marginal-rate override from each PASSING route's fitted machine.
     machine_override_by_pv: dict = {}
@@ -1001,9 +1010,9 @@ def _build_verification(elig, drivers, options, rates, specs=None):
     env_excluded = {
         "reason_by_pv": reason_by_pv,
         "excluded_pv": set(reason_by_pv.keys()),
-        "note": (_env_decision_note(env, sorted(excluded_materials),
+        "note": (_env_decision_note(env, sorted(set(excluded_materials) | set(replaced)),
                                     sorted(excluded_routes))
-                 if reason_by_pv else None),
+                 if reason_by_pv or replaced else None),
     }
 
     verification = _serialize_verification(verdict, options, env_exclusions)
