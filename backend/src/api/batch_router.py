@@ -314,9 +314,11 @@ async def create_batch(
 
             parts_list = parts_list_specs.attach(parts_list, list_text)
         except ValueError as exc:
+            # Every cell the list can't use, at once ({row, column, value, why, accepted, message}).
             raise HTTPException(
                 status_code=400,
-                detail={"code": "INVALID_PARTS_LIST", "message": str(exc)},
+                detail={"code": "INVALID_PARTS_LIST", "message": str(exc),
+                        "problems": getattr(exc, "problems", None)},
             ) from exc
 
     # For a ZIP upload, stream to a temp file with early size rejection BEFORE
@@ -664,6 +666,45 @@ async def create_batch(
         else:
             response["catalog"] = {"free": False}
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /catalog-runs/parts-list -- check a parts list the moment it's picked
+# ---------------------------------------------------------------------------
+
+
+@router.post("/catalog-runs/parts-list")
+async def check_parts_list(
+    user: AuthedUser = Depends(require_org_writer),
+    manifest: UploadFile = File(..., description="The parts list (CSV or a BOM export)."),
+):
+    """Read a parts list without starting anything: every problem at once.
+
+    200 ``{ok, rows, with_quantity, with_price, problems, not_priced}``:
+    ``problems`` are the cells a run can't start with (``{row, column, value,
+    why, accepted, message}``), all of them; ``not_priced`` (``{count, notes}``)
+    are the specs it names that ScaleCAD keeps as written and doesn't price,
+    which never stop a run. Nothing is stored.
+    """
+    try:
+        data = await batch_service.read_manifest_upload_bounded(manifest)
+    except ManifestTooLargeError as exc:
+        raise HTTPException(status_code=413, detail={"code": "BATCH_MANIFEST_TOO_LARGE", "message": str(exc)}) from exc
+    text = _decode_text(data)
+    try:
+        rows = catalog_run_service.parse_parts_list(text)
+    except ValueError as exc:
+        problems = getattr(exc, "problems", None) or [
+            {"row": None, "column": None, "value": None, "why": str(exc), "accepted": None, "message": str(exc)}]
+        return {"ok": False, "rows": None, "with_quantity": None, "with_price": None,
+                "problems": problems, "not_priced": {"count": 0, "notes": []}}
+    from src.services import parts_list_specs
+
+    rows = parts_list_specs.attach(rows, text)
+    return {"ok": True, "rows": len(rows),
+            "with_quantity": sum(1 for r in rows if r.get("quantity")),
+            "with_price": sum(1 for r in rows if r.get("current_price_usd")),
+            "problems": [], "not_priced": catalog_run_service.not_priced_specs(rows)}
 
 
 # ---------------------------------------------------------------------------

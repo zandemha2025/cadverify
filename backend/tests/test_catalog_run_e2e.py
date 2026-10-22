@@ -202,7 +202,8 @@ async def test_catalog_run_sorts_parts_on_the_orgs_machines(world):
     assert r.status_code == 200, r.text
     board = r.json()
     rows = {row["filename"]: row for row in board["rows"]}
-    assert board["parts_list"] == {"name": "parts.csv", "rows": 4, "matched": 3, "unmatched": 1}
+    assert board["parts_list"] == {"name": "parts.csv", "rows": 4, "matched": 3, "unmatched": 1,
+                                   "not_priced": {"count": 0, "notes": []}}
     assert [u["part_number"] for u in board["unmatched"]] == ["MISSING-1"]
 
     pla = rows["bracket-pla.stl"]

@@ -148,6 +148,51 @@ _PRICE_HEADERS = ("current price", "current_price", "current unit price", "curre
 _PER_HEADERS = ("per", "price per", "price_per", "per qty", "price unit", "pricing unit", "price uom")
 MAX_PRICE_USD = 10_000_000
 _EACH_WORDS = {"", "each", "ea", "ea.", "pc", "pcs", "piece", "pieces", "unit", "units", "part", "1"}
+# What purchasing writes in a price or quantity cell it doesn't know yet: read as blank.
+_NOT_KNOWN_WORDS = {"-", "--", "—", "–", "n/a", "na", "n.a.", "tbd", "tba", "tbc", "?", "none", "unknown",
+                    "quote", "rfq", "on request", "poa", "call"}
+QUANTITY_ACCEPTED = f"a whole number from 1 to {MAX_QUANTITY:,}, or blank for the run's quantity"
+PRICE_ACCEPTED = "a number in US dollars, like 12.40, $1,250.00 or 1,250 / 100; blank when you don't buy it"
+PER_ACCEPTED = "each, or a number of parts, like 100"
+
+
+class CellError(ValueError):
+    """One parts-list cell ScaleCAD can't read: its row, column, value, why, and what it takes."""
+
+    def __init__(self, row: int, column: str, value: str, why: str, accepted: Optional[str] = None):
+        self.row, self.column, self.value, self.why, self.accepted = row, column, value, why, accepted
+        super().__init__(f"Row {row}: {column} '{value}' {why}")
+
+    def problem(self) -> dict:
+        return {"row": self.row, "column": self.column, "value": self.value, "why": self.why,
+                "accepted": self.accepted, "message": str(self)}
+
+
+class PartsListError(ValueError):
+    """A parts list a run can't start from, with every problem in it at once (``problems``).
+
+    Each problem is ``{row, column, value, why, accepted, message}``; a problem
+    with the whole list (no file column, empty) has ``row`` None.
+    """
+
+    def __init__(self, problems: list[dict]):
+        self.problems = problems
+        if len(problems) == 1:
+            text = problems[0]["message"]
+        else:
+            shown = "; ".join(p["message"] for p in problems[:3])
+            more = f"; and {len(problems) - 3:,} more" if len(problems) > 3 else ""
+            text = f"{len(problems):,} cells in the parts list need a fix: {shown}{more}"
+        super().__init__(text)
+
+
+def _whole_list_problem(message: str) -> PartsListError:
+    return PartsListError([{"row": None, "column": None, "value": None, "why": message, "accepted": None,
+                            "message": message}])
+
+
+def _not_known(raw: str) -> bool:
+    return (raw or "").strip().lower() in _NOT_KNOWN_WORDS
 
 
 def _parse_per(raw: str, row_num: int) -> int:
@@ -162,13 +207,16 @@ def _parse_per(raw: str, row_num: int) -> int:
         return 1000
     if t.isdigit() and 1 <= int(t) <= MAX_QUANTITY:
         return int(t)
-    raise ValueError(f"Row {row_num}: 'per' '{raw.strip()}' must be each or a number of parts, like 100")
+    raise CellError(row_num, "per", raw.strip(), "must be each or a number of parts, like 100", PER_ACCEPTED)
 
 
 def _parse_price(raw: str, per_raw: str, row_num: int) -> tuple[Optional[float], Optional[str]]:
-    """``(usd each, as written)`` for a current price cell ("$12.40", "1,250 / 100"), or ``(None, None)``."""
+    """``(usd each, as written)`` for a current price cell ("$12.40", "1,250 / 100"), or ``(None, None)``.
+
+    A cell that says the price isn't known ("n/a", "TBD", "quote") is blank.
+    """
     s = (raw or "").strip()
-    if not s:
+    if not s or _not_known(s):
         return None, None
     per_text = per_raw
     m = re.match(r"^(.*?)\s*(?:/|per)\s*([0-9,]+|each|ea|pc|c|k)\s*$", s, re.I)
@@ -178,9 +226,10 @@ def _parse_price(raw: str, per_raw: str, row_num: int) -> tuple[Optional[float],
     try:
         v = float(t)
     except ValueError:
-        raise ValueError(f"Row {row_num}: current price '{raw.strip()}' isn't a number in US dollars")
+        raise CellError(row_num, "current price", raw.strip(), "isn't a number in US dollars", PRICE_ACCEPTED)
     if not (0 < v <= MAX_PRICE_USD):
-        raise ValueError(f"Row {row_num}: current price '{raw.strip()}' must be more than $0 and at most ${MAX_PRICE_USD:,}")
+        raise CellError(row_num, "current price", raw.strip(),
+                        f"must be more than $0 and at most ${MAX_PRICE_USD:,}", PRICE_ACCEPTED)
     per = _parse_per(per_text or "", row_num)
     shown = f"${v:,.2f}" + (f" per {per:,}" if per > 1 else " each")
     return round(v / per, 6), shown
@@ -196,42 +245,57 @@ def _header_index(headers: list[str], names: Iterable[str]) -> Optional[int]:
 
 def _parse_qty(raw: str, row_num: int) -> Optional[int]:
     s = (raw or "").strip().replace(",", "").replace("_", "")
-    if not s:
+    if not s or _not_known(s):
         return None
     try:
         v = float(s)
     except ValueError:
-        raise ValueError(f"Row {row_num}: quantity '{raw.strip()}' isn't a number")
+        raise CellError(row_num, "quantity", raw.strip(), "isn't a number", QUANTITY_ACCEPTED)
     if v != int(v) or not (1 <= v <= MAX_QUANTITY):
-        raise ValueError(f"Row {row_num}: quantity '{raw.strip()}' must be a whole number from 1 to {MAX_QUANTITY:,}")
+        raise CellError(row_num, "quantity", raw.strip(), f"must be a whole number from 1 to {MAX_QUANTITY:,}",
+                        QUANTITY_ACCEPTED)
     return int(v)
+
+
+def _sniff(text: str):
+    """The list's dialect: comma, semicolon or tab, quoted cells kept whole.
+
+    The header row decides the delimiter when it plainly has one (a quoted
+    "Type II anodize, black" further down never makes the sniffer pick another).
+    """
+    first = text.split("\n", 1)[0]
+    for d in ("\t", ";", ","):
+        if first.count(d) >= 1 and all(first.count(o) < first.count(d) for o in ("\t", ";", ",") if o != d):
+            return type("Dialect", (csv.excel,), {"delimiter": d})
+    try:
+        return csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        return csv.excel
 
 
 def parse_parts_list(text: str) -> list[dict]:
     """Rows of a parts list: ``file``, ``part_number``, ``quantity``, ``material``.
 
     Reads comma, semicolon or tab separated text with a header row, as most
-    BOM and ERP exports are. A file column (or, failing that, a part-number
-    column that matches file names) is required. Quantities must be whole
-    numbers; materials are kept as written plus the class they map to.
-    Raises ``ValueError`` naming the row for anything it can't read.
+    BOM and ERP exports are; a quoted cell is one value, commas and all. A file
+    column (or, failing that, a part-number column that matches file names) is
+    required. Quantities must be whole numbers; materials are kept as written
+    plus the class they map to. The whole list is read before anything is
+    refused: ``PartsListError`` (a ``ValueError``) carries every cell it can't
+    read, each naming its row, column, value, why and what it takes.
     """
     if text.startswith("﻿"):
         text = text[1:]
-    sample = text[:4096]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(io.StringIO(text), dialect)
+    reader = csv.reader(io.StringIO(text), _sniff(text))
     try:
         headers = next(reader)
     except StopIteration:
-        raise ValueError("The parts list is empty")
+        raise _whole_list_problem("The parts list is empty")
     fi = _header_index(headers, _FILE_HEADERS)
     pi = _header_index(headers, _PART_HEADERS)
     if fi is None and pi is None:
-        raise ValueError("The parts list needs a column named filename (or file), or a part number column that matches file names")
+        raise _whole_list_problem(
+            "The parts list needs a column named filename (or file), or a part number column that matches file names")
     qi = _header_index(headers, _QTY_HEADERS)
     mi = _header_index(headers, _MATERIAL_HEADERS)
     di = _header_index(headers, _DESC_HEADERS)
@@ -242,24 +306,36 @@ def parse_parts_list(text: str) -> list[dict]:
         return row[i].strip() if i is not None and i < len(row) and row[i] is not None else ""
 
     rows: list[dict] = []
+    problems: list[dict] = []
     for row_num, row in enumerate(reader, start=2):
         if not any((c or "").strip() for c in row):
             continue
         if len(rows) >= MAX_PARTS_LIST_ROWS:
-            raise ValueError(f"The parts list has more than {MAX_PARTS_LIST_ROWS:,} rows")
+            raise _whole_list_problem(f"The parts list has more than {MAX_PARTS_LIST_ROWS:,} rows")
         file = cell(row, fi)
         part = cell(row, pi)
         if not file and not part:
-            raise ValueError(f"Row {row_num}: no file name or part number")
+            message = f"Row {row_num}: no file name or part number"
+            problems.append({"row": row_num, "column": "file", "value": "", "why": "no file name or part number",
+                             "accepted": "the CAD file's name, or a part number that matches it", "message": message})
+            continue
         material = cell(row, mi) or None
         read = read_material(material)
-        price, price_text = _parse_price(cell(row, ci), cell(row, ei), row_num)
+        price = price_text = quantity = None
+        try:
+            price, price_text = _parse_price(cell(row, ci), cell(row, ei), row_num)
+        except CellError as exc:
+            problems.append(exc.problem())
+        try:
+            quantity = _parse_qty(cell(row, qi), row_num)
+        except CellError as exc:
+            problems.append(exc.problem())
         rows.append({
             "row": row_num,
             "file": file or None,
             "part_number": part or None,
             "description": cell(row, di) or None,
-            "quantity": _parse_qty(cell(row, qi), row_num),
+            "quantity": quantity,
             "material": material,
             "material_class": read["class"],
             "material_grade": read["grade"],
@@ -267,6 +343,8 @@ def parse_parts_list(text: str) -> list[dict]:
             "current_price_usd": price,
             "current_price": price_text,
         })
+    if problems:
+        raise PartsListError(problems)
     return rows
 
 
@@ -562,7 +640,7 @@ def derive_part_row(
         # The part's declared specs as the run priced them (the record's specs
         # block), else as the parts list declared them: plain lines and the
         # certifications whoever makes it must hold.
-        "specs": _row_specs(result.get("specs"), meta.get("part_specs")),
+        "specs": _row_specs(result.get("specs"), meta.get("part_specs"), meta.get("spec_notes")),
         # The outcome recorded on the part's record and its sign-off, said
         # plainly when what was signed off has changed since.
         "outcome": None,
@@ -857,22 +935,36 @@ def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: O
         row["used_kg_total"] = None
 
 
-def _row_specs(block: Any, declared: Any) -> Optional[dict]:
+def _row_specs(block: Any, declared: Any, notes: Any = None) -> Optional[dict]:
+    """The row's specs: priced lines, what the supplier must hold, and (``not_priced``)
+    what the parts list names that ScaleCAD keeps as written but doesn't price."""
     from src.costing.part_specs import normalize_part_specs, required_certifications, spec_summary
+    from src.services.parts_list_specs import note_text
 
+    kept = [note_text(n) for n in notes or [] if isinstance(n, dict)]
     if isinstance(block, dict) and block.get("summary"):
         return {"summary": list(block.get("summary") or []),
                 "supplier_must_hold": [c.get("label") for c in block.get("certifications") or [] if isinstance(c, dict)],
-                "excluded_processes": list(block.get("excluded_processes") or [])}
+                "excluded_processes": list(block.get("excluded_processes") or []),
+                "not_priced": kept}
     try:
         specs = normalize_part_specs(declared) if isinstance(declared, dict) else None
     except ValueError:
         specs = None
-    if not specs:
+    if not specs and not kept:
         return None
-    return {"summary": spec_summary(specs),
-            "supplier_must_hold": [c["label"] for c in required_certifications(specs)],
-            "excluded_processes": []}
+    return {"summary": spec_summary(specs) if specs else [],
+            "supplier_must_hold": [c["label"] for c in required_certifications(specs)] if specs else [],
+            "excluded_processes": [],
+            "not_priced": kept}
+
+
+def not_priced_specs(parts_list: Optional[list[dict]], limit: int = 500) -> dict:
+    """The parts list's specs ScaleCAD keeps but doesn't price: a count and the first ``limit`` notes."""
+    from src.services.parts_list_specs import not_priced
+
+    notes = not_priced(parts_list or [])
+    return {"count": len(notes), "notes": notes[:limit]}
 
 
 # Names a CAD exporter writes into a STEP product tree that aren't anyone's
@@ -1208,9 +1300,10 @@ def apply_catalog_meta(
         if row is not None:
             per_file[it["filename"]] = {
                 k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class",
-                                        "material_grade", "material_note", "row", "part_specs",
+                                        "material_grade", "material_note", "row", "part_specs", "spec_notes",
                                         "current_price_usd", "current_price")
-                if k not in ("part_specs", "current_price_usd", "current_price", "material_grade") or row.get(k)
+                if k not in ("part_specs", "spec_notes", "current_price_usd", "current_price", "material_grade")
+                or row.get(k)
             }
     manifest_json = dict(batch.manifest_json or {})
     manifest_json["catalog"] = {
@@ -1220,7 +1313,9 @@ def apply_catalog_meta(
         "material_class": material_class,
         "quantity": quantity,
         "parts_list": (
-            {"name": list_name, "rows": len(parts_list), "matched": len(by_file), "unmatched": len(unmatched)}
+            {"name": list_name, "rows": len(parts_list), "matched": len(by_file), "unmatched": len(unmatched),
+             # Specs the list names that ScaleCAD doesn't price: kept as written, never a refusal.
+             "not_priced": not_priced_specs(parts_list)}
             if parts_list is not None else None
         ),
         "unmatched": [

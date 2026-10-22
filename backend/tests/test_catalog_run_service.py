@@ -39,6 +39,38 @@ def test_parts_list_errors_name_the_row(text, message):
     assert message in str(err.value)
 
 
+def test_every_problem_in_a_parts_list_comes_back_at_once():
+    text = ("file,qty,current price,per\n"
+            "a.step,lots,abc,\n"
+            ",3,,\n"
+            "b.step,1.5,$4,\n"
+            "c.step,12,5,dozen\n"
+            "d.step,10,$2.50,\n")
+    with pytest.raises(cr.PartsListError) as err:
+        cr.parse_parts_list(text)
+    problems = err.value.problems
+    assert [(p["row"], p["column"], p["value"]) for p in problems] == [
+        (2, "current price", "abc"), (2, "quantity", "lots"), (3, "file", ""), (4, "quantity", "1.5"),
+        (5, "per", "dozen")]
+    assert all(p["why"] and p["accepted"] and p["message"].startswith(f"Row {p['row']}:") for p in problems)
+    assert str(err.value).startswith("5 cells in the parts list need a fix: Row 2: current price 'abc'")
+    assert str(err.value).endswith("and 2 more")
+
+
+def test_a_price_or_quantity_purchasing_doesnt_know_yet_is_blank():
+    rows = cr.parse_parts_list("file,qty,price\na.step,n/a,TBD\nb.step,-,quote\nc.step,5,\n")
+    assert [(r["quantity"], r["current_price_usd"]) for r in rows] == [(None, None), (None, None), (5, None)]
+
+
+def test_a_quoted_cell_keeps_its_commas_whatever_the_rows_below_hold():
+    text = ('file,qty,description,finish\n'
+            'a.step,"1,200","Block, 20 x 15",Passivation\n'
+            'b.step,5,"Plate; thin, 4 mm","Type II anodize, black"\n')
+    a, b = cr.parse_parts_list(text)
+    assert (a["quantity"], a["description"]) == (1200, "Block, 20 x 15")
+    assert b["description"] == "Plate; thin, 4 mm"
+
+
 @pytest.mark.parametrize("text, cls", [
     ("6061-T6 Aluminum", "aluminum"), ("Al 7075", "aluminum"), ("aluminium", "aluminum"),
     ("304 SS", "stainless"), ("17-4 PH", "stainless"), ("316L", "stainless"), ("SS316L", "stainless"),
@@ -356,7 +388,14 @@ def test_a_row_carries_the_specs_the_run_priced_with():
     r = _row(d)
     assert r["specs"] == {"summary": ["Finish: Anodize, Type II", "Inspection: Standard inspection",
                                       "Supplier must hold: AS9100"],
-                          "supplier_must_hold": ["AS9100"], "excluded_processes": ["fdm"]}
+                          "supplier_must_hold": ["AS9100"], "excluded_processes": ["fdm"], "not_priced": []}
+    # What the list names that isn't priced stays on the row, as written.
+    r = _row(d, meta={"spec_notes": [{"column": "certification", "value": "EN 10204 3.1", "why": "not priced"}]})
+    assert r["specs"]["not_priced"] == ["Certification: EN 10204 3.1 (not priced)"]
+    r = _row(None, meta={"spec_notes": [{"column": "finish", "value": "Black oxide", "why": "not priced"}]},
+             item={**ITEM, "status": "pending"})
+    assert r["specs"] == {"summary": [], "supplier_must_hold": [], "excluded_processes": [],
+                          "not_priced": ["Finish: Black oxide (not priced)"]}
     # Not yet priced: the parts list's declaration shows.
     r = _row(None, meta={"part_specs": {"heat_treatments": ["hip"], "certifications": ["itar"]}},
              item={**ITEM, "status": "pending"})
@@ -422,7 +461,7 @@ def test_a_current_price_column_is_read_per_part_in_dollars():
         (12.5, "$1,250.00 per 100"), (1.24, "$12.40 per 10"), (3.0, "$3.00 each"), (None, None)]
     with pytest.raises(ValueError, match="Row 2: current price 'abc' isn't a number"):
         cr.parse_parts_list("file,price\na.step,abc\n")
-    with pytest.raises(ValueError, match="Row 2: 'per' 'dozen' must be each or a number"):
+    with pytest.raises(ValueError, match="Row 2: per 'dozen' must be each or a number"):
         cr.parse_parts_list("file,price,per\na.step,3,dozen\n")
 
 

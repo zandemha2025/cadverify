@@ -1,7 +1,8 @@
 """Part specs in a catalog run's parts list (``src.services.parts_list_specs``).
 
-Unit: column names and cell words map to the spec vocabulary; anything ScaleCAD
-can't read names its row; a bare Ra needs a unit. End to end (live Postgres): a
+Unit: column names and cell words map to the spec vocabulary; a phrase ScaleCAD
+doesn't price is kept as a not-priced note and never refuses a run (the single
+cell reader still names the row); a bare Ra needs a unit. End to end (live Postgres): a
 run's parts list declares specs per file, they are stored on each part's context
 and the part's record is priced and gated with them.
 """
@@ -12,7 +13,7 @@ import os
 import pytest
 
 from src.services.catalog_run_service import parse_parts_list
-from src.services.parts_list_specs import attach, parse_spec_cells
+from src.services.parts_list_specs import attach, not_priced, note_text, parse_spec_cells
 
 
 def _rows(text: str) -> list[dict]:
@@ -78,6 +79,49 @@ def test_what_it_cant_read_names_the_row(cells, words):
     assert words in str(exc.value)
 
 
+@pytest.mark.parametrize("cells, header_unit, specs, notes", [
+    ({"finish": "Type II anodize, black"}, None, {"finishes": ["anodize_ii"]},
+     [("finish", "black", "the anodize's colour; priced as the anodize")]),
+    ({"finish": "Black oxide"}, None, None, [("finish", "Black oxide", "not priced: ScaleCAD has no price for it yet")]),
+    ({"certs": "EN 10204 3.1"}, None, None,
+     [("certification", "EN 10204 3.1", "not priced: ScaleCAD has no price for it yet")]),
+    ({"finish": "Passivation", "inspection": "Roundness check"}, None, {"finishes": ["passivate"]},
+     [("inspection", "Roundness check", "not priced: ScaleCAD has no price for it yet")]),
+    ({"heat": "H1150"}, None, {"heat_treatments": ["solution_age"]}, []),
+    ({"heat": "Q&T 28-32 HRC"}, None, {"heat_treatments": ["quench_temper"]}, []),
+    ({"ra": "32", "finish": "passivate"}, None, {"finishes": ["passivate"]},
+     [("Ra", "32", "not priced: needs a unit: write 32 µm or 32 µin")]),
+    ({"certs": "NADCAP", "finish": "bead blast"}, None, {"finishes": ["bead_blast"]},
+     [("certifications", "NADCAP", "not priced: NADCAP needs the special process it covers, for example heat_treating")]),
+])
+def test_a_run_keeps_what_it_cant_price_as_a_note_and_never_refuses(cells, header_unit, specs, notes):
+    kept: list = []
+    assert parse_spec_cells(cells, 9, ra_header_unit=header_unit, notes=kept) == specs
+    assert [(n["column"], n["value"], n["why"]) for n in kept] == notes
+
+
+def test_the_testers_real_parts_list_starts_a_run():
+    """op-04: Ridgeline's 300-row list in the app's own template (finish, Ra, heat
+    treatment, inspection, certifications as purchasing writes them)."""
+    path = os.path.join(os.path.dirname(__file__), "assets", "parts-lists", "ridgeline_parts_list_2026Q3.csv")
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    rows = _rows(text)
+    assert len(rows) == 300 and rows[0]["part_number"] == "RFS-21011"
+    # "Type II anodize, black" (quoted, as Excel writes it): one anodize, the colour kept.
+    assert rows[0]["part_specs"] == {"finishes": ["anodize_ii"]}
+    assert rows[0]["spec_notes"] == [{"column": "finish", "value": "black",
+                                      "why": "the anodize's colour; priced as the anodize"}]
+    notes = not_priced(rows)
+    by_value: dict = {}
+    for n in notes:
+        by_value[n["value"]] = by_value.get(n["value"], 0) + 1
+    assert by_value == {"EN 10204 3.1": 34, "Black oxide": 9, "Polish": 7, "Roundness check": 7}
+    assert all(n["row"] and n["part"] for n in notes)
+    assert sum(1 for r in rows if "solution_age" in (r.get("part_specs") or {}).get("heat_treatments", [])) == 9
+    assert note_text(next(n for n in notes if n["value"] == "Black oxide")) == "Finish: Black oxide (not priced)"
+
+
 def test_nadcap_without_a_named_process_takes_it_from_the_finish():
     specs = parse_spec_cells({"finish": "passivate", "certs": "NADCAP"}, 2)
     assert specs["certifications"] == ["nadcap"] and "nadcap_processes" not in specs
@@ -127,14 +171,58 @@ async def test_a_runs_parts_list_specs_price_and_gate_each_part(world):
 
 @pytest.mark.skipif(not _PG, reason="requires PostgreSQL at schema head")
 @pytest.mark.asyncio
-async def test_a_parts_list_spec_it_cant_read_is_a_clean_400(world):
+async def test_a_spec_it_cant_price_starts_the_run_and_stays_on_the_row(world):
+    from tests.test_catalog_run_e2e import _as, _get, _post, _stl
+
+    _as(world["app"], world["users"]["work"])
+    r = await _post(world["app"], {"a.stl": _stl((10, 10, 10))},
+                    parts_list='file,qty,finish,certifications\na.stl,1,"Type II anodize, black",EN 10204 3.1\n')
+    assert r.status_code == 202, r.text
+    board = (await _get(world["app"], f"/api/v1/batch/{r.json()['batch_id']}/catalog")).json()
+    assert board["parts_list"]["not_priced"]["count"] == 1
+    row = board["rows"][0]
+    assert row["specs"]["not_priced"] == ["Finish: black (colour of the anodize)",
+                                          "Certification: EN 10204 3.1 (not priced)"]
+    assert row["specs"]["summary"][0] == "Finish: Anodize, Type II"
+
+
+@pytest.mark.skipif(not _PG, reason="requires PostgreSQL at schema head")
+@pytest.mark.asyncio
+async def test_a_list_it_cant_read_is_a_clean_400_with_every_problem(world):
     from tests.test_catalog_run_e2e import _as, _post, _stl
 
     _as(world["app"], world["users"]["work"])
-    r = await _post(world["app"], {"a.stl": _stl((10, 10, 10))}, parts_list="file,qty,finish\na.stl,1,gold leaf\n")
+    r = await _post(world["app"], {"a.stl": _stl((10, 10, 10))},
+                    parts_list="file,qty,price\na.stl,lots,1\nb.stl,2,abc\n")
     assert r.status_code == 400
-    assert r.json()["detail"]["code"] == "INVALID_PARTS_LIST"
-    assert "Row 2: finish 'gold leaf'" in r.json()["detail"]["message"]
+    detail = r.json()["detail"]
+    assert detail["code"] == "INVALID_PARTS_LIST"
+    assert [(p["row"], p["column"], p["value"]) for p in detail["problems"]] == [(2, "quantity", "lots"),
+                                                                                (3, "current price", "abc")]
+    assert detail["message"].startswith("2 cells in the parts list need a fix")
+
+
+@pytest.mark.skipif(not _PG, reason="requires PostgreSQL at schema head")
+@pytest.mark.asyncio
+async def test_a_picked_list_is_checked_without_the_zip(world):
+    from httpx import ASGITransport, AsyncClient
+
+    from tests.test_catalog_run_e2e import _as
+
+    _as(world["app"], world["users"]["work"])
+    path = os.path.join(os.path.dirname(__file__), "assets", "parts-lists", "ridgeline_parts_list_2026Q3.csv")
+    with open(path, "rb") as fh:
+        real = fh.read()
+    async with AsyncClient(transport=ASGITransport(app=world["app"]), base_url="http://test") as ac:
+        ok = await ac.post("/api/v1/catalog-runs/parts-list", files={"manifest": ("list.csv", real, "text/csv")})
+        bad = await ac.post("/api/v1/catalog-runs/parts-list",
+                            files={"manifest": ("list.csv", b"file,qty\na.stl,1.5\n,2\n", "text/csv")})
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert (body["ok"], body["rows"], body["problems"]) == (True, 300, [])
+    assert body["not_priced"]["count"] == 57 and body["with_price"] > 0
+    assert bad.status_code == 200 and bad.json()["ok"] is False
+    assert [p["row"] for p in bad.json()["problems"]] == [2, 3]
 
 
 # The live-Postgres fixture of the catalog run tests.

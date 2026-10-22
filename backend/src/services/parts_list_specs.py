@@ -7,8 +7,14 @@ part its declared specs too (src.costing.part_specs), so a run prices and
 gates them like specs declared on the part's page. Column names and cell words
 are matched loosely ("Surface finish: Type II anodize + bead blast", "Ra (µin):
 32", "Heat treat: Q&T", "Inspection: FAI", "Certifications: AS9100, NADCAP (heat
-treating), ITAR"); a word ScaleCAD can't map names its row and the whole list is
-refused, never guessed. A bare Ra number needs a unit in the cell or the header.
+treating), ITAR").
+
+A spec cell never refuses a run. A phrase ScaleCAD doesn't price ("Black
+oxide", "EN 10204 3.1", "Roundness check", an Ra with no unit) is kept as
+written in the row's ``spec_notes`` and listed as not priced; it is never
+guessed into a priced spec. A colour after an anodize ("Type II anodize,
+black") is part of that anodize: priced as the anodize, the colour kept as a
+note.
 """
 from __future__ import annotations
 
@@ -39,7 +45,8 @@ _FINISH_WORDS: tuple = (
 _HEAT_WORDS: tuple = (
     ("hip", re.compile(r"\bhip\b|isostatic", re.I)),
     ("stress_relief", re.compile(r"stress[\s-]*reli", re.I)),
-    ("solution_age", re.compile(r"solution|\bage(d|ing)?\b|\bsta\b|precipitation", re.I)),
+    # 17-4 PH / 15-5 PH conditions (H900 … H1150) are solution treated and aged.
+    ("solution_age", re.compile(r"solution|\bage(d|ing)?\b|\bsta\b|precipitation|\bh\s?(900|925|1025|1075|1100|1150)(-?m)?\b", re.I)),
     ("quench_temper", re.compile(r"quench|temper|q\s*&\s*t|through[\s-]*harden", re.I)),
     ("case_harden", re.compile(r"case|carburi[sz]|nitrid|carbonitrid", re.I)),
 )
@@ -66,16 +73,38 @@ _NADCAP_WORDS: tuple = (
 _RA_CELL = re.compile(r"^\s*(?:ra\s*)?([0-9]*\.?[0-9]+)\s*(µm|um|micron|microns|µin|uin|microinch(?:es)?|µ\"|)\s*(?:ra)?\s*$", re.I)
 
 
-def _spec_words(raw: str, table: tuple, what: str, row_num: int) -> list[str]:
-    """Each comma/semicolon/plus-separated phrase mapped to one spec key, in order."""
+# A colour named after an anodize ("Type II anodize, black") is that anodize's colour.
+_COLOUR = re.compile(r"^(black|clear|natural|red|blue|gold|green|grey|gray|bronze|olive|orange|purple|violet|"
+                     r"silver|yellow|dyed|undyed|colou?r\b.*)$", re.I)
+_SPEC_COLUMNS = {"finish": "finish", "ra": "Ra", "heat": "heat treatment", "inspection": "inspection",
+                 "certs": "certifications"}
+
+
+def _note(column: str, value: str, why: str) -> dict:
+    return {"column": column, "value": value, "why": why}
+
+
+def _spec_words(raw: str, table: tuple, what: str, row_num: int, notes: Optional[list] = None) -> list[str]:
+    """Each comma/semicolon/plus-separated phrase mapped to one spec key, in order.
+
+    A phrase that maps to none goes to ``notes`` (not priced); without ``notes``
+    it raises, naming the row (the single-cell reader's contract).
+    """
     out: list[str] = []
     for phrase in re.split(r"[;,+/]|\bthen\b|\band\b", raw):
         phrase = phrase.strip()
         if not phrase:
             continue
         hit = next((key for key, pattern in table if pattern.search(phrase)), None)
+        if hit is None and out and out[-1] in ("anodize_ii", "anodize_iii") and _COLOUR.match(phrase):
+            if notes is not None:
+                notes.append(_note(what, phrase, "the anodize's colour; priced as the anodize"))
+            continue
         if hit is None:
-            raise ValueError(f"Row {row_num}: {what} '{phrase}' isn't one ScaleCAD knows")
+            if notes is None:
+                raise ValueError(f"Row {row_num}: {what} '{phrase}' isn't one ScaleCAD knows")
+            notes.append(_note(what, phrase, "not priced: ScaleCAD has no price for it yet"))
+            continue
         if hit not in out:
             out.append(hit)
     return out
@@ -96,54 +125,88 @@ def _ra_um(raw: str, header_unit: Optional[str], row_num: int) -> tuple[float, s
     return (value * UM_PER_UIN if unit == "uin" else value), unit
 
 
-def parse_spec_cells(cells: dict, row_num: int, *, ra_header_unit: Optional[str] = None) -> Optional[dict]:
+def parse_spec_cells(cells: dict, row_num: int, *, ra_header_unit: Optional[str] = None,
+                     notes: Optional[list] = None) -> Optional[dict]:
     """A parts-list row's spec columns as declared part specs (None when blank).
 
     ``cells`` maps ``finish`` / ``ra`` / ``heat`` / ``inspection`` / ``certs`` to the
-    raw text. Every phrase must map to a known spec, and the result is validated
-    like a spec declared on the part; anything ScaleCAD can't read names the row.
+    raw text. Each phrase that maps to a known spec is declared, and the result
+    is validated like a spec declared on the part.
+
+    With a ``notes`` list (a catalog run's parts list), nothing raises: a phrase
+    or cell ScaleCAD can't price is appended there as ``{column, value, why}``
+    and left out of the specs. Without one, anything it can't read raises a
+    ``ValueError`` naming the row.
     """
     from src.costing.part_specs import normalize_part_specs
 
+    lenient = notes is not None
     specs: dict = {}
     if cells.get("finish"):
-        specs["finishes"] = _spec_words(cells["finish"], _FINISH_WORDS, "finish", row_num)
+        specs["finishes"] = _spec_words(cells["finish"], _FINISH_WORDS, "finish", row_num, notes)
     if cells.get("ra"):
-        specs["ra_um"], specs["ra_unit"] = _ra_um(cells["ra"], ra_header_unit, row_num)
+        try:
+            specs["ra_um"], specs["ra_unit"] = _ra_um(cells["ra"], ra_header_unit, row_num)
+        except ValueError as exc:
+            if not lenient:
+                raise
+            notes.append(_note("Ra", cells["ra"].strip(), "not priced: " + str(exc).split("' ", 1)[-1]))
     if cells.get("heat"):
-        specs["heat_treatments"] = _spec_words(cells["heat"], _HEAT_WORDS, "heat treatment", row_num)
+        specs["heat_treatments"] = _spec_words(cells["heat"], _HEAT_WORDS, "heat treatment", row_num, notes)
     if cells.get("inspection"):
-        specs["inspection"] = _spec_words(cells["inspection"], _INSPECTION_WORDS, "inspection", row_num)
+        specs["inspection"] = _spec_words(cells["inspection"], _INSPECTION_WORDS, "inspection", row_num, notes)
     if cells.get("certs"):
         raw = cells["certs"]
-        specs["certifications"] = _spec_words(re.sub(r"\([^)]*\)", "", raw), _CERT_WORDS, "certification", row_num)
+        specs["certifications"] = _spec_words(re.sub(r"\([^)]*\)", "", raw), _CERT_WORDS, "certification",
+                                              row_num, notes)
         named = " ".join(re.findall(r"\(([^)]*)\)", raw))
         if "nadcap" in specs["certifications"] and named.strip():
-            specs["nadcap_processes"] = _spec_words(named, _NADCAP_WORDS, "NADCAP process", row_num)
+            specs["nadcap_processes"] = _spec_words(named, _NADCAP_WORDS, "NADCAP process", row_num, notes)
+    specs = {k: v for k, v in specs.items() if v not in ([], None)}
     if not specs:
         return None
     try:
         return normalize_part_specs(specs)
     except ValueError as exc:
-        raise ValueError(f"Row {row_num}: {exc}")
+        if not lenient:
+            raise ValueError(f"Row {row_num}: {exc}")
+    # Keep every field that stands on its own; the one that doesn't is a note, as written.
+    kept: dict = {}
+    for key in ("finishes", "ra_um", "heat_treatments", "inspection", "certifications", "nadcap_processes"):
+        if key not in specs:
+            continue
+        trial = {**kept, key: specs[key]}
+        if key == "ra_um":
+            trial["ra_unit"] = specs.get("ra_unit")
+        if key == "certifications" and "nadcap_processes" in specs:
+            trial["nadcap_processes"] = specs["nadcap_processes"]
+        try:
+            normalize_part_specs(trial)
+        except ValueError as exc:
+            column = {"finishes": "finish", "ra_um": "Ra", "heat_treatments": "heat treatment",
+                      "inspection": "inspection", "certifications": "certifications",
+                      "nadcap_processes": "certifications"}[key]
+            cell_key = {"finish": "finish", "Ra": "ra", "heat treatment": "heat", "inspection": "inspection",
+                        "certifications": "certs"}[column]
+            notes.append(_note(column, (cells.get(cell_key) or "").strip(), f"not priced: {exc}"))
+            continue
+        kept = trial
+    return normalize_part_specs(kept) if kept else None
 
 
 def attach(rows: list[dict], text: str) -> list[dict]:
     """rows (from parse_parts_list) with part_specs added from the same text.
 
-    Reads the header and rows exactly as parse_parts_list does (same dialect
-    sniffing, blank rows skipped, row numbers from 2). A list without spec
-    columns comes back unchanged. Raises ValueError naming the row.
+    Reads the header and rows exactly as parse_parts_list does (same dialect,
+    blank rows skipped, row numbers from 2). A list without spec columns comes
+    back unchanged. Never raises over a spec cell: what ScaleCAD can't price is
+    kept on the row as ``spec_notes`` (``[{column, value, why}]``).
     """
-    from src.services.catalog_run_service import _header_index
+    from src.services.catalog_run_service import _header_index, _sniff
 
-    if text.startswith("\ufeff"):
+    if text.startswith("﻿"):
         text = text[1:]
-    try:
-        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(io.StringIO(text), dialect)
+    reader = csv.reader(io.StringIO(text), _sniff(text))
     try:
         headers = next(reader)
     except StopIteration:
@@ -165,8 +228,33 @@ def attach(rows: list[dict], text: str) -> list[dict]:
         target = by_row.get(row_num)
         if target is None:
             continue
+        notes: list = []
         specs = parse_spec_cells({k: cell(row, i) for k, i in spec_cols.items()}, row_num,
-                                 ra_header_unit=ra_header_unit)
+                                 ra_header_unit=ra_header_unit, notes=notes)
         if specs:
             target["part_specs"] = specs
+        if notes:
+            target["spec_notes"] = notes
     return rows
+
+
+def not_priced(rows: list[dict]) -> list[dict]:
+    """Every spec the list names that isn't priced: ``[{row, part, column, value, why}]``, in list order.
+
+    An anodize's colour is priced with its anodize, so it isn't one (it stays on the row's notes).
+    """
+    out: list[dict] = []
+    for r in rows:
+        for n in r.get("spec_notes") or []:
+            if str(n.get("why") or "").startswith("not priced"):
+                out.append({"row": r.get("row"), "part": r.get("part_number") or r.get("file"), **n})
+    return out
+
+
+def note_text(note: dict) -> str:
+    """One not-priced spec as a line: ``Finish: Black oxide (not priced)``."""
+    column = str(note.get("column") or "spec")
+    value = str(note.get("value") or "")
+    why = str(note.get("why") or "")
+    tail = "colour of the anodize" if why.startswith("the anodize's colour") else "not priced"
+    return f"{column[:1].upper()}{column[1:]}: {value} ({tail})"
