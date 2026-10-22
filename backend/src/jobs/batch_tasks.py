@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import json
 import logging
 import os
+import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from arq import Retry
@@ -754,8 +757,211 @@ def _batch_item_queue_lease_seconds() -> int:
     return max(_BATCH_ITEM_QUEUE_LEASE_FLOOR_SECONDS, configured)
 
 
-async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
-    """Run ONE coordination tick, then re-enqueue itself (F-ARCH-6/#1).
+# ---------------------------------------------------------------------------
+# The coordinator chain: one live chain per batch, that a failed tick never ends
+# ---------------------------------------------------------------------------
+#
+# Each tick is its own arq job and queues the next. The chain's state lives in
+# Redis (``_chain_key``): which chain owns the batch, its tick number, and when
+# it last ticked. Three rules keep exactly one chain going:
+#
+#   * The next tick's job id is ``batch-coordinator:{batch}:{chain}:{seq}``, so
+#     a tick that runs twice (arq re-runs a tick cancelled at shutdown; the
+#     failure path below already queued its successor) queues its successor
+#     once: arq refuses a job id that is queued or recently finished.
+#   * A start without a chain (the API, a re-check, a resume, a kick, or a job
+#     queued before chains existed) takes the batch over with a new chain; the
+#     old chain's next tick sees another owner and stops.
+#   * A tick that fails (a DB connect timing out under load, the job timeout, a
+#     worker shutdown) still queues the next tick, a little later. The minute
+#     cron ``rekick_batch_coordinators`` starts a chain for any running batch
+#     whose chain hasn't ticked for a while (its next job was lost with Redis).
+
+_CHAIN_TTL_SECONDS = 14 * 24 * 3600
+
+
+def _chain_key(batch_ulid: str) -> str:
+    return f"cadverify:batch-coordinator:{batch_ulid}"
+
+
+def _coordinator_stale_seconds() -> int:
+    """How long a running batch may go without a tick before the cron starts a coordinator."""
+    try:
+        configured = int(os.getenv("BATCH_COORDINATOR_STALE_SECONDS", "120"))
+    except (TypeError, ValueError):
+        configured = 120
+    return max(30, configured)
+
+
+def _coordinator_retry_delay(failures: int) -> int:
+    """5, 10, 20, 40, then 60 s between ticks after consecutive failed ticks."""
+    return min(60, 5 * 2 ** max(0, min(failures, 4)))
+
+
+async def _chain_state(pool, batch_ulid: str) -> dict | None:
+    """The batch's chain state from Redis, or None (no state, or a pool without get)."""
+    getter = getattr(pool, "get", None)
+    if getter is None:
+        return None
+    try:
+        raw = await getter(_chain_key(batch_ulid))
+    except Exception:
+        logger.warning("Could not read the coordinator chain of batch %s", batch_ulid, exc_info=True)
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", "replace")
+    if not isinstance(raw, str):
+        return None
+    try:
+        state = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(state, dict) or not isinstance(state.get("chain"), str):
+        return None
+    return state
+
+
+async def _write_chain_state(pool, batch_ulid: str, chain: str, seq: int) -> None:
+    setter = getattr(pool, "set", None)
+    if setter is None:
+        return
+    try:
+        await setter(
+            _chain_key(batch_ulid),
+            json.dumps({"chain": chain, "seq": seq, "at": time.time()}),
+            ex=_CHAIN_TTL_SECONDS,
+        )
+    except Exception:
+        logger.warning("Could not record the coordinator chain of batch %s", batch_ulid, exc_info=True)
+
+
+async def _queue_next_tick(pool, batch_ulid: str, chain: str, seq: int, *, defer: int, failures: int) -> None:
+    """Queue tick ``seq + 1`` of this chain (once, whoever asks: the job id is the tick)."""
+    if pool is None:
+        return
+    next_seq = seq + 1
+    await _write_chain_state(pool, batch_ulid, chain, next_seq)
+    await pool.enqueue_job(
+        "run_batch_coordinator",
+        batch_ulid,
+        chain=chain,
+        seq=next_seq,
+        failures=failures,
+        _job_id=f"batch-coordinator:{batch_ulid}:{chain}:{next_seq}",
+        _defer_by=defer,
+    )
+
+
+async def run_batch_coordinator(
+    ctx: dict,
+    batch_ulid: str,
+    chain: str | None = None,
+    seq: int = 0,
+    failures: int = 0,
+) -> None:
+    """One tick of the batch's coordinator chain; a failed tick still queues the next.
+
+    See the chain rules above. ``chain``/``seq`` name this tick; a call
+    without them starts a chain (and takes the batch over from any other).
+    ``failures`` counts the failed ticks just before this one, for the delay.
+    """
+    pool = ctx.get("redis") or ctx.get("pool")
+    poll_interval = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
+    if chain is None:
+        chain = uuid.uuid4().hex[:16]
+        seq = 0
+        if pool is not None:
+            await _write_chain_state(pool, batch_ulid, chain, seq)
+    elif pool is not None:
+        state = await _chain_state(pool, batch_ulid)
+        if state is not None and state.get("chain") != chain:
+            logger.info("Batch %s coordinator chain %s superseded; stopping it", batch_ulid, chain)
+            return
+
+    retry_in = _coordinator_retry_delay(failures)
+    try:
+        more = await _coordinator_tick(ctx, batch_ulid)
+    except asyncio.CancelledError:
+        # arq's job timeout, or a worker shutting down. The next tick goes on
+        # the queue first (its job id makes a re-run of this tick harmless).
+        try:
+            await asyncio.shield(
+                _queue_next_tick(pool, batch_ulid, chain, seq, defer=retry_in, failures=failures + 1)
+            )
+        except BaseException:
+            logger.exception("Batch %s: the tick after a cancelled one could not be queued", batch_ulid)
+        raise
+    except Exception:
+        logger.warning(
+            "Batch %s coordinator tick failed (%d in a row); the next tick runs in %d s",
+            batch_ulid, failures + 1, retry_in, exc_info=True,
+        )
+        try:
+            await _queue_next_tick(pool, batch_ulid, chain, seq, defer=retry_in, failures=failures + 1)
+        except Exception:
+            logger.exception("Batch %s: the tick after a failed one could not be queued", batch_ulid)
+        raise
+    if more:
+        # Outside the session so no DB connection is pinned across the poll
+        # interval. Without a pool (unit tests) the chain simply stops here.
+        await _queue_next_tick(pool, batch_ulid, chain, seq, defer=poll_interval, failures=0)
+
+
+async def rekick_batch_coordinators(ctx: dict) -> int:
+    """arq cron (every minute): start a coordinator for a running batch whose chain stopped.
+
+    A running batch (pending or processing, its parts unpacked) whose chain
+    hasn't ticked for ``BATCH_COORDINATOR_STALE_SECONDS`` gets a new chain. The
+    kick's job id carries the stalled chain's tick, so a minute later it isn't
+    queued twice; a chain that was only slow stops when the new one starts.
+    Off-switch: BATCH_COORDINATOR_REKICK_ENABLED=0.
+    """
+    if not _flag("BATCH_COORDINATOR_REKICK_ENABLED", "1"):
+        return 0
+    pool = ctx.get("redis") or ctx.get("pool")
+    if pool is None:
+        return 0
+    stale = _coordinator_stale_seconds()
+    async with get_session_factory()() as session:
+        rows = (
+            await session.execute(
+                select(Batch.ulid, Batch.created_at, Batch.started_at).where(
+                    Batch.status.in_(["pending", "processing"]),
+                    Batch.input_mode == "zip",
+                )
+            )
+        ).all()
+    now = time.time()
+    kicked = 0
+    for batch_ulid, created_at, started_at in rows:
+        state = await _chain_state(pool, batch_ulid)
+        if state is not None:
+            try:
+                at = float(state.get("at") or 0)
+            except (TypeError, ValueError):
+                at = 0.0
+            if now - at < stale:
+                continue
+            stalled = f"{state['chain']}:{state.get('seq')}"
+        else:
+            anchor = started_at or created_at
+            if anchor is not None:
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=timezone.utc)
+                if now - anchor.timestamp() < stale:
+                    continue
+            stalled = "none"
+        job = await pool.enqueue_job(
+            "run_batch_coordinator", batch_ulid, _job_id=f"batch-coordinator-kick:{batch_ulid}:{stalled}"
+        )
+        if job is not None:
+            kicked += 1
+            logger.warning("Batch %s had no coordinator tick for %d s or more; started one", batch_ulid, stale)
+    return kicked
+
+
+async def _coordinator_tick(ctx: dict, batch_ulid: str) -> bool:
+    """Run ONE coordination tick; True when the batch has work left (F-ARCH-6/#1).
 
     This is deliberately NOT a while-True poller. arq wraps every job in
     ``asyncio.wait_for(task, job_timeout)`` (arq/worker.py), so a job designed to
@@ -771,16 +977,15 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         interval. The chain of short jobs replaces the loop -- every job now
         finishes in milliseconds, far inside ``job_timeout``, so the cancellation
         window is designed out rather than patched around.
-      * Recovery is uniform: if a tick is cancelled at ``job_timeout``, crashes,
-        or the worker dies, the chain simply stops advancing the heartbeat and the
-        heartbeat-based orphan sweeper (F-ARCH-6/#2) reaps the batch. No
-        unreachable ``except Exception`` cleanup is relied upon.
+      * Recovery: ``run_batch_coordinator`` queues the next tick even when this
+        one fails or is cancelled, the minute cron restarts a chain that stopped,
+        and the orphan sweep resumes a batch that made no progress before it
+        ever fails one (a run ends only when it can't be resumed).
     """
     from src.services import batch_service
 
     session_factory = get_session_factory()
     pool = ctx.get("redis") or ctx.get("pool")
-    poll_interval = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
 
     async with session_factory() as session:
         batch = (
@@ -790,7 +995,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         ).scalars().first()
         if batch is None:
             logger.error("Batch %s not found", batch_ulid)
-            return
+            return False
         batch_id = batch.id
 
         # Terminal already (cancelled/failed/completed): stop the chain without
@@ -799,7 +1004,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
             logger.info(
                 "Batch %s already %s; coordinator stopping", batch_ulid, batch.status
             )
-            return
+            return False
 
         # First tick: pending -> processing. total_items is authoritative from the
         # router, but recompute defensively so the coordinator is self-consistent.
@@ -849,7 +1054,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
             )
             if batch.job_type == "catalog":
                 await _notify_run_finished(batch_ulid)
-            return  # terminal -> do NOT re-enqueue; the chain stops here
+            return False  # terminal -> do NOT re-enqueue; the chain stops here
 
         # Steady state: refresh heartbeat + drip-feed pending items up to the
         # concurrency limit. The heartbeat proves to the sweeper we are alive.
@@ -928,10 +1133,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                     item.status = "failed"
                     item.completed_at = lease_now
                     item.lease_started_at = None
-                    item.error_message = (
-                        "Temporary storage or database failure persisted after "
-                        f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
-                    )
+                    item.error_message = batch_service.exhausted_reason(item)
                     batch.failed_items = int(batch.failed_items or 0) + 1
                     continue
                 item.status = "queued"
@@ -977,13 +1179,8 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                 )
                 await session.commit()
 
-    # Re-enqueue the next tick outside the session so no DB connection is pinned
-    # across the poll interval. If there is no pool (unit tests), the chain simply
-    # does not continue -- one tick still runs and asserts its own behavior.
-    if pool is not None:
-        await pool.enqueue_job(
-            "run_batch_coordinator", batch_ulid, _defer_by=poll_interval
-        )
+    # Work remains: the caller queues the next tick outside this session.
+    return True
 
 
 async def _notify_run_finished(batch_ulid: str) -> None:
@@ -1133,12 +1330,17 @@ async def _release_cancelled_item_lease(item_ulid: str) -> None:
             # to pending would create work no coordinator is allowed to resume.
             item.status = "skipped"
             item.completed_at = datetime.now(timezone.utc)
+            item.error_message = None
         else:
+            # Back in the run with this try counted; the note says why it runs
+            # again and, once its tries are used up, why it failed.
+            from src.services.batch_service import STOPPED_MID_CHECK
+
             item.status = "pending"
             item.completed_at = None
+            item.error_message = STOPPED_MID_CHECK
         item.started_at = None
         item.lease_started_at = None
-        item.error_message = None
         await session.commit()
 
 
@@ -1946,6 +2148,8 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
         item.attempt_count = attempts
         item.started_at = datetime.now(timezone.utc)
         item.lease_started_at = item.started_at
+        # A note from a stopped earlier try isn't this try's outcome.
+        item.error_message = None
 
         # Cost items carry engine-number webhook extras; DFM items carry none.
         webhook_extra: dict | None = None

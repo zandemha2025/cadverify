@@ -1015,6 +1015,24 @@ async def update_batch_counters(
 
 BATCH_ITEM_MAX_ATTEMPTS = 3
 
+# Kept on a part put back in the run after its check was stopped part way (the
+# job's time limit, a worker restart): it says why the next try happens, and
+# why the part failed once its tries are used up.
+STOPPED_MID_CHECK = "Stopped before it finished (the worker was busy or restarting)"
+
+
+def exhausted_reason(item: BatchItem, *, stopped: bool = False) -> str:
+    """Why a part that used up its tries failed, in plain words."""
+    if stopped or (getattr(item, "error_message", None) or "").startswith(STOPPED_MID_CHECK):
+        return (
+            f"Checking was stopped before it finished {BATCH_ITEM_MAX_ATTEMPTS} times; "
+            "the worker was busy or restarting. Check it again."
+        )
+    return (
+        "Temporary storage or database failure persisted after "
+        f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
+    )
+
 
 @dataclass(frozen=True)
 class BatchItemLeaseRecovery:
@@ -1075,21 +1093,20 @@ async def recover_stale_batch_item_leases(
     requeued: list[str] = []
     exhausted: list[str] = []
     for item in rows:
+        # A processing lease this old: its worker stopped part way through.
+        stopped = item.status == "processing"
         item.lease_started_at = None
         if _attempt_count(item) >= BATCH_ITEM_MAX_ATTEMPTS:
             item.status = "failed"
             item.completed_at = now
-            item.error_message = (
-                "Temporary storage or database failure persisted after "
-                f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
-            )
+            item.error_message = exhausted_reason(item, stopped=stopped)
             exhausted.append(item.ulid)
             continue
 
         item.status = "pending"
         item.started_at = None
         item.completed_at = None
-        item.error_message = None
+        item.error_message = STOPPED_MID_CHECK if stopped else item.error_message
         requeued.append(item.ulid)
 
     if exhausted:

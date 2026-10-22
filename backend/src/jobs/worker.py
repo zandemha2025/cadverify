@@ -16,6 +16,7 @@ from src.jobs.batch_tasks import (
     dispatch_webhook,
     prepare_direct_upload_batch,
     reconcile_terminal_batch_items,
+    rekick_batch_coordinators,
     run_batch_coordinator,
     run_batch_item,
     sweep_expired_direct_uploads,
@@ -162,6 +163,14 @@ class WorkerSettings:
         cron(
             sweep_orphaned_batches,
             minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
+        # A running batch whose coordinator chain stopped ticking (its next job
+        # was lost with Redis, or could not be queued) gets a new coordinator.
+        cron(
+            rekick_batch_coordinators,
+            minute=set(range(60)),
+            second={30},
             run_at_startup=True,
         ),
         cron(

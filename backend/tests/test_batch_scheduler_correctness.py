@@ -168,7 +168,9 @@ async def test_stale_lease_recovery_requeues_under_budget_and_fails_exhausted():
     assert retryable.status == "pending"
     assert exhausted.status == "failed"
     assert exhausted.completed_at == now
-    assert "3 attempts" in exhausted.error_message
+    # Its worker stopped part way, each try: the reason says so, not a storage fault.
+    assert "stopped before it finished 3 times" in exhausted.error_message
+    assert retryable.error_message.startswith(batch_service.STOPPED_MID_CHECK)
     assert batch.failed_items == 1
 
 
