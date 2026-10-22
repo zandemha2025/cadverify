@@ -37,7 +37,7 @@ from src.api.admission import admit_analysis
 from src.auth.free_tool_limits import limit_free_fixes, limit_free_recheck
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
-from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
+from src.auth.rbac import OrgAuthContext, OrgRole, require_org_checker, require_org_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 
@@ -92,8 +92,10 @@ async def recheck_stored_part(
     tolerance_class: Optional[str] = Query(None, description="standard|precision|tight"),
     units: Optional[str] = Query(None, description="Declared STL source units: mm|inch (unset => mm)."),
     orientation: Optional[str] = Query(None, description="Turn the part before costing, as for POST /validate/cost."),
+    # Analyst and org member: a viewer is refused with the plain viewer line
+    # first; ctx then carries the org boundary.
+    user: AuthedUser = Depends(require_org_checker),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
     _free_limit: None = Depends(limit_free_recheck),
     session: AsyncSession = Depends(get_db_session),
     _admission: None = Depends(admit_analysis),
@@ -279,8 +281,10 @@ async def check_stored_bodies(
     region: Optional[str] = Query(None, description="US|EU|MX|CN|IN|SA (unset => US)"),
     owned_processes: Optional[str] = Query(None, description="Comma-separated engine process ids the org owns."),
     units: Optional[str] = Query(None, description="Declared STL source units: mm|inch (unset => mm)."),
+    # Analyst and org member: a viewer is refused with the plain viewer line
+    # first; ctx then carries the org boundary.
+    user: AuthedUser = Depends(require_org_checker),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
     _free_limit: None = Depends(limit_free_recheck),
     session: AsyncSession = Depends(get_db_session),
     _admission: None = Depends(admit_analysis),
@@ -353,8 +357,10 @@ async def body_as_own_part(
     mesh_hash: str,
     body_id: int,
     units: Optional[str] = Query(None, description="Declared STL source units: mm|inch (unset => mm)."),
+    # Analyst and org member: a viewer is refused with the plain viewer line
+    # first; ctx then carries the org boundary.
+    user: AuthedUser = Depends(require_org_checker),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
     _free_limit: None = Depends(limit_free_fixes),
     session: AsyncSession = Depends(get_db_session),
     _admission: None = Depends(admit_analysis),

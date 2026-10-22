@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
-from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
+from src.auth.rbac import OrgAuthContext, OrgRole, require_org_checker, require_org_role
 from src.auth.require_api_key import AuthedUser
 from src.auth.free_tool_limits import limit_free_fixes, limit_free_repair
 from src.db.engine import get_db_session
@@ -113,8 +113,10 @@ async def apply_part_fix(
                                                  "Default: the part's last cost check, else the app's ladder."),
     material_class: Optional[str] = Query(None, description="polymer|aluminum|steel|stainless|titanium"),
     with_cost: bool = Query(True, description="Price both files (adds one engine pass each)."),
+    # Analyst and org member: a viewer is refused with the plain viewer line
+    # first; ctx then carries the org boundary.
+    user: AuthedUser = Depends(require_org_checker),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
     _free_limit: None = Depends(limit_free_fixes),
     session: AsyncSession = Depends(get_db_session),
     _admission: None = Depends(admit_analysis),
@@ -152,8 +154,10 @@ async def repair_stored_part(
                                                  "Default: the part's last cost check, else the app's ladder."),
     material_class: Optional[str] = Query(None, description="polymer|aluminum|steel|stainless|titanium"),
     with_cost: bool = Query(True, description="Price the repaired copy (adds one engine pass)."),
+    # Analyst and org member: a viewer is refused with the plain viewer line
+    # first; ctx then carries the org boundary.
+    user: AuthedUser = Depends(require_org_checker),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
     _free_limit: None = Depends(limit_free_repair),
     session: AsyncSession = Depends(get_db_session),
     _admission: None = Depends(admit_analysis),

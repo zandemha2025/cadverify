@@ -21,7 +21,7 @@ from src.auth.rbac import require_org_checker, require_org_writer
 from src.auth.require_api_key import AuthedUser, require_api_key
 
 # Routes that check a new part answer a viewer with the "check new parts" line.
-CHECKS = {"routes", "uploads", "reconstruct_router"}
+CHECKS = {"routes", "uploads", "reconstruct_router", "checks", "part_fixes", "part_recheck"}
 
 # (module, endpoint function) for every write that changes or publishes org data.
 GATED = {
@@ -63,6 +63,10 @@ GATED = {
         "validate_repair",
     ],
     "share": ["create_share", "revoke_share"],
+    "checks": ["start_stored_check"],
+    "part_fixes": ["apply_part_fix", "repair_stored_part"],
+    "part_recheck": ["recheck_stored_part", "check_stored_bodies", "body_as_own_part"],
+    "data_control": ["delete_part"],
     "uploads": [
         "initiate_multipart_upload",
         "put_relayed_part",

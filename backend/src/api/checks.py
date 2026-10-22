@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
-from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
+from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_checker, require_org_role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import stored_check_service as svc
@@ -51,8 +51,10 @@ async def start_stored_check(
     request: Request,
     response: Response,
     body: StartCheckBody,
+    # Analyst and org member: a viewer is refused with the plain viewer line
+    # first; ctx then carries the org boundary.
+    user: AuthedUser = Depends(require_org_checker),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     if not ctx.org_id:

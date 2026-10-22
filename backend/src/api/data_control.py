@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rate_limit import limiter
-from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
+from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import account_deletion_service as accounts
@@ -112,7 +112,8 @@ async def delete_part(
     response: Response,
     mesh_hash: str,
     keep_fixed_copies: bool = Query(False),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    # Analyst and org member: a viewer is refused with the plain viewer line.
+    user: AuthedUser = Depends(require_org_writer),
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
     session: AsyncSession = Depends(get_db_session),
 ):
