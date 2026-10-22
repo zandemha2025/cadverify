@@ -290,7 +290,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
             </div>
           ) : s.cost.phase === "running" ? (
             <div className="panel">
-              <Empty title="Costing">Pricing every method at {qtyListText(s.opts.qty.split(",").map(Number))}.</Empty>
+              <Empty title="Costing">Pricing every process at {qtyListText(s.opts.qty.split(",").map(Number))}.</Empty>
             </div>
           ) : (
             <div className="panel">
@@ -358,7 +358,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
                 </div>
               </>
             ) : (
-              <p className="smeta">No method is priced for this part, so there’s nothing to slide across.</p>
+              <p className="smeta">No process is priced for this part, so there’s nothing to slide across.</p>
             )}
           </section>
         </div>
@@ -399,7 +399,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
                 ) : null}
                 <span>
                   <i style={{ borderColor: "#C3C8CF" }} />
-                  Other methods
+                  Other processes
                 </span>
                 {chart.notReadyNames.length ? (
                   <span>
@@ -410,7 +410,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
               </div>
             </div>
           ) : (
-            <Empty title="No decision in this run">{report.notes?.find((n) => /no eligible|no environment-valid|excludes/i.test(n)) ?? "The engine priced no method it could recommend."}</Empty>
+            <Empty title="No decision in this run">{report.notes?.find((n) => /no eligible|no environment-valid|excludes/i.test(n)) ?? "ScaleCAD priced no process it could recommend."}</Empty>
           )}
         </section>
       </div>
@@ -418,7 +418,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
         <div className="top">
           <h2 className="stitle">{at ? `Make by ${at.name}` : "No make-now pick"}</h2>
           <p className="smeta">
-            {at ? `${at.curve.material} · ${qtyText(q)} parts · ${at.ready ? "can make as drawn" : "needs a design change"}` : "No method clears the part’s conditions in this run"}
+            {at ? `${at.curve.material} · ${qtyText(q)} parts · ${at.ready ? "can make as drawn" : "needs a design change"}` : "No process clears the part’s conditions in this run"}
           </p>
           {at ? (
             <div className="figs" aria-live="polite">

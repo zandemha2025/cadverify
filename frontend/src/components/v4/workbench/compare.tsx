@@ -89,7 +89,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
     ...baseMeta(s),
     report ? (
       <>
-        <b>{priced}</b> methods priced
+        <b>{priced}</b> processes priced
       </>
     ) : (
       ""
@@ -127,9 +127,9 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
             <h2 id="cmp-h">
               {mode === "qty"
                 ? byQty.qa != null && byQty.qb != null && byQty.qa !== byQty.qb
-                  ? `Each method at ${qtyText(byQty.qa)} and ${qtyText(byQty.qb)}`
-                  : `Each method at ${byQty.qa != null ? qtyText(byQty.qa) : "—"}`
-                : `Each method at ${qc != null ? qtyText(qc) : "—"}, ${runIds.length} rate sets`}
+                  ? `Each process at ${qtyText(byQty.qa)} and ${qtyText(byQty.qb)}`
+                  : `Each process at ${byQty.qa != null ? qtyText(byQty.qa) : "—"}`
+                : `Each process at ${qc != null ? qtyText(qc) : "—"}, ${runIds.length} rate sets`}
             </h2>
             <span>{mode === "qty" ? "Pick a cell to open it" : "Bundled sample shops · pick a cell to open it"}</span>
           </div>
@@ -159,7 +159,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
             <table className="ct">
               <thead>
                 <tr>
-                  <th style={{ width: "36%" }}>Method</th>
+                  <th style={{ width: "36%" }}>Process</th>
                   {header.map((h) => (
                     <th key={h}>{h}</th>
                   ))}

@@ -188,7 +188,7 @@ export function GlassTab({ part, qty }: TabProps) {
                 ) : undefined
               }
             >
-              {report ? "No method is priced for this part, so there are no drivers to open." : "The lines open once the part is costed."}
+              {report ? "No process is priced for this part, so there are no drivers to open." : "The lines open once the part is costed."}
             </Empty>
           </div>
         </div>
@@ -216,7 +216,7 @@ export function GlassTab({ part, qty }: TabProps) {
     <>
       {head}
       <div className={cx("wb-main", !insp && "wide", recosting && "busy")}>
-        <section className="panel pick" aria-label="Pick a method and quantity">
+        <section className="panel pick" aria-label="Pick a process and quantity">
           <div className="prow">
             <span className="plab" id="gb-p">
               Process
