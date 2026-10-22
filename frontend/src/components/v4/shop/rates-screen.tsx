@@ -47,9 +47,11 @@ import {
   regionsFromPayload,
   rowsFromAssumptions,
   rowsFromPayload,
+  applyDraft,
+  draftFormFrom,
+  type DraftForm,
 } from "./rates-derive";
 
-const DECIMAL = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
 const money = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 type Shop = { id: string; name: string; region: string | null; source: string | null };
@@ -90,6 +92,9 @@ export function RatesScreen() {
   const regions = governed ? regionsFromPayload(payload) : regionsFromAssumptions((details ?? []).map((d) => d.result?.assumptions));
   const versions = (rc.page?.versions ?? []) as RateVersionLike[];
   const waiting = (changes ?? []).filter((c) => c.status === "proposed" && c.asset_type === "rate_card");
+  // The processes and materials your recent checks were priced with: the draft lists them first.
+  const usedProcs = React.useMemo(() => Array.from(new Set((details ?? []).flatMap((d) => (d.result?.estimates ?? []).map((e) => e.process)))), [details]);
+  const usedMaterials = React.useMemo(() => Array.from(new Set((details ?? []).flatMap((d) => (d.result?.estimates ?? []).map((e) => e.material)).filter(Boolean))), [details]);
   const matCount = governed && payload && typeof payload === "object" ? Object.keys(((payload as Record<string, unknown>).material_prices as object) ?? {}).length : 0;
 
   const startDraft = () => {
@@ -200,9 +205,10 @@ export function RatesScreen() {
             setDrafting={setDrafting}
             inputRef={draftRef}
             baseVersion={governed ? rc.view?.inEffect ?? null : null}
-            currentLabor={labor && labor !== "none" ? labor.value : null}
             inEffectName={inEffectName}
             waiting={waiting.length}
+            usedProcs={usedProcs}
+            usedMaterials={usedMaterials}
             onSent={() => {
               rc.reload();
               setNc((x) => x + 1);
@@ -323,9 +329,10 @@ function DraftControls({
   setDrafting,
   inputRef,
   baseVersion,
-  currentLabor,
   inEffectName,
   waiting,
+  usedProcs,
+  usedMaterials,
   onSent,
 }: {
   org: ReturnType<typeof useOrg>;
@@ -333,59 +340,118 @@ function DraftControls({
   setDrafting: (v: boolean) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
   baseVersion: RateVersionLike | null;
-  currentLabor: number | null;
   inEffectName: string;
   waiting: number;
+  /** Processes and materials your recent checks were priced with: their rows come first. */
+  usedProcs: string[];
+  usedMaterials: string[];
   onSent: () => void;
 }) {
-  const [value, setValue] = React.useState("");
+  // A draft is a real new version from the card in effect: its own values prefill the form (ce-13).
+  const [draft, setDraft] = React.useState<{ id: number; version: number; payload: Record<string, unknown> } | null>(null);
+  const [form, setForm] = React.useState<DraftForm | null>(null);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [allProcs, setAllProcs] = React.useState(false);
   const [sent, setSent] = React.useState<{ version: number } | null>(null);
   const admin = isOrgAdmin(org);
+  const ids = React.useId();
+
+  React.useEffect(() => {
+    if (!drafting || draft || busy || error) return;
+    let live = true;
+    setBusy(true);
+    createRateDraft({ name: "Draft", change_note: "", from_version_id: baseVersion ? Number(baseVersion.id) : null }).then(
+      (d) => {
+        if (!live) {
+          void discardRateDraft(d.id).catch(() => {});
+          return;
+        }
+        const payload = (d.payload ?? {}) as Record<string, unknown>;
+        setDraft({ id: d.id, version: d.version, payload });
+        setForm(draftFormFrom(payload));
+        setBusy(false);
+        requestAnimationFrame(() => inputRef.current?.focus());
+      },
+      (e) => {
+        if (!live) return;
+        setBusy(false);
+        setError(e instanceof ShopApiError && e.status === 403 ? "Only an organization admin can draft rates." : e instanceof Error ? e.message : "Couldn't start a draft.");
+      },
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafting]);
+
+  // Leaving the page with a draft open discards it, as Cancel does.
+  const open = React.useRef<number | null>(null);
+  open.current = draft?.id ?? null;
+  React.useEffect(() => () => {
+    if (open.current != null) void discardRateDraft(open.current).catch(() => {});
+  }, []);
+
+  const close = async () => {
+    const d = draft;
+    setDraft(null);
+    setForm(null);
+    setErrors({});
+    setError(null);
+    setDrafting(false);
+    if (d) await discardRateDraft(d.id).catch(() => {});
+  };
 
   const send = async () => {
-    const t = value.trim().replace(/^\$/, "").replace(/\s*\/\s*h$/i, "");
-    if (!DECIMAL.test(t) || !(Number(t) > 0)) {
-      setError("Enter the labor rate in dollars an hour, for example 42.");
+    if (!draft || !form) return;
+    const r = applyDraft(draft.payload, form, procName);
+    if (!r.ok) {
+      setErrors(r.errors);
       return;
     }
-    const rate = Number(t);
+    if (!r.changes.length) {
+      setError(`Nothing changed from ${inEffectName}. Change a rate, then send it for review.`);
+      return;
+    }
     setBusy(true);
     setError(null);
-    let draftId: number | null = null;
     try {
-      const draft = await createRateDraft({
-        name: `Labor $${rate}/h`,
-        change_note: `Labor, loaded shop floor${currentLabor != null ? ` ${money(currentLabor)}/h →` : ""} ${money(rate)}/h`,
-        from_version_id: baseVersion ? Number(baseVersion.id) : null,
-      });
-      draftId = draft.id;
-      const pay = (draft.payload ?? {}) as Record<string, unknown>;
-      const global = { ...((pay.global as Record<string, unknown>) ?? {}), labor_rate: rate };
-      await updateRateDraft(draft.id, { payload: { ...pay, global } });
-      await proposeChange({
-        asset_type: "rate_card",
-        target_version_id: draft.id,
-        title: `Rate card v${draft.version}: labor ${money(rate)}/h`,
-        note: `Labor, loaded shop floor${currentLabor != null ? ` ${money(currentLabor)}/h →` : ""} ${money(rate)}/h`,
-      });
+      const note = r.changes.join("\n");
+      await updateRateDraft(draft.id, { payload: r.payload, name: r.changes[0], change_note: r.changes.join("; ") });
+      await proposeChange({ asset_type: "rate_card", target_version_id: draft.id, title: `Rate card v${draft.version}: ${r.changes.length === 1 ? r.changes[0].toLowerCase() : `${r.changes.length} changes`}`, note });
       setSent({ version: draft.version });
+      open.current = null;
+      setDraft(null);
+      setForm(null);
       setDrafting(false);
-      setValue("");
       onSent();
     } catch (e) {
-      if (draftId != null) await discardRateDraft(draftId).catch(() => {});
-      const msg = e instanceof ShopApiError && e.status === 403 ? "Only an organization admin can draft rates." : e instanceof Error ? e.message : "Couldn't send it for review.";
-      setError(msg);
+      setError(e instanceof Error ? e.message : "Couldn't send it for review.");
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div className="draft" aria-live="polite">
-      {sent ? (
+  const set = (patch: Partial<DraftForm>, key?: string) => {
+    setForm((f) => (f ? { ...f, ...patch } : f));
+    setError(null);
+    if (key) setErrors((e) => {
+      if (!e[key]) return e;
+      const n = { ...e };
+      delete n[key];
+      return n;
+    });
+  };
+  const err = (k: string) => (errors[k] ? <span className="err" id={`${ids}-${k}`}>{errors[k]}</span> : null);
+  const inv = (k: string) => (errors[k] ? { "aria-invalid": true as const, "aria-describedby": `${ids}-${k}` } : {});
+  const procKeys = form ? Object.keys(form.machines) : [];
+  const used = procKeys.filter((p) => usedProcs.includes(p));
+  const shownProcs = allProcs || !used.length ? procKeys : used;
+
+  if (sent && !drafting) {
+    return (
+      <div className="draft" aria-live="polite">
         <div className="toast" role="status" style={{ flex: 1, minWidth: 0 }}>
           <span>
             v{sent.version} sent for review. {inEffectName} stays in use until approved.
@@ -394,51 +460,105 @@ function DraftControls({
             View
           </Link>
         </div>
-      ) : drafting && (admin || org == null) ? (
-        <>
-          <label className="field">
-            Labor rate
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="decimal"
-              aria-label="Labor rate ($/h)"
-              placeholder="$/h"
-              value={value}
-              aria-invalid={error ? true : undefined}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void send();
-                if (e.key === "Escape") setDrafting(false);
-              }}
-            />
-          </label>
-          <button className="btn ink sm" type="button" onClick={() => void send()} disabled={busy}>
-            {busy ? "Sending…" : "Send for review"}
-          </button>
-          <button className="btn sm" type="button" onClick={() => setDrafting(false)} disabled={busy}>
-            Cancel
-          </button>
-          {error ? (
+      </div>
+    );
+  }
+  if (drafting && (admin || org == null)) {
+    return (
+      <div className="draft draftform" aria-live="polite">
+        {!form ? (
+          error ? (
             <span className="err" role="alert" style={{ flexBasis: "100%" }}>
               {error}
             </span>
           ) : (
-            <span className="fh" style={{ flexBasis: "100%" }}>
-              Every other value is copied from {inEffectName}.
-            </span>
-          )}
-        </>
-      ) : admin || org == null ? (
+            <span className="fh">Starting a draft from {inEffectName}…</span>
+          )
+        ) : (
+          <>
+            <div className="dgrid">
+              <label className="field">
+                Labor, $/h
+                <input ref={inputRef} type="text" inputMode="decimal" aria-label="Labor rate ($/h)" value={form.labor} onChange={(e) => set({ labor: e.target.value }, "labor")} {...inv("labor")} />
+                {err("labor")}
+              </label>
+              <label className="field">
+                Overhead, %
+                <input type="text" inputMode="decimal" aria-label="Overhead (percent)" value={form.overhead} onChange={(e) => set({ overhead: e.target.value }, "overhead")} {...inv("overhead")} />
+                {err("overhead") ?? <small>On machine, labor and setup. 15 is 15%.</small>}
+              </label>
+              <label className="field">
+                Margin, %
+                <input type="text" inputMode="decimal" aria-label="Margin (percent)" value={form.margin} onChange={(e) => set({ margin: e.target.value }, "margin")} {...inv("margin")} />
+                {err("margin") ?? <small>Markup on cost. 10 is 10%.</small>}
+              </label>
+            </div>
+            <fieldset className="dset">
+              <legend>Machine rates, $/h{used.length && !allProcs ? " · the processes your checks used" : ""}</legend>
+              <div className="dgrid">
+                {shownProcs.map((p) => (
+                  <label className="field" key={p}>
+                    {procName(p)}
+                    <input type="text" inputMode="decimal" aria-label={`${procName(p)} machine rate ($/h)`} value={form.machines[p]} onChange={(e) => set({ machines: { ...form.machines, [p]: e.target.value } }, `machine:${p}`)} {...inv(`machine:${p}`)} />
+                    {err(`machine:${p}`)}
+                  </label>
+                ))}
+              </div>
+              {used.length && used.length < procKeys.length ? (
+                <button className="btn sm ghost" type="button" onClick={() => setAllProcs((a) => !a)}>
+                  {allProcs ? "Only the processes your checks used" : `All ${procKeys.length} processes`}
+                </button>
+              ) : null}
+            </fieldset>
+            <fieldset className="dset">
+              <legend>Material prices, $/kg · blank is the typical price</legend>
+              <div className="dgrid">
+                {form.materials.map((m, i) => (
+                  <span className="field" key={i}>
+                    <input type="text" aria-label={`Material ${i + 1} name`} placeholder="Material, as checks name it" value={m.name} list={`${ids}-mats`} onChange={(e) => set({ materials: form.materials.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) }, `material:${i}`)} {...inv(`material:${i}`)} />
+                    <input type="text" inputMode="decimal" aria-label={`Material ${i + 1} price ($/kg)`} placeholder="$/kg" value={m.price} onChange={(e) => set({ materials: form.materials.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)) }, `material:${i}`)} {...inv(`material:${i}`)} />
+                    {err(`material:${i}`)}
+                  </span>
+                ))}
+              </div>
+              <datalist id={`${ids}-mats`}>
+                {usedMaterials.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+              <button className="btn sm ghost" type="button" onClick={() => set({ materials: [...form.materials, { name: usedMaterials.find((m) => !form.materials.some((x) => x.name === m)) ?? "", price: "" }] })}>
+                Add a material price
+              </button>
+            </fieldset>
+            <div className="dact">
+              <button className="btn ink sm" type="button" onClick={() => void send()} disabled={busy}>
+                {busy ? "Sending…" : "Send for review"}
+              </button>
+              <button className="btn sm" type="button" onClick={() => void close()} disabled={busy}>
+                Cancel
+              </button>
+              {error ? (
+                <span className="err" role="alert">
+                  {error}
+                </span>
+              ) : (
+                <span className="fh">Draft v{draft?.version}, from {inEffectName}. Anything you don&apos;t change keeps its value.</span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="draft" aria-live="polite">
+      {admin || org == null ? (
         <>
           <button className="btn sm" type="button" onClick={() => setDrafting(true)} disabled={org == null}>
             Draft new version
           </button>
           <span className="fh">
-            Admins draft. Used after review in Changes to review.
+            Labor, overhead, margin, machine rates and material prices. Used after review in Changes to review.
             {waiting ? (
               <>
                 {" "}

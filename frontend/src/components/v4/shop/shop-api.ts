@@ -214,6 +214,9 @@ export type RateVersionFull = {
   created_at: string | null;
   published_at: string | null;
   payload?: Record<string, unknown> | null;
+  /** Every value this version sets differently from the card in effect (or typical v0): labor, overhead, margin, machine rates, material prices. */
+  changes?: { path: string; from: unknown; to: unknown }[];
+  changes_against?: "in_effect" | "typical_v0";
 };
 
 export function getRateVersion(id: number): Promise<RateVersionFull> {
@@ -224,7 +227,7 @@ export function createRateDraft(body: { name: string; change_note: string; from_
   return call("/rate-library", json("POST", body));
 }
 
-export function updateRateDraft(id: number, body: { payload: Record<string, unknown> }): Promise<RateVersionFull> {
+export function updateRateDraft(id: number, body: { payload: Record<string, unknown>; name?: string; change_note?: string }): Promise<RateVersionFull> {
   return call(`/rate-library/${id}`, json("PATCH", body));
 }
 
@@ -243,6 +246,8 @@ export type ChangeRequestRow = {
   reviewed_by: number | null;
   created_at: string | null;
   decided_at: string | null;
+  /** Approved by the person who proposed it (only possible when they're the only admin). */
+  self_approved?: boolean;
   [k: string]: unknown;
 };
 
@@ -250,7 +255,7 @@ export function proposeChange(body: { asset_type: string; target_version_id: num
   return call("/governance/change-requests", json("POST", body));
 }
 
-export function listChanges(): Promise<{ change_requests: ChangeRequestRow[] }> {
+export function listChanges(): Promise<{ change_requests: ChangeRequestRow[]; admins?: number }> {
   return call("/governance/change-requests");
 }
 

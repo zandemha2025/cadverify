@@ -2,10 +2,10 @@
 
 /**
  * Changes to review (board S3): rate card and supplier-profile drafts sent for
- * review. Any organization admin approves (which publishes the draft as a new
- * version) or rejects with a note; the proposer may approve their own (v1 is
- * deliberately permissive, and it says so). Everyone else sees the request and
- * that it's waiting for an admin.
+ * review. An organization admin approves (which publishes the draft as a new
+ * version) or rejects with a note. The proposer can't approve their own change
+ * when there's another admin; a sole admin's own approval reads "self-approved"
+ * (ce-13). Everyone else sees the request and that it's waiting for an admin.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -17,7 +17,7 @@ import { Banner, ShopWorld, isOrgAdmin, useOrg, usePartRecords, useRateCard, use
 import { approveChange, getRateVersion, listChanges, rejectChange, type Assumption, type ChangeRequestRow, type RateVersionFull, type RecordDetail } from "./shop-api";
 import { longDate, shortWhen } from "./shop-derive";
 import { costLines, defaultsFrom, headlineEstimate } from "./rates-derive";
-import { ASSET_NAMES, diffCard, initials, noteLines, personName, pipeline } from "./changes-derive";
+import { ASSET_NAMES, approvalRule, changeRows, diffCard, initials, noteLines, personName, pipeline } from "./changes-derive";
 
 type V0 = { defaults: Assumption[]; laborRec: RecordDetail | null };
 
@@ -50,6 +50,7 @@ export function ChangesScreen() {
   const recs = usePartRecords(6);
   const emails = useMembers();
   const [reqs, setReqs] = React.useState<ChangeRequestRow[] | null>(null);
+  const [admins, setAdmins] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [versions, setVersions] = React.useState<Map<number, RateVersionFull | "missing">>(new Map());
   const [v0, setV0] = React.useState<V0 | null>(null);
@@ -60,6 +61,7 @@ export function ChangesScreen() {
     try {
       const b = await listChanges();
       setReqs(b.change_requests ?? []);
+      setAdmins(typeof b.admins === "number" ? b.admins : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load changes.");
     }
@@ -114,7 +116,7 @@ export function ChangesScreen() {
             Reviewed <b className="num">{reqs ? decided.length : "…"}</b>
           </>,
           <>
-            Approver <b>Admins</b>
+            Approver <b>{admins != null && admins > 1 ? "Another admin" : "Admins"}</b>
           </>,
           <>
             Covers <b>Rate card, supplier rate profiles</b>
@@ -158,6 +160,7 @@ export function ChangesScreen() {
                 r={r}
                 me={me}
                 admin={admin}
+                admins={admins}
                 orgKnown={org != null}
                 emails={emails}
                 version={r.asset_type === "rate_card" ? versions.get(r.target_version_id) : undefined}
@@ -200,9 +203,9 @@ export function ChangesScreen() {
                       </small>
                     ))}
                   </span>
-                  <span className={cx("chip", r.status === "approved" ? "c-ok" : "c-bad")}>
+                  <span className={cx("chip", r.status === "approved" ? (r.self_approved ? "c-warn" : "c-ok") : "c-bad")}>
                     <i aria-hidden="true" />
-                    {r.status === "approved" ? `Published${vn != null ? ` v${vn}` : ""}` : "Rejected"}
+                    {r.status === "approved" ? `Published${vn != null ? ` v${vn}` : ""}${r.self_approved ? " · self-approved" : ""}` : "Rejected"}
                   </span>
                 </div>
               );
@@ -247,7 +250,7 @@ export function ChangesScreen() {
             <span>Members</span>
             <b>Propose</b>
             <span>Admins</span>
-            <b>Approve, reject</b>
+            <b>{admins != null && admins > 1 ? "Approve others’ changes, reject" : "Approve, reject"}</b>
             <span>You</span>
             <b>{org == null ? "…" : org === "none" ? "No organization" : org.role[0].toUpperCase() + org.role.slice(1)}</b>
           </div>
@@ -265,7 +268,12 @@ export function ChangesScreen() {
           </div>
           <div className="note">
             <b>Known gaps</b>
-            <span>Proposers can approve their own changes. Material catalogs aren&apos;t reviewed, and admins can publish a library directly.</span>
+            <span>
+              {admins != null && admins > 1
+                ? "A proposer can’t approve their own change: another admin does."
+                : "With one admin, their own changes are approved by them and marked self-approved. Add a second admin to separate proposing from approving."}{" "}
+              Material catalogs aren&apos;t reviewed, and an admin can still publish a rate card directly through the API.
+            </span>
           </div>
         </div>
       </Sheet>
@@ -278,6 +286,7 @@ function Request({
   r,
   me,
   admin,
+  admins,
   orgKnown,
   emails,
   version,
@@ -289,6 +298,7 @@ function Request({
   r: ChangeRequestRow;
   me: number | null;
   admin: boolean;
+  admins: number | null;
   orgKnown: boolean;
   emails: Map<number, string>;
   version: RateVersionFull | "missing" | undefined;
@@ -316,7 +326,9 @@ function Request({
   const ver = version && version !== "missing" ? version : null;
   const vn = ver?.version ?? null;
   const name = `${asset.toLowerCase()}${vn != null ? ` v${vn}` : ""}`;
-  const diff = ver ? diffCard(ver.payload ?? null, { payload: basePayload, assumptions: basePayload ? null : v0?.defaults }) : [];
+  // Every value the draft changes, from the server (labor, overhead, margin, machine rates, material prices); older reads fall back to the labor-and-global diff.
+  const diff = ver ? (ver.changes ? changeRows(ver.changes) : diffCard(ver.payload ?? null, { payload: basePayload, assumptions: basePayload ? null : v0?.defaults })) : [];
+  const rule = approvalRule({ mine, admin, admins });
   const stages = pipeline(r.status, vn);
   const lines = noteLines(r.note);
   // The proposer's note, less any line that only restates a row of the diff.
@@ -417,26 +429,34 @@ function Request({
           </React.Fragment>
         ))}
       </div>
-      {!orgKnown ? null : !admin ? (
+      {!orgKnown ? null : rule === "not-admin" ? (
         <p className="fh" style={{ margin: 0 }}>
           Waiting for an admin.
         </p>
       ) : ask === null ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn ink sm" type="button" ref={approveBtn} onClick={() => setAsk("approve")}>
-            Approve and publish
-          </button>
+          {rule === "other-admin" ? null : (
+            <button className="btn ink sm" type="button" ref={approveBtn} onClick={() => setAsk("approve")}>
+              {rule === "self" ? "Approve as the only admin" : "Approve and publish"}
+            </button>
+          )}
           <button className="btn sm" type="button" onClick={() => setAsk("reject")}>
-            Reject
+            {mine ? "Withdraw" : "Reject"}
           </button>
-          <span className="fh">Admins only. Proposers can approve their own.</span>
+          <span className="fh">
+            {rule === "other-admin"
+              ? "You proposed this, so another admin approves it."
+              : rule === "self"
+                ? "You’re the only admin, so it will be recorded as self-approved."
+                : "Admins only."}
+          </span>
         </div>
       ) : ask === "approve" ? (
         <div className="confirm" role="alertdialog" aria-label="Approve and publish" style={{ margin: 0 }}>
           <b>Publish {name}?</b>
           <span>
             New checks cost against {vn != null ? `v${vn}` : "it"}. Earlier verdicts keep {inUse} and are marked for re-costing.
-            {mine ? " You proposed this change." : ""}
+            {mine ? " You proposed this change; it will read self-approved." : ""}
           </span>
           {err ? (
             <span className="err" role="alert">

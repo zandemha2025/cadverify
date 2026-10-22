@@ -263,3 +263,135 @@ export function countInputs(estimates: (EstimateRow | null)[]): InputCounts {
   }
   return c;
 }
+
+/* ------------------------------------------------------------------ */
+/*  A rate card draft: labor, overhead, margin, machine rates and       */
+/*  material prices (ce-13)                                             */
+/* ------------------------------------------------------------------ */
+
+export type DraftForm = {
+  labor: string;
+  /** percent: "15" is 15% */
+  overhead: string;
+  /** percent: "10" is 10% */
+  margin: string;
+  /** process key → $/h, prefilled with the draft's own rate */
+  machines: Record<string, string>;
+  /** material name → $/kg ("" = typical) */
+  materials: { name: string; price: string }[];
+};
+
+const DEC = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+const trimNum = (v: number) => String(Math.round(v * 10000) / 10000);
+
+function g(payload: unknown, key: string): number | null {
+  const v = (payload as { global?: Record<string, unknown> } | null)?.global?.[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function procs(payload: unknown): Record<string, Record<string, unknown>> {
+  return ((payload as { process?: Record<string, Record<string, unknown>> } | null)?.process ?? {}) as Record<string, Record<string, unknown>>;
+}
+
+/** The form for a draft, prefilled with the draft's own values (percent fields as percents). */
+export function draftFormFrom(payload: unknown): DraftForm {
+  const machines: Record<string, string> = {};
+  for (const [p, f] of Object.entries(procs(payload))) {
+    const r = f?.machine_rate;
+    if (typeof r === "number") machines[p] = trimNum(r);
+  }
+  const mp = ((payload as { material_prices?: Record<string, unknown> } | null)?.material_prices ?? {}) as Record<string, unknown>;
+  return {
+    labor: g(payload, "labor_rate") != null ? trimNum(g(payload, "labor_rate")!) : "",
+    overhead: g(payload, "overhead") != null ? trimNum(g(payload, "overhead")! * 100) : "",
+    margin: g(payload, "margin") != null ? trimNum(g(payload, "margin")! * 100) : "",
+    machines,
+    materials: Object.entries(mp).filter(([, v]) => typeof v === "number").map(([name, v]) => ({ name, price: trimNum(v as number) })),
+  };
+}
+
+/** "15", "15%" → 0.15. Percent from 0 to 300; null when it isn't one. */
+export function parsePercent(v: string): number | null {
+  const t = v.trim().replace(/\s*%$/, "");
+  if (!DEC.test(t)) return null;
+  const n = Number(t);
+  return n >= 0 && n <= 300 ? n / 100 : null;
+}
+
+function dollars(v: string): number | null {
+  const t = v.trim().replace(/^\$/, "").replace(/\s*\/\s*(h|kg)$/i, "");
+  return DEC.test(t) && Number(t) > 0 ? Number(t) : null;
+}
+
+const m2 = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const p1 = (v: number) => `${Math.round(v * 1000) / 10}%`;
+
+/**
+ * The draft's new table from the form, with each change in words; or the
+ * errors, by field ("overhead", "machine:cnc_3axis", "material:0"). Percent
+ * fields take percents, so 15 is 15%, never 1,500%.
+ */
+export function applyDraft(
+  payload: Record<string, unknown>,
+  form: DraftForm,
+  procLabel: (p: string) => string,
+): { ok: true; payload: Record<string, unknown>; changes: string[] } | { ok: false; errors: Record<string, string> } {
+  const errors: Record<string, string> = {};
+  const changes: string[] = [];
+  const global = { ...((payload.global as Record<string, unknown>) ?? {}) };
+  const labor = dollars(form.labor);
+  if (labor == null) errors.labor = "Labor in dollars an hour, more than 0.";
+  const overhead = parsePercent(form.overhead);
+  if (overhead == null) errors.overhead = "Overhead as a percent, 0 to 300 (15 is 15%).";
+  const margin = parsePercent(form.margin);
+  if (margin == null) errors.margin = "Margin as a percent, 0 to 300 (10 is 10%).";
+  const near = (a: unknown, b: number) => typeof a === "number" && Math.abs(a - b) < 1e-9;
+  if (labor != null && !near(global.labor_rate, labor)) {
+    changes.push(`Labor ${typeof global.labor_rate === "number" ? m2(global.labor_rate) : "—"}/h → ${m2(labor)}/h`);
+    global.labor_rate = labor;
+  }
+  if (overhead != null && !near(global.overhead, overhead)) {
+    changes.push(`Overhead ${typeof global.overhead === "number" ? p1(global.overhead) : "—"} → ${p1(overhead)}`);
+    global.overhead = overhead;
+  }
+  if (margin != null && !near(global.margin, margin)) {
+    changes.push(`Margin ${typeof global.margin === "number" ? p1(global.margin) : "—"} → ${p1(margin)}`);
+    global.margin = margin;
+  }
+  const process: Record<string, Record<string, unknown>> = { ...procs(payload) };
+  for (const [p, raw] of Object.entries(form.machines)) {
+    if (!process[p] || raw.trim() === "") continue;
+    const r = dollars(raw);
+    if (r == null) {
+      errors[`machine:${p}`] = "Dollars an hour, more than 0.";
+      continue;
+    }
+    if (!near(process[p].machine_rate, r)) {
+      changes.push(`${procLabel(p)} machine ${typeof process[p].machine_rate === "number" ? m2(process[p].machine_rate as number) : "—"}/h → ${m2(r)}/h`);
+      process[p] = { ...process[p], machine_rate: r };
+    }
+  }
+  const before = ((payload.material_prices as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+  const prices: Record<string, number> = {};
+  form.materials.forEach((m, i) => {
+    const name = m.name.trim();
+    if (!name && !m.price.trim()) return;
+    if (!name) {
+      errors[`material:${i}`] = "Name the material.";
+      return;
+    }
+    const v = dollars(m.price);
+    if (v == null) {
+      errors[`material:${i}`] = "Dollars a kilogram, more than 0.";
+      return;
+    }
+    prices[name] = v;
+  });
+  for (const [name, v] of Object.entries(prices)) {
+    const was = before[name];
+    if (!near(was, v)) changes.push(`${name} ${typeof was === "number" ? `${m2(was)}/kg` : "typical"} → ${m2(v)}/kg`);
+  }
+  for (const name of Object.keys(before)) if (!(name in prices)) changes.push(`${name} ${typeof before[name] === "number" ? `${m2(before[name] as number)}/kg` : ""} → typical`);
+  if (Object.keys(errors).length) return { ok: false, errors };
+  return { ok: true, payload: { ...payload, global, process, material_prices: prices }, changes };
+}

@@ -191,3 +191,13 @@
 
 /* Sizes mm | in on the tab row: the work areas and machine sizes below follow it. */
 .ob .sizes{display:inline-flex;align-items:center;gap:6px;color:var(--ink3);font-size:12.5px}
+/* The rate card draft (ce-13): labor, overhead, margin, machine rates, material prices. */
+.ob .shp .draft.draftform{flex-direction:column;align-items:stretch;gap:10px}
+.ob .shp .draftform .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.ob .shp .draftform .field{width:auto}
+.ob .shp .draftform .field small{display:block;color:var(--ink3);font-size:11.5px;line-height:1.35}
+.ob .shp .draftform .dset{border:1px solid var(--rule);border-radius:12px;padding:8px 10px 10px;margin:0;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.ob .shp .draftform .dset legend{font-size:12.5px;color:var(--ink2);padding:0 4px}
+.ob .shp .draftform .dset .dgrid{width:100%}
+.ob .shp .draftform .dset span.field{display:flex;flex-direction:column;gap:4px}
+.ob .shp .draftform .dact{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
