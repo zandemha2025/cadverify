@@ -375,7 +375,8 @@ class GeometryContext:
         try:
             return detect_ribs(self.mesh, self.facet_groups, self.face_areas, self.normals,
                                wall_thickness_tolerance(self.mesh, self.scale_eps)
-                               + 2.0 * float(self.mesh.metadata.get("coordinate_error", 0.0)))
+                               + 2.0 * float(self.mesh.metadata.get("coordinate_error", 0.0)),
+                               wall_thickness=self.wall_thickness)
         except Exception:
             logger.warning("Rib detection failed", exc_info=True)
             return []
@@ -893,13 +894,15 @@ def _count_connected_components(mesh: trimesh.Trimesh) -> int:
 
 _RIB_MAX_FACETS = 400       # largest flat faces considered for plates
 _RIB_PARALLEL_COS = 0.9995   # opposite plate faces within ~1.8 degrees of parallel
+_RIB_MAX_PAIRS = 2000        # face pairs outlined at most (each is a polygon overlap)
 
 
 def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_areas: np.ndarray,
-                normals: np.ndarray, tol: float) -> list[dict[str, Any]]:
+                normals: np.ndarray, tol: float,
+                wall_thickness: np.ndarray | None = None) -> list[dict[str, Any]]:
     """Measured ribs; see ``GeometryContext.ribs`` for the definition."""
-    from shapely.geometry import LineString, MultiLineString, Point, Polygon
-    from shapely.ops import unary_union
+    import shapely
+    from shapely.geometry import LineString, MultiLineString, Point
 
     if not mesh.is_watertight or not len(facet_groups):
         return []
@@ -950,8 +953,14 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
             u, v = frame(info[owner][0])
             pts = vertices[triangles[facets[index]]] - center
             tri2d = np.stack([pts @ u, pts @ v], axis=-1)
-            polygons[key] = unary_union([Polygon(t) for t in tri2d if Polygon(t).area > 0]).buffer(0)
+            pieces = shapely.polygons(tri2d)
+            polygons[key] = shapely.union_all(pieces[shapely.area(pieces) > 0]).buffer(0)
         return polygons[key]
+
+    def extent(index, owner):
+        u, v = frame(info[owner][0])
+        pts = vertices[np.unique(triangles[facets[index]])] - center
+        return np.array([(pts @ u).min(), (pts @ v).min(), (pts @ u).max(), (pts @ v).max()])
 
     plates = []
     for i in range(len(facets)):
@@ -961,8 +970,23 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
             if float(n_i @ n_j) > -_RIB_PARALLEL_COS:
                 continue
             thickness = d_i + d_j  # n_j ~ -n_i: plane i at d_i, plane j at -d_j along n_i
-            if thickness > tol:
-                plates.append((i, j, thickness))
+            if thickness <= tol:
+                continue
+            if wall_thickness is not None:
+                # Material all the way across: the face's own wall rays reach
+                # the opposite face (not a fin farther along, past a gap).
+                readings = wall_thickness[facets[i]]
+                readings = readings[np.isfinite(readings)]
+                if len(readings) and float(np.median(np.abs(readings - thickness))) > max(0.02 * thickness, 10 * tol):
+                    continue
+            # Face to face at all: their outlines' boxes must overlap.
+            a, b = extent(i, i), extent(j, i)
+            if a[0] >= b[2] or b[0] >= a[2] or a[1] >= b[3] or b[1] >= a[3]:
+                continue
+            plates.append((i, j, thickness))
+    if len(plates) > _RIB_MAX_PAIRS:
+        logger.info("Rib detection skipped: %d facing face pairs", len(plates))
+        return []
 
     ribs = []
     plate_of_facet: dict[int, float] = {}

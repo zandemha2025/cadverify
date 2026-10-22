@@ -219,6 +219,15 @@ def test_a_real_rib_is_measured_and_judged():
     assert "20mm tall" in molding.message
 
 
+def test_fins_on_a_heat_sink_are_ribs_and_the_gaps_between_them_are_not_plates():
+    base = _box((100, 60, 4))
+    fins = [_box((1.5, 60, 20), at=(5 + i * 6, 0, 4)) for i in range(15)]
+    ctx = _ctx(_stl(_union(base, *fins)))
+    assert len(ctx.ribs) == 15
+    assert {round(r["thickness_mm"], 3) for r in ctx.ribs} == {1.5}
+    assert {round(r["height_mm"], 3) for r in ctx.ribs} == {20.0}
+
+
 # ── M11: the pull direction a check assumed, and a turned re-check ──────────
 def test_a_turned_recheck_uses_that_orientation_for_the_pull_and_says_so():
     from src.analysis.orientation import Orientation, rotation_down
