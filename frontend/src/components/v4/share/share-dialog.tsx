@@ -30,6 +30,7 @@ import {
   type LinkShows,
   type ShareKind,
 } from "./words";
+import { useReadOnly } from "../read-only";
 import "./share.css";
 
 export interface ShareTarget {
@@ -88,6 +89,9 @@ export function ShareDialog({
   const titleId = React.useId();
   const dateId = React.useId();
   const bounds = React.useMemo(() => dateBounds(), []);
+  // An org viewer can't make share links (the server refuses it): say so up
+  // front instead of offering the form (it-14).
+  const readOnly = useReadOnly("share parts or make links");
 
   const [loaded, setLoaded] = React.useState<PartFacts | null>(null);
   // While the part's facts are read, Create waits: a link is never made before
@@ -199,7 +203,18 @@ export function ShareDialog({
           <span className="shd-name">{target.name}</span>
         </div>
 
-        {made ? (
+        {readOnly && !made ? (
+          <div className="shd-body">
+            <p className="shd-line" role="note">
+              {readOnly}
+            </p>
+            <div className="shd-acts">
+              <button type="button" className="btn sm" onClick={onClose} data-first style={{ marginLeft: "auto" }}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : made ? (
           <div className="shd-body">
             <label className="field">
               Link

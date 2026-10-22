@@ -38,4 +38,6 @@ test("viewer guards sit on the write controls outside the part page", () => {
   assert.match(read("./shop/machines-screen.tsx"), /\{readOnly \? null : <AddTile/);
   assert.match(read("./onboard/teammate.tsx"), /checkBlocked \? \(/);
   assert.match(read("./onboard/first-run-overlay.tsx"), /const card = !checkBlocked &&/);
+  // it-14: Share by a viewer explains the refusal instead of offering the form.
+  assert.match(read("./share/share-dialog.tsx"), /\{readOnly && !made \? \(/);
 });
