@@ -847,6 +847,8 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                 batch_ulid, batch.status, batch.total_items,
                 batch.completed_items, batch.failed_items,
             )
+            if batch.job_type == "catalog":
+                await _notify_run_finished(batch_ulid)
             return  # terminal -> do NOT re-enqueue; the chain stops here
 
         # Steady state: refresh heartbeat + drip-feed pending items up to the
@@ -982,6 +984,43 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         await pool.enqueue_job(
             "run_batch_coordinator", batch_ulid, _defer_by=poll_interval
         )
+
+
+async def _notify_run_finished(batch_ulid: str) -> None:
+    """One notification when a catalog run finishes, with its answer in counts.
+
+    Its parts' records don't notify one by one (a run of 50 was 50 "Check
+    recorded" rows). Best effort: a failure here never touches the run.
+    """
+    from src.services import catalog_run_service, notification_service
+
+    try:
+        async with get_session_factory()() as session:
+            batch = (await session.execute(select(Batch).where(Batch.ulid == batch_ulid))).scalars().first()
+            if batch is None:
+                return
+            board = await catalog_run_service.build_board(session, batch)
+            a = board.get("answer") or {}
+            bits = [f"{a.get('make', 0)} make in-house", f"{a.get('buy', 0)} buy"]
+            for key, words in (("new_machine", "need a new machine"), ("cant_make", "can't be made as drawn"),
+                               ("not_checked", "not checked")):
+                if a.get(key):
+                    bits.append(f"{a[key]} {words}")
+            if a.get("saving_usd") is not None:
+                bits.append(f"saves ${a['saving_usd']:,.0f} against what you pay today")
+            name = board.get("name") or "Catalog run"
+            await notification_service.emit_notification(
+                session, org_id=batch.org_id, actor_user_id=batch.user_id, kind="catalog.run_finished",
+                severity="info" if a.get("not_checked") else "pass",
+                title=f"Catalog run finished - {name}", body=" · ".join(bits), dest="verify",
+                source_type="catalog_run", source_id=batch.ulid,
+                metadata={"batch_id": batch.ulid, "name": board.get("name"), "parts": a.get("parts"),
+                          "answer": {k: a.get(k) for k in ("make", "buy", "new_machine", "cant_make",
+                                                            "not_checked", "saving_usd")}},
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("Run-finished notification not sent for %s", batch_ulid, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1435,13 +1474,103 @@ async def _run_catalog_item(session, batch, item) -> dict:
         )
 
     user = AuthedUser(user_id=batch_user_id, api_key_id=batch_api_key_id, key_prefix="batch")
-    async with _catalog_slots():
-        return await _check_catalog_part(
-            session, batch, item, file_bytes, user,
-            batch_id=batch_id, batch_org_id=batch_org_id, batch_user_id=batch_user_id,
-            free_run=free_run, item_id=item_id, item_ulid=item_ulid, item_filename=item_filename,
-            item_quantities=item_quantities, item_material_class=item_material_class,
-        )
+    from fastapi import HTTPException
+
+    from src.api.routes import refuse_over_memory_budget
+    from src.config.check_limits import larger_limits
+
+    # A part too heavy for this worker is refused before anything runs (the same
+    # memory gate as any check), in plain words.
+    try:
+        refuse_over_memory_budget(file_bytes, item_filename)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        raise RuntimeError(str(detail.get("message") or "This file needs more memory than one check gets.")) from exc
+    # A catalog part runs with the worker's own budget for its size (as a big
+    # file's check does), not the 60 s a web request gets.
+    budget = _catalog_budget_sec(len(file_bytes), item_filename)
+    try:
+        with larger_limits(budget_sec=budget, max_triangles=_catalog_max_triangles(),
+                           max_bytes=max(len(file_bytes), 1)):
+            async with _catalog_slots():
+                return await _check_catalog_part(
+                    session, batch, item, file_bytes, user,
+                    batch_id=batch_id, batch_org_id=batch_org_id, batch_user_id=batch_user_id,
+                    free_run=free_run, item_id=item_id, item_ulid=item_ulid, item_filename=item_filename,
+                    item_quantities=item_quantities, item_material_class=item_material_class,
+                )
+    except CatalogPartTimedOut as exc:
+        # Once more, after the rest of the run: a busy worker is the usual cause.
+        if await _check_again_later(session, item_ulid, batch):
+            logger.info("BatchItem %s ran past %.0fs; checking it again after the rest of the run", item_ulid, budget)
+            return {}
+        raise RuntimeError(f"Checking took longer than its {budget:.0f} s time limit, twice.") from exc
+
+
+class CatalogPartTimedOut(RuntimeError):
+    """A catalog part's check ran past its time limit."""
+
+
+def _catalog_budget_sec(size_bytes: int, filename: str) -> float:
+    """A catalog part's time limit: the big-file check's budget for its size, within the job's own."""
+    from src.services.stored_check_service import time_budget_sec
+
+    try:
+        floor = float(os.getenv("CATALOG_PART_MIN_SECONDS", "180"))
+    except ValueError:
+        floor = 180.0
+    # The analysis and the price each get the budget; both fit in the 600 s job.
+    return max(floor, min(240.0, time_budget_sec(size_bytes, filename)))
+
+
+def _catalog_max_triangles() -> int:
+    try:
+        return max(1, int(os.getenv("MAX_TRIANGLES", "2000000")))
+    except ValueError:
+        return 2_000_000
+
+
+def _timed_out(exc: BaseException) -> bool:
+    from fastapi import HTTPException
+
+    if isinstance(exc, HTTPException):
+        if exc.status_code == 504:
+            return True
+        detail = exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail
+        from src.services.catalog_run_service import _TIME_LIMIT
+
+        return exc.status_code == 400 and bool(_TIME_LIMIT.search(str(detail or "")))
+    return isinstance(exc, asyncio.TimeoutError)
+
+
+async def _check_again_later(session, item_ulid: str, batch=None) -> bool:
+    """Put a part that ran out of time back in the run once, behind the parts still to go.
+
+    ``priority = 'low'`` marks the second try (and orders it last); a part that
+    already had it fails with plain words instead. False when it was already retried.
+    """
+    try:
+        await session.rollback()
+    except Exception:
+        pass
+    item = (await session.execute(
+        select(BatchItem).where(BatchItem.ulid == item_ulid).with_for_update()
+    )).scalars().first()
+    if batch is not None:
+        await session.refresh(batch)
+    if item is None or item.status != "processing":
+        return True  # cancelled or finished elsewhere: nothing to record here
+    if item.priority == "low":
+        return False
+    item.status = "pending"
+    item.priority = "low"
+    item.started_at = None
+    item.lease_started_at = None
+    item.error_message = None
+    await session.commit()
+    if batch is not None:
+        await session.refresh(batch)  # the rollback above expired it; the caller reads it after
+    return True
 
 
 async def _declare_list_specs(session, org_id: str, user_id: int, file_bytes: bytes, specs: dict) -> None:
@@ -1461,6 +1590,40 @@ async def _declare_list_specs(session, org_id: str, user_id: int, file_bytes: by
         await session.commit()
     except Exception:
         logger.warning("parts-list specs not stored for org %s part %.12s", org_id, mesh_hash, exc_info=True)
+
+
+async def _declare_list_facts(session, org_id: str, user_id: int, batch_ulid: str, file_bytes: bytes,
+                              list_meta: dict) -> None:
+    """The parts list's current price and yearly quantity on the part's declared context.
+
+    Best effort, never breaks a run. A price typed on the part's Decision view
+    stays (it wins over a list's); a yearly quantity already declared stays.
+    Neither is an engine input, so no record goes out of date.
+    """
+    from src.services import part_context_service as pcs
+    from src.services.analysis_service import compute_mesh_hash
+
+    price = list_meta.get("current_price_usd")
+    qty = list_meta.get("quantity")
+    if not price and not qty:
+        return
+    mesh_hash = compute_mesh_hash(file_bytes)
+    try:
+        async with session.begin_nested():
+            row = await pcs.get_context(session, org_id, mesh_hash)
+            fields: dict = {}
+            stored = getattr(row, "buy_price", None) if row is not None else None
+            if price and not (isinstance(stored, dict) and stored.get("source") == "you"):
+                fields["buy_price"] = pcs.normalize_buy_price({"usd_each": float(price)}, source="parts_list",
+                                                              run_id=batch_ulid)
+            if qty and (row is None or row.annual_volume is None):
+                fields["annual_volume"] = int(qty)
+            if fields:
+                await pcs.upsert_context(session, org_id, mesh_hash, fields, created_by=user_id)
+        await session.commit()
+    except Exception:
+        logger.warning("parts-list price and quantity not stored for org %s part %.12s", org_id, mesh_hash,
+                       exc_info=True)
 
 
 async def _check_catalog_part(
@@ -1483,16 +1646,21 @@ async def _check_catalog_part(
 
     # The part's own time: from when it holds a parse slot, not while it waited.
     start = time.time()
-    analysis_run = await analysis_service.run_analysis(
-        file_bytes=file_bytes,
-        filename=item_filename,
-        processes=None,
-        rule_pack=None,
-        user=user,
-        session=session,
-        org_id=batch_org_id,
-        return_persisted_id=True,
-    )
+    try:
+        analysis_run = await analysis_service.run_analysis(
+            file_bytes=file_bytes,
+            filename=item_filename,
+            processes=None,
+            rule_pack=None,
+            user=user,
+            session=session,
+            org_id=batch_org_id,
+            return_persisted_id=True,
+        )
+    except (HTTPException, asyncio.TimeoutError) as exc:
+        if _timed_out(exc):
+            raise CatalogPartTimedOut(str(getattr(exc, "detail", exc))) from exc
+        raise
     if not isinstance(analysis_run, analysis_service.AnalysisRun) or analysis_run.analysis_id is None:
         raise RuntimeError("Analysis completed without a durable persisted record")
     analysis_id = analysis_run.analysis_id
@@ -1511,27 +1679,35 @@ async def _check_catalog_part(
     # declaration wins, as on the part's page).
     from src.services.catalog_run_service import run_meta
 
-    list_specs = (((run_meta(batch).get("items") or {}).get(item_filename) or {}).get("part_specs"))
+    list_meta = ((run_meta(batch).get("items") or {}).get(item_filename) or {})
+    list_specs = list_meta.get("part_specs")
     if list_specs:
         await _declare_list_specs(session, batch_org_id, batch_user_id, file_bytes, list_specs)
+    # The list's price and yearly quantity go on the part, for its own page.
+    await _declare_list_facts(session, batch_org_id, batch_user_id, batch.ulid, file_bytes, list_meta)
+    # The material the list names is priced as that grade; one ScaleCAD can't
+    # price leaves the part checked and not priced (never priced as another).
+    material_name = list_meta.get("material") if list_meta.get("material_grade") else None
+    unpriced = bool(list_meta.get("material")) and not list_meta.get("material_class")
     geometry_invalid: str | None = None
     decision_id = None
     # A file of several bodies isn't priced as one block: each body shape becomes
     # a part of its own on the board (services/catalog_bodies.py).
     split = None
     part_type = analysis_run.result.get("part_type") if isinstance(analysis_run.result, dict) else None
-    if isinstance(part_type, dict):
+    if isinstance(part_type, dict) and not unpriced:
         from src.services.catalog_bodies import check_file_bodies
 
         try:
             split = await check_file_bodies(
                 session, user=user, org_id=batch_org_id, file_bytes=file_bytes, filename=item_filename,
                 quantities=qty, material_class=item_material_class, owned=owned, part_type=part_type,
+                material_name=material_name,
             )
         except Exception:
             logger.warning("BatchItem %s: body by body check failed; priced as one file", item_ulid, exc_info=True)
             split = None
-    if split is None:
+    if split is None and not unpriced:
         try:
             report = await _run_cost_decision(
                 file=upload,
@@ -1543,6 +1719,7 @@ async def _check_catalog_part(
                 owned_processes=owned or None,
                 user=user,
                 session=session,
+                material_name=material_name,
             )
             saved = (report or {}).get("saved") or {}
             if saved.get("id"):
@@ -1553,6 +1730,8 @@ async def _check_catalog_part(
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if exc.status_code == 400 and detail.get("code") == "GEOMETRY_INVALID":
                 geometry_invalid = str(detail.get("message") or "the geometry needs repair")
+            elif _timed_out(exc):
+                raise CatalogPartTimedOut("pricing ran past the time limit") from exc
             else:
                 message = detail.get("message") if detail else exc.detail
                 raise RuntimeError(f"Pricing didn't finish: {message}") from exc

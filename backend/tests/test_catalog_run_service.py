@@ -21,8 +21,9 @@ def test_parts_lists_as_boms_and_erp_exports_write_them():
     ]
     assert rows[0]["description"] == "Bracket" and rows[0]["row"] == 2
     tabbed = cr.parse_parts_list("File\tQuantity\tMaterial\nparts/a.step\t5\tInconel 718\n")
-    assert tabbed[0]["file"] == "parts/a.step" and tabbed[0]["material_class"] is None
-    assert tabbed[0]["material_note"] == "Inconel 718 isn't priced in a catalog run yet"
+    # A nickel alloy is priced as itself now (oo-08), never in the run's plastic.
+    assert tabbed[0]["file"] == "parts/a.step" and tabbed[0]["material_class"] == "nickel"
+    assert tabbed[0]["material_grade"] == "inconel_718" and tabbed[0]["material_note"] is None
 
 
 @pytest.mark.parametrize("text, message", [
@@ -222,11 +223,11 @@ def test_failed_skipped_and_running_items():
     assert (failed["bucket"], failed["reason"]) == ("not_checked", "The file couldn't be read as STEP, STL or IGES")
     assert failed["error"] == "Could not read the file. It may be corrupt."
     capped = _row(None, item={**ITEM, "status": "failed", "error_message": "400: Could not tessellate this part: gmsh could not mesh the geometry [rung 2 exceeded 15s cap] (all 3 mesh strategies failed)."})
-    assert capped["reason"] == "Reading the file ran past the time limit; check it on its own"
+    assert capped["reason"] == cr.TIMED_OUT_WORDS
     mesh = _row(None, item={**ITEM, "status": "failed", "error_message": "400: Could not tessellate this part: gmsh could not mesh the geometry (all 3 mesh strategies failed)."})
     assert mesh["reason"].startswith("The CAD kernel couldn't make a solid")
     slow = _row(None, item={**ITEM, "status": "failed", "error_message": "504: File parsing exceeded 60s timeout."})
-    assert slow["reason"] == "Reading the file ran past the time limit; check it on its own"
+    assert slow["reason"] == cr.TIMED_OUT_WORDS
     other = _row(None, item={**ITEM, "status": "failed", "error_message": "500: Something new. More detail."})
     assert other["reason"] == "Something new"
     assert _row(None, item={**ITEM, "status": "skipped", "error_message": None})["reason"] == "Skipped"
@@ -401,3 +402,111 @@ def test_the_pilot_report_writes_a_tiny_parts_mass_in_grams():
     from src.services.pilot_report_service import _kg
 
     assert [_kg(0.0000412), _kg(0.0041), _kg(0.27), _kg(312.4), _kg(None)] == ["<1 g", "4.1 g", "0.27 kg", "312 kg", "—"]
+
+
+# ── round 9: the ops owner's make-or-buy answer ─────────────────────────────
+
+def test_listed_materials_keep_their_grade_and_unpriced_ones_say_so():
+    assert cr.read_material("4140") == {"class": "steel", "grade": "4140", "note": None}
+    assert cr.read_material("Delrin")["grade"] == "pom"
+    assert cr.read_material("Inconel 718") == {"class": "nickel", "grade": "inconel_718", "note": None}
+    # Never priced as something else: no class, and a reason.
+    assert cr.read_material("Nylon 6/6") == {"class": None, "grade": "pa66", "note": "Nylon 6/6 isn't a plastic ScaleCAD prices yet"}
+    assert cr.read_material("CoCr")["class"] is None
+    assert cr.read_material("Brass C360")["note"] == "Brass C360 isn't priced in ScaleCAD yet"
+
+
+def test_a_current_price_column_is_read_per_part_in_dollars():
+    rows = cr.parse_parts_list('file,qty,current price,per\na.step,10,"$1,250.00",100\nb.step,5,12.4 / 10,\nc.step,1,$3,\nd.step,1,,\n')
+    assert [(r["current_price_usd"], r["current_price"]) for r in rows] == [
+        (12.5, "$1,250.00 per 100"), (1.24, "$12.40 per 10"), (3.0, "$3.00 each"), (None, None)]
+    with pytest.raises(ValueError, match="Row 2: current price 'abc' isn't a number"):
+        cr.parse_parts_list("file,price\na.step,abc\n")
+    with pytest.raises(ValueError, match="Row 2: 'per' 'dozen' must be each or a number"):
+        cr.parse_parts_list("file,price,per\na.step,3,dozen\n")
+
+
+def _opt(make, low, buy, *, pick="in_house", basis="in_house_cheapest", out_proc="sheet_metal", same=False):
+    return {"in_house": {"process": "cnc_3axis", "machine": "Haas VF-2", "material": "6061-T6 Aluminum",
+                         "unit_cost_usd": make, "low_usd": low, "high_usd": make * 1.3},
+            "outside": {"process": out_proc, "unit_cost_usd": buy, "same_process": same}, "pick": pick, "basis": basis}
+
+
+def _in_house_decision(opt, qty=10):
+    d = _decision("makeable_in_house", estimates=[_est("cnc_3axis", qty, opt["in_house"]["unit_cost_usd"], owned=True),
+                                                  _est("sheet_metal", qty, 5.13, material="5052 Aluminum (Sheet)")],
+                  resource={"machine": "Haas VF-2", "process": "cnc_3axis"})
+    d["result_json"]["decision"]["options"] = {str(qty): opt}
+    return d
+
+
+def test_make_in_house_means_cheaper_to_make_not_just_able_to():
+    # oo-09: the engine's own comparison put buying first: the part is "Buy", and says what making costs.
+    r = _row(_in_house_decision(_opt(38.71, 30.0, 5.13, pick="outside", basis="outside_cheaper")))
+    assert r["bucket"] == "outside"
+    assert r["could_make"] == {"process": "cnc_3axis", "machine": "Haas VF-2", "unit_cost_usd": 38.71, "times": 7.5}
+    assert r["reason"] == "Could make in-house at $38.71 on your Haas VF-2 (7.5× the buy price)"
+    assert (r["unit_cost_usd"], r["total_cost_usd"], r["marginal"]) == (5.13, 51.3, False)
+    assert r["buy"]["source"] == "model" and r["buy"]["process"] == "sheet_metal"
+    # Cheaper on your machine: in-house, with both sides on the row.
+    ok = _row(_in_house_decision(_opt(20.0, 16.0, 30.0)))
+    assert ok["bucket"] == "in_house" and ok["make"]["unit_cost_usd"] == 20.0 and ok["buy"]["unit_cost_usd"] == 30.0
+    assert ok["saving"] is None  # no current price: no saving claimed against a model price
+
+
+def test_a_current_price_decides_and_gives_the_saving_the_typed_one_wins():
+    d = _in_house_decision(_opt(20.0, 16.0, 5.0, pick="outside", basis="outside_cheaper"))
+    listed = _row(d, meta={"row": 2, "quantity": 10, "current_price_usd": 50.0, "current_price": "$50.00 each"})
+    assert listed["bucket"] == "in_house" and listed["current_price"]["source"] == "parts_list"
+    assert listed["saving"] == {"each": 30.0, "total": 300.0, "vs": "parts_list"}
+    typed = cr.derive_part_row(item=ITEM, analysis=None, decision=d, machines=MACHINES, default_quantity=10,
+                               meta={"row": 2, "quantity": 10, "current_price_usd": 50.0},
+                               buy_price={"usd_each": 4.0, "per": 1, "price_usd": 4.0, "source": "you"})
+    assert typed["current_price"] == {"usd_each": 4.0, "source": "you", "text": "$4.00 each"}
+    assert typed["bucket"] == "outside" and typed["could_make"]["times"] == 5.0
+
+
+def test_a_metal_route_priced_in_another_grade_says_so():
+    d = _decision("makeable_in_house", estimates=[_est("cnc_turning", 10, 30.0, material="304 Stainless", owned=True)],
+                  resource={"machine": "Haas ST-20", "process": "cnc_turning"})
+    r = _row(d, meta={"row": 3, "quantity": 10, "material": "17-4 PH", "material_class": "stainless",
+                      "material_grade": "17-4ph"})
+    assert r["material"]["note"] == "17-4 PH isn't priced for turning in ScaleCAD; priced as 304 Stainless, confirm"
+
+
+def test_an_unpriced_material_is_checked_not_priced():
+    item = {**ITEM, "status": "completed"}
+    r = _row(None, item=item, analysis={"ulid": "A1", "mesh_hash": "h" * 64},
+             meta={"row": 4, "material": "Brass C360", "material_class": None,
+                   "material_note": "Brass C360 isn't priced in ScaleCAD yet"})
+    assert r["bucket"] == "not_sorted"
+    assert r["reason"] == "Brass C360 isn't priced in ScaleCAD yet: its shape was checked, it isn't priced"
+
+
+def test_names_counts_and_plain_words():
+    assert cr.run_name("Ridgeline-bought-parts.zip", "list.csv") == "Ridgeline-bought-parts"
+    assert cr.run_name("catalog.zip", "ridgeline-parts.csv") == "ridgeline-parts"
+    assert cr.run_name("catalog.zip", None) is None
+    assert cr.plain_body_name("Open CASCADE STEP translator 7.8 1.1") is None
+    assert cr.plain_body_name("Part1") is None and cr.plain_body_name("Bracket arm") == "Bracket arm"
+    assert cr.plain_error("504: Analysis exceeded ANALYSIS_TIMEOUT_SEC=60s. Reduce scope with ?processes=... or try x.") \
+        == "504: Analysis exceeded the time limit"
+    entry = {"kind": "assembly", "body_count": 3, "parent_mesh_hash": "p" * 64, "designs": [
+        {"design": 0, "bodies": [1], "copies": 1, "name": "Open CASCADE STEP translator 7.8 1.1",
+         "filename": "bracket-assembly - Open CASCADE STEP translator 7.8 1.1.stl", "status": "not_checked"}]}
+    (row,) = cr.body_rows(item={"ulid": "I9", "filename": "bracket-assembly.step"}, entry=entry, parent_meta=None,
+                          analyses={}, decisions={}, machines=MACHINES, default_quantity=10)
+    assert row["name"] == "bracket-assembly.step, body 1 of 3" and row["body"]["name"] is None
+
+
+def test_the_answer_counts_and_sums_savings_against_real_prices_only():
+    rows = [
+        {"bucket": "in_house", "saving": {"each": 3.0, "total": 600.0, "vs": "parts_list"}, "current_price": {"usd_each": 9.0},
+         "total_cost_usd": 1200.0},
+        {"bucket": "in_house", "saving": None, "current_price": None, "total_cost_usd": 100.0},
+        {"bucket": "outside"}, {"bucket": "new_machine"}, {"bucket": "cant_make"}, {"bucket": "not_checked"},
+    ]
+    a = cr.make_or_buy_answer(rows)
+    assert (a["make"], a["buy"], a["new_machine"], a["undecided"]) == (2, 1, 1, 2)
+    assert (a["saving_usd"], a["saving_parts"], a["make_without_price"], a["with_price"]) == (600.0, 1, 1, 1)
+    assert cr.make_or_buy_answer([{"bucket": "in_house"}])["saving_usd"] is None

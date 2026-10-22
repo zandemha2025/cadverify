@@ -234,7 +234,10 @@ async def test_catalog_run_sorts_parts_on_the_orgs_machines(world):
     totals = board["totals"]
     assert totals["in_house"]["parts"] == 2 and totals["new_machine"]["parts"] == 1
     assert totals["in_house"]["hours"] == pytest.approx(pla["hours_total"] + al["hours_total"], rel=1e-3)
-    assert totals["not_checked"]["parts"] == 1
+    # broken.stl isn't on the parts list: kept apart from the list's totals (oo-10).
+    assert totals["not_checked"]["parts"] == 0 and board["has_list"] is True
+    assert board["unlisted"]["parts"] == 1 and board["unlisted"]["totals"]["not_checked"]["parts"] == 1
+    assert broken["listed"] is False and pla["listed"] is True
     # Per bucket, hours by machine and material by grade (resources first).
     by_machine = {m["machine"]: m for m in board["breakdown"]["in_house"]["machines"]}
     assert set(by_machine) == {"Bambu Lab X1C", "Haas VF-2"}

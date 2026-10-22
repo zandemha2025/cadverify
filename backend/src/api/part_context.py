@@ -59,6 +59,12 @@ class DeclareContextBody(BaseModel):
     # validated in the service (unknown fields/values are a 400). Explicit null or
     # {} clears them.
     part_specs: Optional[dict] = None
+    # What the org pays today to buy the part: {"usd_each": 12.4} or
+    # {"price_usd": 1250, "per": 100}. Stored with source "you" (it wins over a
+    # parts list's price). Not an engine input: it moves the part between make
+    # and buy and sets the saving, never marks a record out of date. null or {}
+    # clears it.
+    buy_price: Optional[dict] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:
@@ -124,11 +130,15 @@ async def declare_part_context(
 
     before = copy.deepcopy(svc.engine_inputs(await svc.get_context(session, org_id, mesh_hash)))
     try:
+        fields = body.model_dump(exclude_unset=True)
+        if "buy_price" in fields:
+            # A price typed here is the person's own: it wins over a parts list's.
+            fields["buy_price"] = svc.normalize_buy_price(fields["buy_price"], source="you")
         row = await svc.upsert_context(
             session,
             org_id,
             mesh_hash,
-            body.model_dump(exclude_unset=True),
+            fields,
             created_by=user.user_id,
         )
     except ValueError as exc:

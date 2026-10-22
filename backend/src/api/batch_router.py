@@ -36,6 +36,7 @@ from fastapi import (
 from dataclasses import dataclass
 
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,11 +108,12 @@ def _apply_catalog_meta(
     run: CatalogRunOptions,
     parts_list: list[dict] | None,
     list_name: str | None,
+    zip_name: str | None = None,
 ) -> None:
     """Each part's quantity ladder and material, and the run's facts (catalog_run_service)."""
     catalog_run_service.apply_catalog_meta(
         batch, items_data, free=run.access.free, material_class=run.material_class, quantity=run.quantity,
-        parts_list=parts_list, list_name=list_name,
+        parts_list=parts_list, list_name=list_name, zip_name=zip_name,
     )
 
 
@@ -410,8 +412,12 @@ async def create_batch(
                     free=catalog_run.access.free, material_class=catalog_run.material_class,
                     quantity=catalog_run.quantity, parts_list=parts_list,
                     list_name=getattr(manifest, "filename", None),
+                    zip_name=getattr(direct_upload, "filename", None),
                 )
-                manifest_json["catalog"] = {"free": catalog_run.access.free,
+                manifest_json["catalog"] = {"name": catalog_run_service.run_name(
+                                                getattr(direct_upload, "filename", None),
+                                                getattr(manifest, "filename", None)),
+                                            "free": catalog_run.access.free,
                                             "material_class": catalog_run.material_class,
                                             "quantity": catalog_run.quantity}
                 batch.manifest_json = manifest_json
@@ -442,7 +448,7 @@ async def create_batch(
 
             if catalog_run is not None:
                 _apply_catalog_meta(batch, items_data, catalog_run, parts_list,
-                                    getattr(manifest, "filename", None))
+                                    getattr(manifest, "filename", None), getattr(file, "filename", None))
             # Parse manifest CSV if provided
             elif manifest_bytes is not None:
                 if job_type == "cost":
@@ -842,6 +848,94 @@ async def get_catalog_board(
     """
     batch = await _catalog_batch(session, batch_id, user.user_id)
     return await catalog_run_service.build_board(session, batch)
+
+
+class RecheckBody(BaseModel):
+    """Which of a run's parts to check again: item ids from the board (a body's
+    row id checks its whole file again). Omitted or empty: every part not checked."""
+
+    item_ids: Optional[list[str]] = None
+
+
+@router.post("/batch/{batch_id}/catalog/recheck", status_code=202,
+             dependencies=[Depends(require_kill_switch_open)])
+async def recheck_catalog_parts(
+    batch_id: str,
+    body: Optional[RecheckBody] = None,
+    user: AuthedUser = Depends(require_org_writer),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Check a run's parts again, in the run: each lands back on its own row.
+
+    For parts that couldn't be checked (a time limit, a busy worker) or were
+    skipped. They run with the run's own quantities, materials and prices, as
+    they did the first time; the run reopens until they finish. A free run's
+    parts count against the allowance as on the first run (a part already
+    counted is free again). Answers ``{batch_id, rechecking: [item ids]}``.
+    """
+    from src.auth.catalog_allowance import _access
+
+    batch = (await session.execute(
+        select(Batch).where(
+            Batch.ulid == batch_id,
+            Batch.org_id == caller_org_subquery(user.user_id),
+            Batch.job_type == "catalog",
+        ).with_for_update()
+    )).scalars().first()
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Catalog run not found")
+    if batch.input_mode == "direct_upload" or batch.status == "failed":
+        raise HTTPException(status_code=409, detail={
+            "code": "catalog_run_not_ready",
+            "message": "This run's ZIP was never unpacked, so it has no parts to check again. Start a new run."})
+    wanted = {i.split(":", 1)[0] for i in ((body.item_ids if body else None) or []) if i}
+    stmt = select(BatchItem).where(BatchItem.batch_id == batch.id).with_for_update()
+    if wanted:
+        stmt = stmt.where(BatchItem.ulid.in_(sorted(wanted)), BatchItem.status.in_(("failed", "skipped", "completed")))
+    else:
+        stmt = stmt.where(BatchItem.status.in_(("failed", "skipped")))
+    items = (await session.execute(stmt.order_by(BatchItem.id))).scalars().all()
+    if not items:
+        raise HTTPException(status_code=409, detail={
+            "code": "nothing_to_recheck", "message": "Every part of this run is checked or still checking."})
+    for item in items:
+        if item.status == "failed":
+            batch.failed_items = max(0, int(batch.failed_items or 0) - 1)
+        elif item.status == "completed":
+            batch.completed_items = max(0, int(batch.completed_items or 0) - 1)
+        item.status = "pending"
+        item.priority = "normal"
+        item.attempt_count = 0
+        item.error_message = None
+        item.started_at = None
+        item.completed_at = None
+        item.lease_started_at = None
+        item.duration_ms = None
+    reopened = batch.status in ("completed", "cancelled")
+    if reopened:
+        batch.status = "processing"
+        batch.completed_at = None
+        batch_service.touch_batch_heartbeat(batch)
+    await session.flush()
+    access = await _access(session, batch.user_id)
+    if access.free:
+        # The allowance as on the first run: a new part takes a slot, a counted one is free.
+        await catalog_run_service.reserve_catalog_run(session, batch.user_id, batch, access)
+    await session.commit()
+    if not reopened:
+        # The run is still going: its coordinator picks the parts up on its next tick.
+        return {"batch_id": batch.ulid, "rechecking": [i.ulid for i in items], "status": batch.status}
+    from src.jobs.arq_backend import get_arq_pool
+
+    try:
+        pool = await get_arq_pool()
+        await pool.enqueue_job("run_batch_coordinator", batch.ulid)
+    except Exception:
+        logger.exception("Could not schedule the re-check of run %s", batch.ulid)
+        raise HTTPException(status_code=503, detail={
+            "code": "BATCH_ENQUEUE_FAILED",
+            "message": "The parts are queued again, but the run couldn't be restarted. Try again in a minute."})
+    return {"batch_id": batch.ulid, "rechecking": [i.ulid for i in items], "status": batch.status}
 
 
 @router.get("/batch/{batch_id}/catalog.csv")

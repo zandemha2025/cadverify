@@ -224,24 +224,28 @@ async def persist_cost_decision(
 
     await _refresh_summary_for(session, decision)
 
+    # A part checked inside a batch or catalog run doesn't notify one by one: the
+    # run says once when it has finished (batch_tasks._notify_run_finished).
+    in_a_run = getattr(user, "key_prefix", None) == "batch"
     try:
         from src.services import notification_service
 
-        await notification_service.emit_notification(
-            session,
-            org_id=decision.org_id,
-            actor_user_id=user.user_id,
-            kind="decision.created",
-            severity="pass",
-            title=f"Verification recorded - {filename}",
-            body=(
-                f"make-now {make_now}" if make_now else "cost decision recorded"
-            ),
-            dest="records",
-            source_type="cost_decision",
-            source_id=decision.ulid,
-            metadata={"filename": filename, "crossover_qty": crossover},
-        )
+        if not in_a_run:
+            await notification_service.emit_notification(
+                session,
+                org_id=decision.org_id,
+                actor_user_id=user.user_id,
+                kind="decision.created",
+                severity="pass",
+                title=f"Verification recorded - {filename}",
+                body=(
+                    f"make-now {make_now}" if make_now else "cost decision recorded"
+                ),
+                dest="records",
+                source_type="cost_decision",
+                source_id=decision.ulid,
+                metadata={"filename": filename, "crossover_qty": crossover},
+            )
     except Exception:
         logger.warning(
             "Failed to emit decision.created notification for %s",

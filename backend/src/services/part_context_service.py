@@ -47,6 +47,10 @@ DECLARED_FIELDS = (
     # finish + Ra, heat treatment, inspection, required certifications. Stored
     # normalized; NULL / absent → nothing declared, the engine is a no-op.
     "part_specs",
+    # What the org pays today to buy the part (migration 0059;
+    # ``normalize_buy_price``). Not an engine input: it moves the part between
+    # make and buy and sets the saving, never the engine's figures.
+    "buy_price",
 )
 _POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume", "bom_roots_per_year")
 
@@ -125,6 +129,51 @@ def validate_context(fields: dict) -> None:
     from src.costing.part_specs import validate_part_specs
 
     validate_part_specs(fields.get("part_specs"))
+    if fields.get("buy_price") is not None:
+        normalize_buy_price(fields["buy_price"], source="you")
+
+
+BUY_PRICE_SOURCES = ("you", "parts_list")
+MAX_BUY_PRICE_USD = 10_000_000
+
+
+def normalize_buy_price(value, *, source: str, run_id: Optional[str] = None) -> Optional[dict]:
+    """A current buy price as stored: ``{usd_each, per, price_usd, source, run_id, updated_at}``.
+
+    ``value``: ``{"usd_each": 12.4}`` or ``{"price_usd": 1250, "per": 100}``
+    (what it costs per ``per`` parts). ``source`` says who gave it: "you" (typed
+    on the part's Decision view) or "parts_list" (a catalog run's list). None or
+    ``{}`` clears it. Raises ``ValueError`` for anything else.
+    """
+    from datetime import datetime, timezone
+
+    if value is None or value == {}:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("buy_price must be an object like {\"usd_each\": 12.4}")
+    unknown = set(value) - {"usd_each", "price_usd", "per", "source", "run_id", "updated_at"}
+    if unknown:
+        raise ValueError(f"buy_price has unknown fields: {', '.join(sorted(unknown))}")
+    per = value.get("per", 1)
+    if per is None:
+        per = 1
+    if not isinstance(per, int) or isinstance(per, bool) or not (1 <= per <= 10_000_000):
+        raise ValueError("buy_price.per must be a whole number of parts from 1 to 10,000,000")
+    price = value.get("price_usd")
+    each = value.get("usd_each")
+    for name, v in (("price_usd", price), ("usd_each", each)):
+        if v is not None and (not isinstance(v, (int, float)) or isinstance(v, bool)
+                              or not (0 < float(v) <= MAX_BUY_PRICE_USD)):
+            raise ValueError(f"buy_price.{name} must be more than $0 and at most ${MAX_BUY_PRICE_USD:,}")
+    if price is None and each is None:
+        raise ValueError("buy_price needs usd_each or price_usd")
+    if price is None:
+        price = float(each) * per
+    usd_each = round(float(price) / per, 6)
+    if source not in BUY_PRICE_SOURCES:
+        raise ValueError(f"buy_price source must be one of {BUY_PRICE_SOURCES}")
+    return {"usd_each": usd_each, "price_usd": round(float(price), 4), "per": per, "source": source,
+            "run_id": run_id, "updated_at": datetime.now(timezone.utc).isoformat()}
 
 
 def annualized_cost(
@@ -194,6 +243,10 @@ async def upsert_context(
     ``created_by`` is stamped on insert.
     """
     validate_context(fields)
+    if "buy_price" in fields and not (isinstance(fields["buy_price"], dict) and fields["buy_price"].get("source")
+                                      in BUY_PRICE_SOURCES and fields["buy_price"].get("updated_at")):
+        # A price typed through the API is "you"; the catalog run stores its own, already normalized.
+        fields = {**fields, "buy_price": normalize_buy_price(fields.get("buy_price"), source="you")}
     if "part_specs" in fields:
         from src.costing.part_specs import normalize_part_specs
 
@@ -256,6 +309,10 @@ def serialize_context(row: Any) -> dict:
     specs = getattr(row, "part_specs", None)
     if specs:
         out["part_specs"] = specs
+    # The current buy price: surfaced ONLY when declared (typed or from a parts list).
+    price = getattr(row, "buy_price", None)
+    if price:
+        out["buy_price"] = price
     return out
 
 

@@ -61,6 +61,7 @@ async def check_file_bodies(
     owned: Optional[str],
     part_type: dict,
     budget_sec: float = 120.0,
+    material_name: Optional[str] = None,
 ) -> Optional[dict]:
     """Check each body shape of a multi-body file; the manifest entry, or None to price the file whole.
 
@@ -111,10 +112,14 @@ async def check_file_bodies(
     for n, (design, members) in enumerate(groups.items()):
         rep = members[0]
         rec = records.get(rep.index) or {}
+        from src.services.catalog_run_service import plain_body_name
+
+        # The product tree's own name, never an exporter's stamp ("Open CASCADE STEP translator 7.8 1.1").
+        name = plain_body_name(rep.name)
         entry: dict[str, Any] = {
             "design": design, "bodies": [b.index for b in members], "copies": len(members),
-            "name": rep.name, "shape": rec.get("shape"), "stock": rec.get("stock"),
-            "filename": body_filename(filename, rep.index, rep.name),
+            "name": name, "shape": rec.get("shape"), "stock": rec.get("stock"),
+            "filename": body_filename(filename, rep.index, name),
             "mesh_hash": None, "analysis_id": None, "decision_ulid": None,
             "status": "not_checked", "reason": None, "stock_material": None,
         }
@@ -163,7 +168,7 @@ async def check_file_bodies(
             report = await _run_cost_decision(
                 file=upload, qty=scaled_ladder(quantities, len(members)), region=None, cavities=1,
                 complexity="moderate", material_class=mclass, owned_processes=owned or None,
-                user=user, session=session,
+                user=user, session=session, material_name=material_name if mclass == material_class else None,
             )
             entry["decision_ulid"] = ((report or {}).get("saved") or {}).get("id")
             entry["status"] = "ok"

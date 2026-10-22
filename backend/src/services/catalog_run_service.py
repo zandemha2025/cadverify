@@ -85,33 +85,51 @@ _MATERIAL_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
 _UNPRICED = re.compile(r"\b(inconel|incoloy|hastelloy|nickel|monel|cobalt|cocr|stellite|copper|brass|bronze|zinc|zamak|magnesium|tungsten)\b", re.I)
 
 
-def material_class_of(text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """``(material_class, note)`` for a material as a parts list names it.
+def read_material(text: Optional[str]) -> dict:
+    """What a parts list's material words name: ``{class, grade, note}``.
 
-    An exact engine material name maps through the engine's own family table
-    (``costing.rates.MATERIAL_FAMILY``); otherwise common words and grades map to
-    one of the five priced classes. A family the cost engine doesn't price yet
-    (nickel, copper, ...) or an unknown word returns ``None`` with a note, and
-    the run's default material is used instead. Never guessed silently.
+    ``class``: the family the run prices it in (the five classes, or ``nickel``),
+    None when ScaleCAD can't price it. ``grade``: the grade key when the words
+    name one ("4140", "Delrin"); the engine then prices each route in that grade
+    where it runs it (``costing.material_grades``). ``note``: why it isn't priced,
+    in plain words. A plastic ScaleCAD has no price for, or a metal family it
+    doesn't price, is never priced as something else.
     """
-    raw = (text or "").strip()
-    if not raw:
-        return None, None
-    if raw.lower() in MATERIAL_CLASSES:
-        return raw.lower(), None
-    from src.costing.rates import MATERIAL_FAMILY
+    from src.costing.material_grades import PRICED_FAMILIES, engine_names_for, family_of_grade, grade_of
 
-    for name, family in MATERIAL_FAMILY.items():
-        if name.lower() == raw.lower():
-            if family in MATERIAL_CLASSES:
-                return family, None
-            return None, f"{raw} isn't priced in a catalog run yet"
+    raw = (text or "").strip()
+    out: dict[str, Optional[str]] = {"class": None, "grade": None, "note": None}
+    if not raw:
+        return out
+    if raw.lower() in MATERIAL_CLASSES:
+        out["class"] = raw.lower()
+        return out
+    grade = grade_of(raw)
+    if grade is not None:
+        family = family_of_grade(grade)
+        out["grade"] = grade
+        if family not in PRICED_FAMILIES:
+            out["note"] = f"{raw} isn't priced in ScaleCAD yet"
+        elif family == "polymer" and not engine_names_for(raw):
+            out["note"] = f"{raw} isn't a plastic ScaleCAD prices yet"
+        else:
+            out["class"] = family
+        return out
     if _UNPRICED.search(raw):
-        return None, f"{raw} isn't priced in a catalog run yet"
+        out["note"] = f"{raw} isn't priced in ScaleCAD yet"
+        return out
     for cls, pattern in _MATERIAL_PATTERNS:
         if pattern.search(raw):
-            return cls, None
-    return None, f"{raw} isn't a material ScaleCAD recognises"
+            out["class"] = cls
+            return out
+    out["note"] = f"{raw} isn't a material ScaleCAD recognises"
+    return out
+
+
+def material_class_of(text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """``(material_class, note)`` for a material as a parts list names it (``read_material``)."""
+    m = read_material(text)
+    return m["class"], m["note"]
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +141,49 @@ _QTY_HEADERS = ("quantity", "qty", "qty.", "count", "quantity per year", "annual
 _MATERIAL_HEADERS = ("material", "material_class", "material class", "matl", "mat'l", "material spec", "spec")
 _PART_HEADERS = ("part number", "part_number", "part no", "part no.", "part #", "pn", "p/n", "item number", "item", "part", "number")
 _DESC_HEADERS = ("description", "desc", "name", "title")
+# What the organization pays today to buy the part, and per how many.
+_PRICE_HEADERS = ("current price", "current_price", "current unit price", "current price (usd)", "current price usd",
+                  "buy price", "buy_price", "unit price", "unit_price", "unit price (usd)", "price", "price (usd)",
+                  "price each", "price_each", "current cost", "unit cost", "cost each", "purchase price")
+_PER_HEADERS = ("per", "price per", "price_per", "per qty", "price unit", "pricing unit", "price uom")
+MAX_PRICE_USD = 10_000_000
+_EACH_WORDS = {"", "each", "ea", "ea.", "pc", "pcs", "piece", "pieces", "unit", "units", "part", "1"}
+
+
+def _parse_per(raw: str, row_num: int) -> int:
+    """How many parts a listed price buys: "each" is 1, "100" or "per 100" is 100."""
+    t = (raw or "").strip().lower()
+    t = re.sub(r"^(per|/)\s*", "", t).replace(",", "")
+    if t in _EACH_WORDS:
+        return 1
+    if t in ("c", "hundred"):
+        return 100
+    if t in ("thousand", "k"):
+        return 1000
+    if t.isdigit() and 1 <= int(t) <= MAX_QUANTITY:
+        return int(t)
+    raise ValueError(f"Row {row_num}: 'per' '{raw.strip()}' must be each or a number of parts, like 100")
+
+
+def _parse_price(raw: str, per_raw: str, row_num: int) -> tuple[Optional[float], Optional[str]]:
+    """``(usd each, as written)`` for a current price cell ("$12.40", "1,250 / 100"), or ``(None, None)``."""
+    s = (raw or "").strip()
+    if not s:
+        return None, None
+    per_text = per_raw
+    m = re.match(r"^(.*?)\s*(?:/|per)\s*([0-9,]+|each|ea|pc|c|k)\s*$", s, re.I)
+    if m:
+        s, per_text = m.group(1), m.group(2)
+    t = re.sub(r"(?i)usd|us\$|\$", "", s).replace(",", "").replace(" ", "")
+    try:
+        v = float(t)
+    except ValueError:
+        raise ValueError(f"Row {row_num}: current price '{raw.strip()}' isn't a number in US dollars")
+    if not (0 < v <= MAX_PRICE_USD):
+        raise ValueError(f"Row {row_num}: current price '{raw.strip()}' must be more than $0 and at most ${MAX_PRICE_USD:,}")
+    per = _parse_per(per_text or "", row_num)
+    shown = f"${v:,.2f}" + (f" per {per:,}" if per > 1 else " each")
+    return round(v / per, 6), shown
 
 
 def _header_index(headers: list[str], names: Iterable[str]) -> Optional[int]:
@@ -174,6 +235,8 @@ def parse_parts_list(text: str) -> list[dict]:
     qi = _header_index(headers, _QTY_HEADERS)
     mi = _header_index(headers, _MATERIAL_HEADERS)
     di = _header_index(headers, _DESC_HEADERS)
+    ci = _header_index(headers, _PRICE_HEADERS)
+    ei = _header_index(headers, _PER_HEADERS)
 
     def cell(row: list[str], i: Optional[int]) -> str:
         return row[i].strip() if i is not None and i < len(row) and row[i] is not None else ""
@@ -189,7 +252,8 @@ def parse_parts_list(text: str) -> list[dict]:
         if not file and not part:
             raise ValueError(f"Row {row_num}: no file name or part number")
         material = cell(row, mi) or None
-        cls, note = material_class_of(material)
+        read = read_material(material)
+        price, price_text = _parse_price(cell(row, ci), cell(row, ei), row_num)
         rows.append({
             "row": row_num,
             "file": file or None,
@@ -197,8 +261,11 @@ def parse_parts_list(text: str) -> list[dict]:
             "description": cell(row, di) or None,
             "quantity": _parse_qty(cell(row, qi), row_num),
             "material": material,
-            "material_class": cls,
-            "material_note": note,
+            "material_class": read["class"],
+            "material_grade": read["grade"],
+            "material_note": read["note"],
+            "current_price_usd": price,
+            "current_price": price_text,
         })
     return rows
 
@@ -345,10 +412,12 @@ def _first_sentence(s: Optional[str]) -> Optional[str]:
     return (t[:i] if i > 0 else t).rstrip(".")
 
 
+TIMED_OUT_WORDS = "Checking ran past its time limit; check it again"
+_TIME_LIMIT = re.compile(r"parsing exceeded|exceeded \d+(\.\d+)?s (timeout|cap)|timed out|time limit|"
+                         r"TIMEOUT_SEC|took longer than", re.I)
 _FAILURE_WORDS: tuple[tuple[re.Pattern, str], ...] = (
     # A time cap first: a mesh strategy stopped at its cap says nothing about the geometry.
-    (re.compile(r"parsing exceeded|exceeded \d+(\.\d+)?s (timeout|cap)|timed out", re.I),
-     "Reading the file ran past the time limit; check it on its own"),
+    (_TIME_LIMIT, TIMED_OUT_WORDS),
     (re.compile(r"could not (tessellate|mesh)|all \d+ mesh strategies failed", re.I),
      "The CAD kernel couldn't make a solid from this file (open, wire-only or damaged geometry)"),
     (re.compile(r"not a valid stl|could not (parse|read|load)|unable to (parse|read|load)|no geometry|empty mesh", re.I),
@@ -360,6 +429,19 @@ _FAILURE_WORDS: tuple[tuple[re.Pattern, str], ...] = (
 )
 
 
+# A setting's name ("ANALYSIS_TIMEOUT_SEC=60s") never reaches a person's screen or file.
+_SETTING = re.compile(r"\b[A-Z][A-Z0-9]*(_[A-Z0-9]+)+\b(=\S+)?")
+
+
+def plain_error(error: Optional[str]) -> Optional[str]:
+    """The raw error with setting names and API hints taken out (for the CSV)."""
+    if not error:
+        return error
+    t = _SETTING.sub("the time limit", error) if _TIME_LIMIT.search(error) else _SETTING.sub("", error)
+    t = re.sub(r"\s*Reduce scope with \?processes=\S*.*$", "", t)
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
 def failure_words(error: Optional[str]) -> Optional[str]:
     """Why a part couldn't be checked, in plain words (the raw error stays in ``error``)."""
     if not error:
@@ -367,7 +449,7 @@ def failure_words(error: Optional[str]) -> Optional[str]:
     for pattern, words in _FAILURE_WORDS:
         if pattern.search(error):
             return words
-    text = re.sub(r"^\s*\d{3}:\s*", "", error)
+    text = re.sub(r"^\s*\d{3}:\s*", "", plain_error(error) or "")
     return _first_sentence(text)
 
 
@@ -402,8 +484,16 @@ def derive_part_row(
     machines: list[dict],
     default_quantity: int,
     governance: Optional[dict] = None,
+    buy_price: Optional[dict] = None,
 ) -> dict:
     """One part on the board: bucket, reason, resources first, price second.
+
+    Make or buy is decided by cost, not by ability alone (``decide_make_or_buy``):
+    a part one of your machines can make is "Make in-house" only when making it
+    costs less than buying it, against what you pay today when a price is known
+    (``buy_price``: the part's typed price, which wins, else the parts list's)
+    and the cheapest outside price otherwise. ``buy_price`` is the part's stored
+    ``part_contexts.buy_price`` or None.
 
     ``item``: the batch item's ``ulid``, ``filename``, ``status``,
     ``error_message``, ``duration_ms``. ``analysis`` / ``decision``: ``{ulid,
@@ -414,6 +504,7 @@ def derive_part_row(
     """
     meta = meta or {}
     qty = int(meta.get("quantity") or default_quantity)
+    price = current_price(meta, buy_price)
     status = item.get("status")
     error = item.get("error_message")
     result = (decision or {}).get("result_json") or {}
@@ -424,6 +515,7 @@ def derive_part_row(
     row: dict[str, Any] = {
         "item_id": item.get("ulid"),
         "filename": item.get("filename"),
+        "name": item.get("filename"),
         "part_number": meta.get("part_number"),
         "description": meta.get("description"),
         "status": status,
@@ -456,6 +548,15 @@ def derive_part_row(
         "marginal": False,
         "capability": None,
         "cheaper_outside": None,
+        # On the parts list (its quantity, material and price are the list's), or
+        # a file in the ZIP the list doesn't name (kept apart from the totals).
+        "listed": meta.get("row") is not None,
+        # What you pay today (or None), the in-house side, the buy side, and the saving.
+        "current_price": price,
+        "make": None,
+        "buy": None,
+        "could_make": None,
+        "saving": None,
         "duration_ms": item.get("duration_ms"),
         "error": None,
         # The part's declared specs as the run priced them (the record's specs
@@ -491,6 +592,10 @@ def derive_part_row(
             row["verdict"] = "geometry_invalid"
             reason = error[len(GEOMETRY_INVALID_PREFIX):]
             row["reason"] = f"Not a valid solid: {_first_sentence(reason) or 'the geometry needs repair'}"
+        elif meta.get("material") and not meta.get("material_class") and meta.get("material_note"):
+            # A material ScaleCAD can't price: the shape is checked, the part isn't priced as anything else.
+            row["bucket"] = "not_sorted"
+            row["reason"] = f"{meta['material_note']}: its shape was checked, it isn't priced"
         else:
             row["bucket"] = "not_sorted"
             row["reason"] = "Checked; no price or machine verdict"
@@ -505,6 +610,7 @@ def derive_part_row(
     bucket = _BUCKET_OF_VERDICT.get(verdict or "")
     decision_block = result.get("decision") or {}
     rec = (decision_block.get("recommendation") or {}).get(str(qty)) or {}
+    opt = (decision_block.get("options") or {}).get(str(qty)) or None
     make_now = rec.get("process") or decision_block.get("make_now_process")
     if bucket is None:
         row["bucket"] = "not_sorted"
@@ -515,6 +621,10 @@ def derive_part_row(
         resource = verification.get("resource") or {}
         process = resource.get("process")
         machine = resource.get("machine") or verification.get("best_machine")
+        inside = (opt or {}).get("in_house") or {}
+        if inside.get("process"):
+            # The cheapest route on a machine of yours at this quantity (the engine's own comparison).
+            process, machine = inside["process"], inside.get("machine") or machine
         row["route"] = {"process": process, "machine": machine, "owned": True}
     elif bucket == "outside":
         process = make_now
@@ -605,12 +715,140 @@ def derive_part_row(
             blockers = est.get("dfm_blockers") or []
             row["price_withheld"] = _first_sentence(blockers[0]) if blockers else "Not makeable as drawn on this route"
 
-    # In-house, but a route outside is cheaper at this quantity: say so.
-    if bucket == "in_house" and make_now and make_now != process and row["unit_cost_usd"] is not None:
-        alt = _num(rec.get("unit_cost_usd"))
-        if alt is not None and alt < row["unit_cost_usd"] and rec.get("dfm_ready", True):
-            row["cheaper_outside"] = {"process": make_now, "unit_cost_usd": alt}
+    # The grade the parts list names, when the route was priced in another grade of the same metal.
+    listed, used = meta.get("material"), row["material"]["name"]
+    if listed and used and meta.get("material_grade") and process:
+        from src.costing.material_grades import same_grade
+
+        if not same_grade(used, listed):
+            row["material"]["note"] = (f"{listed} isn't priced for {_lower(process_words(process))} in ScaleCAD; "
+                                       f"priced as {used}, confirm")
+
+    # Make or buy, by cost.
+    decide_make_or_buy(row, result=result, opt=opt, price=price, qty=qty, est=est)
+
+    # In-house, but a route outside is cheaper at this quantity (inside the estimate's range): say so.
+    if row["bucket"] == "in_house" and row["unit_cost_usd"] is not None:
+        out = (opt or {}).get("outside") or {}
+        alt = _num(out.get("unit_cost_usd"))
+        if alt is not None and out.get("process") and alt < row["unit_cost_usd"] and price is None:
+            row["cheaper_outside"] = {"process": out["process"], "unit_cost_usd": alt,
+                                      "same_process": bool(out.get("same_process"))}
+        elif opt is None and make_now and make_now != process:
+            alt = _num(rec.get("unit_cost_usd"))
+            if alt is not None and alt < row["unit_cost_usd"] and rec.get("dfm_ready", True):
+                row["cheaper_outside"] = {"process": make_now, "unit_cost_usd": alt}
     return row
+
+
+# What decides make or buy, in one line (the board and the summary print it).
+BUCKET_RULE = ("Make in-house when one of your machines makes it for less than buying it: what you pay today "
+               "where you gave a price, else the cheapest outside price. A difference inside the in-house "
+               "estimate's range counts as a tie, and a tie stays on your machine.")
+
+
+def current_price(meta: Optional[dict], stored: Optional[dict]) -> Optional[dict]:
+    """What you pay today for one part: ``{usd_each, source, text}`` or None.
+
+    A price typed on the part's Decision view (``source: "you"``) wins over the
+    parts list's; a price an earlier run's list stored is used only when this
+    run's list gives none.
+    """
+    meta = meta or {}
+    if isinstance(stored, dict) and stored.get("source") == "you" and _num(stored.get("usd_each")):
+        return {"usd_each": float(stored["usd_each"]), "source": "you",
+                "text": _price_text(stored)}
+    if _num(meta.get("current_price_usd")):
+        return {"usd_each": float(meta["current_price_usd"]), "source": "parts_list",
+                "text": meta.get("current_price") or f"${float(meta['current_price_usd']):,.2f} each"}
+    if isinstance(stored, dict) and _num(stored.get("usd_each")):
+        return {"usd_each": float(stored["usd_each"]), "source": "parts_list", "text": _price_text(stored)}
+    return None
+
+
+def _price_text(stored: dict) -> str:
+    per = int(stored.get("per") or 1)
+    price = _num(stored.get("price_usd")) or float(stored["usd_each"]) * per
+    return f"${price:,.2f}" + (f" per {per:,}" if per > 1 else " each")
+
+
+def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: Optional[dict], qty: int,
+                       est: Optional[dict]) -> None:
+    """Put a part a machine of yours can make in "Make in-house" or "Buy outside", by cost.
+
+    The in-house side is the engine's cheapest route on a machine of yours at the
+    part's quantity; the buy side is what you pay today when known, else the
+    engine's cheapest outside price (a job shop running the same process
+    included). The engine's own rule decides (``decision.prefer_in_house``): a
+    difference inside the in-house estimate's range is a tie and stays on your
+    machine. A current price never changes the engine's figures, so it never
+    marks the part's record out of date: it only moves the part between the two
+    buckets and sets the saving. Sets ``make``, ``buy``, ``could_make`` and
+    ``saving`` on the row and, when buying wins, the bucket, route and price.
+    """
+    from src.costing.decision import prefer_in_house
+
+    inside = (opt or {}).get("in_house") if isinstance(opt, dict) else None
+    outside = (opt or {}).get("outside") if isinstance(opt, dict) else None
+    if inside and _num(inside.get("unit_cost_usd")) is not None:
+        row["make"] = {"process": inside.get("process"), "machine": inside.get("machine"),
+                       "material": inside.get("material"), "unit_cost_usd": _num(inside.get("unit_cost_usd")),
+                       "low_usd": _num(inside.get("low_usd")), "high_usd": _num(inside.get("high_usd"))}
+    if price is not None:
+        row["buy"] = {"unit_cost_usd": price["usd_each"], "source": price["source"], "text": price["text"],
+                      "process": None, "same_process": False}
+    elif outside and _num(outside.get("unit_cost_usd")) is not None:
+        row["buy"] = {"unit_cost_usd": _num(outside.get("unit_cost_usd")), "source": "model", "text": None,
+                      "process": outside.get("process"), "same_process": bool(outside.get("same_process"))}
+    elif row["bucket"] in ("outside", "new_machine") and row.get("unit_cost_usd") is not None:
+        row["buy"] = {"unit_cost_usd": row["unit_cost_usd"], "source": "model", "text": None,
+                      "process": (row.get("route") or {}).get("process"), "same_process": False}
+
+    make, buy = row["make"], row["buy"]
+    if row["bucket"] != "in_house" or make is None:
+        return
+    if buy is None:
+        return  # nothing to buy it from: your machine is the only price
+    if price is not None:
+        pick, basis = prefer_in_house(
+            {"unit_cost_usd": make["unit_cost_usd"], "low_usd": make["low_usd"] if make["low_usd"] is not None
+             else make["unit_cost_usd"], "lead_low_days": None},
+            {"unit_cost_usd": price["usd_each"], "lead_high_days": None})
+    else:
+        pick, basis = (opt or {}).get("pick") or "in_house", (opt or {}).get("basis")
+    row["make_or_buy_basis"] = basis
+    if pick == "in_house":
+        if price is not None:
+            each = round(price["usd_each"] - make["unit_cost_usd"], 2)
+            row["saving"] = {"each": each, "total": round(each * qty, 2), "vs": price["source"]}
+        return
+    # Buying wins: the part moves to "Buy outside" and says what making it would cost.
+    times = make["unit_cost_usd"] / buy["unit_cost_usd"] if buy["unit_cost_usd"] else None
+    row["could_make"] = {"process": make["process"], "machine": make["machine"],
+                         "unit_cost_usd": make["unit_cost_usd"], "times": round(times, 1) if times else None}
+    row["bucket"] = "outside"
+    row["route"] = {"process": buy.get("process"), "machine": None, "owned": False}
+    who = make["machine"] or process_words(make["process"])
+    ratio = f" ({row['could_make']['times']:g}× the buy price)" if times else ""
+    row["reason"] = f"Could make in-house at ${make['unit_cost_usd']:,.2f} on your {who}{ratio}"
+    row["unit_cost_usd"] = buy["unit_cost_usd"]
+    row["total_cost_usd"] = round(buy["unit_cost_usd"] * qty, 2)
+    row["marginal"] = False
+    row["machine_rate_usd"] = None
+    if buy.get("process") and buy["process"] != make["process"]:
+        out_est = _estimate(result, buy["process"], qty)
+        if out_est is not None:
+            cycle = _num((_driver(out_est, "cycle_time") or {}).get("value"))
+            row["hours_each"] = cycle
+            row["hours_total"] = round(cycle * qty, 4) if cycle is not None else None
+            row["material"]["name"] = out_est.get("material") or row["material"]["name"]
+            used = material_used_kg(out_est)
+            row["material"]["used_kg_each"] = _kg_round(used) if used is not None else None
+            row["used_kg_total"] = _kg_round(used * qty) if used is not None else None
+    elif price is not None:
+        # Bought from your supplier: no route of ours, so no machine time or material of ours.
+        row["hours_each"] = row["hours_total"] = None
+        row["used_kg_total"] = None
 
 
 def _row_specs(block: Any, declared: Any) -> Optional[dict]:
@@ -631,6 +869,21 @@ def _row_specs(block: Any, declared: Any) -> Optional[dict]:
             "excluded_processes": []}
 
 
+# Names a CAD exporter writes into a STEP product tree that aren't anyone's
+# name for the part ("Open CASCADE STEP translator 7.8 1.1", "Part1", "SOLID").
+_NOISE_NAME = re.compile(
+    r"open\s*cascade|step\s*translator|\bap\s*2(03|14|42)\b|^(part|body|solid|shape|component|product|"
+    r"assembly|assy|instance|nauo)\s*[-_.#]?\s*\d*(\.\d+)?$|^unnamed|^untitled|^none$|^\d+$", re.I)
+
+
+def plain_body_name(name: Optional[str]) -> Optional[str]:
+    """A body's own name from the STEP product tree, or None when it is an exporter's stamp."""
+    n = (name or "").strip()
+    if not n or _NOISE_NAME.search(n):
+        return None
+    return n[:80]
+
+
 _SPLIT_KIND_WORDS = {
     "separate_bodies": "separate bodies",
     "weldment": "a weldment",
@@ -649,6 +902,7 @@ def body_rows(
     machines: list[dict],
     default_quantity: int,
     governance_of=None,
+    buy_prices: Optional[dict] = None,
 ) -> list[dict]:
     """A file split body by body (``catalog_bodies``): one row per body shape.
 
@@ -685,20 +939,27 @@ def body_rows(
             machines=machines,
             default_quantity=default_quantity,
             governance=governance_of(decision) if (governance_of and decision) else None,
+            buy_price=(buy_prices or {}).get((decision or {}).get("mesh_hash")),
         )
         row["quantity_source"] = "list" if parent_meta.get("quantity") else "run"
         if status == "not_checked" and d.get("reason"):
             row["reason"] = d["reason"]
+        name = plain_body_name(d.get("name"))
+        ids = d.get("bodies") or []
+        of = entry.get("body_count")
         row["body"] = {
             "file": item.get("filename"),
             "file_key": entry.get("parent_mesh_hash"),
             "kind": kind,
-            "ids": d.get("bodies") or [],
+            "ids": ids,
             "copies": copies,
-            "of": entry.get("body_count"),
+            "of": of,
             "shape": d.get("shape"),
-            "name": d.get("name"),
+            "name": name,
         }
+        # "bracket-assembly.step, body 1 of 3": the file the person gave, and which body.
+        which = name or (f"body {ids[0]}" if ids else "a body")
+        row["name"] = f"{item.get('filename')}, {which}" + (f" of {of}" if of and not name else "")
         if status == "member":
             stock = d.get("stock_material") or {}
             row["bucket"] = "not_sorted"
@@ -841,10 +1102,25 @@ async def _org_machines(session: AsyncSession, org_id: str) -> list[dict]:
     from src.db.models import MachineInstance
 
     rows = (await session.execute(
-        select(MachineInstance.name, MachineInstance.process).where(MachineInstance.org_id == org_id)
+        select(MachineInstance.name, MachineInstance.process, MachineInstance.count)
+        .where(MachineInstance.org_id == org_id)
         .order_by(MachineInstance.name)
     )).all()
-    return [{"name": n, "process": p} for n, p in rows]
+    return [{"name": n, "process": p, "count": max(1, int(c or 1))} for n, p, c in rows]
+
+
+async def _buy_prices(session: AsyncSession, org_id: str, part_keys: Iterable[str]) -> dict[str, dict]:
+    """``{mesh_hash: buy_price}`` stored on the parts' declared contexts."""
+    from src.db.models import PartContext
+
+    keys = sorted({k for k in part_keys if k})
+    if not keys:
+        return {}
+    rows = (await session.execute(
+        select(PartContext.mesh_hash, PartContext.buy_price)
+        .where(PartContext.org_id == org_id, PartContext.mesh_hash.in_(keys), PartContext.buy_price.isnot(None))
+    )).all()
+    return {h: p for h, p in rows if isinstance(p, dict)}
 
 
 def run_meta(batch: Batch) -> dict:
@@ -873,12 +1149,15 @@ def apply_catalog_meta(
     quantity: int,
     parts_list: Optional[list[dict]],
     list_name: Optional[str],
+    zip_name: Optional[str] = None,
 ) -> None:
     """Give each part its quantity ladder and material, and keep the run's facts.
 
     The parts list wins per file; a file it doesn't name takes the run's
-    quantity and material. Rows naming no file in the ZIP are kept (first 200)
-    so the board can list them honestly.
+    quantity and material. A material the list names is priced as that grade
+    (``read_material``); one ScaleCAD can't price leaves the part checked and
+    not priced, never priced in the run's material instead. Rows naming no file
+    in the ZIP are kept (first 200) so the board can list them honestly.
     """
     names = [it["filename"] for it in items_data if it.get("status") not in {"skipped", "failed"}]
     by_file, unmatched = match_parts_list(parts_list or [], names)
@@ -888,17 +1167,20 @@ def apply_catalog_meta(
             continue
         row = by_file.get(it["filename"])
         qty = (row or {}).get("quantity") or quantity
-        cls = (row or {}).get("material_class") or material_class
+        cls = (row or {}).get("material_class") if (row or {}).get("material") else material_class
         it["quantities"] = ";".join(str(q) for q in quantity_ladder(qty))
         it["material_class"] = cls
         if row is not None:
             per_file[it["filename"]] = {
                 k: row.get(k) for k in ("part_number", "description", "quantity", "material", "material_class",
-                                        "material_note", "row", "part_specs")
-                if k != "part_specs" or row.get(k)
+                                        "material_grade", "material_note", "row", "part_specs",
+                                        "current_price_usd", "current_price")
+                if k not in ("part_specs", "current_price_usd", "current_price", "material_grade") or row.get(k)
             }
     manifest_json = dict(batch.manifest_json or {})
     manifest_json["catalog"] = {
+        "name": run_name(zip_name, list_name),
+        "zip_name": zip_name,
         "free": free,
         "material_class": material_class,
         "quantity": quantity,
@@ -907,7 +1189,8 @@ def apply_catalog_meta(
             if parts_list is not None else None
         ),
         "unmatched": [
-            {k: r.get(k) for k in ("row", "file", "part_number", "quantity", "material")} for r in unmatched[:200]
+            {k: r.get(k) for k in ("row", "file", "part_number", "description", "quantity", "material")}
+            for r in unmatched[:200]
         ],
         "items": per_file,
     }
@@ -950,10 +1233,27 @@ async def reserve_catalog_run(session: AsyncSession, user_id: int, batch: Batch,
 
 
 def pending_options(*, free: bool, material_class: Optional[str], quantity: int,
-                    parts_list: Optional[list[dict]], list_name: Optional[str]) -> dict:
+                    parts_list: Optional[list[dict]], list_name: Optional[str],
+                    zip_name: Optional[str] = None) -> dict:
     """The options a run from a stored ZIP is prepared with on the worker (plain JSON)."""
     return {"free": free, "material_class": material_class, "quantity": int(quantity),
-            "parts_list": parts_list, "list_name": list_name}
+            "parts_list": parts_list, "list_name": list_name, "zip_name": zip_name}
+
+
+# Names a browser gives a ZIP it packs itself: not the person's name for the run.
+_GENERIC_ZIP = re.compile(r"^(catalog|parts|files|archive|download|upload|batch|new folder|untitled)( ?\(\d+\))?$", re.I)
+
+
+def run_name(zip_name: Optional[str], list_name: Optional[str]) -> Optional[str]:
+    """The run's name: the ZIP's (or folder's) name, else the parts list's, without extensions."""
+    def stem(n: Optional[str]) -> str:
+        base = os.path.basename((n or "").replace("\\", "/")).strip()
+        return re.sub(r"\.(zip|csv|tsv|txt)$", "", base, flags=re.I).strip()[:120]
+
+    z = stem(zip_name)
+    if z and not _GENERIC_ZIP.match(z):
+        return z
+    return stem(list_name) or None
 
 
 class CatalogRunRefused(DirectUploadPreparationValidationError):
@@ -980,7 +1280,7 @@ def prepare_items(batch: Batch, items_data: list[dict]) -> None:
     apply_catalog_meta(
         batch, items_data, free=bool(opts.get("free")), material_class=opts.get("material_class"),
         quantity=int(opts.get("quantity") or DEFAULT_RUN_QUANTITY), parts_list=opts.get("parts_list"),
-        list_name=opts.get("list_name"),
+        list_name=opts.get("list_name"), zip_name=opts.get("zip_name"),
     )
 
 
@@ -1018,7 +1318,7 @@ async def reserve_prepared_run(session: AsyncSession, batch: Batch) -> None:
 # reads the same as from the whole record (tests/test_catalog_run_e2e.py
 # compares them).
 _BOARD_DECISION_KEYS = ("status", "reason", "verification", "geometry", "specs")
-_BOARD_DECISION_BLOCK_KEYS = ("recommendation", "make_now_process")
+_BOARD_DECISION_BLOCK_KEYS = ("recommendation", "make_now_process", "options")
 _BOARD_ESTIMATE_KEYS = ("process", "quantity", "material", "unit_cost_usd", "dfm_ready", "dfm_blockers", "material_mass")
 _BOARD_DRIVERS = ("cycle_time", "machine_cost", "owned_in_house", "material_cost")
 
@@ -1094,6 +1394,8 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
     split_decisions, split_analyses = await _split_records(session, batch.org_id, split)
     signers = await signoff_service.names_for(
         session, [it[12] for it in items] + [d["governance"]["approved_by_user_id"] for d in split_decisions.values()])
+    buy_prices = await _buy_prices(session, batch.org_id, [it[8] for it in items if it[8]] + [
+        v["decision"]["mesh_hash"] for v in split_decisions.values()])
     now = datetime.now(timezone.utc)
 
     def _gov(approval, signer, signed_at, signoff_note, stale_at, stale_reason) -> dict:
@@ -1117,6 +1419,7 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
                 analyses=split_analyses, decisions={k: v["decision"] for k, v in split_decisions.items()},
                 machines=machines, default_quantity=default_qty,
                 governance_of=lambda dec: {**split_decisions[dec["ulid"]]["governance"], "signers": signers},
+                buy_prices=buy_prices,
             ))
             split_files.append(split_file_note(filename, entry))
             continue
@@ -1131,8 +1434,13 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
             machines=machines,
             default_quantity=default_qty,
             governance={**gov, "user_disposition": disposition, "signers": signers},
+            buy_price=buy_prices.get(decision_hash) if decision_hash else None,
         ))
+        rows[-1]["name"] = filename
     manifest = batch.manifest_json or {}
+    has_list = bool(meta.get("parts_list"))
+    scoped = [r for r in rows if r.get("listed")] if has_list else rows
+    unlisted = [r for r in rows if not r.get("listed")] if has_list else []
     # A run from a stored ZIP is unpacked on the worker first (input_mode
     # direct_upload until then); a refusal there is kept as the run's failure.
     preparing = batch.input_mode == "direct_upload" and batch.status not in ("completed", "failed", "cancelled")
@@ -1149,12 +1457,53 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
         "parts_list": meta.get("parts_list"),
         "unmatched": meta.get("unmatched") or [],
         "machines": machines,
+        "machine_count": sum(int(m.get("count") or 1) for m in machines),
+        "name": meta.get("name"),
+        "files": len(items),
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
         "rows": rows,
         "split_files": split_files,
-        "totals": bucket_totals(rows),
-        "breakdown": bucket_breakdown(rows),
+        # With a parts list, the totals and the answer cover the parts on it;
+        # files in the ZIP it doesn't name are kept apart (``unlisted``).
+        "has_list": has_list,
+        "totals": bucket_totals(scoped),
+        "breakdown": bucket_breakdown(scoped),
+        "unlisted": {"parts": len(unlisted), "totals": bucket_totals(unlisted)} if has_list else None,
+        "answer": make_or_buy_answer(scoped),
+        "bucket_rule": BUCKET_RULE,
+    }
+
+
+def make_or_buy_answer(rows: list[dict]) -> dict:
+    """The run's answer in counts and money: make N, buy M, the rest, and the saving.
+
+    ``saving_usd``: what making the in-house parts saves against what you pay
+    today, summed over the in-house parts with a current price (each part's
+    saving × its quantity); None when no in-house part has one. Nothing is
+    summed from a model price: the saving is against real prices only.
+    """
+    def n(*keys: str) -> int:
+        return sum(1 for r in rows if r.get("bucket") in keys)
+
+    make = [r for r in rows if r.get("bucket") == "in_house"]
+    saved = [r for r in make if isinstance(r.get("saving"), dict)]
+    return {
+        "parts": len(rows),
+        "make": len(make),
+        "buy": n("outside"),
+        "new_machine": n("new_machine"),
+        "cant_make": n("cant_make"),
+        "not_checked": n("not_checked"),
+        "not_sorted": n("not_sorted"),
+        "checking": n("checking"),
+        "undecided": n("cant_make", "not_checked", "not_sorted", "checking"),
+        "with_price": sum(1 for r in rows if r.get("current_price")),
+        "saving_usd": round(sum(r["saving"]["total"] for r in saved), 2) if saved else None,
+        "saving_parts": len(saved),
+        "make_without_price": len(make) - len(saved),
+        "make_cost_usd": round(sum(r["total_cost_usd"] for r in make if _num(r.get("total_cost_usd")) is not None), 2)
+        if make else None,
     }
 
 
@@ -1209,8 +1558,23 @@ CSV_HEADER = (
     "file,part_number,bucket,reason,route,machine,owned,material,declared_material,quantity,"
     "machine_hours_each,machine_hours_total,part_mass_kg_each,material_kg_total,"
     "unit_cost_usd,total_cost_usd,price_note,status,error,material_used_kg_each,material_used_kg_total,"
+    "name,description,on_parts_list,current_price_usd_each,current_price_from,make_usd_each,make_on,"
+    "buy_usd_each,buy_from,saving_usd_each,saving_usd_total,"
     "specs,supplier_must_hold,outcome,signed_off_by,signed_off_at,signoff_out_of_date\n"
 )
+
+_PRICE_FROM = {"you": "your price on the part", "parts_list": "the parts list", "model": "model price"}
+
+
+def _buy_from(buy: Optional[dict]) -> Optional[str]:
+    if not buy:
+        return None
+    if buy.get("source") != "model":
+        return _PRICE_FROM.get(buy.get("source"))
+    proc = buy.get("process")
+    if not proc:
+        return "model price"
+    return f"{process_words(proc)} outside" + (" (a shop running your process)" if buy.get("same_process") else "")
 
 
 def board_csv_rows(board: dict) -> Iterable[str]:
@@ -1238,8 +1602,15 @@ def board_csv_rows(board: dict) -> Iterable[str]:
             f(route.get("machine")), f(route.get("owned")) if route else "",
             f(mat.get("name")), f(mat.get("declared")), f(r.get("quantity")),
             f(r.get("hours_each")), f(r.get("hours_total")), f(mat.get("mass_kg_each")), f(r.get("mass_kg_total")),
-            f(r.get("unit_cost_usd")), f(r.get("total_cost_usd")), f(note), f(r.get("status")), f(r.get("error")),
+            f(r.get("unit_cost_usd")), f(r.get("total_cost_usd")), f(note), f(r.get("status")),
+            f(plain_error(r.get("error"))),
             f(mat.get("used_kg_each")), f(r.get("used_kg_total")),
+            f(r.get("name") or r.get("filename")), f(r.get("description")), f(r.get("listed")) if "listed" in r else "",
+            f((r.get("current_price") or {}).get("usd_each")),
+            f(_PRICE_FROM.get((r.get("current_price") or {}).get("source"))),
+            f((r.get("make") or {}).get("unit_cost_usd")), f((r.get("make") or {}).get("machine")),
+            f((r.get("buy") or {}).get("unit_cost_usd")), f(_buy_from(r.get("buy"))),
+            f((r.get("saving") or {}).get("each")), f((r.get("saving") or {}).get("total")),
             f("; ".join((r.get("specs") or {}).get("summary") or []) or None),
             f("; ".join((r.get("specs") or {}).get("supplier_must_hold") or []) or None),
             f(OUTCOME_WORDS.get(r.get("outcome"), r.get("outcome"))),
