@@ -364,9 +364,16 @@ async def test_the_crm_page_moves_to_notions_trash(monkeypatch):
     monkeypatch.setattr(customer_sync, "_notion_client", lambda token: httpx.AsyncClient(
         base_url="https://api.notion.com", transport=httpx.MockTransport(handler)))
     assert await customer_sync.archive_notion_user(7, None) is True
-    assert [m for m, _, _ in seen] == ["POST", "PATCH"]
-    assert b"scalecad-user-7" in seen[0][2] and seen[1][1] == f"/v1/pages/{page}"
-    assert __import__("json").loads(seen[1][2]) == {"in_trash": True}
+    assert [m for m, _, _ in seen] == ["POST", "PATCH", "PATCH"]
+    assert b"scalecad-user-7" in seen[0][2] and seen[1][1] == seen[2][1] == f"/v1/pages/{page}"
+    # it-13: the personal fields are blanked before the page goes to the trash (Notion's
+    # API can't delete a page), so the trashed copy keeps only the Account ID.
+    erased = __import__("json").loads(seen[1][2])["properties"]
+    assert erased["Email"] == {"email": None} and erased["Phone"] == {"phone_number": None}
+    assert erased["Contact Person"] == {"rich_text": []} and erased["City"] == {"rich_text": []}
+    assert erased["Company"]["title"][0]["text"]["content"] == "Deleted account"
+    assert "Account ID" not in erased
+    assert __import__("json").loads(seen[2][2]) == {"in_trash": True}
     seen.clear()
     status["patch"] = 404  # already gone
     assert await customer_sync.archive_notion_user(7, page) is True

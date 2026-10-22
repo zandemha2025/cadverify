@@ -72,13 +72,31 @@ def _notion_client(token: str) -> httpx.AsyncClient:
     })
 
 
-async def archive_notion_user(user_id: int, page_id: str | None) -> bool:
-    """Move a deleted account's customer-list page to Notion's trash.
+# What a deleted account's customer-list page keeps: its pseudonymous Account ID
+# (so a retried deletion can find it again) and nothing that names the person.
+def erased_properties() -> dict:
+    blank = {"rich_text": []}
+    return {
+        "Company": {"title": [{"text": {"content": "Deleted account"}}]},
+        "Contact Person": blank, "Email": {"email": None}, "Phone": {"phone_number": None},
+        "Auth provider": blank, "Timezone": blank, "Source": blank, "Campaign": blank,
+        "Country": blank, "Region": blank, "City": blank,
+        "Joined at": {"date": None}, "Last seen": {"date": None},
+    }
 
-    Called by account deletion (a resumable step, retried until it succeeds).
-    False when the CRM isn't configured here; True when the page is in the
-    trash or there was none. Finds the page by its Account ID when the account
-    never stored one (a lost create response).
+
+async def archive_notion_user(user_id: int, page_id: str | None) -> bool:
+    """Erase a deleted account's customer-list page, then move it to Notion's trash.
+
+    Notion's API can't delete a page outright, only move it to the trash
+    (Notion keeps trashed pages 30 days by default before deleting them, and
+    a workspace member can remove one from the trash sooner). So the page's
+    personal fields are blanked first: the trashed copy keeps only the
+    pseudonymous Account ID. Called by account deletion (a resumable step,
+    retried until it succeeds). False when the CRM isn't configured here; True
+    when the page is erased and in the trash, or there was none. Finds the page
+    by its Account ID when the account never stored one (a lost create
+    response).
     """
     token = os.getenv("NOTION_INTEGRATION_TOKEN", "").strip()
     data_source = os.getenv("NOTION_CRM_DATA_SOURCE_ID", "").strip()
@@ -96,7 +114,18 @@ async def archive_notion_user(user_id: int, page_id: str | None) -> bool:
             if not results:
                 return True
             page_id = results[0]["id"]
-        response = await client.patch(f"/v1/pages/{UUID(str(page_id))}", json={"in_trash": True})
+        path = f"/v1/pages/{UUID(str(page_id))}"
+        response = await client.patch(path, json={"properties": erased_properties()})
+        if response.status_code == 404:
+            return True
+        if response.status_code == 400 and "archived" in response.text.lower():
+            # Already in the trash from an earlier attempt that couldn't erase it:
+            # restore, erase, and trash it again below.
+            restored = await client.patch(path, json={"in_trash": False})
+            restored.raise_for_status()
+            response = await client.patch(path, json={"properties": erased_properties()})
+        response.raise_for_status()
+        response = await client.patch(path, json={"in_trash": True})
         if response.status_code == 404:
             return True
         response.raise_for_status()
