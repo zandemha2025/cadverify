@@ -231,12 +231,35 @@ async def refuse_edit_under_review(
         })
 
 
-def self_approval_refusal(n_others: int) -> HTTPException:
+# How a reviewer can have had a hand in the change they are asked to approve.
+_HAND_WORDS = {
+    "proposed": "You proposed this change",
+    "wrote": "You wrote this draft",
+    "edited": "You last edited this draft",
+}
+
+
+def self_approval_refusal(n_others: int, hand: str = "proposed") -> HTTPException:
     return HTTPException(status_code=403, detail={
         "code": "self_approval",
-        "message": (f"You proposed this change, so another admin approves it. Your organization has "
-                    f"{n_others} other {'admin' if n_others == 1 else 'admins'}."),
+        "message": (f"{_HAND_WORDS.get(hand, _HAND_WORDS['proposed'])}, so another admin approves it. "
+                    f"Your organization has {n_others} other {'admin' if n_others == 1 else 'admins'}."),
     })
+
+
+def reviewer_hand(row: ChangeRequest, target: Any, reviewer_id: Optional[int]) -> Optional[str]:
+    """How ``reviewer_id`` had a hand in this change: ``"proposed"`` it, ``"wrote"``
+    the draft (its ``created_by``), ``"edited"`` it last (``edited_by``, where the
+    library records it), else None. Any of them makes approving it a self-approval."""
+    if reviewer_id is None:
+        return None
+    if row.proposed_by == reviewer_id:
+        return "proposed"
+    if target is not None and getattr(target, "created_by", None) == reviewer_id:
+        return "wrote"
+    if target is not None and getattr(target, "edited_by", None) == reviewer_id:
+        return "edited"
+    return None
 
 
 async def approve(
@@ -258,18 +281,25 @@ async def approve(
     draft was concurrently published, or an effective-date conflict) surfaces as
     the library's own HTTPException and the request is NOT marked approved.
 
-    SELF-APPROVAL: refused (403) when the reviewer proposed it and the org has
-    another admin; allowed in a single-admin org and labelled ``self_approved``.
+    SELF-APPROVAL: refused (403 ``self_approval``) when the reviewer proposed it,
+    wrote the draft or last edited it, and the org has another admin: anyone may
+    propose any draft, so the proposer alone is not who wrote the numbers.
+    Allowed in a single-admin org (and a proposer's approval is labelled
+    ``self_approved``).
 
     ``effective_from`` (optional, not in the past) schedules the publish, as the
     libraries' direct publish used to; the reviewer picks it.
     """
     row = await _load_decidable(session, org_id, request_id)
     lib = _library_for(row.asset_type)
-    if reviewer_id is not None and row.proposed_by == reviewer_id:
+    hand = reviewer_hand(row, None, reviewer_id)
+    if reviewer_id is not None and hand is None:
+        target = await lib.get_version(session, org_id, row.target_version_id)
+        hand = reviewer_hand(row, target, reviewer_id)
+    if hand is not None:
         n = await other_admins(session, org_id, reviewer_id)
         if n > 0:
-            raise self_approval_refusal(n)
+            raise self_approval_refusal(n, hand)
     # Publish FIRST so a publish failure (409/404/400) aborts before we mark the
     # request approved — approval and publish stay atomic within this session.
     published = await lib.publish_version(

@@ -213,11 +213,12 @@ async def test_the_approved_path_publishes_and_the_reviewed_numbers_are_the_ones
             assert body["published_version"]["status"] == "published"
             assert body["published_version"]["payload"]["global"]["labor_rate"] == 58.0
 
-            # The material catalog goes through the same review.
+        # The material catalog goes through the same review (written and
+        # proposed by one admin, approved by the other: its author can't, R2 F3).
+        async with _As(maker, PRIYANKA) as c:
             r = await c.post("/api/v1/material-library", json={
                 "name": "Q4 materials", "payload": {"material_prices": {"PA12 (Nylon 12)": 26.5}, "materials": {}}})
             mat = r.json()["id"]
-        async with _As(maker, PRIYANKA) as c:
             mcr = await _propose(c, "material_catalog", mat, title="PA12 $26.50/kg")
         async with _As(maker, DANA) as c:
             r = await c.post(f"/api/v1/governance/change-requests/{mcr}/approve")
