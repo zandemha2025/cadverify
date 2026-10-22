@@ -191,8 +191,10 @@ test("log quantity scale runs 1 to a whole decade and round-trips", () => {
   assert.deepEqual(decadeTicks(10000), [1, 10, 100, 1000, 10000]);
   assert.equal(nearestQty([1, 10, 100], 40), 100);
   assert.equal(nearestQty([1, 10, 100], 25), 10);
-  assert.equal(defaultQty(report()), 100);
-  assert.equal(defaultQty(report({ decision: { ...report().decision!, crossover_qty: 4018.4 } })), 4018);
+  // ce-19: the breakdown opens where the part page does (10 when priced), not at the largest or the crossover
+  assert.equal(defaultQty(report()), 10);
+  assert.equal(defaultQty(report({ decision: { ...report().decision!, crossover_qty: 4018.4 } })), 10);
+  assert.equal(defaultQty(report({ quantities: [1, 1000, 10000] })), 1000);
 });
 
 test("the decision at a quantity: cheapest ready method, engine range when costed", () => {

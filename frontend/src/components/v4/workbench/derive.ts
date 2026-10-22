@@ -24,6 +24,7 @@ import type {
 import { deriveBreakeven, recommendAt, unitCostAt, type Breakeven, type ProcessCurve } from "../../../lib/breakeven.ts";
 import { flattenIssues, issueProcesses } from "../../../lib/dfm-scope.ts";
 import { parseCalibration } from "../../../lib/cost-views.ts";
+import { openingQty } from "../part/model.ts";
 import { ROUNDING_KEY, footLines, roundingWords } from "../../../lib/cost-lines.ts";
 import {
   assumptionName,
@@ -162,11 +163,13 @@ export function decadeTicks(max: number): number[] {
 }
 
 /** The quantity the Decision opens on: the engine's crossover, else the largest costed quantity. */
+/**
+ * The quantity the breakdown opens at: the part page's own (part/model.ts openingQty: 10, else the
+ * first priced quantity of 10 or more, else the largest), never the crossover or 10,000 by itself (ce-19).
+ */
 export function defaultQty(report: CostReport): number {
-  const cross = report.decision?.crossover_qty;
-  if (cross && Number.isFinite(cross)) return Math.round(cross);
-  const qs = report.quantities?.length ? report.quantities : [1];
-  return Math.max(...qs);
+  const qs = [...(report.quantities?.length ? report.quantities : [1])].sort((a, b) => a - b);
+  return openingQty(qs, null);
 }
 
 /* ------------------------------------------------------------------ */

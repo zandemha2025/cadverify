@@ -113,7 +113,7 @@ function bandSub(conf: CostEstimate["confidence"] | null): string {
   return "Rolled up from the line bands · assumption-based, not checked against real jobs";
 }
 
-export function GlassTab({ part, qty }: TabProps) {
+export function GlassTab({ part, qty, setQty }: TabProps) {
   const s = useWb();
   const sp = useSearchParams();
   const nav = useWbNav();
@@ -154,7 +154,13 @@ export function GlassTab({ part, qty }: TabProps) {
   const pick = (p: string, qq: number) => {
     setEdit(null);
     nav(wbHref("glass", part, { proc: p, q: qq }), true);
+    setQty(qq);
   };
+  // The quantity read here is the breakdown's quantity: Summary opens at it, never at 10,000 by itself (ce-19).
+  React.useEffect(() => {
+    if (q != null && q !== qty) setQty(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   const runWith = (next: CostOptions, done: string) => {
     need("re-cost with this change", async () => {
