@@ -68,7 +68,7 @@
     {% if outbound.get('is_stale') %}&middot; out of date: check again before quoting{% endif %}
     {% set req = outbound.get('requested') %}
     {% if req %}
-      &middot; <strong>Requested:</strong> {{ req.get('process') }} / {{ req.get('material') | pdf_text }} / quantity {{ req.get('quantity') }}
+      &middot; <strong>Requested:</strong> {{ req.get('process') | process_name }} / {{ req.get('material') | pdf_text }} / quantity {{ req.get('quantity') }}
     {% endif %}
     <div class="governance-note">The sender's machines, rates, choices and internal notes are not in this copy. A value marked hidden was set by the sender's shop.</div>
   </div>
@@ -83,7 +83,7 @@
     {% endif %}
     {% if governance.get('disposition_basis') %}
       {% set basis = governance.get('disposition_basis') %}
-      &middot; <strong>Outcome basis:</strong> {{ basis.get('process') }} / {{ basis.get('material') | pdf_text }} / quantity {{ basis.get('quantity') }}
+      &middot; <strong>Outcome basis:</strong> {{ basis.get('process') | process_name }} / {{ basis.get('material') | pdf_text }} / quantity {{ basis.get('quantity') }}
     {% elif governance.get('user_disposition') %}
       &middot; <strong>Outcome basis:</strong> Process and quantity were not recorded
     {% endif %}
@@ -126,7 +126,7 @@
   {% if routing %}
   <h2>Geometric Routing</h2>
   <p>
-    Recommended process: <strong>{{ routing.get('recommended_process') }}</strong>
+    Recommended process: <strong>{{ routing.get('recommended_process') | process_name }}</strong>
     (archetype: {{ routing.get('archetype') }}, confidence {{ routing.get('confidence') }})
     {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') }}</span>{% endif %}
   </p>
@@ -140,9 +140,9 @@
   {% if dec %}
   <div class="crossover">
     <p style="margin:0 0 3px 0;">
-      <strong>Make now:</strong> {{ dec.get('make_now_process') }} / {{ dec.get('make_now_material') }}
+      <strong>Make now:</strong> {{ dec.get('make_now_process') | process_name }} / {{ dec.get('make_now_material') }}
       {% if dec.get('tooling_process') %}
-        &middot; <strong>Tooling / production candidate:</strong> {{ dec.get('tooling_process') }}
+        &middot; <strong>Tooling / production candidate:</strong> {{ dec.get('tooling_process') | process_name }}
         ({{ 'DFM-ready' if dec.get('tooling_dfm_ready') else 'redesign required' }})
       {% endif %}
     </p>
@@ -171,11 +171,11 @@
       {% if r %}
       <tr class="pick">
         <td class="num">{{ q }}</td>
-        <td>{{ r.get('process') }}</td>
+        <td>{{ r.get('process') | process_name }}</td>
         <td>{{ r.get('material') }}</td>
         <td class="num">{{ r.get('unit_cost_usd') | format_money }}/unit</td>
         <td>
-          {% if alt %}{{ alt.get('process') }} {{ alt.get('unit_cost_usd') | format_money }}/unit
+          {% if alt %}{{ alt.get('process') | process_name }} {{ alt.get('unit_cost_usd') | format_money }}/unit
             {% if alt.get('caveat') %}<span class="muted">({{ alt.get('caveat') }})</span>{% endif %}
           {% else %}&mdash;{% endif %}
         </td>
@@ -213,7 +213,7 @@
     {% for e in estimates %}
     {% set ci = e.get('confidence') or {} %}
     <tr>
-      <td>{{ e.get('process') }}</td>
+      <td>{{ e.get('process') | process_name }}</td>
       <td>{{ e.get('material') }}</td>
       <td class="num">{{ e.get('quantity') }}</td>
       <td class="num"><strong>{{ e.get('unit_cost_usd') | format_money }}</strong></td>
@@ -253,7 +253,7 @@
     {% for e in estimates %}
     {% set li = e.get('line_items') or {} %}
     <tr>
-      <td>{{ e.get('process') }}</td>
+      <td>{{ e.get('process') | process_name }}</td>
       <td>{{ e.get('material') }}</td>
       <td class="num">{{ e.get('quantity') }}</td>
       {% for k in li_keys %}
@@ -293,7 +293,7 @@
     {% if combo not in seen_combos %}
       {% set _ = seen_combos.append(combo) %}
       <div class="avoid-break">
-      <h3>{{ e.get('process') }} / {{ e.get('material') }}</h3>
+      <h3>{{ e.get('process') | process_name }} / {{ e.get('material') }}</h3>
       {% set drivers = e.get('drivers') or [] %}
       {% if drivers %}
       <table>

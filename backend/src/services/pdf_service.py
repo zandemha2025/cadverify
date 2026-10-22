@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import __version__ as _app_version
+from src.analysis.process_names import process_label as _process_label
 from src.auth.org_context import caller_org_subquery
 from src.db.models import Analysis
 
@@ -84,6 +85,8 @@ _jinja_env.filters["format_duration"] = _format_duration
 _jinja_env.filters["format_number"] = _format_number
 _jinja_env.filters["sort_by_severity"] = _sort_by_severity
 _jinja_env.filters["merge_key"] = _merge_key
+# Engine process ids read as the same names the v4 screens use ("cnc_3axis" → "3-axis milling").
+_jinja_env.filters["process_name"] = lambda v: (_process_label(v) if v and v != "-" else v)
 
 
 # ── Report context ─────────────────────────────────────────────
