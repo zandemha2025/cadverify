@@ -202,7 +202,7 @@ export function aMachine(process: string): string | null {
 export function ownershipOf(
   route: { code: string; inHouse: string | null; fit: PerRouteFit | null },
   r: RouteResources | null,
-  machinesDeclared: number,
+  machines: readonly { name?: string | null; process: string }[],
   paybackQty: number | null = null,
 ): Ownership {
   if (route.inHouse) {
@@ -218,7 +218,12 @@ export function ownershipOf(
       machine: fit.best_machine,
     };
   }
-  if (!machinesDeclared) return { kind: "no_machines", v: "No machines yet", s: "add yours to see which you own", machine: null };
+  if (!machines.length) return { kind: "no_machines", v: "No machines yet", s: "add yours to see which you own", machine: null };
+  // A machine of yours for this process that this check didn't confirm (no fit, or no gap to name): never "not owned".
+  const yours = fit?.best_machine ?? machines.find((m) => m.process === route.code)?.name ?? null;
+  if (yours || machines.some((m) => m.process === route.code)) {
+    return { kind: "unconfirmed", v: "Can't confirm", s: `${yours ?? "your machine"}: its fit for this route wasn't confirmed in this check`, machine: yours };
+  }
   const need = aMachine(route.code);
   const pay = finite(paybackQty) && paybackQty > 0 ? ` · tooling pays back from about ${Math.round(paybackQty).toLocaleString("en-US")} parts` : "";
   return { kind: "not_owned", v: "Not owned", s: `${need ? `needs ${need}` : `no ${processName(route.code).toLowerCase()} of yours`}${pay}`, machine: null };

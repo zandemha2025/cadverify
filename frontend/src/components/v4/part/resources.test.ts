@@ -106,20 +106,24 @@ test("formatting", () => {
 
 test("ownership: owned at running cost, a machine of yours that doesn't fit, or the machine it would need", () => {
   const mjf = routeResources(est("mjf", "PA12", 10, [{ name: "owned_in_house", value: 0.65, unit: "×" }]), 5)!;
-  assert.deepEqual(ownershipOf({ code: "mjf", inHouse: "HP Jet Fusion 5200", fit: null }, mjf, 3), {
+  const shop = [{ name: "HP Jet Fusion 5200", process: "mjf" }, { name: "Haas VF-2", process: "cnc_3axis" }];
+  assert.deepEqual(ownershipOf({ code: "mjf", inHouse: "HP Jet Fusion 5200", fit: null }, mjf, shop), {
     kind: "owned",
     v: "HP Jet Fusion 5200",
     s: "you own it · running cost only",
     machine: "HP Jet Fusion 5200",
   });
   const fit = { verdict: "makeable_not_on_owned", machines_evaluated: 1, best_machine: "Haas VF-2", failures: [{ axis: "material", gate: "material", need: "Delrin (POM)", have: ["steel"], human: "not qualified for Delrin (POM)" }] } as never;
-  const nf = ownershipOf({ code: "cnc_3axis", inHouse: null, fit }, null, 3);
+  const nf = ownershipOf({ code: "cnc_3axis", inHouse: null, fit }, null, shop);
   assert.equal(nf.kind, "not_fit");
   assert.equal(nf.v, "Doesn't fit yours");
   assert.equal(nf.s, "Haas VF-2: not qualified for Delrin (POM)");
-  const out = ownershipOf({ code: "fdm", inHouse: null, fit: { verdict: "makeable_outsource_only", machines_evaluated: 0, best_machine: null, failures: [] } as never }, null, 3);
+  const out = ownershipOf({ code: "fdm", inHouse: null, fit: { verdict: "makeable_outsource_only", machines_evaluated: 0, best_machine: null, failures: [] } as never }, null, shop);
   assert.deepEqual(out, { kind: "not_owned", v: "Not owned", s: "needs a filament printer", machine: null });
-  assert.equal(ownershipOf({ code: "injection_molding", inHouse: null, fit: null }, null, 3, 1444.2).s, "needs an injection molder · tooling pays back from about 1,444 parts");
-  assert.equal(ownershipOf({ code: "sand_casting", inHouse: null, fit: null }, null, 3).s, "no sand casting of yours");
-  assert.equal(ownershipOf({ code: "fdm", inHouse: null, fit: null }, null, 0).kind, "no_machines");
+  assert.equal(ownershipOf({ code: "injection_molding", inHouse: null, fit: null }, null, shop, 1444.2).s, "needs an injection molder · tooling pays back from about 1,444 parts");
+  assert.equal(ownershipOf({ code: "sand_casting", inHouse: null, fit: null }, null, shop).s, "no sand casting of yours");
+  assert.equal(ownershipOf({ code: "fdm", inHouse: null, fit: null }, null, []).kind, "no_machines");
+  // You own one for the process, but this check didn't confirm its fit: never read as not owned.
+  const unc = ownershipOf({ code: "cnc_3axis", inHouse: null, fit: null }, null, shop);
+  assert.deepEqual([unc.kind, unc.v, unc.machine], ["unconfirmed", "Can't confirm", "Haas VF-2"]);
 });

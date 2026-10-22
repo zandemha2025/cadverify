@@ -11,6 +11,7 @@ import { dimsText, machineViews, money, priceMeta, qtyWord, trimNum, type Machin
 import { CostLines } from "./lens-cost";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { useChoice } from "./choose";
+import { hoursText, massText, routeResources, runLine } from "./resources";
 import { useFix } from "../fix/ctx";
 import { problemForIssue } from "../fix/problems";
 
@@ -112,9 +113,14 @@ export function ShopSheet() {
   if (can.length) figs.push({ k: "Can make", v: can.map((v) => v.name).join(", "), tone: "ok" });
   else if (views.length) figs.push({ k: "Can make", v: "None", s: "no machine of yours clears every check", tone: "bad" });
   const ih = can.find((v) => v.cost != null);
+  const vol = p.data.cost?.geometry?.volume_cm3 ?? null;
   if (ih) {
     const e = ih.method?.prices.get(p.q);
-    figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: p.costOff ? "Not priced" : money(ih.cost), s: e && !p.costOff ? priceMeta(ih.method!, p.q)?.replace(/^Could be /, "") ?? "" : "" });
+    // On your machine the run's machine time leads; the material, the running cost and its range follow.
+    const r = !p.costOff ? routeResources(e, vol) : null;
+    const price = e && !p.costOff ? `${money(ih.cost)} each, ${priceMeta(ih.method!, p.q)?.replace(/^Could be /, "") ?? ""}` : "";
+    if (r?.hoursRun != null) figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: hoursText(r.hoursRun), s: [`machine time on your ${ih.name}`, r.kgRun != null ? `${massText(r.kgRun)} ${r.grade}` : null, price].filter(Boolean).join(" · ") });
+    else figs.push({ k: `In-house at ${qtyWord(p.q)}`, v: p.costOff ? "Not priced" : money(ih.cost), s: e && !p.costOff ? priceMeta(ih.method!, p.q)?.replace(/^Could be /, "") ?? "" : "" });
   }
   const warn = views.filter((v) => v.tone === "warn");
   if (cant.length) figs.push({ k: "Can't", v: cant.map((v) => v.name).join(", "), s: cant.map((v) => (v.verdict === "Can't" ? "can't make it as drawn" : v.verdict.toLowerCase())).join(" · "), tone: "bad" });
@@ -149,6 +155,12 @@ export function ShopSheet() {
                   <span>
                     <b>{v.name}</b>
                     <small>{v.sub}</small>
+                    {v.tone === "ok" && v.method && !p.costOff ? (
+                      (() => {
+                        const takes = runLine(routeResources(v.method.prices.get(p.q), vol));
+                        return takes ? <small className="num">{`This part: ${takes} for ${qtyWord(p.q)}`}</small> : null;
+                      })()
+                    ) : null}
                   </span>
                   <span className={`chip c-${v.tone}`}>
                     <i />

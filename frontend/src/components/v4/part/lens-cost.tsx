@@ -227,7 +227,7 @@ export function costTop(p: ReturnType<typeof usePart>, sel: Method | null): { ti
   if (!sel || !e) return { title: "Cost per part", meta: "Machine time, material and price by process · model estimates, not quotes", figs: [] };
   const r = routeResources(e, p.data.cost?.geometry?.volume_cm3 ?? null);
   const d = p.data.cost?.decision ?? null;
-  const own = ownershipOf(sel, r, p.data.machines.length, d?.tooling_process === sel.code ? d.crossover_qty : null);
+  const own = ownershipOf(sel, r, p.data.machines, d?.tooling_process === sel.code ? d.crossover_qty : null);
   const figs: FigItem[] = [];
   const many = p.q > 1 ? ` for ${qtyWord(p.q)}` : "";
   figs.push({ k: "Machine time", v: r?.hoursEach != null ? hoursText(r.hoursEach) : "Not estimated", s: r?.hoursEach != null ? `each${r.hoursRun != null && p.q > 1 ? ` · ${hoursText(r.hoursRun)}${many}` : ""}` : undefined });
@@ -349,7 +349,7 @@ export function CostSheet() {
   const vol = cost?.geometry?.volume_cm3 ?? null;
   const pf = priceFigs(p);
   const selRes = routeResources(selEst, vol);
-  const own = sel && selEst ? ownershipOf(sel, selRes, p.data.machines.length, d?.tooling_process === sel.code ? d.crossover_qty : null) : null;
+  const own = sel && selEst ? ownershipOf(sel, selRes, p.data.machines, d?.tooling_process === sel.code ? d.crossover_qty : null) : null;
   const annualRes = annual != null && p.qs.includes(annual) && cheapestAt(p.methods, annual) ? routeResources(cheapestAt(p.methods, annual)!.prices.get(annual), vol) : null;
   return (
     <>
@@ -433,11 +433,21 @@ export function CostSheet() {
             ) : null}
             {own && sel && own.kind !== "owned" ? (
               <div className="note">
-                <b>{own.kind === "not_owned" ? `${sel.name} isn’t on a machine you own` : own.kind === "no_machines" ? "No machines of yours to compare" : `${sel.name} doesn’t fit a machine of yours as declared`}</b>
+                <b>
+                  {own.kind === "not_owned"
+                    ? `${sel.name} isn’t on a machine you own`
+                    : own.kind === "no_machines"
+                      ? "No machines of yours to compare"
+                      : own.kind === "unconfirmed"
+                        ? `${sel.name} isn’t confirmed on a machine of yours`
+                        : `${sel.name} doesn’t fit a machine of yours as declared`}
+                </b>
                 <span>
                   {own.kind === "no_machines"
                     ? "Add your machines and their rates: a route on a machine you own is priced at its running cost, with the machine itself already paid for."
-                    : `${own.s[0].toUpperCase()}${own.s.slice(1)}. ScaleCAD doesn’t price machines, so no purchase cost or payback is shown for one${d?.tooling_process === sel.code && d.crossover_qty ? "; the payback above is the mold or die against routes without tooling" : ""}.`}
+                    : own.kind === "unconfirmed"
+                      ? `${own.s[0].toUpperCase()}${own.s.slice(1)}. Declare what it needs in Your shop, or check the part again, to price it at your running cost.`
+                      : `${own.s[0].toUpperCase()}${own.s.slice(1)}. ScaleCAD doesn’t price machines, so no purchase cost or payback is shown for one${d?.tooling_process === sel.code && d.crossover_qty ? "; the payback above is the mold or die against routes without tooling" : ""}.`}
                 </span>
                 <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {own.kind === "no_machines" ? (
