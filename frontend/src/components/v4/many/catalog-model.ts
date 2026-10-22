@@ -172,10 +172,18 @@ export function partLine(r: BoardRow): PartLine {
   const q = r.quantity;
   const time = finite(r.hours_each) ? `${hoursText(r.hours_each)} each${finite(r.hours_total) && q > 1 ? ` · ${hoursText(r.hours_total)} for ${q.toLocaleString("en-US")}` : ""}` : "—";
   const matName = r.material.name ?? (r.material.declared ? r.material.declared : null);
-  const material = matName ? `${matName}${finite(r.material.mass_kg_each) ? ` · ${massText(r.material.mass_kg_each)} each` : ""}` : "—";
+  // The engine prices a class (aluminum, plastic…) and picks the grade for the route; when
+  // that differs from what the parts list named, say so instead of hiding the list's word.
+  const declared = r.material.declared?.trim();
+  const listed = declared && r.material.name && !r.material.name.toLowerCase().includes(declared.toLowerCase()) && !declared.toLowerCase().includes(r.material.name.toLowerCase()) ? ` · listed ${declared}` : "";
+  const material = matName ? `${matName}${finite(r.material.mass_kg_each) ? ` · ${massText(r.material.mass_kg_each)} each` : ""}${listed}` : "—";
   let ownership = "—";
   if (r.route?.owned) ownership = `Your ${r.route.machine ?? procName(r.route.process)}${r.marginal && finite(r.machine_rate_usd) ? ` · marginal ${money(r.machine_rate_usd)}/h` : r.marginal ? " · marginal rate" : ""}`;
-  else if (r.bucket === "new_machine") ownership = `You own ${aMachine(r.capability?.process ?? r.route?.process)}; none fits`;
+  else if (r.bucket === "new_machine") {
+    const cap = r.capability;
+    const why = cap?.gate === "material" && typeof cap.need === "string" ? `not qualified for ${cap.need}` : cap?.gate === "envelope" ? "too small for it" : "none fits";
+    ownership = `You own ${aMachine(cap?.process ?? r.route?.process)}; ${why}`;
+  }
   else if (r.bucket === "outside" && r.route?.process) ownership = `Not owned · ${aMachine(r.route.process)} would be an acquisition`;
   let price = "—";
   if (finite(r.unit_cost_usd)) price = `${money(r.unit_cost_usd)} each${finite(r.total_cost_usd) && q > 1 ? ` · ${money(r.total_cost_usd, 0)} for ${q.toLocaleString("en-US")}` : ""}`;

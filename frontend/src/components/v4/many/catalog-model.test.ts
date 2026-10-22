@@ -62,7 +62,13 @@ test("a part's line leads with machine time, material and ownership, then the pr
   const outside = partLine(row({ bucket: "outside", route: { process: "fdm", machine: null, owned: false }, marginal: false }));
   assert.equal(outside.ownership, "Not owned · a filament printer would be an acquisition");
   const fit = partLine(row({ bucket: "new_machine", route: { process: "wire_edm", machine: null, owned: false }, capability: { process: "wire_edm", gate: "envelope", human: "x" } }));
-  assert.equal(fit.ownership, "You own a wire EDM; none fits");
+  assert.equal(fit.ownership, "You own a wire EDM; too small for it");
+  const qual = partLine(row({ bucket: "new_machine", route: { process: "cnc_3axis", machine: null, owned: false }, capability: { process: "cnc_3axis", gate: "material", need: "Delrin (POM)", human: "x" } }));
+  assert.equal(qual.ownership, "You own a 3-axis mill; not qualified for Delrin (POM)");
+  const regraded = partLine(row({ material: { declared: "ABS", class: "polymer", note: null, name: "Delrin (POM)", mass_kg_each: 1.2, mass_basis: "x" } }));
+  assert.equal(regraded.material, "Delrin (POM) · 1.20 kg each · listed ABS");
+  const same = partLine(row({ material: { declared: "PLA", class: "polymer", note: null, name: "PLA", mass_kg_each: 0.004, mass_basis: "x" } }));
+  assert.equal(same.material, "PLA · 4 g each");
   const withheld = partLine(row({ unit_cost_usd: null, total_cost_usd: null, price_withheld: "Walls under 0.8 mm" }));
   assert.equal(withheld.price, "Withheld: Walls under 0.8 mm");
   const none = partLine(row({ bucket: "cant_make", hours_each: null, hours_total: null, unit_cost_usd: null, total_cost_usd: null, route: null, material: { declared: "304 SS", class: "stainless", note: null, name: null, mass_kg_each: null, mass_basis: null } }));

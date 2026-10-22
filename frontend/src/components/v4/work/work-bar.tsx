@@ -152,7 +152,11 @@ function useCatalogRuns(pathname: string) {
     const tick = async () => {
       let next = 30_000;
       try {
-        const r = await listBatches({ limit: 10 });
+        // A stalled request must not end the watch: give up after 20 s and try again.
+        const r = await Promise.race([
+          listBatches({ limit: 10 }),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("slow")), 20_000)),
+        ]);
         if (!live) return;
         const seen = seenSet();
         for (const b of r.batches as (typeof r.batches[number] & { job_type?: string })[]) {

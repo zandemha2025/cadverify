@@ -57,7 +57,9 @@ function useBoard(batchId: string) {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const run = async () => {
       try {
-        const [b, p] = await Promise.all([fetchBoard(batchId), getBatchProgress(batchId).catch(() => null)]);
+        // The progress read only adds the start time for the ETA; it never holds up the board.
+        const progressRead = Promise.race([getBatchProgress(batchId).catch(() => null), new Promise<null>((res) => setTimeout(() => res(null), 10_000))]);
+        const [b, p] = await Promise.all([fetchBoard(batchId), progressRead]);
         if (!live) return;
         setBoard(b);
         if (p) setProgress(p);
@@ -67,7 +69,7 @@ function useBoard(batchId: string) {
         if (!live) return;
         const status = (e as { status?: number }).status ?? 0;
         setErr({ msg: errorText(e, "The board didn’t load."), status });
-        if (status !== 404 && status !== 403) timer = setTimeout(run, POLL_MS * 3);
+        if (status !== 404 && status !== 403) timer = setTimeout(run, POLL_MS * 2);
       }
     };
     void run();

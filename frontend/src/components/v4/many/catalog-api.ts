@@ -81,10 +81,18 @@ export function startCatalogRun(input: StartInput, onProgress?: (fraction: numbe
   });
 }
 
-export async function fetchBoard(batchId: string): Promise<Board> {
+/** A read that gives up after ``ms``, so a poll never hangs on a stalled request. */
+export function timedSignal(ms: number): AbortSignal {
+  if (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal) return AbortSignal.timeout(ms);
+  const c = new AbortController();
+  setTimeout(() => c.abort(), ms);
+  return c.signal;
+}
+
+export async function fetchBoard(batchId: string, timeoutMs = 25_000): Promise<Board> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/batch/${encodeURIComponent(batchId)}/catalog`, { cache: "no-store" });
+    res = await fetch(`${API_BASE}/batch/${encodeURIComponent(batchId)}/catalog`, { cache: "no-store", signal: timedSignal(timeoutMs) });
   } catch {
     throw new CatalogRunError("The server couldn’t be reached. Check your connection and try again.", 0, "network", null);
   }
