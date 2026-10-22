@@ -531,6 +531,39 @@ async def _settle_personal_workspace(session: AsyncSession, user: User, joined_o
             org.name = workspace_name(email, user.full_name)
 
 
+async def share_org_if_team(session: AsyncSession, org_id: str, actor_id: Optional[int]) -> bool:
+    """A personal org with a second member is a team's org: it becomes shared.
+
+    Sign-up gives every account a personal org. A company that starts in one
+    person's account and invites the team never makes another org, so a flag
+    that stayed true would keep that team from SSO group mappings and SCIM,
+    which refuse a personal org. Once the org has two or more members,
+    ``is_personal`` turns false and an ``org.became_shared`` audit row says so,
+    in the caller's transaction. A solo org is left alone; shared is one-way.
+    Returns whether it changed.
+    """
+    org = await session.get(Organization, org_id)
+    if org is None or org.is_personal is not True:
+        return False
+    members = int((
+        await session.execute(
+            select(func.count()).select_from(Membership).where(Membership.org_id == org_id)
+        )
+    ).scalar_one() or 0)
+    if members < 2:
+        return False
+    org.is_personal = False
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session, actor_id, "org.became_shared", "org", org_id,
+        {"org_id": org_id, "members": members, "via": "invite"},
+        org_id=org_id,
+    )
+    await session.flush()
+    return True
+
+
 async def preview_invite(
     session: AsyncSession, user_id: int, raw_token: str
 ) -> dict:
@@ -603,6 +636,9 @@ async def accept_invite(
     inv.accepted_by = user_id
     inv.accepted_at = _now()
     await session.flush()
+    if created:
+        # The second member makes a personal org the team's (shared, audited).
+        await share_org_if_team(session, inv.org_id, user_id)
     # Accepting is choosing to work there: the organization becomes active.
     await session.execute(
         User.__table__.update().where(User.id == user_id).values(current_org_id=inv.org_id)

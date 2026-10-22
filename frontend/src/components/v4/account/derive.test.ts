@@ -109,6 +109,8 @@ test("audit lines read in plain words", () => {
   assert.equal(actionName("decision.created"), "Check recorded (automatic)");
   assert.equal(actionName("decision.disposition_recorded"), "Decision saved");
   assert.equal(actionName("something.new_thing"), "Something new thing");
+  // A personal org turns shared when its second member joins.
+  assert.equal(actionName("org.became_shared"), "Organization became shared");
   assert.equal(
     auditWhat({ action: "decision.created", resource_type: "cost_decision", resource_id: "01M", detail: { filename: "bored-block-mm.iges", make_now_process: "fdm" }, result_summary: null }),
     "bored-block-mm.iges · suggested: filament printing · saved after the check",

@@ -279,6 +279,7 @@ const ACTION: Record<string, string> = {
   "org.created": "Organization created",
   "org.switched": "Organization switched",
   "org.renamed": "Organization renamed",
+  "org.became_shared": "Organization became shared",
   "org.two_step_policy_changed": "Two-step rule changed",
   "member.invited": "Member invited",
   "member.joined": "Member joined",
