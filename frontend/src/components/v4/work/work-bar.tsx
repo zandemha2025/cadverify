@@ -22,6 +22,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { listBatches } from "@/lib/api/batch";
 import { API_BASE } from "@/lib/api-base";
+import { keptWorkLine, type KeptJobStatus } from "../part/kept-job-model";
 import { pendingUploads } from "@/lib/api/part-upload";
 import "./work.css";
 
@@ -213,6 +214,11 @@ interface ServerCheckRow {
   mesh_hash: string | null;
   geometry_invalid?: string | null;
   error: { message: string } | null;
+  /** "kept": a big kept part's re-price or repair (action "recheck" / "repair"), not an upload's check. */
+  source?: string;
+  action?: string;
+  summary?: string | null;
+  part_url?: string | null;
 }
 
 /** Same key as part/stored-check.ts, so the tab's own item and the server's are one. */
@@ -250,6 +256,13 @@ function useStoredChecks(pathname: string) {
           if (seen.has(key)) continue;
           const name = c.part_filename ?? c.filename ?? "part";
           const known = items.get(key);
+          if (c.source === "kept") {
+            // A big kept part's re-price or repair: its own words, linking to the part.
+            const line = keptWorkLine({ ...c, status: c.status as KeptJobStatus["status"], error: c.error ? { code: "", message: c.error.message } : null, part_url: c.part_url ?? null });
+            if (line.state === "running") next = 6_000;
+            if (line.state === "running" || (known && known.state === "running")) registerWork({ key, persist: true, ...line });
+            continue;
+          }
           if (c.status === "queued" || c.status === "running") {
             next = 6_000;
             registerWork({ key, href: `/app/check?job=${encodeURIComponent(c.check_id)}`, persist: true, state: "running", label: `Checking ${name}`, detail: STAGE_WORDS[c.stage] ?? "Checking", progress: c.progress });

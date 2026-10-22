@@ -11,6 +11,8 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { API_BASE } from "@/lib/api-base";
+import { isKeptJob, keptToastLine } from "./kept-job-model";
+import { waitForKeptJob } from "./kept-job";
 import type { RepairResult, StoredRepairResult } from "@/lib/api";
 import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
 import { CAD_LIMIT } from "@/lib/upload-limit";
@@ -39,7 +41,8 @@ export type RepairOutcome =
   | { s: "failed"; r: RepairResult }
   | { s: "fixed"; r: RepairResult; file: File; url: string; saved: SavedCopy | null };
 
-type Out = { s: "ready" } | { s: "running" } | RepairOutcome;
+// worker: the stage, when the kept file is large enough to be repaired on ScaleCAD's worker.
+type Out = { s: "ready" } | { s: "running"; worker?: string } | RepairOutcome;
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -84,7 +87,7 @@ export async function runRepair(file: File): Promise<RepairOutcome> {
  * `notKept` on the result: the file isn't kept, so the caller can fall back to
  * the file in this browser.
  */
-export async function runStoredRepair(key: string, opts: { qty?: number[]; materialClass?: string | null } = {}): Promise<RepairOutcome> {
+export async function runStoredRepair(key: string, opts: { qty?: number[]; materialClass?: string | null; onWorker?: (stage: string) => void } = {}): Promise<RepairOutcome> {
   const q = new URLSearchParams();
   if (opts.qty?.length) q.set("qty", opts.qty.join(","));
   if (opts.materialClass) q.set("material_class", opts.materialClass);
@@ -95,7 +98,15 @@ export async function runStoredRepair(key: string, opts: { qty?: number[]; mater
     return { s: "error", msg: "The repair couldn't reach the server. Try again." };
   }
   if (!res.ok) return refusal(res);
-  const r = (await res.json().catch(() => null)) as StoredRepairResult | null;
+  let r = (await res.json().catch(() => null)) as StoredRepairResult | null;
+  // A large kept file is repaired on ScaleCAD's worker: the answer is the job (202), followed to its end.
+  if (res.status === 202 && isKeptJob(r)) {
+    try {
+      r = await waitForKeptJob<StoredRepairResult>(r, opts.onWorker);
+    } catch (e) {
+      return { s: "error", msg: e instanceof Error ? e.message : "The repair didn't finish on the worker. Nothing was charged." };
+    }
+  }
   if (!r) return { s: "error", msg: "The repair answered with nothing readable. Try again." };
   if (!r.repair_applied || !r.repaired) return { s: "failed", r };
   const name = r.repaired.filename;
@@ -107,7 +118,7 @@ export async function runStoredRepair(key: string, opts: { qty?: number[]; mater
 }
 
 /** The kept file first; the file in this browser when the organization doesn't keep it. */
-export async function repairPart(key: string | null, file: File | null, opts: { qty?: number[]; materialClass?: string | null } = {}): Promise<RepairOutcome> {
+export async function repairPart(key: string | null, file: File | null, opts: { qty?: number[]; materialClass?: string | null; onWorker?: (stage: string) => void } = {}): Promise<RepairOutcome> {
   if (key) {
     const out = await runStoredRepair(key, opts);
     if (!(out.s === "error" && out.notKept && file)) return out;
@@ -158,7 +169,8 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
 
   const run = async () => {
     setOut({ s: "running" });
-    setOut(await repairPart(session.key, session.file, { materialClass: session.materialClass }));
+    const onWorker = (stage: string) => setOut((cur) => (cur.s === "running" ? { s: "running", worker: stage } : cur));
+    setOut(await repairPart(session.key, session.file, { materialClass: session.materialClass, onWorker }));
   };
 
   const fixed = out.s === "fixed" ? out : null;
@@ -278,6 +290,11 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
                     {out.s === "running" ? "Repairing a copy…" : out.s === "error" && !out.limit ? "Try again" : "Repair a copy"}
                   </button>
                 </span>
+                {out.s === "running" && out.worker ? (
+                  <span role="status" style={{ color: "var(--ink3)", fontSize: 13 }}>
+                    {`Repairing ${keptToastLine(out.worker)}. It goes on if you leave this page; the work bar shows it.`}
+                  </span>
+                ) : null}
                 {out.s === "error" ? (
                   <span role="alert" style={{ color: "var(--bad)", fontSize: 13 }}>
                     {out.msg}

@@ -13,6 +13,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadPartMesh, loadSavedPart, recheckStored, RecheckError, type SavedPart } from "./api";
+import { keptToastLine } from "./kept-job-model";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
@@ -51,7 +52,8 @@ export function PartPage({ partKey }: { partKey: string }) {
   const [quotaClosed, setQuotaClosed] = React.useState(false);
   const [reload, setReload] = React.useState(0);
   // A re-check of a saved part from the file its organization kept (no file here, no check used).
-  const [stored, setStored] = React.useState<{ s: "running"; what: string } | { s: "done"; what: string } | { s: "error"; msg: string; limit: boolean } | null>(null);
+  // worker: the stage, when the kept file is large enough to be re-priced on ScaleCAD's worker.
+  const [stored, setStored] = React.useState<{ s: "running"; what: string; worker?: string } | { s: "done"; what: string } | { s: "error"; msg: string; limit: boolean } | null>(null);
   const sessionDone = session?.status === "done";
   // A finished check is on screen here: the work bar lets it go.
   React.useEffect(() => {
@@ -157,7 +159,8 @@ export function PartPage({ partKey }: { partKey: string }) {
       if (kept !== true || storedRunning) return;
       const what = materialClass !== (data?.cost?.material_class ?? "polymer") ? `in ${MATERIAL_WORD[materialClass] ?? materialClass}` : "with your machines and conditions";
       setStored({ s: "running", what });
-      void recheckStored(partKey, { materialClass, qty: data?.cost?.quantities, owned: ownedProcessesFrom(saved?.machines ?? []), orientation: shownOrientation })
+      const onWorker = (stage: string) => setStored((cur) => (cur?.s === "running" ? { ...cur, worker: stage } : cur));
+      void recheckStored(partKey, { materialClass, qty: data?.cost?.quantities, owned: ownedProcessesFrom(saved?.machines ?? []), orientation: shownOrientation, onWorker })
         .then(() => {
           setStored({ s: "done", what });
           setReload((n) => n + 1);
@@ -247,7 +250,9 @@ export function PartPage({ partKey }: { partKey: string }) {
         <div className="toast ptoast" role={stored.s === "error" ? "alert" : "status"} aria-live="polite">
           <span>
             {stored.s === "running"
-              ? `Re-checking ${data.fileName} ${stored.what}, from the file kept with this part · no check used`
+              ? stored.worker
+                ? `Re-checking ${data.fileName} ${stored.what}, ${keptToastLine(stored.worker)} · no check used`
+                : `Re-checking ${data.fileName} ${stored.what}, from the file kept with this part · no check used`
               : stored.s === "done"
                 ? `Re-checked ${stored.what} · saved as a new record · no check used`
                 : stored.msg}

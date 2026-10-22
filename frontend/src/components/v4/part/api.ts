@@ -5,6 +5,8 @@
  * Every call goes through the same-origin authed proxy.
  */
 import { API_BASE } from "@/lib/api-base";
+import { isKeptJob } from "./kept-job-model";
+import { waitForKeptJob } from "./kept-job";
 import {
   fetchAnalysis,
   fetchCatalog,
@@ -117,7 +119,7 @@ export class RecheckError extends Error {
  * the part shows it. `owned`: the org's machines' processes (unknown ones are
  * dropped, as a fresh check does).
  */
-export async function recheckStored(key: string, opts: { materialClass?: string | null; qty?: number[]; owned?: string[]; orientation?: string | null }): Promise<StoredRecheck> {
+export async function recheckStored(key: string, opts: { materialClass?: string | null; qty?: number[]; owned?: string[]; orientation?: string | null; onWorker?: (stage: string) => void }): Promise<StoredRecheck> {
   const q = new URLSearchParams();
   if (opts.materialClass) q.set("material_class", opts.materialClass);
   if (opts.qty?.length) q.set("qty", opts.qty.join(","));
@@ -136,6 +138,17 @@ export async function recheckStored(key: string, opts: { materialClass?: string 
     if (res.status === 429 && d?.code === "free_tool_limit" && d.message) throw new RecheckError(`${d.message} Pro and Pilot plans don’t have this limit.`, 429, true);
     if (res.status === 404) throw new RecheckError("This part’s file isn’t kept with the record. Drop the file on the part to re-check it.", 404, false);
     throw new RecheckError(apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "re-check" }), res.status, false);
+  }
+  // A large kept file is re-priced on ScaleCAD's worker: the answer is the job (202), followed to its end.
+  if (res.status === 202 && isKeptJob(body)) {
+    try {
+      const r = await waitForKeptJob<CostReport & { recheck: StoredRecheck["recheck"] }>(body, opts.onWorker);
+      if (!r?.recheck) throw new RecheckError("The re-check finished without a readable answer. Reload the part to see what was saved.", 0, false);
+      return { cost: r, recheck: r.recheck };
+    } catch (e) {
+      if (e instanceof RecheckError) throw e;
+      throw new RecheckError(e instanceof Error ? e.message : "The re-check didn’t finish on the worker. Nothing was charged.", 0, false);
+    }
   }
   const b = body as (CostReport & { recheck: StoredRecheck["recheck"] }) | null;
   if (!b) throw new RecheckError("The re-check answered with nothing readable. Try again.", res.status, false);
