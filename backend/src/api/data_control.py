@@ -256,7 +256,7 @@ async def get_deletion(
     user: AuthedUser = Depends(require_api_key),
     session: AsyncSession = Depends(get_db_session),
 ):
-    row = await svc.get_receipt(session, deletion_id, user.user_id)
+    row = await svc.get_receipt(session, deletion_id, user.user_id, key_org_id=user.org_id)
     response.headers["Cache-Control"] = "no-store"
     return svc.serialize_receipt(row)
 

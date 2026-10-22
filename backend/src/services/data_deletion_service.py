@@ -1272,10 +1272,19 @@ def serialize_receipt(row: DataDeletion) -> dict[str, Any]:
     }
 
 
-async def get_receipt(session: AsyncSession, deletion_ulid: str, user_id: int) -> DataDeletion:
-    """The requester's own receipt, or an admin's of their current org; else 404."""
+async def get_receipt(
+    session: AsyncSession, deletion_ulid: str, user_id: int, *, key_org_id: Optional[str] = None
+) -> DataDeletion:
+    """The requester's own receipt, or an admin's of their current org; else 404.
+
+    Through an API key (``key_org_id``, the key's issuing org) only a receipt of
+    that org: a key never reads another organization's deletion, even one its
+    owner asked for or administers there.
+    """
     row = (await session.execute(select(DataDeletion).where(DataDeletion.ulid == deletion_ulid))).scalar_one_or_none()
     if row is None:
+        raise HTTPException(status_code=404, detail="Deletion not found")
+    if key_org_id is not None and row.org_id != key_org_id:
         raise HTTPException(status_code=404, detail="Deletion not found")
     if row.requested_by == user_id:
         return row
