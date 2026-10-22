@@ -90,6 +90,10 @@ class CostEstimate:
     # rate — capital amortization removed because the org owns the gear; see
     # rates.machine_capital_frac). Default False => fully-loaded (rent-the-time).
     owned_in_house: bool = False
+    # The material as fields (cost_model ``material_mass``): part_kg (CAD volume ×
+    # density), used_kg (what the price is charged on), density_g_cm3, usd_per_kg.
+    # None on estimates built without it.
+    material_mass: Optional[dict] = None
 
     def assert_sums(self, tol: float = 0.01) -> None:
         """Hard invariant (gate G3): unit cost == sum of line items, or it is a bug."""

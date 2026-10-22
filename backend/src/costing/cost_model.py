@@ -98,6 +98,32 @@ class BuildEnvelopeError(ValueError):
     """No fitting setup established for the machine being priced."""
 
 
+def kg_text(kg: float) -> str:
+    """A mass in kg for a derivation: 4 decimals, more under a gram so a tiny
+    part never reads ``0.0000 kg`` (``0.0000412``); never scientific notation."""
+    kg = float(kg)
+    if kg >= 0.001 or kg <= 0:
+        return f"{kg:.4f}"
+    return f"{kg:.{2 - math.floor(math.log10(kg))}f}"
+
+
+def _sig(x: float, digits: int = 6) -> float:
+    """``x`` to ``digits`` significant figures: structured masses keep a tiny part's grams."""
+    return float(f"{float(x):.{digits}g}")
+
+
+def _tier_size_text(size_mm: float, tier: str) -> str:
+    """The size a tooling tier was read from, to 0.1 mm ("990.6", not "990.599976"),
+    with the decimals that show why it sits in its tier when 0.1 mm would hide it
+    ("300.0001" is tier XL; "300.0" reads tier L)."""
+    from src.costing.rates import family_to_size_tier
+
+    text = f"{size_mm:.1f}"
+    if family_to_size_tier(float(text)) != tier:
+        text = f"{size_mm:.4f}".rstrip("0").rstrip(".")
+    return text
+
+
 def mm_dims(dims) -> str:
     """``(318.2004, 405.0, 559.3769)`` → ``"318.2 × 405 × 559.4"``: sizes in sentences, to 0.1 mm."""
     return " × ".join(f"{round(float(d), 1):g}" for d in dims)
@@ -471,7 +497,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         net_mass = drivers.mass_kg(material.density)
         yl = rates.p(process, "yield_loss")
         input_mass = net_mass * (1.0 + yl)
-        mass_src = (f"poured metal = net {net_mass:.4f} kg (CAD volume "
+        mass_src = (f"poured metal = net {kg_text(net_mass)} kg (CAD volume "
                     f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
                     f"{material.density:.2f} g/cm³) × (1+{yl:g} gating/riser yield) "
                     f"(typical value, not confirmed by a shop)")
@@ -480,7 +506,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         net_mass = drivers.mass_kg(material.density)
         fl = rates.p(process, "flash_loss")
         input_mass = net_mass * (1.0 + fl)
-        mass_src = (f"billet from bar = net {net_mass:.4f} kg (CAD volume "
+        mass_src = (f"billet from bar = net {kg_text(net_mass)} kg (CAD volume "
                     f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
                     f"{material.density:.2f} g/cm³) × (1+{fl:g} flash/scale loss) "
                     f"(typical value, not confirmed by a shop)")
@@ -495,7 +521,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         net_mass = drivers.mass_kg(material.density)
         svf = rates.p(process, "support_vol_frac")
         input_mass = net_mass * (1.0 + svf)
-        mass_src = (f"powder-bed metal = net {net_mass:.4f} kg (CAD volume "
+        mass_src = (f"powder-bed metal = net {kg_text(net_mass)} kg (CAD volume "
                     f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
                     f"{material.density:.2f} g/cm³) × (1+{svf:g} support structure "
                     f"printed+removed); powder $/kg assumed at material-DB value "
@@ -507,7 +533,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         shr = rates.p(process, "shrinkage_linear")
         oversize = (1.0 + shr) ** 3
         input_mass = net_mass * oversize
-        mass_src = (f"green part = net {net_mass:.4f} kg × (1+{shr:g})³ = ×{oversize:.3f} "
+        mass_src = (f"green part = net {kg_text(net_mass)} kg × (1+{shr:g})³ = ×{oversize:.3f} "
                     f"sinter-shrink oversize (CAD volume {drivers.volume_cm3:.2f} cm³ × "
                     f"{material.name} density {material.density:.2f} g/cm³); powder $/kg at "
                     f"material-DB value (typical value, not confirmed by a shop)")
@@ -516,7 +542,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         net_mass = drivers.mass_kg(material.density)
         fm = rates.p(process, "feedstock_mult")
         input_mass = net_mass * fm
-        mass_src = (f"feedstock (wire/powder) = net {net_mass:.4f} kg × {fm:g} near-net "
+        mass_src = (f"feedstock (wire/powder) = net {kg_text(net_mass)} kg × {fm:g} near-net "
                     f"overbuild (CAD volume {drivers.volume_cm3:.2f} cm³ × {material.name} "
                     f"density {material.density:.2f} g/cm³) [DED/WAAM assumption, not "
                     f"shop-validated]")
@@ -544,10 +570,20 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             price_note = f"{price_note}; ×{pmult:g} powder price adjustment"
     material_cost = input_mass * price_per_kg * (1.0 + scrap)
     material_scaled = material_cost * rm * mgn
+    # The same figures as fields, so a reader never parses the derivation text:
+    # the part's own mass (CAD volume × density), the material the price is
+    # charged on (stock cut from, printed with supports, poured), its density and
+    # the $/kg. Six significant figures: a 0.04 g part keeps its grams.
+    material_mass = {
+        "part_kg": _sig(drivers.mass_kg(material.density)),
+        "used_kg": _sig(input_mass),
+        "density_g_cm3": float(material.density),
+        "usd_per_kg": _sig(price_per_kg),
+    }
     drivers_out.append(Driver(
         name="material_cost", value=round(material_scaled, 4), unit="$",
         provenance=price_prov,
-        source=(f"{mass_src} = {input_mass:.4f} kg × ${price_per_kg:g}/kg ({price_note}) "
+        source=(f"{mass_src} = {kg_text(input_mass)} kg × ${price_per_kg:g}/kg ({price_note}) "
                 f"× (1+{scrap:g} scrap) × region-material ×{rm:g}{margin_note}"),
         error_band_pct=5.0,
     ))
@@ -1007,7 +1043,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             tier = family_to_size_tier(tooling_size)
             cav = float(n_cavities) ** rates.data["cavity_exponent"]
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"size tier {tier} (largest side {round(tooling_size, 1):g}mm, {basis_words(tooling_basis)}) "
+            tool_src = (f"size tier {tier} (largest side {_tier_size_text(tooling_size, tier)}mm, {basis_words(tooling_basis)}) "
                         f"× {n_cavities} cav^{rates.data['cavity_exponent']:g} (={cav:.2f}) "
                         f"× {complexity} (={comp:.2f}) = ${tooling_cost:,.0f}; "
                         f"±60%, you can override it {tooling_note}")
@@ -1034,7 +1070,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 mult = rates.data["tooling_forging_mult"]
                 what = "hardened closed-die set"
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"{what}: size tier {tier} (largest side {round(tooling_size, 1):g}mm, {basis_words(tooling_basis)}) "
+            tool_src = (f"{what}: size tier {tier} (largest side {_tier_size_text(tooling_size, tier)}mm, {basis_words(tooling_basis)}) "
                         f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
                         f"= ${tooling_cost:,.0f}; ±55%, you can override it "
                         f"{tooling_note}")
@@ -1160,6 +1196,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         dfm_blockers=dfm_blockers,
         dfm_blocker_details=dfm_blocker_details,
         owned_in_house=owned_here,
+        material_mass=material_mass,
     )
     est.assert_sums()
     return est

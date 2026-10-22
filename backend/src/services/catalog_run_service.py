@@ -292,12 +292,28 @@ _USED_KG = re.compile(r"=\s*(\d+(?:\.\d+)?)\s*kg\s*×\s*\$")
 _USED_KG_SQL = "=[[:space:]]*[0-9.]+[[:space:]]*kg[[:space:]]*×[[:space:]]*[$]"
 
 
+def _mass_field(est: Optional[dict], key: str) -> Optional[float]:
+    """One figure of the estimate's structured ``material_mass`` (None on older records)."""
+    mm = (est or {}).get("material_mass")
+    kg = _num(mm.get(key)) if isinstance(mm, dict) else None
+    return kg if kg is not None and kg > 0 else None
+
+
 def material_used_kg(est: Optional[dict]) -> Optional[float]:
-    """Material the engine charges for per part, from its material_cost derivation; None if it doesn't say."""
+    """Material the engine charges for per part: the estimate's ``material_mass.used_kg``,
+    else (older records) read from its material_cost derivation; None if it doesn't say."""
+    kg = _mass_field(est, "used_kg")
+    if kg is not None:
+        return kg
     src = (_driver(est, "material_cost") or {}).get("source")
     m = _USED_KG.search(src) if isinstance(src, str) else None
     kg = float(m.group(1)) if m else None
     return kg if kg is not None and kg > 0 else None
+
+
+def _kg_round(kg: float) -> float:
+    """A mass to 5 decimals, or 3 significant figures under 10 g: a tiny part never rounds to 0."""
+    return round(kg, 5) if kg >= 0.01 or kg <= 0 else float(f"{kg:.3g}")
 
 
 def _density(material: Optional[str]) -> Optional[float]:
@@ -568,16 +584,19 @@ def derive_part_row(
         material = est.get("material")
         row["material"]["name"] = material
         volume = _num((result.get("geometry") or {}).get("volume_cm3"))
-        density = _density(material)
-        if volume is not None and density is not None:
+        density = _mass_field(est, "density_g_cm3") or _density(material)
+        each = _mass_field(est, "part_kg")
+        if each is None and volume is not None and density is not None:
             each = volume * density / 1000.0
-            row["material"]["mass_kg_each"] = round(each, 5)
-            row["material"]["mass_basis"] = f"measured volume {volume:g} cm³ × {material} {density:g} g/cm³ (book value)"
-            row["mass_kg_total"] = round(each * qty, 4)
+        if each is not None:
+            row["material"]["mass_kg_each"] = _kg_round(each)
+            if volume is not None and density is not None:
+                row["material"]["mass_basis"] = f"measured volume {volume:g} cm³ × {material} {density:g} g/cm³ (book value)"
+            row["mass_kg_total"] = _kg_round(each * qty)
         used = material_used_kg(est)
         if used is not None:
-            row["material"]["used_kg_each"] = round(used, 5)
-            row["used_kg_total"] = round(used * qty, 4)
+            row["material"]["used_kg_each"] = _kg_round(used)
+            row["used_kg_total"] = _kg_round(used * qty)
         if est.get("dfm_ready", True) and _num(est.get("unit_cost_usd")) is not None:
             row["unit_cost_usd"] = _num(est.get("unit_cost_usd"))
             row["total_cost_usd"] = round(row["unit_cost_usd"] * qty, 2)
@@ -840,7 +859,7 @@ def run_meta(batch: Batch) -> dict:
 # compares them).
 _BOARD_DECISION_KEYS = ("status", "reason", "verification", "geometry", "specs")
 _BOARD_DECISION_BLOCK_KEYS = ("recommendation", "make_now_process")
-_BOARD_ESTIMATE_KEYS = ("process", "quantity", "material", "unit_cost_usd", "dfm_ready", "dfm_blockers")
+_BOARD_ESTIMATE_KEYS = ("process", "quantity", "material", "unit_cost_usd", "dfm_ready", "dfm_blockers", "material_mass")
 _BOARD_DRIVERS = ("cycle_time", "machine_cost", "owned_in_house", "material_cost")
 
 

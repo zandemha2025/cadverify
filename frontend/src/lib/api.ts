@@ -924,6 +924,16 @@ export interface CostEstimate {
   line_items: Record<string, number>;
   drivers: CostDriver[];
   lead_time: CostLeadTime;
+  /** The material as fields (absent on older records): the part's own mass (CAD volume × density),
+   *  the mass the price is charged on (stock, printed with supports, poured), density and $/kg. */
+  material_mass?: CostMaterialMass;
+}
+
+export interface CostMaterialMass {
+  part_kg: number;
+  used_kg: number;
+  density_g_cm3: number;
+  usd_per_kg: number;
 }
 
 export interface CostRecommendation {

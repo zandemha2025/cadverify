@@ -5,8 +5,9 @@
  *
  * - machine time is the estimate's `cycle_time` driver (machine hours per part);
  * - the material is the mass the engine charges for (stock, printed material
- *   with supports, poured metal), read from its `material_cost` derivation
- *   ("… = 0.0136 kg × $25/kg"), with the density it names for the volume;
+ *   with supports, poured metal) and its density, the estimate's `material_mass`
+ *   fields; an older record without them is read from its `material_cost`
+ *   derivation ("… = 0.0136 kg × $25/kg") and the density it names;
  * - ownership is the engine's machine fit for the route (`Method.inHouse`, the
  *   `owned_in_house` driver for running cost only, the fit's gaps), and a
  *   machine's purchase price is never shown: ScaleCAD has none.
@@ -96,6 +97,15 @@ export function materialFromSource(source: string | null | undefined): { kg: num
   };
 }
 
+/** The material mass and density as the estimate states them: its `material_mass` fields, else the derivation text. */
+export function materialOf(e: CostEstimate): { kg: number | null; density: number | null } {
+  const m = e.material_mass;
+  if (m && finite(m.used_kg) && m.used_kg > 0) {
+    return { kg: m.used_kg, density: finite(m.density_g_cm3) && m.density_g_cm3 > 0 ? m.density_g_cm3 : null };
+  }
+  return materialFromSource(driver(e, "material_cost")?.source);
+}
+
 function driver(e: CostEstimate, name: string) {
   return e.drivers.find((d) => d.name === name) ?? null;
 }
@@ -105,7 +115,7 @@ export function routeResources(e: CostEstimate | null | undefined, partCm3: numb
   const q = e.quantity;
   const cycle = driver(e, "cycle_time");
   const hoursEach = cycle && cycle.unit === "hr" && finite(cycle.value) && cycle.value >= 0 ? cycle.value : null;
-  const mat = materialFromSource(driver(e, "material_cost")?.source);
+  const mat = materialOf(e);
   const vol = finite(partCm3) && partCm3 > 0 ? partCm3 : null;
   const cm3Each = mat.kg != null && mat.density != null ? (mat.kg * 1000) / mat.density : null;
   return {

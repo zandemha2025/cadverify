@@ -701,6 +701,9 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
     # the default / off-switch paths stay byte-identical.
     if getattr(est, "owned_in_house", False):
         d["owned_in_house"] = True
+    if getattr(est, "material_mass", None):
+        # Mass and density as fields: readers stop parsing "= X kg × $Y/kg".
+        d["material_mass"] = dict(est.material_mass)
     return d
 
 

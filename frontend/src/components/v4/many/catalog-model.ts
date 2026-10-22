@@ -209,9 +209,10 @@ export function hoursText(h: number | null | undefined): string {
   return `${Math.round(h).toLocaleString("en-US")} h`;
 }
 
-/** "45 g", "1.27 kg", "312 kg", or "—". */
+/** "<1 g", "45 g", "1.27 kg", "312 kg", or "—". */
 export function massText(kg: number | null | undefined): string {
   if (!finite(kg)) return "—";
+  if (kg > 0 && kg < 0.0005) return "<1 g"; // a tiny part's 0.04 g, not "1 g"
   if (kg < 1) return `${Math.max(1, Math.round(kg * 1000)).toLocaleString("en-US")} g`;
   if (kg < 100) return `${kg.toFixed(kg < 10 ? 2 : 1)} kg`;
   return `${Math.round(kg).toLocaleString("en-US")} kg`;

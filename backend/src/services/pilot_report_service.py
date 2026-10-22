@@ -321,6 +321,8 @@ def _kg(v) -> str:
     f = _num(v)
     if f is None:
         return "—"
+    if 0 < f < 0.01:  # a tiny part's grams, never "0.00 kg"
+        return "<1 g" if f < 0.001 else f"{f * 1000:.1f} g"
     return f"{f:,.2f} kg" if f < 100 else f"{f:,.0f} kg"
 
 

@@ -431,3 +431,37 @@ def test_tooling_size_tiers_follow_the_part_not_file_axes(length, tier):
         assert f"size tier {tier}" in tool.source and "the smallest box found around the part" in tool.source
         assert f"{float(length)}mm" in tool.source
         assert "typical value, not confirmed by a shop" in tool.source
+
+
+def test_every_estimate_carries_its_material_mass_as_fields():
+    # Round 7 item 7: the part's mass, the mass the price is charged on, the
+    # density and the $/kg as fields, the same figures the derivation names.
+    import re
+
+    report = estimate_decision(*_analyze(_bulky_block()),
+                               EstimateOptions(quantities=[1, 100], material_class="aluminum"))
+    assert report.estimates
+    for e in report.estimates:
+        m = e["material_mass"]
+        assert set(m) == {"part_kg", "used_kg", "density_g_cm3", "usd_per_kg"}
+        assert m["part_kg"] == pytest.approx(30.0 * m["density_g_cm3"] / 1000.0, rel=1e-3)  # 30 cm³
+        src = _driver(e, "material_cost")["source"]
+        said = re.search(r"=\s*(\d+(?:\.\d+)?)\s*kg\s*×\s*\$(\d+(?:\.\d+)?)/kg", src)
+        assert said, src
+        assert m["used_kg"] == pytest.approx(float(said.group(1)), abs=5e-5)
+        assert m["usd_per_kg"] == pytest.approx(float(said.group(2)))
+    mill = _est(report, "cnc_3axis", 1)["material_mass"]
+    assert mill["used_kg"] > mill["part_kg"]  # the billet, not the part
+
+
+def test_a_tiny_part_never_reads_zero_kg():
+    # 2 mm cube: 8 mm³ of plastic is a hundredth of a gram.
+    report = estimate_decision(*_analyze(trimesh.creation.box(extents=[2.0, 2.0, 2.0])),
+                               EstimateOptions(quantities=[1], material_class="polymer"))
+    assert report.estimates
+    for e in report.estimates:
+        m = e["material_mass"]
+        assert m["part_kg"] > 0 and m["used_kg"] > 0, (e["process"], m)
+        assert "0.0000 kg" not in _driver(e, "material_cost")["source"], e["process"]
+    from src.costing.cost_model import kg_text
+    assert (kg_text(0.0136), kg_text(0.0000412), kg_text(0.00085)) == ("0.0136", "0.0000412", "0.000850")

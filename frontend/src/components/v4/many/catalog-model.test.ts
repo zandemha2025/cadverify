@@ -53,6 +53,8 @@ const row = (o: Partial<BoardRow>): BoardRow => ({
 test("numbers read as an ops owner reads them, and a missing one stays missing", () => {
   assert.deepEqual([hoursText(0.004), hoursText(0.25), hoursText(1.31), hoursText(41.2), hoursText(1204), hoursText(null)], ["<1 min", "15 min", "1.3 h", "41 h", "1,204 h", "—"]);
   assert.deepEqual([massText(0.0089), massText(0.27), massText(1.274), massText(31.5), massText(312.4), massText(undefined)], ["9 g", "270 g", "1.27 kg", "31.5 kg", "312 kg", "—"]);
+  // A tiny part (the engine's structured mass, 0.04 g) reads under a gram, never "1 g" or "0 g".
+  assert.deepEqual([massText(0.0000412), massText(0.0006)], ["<1 g", "1 g"]);
 });
 
 test("a part's line leads with machine time, material and ownership, then the price", () => {

@@ -66,6 +66,26 @@ test("a route's resources: machine time per part and for the run, material used 
   assert.equal(runLine(null), null);
 });
 
+test("the estimate's material_mass fields come first; a tiny part keeps its grams (round 7)", () => {
+  // The derivation text of a 0.04 g part said "0.0000 kg"; the fields carry the real figure.
+  const tiny = est("fdm", "PLA", 10, [
+    { name: "material_cost", value: 0.001, source: "filament 0.03 cm³ ... = 0.0000 kg × $25/kg" },
+    { name: "cycle_time", value: 0.01, unit: "hr" },
+  ], { material_mass: { part_kg: 0.0000248, used_kg: 0.0000412, density_g_cm3: 1.24, usd_per_kg: 25 } });
+  const r = routeResources(tiny, 0.02)!;
+  assert.equal(r.kgEach, 0.0000412);
+  assert.equal(r.density, 1.24);
+  assert.ok(Math.abs(r.cm3Each! - 0.0332) < 1e-3);
+  assert.equal(massText(r.kgEach), "<1 g");
+  // A record without the fields still reads its derivation.
+  const old = routeResources(est("fdm", "PLA", 1, [{ name: "material_cost", source: FDM_SRC }]), 23.76)!;
+  assert.equal(old.kgEach, 0.0136);
+  assert.equal(old.density, 1.24);
+  // Fields win over a text that disagrees.
+  const both = routeResources(est("fdm", "PLA", 1, [{ name: "material_cost", source: FDM_SRC }], { material_mass: { part_kg: 0.03, used_kg: 0.0141, density_g_cm3: 1.24, usd_per_kg: 25 } }), 23.76)!;
+  assert.equal(both.kgEach, 0.0141);
+});
+
 test("same volume as the part reads once; machining names its stock", () => {
   const mjf = routeResources(est("mjf", "PA12 (Nylon 12)", 1, [{ name: "material_cost", source: MJF_SRC }, { name: "cycle_time", value: 0.5429, unit: "hr" }, { name: "owned_in_house", value: 0.65, unit: "×", provenance: "USER" }]), 23.76)!;
   assert.equal(materialSub(mjf), "PA12 (Nylon 12) · 23.8 cm³");

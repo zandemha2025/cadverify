@@ -279,6 +279,22 @@ def test_material_used_is_the_mass_the_engine_charges_for():
     assert cr.material_used_kg(None) is None
 
 
+def test_the_structured_material_mass_is_read_before_the_derivation_text():
+    # Round 7 item 7: estimates carry material_mass; the text is read only for
+    # older records. A tiny part keeps its grams instead of rounding to 0.
+    est = {"material_mass": {"part_kg": 0.0000124, "used_kg": 0.0000412, "density_g_cm3": 1.24, "usd_per_kg": 25.0},
+           "drivers": [{"name": "material_cost", "source": "filament ... = 0.0000 kg × $25/kg"}]}
+    assert cr.material_used_kg(est) == 0.0000412
+    est = _est("fdm", 10, 3.0, material="PLA")
+    est["material_mass"] = {"part_kg": 0.0000124, "used_kg": 0.0000412, "density_g_cm3": 1.24, "usd_per_kg": 25.0}
+    est["drivers"].append({"name": "material_cost", "value": 0.001, "unit": "$", "source": "= 0.0000 kg × $25/kg"})
+    r = _row(_decision("makeable_outsource_only", estimates=[est], make_now="fdm"))
+    assert r["material"]["used_kg_each"] == 0.0000412 and r["used_kg_total"] == pytest.approx(0.000412)
+    assert r["material"]["mass_kg_each"] == 0.0000124 and r["mass_kg_total"] == pytest.approx(0.000124)
+    # The board's SQL slice keeps the field.
+    assert "material_mass" in cr._BOARD_ESTIMATE_KEYS
+
+
 def test_a_row_carries_the_material_used_next_to_the_part_mass():
     est = _est("cnc_3axis", 10, 30.0, cycle=0.25, owned=True, material="Mild Steel")
     est["drivers"].append({"name": "material_cost", "value": 0.08, "unit": "$", "source": MILL_SRC})
@@ -379,3 +395,9 @@ def test_a_row_carries_the_outcome_and_a_signoff_that_went_out_of_date():
     assert r["signoff"]["stale_reason"] == "rate_library_published:v3"
     plain = _row(d)
     assert (plain["outcome"], plain["signoff"], plain["record_out_of_date"]) == (None, None, False)
+
+
+def test_the_pilot_report_writes_a_tiny_parts_mass_in_grams():
+    from src.services.pilot_report_service import _kg
+
+    assert [_kg(0.0000412), _kg(0.0041), _kg(0.27), _kg(312.4), _kg(None)] == ["<1 g", "4.1 g", "0.27 kg", "312 kg", "—"]
