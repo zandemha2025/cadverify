@@ -114,7 +114,7 @@ export const SERVICES: Service[] = [
   { name: "Twilio (text messages)", gets: "Your phone number", when: "When a code is sent to it" },
   { name: "Stripe (payments)", gets: "Billing details; card numbers go to Stripe only", when: "If you buy Pro" },
   { name: "Cloudflare Turnstile", gets: "A browser check", when: "At sign-up and sign-in" },
-  { name: "Notion (ScaleCAD’s customer list)", gets: "Name, email, phone, timezone, campaign source and location if given. No files, file names or results", when: "After sign-up" },
+  { name: "Notion (ScaleCAD’s customer list)", gets: "Name, email, phone, timezone, campaign source and location if given. No files, file names or results", when: "After sign-up. Deleting your account moves the entry to Notion’s trash" },
   { name: "Sentry (error reports)", gets: "Error details, with sign-in secrets removed", when: "When something fails" },
   { name: "PostHog (product analytics)", gets: "Page and button activity with text masked; nothing inside the app is recorded on screen", when: "Only if you allow analytics" },
   { name: "RB2B (business visitors)", gets: "Visits to the public website, to identify business visitors", when: "Only if you allow analytics, on public pages" },

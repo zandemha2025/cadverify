@@ -68,4 +68,5 @@ test("every section has an id, a noun title and plain rows", () => {
 test("the CRM row says no files, file names or results go there", () => {
   const crm = SERVICES.find((s) => s.name.startsWith("Notion"))!;
   assert.match(crm.gets, /No files, file names or results/);
+  assert.match(crm.when, /Deleting your account moves the entry to Notion’s trash/);
 });
