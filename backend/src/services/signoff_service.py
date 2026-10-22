@@ -66,12 +66,15 @@ async def org_role_of(session: AsyncSession, org_id: str, user_id: int) -> Optio
 
 
 async def names_for(session: AsyncSession, user_ids: Iterable[Optional[int]]) -> dict:
-    """``{user_id: name}``: the person's full name, else their email."""
+    """``{user_id: name}``: the person's full name, else their email; a deleted
+    account reads "Deleted account" (``person_label``)."""
+    from src.services.person_label import person_label
+
     ids = sorted({int(u) for u in user_ids if isinstance(u, int)})
     if not ids:
         return {}
     rows = (await session.execute(select(User.id, User.full_name, User.email).where(User.id.in_(ids)))).all()
-    return {r[0]: ((r[1] or "").strip() or r[2]) for r in rows}
+    return {r[0]: person_label(r[1], r[2]) for r in rows}
 
 
 _STALE_WORDS = {

@@ -9,9 +9,11 @@ import {
   allowanceLine,
   actionName,
   auditTitle,
+  auditWho,
   orgRoleNote,
   auditWhat,
   dateLabel,
+  domainOf,
   groupNotifications,
   healthRows,
   initials,
@@ -111,6 +113,21 @@ test("audit lines read in plain words", () => {
   assert.equal(actionName("something.new_thing"), "Something new thing");
   // A personal org turns shared when its second member joins.
   assert.equal(actionName("org.became_shared"), "Organization became shared");
+  // A deleted account is named as one, never by its tombstone address.
+  assert.equal(auditWho({ user_email: "deleted-account-52@deleted.invalid", user_id: 52 }), "Deleted account");
+  assert.equal(auditWho({ user_email: "deleted account", user_id: null }), "Deleted account");
+  assert.equal(auditWho({ user_email: "dana@northfieldpumps.com", user_id: 1 }), "dana@northfieldpumps.com");
+  assert.equal(auditWho({ user_email: null, user_id: null }), "System");
+  assert.equal(
+    auditWhat({ action: "member.removed", resource_type: "org", resource_id: "01O", detail: { email: "deleted-account-52@deleted.invalid" }, result_summary: null }),
+    "Deleted account",
+  );
+  assert.equal(
+    auditWhat({ action: "org.became_shared", resource_type: "org", resource_id: "01M5JP3Z2WS11P5ATN3RC1X7DP", detail: { members: 2, via: "invite" }, result_summary: null }),
+    "2 members",
+  );
+  assert.equal(domainOf("deleted-account-52@deleted.invalid"), "");
+  assert.equal(domainOf("dana@northfieldpumps.com"), "northfieldpumps.com");
   assert.equal(
     auditWhat({ action: "decision.created", resource_type: "cost_decision", resource_id: "01M", detail: { filename: "bored-block-mm.iges", make_now_process: "fdm" }, result_summary: null }),
     "bored-block-mm.iges · suggested: filament printing · saved after the check",

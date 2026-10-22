@@ -7,6 +7,7 @@
  * Honesty: nothing here invents a number. A count that didn't load is null and
  * reads "Not measured yet" or "—", never 0.
  */
+import { isDeletedAccount, personLabel } from "../../../lib/person-label.ts";
 import { R } from "../routes.ts";
 
 export type OrgRole = "viewer" | "member" | "admin";
@@ -95,6 +96,7 @@ export function initials(email: string): string {
 }
 
 export function domainOf(email: string): string {
+  if (isDeletedAccount(email)) return "";
   const at = email.lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1) : "";
 }
@@ -351,6 +353,11 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
+/** The "Who" column: the person, "Deleted account" for a deleted one. */
+export function auditWho(e: { user_email: string | null; user_id: number | null }): string {
+  return personLabel(e.user_email) || (e.user_id != null ? `User ${e.user_id}` : "System");
+}
+
 /** The "What" column: the file, key or member it touched, then the outcome. */
 export function auditWhat(e: AuditLike): string {
   const d = e.detail ?? {};
@@ -370,7 +377,7 @@ export function auditWhat(e: AuditLike): string {
   const decided = str(d.disposition);
   if (decided && e.action === "decision.disposition_recorded") parts.push(DISPOSITION[decided] ?? decided.replace(/_/g, " "));
   const email = str(d.email);
-  if (email) parts.push(email);
+  if (email) parts.push(personLabel(email) ?? email);
   const role = str(d.new_role) ?? str(d.role) ?? str(d.org_role);
   if (role && e.action !== "decision.created") parts.push(roleName(role));
   const name = str(d.name);
@@ -383,6 +390,7 @@ export function auditWhat(e: AuditLike): string {
   if (scope && e.action === "api_key.created") parts.push(scope === "read" ? "read only" : "read and write");
   const group = str(d.group_value);
   if (group) parts.push(group);
+  if (e.action === "org.became_shared" && typeof d.members === "number") parts.push(`${d.members} members`);
   if (e.result_summary && !parts.length) parts.push(e.result_summary);
   else if (e.result_summary && e.action === "analysis.created") parts.push(e.result_summary === "issues" ? "has findings" : e.result_summary);
   if (!parts.length && e.resource_type) parts.push(`${e.resource_type.replace(/_/g, " ")}${e.resource_id ? ` ${e.resource_id.slice(0, 10)}` : ""}`);

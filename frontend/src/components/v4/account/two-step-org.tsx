@@ -9,6 +9,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { twoStepError } from "@/components/two-step/parts";
+import { personLabel } from "@/lib/person-label";
 import { Chip, Panel } from "../ui";
 import { R } from "../routes";
 import { Confirm } from "./frame";
@@ -173,7 +174,7 @@ export function TwoStepRulePanel({ me }: { me: number | null }) {
             <div key={m.user_id} className="a-row2" role="row">
               <span role="cell" className="a-wrap">
                 <b>
-                  {m.email}
+                  {personLabel(m.email) ?? m.email}
                   {m.user_id === me ? " (you)" : ""}
                 </b>
                 <small>{m.single_sign_on ? "Signs in through single sign-on" : m.two_step_on ? "Authenticator app" : rule.required ? "Sets it up at next sign-in" : "Password or email link only"}</small>

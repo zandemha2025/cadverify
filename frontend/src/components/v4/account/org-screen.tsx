@@ -13,6 +13,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/ui/auth-provider";
+import { personLabel } from "@/lib/person-label";
 import {
   createInvite,
   removeMember,
@@ -476,18 +477,20 @@ function MembersTable(props: {
         const wsAsk = ask?.kind === "ws" && ask.userId === m.user_id ? ask : null;
         const removeAsk = ask?.kind === "remove" && ask.userId === m.user_id;
         const canRemove = self || isAdmin;
-        const change = orgAsk ? orgRoleChange({ email: m.email, role: m.org_role, self }, orgAsk.next, orgName) : null;
+        // A deleted account reads "Deleted account", never its tombstone address.
+        const who = personLabel(m.email) ?? m.email;
+        const change = orgAsk ? orgRoleChange({ email: who, role: m.org_role, self }, orgAsk.next, orgName) : null;
         return (
           <React.Fragment key={m.user_id}>
             <div className="a-tr" role="row" style={{ gridTemplateColumns: cols }}>
               <span role="cell">
-                <button type="button" className={cx("a-cellbtn", members.length > 1 && props.selected === m.user_id && "on")} aria-pressed={props.selected === m.user_id} onClick={() => props.onSelect(m.user_id)} aria-label={`Show ${m.email}${self ? " (you)" : ""}`}>
+                <button type="button" className={cx("a-cellbtn", members.length > 1 && props.selected === m.user_id && "on")} aria-pressed={props.selected === m.user_id} onClick={() => props.onSelect(m.user_id)} aria-label={`Show ${who}${self ? " (you)" : ""}`}>
                   <span className="a-av" aria-hidden="true">
                     {initials(m.email)}
                   </span>
                   <span style={{ minWidth: 0 }}>
-                    <b className="a-clip" style={{ display: "block" }} title={m.email}>
-                      {m.email}
+                    <b className="a-clip" style={{ display: "block" }} title={who}>
+                      {who}
                     </b>
                     <small>
                       {[domainOf(m.email), self ? "You" : null, m.is_active ? null : "Deactivated", !superadmin && wsRole === "viewer" ? "View-only account (set by ScaleCAD)" : null].filter(Boolean).join(" · ")}
@@ -498,7 +501,7 @@ function MembersTable(props: {
               <span role="cell" data-l="Org role">
                 {isAdmin && !locked ? (
                   <label>
-                    <span className="sr">Org role for {m.email}</span>
+                    <span className="sr">Org role for {who}</span>
                     <select value={orgAsk ? orgAsk.next : m.org_role} disabled={props.busy} onChange={(e) => {
                       const next = e.target.value as OrgRole;
                       if (next === m.org_role) props.onCancel();
@@ -521,7 +524,7 @@ function MembersTable(props: {
               <span role="cell" data-l="Account tier (staff)">
                 {!self ? (
                   <label>
-                    <span className="sr">Account tier for {m.email}</span>
+                    <span className="sr">Account tier for {who}</span>
                     <select value={wsAsk ? wsAsk.next : wsRole ?? ""} disabled={props.busy || !wsRole} onChange={(e) => {
                       const next = e.target.value;
                       if (next === wsRole) props.onCancel();
@@ -541,7 +544,7 @@ function MembersTable(props: {
                     </select>
                   </label>
                 ) : (
-                  <span title="Account tiers are set by ScaleCAD staff." aria-label={`Account tier for ${m.email}: ${roleName(wsRole)}`}>
+                  <span title="Account tiers are set by ScaleCAD staff." aria-label={`Account tier for ${who}: ${roleName(wsRole)}`}>
                     {roleName(wsRole)}
                   </span>
                 )}
@@ -552,7 +555,7 @@ function MembersTable(props: {
               </span>
               <span role="cell" className="a-acts">
                 {canRemove ? (
-                  <button className="btn sm" type="button" disabled={removeAsk} aria-label={self ? `Leave ${orgName}` : `Remove ${m.email}`} onClick={() => props.onAsk({ kind: "remove", userId: m.user_id })}>
+                  <button className="btn sm" type="button" disabled={removeAsk} aria-label={self ? `Leave ${orgName}` : `Remove ${who}`} onClick={() => props.onAsk({ kind: "remove", userId: m.user_id })}>
                     {self ? "Leave" : "Remove"}
                   </button>
                 ) : null}
@@ -579,7 +582,7 @@ function MembersTable(props: {
                   onCancel={props.onCancel}
                 />
               ) : (
-                <Confirm label="Remove member" question={`Remove ${m.email}?`} detail={`They lose access to ${orgName} now, and their API keys for it stop working.`} confirmLabel="Remove member" danger busy={props.busy} error={props.askErr} onConfirm={props.onConfirm} onCancel={props.onCancel} />
+                <Confirm label="Remove member" question={`Remove ${who}?`} detail={`They lose access to ${orgName} now, and their API keys for it stop working.`} confirmLabel="Remove member" danger busy={props.busy} error={props.askErr} onConfirm={props.onConfirm} onCancel={props.onCancel} />
               )
             ) : null}
           </React.Fragment>
@@ -754,7 +757,7 @@ function MemberSheet(p: {
   return (
     <>
       <div className="top">
-        <h2 className="stitle a-wrap">{p.m.email}</h2>
+        <h2 className="stitle a-wrap">{personLabel(p.m.email) ?? p.m.email}</h2>
         <p className="smeta">{[kind ? `${kind} at ${domainOf(p.m.email)}` : domainOf(p.m.email), p.self ? "You" : null].filter(Boolean).join(" · ")}</p>
         <div className="figs">
           <div className="fig">

@@ -298,10 +298,12 @@ async def list_links(
     ids = {item["made_by_user_id"] for item in out if item["made_by_user_id"] is not None}
     names: dict[int, str] = {}
     if ids:
+        from src.services.person_label import person_label
+
         for uid, full_name, email in (
             await session.execute(select(User.id, User.full_name, User.email).where(User.id.in_(ids)))
         ).all():
-            names[int(uid)] = (full_name or "").strip() or email
+            names[int(uid)] = person_label(full_name, email) or email
     for item in out:
         uid = item.pop("made_by_user_id")
         item["made_by"] = names.get(uid) if uid is not None else None

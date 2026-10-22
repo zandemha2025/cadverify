@@ -14,7 +14,7 @@ import { Chip, Content, Loading, Panel, Sheet } from "../ui";
 import { R } from "../routes";
 import { AccountFrame, AccountHead, AdminsOnly, Banner } from "./frame";
 import * as api from "./api";
-import { auditTitle, auditWhat, dateLabel, healthRows, roleName, timeLabel, usageEventsLine, whenLabel, workerFig, type HealthChecks, type OrgRole } from "./derive";
+import { auditTitle, auditWhat, auditWho, dateLabel, healthRows, roleName, timeLabel, usageEventsLine, whenLabel, workerFig, type HealthChecks, type OrgRole } from "./derive";
 
 const RANGES = [7, 30, 90] as const;
 type Range = (typeof RANGES)[number];
@@ -411,8 +411,8 @@ function AuditPanel({ admin, role, loading }: { admin: boolean; role: OrgRole | 
                   <span role="cell" className="a-clip" title={auditWhat(e)}>
                     {auditWhat(e)}
                   </span>
-                  <span role="cell" className="a-clip" title={e.user_email ?? undefined}>
-                    {e.user_email || (e.user_id != null ? `User ${e.user_id}` : "System")}
+                  <span role="cell" className="a-clip" title={auditWho(e)}>
+                    {auditWho(e)}
                   </span>
                 </div>
               ))}

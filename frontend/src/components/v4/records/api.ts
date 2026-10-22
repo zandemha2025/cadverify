@@ -23,6 +23,7 @@ import type {
   ValidationResult,
 } from "@/lib/api";
 import { exportName } from "@/lib/api";
+import { personLabel } from "@/lib/person-label";
 import type { AnalysisListRow } from "@/lib/recent-parts";
 import type { ShareLinkFields } from "../datacontrol/api";
 import type { LinkPayload } from "../share/words";
@@ -334,7 +335,7 @@ let membersP: Promise<Map<number, string>> | null = null;
 export function members(): Promise<Map<number, string>> {
   if (!membersP) {
     membersP = json<{ members: { user_id: number; email: string }[] }>(`/orgs/members`)
-      .then((b) => new Map((b.members ?? []).map((m) => [m.user_id, m.email])))
+      .then((b) => new Map((b.members ?? []).map((m) => [m.user_id, personLabel(m.email) ?? m.email])))
       .catch(() => {
         membersP = null;
         return new Map<number, string>();
