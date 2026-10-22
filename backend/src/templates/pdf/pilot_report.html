@@ -63,7 +63,7 @@
 
   <h2>What making in-house takes</h2>
   {% if r.in_house.parts %}
-  <p>{{ r.in_house.parts }} {{ 'part' if r.in_house.parts == 1 else 'parts' }} on your machines: {{ r.in_house.hours | hours }} of machine time and {{ r.in_house.mass_kg | kg }} of material at the quantities checked.</p>
+  <p>{{ r.in_house.parts }} {{ 'part' if r.in_house.parts == 1 else 'parts' }} on your machines: {{ r.in_house.hours | hours }} of machine time and {% if r.in_house.used_kg %}{{ r.in_house.used_kg | kg }} of material used ({{ r.in_house.mass_kg | kg }} in the parts){% else %}{{ r.in_house.mass_kg | kg }} of material{% endif %} at the quantities checked.</p>
   {% if r.in_house.machines %}
   <table class="avoid-break">
     <thead><tr><th>Machine</th><th>Method</th><th class="num">Parts</th><th class="num">Machine time</th></tr></thead>
@@ -74,8 +74,43 @@
     </tbody>
   </table>
   {% endif %}
+  {% if r.in_house.materials %}
+  <table class="avoid-break">
+    <thead><tr><th>Material</th><th class="num">Parts</th><th class="num">Material used</th><th class="num">In the parts</th></tr></thead>
+    <tbody>
+    {% for g in r.in_house.materials %}
+      <tr><td>{{ g.material }}</td><td class="num">{{ g.parts }}</td><td class="num">{{ g.used_kg | kg }}{% if g.used_kg and g.used_parts != g.parts %} <span class="muted">({{ g.used_parts }} parts)</span>{% endif %}</td><td class="num">{{ g.part_kg | kg }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
   {% else %}
   <p class="muted">No part sorted to your machines.</p>
+  {% endif %}
+
+  {% if r.missing or r.outside %}
+  <h2>Machines you don't have</h2>
+  {% if r.missing %}
+  <table class="avoid-break">
+    <thead><tr><th>Needs a new machine</th><th>What it lacks</th><th class="num">Parts</th><th class="num">Machine time</th></tr></thead>
+    <tbody>
+    {% for g in r.missing %}
+      <tr><td>{{ g.process | proc }}</td><td>{{ g.human or g.gate }}</td><td class="num">{{ g.parts }}</td><td class="num">{{ g.hours | hours }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if r.outside %}
+  <table class="avoid-break">
+    <thead><tr><th>Made outside: no machine of yours does it</th><th class="num">Parts</th><th class="num">Machine time</th></tr></thead>
+    <tbody>
+    {% for m in r.outside %}
+      <tr><td>{{ m.process | proc }}</td><td class="num">{{ m.parts }}</td><td class="num">{{ m.hours | hours }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <p class="muted">ScaleCAD has no machine prices: these are the capabilities missing and the machine time they'd carry, not purchase costs.</p>
   {% endif %}
 
   <h2>Biggest wins</h2>
@@ -103,7 +138,7 @@
   <h2>Decisions recorded</h2>
   {% if r.decisions %}
   <table>
-    <thead><tr><th>Part</th><th>Decision</th><th>By</th><th>Date</th><th>Note</th></tr></thead>
+    <thead><tr><th>Part</th><th>Decision</th><th>By</th><th>Date</th><th>Note</th><th>Signed off</th></tr></thead>
     <tbody>
     {% for d in r.decisions %}
       <tr>
@@ -112,6 +147,7 @@
         <td>{{ d.by or 'Not recorded' }}</td>
         <td>{{ (d.at or '')[:10] }}</td>
         <td>{{ d.note or '' }}</td>
+        <td>{% if d.signoff %}{{ d.signoff.by or 'Someone' }}, {{ (d.signoff.at or '')[:10] }}{% if d.signoff.note %} <span class="muted">{{ d.signoff.note }}</span>{% endif %}{% if d.signoff.stale %} <strong>Out of date: {{ d.signoff.stale_reason | stale }}</strong>{% endif %}{% else %}<span class="muted">Not signed off</span>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

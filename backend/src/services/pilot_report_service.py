@@ -145,7 +145,9 @@ async def _decisions(session: AsyncSession, org_id: str, keys: set[str], names: 
     rows = (await session.execute(
         select(CostDecision.mesh_hash, CostDecision.filename, CostDecision.user_disposition,
                CostDecision.disposition_note, CostDecision.disposition_updated_at,
-               CostDecision.disposition_updated_by_user_id, CostDecision.disposition_basis)
+               CostDecision.disposition_updated_by_user_id, CostDecision.disposition_basis,
+               CostDecision.approval_status, CostDecision.approved_by_user_id, CostDecision.approved_at,
+               CostDecision.approval_note, CostDecision.stale_at, CostDecision.stale_reason)
         .where(CostDecision.org_id == org_id, CostDecision.mesh_hash.in_(sorted(keys)),
                CostDecision.user_disposition.isnot(None))
         .distinct(CostDecision.mesh_hash)
@@ -154,9 +156,21 @@ async def _decisions(session: AsyncSession, org_id: str, keys: set[str], names: 
     )).all()
     ids = {r[5] for r in rows if r[5]}
     who = dict((await session.execute(select(User.id, User.email).where(User.id.in_(ids)))).all()) if ids else {}
+    from src.services import signoff_service as so
+
+    signers = await so.names_for(session, [r[8] for r in rows])
+    now = datetime.now(timezone.utc)
     out = []
-    for key, filename, disp, note, at, by, basis in rows:
+    for (key, filename, disp, note, at, by, basis,
+         approval, signer, signed_at, signoff_note, stale_at, stale_reason) in rows:
         meta = names.get(key) or {}
+        if stale_at is not None and stale_at.tzinfo is None:
+            stale_at = stale_at.replace(tzinfo=timezone.utc)
+        signoff = so.signoff_view({
+            "approval_status": approval, "approved_by_user_id": signer,
+            "approved_at": signed_at.isoformat() if signed_at else None, "approval_note": signoff_note,
+            "is_stale": stale_at is not None and stale_at <= now, "stale_reason": stale_reason,
+            "stale_at": stale_at.isoformat() if stale_at else None}, signers)
         out.append({
             "part_key": key,
             "file_name": meta.get("filename") or filename,
@@ -167,6 +181,7 @@ async def _decisions(session: AsyncSession, org_id: str, keys: set[str], names: 
             "note": note,
             "by": who.get(by),
             "at": at.isoformat() if at else None,
+            "signoff": signoff,
         })
     out.sort(key=lambda d: d.get("at") or "", reverse=True)
     return out[:MAX_DECISIONS]
@@ -199,7 +214,7 @@ def caveats(summary: dict, scope_kind: str, calibration: Optional[dict]) -> list
 async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str] = None) -> dict:
     from src.db.models import Batch, Organization
     from src.services import calibration_service as cal
-    from src.services.catalog_run_service import BUCKET_WORDS, build_board, bucket_totals
+    from src.services.catalog_run_service import BUCKET_WORDS, bucket_breakdown, build_board, bucket_totals
 
     org_name = (await session.execute(select(Organization.name).where(Organization.id == org_id))).scalar_one_or_none()
     if run_id:
@@ -218,13 +233,17 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
                  "quantity": board.get("quantity"), "material_class": board.get("material_class"),
                  "parts_list": board.get("parts_list")}
         totals = board["totals"]
+        breakdown = board.get("breakdown") or bucket_breakdown(rows)
     else:
         rows, records = await _rows_for_all_parts(session, org_id)
         keys = {r["part_key"] for r in rows if r.get("part_key")}
         scope = {"kind": "all", "run_id": None, "quantity": ALL_PARTS_QUANTITY}
         totals = bucket_totals(rows)
+        breakdown = bucket_breakdown(rows)
 
-    buckets = [{"key": k, "label": BUCKET_WORDS[k], **totals.get(k, {})} for k in BUCKET_ORDER]
+    # Resources first: each bucket's machine hours by machine (or by process outside),
+    # material by grade, and for "needs a new machine" the capability missing.
+    buckets = [{"key": k, "label": BUCKET_WORDS[k], **totals.get(k, {}), **breakdown.get(k, {})} for k in BUCKET_ORDER]
     other = {k: totals[k]["parts"] for k in ("not_sorted", "not_checked", "checking") if totals.get(k, {}).get("parts")}
     names = {r["part_key"]: {"filename": r.get("filename"), "part_number": r.get("part_number")} for r in rows if r.get("part_key")}
 
@@ -250,11 +269,22 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
             "hours_parts": in_house.get("hours_parts", 0),
             "mass_kg": in_house.get("mass_kg"),
             "mass_parts": in_house.get("mass_parts", 0),
+            "used_kg": in_house.get("used_kg"),
+            "used_parts": in_house.get("used_parts", 0),
             "cost_usd": in_house.get("cost_usd"),
             "machines": machine_hours(rows),
+            "materials": (breakdown.get("in_house") or {}).get("materials", []),
         },
+        # The capability parts lack: machines you'd need (none fits) and processes you don't own.
+        "missing": (breakdown.get("new_machine") or {}).get("missing", []),
+        "outside": (breakdown.get("outside") or {}).get("machines", []),
         "wins": wins(rows, records),
-        "decisions": await _decisions(session, org_id, keys, names),
+        "decisions": (decisions := await _decisions(session, org_id, keys, names)),
+        "signoffs": {
+            "signed_off": sum(1 for d in decisions if d.get("signoff")),
+            "out_of_date": sum(1 for d in decisions if (d.get("signoff") or {}).get("stale")),
+            "recorded": len(decisions),
+        },
         "accuracy": summary,
         "accuracy_rows": [r for r in comp if not r.get("test")][:200],
         "calibration": calibration,
@@ -314,7 +344,14 @@ def _factor(v) -> str:
     return f"{_pct((f - 1) * 100)} (× {f:.2f})"
 
 
-_env.filters.update({"money": _money, "hours": _hours, "kg": _kg, "pct": _pct, "proc": _proc, "factor": _factor})
+def _stale(v) -> str:
+    from src.services.signoff_service import stale_words
+
+    return stale_words(v)
+
+
+_env.filters.update({"money": _money, "hours": _hours, "kg": _kg, "pct": _pct, "proc": _proc, "factor": _factor,
+                     "stale": _stale})
 
 
 def render_html(report: dict) -> str:

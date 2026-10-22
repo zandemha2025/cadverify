@@ -239,9 +239,17 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             in_house = next(b for b in rep["buckets"] if b["key"] == "in_house")
             assert in_house["parts"] == N_PARTS + 1
             assert rep["in_house"]["hours"] == pytest.approx((N_PARTS + 1) * ENGINE_HOURS * 100, rel=1e-6)
+            # Resources first: each bucket's machine hours by machine, its material by grade.
+            assert sum(m["hours"] or 0 for m in in_house["machines"]) == pytest.approx(rep["in_house"]["hours"], rel=1e-6)
+            assert all(m["owned"] and m["machine"] for m in in_house["machines"])
+            assert {"materials", "missing"} <= set(in_house) and isinstance(rep["in_house"]["materials"], list)
+            assert isinstance(rep["missing"], list) and isinstance(rep["outside"], list)
             assert rep["wins"] and rep["wins"][0]["saving_total"] == pytest.approx(16.0 * 100)
             assert rep["accuracy"]["parts"] == N_PARTS
             assert rep["calibration"]["applied_by"].startswith("act-")
+            # Sign-offs on the recorded decisions (none signed off here).
+            assert rep["signoffs"] == {"signed_off": 0, "out_of_date": 0, "recorded": len(rep["decisions"])}
+            assert all(d["signoff"] is None for d in rep["decisions"])
             assert any("before any calibration" in c for c in rep["caveats"])
             r = await ac.get("/api/v1/actuals/report.pdf")
             assert r.status_code == 200 and r.content[:4] == b"%PDF"

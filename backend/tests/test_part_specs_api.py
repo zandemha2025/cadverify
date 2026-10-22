@@ -248,3 +248,39 @@ def test_signoff_rules_are_pure():
     assert view == {"by_user_id": 7, "by": "Ada", "at": "2026-10-22T10:00:00+00:00", "note": "ok",
                     "stale": True, "stale_reason": "calibration_changed", "stale_at": "x"}
     assert so.signoff_view({"approval_status": "unreviewed"}, {}) is None
+
+
+@pytest.mark.asyncio
+async def test_pilot_report_decisions_carry_the_signoff_and_say_when_it_is_out_of_date():
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.services import pilot_report_service as pr
+
+    tag = uuid.uuid4().hex[:10]
+    org, users = await _seed(tag)
+    admin = users["admin"][0]
+    mesh = f"mesh-{tag}"
+    try:
+        d = await _decision(org, admin, mesh, tag)
+        async with eng.get_session_factory()() as s:
+            await s.execute(text(
+                "UPDATE cost_decisions SET user_disposition = 'inhouse', disposition_updated_at = now(), "
+                "approval_status = 'approved', approved_by_user_id = :u, approved_at = now(), "
+                "approval_note = 'Run on cell 4', stale_at = now(), stale_reason = 'part_specs_changed' "
+                "WHERE ulid = :d"), {"u": admin, "d": d})
+            await s.commit()
+            rows = await pr._decisions(s, org, {mesh}, {mesh: {"filename": "b.step"}})
+        assert len(rows) == 1
+        so = rows[0]["signoff"]
+        assert so["by"] == "Ada Admin" and so["note"] == "Run on cell 4"
+        assert so["stale"] is True and so["stale_reason"] == "part_specs_changed"
+        html = pr.render_html({"organization": "Spec", "generated_at": "2026-10-22T00:00:00+00:00",
+                               "scope": {"kind": "all", "quantity": 100}, "parts": 1, "buckets": [], "other": {},
+                               "in_house": {"parts": 0, "machines": [], "materials": []}, "missing": [],
+                               "outside": [], "wins": [], "decisions": rows, "accuracy": {}, "accuracy_rows": [],
+                               "calibration": None, "caveats": [],
+                               "signoffs": {"signed_off": 1, "out_of_date": 1, "recorded": 1}})
+        assert "Ada Admin" in html and "Out of date: the part&#39;s specs changed" in html
+    finally:
+        await _cleanup(org, users)

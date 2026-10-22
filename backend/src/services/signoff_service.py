@@ -74,6 +74,24 @@ async def names_for(session: AsyncSession, user_ids: Iterable[Optional[int]]) ->
     return {r[0]: ((r[1] or "").strip() or r[2]) for r in rows}
 
 
+_STALE_WORDS = {
+    "machine_inventory_changed": "your machines changed",
+    "rate_library_published": "new rates were published",
+    "material_library_published": "new material prices were published",
+    "shop_profile_published": "a shop profile was updated",
+    "part_specs_changed": "the part's specs changed",
+    "conditions_changed": "the part's service conditions changed",
+    "calibration_changed": "a calibration was applied or undone",
+}
+
+
+def stale_words(reason: Optional[str]) -> str:
+    """Why a record went out of date, in words ("part_specs_changed" → "the part's specs changed")."""
+    if not reason:
+        return "something it used changed"
+    return _STALE_WORDS.get(reason.split(":", 1)[0], reason.replace("_", " ").replace(":", " "))
+
+
 def signoff_view(gov: dict, names: dict) -> Optional[dict]:
     """The sign-off as shown on a part, the catalog board and the pilot report.
 
