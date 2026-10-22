@@ -879,7 +879,8 @@ _GOVERNANCE_COLUMNS = (
 )
 # A supplier's copy (RFQ package) states the review status only; approvers,
 # the recorded outcome and its notes stay inside the organization.
-_OUTBOUND_GOVERNANCE_COLUMNS = ("approval_status",)
+# A supplier's copy carries no review state (src.services.rfq_package_service).
+_OUTBOUND_GOVERNANCE_COLUMNS: tuple = ()
 
 
 def build_estimates_csv(
@@ -894,7 +895,7 @@ def build_estimates_csv(
     and the persisted approval fields, so the exported artifact never presents
     an unvalidated or unsigned number as governed evidence. ``outbound`` is the
     supplier's copy: ``result_json`` is already an ``outbound.cost_record`` and
-    only the review status column of the governance travels.
+    none of the governance travels (no review status).
     """
     buf = io.StringIO()
     writer = csv.writer(buf)

@@ -1,15 +1,19 @@
-"""RFQ / supplier evidence package API.
+"""RFQ package API: what a buyer sends a supplier to quote.
 
 Local package generation only: no supplier send, no marketplace, no live RFQ
-network. The package is an exportable evidence bundle built from saved
-cost-decision artifacts plus declared manifest/context data where available.
+network. A package is built from saved records; by default it carries what a
+supplier quotes from (part, material, quantity, specs, note, CAD) and none of
+our cost. ``include_cost_estimate`` adds the should-cost for that one package
+(``src.services.rfq_package_service``).
 """
 from __future__ import annotations
 
 import re
+from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
@@ -22,12 +26,29 @@ from src.services import rfq_package_service as svc
 router = APIRouter(tags=["rfq-packages"])
 
 
+class RequestedBy(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=200)
+    company: Optional[str] = Field(default=None, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=200)
+
+
 class CreateRfqPackageBody(BaseModel):
     decision_ids: list[str]
     title: str | None = None
     supplier_name: str | None = None
     note: str | None = None
     include_raw_cad: bool = False
+    # Off unless the buyer deliberately sends our should-cost with this package.
+    include_cost_estimate: bool = False
+    reply_by: Optional[date] = None
+    # Omitted: the requester's name and email and the organization's name.
+    requested_by: Optional[RequestedBy] = None
+    # decision id → quantity to ask for (the builder prefills it, the buyer edits it).
+    quantities: dict[str, int] = Field(default_factory=dict)
+
+
+class PreviewBody(BaseModel):
+    decision_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
 def _safe_zip_name(title: str | None, package_id: str) -> str:
@@ -55,11 +76,31 @@ async def create_rfq_package(
             supplier_name=body.supplier_name,
             note=body.note,
             include_raw_cad=body.include_raw_cad,
+            include_cost_estimate=body.include_cost_estimate,
+            reply_by=body.reply_by,
+            requested_by=body.requested_by.model_dump() if body.requested_by else None,
+            quantities=body.quantities,
         ),
     )
     await session.commit()
     response.status_code = 201
     return {"package": svc.serialize_package(package, include_items=True)}
+
+
+@router.post("/preview")
+@limiter.limit("600/hour;5000/day")
+async def preview_rfq_package(
+    request: Request,
+    response: Response,
+    body: PreviewBody,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Each picked record as the supplier would be asked to quote it, before the
+    package is built: name, part number, material, the quantity (prefilled from
+    the part, editable) and where it came from, yearly volume, specs, and
+    whether ScaleCAD holds its CAD. Nothing is saved."""
+    return {"items": await svc.preview_items(session, user, body.decision_ids)}
 
 
 @router.get("")

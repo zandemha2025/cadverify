@@ -38,7 +38,7 @@
 <body>
 
   <!-- Header -->
-  <h1>Should-Cost &amp; Make-vs-Buy Report</h1>
+  <h1>{% if outbound is not none %}Cost estimate{% else %}Should-Cost &amp; Make-vs-Buy Report{% endif %}</h1>
   <p class="sub">
     <strong>{{ filename }}</strong>
     {% if label %}&mdash; {{ label }}{% endif %}
@@ -53,22 +53,23 @@
     assumptions (tagged DEFAULT / MODEL / SHOP / USER / MEASURED below).
     Confidence bands are <strong>assumption-based, not yet validated</strong>
     against measured shop outcomes &mdash; they are propagated from the stated
-    assumptions, not a guarantee. Use as a negotiation and design baseline,
-    not a quote.
+    assumptions, not a guarantee. {% if outbound is not none %}It is an estimate,
+    not a quote, an offer or a price you are held to.{% else %}Use as a negotiation and design baseline,
+    not a quote.{% endif %}
   </div>
 
   <!-- Persisted signoff travels with every exported decision record. A
-       supplier's copy (RFQ package, ``outbound``) states the review status and
-       the route requested; approvers, the recorded outcome and notes stay with
-       the organization. -->
+       supplier's copy (RFQ package, ``outbound``) states only the route
+       requested; the review status, approvers, the recorded outcome and notes
+       stay with the organization. A status is shown only when one is given. -->
   {% if outbound is not none %}
-  <h2>Review</h2>
+  <h2>{% if outbound.get('approval_status') %}Review{% else %}Request{% endif %}</h2>
   <div class="governance">
-    <strong>Status:</strong> {{ outbound.get('approval_status') or 'unreviewed' }}
+    {% if outbound.get('approval_status') %}<strong>Status:</strong> {{ outbound.get('approval_status') }}{% endif %}
     {% if outbound.get('is_stale') %}&middot; out of date: check again before quoting{% endif %}
     {% set req = outbound.get('requested') %}
     {% if req %}
-      &middot; <strong>Requested:</strong> {{ req.get('process') | process_name }} / {{ req.get('material') | pdf_text }} / quantity {{ req.get('quantity') }}
+      {% if outbound.get('approval_status') %}&middot; {% endif %}<strong>Requested:</strong> {{ req.get('process') | process_name }} / {{ req.get('material') | pdf_text }} / quantity {{ req.get('quantity') }}
     {% endif %}
     <div class="governance-note">The sender's machines, rates, choices and internal notes are not in this copy. A value marked hidden was set by the sender's shop.</div>
   </div>

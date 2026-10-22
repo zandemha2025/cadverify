@@ -20,8 +20,10 @@ May leave
   * findings: DFM verdicts, issues, blockers and fixes;
   * the should-cost on outside terms: per process, material and quantity, the
     price lines, the stated band, lead time, the engine's pick and crossover;
-  * what the buyer chose to send: quantities, the declared part (number,
-    description, material class, volumes, program), service conditions declared
+  * what the buyer chose to send: quantities, the part as it is asked for
+    (name, part number, material, the quantity and yearly volume), the
+    declared part (number, description, material class, volumes, program),
+    service conditions declared
     on the part, the part specs declared on it (finishes and Ra, heat treatment,
     inspection, the certifications the supplier must hold, NADCAP processes) and
     the price lines and lead days those specs add, the route they chose to buy
@@ -125,6 +127,10 @@ _PART_CONTEXT_KEYS = ("program", "parent_assembly", "units_per_parent", "annual_
 _SERVICE_ENV_KEYS = ("max_temp_c", "min_temp_c", "pressure_bar", "corrosive",
                      "sour_service", "medium", "standard")
 _RAW_CAD_KEYS = ("included", "reason", "filename", "bytes")
+# The part as the supplier is asked to quote it (rfq_package_service._request).
+_REQUEST_KEYS = ("name", "filename", "part_number", "description", "material", "quantity",
+                 "quantity_source", "yearly_volume", "process")
+_REQUEST_TEXT = ("name", "part_number", "description", "material")
 # The part specs the buyer declared (src.costing.part_specs): every field is the
 # buyer's own statement about the part and what its maker must hold.
 PART_SPEC_KEYS = ("finishes", "ra_um", "ra_unit", "heat_treatments", "inspection",
@@ -872,6 +878,16 @@ def rfq_item(item: Any, *, terms: Iterable[str] = ()) -> dict:
         out["part_context"] = None
     raw = item.get("raw_cad")
     out["raw_cad"] = _pick(raw, _RAW_CAD_KEYS) if isinstance(raw, dict) else None
+    req = item.get("request")
+    if isinstance(req, dict):
+        r = _pick(req, _REQUEST_KEYS)
+        for k in _REQUEST_TEXT:
+            if r.get(k) is not None:
+                r[k] = _field_text(r[k], _Terms(terms))
+        for k in ("quantity", "yearly_volume"):
+            if k in r and (isinstance(r[k], bool) or not isinstance(r[k], int)):
+                r[k] = None
+        out["request"] = r
     return out
 
 

@@ -94,15 +94,16 @@ def test_supplier_brief_and_line_items_name_what_the_supplier_must_hold():
                               unvalidated_count=0, raw_cad_included=False, live_supplier_send=False,
                               metadata_json={}, warnings_json=[])
     md = rfq._supplier_brief(package, items)
-    assert "## Part specs" in md and "### bracket.step" in md
-    assert "The supplier must hold: AS9100, ITAR registration, NADCAP, chemical processing, NADCAP, heat treating." in md
+    assert "### 1. bracket.step" in md
+    assert "- The supplier must hold: AS9100, ITAR registration, NADCAP, chemical processing, NADCAP, heat treating" in md
     assert "- Inspection: First article inspection, AS9102" in md
     html = rfq._supplier_brief_html(package, items)
-    assert "Part specs" in html and "ITAR registration" in html
+    assert "The supplier must hold" in html and "ITAR registration" in html
     rows = list(csv.reader(io.StringIO(rfq._line_items_csv(items))))
     head = rows[0]
     assert head[-2:] == ["part_specs", "supplier_must_hold"]
     assert "Heat treatment: Stress relief" in rows[1][head.index("part_specs")]
+    assert "Supplier must hold" not in rows[1][head.index("part_specs")]
     assert rows[1][head.index("supplier_must_hold")].startswith("AS9100; ITAR registration")
-    # A package without specs reads as before.
-    assert "## Part specs" not in rfq._supplier_brief(package, [])
+    # A package without specs names no certification.
+    assert "must hold" not in rfq._supplier_brief(package, [])

@@ -1592,13 +1592,26 @@ async def _declare_list_specs(session, org_id: str, user_id: int, file_bytes: by
         logger.warning("parts-list specs not stored for org %s part %.12s", org_id, mesh_hash, exc_info=True)
 
 
+def part_facts(list_meta: dict, run: dict) -> dict:
+    """A part's facts from its catalog run: the parts list's row for it, with the
+    run's Quantity ("each, unless listed") as its yearly quantity when the list
+    names none."""
+    run_qty = run.get("quantity")
+    if list_meta.get("quantity") or not isinstance(run_qty, int) or run_qty <= 0:
+        return list_meta
+    return {**list_meta, "quantity": run_qty}
+
+
 async def _declare_list_facts(session, org_id: str, user_id: int, batch_ulid: str, file_bytes: bytes,
                               list_meta: dict) -> None:
     """The parts list's current price and yearly quantity on the part's declared context.
 
-    Best effort, never breaks a run. A price typed on the part's Decision view
-    stays (it wins over a list's); a yearly quantity already declared stays.
-    Neither is an engine input, so no record goes out of date.
+    The yearly quantity is the list's for this file, else the run's own Quantity
+    ("each, unless listed": the same yearly figure for every part the list
+    doesn't name), so a part from a run says how many a year and an RFQ asks
+    for that many. Best effort, never breaks a run. A price typed on the part's
+    Decision view stays (it wins over a list's); a yearly quantity already
+    declared stays. Neither is an engine input, so no record goes out of date.
     """
     from src.services import part_context_service as pcs
     from src.services.analysis_service import compute_mesh_hash
@@ -1683,8 +1696,9 @@ async def _check_catalog_part(
     list_specs = list_meta.get("part_specs")
     if list_specs:
         await _declare_list_specs(session, batch_org_id, batch_user_id, file_bytes, list_specs)
-    # The list's price and yearly quantity go on the part, for its own page.
-    await _declare_list_facts(session, batch_org_id, batch_user_id, batch.ulid, file_bytes, list_meta)
+    # The list's price and yearly quantity (else the run's quantity) go on the part, for its own page.
+    await _declare_list_facts(session, batch_org_id, batch_user_id, batch.ulid, file_bytes,
+                              part_facts(list_meta, run_meta(batch)))
     # The material the list names is priced as that grade; one ScaleCAD can't
     # price leaves the part checked and not priced (never priced as another).
     material_name = list_meta.get("material") if list_meta.get("material_grade") else None

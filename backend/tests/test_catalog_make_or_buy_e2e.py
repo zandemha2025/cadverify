@@ -138,6 +138,12 @@ async def test_the_listed_material_is_priced_and_in_house_means_cheaper(world):
                                  {"u": dear["cost_decision_id"]})).scalar_one()
     assert ctx[0]["source"] == "parts_list" and ctx[0]["usd_each"] == 5000.0 and ctx[1] == 200
     assert stale is None
+    # buyer-18: a part the list doesn't name takes the run's Quantity as its yearly volume.
+    async with eng.get_session_factory()() as s:
+        unlisted = (await s.execute(text(
+            "SELECT annual_volume FROM part_contexts WHERE org_id = :o AND mesh_hash = :h"),
+            {"o": world["org"], "h": rows["not-on-the-list.stl"]["part_key"]})).scalar_one_or_none()
+    assert unlisted == 100
 
     # oo-22: one notification for the run, none per part.
     from src.jobs.batch_tasks import _notify_run_finished

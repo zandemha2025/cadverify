@@ -306,10 +306,13 @@ async def _built_package(shop_result, monkeypatch, *, disposition="inhouse"):
         "annual_volume": 1200, "service_environment": {"max_temp_c": 80, "corrosive": False},
         "provenance": "user_declared"}))
     monkeypatch.setattr(rfq, "precompute_cost_pdf", AsyncMock(return_value=b"%PDF"))
+    monkeypatch.setattr(rfq, "_run_facts", AsyncMock(return_value={}))
     package = await rfq.create_package(
         session, AuthedUser(user_id=42, api_key_id=0, key_prefix="session", role="analyst"),
         [d.ulid], rfq.RfqPackageOptions(title="Bracket RFQ", supplier_name="Supplier A",
-                                         note="Quote 100 and 1000, PA12 acceptable"),
+                                         note="Quote 100 and 1000, PA12 acceptable",
+                                         # The most a supplier can receive: our cost estimate too.
+                                         include_cost_estimate=True),
     )
     return package, d
 
@@ -354,10 +357,12 @@ async def test_rfq_package_as_built_viewed_and_downloaded_carries_nothing_of_the
         assert_nothing_private(body, name)
     report = next(b for n, b in files.items() if n.endswith("/should-cost-report.pdf")).decode()
     assert "Recorded outcome" not in report and "Signed by user" not in report
-    assert "Status:</strong> approved" in report
+    # No review state, even when the buyer sends the cost estimate.
+    assert "Status:" not in report and "approved" not in report
     rows = list(csv.DictReader(io.StringIO(
         next(b for n, b in files.items() if n.endswith("/cost-drivers.csv")).decode())))
-    assert rows and set(rows[0]) >= {"process", "unit_cost_usd", "approval_status"}
+    assert rows and set(rows[0]) >= {"process", "unit_cost_usd"}
+    assert "approval_status" not in rows[0]
     assert "approval_note" not in rows[0] and "user_disposition" not in rows[0]
     brief = files["supplier-brief.md"].decode()
     assert "Quote 100 and 1000, PA12 acceptable" in brief  # the buyer's note to the supplier
@@ -373,7 +378,7 @@ async def test_rfq_package_names_the_route_bought_outside(shop_result, monkeypat
     assert item["decision"]["requested"] == want
     files = await _zip_files(package, monkeypatch)
     line = next(csv.DictReader(io.StringIO(files["line-items.csv"].decode())))
-    assert (line["requested_process"], line["requested_quantity"]) == ("mjf", "100")
+    assert (line["process"], line["quantity"], line["material"]) == ("Nylon powder printing (MJF)", "100", "PA12 (Nylon 12)")
     report = next(b for n, b in files.items() if n.endswith("/should-cost-report.pdf")).decode()
     # The report names the process in plain words (the shared process names).
     from src.analysis.process_names import process_label
@@ -435,7 +440,8 @@ def test_supplier_report_pdf_text_carries_nothing_of_the_shop(shop_result):
     html = render_cost_html(snap, outbound.rfq_governance(item["decision"]))
     pdf = _render_cost_pdf_sync(snap, html)
     text = subprocess.run(["pdftotext", "-", "-"], input=pdf, capture_output=True, check=True).stdout
-    assert b"Should-Cost" in text and b"(MJF)" in text  # processes by name, not engine id
+    assert b"Cost estimate" in text and b"(MJF)" in text  # processes by name, not engine id
+    assert b"negotiation" not in text
     assert_nothing_private(text.replace(b"\n", b" "), "should-cost-report.pdf text")
 
 
