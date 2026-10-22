@@ -386,10 +386,11 @@ async def test_remaining_paid_routes_reject_trial_before_handlers(ledger):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         # ScaleCAD's fixes, mesh repair, Fit in context and Design Studio are
         # on every plan (test_tools_on_every_plan_admit_a_trial_account_without_a_check).
+        # So is a single part's direct upload; a batch ZIP's needs pilot or the
+        # free catalog run (tests/test_big_file_check_e2e.py covers both).
         for path in ('/validate/assembly?format=analysis',
                      '/validate?segmentation=sam3d', '/batch',
-                     '/reconstruct', '/uploads/multipart',
-                     '/uploads/example/parts', '/uploads/example/complete',
+                     '/reconstruct',
                      '/bom/ingest-assembly', '/ground-truth/recalibrate'):
             response = await client.post('/api/v1' + path, files={'file': ('part.stp', b'CAD')})
             assert response.status_code == 403, (path, response.text)
