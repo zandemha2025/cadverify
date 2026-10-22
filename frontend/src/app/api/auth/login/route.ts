@@ -7,10 +7,13 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 import { setSession } from "@/lib/session";
+import { crossSiteRefusal } from "@/lib/same-origin-request";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const crossSite = crossSiteRefusal(req);
+  if (crossSite) return crossSite;
   const body = await req.json().catch(() => ({}));
   const backendPath = "/auth/login";
   try {
