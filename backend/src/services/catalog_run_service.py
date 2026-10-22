@@ -856,6 +856,20 @@ def _price_text(stored: dict) -> str:
     return f"${price:,.2f}" + (f" per {per:,}" if per > 1 else " each")
 
 
+def make_or_buy_pick(make: dict, price_usd: float) -> tuple[str, str]:
+    """Making it on your machine (``{unit_cost_usd, low_usd}``) against what you pay today: ``(pick, basis)``.
+
+    The one rule the run, the part's machine load and the pilot report share.
+    """
+    from src.costing.decision import prefer_in_house
+
+    low = make.get("low_usd")
+    return prefer_in_house(
+        {"unit_cost_usd": make["unit_cost_usd"], "low_usd": low if low is not None else make["unit_cost_usd"],
+         "lead_low_days": None},
+        {"unit_cost_usd": price_usd, "lead_high_days": None})
+
+
 def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: Optional[dict], qty: int,
                        est: Optional[dict]) -> None:
     """Put a part a machine of yours can make in "Make in-house" or "Buy outside", by cost.
@@ -870,8 +884,6 @@ def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: O
     buckets and sets the saving. Sets ``make``, ``buy``, ``could_make`` and
     ``saving`` on the row and, when buying wins, the bucket, route and price.
     """
-    from src.costing.decision import prefer_in_house
-
     inside = (opt or {}).get("in_house") if isinstance(opt, dict) else None
     outside = (opt or {}).get("outside") if isinstance(opt, dict) else None
     if inside and _num(inside.get("unit_cost_usd")) is not None:
@@ -894,10 +906,7 @@ def decide_make_or_buy(row: dict, *, result: dict, opt: Optional[dict], price: O
     if buy is None:
         return  # nothing to buy it from: your machine is the only price
     if price is not None:
-        pick, basis = prefer_in_house(
-            {"unit_cost_usd": make["unit_cost_usd"], "low_usd": make["low_usd"] if make["low_usd"] is not None
-             else make["unit_cost_usd"], "lead_low_days": None},
-            {"unit_cost_usd": price["usd_each"], "lead_high_days": None})
+        pick, basis = make_or_buy_pick(make, price["usd_each"])
     else:
         pick, basis = (opt or {}).get("pick") or "in_house", (opt or {}).get("basis")
     row["make_or_buy_basis"] = basis
@@ -1675,8 +1684,10 @@ async def _split_records(session: AsyncSession, org_id: str, split: dict) -> tup
     return decisions, analyses
 
 
+# The outcome recorded on a part's record, as the CSV and the board say it (cost_decision_service.DISPOSITION_LABELS).
 OUTCOME_WORDS = {"inhouse": "Make in-house", "outside": "Make outside",
-                 "acquire": "Acquire capability", "redesign": "Redesign"}
+                 "acquire": "Acquire capability", "redesign": "Redesign",
+                 "supplier": "Keep buying from our supplier"}
 
 BUCKET_WORDS = {
     "in_house": "Make in-house",

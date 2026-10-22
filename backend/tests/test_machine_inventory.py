@@ -426,7 +426,7 @@ def _stored_lathe(**over):
     base = dict(name="ST-20", process="cnc_turning", count=1, max_workpiece_kg=100.0,
                 hourly_rate_usd=None, capital_frac=None,
                 capabilities={"swing_dia": 254.0, "between_centers": 533.0},
-                materials=["304 Stainless"], material_thickness_map=None, notes=None,
+                materials=["304 Stainless"], material_thickness_map=None, notes=None, schedule=None,
                 updated_at=None)
     base.update(over)
     return types.SimpleNamespace(**base)
@@ -617,6 +617,41 @@ async def test_unknown_top_level_fields_are_a_400_over_http(monkeypatch):
                          json={"opps": {"hip": True}})
         assert r.status_code == 400, r.text
         assert "unknown field 'opps'" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_machines_hours_a_year_are_set_without_marking_records_out_of_date(monkeypatch):
+    """op-13: 3 VF-2s on two 8-hour shifts. Hours available are capacity, never a fit axis."""
+    from httpx import ASGITransport, AsyncClient
+
+    import src.api.machine_inventory as api
+
+    marked: list = []
+
+    async def mark(*args, **kwargs):
+        marked.append(1)
+
+    app = _validation_app(monkeypatch)
+    monkeypatch.setattr(api, "_mark_org_verdicts_stale", mark)
+
+    async def stored(session, org_id, ulid):
+        return _stored_lathe(ulid="m1", created_at=None)
+
+    monkeypatch.setattr(svc, "get_machine", stored)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.patch("/api/v1/machine-inventory/m1",
+                           json={"schedule": {"shifts": 2, "hours_per_shift": 8, "days_per_year": 240}})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["schedule"] == {"shifts": 2, "hours_per_shift": 8.0, "days_per_year": 240}
+        assert body["available"]["hours"] == 3840.0 and body["available"]["set"] is True
+        assert marked == []
+        bad = await ac.patch("/api/v1/machine-inventory/m1", json={"schedule": {"shifts": 3, "hours_per_shift": 9}})
+        assert bad.status_code == 400 and "at most 24 hours a day" in bad.json()["detail"]
+        r = await ac.patch("/api/v1/machine-inventory/m1", json={"hourly_rate_usd": 85})
+        assert r.status_code == 200 and marked == [1]
+        # Not set: the default, said as assumed.
+        assert r.json()["available"]["text"] == "2 shifts × 8 h × 240 days = 3,840 h a year (assumed; set its hours in Your shop)"
 
 
 # ── printer details (additive capability keys) ────────────────────────────────

@@ -522,6 +522,37 @@ def test_four_way_disposition_persists_withdraws_and_preserves_engine_artifact(
     assert dec.result_json == original_artifact
 
 
+def test_keep_buying_from_our_supplier_records_the_quantity_and_todays_price(client, real_result_json, monkeypatch):
+    """op-08: the outcome the pilot tester couldn't record. A buy outcome, no route of ScaleCAD's."""
+    from types import SimpleNamespace
+
+    from src.services import part_context_service as pcs
+
+    cl, app = client
+    dec = _make_decision("01DISPSUPPLIER00000000000A", copy.deepcopy(real_result_json), user_id=42)
+    dec.org_id = "org_supplier"
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+
+    async def ctx(_session, _org, _key):
+        return SimpleNamespace(buy_price={"usd_each": 8.66, "source": "parts_list"}, annual_volume=200)
+
+    monkeypatch.setattr(pcs, "get_context", ctx)
+    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
+    r = cl.put(url, json={"disposition": "supplier", "quantity": 200, "note": "Supplier holds the anodize line"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user_disposition"] == "supplier"
+    assert body["user_disposition_label"] == "Keep buying from our supplier"
+    assert body["disposition_basis"] == {"supplier": True, "quantity": 200, "usd_each": 8.66,
+                                         "price_source": "parts_list"}
+    # Without a quantity: the part's yearly quantity. A process of ScaleCAD's isn't one.
+    dec.user_disposition = None
+    dec.disposition_basis = None
+    assert cl.put(url, json={"disposition": "supplier"}).json()["disposition_basis"]["quantity"] == 200
+    assert cl.put(url, json={"disposition": "supplier", "process": "cnc_3axis"}).status_code == 400
+    assert dec.result_json == real_result_json
+
+
 def test_disposition_binds_exact_quantity_and_checks_its_owned_route(client, real_result_json):
     cl, app = client
     report = copy.deepcopy(real_result_json)
@@ -716,6 +747,7 @@ def test_disposition_contract_is_documented_in_openapi(client):
         "outside",
         "acquire",
         "redesign",
+        "supplier",
     ]
     note_schema = next(
         item for item in schema["properties"]["note"]["anyOf"] if item.get("type") == "string"

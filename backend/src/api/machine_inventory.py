@@ -69,6 +69,7 @@ class MachineBody(BaseModel):
     materials: Optional[list] = None
     material_thickness_map: Optional[dict] = None
     notes: Optional[str] = None
+    schedule: Optional[dict] = None
     provenance: Optional[str] = None
 
 
@@ -85,6 +86,7 @@ class MachinePatchBody(BaseModel):
     materials: Optional[list] = None
     material_thickness_map: Optional[dict] = None
     notes: Optional[str] = None
+    schedule: Optional[dict] = None
     provenance: Optional[str] = None
 
 
@@ -363,14 +365,17 @@ async def machine_load(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """The hours of work the org's checked parts put on each machine it owns.
+    """The hours of work the org's checked parts put on each machine it owns, against its hours a year.
 
-    Per machine: parts and machine hours, from each part's newest record and the
-    outcome recorded on it: a recorded "Make in-house" at its quantity, else (no
-    outcome yet), when its newest record sorts it onto that machine, the
-    quantity it was checked for (else 100 of each). Parts recorded another way
-    are only counted. Every hour is the
-    engine's machine time per part × quantity. Org-scoped (403 without an org).
+    Each part counts at its yearly quantity (a catalog run's parts list, or set
+    on the part; else the quantity it was checked for, else 100), on the machine
+    its recorded "Make in-house" names or, undecided, the one its newest record
+    sorts it onto, unless what the org pays today beats making it (bought, no
+    hours). Parts recorded another way (outside, keep buying, acquire, redesign)
+    are only counted. Per machine: hours needed, ``available_hours`` (schedule ×
+    count, else 2 shifts × 8 h × 240 days, said as assumed),
+    ``utilization_pct`` and ``overloaded``. Every hour is the engine's machine
+    time per part × quantity. Org-scoped (403 without an org).
     """
     from src.services import machine_load_service
 
@@ -416,8 +421,10 @@ async def patch_machine(
         raise HTTPException(status_code=400, detail=str(exc))
     if row is None:
         raise HTTPException(status_code=404, detail="no such machine in org")
-    # An edited machine changes the §0 verdict for many parts → mark stale.
-    await _mark_org_verdicts_stale(session, org_id)
+    # An edited machine changes the §0 verdict for many parts → mark stale. Its
+    # hours a year (schedule) and notes change no verdict or price, so they don't.
+    if not set(fields) <= {"schedule", "notes"}:
+        await _mark_org_verdicts_stale(session, org_id)
     await _emit_machine_audit(
         session, user.user_id, org_id, "machine.updated", row.ulid
     )

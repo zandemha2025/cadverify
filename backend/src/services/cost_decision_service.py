@@ -44,7 +44,11 @@ DISPOSITION_LABELS = {
     "outside": "Make outside",
     "acquire": "Acquire capability",
     "redesign": "Redesign",
+    # Bought, as today: from the supplier the org buys it from, at its current price (0064).
+    "supplier": "Keep buying from our supplier",
 }
+# Outcomes that buy the part rather than make it on a machine of yours.
+BUY_OUTCOMES = ("outside", "supplier")
 
 
 def cost_persist_enabled() -> bool:
@@ -656,6 +660,30 @@ def _chosen_route_error(disposition: str, estimate: dict) -> str | None:
     return None
 
 
+async def _supplier_basis(session: AsyncSession, d: CostDecision, quantity: int | None,
+                          prior: Any) -> dict:
+    """What "Keep buying from our supplier" records: the quantity and today's price.
+
+    ``{"supplier": True, "quantity", "usd_each", "price_source"}``. The price is
+    the part's current price (typed on its Decision view, or from a catalog
+    run's parts list), or None when none is known: the outcome stands without
+    one, it just has no figure. The quantity is the one decided at, else the
+    one recorded before, else the part's yearly quantity.
+    """
+    from src.services import part_context_service as pcs
+
+    ctx = await pcs.get_context(session, d.org_id, d.mesh_hash) if d.mesh_hash else None
+    price = getattr(ctx, "buy_price", None) if ctx is not None else None
+    usd = price.get("usd_each") if isinstance(price, dict) else None
+    if quantity is None and isinstance(prior, dict):
+        quantity = prior.get("quantity")
+    if quantity is None and ctx is not None:
+        quantity = getattr(ctx, "annual_volume", None)
+    return {"supplier": True, "quantity": int(quantity) if quantity else None,
+            "usd_each": float(usd) if isinstance(usd, (int, float)) and usd > 0 else None,
+            "price_source": price.get("source") if isinstance(price, dict) and usd else None}
+
+
 async def set_disposition_owned(
     session: AsyncSession,
     ulid: str,
@@ -699,7 +727,11 @@ async def set_disposition_owned(
     previous_basis = getattr(d, "disposition_basis", None)
     basis = previous_basis if disposition is not None else None
     estimate = None
-    if disposition is not None:
+    if disposition == "supplier":
+        if process is not None:
+            raise HTTPException(status_code=400, detail="Keep buying from our supplier names no process of ScaleCAD's")
+        basis = await _supplier_basis(session, d, quantity, previous_basis if previous == "supplier" else None)
+    elif disposition is not None:
         if quantity is not None or process is not None or previous is None or previous_basis:
             prior = previous_basis if isinstance(previous_basis, dict) else {}
             selected_quantity = quantity if quantity is not None else prior.get("quantity")

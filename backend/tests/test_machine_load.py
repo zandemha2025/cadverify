@@ -38,7 +38,7 @@ MILL = _result("makeable_in_house", machine="Haas VF-2", process="cnc_3axis",
 def test_not_decided_lands_on_the_machine_the_record_sorts_it_onto_at_100_of_each():
     load = ml.part_load(MILL, None, None)
     assert load == {"basis": "default", "machine": "Haas VF-2", "process": "cnc_3axis", "quantity": 100,
-                    "hours_each": 0.25, "hours": 25.0}
+                    "quantity_basis": "default", "hours_each": 0.25, "hours": 25.0}
 
 
 def test_not_decided_counts_at_the_quantity_the_part_was_checked_for():
@@ -61,6 +61,78 @@ def test_a_recorded_in_house_outcome_counts_at_its_own_quantity_and_route():
     # Recorded on another route of yours: that route's machine.
     other = ml.part_load(MILL, "inhouse", {"process": "mjf", "quantity": 100})
     assert (other["machine"], other["hours"]) == ("HP Jet Fusion 5200", 10.0)
+
+
+# op-12: the parts list's yearly quantity, on the ladder or off it, is the load's quantity.
+LISTED = {**MILL, "quantities": [1, 100, 1000, 2000, 5000, 10000],
+          "estimates": [_est("cnc_3axis", 100, 0.1), _est("cnc_3axis", 1000, 0.069)],
+          "decision": {"options": {"1000": {"in_house": {"process": "cnc_3axis", "machine": "Haas VF-2",
+                                                         "unit_cost_usd": 20.0, "low_usd": 17.0, "high_usd": 23.0}},
+                                   "100": {"in_house": {"process": "cnc_3axis", "machine": "Haas VF-2",
+                                                        "unit_cost_usd": 25.0, "low_usd": 21.0, "high_usd": 29.0}}}}}
+
+
+def test_a_part_counts_at_its_yearly_quantity_also_when_the_ladder_already_has_it():
+    # RFS-21030: 1,000 a year sits on the ladder, so the record names no "checked" quantity; it was counted at 100.
+    load = ml.part_load(LISTED, None, None, yearly=1000)
+    assert (load["quantity"], load["quantity_basis"], load["hours"]) == (1000, "yearly", 69.0)
+    # A yearly quantity the record didn't price: the checked one, else the default (never an estimate here).
+    assert ml.load_quantity(LISTED, 750) == (100, "default")
+    assert ml.load_quantity({"quantities": [1, 100, 750, 2000, 5000, 10000]}, 750) == (750, "yearly")
+
+
+def test_a_sign_off_at_another_quantity_never_changes_the_load_basis():
+    # The valve stem signed off at 100 (op-08): its load stays at its 1,000 a year, and says it was decided at 100.
+    load = ml.part_load(LISTED, "inhouse", {"process": "cnc_3axis", "quantity": 100}, yearly=1000)
+    assert (load["basis"], load["quantity"], load["decided_quantity"], load["hours"]) == ("decided", 1000, 100, 69.0)
+    out = ml.machine_load([{"part_key": "s", "file_name": "stem.step", "result": LISTED, "disposition": "inhouse",
+                            "basis": {"process": "cnc_3axis", "quantity": 100}, "yearly": 1000}])
+    assert out["decided_at_other_quantity"] == 1 and out["machines"][0]["hours"] == 69.0
+
+
+def test_a_part_cheaper_to_keep_buying_adds_no_hours():
+    # Undecided, a machine of yours could make it, but what you pay today is below its range: bought, as the run sorts it.
+    load = ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 12.0, "source": "parts_list"})
+    assert load["basis"] == "bought" and (load["make_each"], load["buy_each"]) == (20.0, 12.0)
+    # Inside the range (a tie by the run's rule) it stays on your machine; above it, it's made.
+    assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 18.0})["basis"] == "checked"
+    assert ml.part_load(LISTED, None, None, yearly=1000, buy_price={"usd_each": 33.0})["hours"] == 69.0
+    # Recorded "Keep buying from our supplier": a buy outcome, never machine hours.
+    assert ml.part_load(LISTED, "supplier", {"supplier": True, "quantity": 1000}) == {"basis": "other",
+                                                                                     "disposition": "supplier"}
+    out = ml.machine_load([
+        {"part_key": "a", "result": LISTED, "yearly": 1000, "buy_price": {"usd_each": 12.0}},
+        {"part_key": "b", "result": LISTED, "disposition": "supplier", "basis": {"supplier": True}},
+        {"part_key": "c", "result": LISTED, "yearly": 1000}])
+    assert (out["bought"], out["other_decisions"], out["machines"][0]["parts"]) == (1, 1, 1)
+
+
+def test_capacity_is_schedule_times_count_and_says_when_its_assumed():
+    cap = ml.capacity_by_name([{"name": "Haas VF-2 (mill cell)", "count": 3, "schedule": None},
+                               {"name": "Lathe", "count": 1, "schedule": {"shifts": 1, "hours_per_shift": 8,
+                                                                         "days_per_year": 250}}])
+    assert cap["Haas VF-2 (mill cell)"]["hours"] == 11520.0 and cap["Haas VF-2 (mill cell)"]["set"] is False
+    assert cap["Lathe"]["hours"] == 2000.0 and cap["Lathe"]["set"] is True
+    assert ml.schedule_text(cap["Haas VF-2 (mill cell)"]) == (
+        "3 machines × 2 shifts × 8 h × 240 days = 11,520 h a year (assumed; set its hours in Your shop)")
+    assert ml.schedule_text(cap["Lathe"]) == "1 shift × 8 h × 250 days = 2,000 h a year"
+    rows = ml.with_capacity([{"machine": "Haas VF-2 (mill cell)", "hours": 2830.0},
+                             {"machine": "Lathe", "hours": 2161.0}, {"machine": "Elsewhere", "hours": 5.0}], cap)
+    assert [(r["utilization_pct"], r["overloaded"]) for r in rows] == [(24.6, False), (108.0, True), (None, None)]
+    assert ml.overloaded_words(rows) == ["Lathe: 2,161 h needed of 2,000 h a year (108%)"]
+
+
+@pytest.mark.parametrize("raw, words", [
+    ({"shifts": 0}, "shifts must be from 1 to 4"),
+    ({"hours_per_shift": 30}, "hours per shift must be from 0.5 to 24"),
+    ({"shifts": 3, "hours_per_shift": 10}, "at most 24 hours a day"),
+    ({"weeks": 50}, "unknown schedule field"),
+    ("2x8", "must be an object"),
+])
+def test_a_schedule_it_cant_use_names_the_field(raw, words):
+    with pytest.raises(ValueError, match=words):
+        ml.normalize_schedule(raw)
+    assert ml.normalize_schedule({"shifts": 3}) == {"shifts": 3, "hours_per_shift": 8.0, "days_per_year": 240}
 
 
 def test_a_quantity_the_record_didnt_price_leaves_the_hours_unknown():
@@ -154,6 +226,14 @@ async def orgs():
         listed = {**MILL, "estimates": [_est("cnc_3axis", 25, 0.3)]}
         s.add(rec("mine", "d" * 64, listed, quantities=[1, 25, 1000, 2000, 5000, 10000]))
         s.add(rec("theirs", "c" * 64, MILL))
+        # Part b is listed at 10 a year; the Haas cell is 2 machines on one 8-hour shift, 200 days.
+        await s.execute(text("INSERT INTO part_contexts (ulid, org_id, mesh_hash, annual_volume) "
+                             "VALUES (:u, :o, :h, 10)"), {"u": str(ULID()), "o": ids["mine"][0], "h": "b" * 64})
+        await s.execute(text(
+            "INSERT INTO machine_instances (ulid, org_id, name, process, count, capabilities, schedule) "
+            "VALUES (:u, :o, 'Haas VF-2', 'cnc_3axis', 2, '{}', "
+            "'{\"shifts\": 1, \"hours_per_shift\": 8, \"days_per_year\": 200}')"),
+            {"u": str(ULID()), "o": ids["mine"][0]})
     app = FastAPI()
     app.state.limiter = limiter
     app.include_router(router, prefix="/api/v1/machine-inventory")
@@ -163,6 +243,8 @@ async def orgs():
         async with eng.get_session_factory()() as s, s.begin():
             for org, uid in ids.values():
                 await s.execute(text("DELETE FROM cost_decisions WHERE org_id = :o"), {"o": org})
+                await s.execute(text("DELETE FROM part_contexts WHERE org_id = :o"), {"o": org})
+                await s.execute(text("DELETE FROM machine_instances WHERE org_id = :o"), {"o": org})
                 await s.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
                 await s.execute(text("DELETE FROM users WHERE id = :u"), {"u": uid})
         await eng.dispose_engine()
@@ -187,9 +269,14 @@ async def test_load_endpoint_reads_only_the_callers_org(orgs):
     assert body["parts"] == 3  # the other org's part isn't read
     (haas,) = body["machines"]
     assert (haas["machine"], haas["parts"], haas["decided_parts"], haas["decided_hours"]) == ("Haas VF-2", 3, 1, 5.0)
-    assert (haas["default_parts"], haas["default_hours"], haas["hours"]) == (2, 32.5, 37.5)
+    # b counts at its 10 a year (5 h), d at its listed 25 (7.5 h), a as decided at 10 (5 h).
+    assert (haas["default_parts"], haas["default_hours"], haas["hours"]) == (2, 12.5, 17.5)
     listed = next(t for t in haas["top"] if t["part_key"] == "d" * 64)
     assert (listed["basis"], listed["quantity"], listed["hours"]) == ("checked", 25, 7.5)
+    yearly = next(t for t in haas["top"] if t["part_key"] == "b" * 64)
+    assert (yearly["quantity"], yearly["quantity_basis"], yearly["hours"]) == (10, "yearly", 5.0)
+    assert (haas["available_hours"], haas["utilization_pct"], haas["overloaded"]) == (3200.0, 0.5, False)
+    assert haas["capacity"]["text"] == "2 machines × 1 shift × 8 h × 200 days = 3,200 h a year"
     _, other_uid = orgs["ids"]["theirs"]
     theirs = (await _get(orgs["app"], other_uid, "/api/v1/machine-inventory/load")).json()
     assert theirs["parts"] == 1 and theirs["machines"][0]["decided_parts"] == 0

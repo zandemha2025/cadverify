@@ -561,6 +561,14 @@ def validate_machine(fields: dict) -> None:
         if not _is_number(cf) or not (0.0 <= cf <= 1.0):
             errors.append("capital_frac must be in [0,1] and finite")
 
+    if fields.get("schedule") is not None:
+        from src.services.machine_load_service import normalize_schedule
+
+        try:
+            normalize_schedule(fields.get("schedule"))
+        except ValueError as exc:
+            errors.append(str(exc))
+
     proc = process if isinstance(process, str) else None
     _validate_capabilities(fields.get("capabilities"), errors, fields.get("process"))
     _validate_materials(fields.get("materials"), errors, proc)
@@ -582,6 +590,8 @@ _MUTABLE_FIELDS = (
     "materials",
     "material_thickness_map",
     "notes",
+    # Hours available a year (0064): capacity, never a fit axis (machine_load_service).
+    "schedule",
 )
 
 # ``provenance`` is the one non-stored field a write may carry: a catalog
@@ -601,6 +611,10 @@ def _normalize(fields: dict) -> dict:
     out = {k: fields.get(k) for k in _MUTABLE_FIELDS}
     if out.get("count") is None:
         out["count"] = 1
+    if out.get("schedule") is not None:
+        from src.services.machine_load_service import normalize_schedule
+
+        out["schedule"] = normalize_schedule(out["schedule"])
     if out.get("capabilities") is None:
         out["capabilities"] = {}
     proc = out.get("process") if isinstance(out.get("process"), str) else None
@@ -898,7 +912,7 @@ async def update_machine(
     row = await get_machine(session, org_id, ulid)
     if row is None:
         return None
-    merged = {k: getattr(row, k) for k in _MUTABLE_FIELDS}
+    merged = {k: getattr(row, k, None) for k in _MUTABLE_FIELDS}
     for k in _MUTABLE_FIELDS:
         if k in fields:
             merged[k] = fields[k]
@@ -1358,6 +1372,13 @@ def catalog_options() -> list[dict]:
 
 
 # ── serialization ─────────────────────────────────────────────────────────────
+def _available(r: MachineInstance) -> dict:
+    from src.services.machine_load_service import available_hours, schedule_text
+
+    cap = available_hours(getattr(r, "schedule", None), r.count)
+    return {**cap, "text": schedule_text(cap)}
+
+
 def machine_to_public(r: MachineInstance) -> dict:
     """The API view of a stored owned machine (ULID as the opaque public id).
 
@@ -1376,6 +1397,9 @@ def machine_to_public(r: MachineInstance) -> dict:
         "materials": r.materials,
         "material_thickness_map": r.material_thickness_map,
         "notes": r.notes,
+        # The hours it is available a year: its own schedule, else the default (said as assumed).
+        "schedule": getattr(r, "schedule", None),
+        "available": _available(r),
         "provenance": "user",
         # Values still exactly as the maker publishes them (from the catalog),
         # labelled with the maker's page. Absent field = the shop's own value.

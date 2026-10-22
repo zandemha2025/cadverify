@@ -60,7 +60,7 @@ class ApprovalBody(BaseModel):
 
 
 class DispositionBody(BaseModel):
-    disposition: Literal["inhouse", "outside", "acquire", "redesign"] | None
+    disposition: Literal["inhouse", "outside", "acquire", "redesign", "supplier"] | None
     note: str | None = Field(default=None, max_length=1000)
     quantity: int | None = Field(default=None, gt=0, strict=True)
     # The route the user chose. Omitted: the engine's recommendation at the
