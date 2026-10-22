@@ -10,7 +10,7 @@
  *   unpacks) a check takes that route; smaller files keep the one-request check,
  *   except a STEP or IGES file whose estimated memory is over what the web
  *   process gives one check (`overWebCheckMemory`, the backend's own model): on a
- *   2 GB machine that is from about 3 MB. The web process refuses such a file
+ *   4 GB web machine that is from about 9 MB. The web process refuses such a file
  *   (413 CHECK_TOO_LARGE) before parsing it; it goes to the worker instead.
  * - The web request's own limit, `MAX_UPLOAD_MB` (100 MB: backend `routes.py`
  *   `_max_upload_bytes` and `fly.toml`), still applies to the steps that send the
@@ -72,11 +72,11 @@ export const MEMORY_HEADROOM = 1.1;
 
 /**
  * What the web process gives one check: `CHECK_MEMORY_FRACTION` (0.6) of its
- * machine's memory, a 2 GB Fly machine in production (fly.toml `[[vm]]`).
+ * machine's memory, a 4 GB Fly web machine in production (fly.toml's web `[[vm]]`).
  * A larger web machine only means some files go to the worker that the web
  * process could have taken; the worker checks them the same way.
  */
-export const WEB_CHECK_MEMORY_BUDGET_BYTES = Math.floor(0.6 * 2048 * MIB);
+export const WEB_CHECK_MEMORY_BUDGET_BYTES = Math.floor(0.6 * 4096 * MIB);
 
 export function estimateStepMemoryBytes(sizeBytes: number): number {
   const x = sizeBytes / MIB;

@@ -48,7 +48,7 @@ outbound rules) instead of `verifying`; the rest is the same.
 | A file unpacked from `.gz`/`.zip` | 2 GiB, at most 200x its compressed size, ZIP at most 64 entries, one part | `src/services/part_archive.py` |
 | Uploads at once, per organization | free 2 and 4 GiB; other plans 4 and 10 GiB | `active_upload_count_limit`, `active_upload_bytes_limit` |
 | A web request's own upload | 100 MB (`MAX_UPLOAD_MB`) | re-checks from a file in the tab, fixes, Fit |
-| What a web request checks | the same memory model against the web process's own budget; on a 2 GB machine about 3 MB of STEP or IGES, 22 MB of binary STL | `routes.refuse_over_memory_budget` |
+| What a web request checks | the same memory model against the web process's own budget; on a 4 GB web machine about 9 MB of STEP or IGES, 72 MB of binary STL | `routes.refuse_over_memory_budget` |
 | What one worker can check | memory-bound, below | `stored_check_service.check_memory_budget_bytes` |
 
 Over the memory budget the check stops before parsing and says so, for example:
@@ -67,9 +67,9 @@ bytes) against what its own process gives one check
 it, the request is refused before parsing: 413 `CHECK_TOO_LARGE`, the
 worker's own message, and the big-file endpoints
 (`big_file_check: {upload, check}`). `MAX_UPLOAD_MB` stays the outer cap.
-On a 2 GB web machine that is about 3 MB of STEP or IGES and 22 MB of binary
+On a 4 GB web machine that is about 9 MB of STEP or IGES and 72 MB of binary
 STL, so the 20 MB rule alone would leave STEP and IGES files between about
-3 and 20 MB refused by the web path.
+9 and 20 MB refused by the web path.
 
 The app therefore sends a STEP or IGES file to the worker path whenever its
 estimated memory is over the web budget, from its size alone
@@ -140,9 +140,9 @@ is interpolated from the table above with 10% headroom
 
 | Worker memory | Budget for one check | Largest binary STL | Largest STEP or IGES (assemblies like these) |
 |---|---|---|---|
-| 2 GB (production today) | 1.2 GB | 22 MB (0.46 M triangles) | 3 MB |
-| 4 GB | 2.4 GB | 72 MB (1.5 M) | 9 MB |
-| 8 GB | 4.8 GB | 173 MB (3.6 M) | 22 MB |
+| 2 GB (production before 2026-10-22) | 1.2 GB | 22 MB (0.46 M triangles) | 3 MB |
+| 4 GB (web machines, fly.toml) | 2.4 GB | 72 MB (1.5 M) | 9 MB |
+| 8 GB (worker machines, fly.toml and infra/aws) | 4.8 GB | 173 MB (3.6 M) | 22 MB |
 | 16 GB | 9.6 GB | 374 MB (7.9 M) | 49 MB |
 | 32 GB | 19.2 GB | 777 MB (16 M) | 102 MB |
 

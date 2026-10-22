@@ -87,8 +87,8 @@ test("a STEP or IGES file over the web process's memory goes to the worker (the 
   assert.match(service, /IGES_MEMORY_POINTS = STEP_MEMORY_POINTS/);
   assert.match(service, /os\.getenv\("CHECK_MEMORY_FRACTION", "0\.6"\)/);
   const fly = readFileSync(new URL("fly.toml", backend), "utf8");
-  assert.match(fly, /\[\[vm\]\]\s*\n\s*memory = "2gb"/);
-  assert.equal(WEB_CHECK_MEMORY_BUDGET_BYTES, Math.floor(0.6 * 2048 * 1024 * 1024));
+  assert.match(fly, /\[\[vm\]\]\s*\n\s*processes = \["web"\]\s*\n\s*memory = "4gb"/);
+  assert.equal(WEB_CHECK_MEMORY_BUDGET_BYTES, Math.floor(0.6 * 4096 * 1024 * 1024));
 
   // The same numbers the backend's _interp gives (MB of file -> MB, times 1.1).
   const MB = 1024 * 1024;
@@ -99,13 +99,13 @@ test("a STEP or IGES file over the web process's memory goes to the worker (the 
   const twenty = 2396 + ((2396 - 1531) * (20 - 10.07)) / (10.07 - 4.92);
   assert.equal(estimateStepMemoryBytes(20 * MB), Math.floor(twenty * 1.1 * MB));
 
-  // On a 2 GB machine: about 3 MB of STEP or IGES is the most a web check holds.
-  assert.equal(overWebCheckMemory({ name: "asm.step", size: 2.5 * MB }), false);
-  assert.equal(overWebCheckMemory({ name: "asm.step", size: 3.2 * MB }), true);
-  assert.equal(overWebCheckMemory({ name: "asm.STP", size: 5 * MB }), true);
-  assert.equal(overWebCheckMemory({ name: "plate.igs", size: 4 * MB }), true);
+  // On a 4 GB web machine: about 9 MB of STEP or IGES is the most a web check holds.
+  assert.equal(overWebCheckMemory({ name: "asm.step", size: 5 * MB }), false);
+  assert.equal(overWebCheckMemory({ name: "asm.step", size: 8.9 * MB }), false);
+  assert.equal(overWebCheckMemory({ name: "asm.STP", size: 9.3 * MB }), true);
+  assert.equal(overWebCheckMemory({ name: "plate.igs", size: 12 * MB }), true);
   assert.equal(overWebCheckMemory({ name: "plate.iges", size: 1 * MB }), false);
   // STL is sized by triangles on the server; the 20 MB rule and the server's 413 cover it.
   assert.equal(overWebCheckMemory({ name: "mesh.stl", size: 15 * MB }), false);
-  assert.equal(needsStoredCheck({ name: "asm.step", size: 5 * MB }), true);
+  assert.equal(needsStoredCheck({ name: "asm.step", size: 12 * MB }), true);
 });
