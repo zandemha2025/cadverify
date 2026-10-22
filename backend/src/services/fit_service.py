@@ -321,11 +321,19 @@ def parse_supplementary_mesh(data: bytes, filename: str, *, max_expanded_bytes: 
     elif suffix == ".3mf":
         if not data.startswith(b"PK"):
             raise FitGeometryError("part is not a structurally valid 3MF package.")
+        from src.services.xml_guard import declares_dtd
+
         try:
             with ZipFile(BytesIO(data)) as archive:
-                if sum(info.file_size for info in archive.infolist()) > max_expanded_bytes:
+                infos = archive.infolist()
+                if sum(info.file_size for info in infos) > max_expanded_bytes:
                     raise FitGeometryError("3MF expanded package exceeds the upload limit; reduce its contents and retry.")
-        except BadZipFile as exc:
+                # A 3MF (OPC) package never carries a DTD: refuse one in any part, in any
+                # encoding, before the mesh loader's XML parser sees it.
+                if any(not info.is_dir() and declares_dtd(archive.read(info)) for info in infos):
+                    raise FitGeometryError("part's 3MF package carries an XML DOCTYPE, which 3MF doesn't allow; "
+                                           "re-export it and retry.")
+        except (BadZipFile, NotImplementedError, RuntimeError, EOFError) as exc:
             raise FitGeometryError("part is not a structurally valid 3MF package.") from exc
         kind = "3mf"
     else:

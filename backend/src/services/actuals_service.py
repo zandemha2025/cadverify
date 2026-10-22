@@ -37,12 +37,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import ProcessType
+from src.services.xml_guard import declares_dtd
 
 MAX_ROWS = 5000
 MAX_PARTS_LISTED = 2000
 MAX_COLUMNS = 200
 _XLSX_MAX_UNZIPPED = 60 * 1024 * 1024
 _XLSX_MAX_RATIO = 200
+# Any one XML part of a workbook (a 5,000-row, 200-column sheet is about 40 MB).
+_XLSX_MAX_PART = 40 * 1024 * 1024
+# Excel's own limit for one cell; a longer one didn't come from Excel.
+MAX_CELL_CHARS = 32_767
 
 # ---------------------------------------------------------------------------
 # Fields a column can map to
@@ -286,14 +291,28 @@ _DATE_FMT_IDS = {14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 30, 36, 45, 46, 47, 50,
 
 
 def _xml(zf: zipfile.ZipFile, name: str) -> ET.Element:
-    raw = zf.read(name)
-    head = raw[:4096].upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in raw.upper():
+    """One XML part of the workbook: at most ``_XLSX_MAX_PART`` bytes, and never with a DTD."""
+    try:
+        with zf.open(name) as fh:
+            raw = fh.read(_XLSX_MAX_PART + 1)
+    except (zipfile.BadZipFile, NotImplementedError, RuntimeError, EOFError, OSError) as exc:
+        # A damaged entry, a compression or encryption zipfile doesn't read.
+        raise TableError("The spreadsheet couldn't be opened. Save it as .xlsx or CSV again and import that.") from exc
+    if len(raw) > _XLSX_MAX_PART:
+        raise TableError("The spreadsheet is too large to read. Save the sheet as CSV and import that.")
+    if declares_dtd(raw):
         raise TableError("This spreadsheet carries XML features ScaleCAD doesn't read. Save it as CSV and import that.")
     try:
         return ET.fromstring(raw)
     except ET.ParseError as exc:
         raise TableError("The spreadsheet couldn't be read. Save it as CSV and import that.") from exc
+
+
+def _cell_text(text: str) -> str:
+    if len(text) > MAX_CELL_CHARS:
+        raise TableError(f"A cell in the spreadsheet is longer than {MAX_CELL_CHARS:,} characters, "
+                         "more than Excel itself allows. Save the sheet as CSV and import that.")
+    return text
 
 
 def _col_index(ref: str) -> int:
@@ -353,7 +372,7 @@ def _read_xlsx(data: bytes) -> list[tuple[int, list[str]]]:
     shared: list[str] = []
     if "xl/sharedStrings.xml" in names:
         for si in _xml(zf, "xl/sharedStrings.xml").iter(f"{_NS}si"):
-            shared.append("".join(t.text or "" for t in si.iter(f"{_NS}t")))
+            shared.append(_cell_text("".join(t.text or "" for t in si.iter(f"{_NS}t"))))
 
     date_styles: set[int] = set()
     if "xl/styles.xml" in names:
@@ -387,7 +406,7 @@ def _read_xlsx(data: bytes) -> list[tuple[int, list[str]]]:
                 continue
             t = c.get("t")
             v = c.find(f"{_NS}v")
-            text = v.text if v is not None and v.text is not None else ""
+            text = _cell_text(v.text) if v is not None and v.text is not None else ""
             if t == "s":
                 try:
                     text = shared[int(text)]
@@ -395,7 +414,7 @@ def _read_xlsx(data: bytes) -> list[tuple[int, list[str]]]:
                     text = ""
             elif t == "inlineStr":
                 is_ = c.find(f"{_NS}is")
-                text = "".join(x.text or "" for x in is_.iter(f"{_NS}t")) if is_ is not None else ""
+                text = _cell_text("".join(x.text or "" for x in is_.iter(f"{_NS}t"))) if is_ is not None else ""
             elif t == "b":
                 text = "TRUE" if text == "1" else "FALSE"
             elif t in ("str", "e"):
