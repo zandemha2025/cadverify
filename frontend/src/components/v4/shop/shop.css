@@ -182,3 +182,9 @@
 .ob .shp .tst .toast{pointer-events:auto}
 @media (max-width:900px){.ob .shp .tst{position:fixed;left:16px;right:16px;bottom:16px;max-width:none}}
 @media (prefers-reduced-motion:reduce){.ob .shp .pop,.ob .shp .dlg,.ob .shp .banner,.ob .shp .confirm{transition:opacity 150ms ease}}
+/* A machine's work from checked parts, under its name; the drawing moves down to make room. */
+.ob .shp .mt .mt-ld{color:var(--ink);font-weight:600}
+.ob .shp .mt .mt-ld.none{color:var(--ink3);font-weight:400}
+.ob .shp .mt.has-ld svg{top:70px;height:112px}
+.ob .shp .ld-sum{margin:0 0 10px;font-size:13.5px;color:var(--ink2)}
+.ob .shp .ld-sum b{color:var(--ink);font-weight:600}

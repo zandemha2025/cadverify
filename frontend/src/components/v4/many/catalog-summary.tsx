@@ -12,7 +12,7 @@ import { R } from "../routes";
 import { Empty, Loading } from "../ui";
 import { errorText } from "./common";
 import { fetchBoard } from "./catalog-api";
-import { BUCKETS, OTHER, boardProgress, bucketCount, hoursText, massText, materialWord, money, partLine, sortRows, type Board } from "./catalog-model";
+import { BUCKETS, OTHER, boardProgress, breakdownOf, bucketCount, capabilityGroups, hoursText, machineLine, massText, materialLine, materialWord, money, partLine, sortRows, type Board } from "./catalog-model";
 import "./many.css";
 import "./catalog.css";
 
@@ -109,7 +109,7 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
                   </td>
                   <td className="r num">{t?.parts ?? 0}</td>
                   <td className="r num">{hoursText(t?.hours)}</td>
-                  <td className="r num">{massText(t?.mass_kg)}</td>
+                  <td className="r num">{massText(t?.used_kg != null && t.used_parts ? t.used_kg : t?.mass_kg)}</td>
                   <td className="r num">{money(t?.cost_usd, 0)}</td>
                 </tr>
               );
@@ -121,11 +121,28 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
       {[...BUCKETS, ...OTHER].map((d) => {
         const rows = sortRows(board.rows.filter((r) => r.bucket === d.key), "hours");
         if (!rows.length) return null;
+        const b = breakdownOf(board, d.key);
+        const needs = d.key === "new_machine" ? capabilityGroups(rows) : [];
         return (
           <section key={d.key}>
             <h2>
               {d.label} · {bucketCount(board, d.key)}
             </h2>
+            {b.machines.length || b.materials.length || needs.length ? (
+              <p className="pmeta cp-res">
+                {b.machines.map((m) => {
+                  const l = machineLine(m);
+                  return <span key={`m-${m.machine ?? ""}-${m.process ?? ""}`}>{`${l.label}: ${l.value}`}</span>;
+                })}
+                {b.materials.map((g) => {
+                  const l = materialLine(g);
+                  return <span key={`g-${g.material}`}>{`${l.label}: ${l.value}`}</span>;
+                })}
+                {needs.map((g) => (
+                  <span key={`n-${g.key}`}>{`Needs ${g.text.charAt(0).toLowerCase()}${g.text.slice(1)}: ${g.rows.length} ${g.rows.length === 1 ? "part" : "parts"}`}</span>
+                ))}
+              </p>
+            ) : null}
             <div className="wide">
               <table>
                 <thead>
@@ -175,8 +192,9 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
 
       <p className="foot">
         Each part was checked by ScaleCAD’s engine against the machines above: its shape measured, every route scored, and priced with this organization’s rates where it
-        declared them, typical rates otherwise. Machine time and prices are model estimates, not quotes; material mass is the measured volume times the material’s book
-        density. In-house prices use your machines’ marginal rate (capital already spent). Open the run in ScaleCAD for each number’s source.
+        declared them, typical rates otherwise. Machine time and prices are model estimates, not quotes. Material is what each route uses (stock cut from, material printed with
+        its supports), from the engine’s own estimate; a part’s own mass is its measured volume times the material’s book density. In-house prices use your machines’
+        marginal rate (capital already spent). ScaleCAD has no machine prices, so a machine you’d need carries no purchase cost. Open the run in ScaleCAD for each number’s source.
       </p>
     </article>
   );

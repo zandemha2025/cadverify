@@ -51,6 +51,48 @@ function json(method: string, body: unknown): RequestInit {
   return { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
 }
 
+/* ---------------- machine load ---------------- */
+
+/** One part's machine time on a machine: at its recorded in-house quantity, or 100 of each when nothing's recorded. */
+export type LoadPart = {
+  part_key: string | null;
+  record_id: string | null;
+  file_name: string | null;
+  process: string | null;
+  quantity: number;
+  basis: "decided" | "default";
+  hours_each: number | null;
+  hours: number | null;
+};
+
+export type MachineLoad = {
+  machine: string;
+  process: string | null;
+  parts: number;
+  hours: number | null;
+  hours_parts: number;
+  decided_parts: number;
+  decided_hours: number | null;
+  default_parts: number;
+  default_hours: number | null;
+  stale_parts: number;
+  top: LoadPart[];
+};
+
+export type ShopLoad = {
+  quantity: number;
+  parts: number;
+  machines: MachineLoad[];
+  other_decisions: number;
+  decided_unplaced: { part_key: string | null; record_id: string | null; file_name: string | null; process: string | null; quantity: number | null }[];
+  decided_unplaced_count: number;
+};
+
+/** GET /machine-inventory/load: the hours of work the org's checked parts put on each machine it owns. */
+export function getMachineLoad(): Promise<ShopLoad> {
+  return call("/machine-inventory/load");
+}
+
 /* ---------------- shop operations ---------------- */
 
 export type ShopCapabilities = { ops: Record<string, unknown>; updated_at: string | null };

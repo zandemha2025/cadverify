@@ -36,10 +36,13 @@ export interface BoardRow {
     name: string | null;
     mass_kg_each: number | null;
     mass_basis: string | null;
+    /** The material the engine charges for per part: stock cut from, material printed with supports, metal poured. */
+    used_kg_each?: number | null;
   };
   hours_each: number | null;
   hours_total: number | null;
   mass_kg_total: number | null;
+  used_kg_total?: number | null;
   unit_cost_usd: number | null;
   total_cost_usd: number | null;
   price_withheld: string | null;
@@ -58,8 +61,42 @@ export interface BucketTotal {
   hours_parts: number;
   mass_kg: number | null;
   mass_parts: number;
+  /** The material used (what the routes charge for), where the records say it. */
+  used_kg?: number | null;
+  used_parts?: number;
   cost_usd: number | null;
   cost_parts: number;
+}
+
+/** Per bucket, resources first: machine hours by machine (or process), material by grade, the capability missing. */
+export interface BreakdownMachine {
+  machine: string | null;
+  process: string | null;
+  owned: boolean;
+  parts: number;
+  hours: number | null;
+  hours_parts: number;
+}
+export interface BreakdownMaterial {
+  material: string;
+  parts: number;
+  used_kg: number | null;
+  used_parts: number;
+  part_kg: number | null;
+  part_parts: number;
+}
+export interface BreakdownMissing {
+  process: string | null;
+  gate: string | null;
+  need: unknown;
+  human: string | null;
+  parts: number;
+  hours: number | null;
+}
+export interface BucketBreakdown {
+  machines: BreakdownMachine[];
+  materials: BreakdownMaterial[];
+  missing: BreakdownMissing[];
 }
 
 export interface Board {
@@ -75,6 +112,8 @@ export interface Board {
   completed_at: string | null;
   rows: BoardRow[];
   totals: Record<string, BucketTotal>;
+  /** Present from the server; derived from the rows when it isn't. */
+  breakdown?: Record<string, BucketBreakdown>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -176,7 +215,15 @@ export function partLine(r: BoardRow): PartLine {
   // that differs from what the parts list named, say so instead of hiding the list's word.
   const declared = r.material.declared?.trim();
   const listed = declared && r.material.name && !r.material.name.toLowerCase().includes(declared.toLowerCase()) && !declared.toLowerCase().includes(r.material.name.toLowerCase()) ? ` · listed ${declared}` : "";
-  const material = matName ? `${matName}${finite(r.material.mass_kg_each) ? ` · ${massText(r.material.mass_kg_each)} each` : ""}${listed}` : "—";
+  // The material the route uses leads (stock, printed material with supports); the part's own mass follows when it differs.
+  const used = r.material.used_kg_each;
+  const part = r.material.mass_kg_each;
+  const mass = finite(used)
+    ? ` · ${massText(used)} each${finite(part) && Math.abs(used - part) > 0.02 * part ? ` · part ${massText(part)}` : ""}`
+    : finite(part)
+      ? ` · ${massText(part)} each`
+      : "";
+  const material = matName ? `${matName}${mass}${listed}` : "—";
   let ownership = "—";
   if (r.route?.owned) ownership = `Your ${r.route.machine ?? procName(r.route.process)}${r.marginal && finite(r.machine_rate_usd) ? ` · marginal ${money(r.machine_rate_usd)}/h` : r.marginal ? " · marginal rate" : ""}`;
   else if (r.bucket === "new_machine") {
@@ -218,7 +265,7 @@ export function sortRows(rows: readonly BoardRow[], key: SortKey): BoardRow[] {
   if (key === "name") return out.sort(byName);
   if (key === "hours") return out.sort((a, b) => desc(a.hours_total, b.hours_total) || byName(a, b));
   if (key === "cost") return out.sort((a, b) => desc(a.total_cost_usd, b.total_cost_usd) || byName(a, b));
-  if (key === "mass") return out.sort((a, b) => desc(a.mass_kg_total, b.mass_kg_total) || byName(a, b));
+  if (key === "mass") return out.sort((a, b) => desc(a.used_kg_total ?? a.mass_kg_total, b.used_kg_total ?? b.mass_kg_total) || byName(a, b));
   return out.sort((a, b) => (ORDER[a.bucket] ?? 99) - (ORDER[b.bucket] ?? 99) || desc(a.hours_total, b.hours_total) || byName(a, b));
 }
 
@@ -260,9 +307,77 @@ export function totalsText(t: BucketTotal | undefined): string {
   const cover = (n: number) => (n < t.parts ? ` (${n} of ${t.parts})` : "");
   const bits: string[] = [];
   if (finite(t.hours)) bits.push(`${hoursText(t.hours)}${cover(t.hours_parts)}`);
-  if (finite(t.mass_kg)) bits.push(`${massText(t.mass_kg)}${cover(t.mass_parts)}`);
+  if (finite(t.used_kg) && t.used_parts) bits.push(`${massText(t.used_kg)}${cover(t.used_parts)}`);
+  else if (finite(t.mass_kg)) bits.push(`${massText(t.mass_kg)}${cover(t.mass_parts)}`);
   if (finite(t.cost_usd)) bits.push(`${money(t.cost_usd, 0)}${cover(t.cost_parts)}`);
   return bits.join(" · ");
+}
+
+/** The bucket's breakdown: the server's, else the same sums from the rows (an older board). */
+export function bucketBreakdown(rows: readonly BoardRow[], key: string): BucketBreakdown {
+  const machines = new Map<string, BreakdownMachine>();
+  const materials = new Map<string, BreakdownMaterial>();
+  const missing = new Map<string, BreakdownMissing>();
+  const add = (a: number | null, b: number | null | undefined) => (finite(b) ? Math.round(((a ?? 0) + b) * 1e4) / 1e4 : a);
+  for (const r of rows) {
+    if (r.bucket !== key) continue;
+    const process = r.route?.process ?? r.capability?.process ?? null;
+    const owned = !!r.route?.owned;
+    if (process || r.route?.machine) {
+      const machine = owned ? r.route?.machine ?? null : null;
+      const k = `${machine ?? ""}|${process ?? ""}`;
+      const m = machines.get(k) ?? { machine, process, owned, parts: 0, hours: null, hours_parts: 0 };
+      m.parts += 1;
+      if (finite(r.hours_total)) m.hours_parts += 1;
+      m.hours = add(m.hours, r.hours_total);
+      machines.set(k, m);
+    }
+    const mat = r.material?.name;
+    if (mat) {
+      const g = materials.get(mat) ?? { material: mat, parts: 0, used_kg: null, used_parts: 0, part_kg: null, part_parts: 0 };
+      g.parts += 1;
+      if (finite(r.used_kg_total)) g.used_parts += 1;
+      if (finite(r.mass_kg_total)) g.part_parts += 1;
+      g.used_kg = add(g.used_kg, r.used_kg_total);
+      g.part_kg = add(g.part_kg, r.mass_kg_total);
+      materials.set(mat, g);
+    }
+    const cap = r.capability;
+    if (key === "new_machine" && cap) {
+      const need = cap.gate === "material" && (typeof cap.need === "string" || typeof cap.need === "number") ? cap.need : null;
+      const k = `${cap.process ?? ""}|${cap.gate ?? ""}|${need ?? ""}`;
+      const g = missing.get(k) ?? { process: cap.process, gate: cap.gate, need, human: cap.human, parts: 0, hours: null };
+      g.parts += 1;
+      g.hours = add(g.hours, r.hours_total);
+      missing.set(k, g);
+    }
+  }
+  return {
+    machines: [...machines.values()].sort((a, b) => (b.hours ?? 0) - (a.hours ?? 0) || b.parts - a.parts || String(a.machine ?? a.process).localeCompare(String(b.machine ?? b.process))),
+    materials: [...materials.values()].sort((a, b) => (b.used_kg ?? b.part_kg ?? 0) - (a.used_kg ?? a.part_kg ?? 0) || b.parts - a.parts || a.material.localeCompare(b.material)),
+    missing: [...missing.values()].sort((a, b) => b.parts - a.parts || String(a.process ?? "").localeCompare(String(b.process ?? ""))),
+  };
+}
+
+export function breakdownOf(board: Board | null, key: string): BucketBreakdown {
+  return board?.breakdown?.[key] ?? bucketBreakdown(board?.rows ?? [], key);
+}
+
+function plural(n: number, one: string): string {
+  return `${n.toLocaleString("en-US")} ${n === 1 ? one : `${one}s`}`;
+}
+
+/** "On Haas VF-2" · "12 parts · 41 h", or "Filament printing, not owned" outside. Hours "of N" when they cover fewer parts. */
+export function machineLine(m: BreakdownMachine): { label: string; value: string } {
+  const label = m.owned && m.machine ? `On ${m.machine}` : `${procName(m.process)}${m.owned ? "" : ", not owned"}`;
+  const cover = m.hours_parts < m.parts ? ` (${m.hours_parts} of ${m.parts})` : "";
+  return { label, value: `${plural(m.parts, "part")} · ${finite(m.hours) ? `${hoursText(m.hours)}${cover}` : "machine time not estimated"}` };
+}
+
+/** "6061-T6 Aluminum" · "3.20 kg used · 4 parts" (the parts' own mass when the records don't say what's used). */
+export function materialLine(g: BreakdownMaterial): { label: string; value: string } {
+  const mass = finite(g.used_kg) && g.used_parts ? `${massText(g.used_kg)} used${g.used_parts < g.parts ? ` (${g.used_parts} of ${g.parts})` : ""}` : finite(g.part_kg) ? `${massText(g.part_kg)} in the parts` : "mass not known";
+  return { label: g.material, value: `${mass} · ${plural(g.parts, "part")}` };
 }
 
 export function bucketCount(board: Board | null, key: string): number {

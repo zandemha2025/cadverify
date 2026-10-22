@@ -269,3 +269,54 @@ export function longDate(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+
+/* ------------------------------------------------------------------ */
+/*  Machine load (the hours of work checked parts put on a machine)    */
+/* ------------------------------------------------------------------ */
+
+/** "<1 min", "6 min", "1.3 h", "41 h", "1,204 h", or "—". */
+export function hoursShort(h: number | null | undefined): string {
+  if (h == null || !Number.isFinite(h) || h < 0) return "—";
+  if (h === 0) return "0 h";
+  if (h < 1 / 60) return "<1 min";
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h < 10) return `${(Math.round(h * 10) / 10).toLocaleString("en-US")} h`;
+  return `${Math.round(h).toLocaleString("en-US")} h`;
+}
+
+export interface LoadLike {
+  machine: string;
+  parts: number;
+  hours: number | null;
+  hours_parts: number;
+  decided_parts: number;
+  decided_hours: number | null;
+  default_parts: number;
+  default_hours: number | null;
+  stale_parts: number;
+}
+
+function partsWord(n: number): string {
+  return `${n.toLocaleString("en-US")} ${n === 1 ? "part" : "parts"}`;
+}
+
+/** The load of the machine named, matched by name (records name the machine they were fitted to). */
+export function loadFor<T extends { machine: string }>(loads: readonly T[] | null | undefined, name: string): T | null {
+  return (loads ?? []).find((l) => l.machine === name) ?? null;
+}
+
+/** The tile's line: "41 h of work · 12 parts", or "No checked parts" when none land on it. */
+export function loadTile(l: LoadLike | null): string {
+  if (!l || !l.parts) return "No checked parts on it";
+  return l.hours != null ? `${hoursShort(l.hours)} of work · ${partsWord(l.parts)}` : `${partsWord(l.parts)} · machine time not estimated`;
+}
+
+/** The sheet's rows: total, then recorded in-house (at their quantities) and not decided yet (at `qty` of each). */
+export function loadRows(l: LoadLike | null, qty: number): [string, string][] {
+  if (!l || !l.parts) return [];
+  const cover = l.hours_parts < l.parts ? ` (${l.hours_parts} of ${l.parts} parts)` : "";
+  const rows: [string, string][] = [["Machine time", `${hoursShort(l.hours)}${cover} · ${partsWord(l.parts)}`]];
+  if (l.decided_parts) rows.push(["Recorded in-house", `${partsWord(l.decided_parts)} · ${hoursShort(l.decided_hours)} at their quantities`]);
+  if (l.default_parts) rows.push(["Not decided yet", `${partsWord(l.default_parts)} · ${hoursShort(l.default_hours)} at ${qty.toLocaleString("en-US")} of each`]);
+  return rows;
+}

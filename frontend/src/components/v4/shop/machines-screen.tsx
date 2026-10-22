@@ -2,7 +2,8 @@
 
 /**
  * Machines and printers (board O9). The org's declared machines as tiles with
- * the work area drawn to scale; the selected one opens in the right sheet.
+ * the work area drawn to scale and the hours of work the checked parts put on
+ * each (GET /machine-inventory/load); the selected one opens in the right sheet.
  * Add, edit, delete (confirmed), CSV import and template, catalog prefill, and
  * the shop's in-house operations. `?add=1` opens the add form and
  * `?machine=<id>` selects a machine (the search palette links to both).
@@ -23,8 +24,8 @@ import { Content, Empty, Loading, PageHead, Panel, Sheet, cx } from "../ui";
 import { Banner, LaborFact, RateCardChip, ShopWorld, useLaborRate, usePartRecords, useRateCard, useToast } from "./common";
 import { MachineDialog } from "./machine-dialog";
 import { MachineSheet } from "./machine-sheet";
-import { downloadText, getShopCapabilities, putShopCapabilities } from "./shop-api";
-import { SHOP_OPS, envelopeOf, isoBox, machineName, machineStatus, opOn, tileSub, toggleOp } from "./shop-derive";
+import { downloadText, getMachineLoad, getShopCapabilities, putShopCapabilities, type MachineLoad, type ShopLoad } from "./shop-api";
+import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, tileSub, toggleOp } from "./shop-derive";
 import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
 
 type DialogState = { mode: "add"; process?: string } | { mode: "edit"; machine: OwnedMachine } | null;
@@ -59,6 +60,22 @@ export function MachinesScreen() {
   // part, with the details the labor rate reads; no per-record reads.
   const recs = usePartRecords(6);
   const labor = useLaborRate(rc, recs.data?.parts ?? null, recs.data?.details ?? null);
+  // The hours of work the checked parts put on each machine (one org-scoped read).
+  const [shopLoad, setShopLoad] = React.useState<ShopLoad | null>(null);
+  const [workError, setWorkError] = React.useState<string | null>(null);
+  const [workN, setWorkN] = React.useState(0);
+  React.useEffect(() => {
+    let live = true;
+    setWorkError(null);
+    getMachineLoad().then(
+      (l) => live && setShopLoad(l),
+      (e) => live && setWorkError(e instanceof Error ? e.message : "Couldn't load the machine time."),
+    );
+    return () => {
+      live = false;
+    };
+  }, [workN]);
+  const reloadLoad = () => setWorkN((x) => x + 1);
 
   const load = React.useCallback(async () => {
     setLoadError(null);
@@ -114,6 +131,7 @@ export function MachinesScreen() {
         const list = await load();
         if (list && !sel) setSel(list[0]?.id ?? null);
         recs.reload();
+        reloadLoad();
       }
     } catch (e) {
       setBanner({ kind: "importError", msg: e instanceof Error ? e.message : "Import failed." });
@@ -145,6 +163,7 @@ export function MachinesScreen() {
     setSel(next);
     setQuery(next);
     recs.reload();
+    reloadLoad();
     showToast(`Removed ${name}. Older decisions are marked for re-costing.`);
   };
 
@@ -154,6 +173,7 @@ export function MachinesScreen() {
     setSel(m.id);
     setQuery(m.id);
     recs.reload();
+    reloadLoad();
     showToast(`${mode === "add" ? "Added" : "Saved"} ${machineName(m)}. Older decisions are marked for re-costing.`);
   };
 
@@ -172,6 +192,7 @@ export function MachinesScreen() {
   );
 
   const fig = (v: number | null) => (loadError ? "—" : v == null ? "…" : v);
+  const workHours = shopLoad ? shopLoad.machines.reduce<number | null>((s, m) => (m.hours != null ? (s ?? 0) + m.hours : s), null) : null;
   const tabs = TABS.shop.map((t) => (t.href === R.shop && total != null ? { ...t, count: total } : t));
 
   return (
@@ -265,12 +286,15 @@ export function MachinesScreen() {
             </Empty>
           </section>
         ) : (
+          <>
+          {shopLoad ? <LoadSummary load={shopLoad} hours={workHours} /> : null}
           <div className="mgrid">
             {machines.map((m) => (
-              <MachineTile key={m.id} m={m} on={m.id === sel} onPick={() => pick(m.id)} />
+              <MachineTile key={m.id} m={m} on={m.id === sel} onPick={() => pick(m.id)} load={shopLoad ? loadFor(shopLoad.machines, machineName(m)) ?? loadFor(shopLoad.machines, m.name ?? "") : undefined} />
             ))}
             <AddTile onPick={() => setDialog({ mode: "add", process: "fdm" })} />
           </div>
+          </>
         )}
         {machines && machines.length > 0 ? <BatchOnMachines n={total ?? machines.length} /> : null}
         <ShopOps onSaved={() => recs.reload()} />
@@ -283,6 +307,9 @@ export function MachinesScreen() {
             records={recs.data?.parts ?? null}
             recordsError={recs.error}
             onRetryRecords={recs.reload}
+            load={shopLoad ? { qty: shopLoad.quantity, machine: loadFor(shopLoad.machines, machineName(selected)) ?? loadFor(shopLoad.machines, selected.name ?? ""), other: shopLoad.other_decisions } : null}
+            loadError={workError}
+            onRetryLoad={reloadLoad}
             rc={rc}
             onEdit={() => setDialog({ mode: "edit", machine: selected })}
             onDelete={onDelete}
@@ -309,14 +336,15 @@ export function MachinesScreen() {
   );
 }
 
-function MachineTile({ m, on, onPick }: { m: OwnedMachine; on: boolean; onPick: () => void }) {
+function MachineTile({ m, on, onPick, load }: { m: OwnedMachine; on: boolean; onPick: () => void; load?: MachineLoad | null }) {
   const env = envelopeOf(m);
   const st = machineStatus(m);
   const box = env ? isoBox(env.w, env.d, env.h) : null;
   return (
-    <button type="button" className={cx("mt", on && "on")} onClick={onPick} aria-pressed={on}>
+    <button type="button" className={cx("mt", on && "on", load !== undefined && "has-ld")} onClick={onPick} aria-pressed={on}>
       <b>{machineName(m)}</b>
       <small>{tileSub(m)}</small>
+      {load !== undefined ? <small className={cx("mt-ld num", !load?.parts && "none")}>{loadTile(load)}</small> : null}
       {box ? (
         <svg height="128" viewBox="0 0 300 150" aria-hidden="true">
           <polygon points={box.floor} fill="#E3E7EC" fillOpacity="0.85" />
@@ -336,6 +364,31 @@ function MachineTile({ m, on, onPick }: { m: OwnedMachine; on: boolean; onPick: 
         </span>
       </span>
     </button>
+  );
+}
+
+/** One line over the tiles: the work the checked parts put on your machines, and parts recorded in-house that no machine of yours clears now. */
+function LoadSummary({ load, hours }: { load: ShopLoad; hours: number | null }) {
+  const on = load.machines.filter((m) => m.parts).length;
+  const lost = load.decided_unplaced_count;
+  const names = load.decided_unplaced.map((p) => p.file_name).filter(Boolean).slice(0, 3).join(", ");
+  return (
+    <p className="ld-sum" aria-live="polite">
+      {hours != null && on ? (
+        <>
+          Work from checked parts: <b className="num">{hoursShort(hours)}</b> on {on === 1 ? "1 machine" : `${on} machines`}, from each part’s newest check
+        </>
+      ) : (
+        "No checked part lands on these machines yet"
+      )}
+      {lost ? (
+        <>
+          {" "}
+          · {lost === 1 ? "1 part" : `${lost} parts`} recorded in-house {lost === 1 ? "doesn’t" : "don’t"} fit any of them on {lost === 1 ? "its" : "their"} newest check{names ? `: ${names}${lost > 3 ? " and more" : ""}` : ""}
+        </>
+      ) : null}
+      .
+    </p>
   );
 }
 

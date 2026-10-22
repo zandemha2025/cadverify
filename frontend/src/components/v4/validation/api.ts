@@ -4,6 +4,7 @@
  * (what it would change, apply, undo) and the pilot report.
  */
 import { API_BASE } from "@/lib/api-base";
+import type { BreakdownMachine, BreakdownMaterial, BreakdownMissing, BucketBreakdown } from "../many/catalog-model";
 
 export class ActualsApiError extends Error {
   readonly status: number;
@@ -235,7 +236,21 @@ export function undoCalibration(): Promise<{ undone: string; in_effect: Calibrat
 
 /* ---------------- report ---------------- */
 
-export type ReportBucket = { key: string; label: string; parts: number; quantity: number; hours: number | null; hours_parts: number; mass_kg: number | null; mass_parts: number; cost_usd: number | null; cost_parts: number };
+export type ReportBucket = {
+  key: string;
+  label: string;
+  parts: number;
+  quantity: number;
+  hours: number | null;
+  hours_parts: number;
+  mass_kg: number | null;
+  mass_parts: number;
+  /** Material the routes use (stock, printed material with supports), where the records say it. */
+  used_kg?: number | null;
+  used_parts?: number;
+  cost_usd: number | null;
+  cost_parts: number;
+} & Partial<BucketBreakdown>;
 
 export type Report = {
   organization: string | null;
@@ -244,7 +259,22 @@ export type Report = {
   parts: number;
   buckets: ReportBucket[];
   other: Record<string, number>;
-  in_house: { parts: number; hours: number | null; hours_parts: number; mass_kg: number | null; mass_parts: number; cost_usd: number | null; machines: { machine: string; process: string | null; hours: number; parts: number }[] };
+  in_house: {
+    parts: number;
+    hours: number | null;
+    hours_parts: number;
+    mass_kg: number | null;
+    mass_parts: number;
+    used_kg?: number | null;
+    used_parts?: number;
+    cost_usd: number | null;
+    machines: { machine: string; process: string | null; hours: number; parts: number }[];
+    materials?: BreakdownMaterial[];
+  };
+  /** Needs a new machine: the capability each part lacks. */
+  missing?: BreakdownMissing[];
+  /** Made outside: the processes no machine of yours does, with their machine time. */
+  outside?: BreakdownMachine[];
   wins: { file_name: string | null; part_number: string | null; part_key: string | null; quantity: number; process: string | null; machine: string | null; in_house_each: number; outside_each: number; outside_process: string | null; saving_total: number; hours_total: number | null }[];
   decisions: { part_key: string; file_name: string | null; part_number: string | null; decision: string; code: string; process: string | null; note: string | null; by: string | null; at: string | null }[];
   accuracy: Summary;

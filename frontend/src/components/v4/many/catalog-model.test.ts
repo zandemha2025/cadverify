@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   allowanceText,
+  bucketBreakdown,
+  breakdownOf,
   capabilityGroups,
   catalogAccess,
   filterRows,
   fitNote,
   hoursText,
+  machineLine,
   massText,
+  materialLine,
   partLine,
   planFiles,
   sortRows,
@@ -149,4 +153,39 @@ test("ZIP entry names keep the folder, never climb out of it", () => {
   assert.equal(zipEntryName({ name: "a.step", path: "catalog/brackets/a.step", size: 1 }), "catalog/brackets/a.step");
   assert.equal(zipEntryName({ name: "a.step", path: "../../etc/a.step", size: 1 }), "etc/a.step");
   assert.equal(zipEntryName({ name: "a.step", path: "", size: 1 }), "a.step");
+});
+
+test("the material a route uses leads, the part's own mass beside it when they differ", () => {
+  const used = partLine(row({ material: { declared: null, class: null, note: null, name: "Mild Steel", mass_kg_each: 0.0471, mass_basis: "x", used_kg_each: 0.0518 } }));
+  assert.equal(used.material, "Mild Steel · 52 g each · part 47 g");
+  const same = partLine(row({ material: { declared: null, class: null, note: null, name: "PA12 (Nylon 12)", mass_kg_each: 0.024, mass_basis: "x", used_kg_each: 0.024 } }));
+  assert.equal(same.material, "PA12 (Nylon 12) · 24 g each");
+  assert.equal(totalsText({ parts: 2, quantity: 20, hours: 2, hours_parts: 2, mass_kg: 0.9, mass_parts: 2, used_kg: 1.04, used_parts: 2, cost_usd: 40, cost_parts: 2 }), "2.0 h · 1.04 kg · $40");
+  const byMass = sortRows([row({ item_id: "a", filename: "a", used_kg_total: 1, mass_kg_total: 5 }), row({ item_id: "b", filename: "b", used_kg_total: 2, mass_kg_total: 1 })], "mass");
+  assert.deepEqual(byMass.map((r) => r.item_id), ["b", "a"]);
+});
+
+test("a bucket's breakdown: hours by machine, material by grade, what a new machine needs", () => {
+  const rows = [
+    row({ item_id: "1", hours_total: 2.5, used_kg_total: 1.2, mass_kg_total: 0.9 }),
+    row({ item_id: "2", hours_total: null, used_kg_total: null, mass_kg_total: 0.3 }),
+    row({ item_id: "3", route: { process: "mjf", machine: "HP Jet Fusion 5200", owned: true }, hours_total: 7, used_kg_total: 0.4, mass_kg_total: 0.4, material: { declared: null, class: null, note: null, name: "PA12 (Nylon 12)", mass_kg_each: 0.04, mass_basis: "x" } }),
+    row({ item_id: "4", bucket: "outside", route: { process: "fdm", machine: null, owned: false }, hours_total: 5, material: { declared: null, class: null, note: null, name: "PLA", mass_kg_each: 0.01, mass_basis: "x" } }),
+    row({ item_id: "5", bucket: "new_machine", route: { process: "cnc_3axis", machine: null, owned: false }, hours_total: 3, capability: { process: "cnc_3axis", gate: "material", need: "Delrin (POM)", human: "not qualified for Delrin (POM)" } }),
+    row({ item_id: "6", bucket: "new_machine", route: { process: "cnc_3axis", machine: null, owned: false }, hours_total: null, capability: { process: "cnc_3axis", gate: "material", need: "Delrin (POM)", human: "not qualified for Delrin (POM)" } }),
+  ];
+  const ih = bucketBreakdown(rows, "in_house");
+  assert.deepEqual(ih.machines.map((m) => [m.machine, m.parts, m.hours, m.hours_parts]), [["HP Jet Fusion 5200", 1, 7, 1], ["Haas VF-2", 2, 2.5, 1]]);
+  assert.deepEqual(machineLine(ih.machines[1]), { label: "On Haas VF-2", value: "2 parts · 2.5 h (1 of 2)" });
+  assert.deepEqual(ih.materials.map((g) => [g.material, g.parts, g.used_kg, g.part_kg]), [["6061-T6 Aluminum", 2, 1.2, 1.2], ["PA12 (Nylon 12)", 1, 0.4, 0.4]]);
+  assert.deepEqual(materialLine(ih.materials[0]), { label: "6061-T6 Aluminum", value: "1.20 kg used (1 of 2) · 2 parts" });
+  const out = bucketBreakdown(rows, "outside");
+  assert.deepEqual(machineLine(out.machines[0]), { label: "Filament printing, not owned", value: "1 part · 5.0 h" });
+  assert.deepEqual(materialLine(out.materials[0]), { label: "PLA", value: "2.70 kg in the parts · 1 part" });
+  const nm = bucketBreakdown(rows, "new_machine");
+  assert.deepEqual(nm.missing.map((g) => [g.process, g.gate, g.need, g.parts, g.hours]), [["cnc_3axis", "material", "Delrin (POM)", 2, 3]]);
+  // The server's breakdown wins when the board carries one.
+  const board = { rows, breakdown: { in_house: { machines: [], materials: [], missing: [] } } } as never;
+  assert.deepEqual(breakdownOf(board, "in_house").machines, []);
+  assert.equal(breakdownOf({ rows } as never, "in_house").machines.length, 2);
 });

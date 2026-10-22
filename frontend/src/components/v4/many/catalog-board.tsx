@@ -28,12 +28,15 @@ import {
   OTHER,
   SORTS,
   boardProgress,
+  breakdownOf,
   bucketCount,
   bucketDef,
   capabilityGroups,
   filterRows,
   hoursText,
+  machineLine,
   massText,
+  materialLine,
   materialWord,
   money,
   partLine,
@@ -42,6 +45,8 @@ import {
   totalsText,
   type Board,
   type BoardRow,
+  type BucketBreakdown,
+  type BucketTotal,
   type SortKey,
 } from "./catalog-model";
 import "./catalog.css";
@@ -356,7 +361,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 </div>
               )}
               <p className="tfoot" style={{ padding: "0 8px 10px" }}>
-                <span>Machine time, material and prices are model estimates from your machines and rates, not quotes. Open a part for its sources.</span>
+                <span>Machine time, material and prices are model estimates from your machines and rates, not quotes. Material is what the route uses (stock, printed material with supports), with the part’s own mass beside it when that differs. Open a part for its sources.</span>
               </p>
             </Panel>
 
@@ -498,12 +503,9 @@ function RunSheet({
   const prog = boardProgress(board);
   const selRows = sel ? board.rows.filter((r) => r.bucket === bucket) : [];
   const inHouse = board.rows.filter((r) => r.bucket === "in_house");
-  const byMachine = new Map<string, { n: number; h: number }>();
-  for (const r of inHouse) {
-    const k = r.route?.machine ?? procName(r.route?.process);
-    const cur = byMachine.get(k) ?? { n: 0, h: 0 };
-    byMachine.set(k, { n: cur.n + 1, h: cur.h + (r.hours_total ?? 0) });
-  }
+  const ihB = breakdownOf(board, "in_house");
+  const outB = breakdownOf(board, "outside");
+  const selB = sel ? breakdownOf(board, bucket) : null;
   const groups = capabilityGroups(board.rows);
   const t = board.totals;
   return (
@@ -532,22 +534,13 @@ function RunSheet({
               <span>at each part’s quantity</span>
             </div>
             {inHouse.length ? (
-              <div className="kv">
-                <span>Machine time</span>
-                <b className="num">{hoursText(t.in_house?.hours)}</b>
-                <span>Material</span>
-                <b className="num">{massText(t.in_house?.mass_kg)}</b>
-                <span>At your marginal rates</span>
-                <b className="num">{money(t.in_house?.cost_usd, 0)}</b>
-                {[...byMachine.entries()].map(([m, v]) => (
-                  <React.Fragment key={m}>
-                    <span>On {m}</span>
-                    <b className="num">
-                      {v.n} {v.n === 1 ? "part" : "parts"} · {hoursText(v.h)}
-                    </b>
-                  </React.Fragment>
-                ))}
-              </div>
+              <>
+                <Resources t={t.in_house} b={ihB} />
+                <div className="kv">
+                  <span>At your marginal rates</span>
+                  <b className="num">{money(t.in_house?.cost_usd, 0)}</b>
+                </div>
+              </>
             ) : (
               <p className="cr-p0">{prog.checking ? "None yet." : "No part fits one of your machines."}</p>
             )}
@@ -575,6 +568,9 @@ function RunSheet({
             <div className="kv">
               <span>Parts</span>
               <b className="num">{bucketCount(board, "outside")}</b>
+            </div>
+            {bucketCount(board, "outside") ? <Resources t={t.outside} b={outB} /> : null}
+            <div className="kv">
               <span>Model price</span>
               <b className="num">{money(t.outside?.cost_usd, 0)}</b>
             </div>
@@ -597,15 +593,14 @@ function RunSheet({
           </>
         ) : (
           <>
-            {selRows.length ? (
-              <div className="kv">
-                <span>Machine time</span>
-                <b className="num">{hoursText(t[bucket]?.hours)}</b>
-                <span>Material</span>
-                <b className="num">{massText(t[bucket]?.mass_kg)}</b>
-                <span>{bucket === "in_house" ? "At your marginal rates" : "Model price"}</span>
-                <b className="num">{money(t[bucket]?.cost_usd, 0)}</b>
-              </div>
+            {selRows.length && selB ? (
+              <>
+                <Resources t={t[bucket]} b={selB} />
+                <div className="kv">
+                  <span>{bucket === "in_house" ? "At your marginal rates" : "Model price"}</span>
+                  <b className="num">{money(t[bucket]?.cost_usd, 0)}</b>
+                </div>
+              </>
             ) : (
               <Empty title={`No parts in ${sel.label.toLowerCase()}`}>{sel.note}</Empty>
             )}
@@ -654,6 +649,44 @@ function RunSheet({
         )}
       </div>
     </>
+  );
+}
+
+/** A bucket's resources: machine time and material in total, then by machine (or process) and by grade. */
+function Resources({ t, b }: { t: BucketTotal | undefined; b: BucketBreakdown }) {
+  const usedKnown = t?.used_kg != null && !!t.used_parts;
+  const cover = (n: number | undefined) => (t && n != null && n < t.parts ? ` (${n} of ${t.parts})` : "");
+  return (
+    <div className="kv">
+      <span>Machine time</span>
+      <b className="num">
+        {hoursText(t?.hours)}
+        {t?.hours != null ? cover(t.hours_parts) : ""}
+      </b>
+      {b.machines.map((m) => {
+        const l = machineLine(m);
+        return (
+          <React.Fragment key={`m-${m.machine ?? ""}-${m.process ?? ""}`}>
+            <span>{l.label}</span>
+            <b className="num">{l.value}</b>
+          </React.Fragment>
+        );
+      })}
+      <span>{usedKnown ? "Material used" : "Material in the parts"}</span>
+      <b className="num">
+        {massText(usedKnown ? t?.used_kg : t?.mass_kg)}
+        {usedKnown ? cover(t?.used_parts) : t?.mass_kg != null ? cover(t?.mass_parts) : ""}
+      </b>
+      {b.materials.map((g) => {
+        const l = materialLine(g);
+        return (
+          <React.Fragment key={`g-${g.material}`}>
+            <span>{l.label}</span>
+            <b className="num">{l.value}</b>
+          </React.Fragment>
+        );
+      })}
+    </div>
   );
 }
 

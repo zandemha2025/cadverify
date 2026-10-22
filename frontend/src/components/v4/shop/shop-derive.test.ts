@@ -3,6 +3,10 @@ import test from "node:test";
 
 import {
   envelopeOf,
+  hoursShort,
+  loadFor,
+  loadRows,
+  loadTile,
   isoBox,
   machineStatus,
   opOn,
@@ -100,4 +104,20 @@ test("rate card: governed names the version in effect now", () => {
   assert.equal(v?.chip, "Governed · 2 published");
   assert.equal(v?.chipLong, "Governed · v2 in effect");
   assert.equal(v?.title, "Rate card v2");
+});
+
+test("machine load: the tile line, the sheet's rows, matched by machine name", () => {
+  const haas = { machine: "Haas VF-2", parts: 3, hours: 30, hours_parts: 2, decided_parts: 2, decided_hours: 5, default_parts: 1, default_hours: 25, stale_parts: 0 };
+  assert.equal(loadFor([haas], "Haas VF-2"), haas);
+  assert.equal(loadFor([haas], "Haas ST-20"), null);
+  assert.equal(loadTile(haas), "30 h of work · 3 parts");
+  assert.equal(loadTile(null), "No checked parts on it");
+  assert.equal(loadTile({ ...haas, hours: null, hours_parts: 0 }), "3 parts · machine time not estimated");
+  assert.deepEqual(loadRows(haas, 100), [
+    ["Machine time", "30 h (2 of 3 parts) · 3 parts"],
+    ["Recorded in-house", "2 parts · 5 h at their quantities"],
+    ["Not decided yet", "1 part · 25 h at 100 of each"],
+  ]);
+  assert.deepEqual(loadRows({ ...haas, parts: 0 }, 100), []);
+  assert.deepEqual([hoursShort(0.0002), hoursShort(0.5), hoursShort(2.41), hoursShort(1204.4), hoursShort(null)], ["<1 min", "30 min", "2.4 h", "1,204 h", "—"]);
 });

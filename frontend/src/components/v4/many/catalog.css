@@ -93,3 +93,4 @@
   .ob .cp tr{break-inside:avoid}
   .ob .cp h2{break-after:avoid}
 }
+.ob .cp .cp-res{margin:0 0 8px;color:var(--ink2)}

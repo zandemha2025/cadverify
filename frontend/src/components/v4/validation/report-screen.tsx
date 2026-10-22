@@ -3,7 +3,8 @@
 /**
  * The pilot report, laid out for paper: for one catalog run or every part, how
  * many parts, sorted into make in-house / buy outside / needs a new machine /
- * can't be made; the machine hours and material the in-house parts need; the
+ * can't be made; the machine hours (by machine) and material (by grade) the
+ * in-house parts need, and the machines you don't have; the
  * biggest wins; decisions recorded and who recorded them; and how close
  * ScaleCAD came to your actuals, with the caveats. Print from the browser, or
  * download the PDF the server renders from the same figures.
@@ -157,8 +158,8 @@ export function ReportScreen({ run }: { run: string | null }) {
                   {partial(b.hours_parts, b.parts)}
                 </td>
                 <td className="r num">
-                  {kg(b.mass_kg)}
-                  {partial(b.mass_parts, b.parts)}
+                  {b.used_kg != null && b.used_parts ? kg(b.used_kg) : kg(b.mass_kg)}
+                  {b.used_kg != null && b.used_parts ? partial(b.used_parts, b.parts) : partial(b.mass_parts, b.parts)}
                 </td>
                 <td className="r num">
                   {moneyWord(b.cost_usd)}
@@ -175,7 +176,8 @@ export function ReportScreen({ run }: { run: string | null }) {
       {rep.in_house.parts ? (
         <>
           <p className="rp">
-            {rep.in_house.parts} {rep.in_house.parts === 1 ? "part" : "parts"} on your machines: {hoursWord(rep.in_house.hours)} of machine time and {kg(rep.in_house.mass_kg)} of material at the quantities checked.
+            {rep.in_house.parts} {rep.in_house.parts === 1 ? "part" : "parts"} on your machines: {hoursWord(rep.in_house.hours)} of machine time and{" "}
+            {rep.in_house.used_kg != null && rep.in_house.used_parts ? `${kg(rep.in_house.used_kg)} of material used (${kg(rep.in_house.mass_kg)} in the parts)` : `${kg(rep.in_house.mass_kg)} of material`} at the quantities checked.
           </p>
           {rep.in_house.machines.length ? (
             <div className="val-wide">
@@ -205,10 +207,104 @@ export function ReportScreen({ run }: { run: string | null }) {
               </table>
             </div>
           ) : null}
+          {rep.in_house.materials?.length ? (
+            <div className="val-wide">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Material</th>
+                    <th scope="col" className="r">
+                      Parts
+                    </th>
+                    <th scope="col" className="r">
+                      Material used
+                    </th>
+                    <th scope="col" className="r">
+                      In the parts
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rep.in_house.materials.map((g) => (
+                    <tr key={g.material}>
+                      <td>{g.material}</td>
+                      <td className="r num">{g.parts}</td>
+                      <td className="r num">
+                        {kg(g.used_kg)}
+                        {g.used_kg != null ? partial(g.used_parts, g.parts) : ""}
+                      </td>
+                      <td className="r num">{kg(g.part_kg)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </>
       ) : (
         <p className="rp muted">No part sorted to your machines.</p>
       )}
+
+      {rep.missing?.length || rep.outside?.length ? (
+        <>
+          <h2>Machines you don’t have</h2>
+          {rep.missing?.length ? (
+            <div className="val-wide">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Needs a new machine</th>
+                    <th scope="col">What it lacks</th>
+                    <th scope="col" className="r">
+                      Parts
+                    </th>
+                    <th scope="col" className="r">
+                      Machine time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rep.missing.map((g) => (
+                    <tr key={`${g.process}-${g.gate}-${String(g.need ?? "")}`}>
+                      <td>{methodWord(g.process)}</td>
+                      <td>{g.human ?? g.gate ?? "—"}</td>
+                      <td className="r num">{g.parts}</td>
+                      <td className="r num">{hoursWord(g.hours)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {rep.outside?.length ? (
+            <div className="val-wide">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Made outside: no machine of yours does it</th>
+                    <th scope="col" className="r">
+                      Parts
+                    </th>
+                    <th scope="col" className="r">
+                      Machine time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rep.outside.map((m) => (
+                    <tr key={`${m.process}`}>
+                      <td>{methodWord(m.process)}</td>
+                      <td className="r num">{m.parts}</td>
+                      <td className="r num">{hoursWord(m.hours)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          <p className="foot">ScaleCAD has no machine prices: these are the capabilities missing and the machine time they’d carry, not purchase costs.</p>
+        </>
+      ) : null}
 
       <h2>Biggest wins</h2>
       {rep.wins.length ? (

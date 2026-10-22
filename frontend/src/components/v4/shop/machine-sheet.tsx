@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The selected machine (board O9's right sheet): figures, the declared spec,
- * printer details, the rate it carries and the rate card around it, and the
- * saved records whose recommended method matches (a method match, not a fit).
+ * The selected machine (board O9's right sheet): figures, the hours of work the
+ * checked parts put on it, the declared spec, printer details, the rate it
+ * carries and the rate card around it, and the saved records whose recommended
+ * method matches (a method match, not a fit).
  */
 import * as React from "react";
 import Link from "next/link";
@@ -12,8 +13,8 @@ import { capitalPercentText, printerFieldsFor } from "@/lib/verify/machine-form"
 import { R } from "../routes";
 import { cx } from "../ui";
 import type { RateCardState } from "./common";
-import type { RecordSummary } from "./shop-api";
-import { envelopeOf, longDate, machineName, machineStatus, perHour, plain, procName, procShort, shortWhen } from "./shop-derive";
+import type { MachineLoad, RecordSummary } from "./shop-api";
+import { envelopeOf, hoursShort, loadRows, longDate, machineName, machineStatus, perHour, plain, procName, procShort, shortWhen } from "./shop-derive";
 
 const ENCLOSURE_TEXT: Record<string, string> = { none: "Open", enclosed: "Closed, not heated", heated: "Heated chamber" };
 
@@ -59,11 +60,18 @@ export function MachineSheet({
   rc,
   onEdit,
   onDelete,
+  load,
+  loadError,
+  onRetryLoad,
 }: {
   m: OwnedMachine;
   records: RecordSummary[] | null;
   recordsError: string | null;
   onRetryRecords: () => void;
+  /** The hours of work the checked parts put on this machine; null while loading. */
+  load?: { qty: number; machine: MachineLoad | null; other: number } | null;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   rc: RateCardState;
   onEdit: () => void;
   onDelete: () => Promise<void>;
@@ -121,6 +129,7 @@ export function MachineSheet({
         </div>
       </div>
       <div className="scroll">
+        <WorkOnIt load={load ?? null} error={loadError ?? null} onRetry={onRetryLoad} name={name} />
         <div className="gh">
           <span>Spec</span>
           <span style={{ display: "flex", gap: 6 }}>
@@ -297,6 +306,71 @@ export function MachineSheet({
         )}
         <p className="sh-note">From each part&apos;s newest record. A matching method doesn&apos;t mean the part fits this machine.</p>
       </div>
+    </>
+  );
+}
+
+/** The hours of work the checked parts put on this machine, from each part's newest record and recorded outcome. */
+function WorkOnIt({ load, error, onRetry, name }: { load: { qty: number; machine: MachineLoad | null; other: number } | null; error: string | null; onRetry?: () => void; name: string }) {
+  const l = load?.machine ?? null;
+  const rows = load ? loadRows(l, load.qty) : [];
+  return (
+    <>
+      <div className="gh">
+        <span>Work from checked parts</span>
+        <span className="num">{l?.parts ? `${l.parts} ${l.parts === 1 ? "part" : "parts"}` : ""}</span>
+      </div>
+      {error ? (
+        <div className="rec">
+          <span style={{ color: "#8A1C12" }}>Couldn&apos;t load the machine time.</span>
+          {onRetry ? (
+            <button className="btn sm" type="button" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : !load ? (
+        <p className="sh-note" role="status">
+          Loading machine time…
+        </p>
+      ) : !l?.parts ? (
+        <p style={{ margin: "4px 12px", color: "var(--ink3)", fontSize: 13 }}>No checked part lands on the {name} yet: none of their newest records sorts onto it, and no part is recorded in-house on it.</p>
+      ) : (
+        <>
+          <div className="kv">
+            {rows.map(([k, v]) => (
+              <React.Fragment key={k}>
+                <span>{k}</span>
+                <b className="num">{v}</b>
+              </React.Fragment>
+            ))}
+          </div>
+          {l.top.slice(0, 5).map((p) => (
+            <div className="rec" key={`${p.part_key}-${p.record_id}`}>
+              <span>
+                {p.file_name ?? "Part"}
+                <small className="num">
+                  {p.hours != null ? `${hoursShort(p.hours)} · ` : "machine time not priced at this quantity · "}
+                  {p.quantity.toLocaleString("en-US")} {p.basis === "decided" ? "recorded in-house" : "of each, not decided"}
+                </small>
+              </span>
+              {p.part_key ? (
+                <Link href={R.part(p.part_key)} aria-label={`Open ${p.file_name ?? "the part"}`}>
+                  Open
+                </Link>
+              ) : null}
+            </div>
+          ))}
+          {l.parts > Math.min(5, l.top.length) ? <p className="sh-note">The {Math.min(5, l.top.length)} with the most machine time of {l.parts}.</p> : null}
+        </>
+      )}
+      {load && !error ? (
+        <p className="sh-note">
+          Machine time is ScaleCAD&apos;s estimate per part × quantity: a part recorded &quot;Make in-house&quot; at its recorded quantity, else {load.qty.toLocaleString("en-US")} of each.
+          {l?.stale_parts ? ` ${l.stale_parts} ${l.stale_parts === 1 ? "was" : "were"} checked before a machine change; check again for current hours.` : ""}
+          {load.other ? ` ${load.other} ${load.other === 1 ? "part is" : "parts are"} recorded outside or another way and aren't counted.` : ""}
+        </p>
+      ) : null}
     </>
   );
 }
