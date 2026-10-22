@@ -100,3 +100,41 @@ def test_plain_declared_facts_still_read(client, monkeypatch):
     assert declared == {"hosting": "Render", "data_region": "Oregon (US West)",
                         "encryption_at_rest": "Database and disks encrypted at rest by the hosting provider, AES-256",
                         "backup_retention_days": None}
+
+
+@pytest.mark.parametrize("value", [
+    "cadvrfy-files.fly.dev",
+    "minio.internal:9000",
+    "Hosted at db.prod.internal",
+    "Fly.io",
+    "10.0.4.12",
+    "Private network 172.16.0.5",
+])
+def test_declared_text_never_carries_a_hostname_or_address(client, monkeypatch, value):
+    for name in ("DEPLOYMENT_HOSTING", "DEPLOYMENT_DATA_REGION", "DEPLOYMENT_ENCRYPTION_AT_REST"):
+        monkeypatch.setenv(name, value)
+    r = client.get("/api/v1/deployment")
+    assert r.json()["declared"] == {"hosting": None, "data_region": None, "encryption_at_rest": None,
+                                    "backup_retention_days": None}
+    for part in ("fly.dev", "fly.io", "internal", "10.0.4", "172.16"):
+        assert part not in r.text.lower()
+
+
+def test_declared_text_never_repeats_the_stores_own_settings(client, monkeypatch):
+    # The configured bucket, prefix or endpoint host, written into a declared fact
+    # by mistake, isn't published even when it reads as plain words.
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "s3")
+    monkeypatch.setenv("OBJECT_STORE_S3_BUCKET", "kestrel-cad-prod")
+    monkeypatch.setenv("OBJECT_STORE_S3_PREFIX", "tenant-north")
+    monkeypatch.setenv("OBJECT_STORE_S3_ENDPOINT", "https://objects-west.example.org")
+    monkeypatch.setenv("DEPLOYMENT_HOSTING", "Render, files in kestrel-cad-prod")
+    monkeypatch.setenv("DEPLOYMENT_DATA_REGION", "Oregon (tenant-north)")
+    monkeypatch.setenv("DEPLOYMENT_ENCRYPTION_AT_REST", "objects-west encrypts disks")
+    r = client.get("/api/v1/deployment")
+    assert r.json()["declared"]["hosting"] is None and r.json()["declared"]["data_region"] is None
+    assert r.json()["declared"]["encryption_at_rest"] is None
+    for part in ("kestrel-cad-prod", "tenant-north", "objects-west"):
+        assert part not in r.text
+    # Ordinary words that merely share a letter run with nothing configured still read.
+    monkeypatch.setenv("DEPLOYMENT_DATA_REGION", "Oregon, U.S. (US West)")
+    assert client.get("/api/v1/deployment").json()["declared"]["data_region"] == "Oregon, U.S. (US West)"
