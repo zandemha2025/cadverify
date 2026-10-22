@@ -191,3 +191,29 @@ def test_overhead_definition_names_the_lines_it_burdens():
     assert "not material, tooling, EDM wire or outside finishing" in oh.source
     margin = next(d for d in _global_assumptions(rates, EstimateOptions(), "US") if d.name == "margin")
     assert "should-costs" in margin.source
+
+
+# ── ce-05 / ce-19 / me-09: one material basis ──────────────────────────────────
+
+def test_steel_is_one_grade_across_the_machining_routes():
+    """ce-05: with "Steel" chosen, 3-axis and forging were in Mild Steel at $1.2/kg and 5-axis
+    and wire EDM in AISI 4130 at $2.2/kg (0.4145 kg × 1.05 × 2.2 = $0.96 against × 1.2 = $0.52).
+    Every route that runs mild steel is now priced in it; sand casting names its iron."""
+    import trimesh
+    from src.costing import EstimateOptions, estimate_decision, report_to_dict
+    from tests.test_quantity_model import _analyze
+
+    r, m, f = _analyze(trimesh.creation.box(extents=[60.0, 40.0, 20.0]))
+    rep = report_to_dict(estimate_decision(r, m, f, EstimateOptions(quantities=[100], material_class="steel")))
+    grade = {e["process"]: e["material"] for e in rep["estimates"]}
+    for p in ("cnc_3axis", "cnc_5axis", "wire_edm", "forging"):
+        assert grade[p] == "Mild Steel", (p, grade)
+    assert grade["sand_casting"] == "Ductile Iron"
+    five = next(e for e in rep["estimates"] if e["process"] == "cnc_5axis")
+    assert round(five["line_items"]["material"], 2) == 0.52      # was $0.96 in AISI 4130
+    feas = {x["process"]: x for x in rep["engine_feasibility"]}
+    # ce-19: investment casting has no steel price, and says so; FDM can't run steel at all.
+    assert feas["investment_casting"]["runs_class"] is True
+    assert feas["investment_casting"]["not_priced_reason"].startswith(
+        "No steel grade is on file for investment casting, so ScaleCAD doesn't price it in steel")
+    assert feas["fdm"]["runs_class"] is False and feas["fdm"]["not_priced_reason"] == "Filament printing (FDM/FFF) can't run steel."

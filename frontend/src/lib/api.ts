@@ -1075,6 +1075,10 @@ export interface CostFeasibility {
   costed: boolean;
   blockers?: string[];
   cost_exclusion_reason?: string;
+  /** Why a process the geometry allows has no price in this material class (ce-19). */
+  not_priced_reason?: string;
+  /** False when the process can't run the class at all (FDM and steel); true when only no grade is on file. */
+  runs_class?: boolean;
 }
 
 export interface CostUnitWarning {

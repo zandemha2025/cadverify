@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMethods,
+  canMakeCount,
   chartModel,
   cheapestAt,
   costLines,
@@ -498,4 +499,27 @@ test("ce-08: pricing 25 on a record of six quantities says which one it replaces
   assert.equal(replacedBy([1, 100, 1000, 2000, 5000, 10000], 25), 2000);
   assert.equal(replacedBy([1, 100, 1000], 25), null);
   assert.equal(replacedBy([1, 100, 1000, 2000, 5000, 10000], 2000), null);
+});
+
+test("one material basis: rows say when they're priced in another grade, and can't-run processes don't count (ce-05, ce-19)", () => {
+  const steel = (process: string, material: string, unit: number) => ({ process, material, quantity: 100, unit_cost_usd: unit, line_items: {}, drivers: [], dfm_ready: true, dfm_verdict: "pass", dfm_score: 1, est_error_band_pct: 30, fixed_cost_usd: 0, variable_cost_usd: unit, dfm_blockers: [] });
+  const ps = (process: string) => ({ process, verdict: "pass", score: 1, issues: [] });
+  const methods = buildMethods({
+    validation: { process_scores: ["cnc_3axis", "cnc_5axis", "sand_casting", "fdm", "investment_casting"].map(ps), universal_issues: [] },
+    cost: {
+      material_class: "steel",
+      estimates: [steel("cnc_3axis", "Mild Steel", 36.69), steel("cnc_5axis", "Mild Steel", 49.71), steel("sand_casting", "Ductile Iron", 78.23)],
+      engine_feasibility: [
+        { process: "fdm", verdict: "pass", score: 1, costed: false, not_priced_reason: "Filament printing (FDM/FFF) can't run steel.", runs_class: false },
+        { process: "investment_casting", verdict: "pass", score: 1, costed: false, not_priced_reason: "No steel grade is on file for investment casting, so ScaleCAD doesn't price it in steel; pick another material class or name a grade it runs.", runs_class: true },
+      ],
+    },
+  } as never);
+  const by = (c: string) => methods.find((m) => m.code === c)!;
+  assert.equal(by("cnc_5axis").material, "Mild Steel");
+  assert.equal(by("sand_casting").material, "Ductile Iron, not Mild Steel: the closest grade it runs");
+  assert.match(methodWhy(by("investment_casting"), "steel"), /^No steel grade is on file for investment casting/);
+  assert.equal(by("fdm").runsClass, false);
+  // FDM passes DFM but can't run steel: it isn't one of the processes that can make it.
+  assert.equal(canMakeCount(methods.filter((m) => m.members.length === 1)), 4);
 });

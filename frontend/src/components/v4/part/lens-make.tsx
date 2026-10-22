@@ -8,6 +8,7 @@ import { Loading, cx } from "../ui";
 import { usePart } from "./ctx";
 import {
   VERDICT_LABEL,
+  canMakeCount,
   cheapestAt,
   days,
   dfmMeta,
@@ -243,9 +244,11 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
       ],
     };
   }
-  const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn").length;
+  // ce-19: a process that can't run the part's material class (an FDM printer and steel) isn't one that can make it.
+  const can = canMakeCount(singles);
+  const cantRun = singles.filter((m) => m.runsClass === false).length;
   const env = envLine(p.data.runEnvironment);
-  const figs: FigItem[] = [{ k: "Can make", v: `${can} of ${singles.length}`, s: "processes", tone: can ? "ok" : "bad" }];
+  const figs: FigItem[] = [{ k: "Can make", v: `${can} of ${singles.length}`, s: cantRun ? `processes · ${cantRun} can’t run ${classLabel(cls).toLowerCase()}` : "processes", tone: can ? "ok" : "bad" }];
   // The same count as the problem list below (not the engine's per-process fixes and overall verdict).
   const fixesFig: FigItem = problemsFigure(problems);
   const meta = `${classLabel(cls)} · ${env ?? "no service conditions set"}`;

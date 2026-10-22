@@ -187,6 +187,10 @@ export interface Method {
   /** Why it can't make the part, in the engine's own words (DFM gate or blocker). */
   blockedReason: string | null;
   excludedReason: string | null;
+  /** ce-19: why it has no price in the part's material class, in the engine's words, or null. */
+  notPricedReason?: string | null;
+  /** ce-19: false when the process can't run the part's material class at all (FDM and steel). */
+  runsClass?: boolean;
   /** Cheapest non-excluded estimate per computed quantity. */
   prices: Map<number, CostEstimate>;
   /** The machine of yours that clears every gate for this route, if any. */
@@ -307,9 +311,37 @@ export function buildMethods(input: PartInputs): Method[] {
       routePick: cost?.routing?.recommended_process === code,
       material: materialText(code, info, anyPrice?.material ?? null, cost?.material_class ?? null, !!cost),
       bestOf: best != null && score === best ? scores.size : null,
+      notPricedReason: prices.size === 0 ? feas?.not_priced_reason ?? null : null,
+      runsClass: feas?.runs_class === false ? false : !cannotRunClass(code, info, cost?.material_class ?? null),
     });
   }
+  // ce-05: one material basis. A row priced in another grade than the one most rows use
+  // says so, with the grade it is priced in.
+  const grades = new Map<string, number>();
+  for (const m of out) {
+    const g = [...m.prices.values()][0]?.material;
+    if (g) grades.set(g, (grades.get(g) ?? 0) + 1);
+  }
+  const basis = [...grades.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (basis && basis[1] > 1) {
+    for (const m of out) {
+      const g = [...m.prices.values()][0]?.material;
+      if (g && g !== basis[0] && m.material === g) m.material = `${g}, not ${basis[0]}: the closest grade it runs`;
+    }
+  }
   return out;
+}
+
+/** True when a process can't run the material class at all (a plastic-only printer and steel). */
+export function cannotRunClass(code: string, info: MethodInfo, cls: string | null): boolean {
+  if (!cls) return false;
+  const metal = !!info.metalOnly || code === "sheet_metal";
+  return (metal && cls === "polymer") || (PLASTIC_ONLY.has(code) && cls !== "polymer");
+}
+
+/** "Can make N": processes whose DFM passes and that run the part's material class (ce-19). */
+export function canMakeCount(methods: Method[]): number {
+  return methods.filter((m) => (m.verdict === "ok" || m.verdict === "warn") && m.runsClass !== false).length;
 }
 
 const VERDICT_ORDER: Verdict[] = ["ok", "warn", "unk", "bad", "out"];
@@ -473,6 +505,7 @@ export function priceMeta(m: Method, q: number): string | null {
 export function methodWhy(m: Method, materialClass: string | null): string {
   if (m.excludedReason) return m.excludedReason;
   if (m.blockedReason) return m.blockedReason;
+  if (m.notPricedReason) return m.notPricedReason;
   if (m.members.length > 1 && m.prices.size === 0 && materialClass === "polymer") return "Priced once you choose a metal.";
   if (m.finding) return m.finding.text;
   if (m.prices.size === 0 && METHODS[m.code]?.metalOnly && materialClass === "polymer") return "Needs a metal; not priced in plastic.";
@@ -1111,7 +1144,7 @@ export function routesAnswer(methods: Method[], q: number): Answer | null {
 
 export function verdictAnswer(methods: Method[], validation: ValidationResult | null, cost: CostReport | null, problems: { severity: string }[] = []): Answer {
   const singles = methods.filter((m) => m.members.length === 1);
-  const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn");
+  const can = singles.filter((m) => (m.verdict === "ok" || m.verdict === "warn") && m.runsClass !== false);
   const blocked = singles.filter((m) => m.verdict === "bad").map((m) => m.name);
   const gp = singles.find((m) => m.geometryPick);
   const rows = [{ k: "Can make", v: `${can.length} of ${singles.length} processes` }];

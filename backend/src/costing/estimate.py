@@ -484,6 +484,12 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         row["costed"] = row["process"] in costed_processes
         if row["process"] in cost_exclusions:
             row["cost_exclusion_reason"] = cost_exclusions[row["process"]]
+        elif not row["costed"]:
+            # ce-19: why a process the geometry allows has no price in this material
+            # class: it can't run the class at all, or no grade of the class is on file.
+            why = _not_priced_reason(row["process"], options.material_class)
+            if why:
+                row["not_priced_reason"], row["runs_class"] = why
 
     # ── env-excluded cost entries stay in the list, but carry an inline flag +
     # the SAME cited reason the verdict shows (Phase C coherence fix) so the cost
@@ -668,6 +674,44 @@ def _prefer_owned_materials(elig: list, options) -> list:
             cands = _env_preferred_materials(process, cands, options.service_environment)
         out.append({**item, "material": min(cands, key=lambda m: m.cost_per_kg)} if cands else item)
     return out
+_CLASS_WORD = {"polymer": "plastic", "stainless": "stainless steel", "nickel": "nickel alloy",
+               "cobalt": "cobalt-chrome"}
+
+
+def _not_priced_reason(process_value: str, material_class: str) -> Optional[tuple]:
+    """``(reason, runs_class)`` for a process with no price in ``material_class``:
+    it runs no material of that kind at all (an FDM printer and steel), or it runs
+    other metals but no grade of this class is on file (investment casting and steel).
+    None when the process isn't one ScaleCAD prices."""
+    from src.analysis.models import ProcessType as _PT
+    from src.costing.rates import MATERIAL_FAMILY
+    from src.profiles.database import get_materials_for_process
+
+    try:
+        process = _PT(process_value)
+    except ValueError:
+        return None
+    if process not in COSTED_PROCESSES:
+        return None
+    from src.costing.routing import _DED_FEEDSTOCK_PROCS, DIE_CAST_CLASSES
+
+    word = _CLASS_WORD.get(material_class, material_class)
+    name = process_phrase(process) or process_value
+    # Deposition buys the metal printers' alloys (routing.select_material).
+    pool = _DED_FEEDSTOCK_PROCS if process in (_PT.DED, _PT.WAAM) else (process,)
+    families = {MATERIAL_FAMILY.get(m.name) for p in pool for m in get_materials_for_process(p)}
+    metal_class = material_class != "polymer"
+    cannot = ((metal_class and families <= {"polymer", None}) or (not metal_class and "polymer" not in families)
+              or (process == _PT.INJECTION_MOLDING and metal_class)
+              or (process == _PT.DIE_CASTING and material_class not in DIE_CAST_CLASSES))
+    if cannot:
+        return f"{name[:1].upper()}{name[1:]} can't run {word}.", False
+    if material_class not in families:
+        return (f"No {word} grade is on file for {name}, so ScaleCAD doesn't price it in {word}; "
+                f"pick another material class or name a grade it runs."), True
+    return None
+
+
 # A note that names the shop's own machine starts with this (public shares drop it).
 OWNED_PICK_NOTE_PREFIX = "On a machine you own, the cheapest way to make it as drawn at low quantity is "
 _CHOOSE_ON_INTENT = "Both are priced above; choose on what the part is for, not on price alone."
