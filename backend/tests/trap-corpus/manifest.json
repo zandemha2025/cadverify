@@ -302,7 +302,7 @@
             "build_volume"
           ],
           "gates_trip": [
-            "build_reorientation"
+            "build_fit_unproven_or_reoriented"
           ]
         },
         "sla": {
@@ -311,7 +311,7 @@
           ]
         }
       },
-      "note": "Legacy trap filename retained: 300.1x290x300mm fits a 300x300x350mm FDM envelope after reorientation. The longer side occupies the 350mm axis; SLA still fails."
+      "note": "Legacy trap filename retained: 300.1x290x300mm fits a 300x300x350mm FDM envelope after reorientation. The longer side occupies the 350mm axis; SLA still fails. | 2026-10-21: the gate now parses with the upload route's parser, which carries binary-STL float32 rounding (about 3.7e-5 mm here). The 300 mm side sits exactly on the 300 mm limit, so production reports BUILD_ENVELOPE_PRECISION (fit unproven) where the old trimesh.load gate saw BUILD_REORIENTATION_REQUIRED. Either is acceptable; EXCEEDS_BUILD_VOLUME (too big) is not."
     },
     {
       "file": "trap-build-cube-300.1mm.stl",
