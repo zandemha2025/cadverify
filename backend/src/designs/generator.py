@@ -275,6 +275,10 @@ def _child_generate(plan_data: dict[str, Any], step_path: str, stl_path: str, re
             max_dim = max(bbox)
             gmsh.option.setNumber("Mesh.MeshSizeMax", max(0.5, min(10.0, max_dim / 35.0)))
             gmsh.option.setNumber("Mesh.MeshSizeMin", max(0.1, min(2.0, max_dim / 140.0)))
+            # Holes and round edges at least 12 facets round, as ScaleCAD meshes
+            # an uploaded STEP (step_mesher._CURVATURE_PTS): a coarser preview
+            # reads its holes' facets as corners and undercuts the STEP doesn't have.
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 12)
             gmsh.model.mesh.generate(2)
             _orient_outward(gmsh, solids)
             gmsh.write(stl_path)
