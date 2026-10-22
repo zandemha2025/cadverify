@@ -268,9 +268,12 @@ def test_enterprise_binder_green_batch_cost_oracle():
     # 18% declared green oversize, 6mm spacing, 12% packing in 400x250x250:
     # floor(3,000,000 / (29.6 * 23.7 * 17.8)) = 240 parts/build.
     assert next(d.value for d in estimate.drivers if d.name == "parts_per_build") == 240
+    # Binder jetting buys powder: the cheapest stainless powder on file is
+    # 17-4 PH at $80/kg (it was SS316L at its $5/kg bar price before W11).
+    assert estimate.material == "17-4 PH SS"
     assert estimate.line_items == pytest.approx({
-        "material": 0.1962, "machine": 1.6667, "sinter": 1.5,
+        "material": 3.0566, "machine": 1.6667, "sinter": 1.5,
         "labor": 0, "amortized_fixed": 0.0729,
     }, abs=0.00005)
-    assert round(estimate.unit_cost_usd, 2) == 3.44
-    assert round(estimate.unit_cost_usd, 2) * 12000 == 41280
+    assert round(estimate.unit_cost_usd, 2) == 6.30
+    assert round(round(estimate.unit_cost_usd, 2) * 12000, 2) == 75600
