@@ -30,7 +30,7 @@ export default function Page() {
   {
     "id": "retention",
     "title": "Retention and deletion",
-    "body": "Pilot and customer retention terms are governed by the applicable agreement. For privacy requests, contact nazeem@scalecad.ai.",
+    "body": "Pilot and customer retention terms are governed by the applicable agreement. In the app you can delete a part, an organization (admins) or your own account. When an account is deleted, ScaleCAD keeps the billing records the law requires and a one-way fingerprint of the account’s email with the number of free checks it used, so free checks aren’t issued twice; the email can’t be read back from the fingerprint. For privacy requests, contact nazeem@scalecad.ai.",
     "href": "mailto:nazeem@scalecad.ai",
     "link": "Contact the privacy team"
   }

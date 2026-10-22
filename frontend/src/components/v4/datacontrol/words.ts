@@ -70,7 +70,7 @@ export interface PartPreview {
 
 export interface Receipt {
   id: string;
-  scope: "part" | "organization";
+  scope: "part" | "organization" | "account";
   target: string;
   status: "removing_files" | "done" | "failed";
   removed: Record<string, unknown>;
@@ -112,6 +112,7 @@ export function fingerprint(hash: string): string {
 }
 
 export function receiptLine(r: Receipt): string {
+  if (r.scope === "account") return accountReceiptLine(r);
   if (r.status === "done") return r.scope === "part" ? "Deleted. The stored file and every record of it are gone." : "Deleted. The organization's files and records are gone.";
   if (r.status === "failed") return `The records are deleted. Removing the stored files stopped after repeated errors. Send ScaleCAD support this deletion ID: ${r.id}.`;
   const f = r.files;
@@ -156,4 +157,54 @@ export function orgRemovalLines(p: OrgPreview): string[] {
 /** The typed name must match exactly (spaces at the ends don't count), as the server checks. */
 export function nameMatches(typed: string, name: string): boolean {
   return typed.trim() !== "" && typed.trim() === name.trim();
+}
+
+/* ── your account ────────────────────────────────────────────────────────── */
+
+export interface AccountPreview {
+  email: string;
+  can_delete: boolean;
+  blockers: { org_id: string; name: string; members: number; message: string }[];
+  orgs_deleted: { org_id: string; name: string; will_remove: OrgPreview["will_remove"] }[];
+  orgs_left: { org_id: string; name: string; role: string; members: number }[];
+  api_keys: number;
+  billing: { plan: string; subscription_status: string | null; period_end: string | null; cancels_now: boolean };
+  kept: string[];
+}
+
+/** "A", "A and B", "A, B and C". */
+function names(list: string[]): string {
+  if (list.length <= 1) return list[0] ?? "";
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/** What deleting the account removes, one plain line each, from the server's counts. */
+export function accountRemovalLines(p: AccountPreview): string[] {
+  const lines = ["Your sign-in: email, name, phone, password and single sign-on links. Every browser and key is signed out."];
+  for (const o of p.orgs_deleted) {
+    const w = o.will_remove;
+    const what = w.parts || w.checks || w.cost_records ? `${n(w.parts, "part")} with their stored files, ${n(w.checks, "check")} and ${n(w.cost_records, "cost record")}` : "no parts yet";
+    lines.push(`${o.name}, which only you are in: ${what}, and its settings`);
+  }
+  if (p.orgs_left.length) lines.push(`Your access to ${names(p.orgs_left.map((o) => o.name))}. What you made there stays with ${p.orgs_left.length === 1 ? "it" : "them"}.`);
+  if (p.api_keys) lines.push(`${n(p.api_keys, "API key")}: they stop working now`);
+  if (p.billing.cancels_now) {
+    const end = day(p.billing.period_end);
+    lines.push(`Your Pro plan, cancelled now: nothing more is charged.${end ? ` The rest of the period to ${end} isn't refunded.` : " The rest of this period isn't refunded."}`);
+  }
+  lines.push("Your free-check and catalog records");
+  return lines;
+}
+
+/** The typed email must be the account's (case and spaces at the ends don't count), as the server checks. */
+export function emailMatches(typed: string, email: string): boolean {
+  return typed.trim() !== "" && typed.trim().toLowerCase() === email.trim().toLowerCase();
+}
+
+export function accountReceiptLine(r: Receipt): string {
+  const orgs = Number(r.removed.organizations_deleted ?? 0);
+  if (r.status === "done") return orgs ? `Deleted. Your account and ${orgs === 1 ? "the organization" : `the ${orgs} organizations`} only you were in are gone.` : "Deleted. Your account is gone.";
+  if (r.status === "failed") return `Your account is deleted. Removing stored files stopped after repeated errors; ScaleCAD support can finish it with this deletion ID: ${r.id}.`;
+  const f = r.files;
+  return `Your account is deleted. Stored files: ${f.steps_done} of ${f.steps_total} storage areas removed${f.retrying ? ", retrying" : ""}. ScaleCAD finishes the rest; nothing more is needed from you.`;
 }

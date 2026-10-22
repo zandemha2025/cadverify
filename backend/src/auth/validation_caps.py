@@ -136,6 +136,10 @@ async def _allowance(session, user_id: int, *, lock: bool = False) -> Allowance:
     plan, email, grant, phone_verified_at = (await session.execute(query)).one()
     if plan == "pilot":
         return Allowance(plan="pilot", tier="pilot", cap=None)
+    # An account signed up again after deleting one starts from what that one used.
+    from src.services.deleted_account_allowance import carry_over
+
+    await carry_over(session, user_id, email)
     if plan == "pro":
         billing = (await session.execute(
             select(BillingAccount.status, BillingAccount.current_period_start, BillingAccount.current_period_end)

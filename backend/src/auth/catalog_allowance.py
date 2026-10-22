@@ -121,6 +121,10 @@ async def _access(session: AsyncSession, user_id: int, *, lock: bool = False) ->
     plan, email, phone_verified_at = (await session.execute(query)).one()
     if plan == "pilot":
         return CatalogAccess(plan="pilot", tier="pilot", cap=None)
+    # An account signed up again after deleting one starts from what that one used.
+    from src.services.deleted_account_allowance import carry_over
+
+    await carry_over(session, user_id, email)
     tier = email_tier(email)
     return CatalogAccess(
         plan=plan or "trial",

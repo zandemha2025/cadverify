@@ -86,11 +86,11 @@ export const TRANSIT: FactSection = {
   ],
 };
 
-/** Deleting a part or the organization (data control, 2026-10-21). */
+/** Deleting a part, the organization (data control, 2026-10-21) or your account (2026-10-22). */
 export const DELETING: FactSection = {
   id: "delete",
   title: "Keeping and deleting",
-  short: "Kept until you delete it. A member can delete a part; an admin can delete the whole organization.",
+  short: "Kept until you delete it. A member can delete a part; an admin can delete the whole organization; anyone can delete their own account.",
   link: { label: "Privacy requests", href: "/privacy#retention" },
   rows: [
     { k: "How long", v: "Saved files, checks and records are kept until someone deletes them. Nothing expires them." },
@@ -98,7 +98,8 @@ export const DELETING: FactSection = {
     { k: "Deleting the organization", v: "An admin can delete the organization in Account: every part, file, record and setting, for every member. Members are signed out. Accounts, plans and billing records stay." },
     { k: "What stays", v: "A record that a file with a given fingerprint was deleted, by whom and when, without its name or results; audit events with their details removed (after an organization is deleted, also without who did them or from where: no email, network address or browser); usage counts, without the files’ fingerprints; and each account’s free-check count." },
     { k: "Backups", v: "Deleting removes the data from ScaleCAD at once. Backups and the storage provider’s earlier versions of files aren’t changed by it; how long those are kept is set in the hosting setup." },
-    { k: "Your account", v: "Deleting a sign-in account isn’t in ScaleCAD yet. To ask for it, send a privacy request." },
+    { k: "Your account", v: "You can delete your sign-in account in Account, Security. Organizations only you are in are deleted with it; you leave the others, and what you made there stays with them. Not while you’re the only admin of an organization others are in. A Pro plan is cancelled at once. It can’t be undone." },
+    { k: "After an account is deleted", v: "ScaleCAD keeps the billing records the law requires (the payment processor’s customer reference and invoices), a record that the account was deleted, and a one-way fingerprint of its email with the number of free checks used, so free checks aren’t issued twice. The email can’t be read back from the fingerprint. Audit events lose the person’s email, network address and browser." },
     { k: "People leaving", v: "Removing someone from your organization ends their access. The organization keeps its parts." },
     { k: "Taking data out", v: "Cost records export as JSON, CSV or PDF." },
   ],

@@ -4,7 +4,8 @@
  * Security (board A2): change or set the password (which variant depends on
  * AUTH_MODE and whether the account has one), the ways this deployment signs
  * people in, and Sign out — which signs out every browser at once, because
- * logout revokes the account's sessions (there is no per-device list).
+ * logout revokes the account's sessions (there is no per-device list) — and
+ * Delete account, last.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -12,6 +13,7 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { authErrorMessage } from "@/lib/api-recovery";
 import { Chip, Content, KV, Panel, Sheet } from "../ui";
 import { R } from "../routes";
+import { DeleteAccountPanel } from "../datacontrol/delete-account";
 import { AccountFrame, AccountHead, Confirm } from "./frame";
 import * as api from "./api";
 import { passwordProblem, signIn } from "./derive";
@@ -104,6 +106,7 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
             />
           ) : null}
         </Panel>
+        <DeleteAccountPanel email={user?.email ?? null} />
       </Content>
       <Sheet label="Sign-in rules" style={{ bottom: 20 }}>
         <div className="top">

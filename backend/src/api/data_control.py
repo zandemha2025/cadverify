@@ -1,4 +1,4 @@
-"""Data control: delete a part, delete an organization, and list share links.
+"""Data control: delete a part, an organization or your account, and list share links.
 
 Routes (all org-scoped; another org's ids are the same 404 as unknown ones):
 
@@ -6,6 +6,8 @@ Routes (all org-scoped; another org's ids are the same 404 as unknown ones):
   DELETE /api/v1/parts/{mesh_hash}                    delete the part (receipt)
   GET    /api/v1/orgs/current/deletion-preview        admin: what an org delete removes
   POST   /api/v1/orgs/current/delete                  admin: {"confirm_name": "<org name>"}
+  GET    /api/v1/account/deletion-preview             what deleting your sign-in account does
+  POST   /api/v1/account/delete                       {"confirm_email": "<your email>"}
   GET    /api/v1/data-deletions/{id}                  the receipt and file-removal progress
   GET    /api/v1/share-links?scope=mine|org           links with status; org = admins only
 
@@ -13,6 +15,8 @@ Roles (``src.auth.rbac``): deleting a part needs a platform analyst who is an
 org member or admin. A member may delete a part only they checked or costed;
 an admin may delete any part. Deleting the organization needs its admin (a
 platform superadmin's org-role bypass does not count). Viewers read only.
+Anyone may delete their own account, from a signed-in browser (not an API
+key), unless they are the only admin of an organization others are in.
 
 The database work commits in the request. Stored files are removed right after,
 in this process, for up to a few seconds; anything left continues in the
@@ -32,6 +36,7 @@ from src.auth.rate_limit import limiter
 from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
+from src.services import account_deletion_service as accounts
 from src.services import data_deletion_service as svc
 from src.services import share_links
 
@@ -177,6 +182,56 @@ async def delete_current_org(
     receipt = await svc.delete_organization(
         session, org_id=org_id, user_id=ctx.user_id, confirm_name=body.confirm_name
     )
+    await _remove_files(receipt.ulid)
+    response.headers["Cache-Control"] = "no-store"
+    return await _fresh_receipt(session, receipt.ulid)
+
+
+def _browser_session(user: AuthedUser) -> None:
+    # Deleting an account belongs to the signed-in person, never to an API key.
+    if user.key_prefix != "session":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "browser_session_required",
+                    "message": "Delete your account from the ScaleCAD web app, signed in."},
+        )
+
+
+class AccountDeleteBody(BaseModel):
+    confirm_email: str = Field(..., min_length=1, max_length=320)
+
+
+@router.get("/account/deletion-preview")
+@limiter.limit("120/hour;600/day")
+async def account_deletion_preview(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_api_key),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """What deleting the caller's account removes, what blocks it, and what stays."""
+    _browser_session(user)
+    response.headers["Cache-Control"] = "no-store"
+    return await accounts.account_deletion_preview(session, user.user_id)
+
+
+@router.post("/account/delete")
+@limiter.limit("5/hour;10/day")
+async def delete_account(
+    request: Request,
+    response: Response,
+    body: AccountDeleteBody,
+    user: AuthedUser = Depends(require_api_key),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Delete the caller's sign-in account. Every session and key stops working.
+
+    409 ``account_delete_blocked`` while they are the only admin of an
+    organization others are in; 503 ``billing_cancel_failed`` (nothing deleted)
+    when a live Pro plan couldn't be cancelled at Stripe.
+    """
+    _browser_session(user)
+    receipt = await accounts.delete_account(session, user_id=user.user_id, confirm_email=body.confirm_email)
     await _remove_files(receipt.ulid)
     response.headers["Cache-Control"] = "no-store"
     return await _fresh_receipt(session, receipt.ulid)

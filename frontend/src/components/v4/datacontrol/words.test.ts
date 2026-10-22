@@ -3,6 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   EXPIRY_CHOICES,
+  accountReceiptLine,
+  accountRemovalLines,
+  emailMatches,
   choiceFromKey,
   choiceKey,
   linkEndText,
@@ -12,6 +15,7 @@ import {
   partRemovalLines,
   receiptLine,
   statusLabel,
+  type AccountPreview,
   type OrgPreview,
   type PartPreview,
   type Receipt,
@@ -93,4 +97,42 @@ test("deleting the organization: typed name must match exactly; the list counts 
   assert.ok(!lines.some((l) => l.includes("catalog run")));
   const empty = orgRemovalLines({ ...p, will_remove: { ...p.will_remove, parts: 0, checks: 0, cost_records: 0 } });
   assert.equal(empty[0], "No parts, checks or cost records yet");
+});
+
+const ACCOUNT: AccountPreview = {
+  email: "mia@acme-aero.com",
+  can_delete: true,
+  blockers: [],
+  orgs_deleted: [{ org_id: "o1", name: "Mia's workspace", will_remove: { parts: 3, checks: 4, cost_records: 1, batches: 0, designs: 0, actual_costs: 0, members: 1, pending_invites: 0, api_keys: 1, active_share_links: 0 } }],
+  orgs_left: [{ org_id: "o2", name: "Acme Aero", role: "member", members: 6 }],
+  api_keys: 2,
+  billing: { plan: "pro", subscription_status: "active", period_end: "2026-11-20T00:00:00Z", cancels_now: true },
+  kept: [],
+};
+
+test("deleting your account lists what goes, from the server's counts", () => {
+  const lines = accountRemovalLines(ACCOUNT);
+  assert.equal(lines[0], "Your sign-in: email, name, phone, password and single sign-on links. Every browser and key is signed out.");
+  assert.ok(lines.includes("Mia's workspace, which only you are in: 3 parts with their stored files, 4 checks and 1 cost record, and its settings"));
+  assert.ok(lines.includes("Your access to Acme Aero. What you made there stays with it."));
+  assert.ok(lines.includes("2 API keys: they stop working now"));
+  assert.ok(lines.includes("Your Pro plan, cancelled now: nothing more is charged. The rest of the period to 20 Nov 2026 isn't refunded."));
+  const free = accountRemovalLines({ ...ACCOUNT, orgs_deleted: [], orgs_left: [{ org_id: "a", name: "A", role: "member", members: 2 }, { org_id: "b", name: "B", role: "admin", members: 3 }, { org_id: "c", name: "C", role: "viewer", members: 2 }], api_keys: 0, billing: { plan: "trial", subscription_status: null, period_end: null, cancels_now: false } });
+  assert.ok(free.includes("Your access to A, B and C. What you made there stays with them."));
+  assert.ok(!free.some((l) => /API key|Pro plan|which only you/.test(l)));
+  for (const l of [...lines, ...free]) assert.doesNotMatch(l, /!/);
+});
+
+test("deleting your account: the typed email must be the account's, ignoring case and outer spaces", () => {
+  assert.equal(emailMatches("  MIA@acme-aero.com ", "mia@acme-aero.com"), true);
+  assert.equal(emailMatches("mia@acme-aero.co", "mia@acme-aero.com"), false);
+  assert.equal(emailMatches("   ", "mia@acme-aero.com"), false);
+});
+
+test("an account receipt says what is gone, or what ScaleCAD is still removing", () => {
+  const base: Receipt = { id: "01ACCOUNT", scope: "account", target: "7", status: "done", removed: { organizations_deleted: 1 }, files: { steps_total: 6, steps_done: 6, removed: 9, retrying: false }, created_at: null, completed_at: null, kept: [] };
+  assert.equal(accountReceiptLine(base), "Deleted. Your account and the organization only you were in are gone.");
+  assert.equal(receiptLine({ ...base, removed: { organizations_deleted: 0 } }), "Deleted. Your account is gone.");
+  assert.equal(receiptLine({ ...base, status: "removing_files", files: { steps_total: 6, steps_done: 2, removed: 3, retrying: true } }), "Your account is deleted. Stored files: 2 of 6 storage areas removed, retrying. ScaleCAD finishes the rest; nothing more is needed from you.");
+  assert.match(receiptLine({ ...base, status: "failed" }), /01ACCOUNT/);
 });

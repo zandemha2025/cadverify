@@ -111,6 +111,7 @@ LEASE = timedelta(minutes=5)
 
 PART = "part"
 ORGANIZATION = "organization"
+ACCOUNT = "account"  # a person's sign-in account (src.services.account_deletion_service)
 # What an audit row's actor email becomes when the row is redacted (the
 # column is NOT NULL). The Activity list shows it as the actor.
 REDACTED_EMAIL = "redacted"
@@ -439,6 +440,14 @@ KEPT_AFTER_ORG_DELETE = [
     "Backups and the storage provider's earlier versions of stored files: the application doesn't change them.",
 ]
 
+KEPT_AFTER_ACCOUNT_DELETE = [
+    "Billing records the law requires: the payment processor's (Stripe) customer reference for this account and its invoices.",
+    "A one-way fingerprint of your email with how many free checks and catalog parts you used, so free checks aren't given twice. The email can't be read back from it.",
+    "A deletion record: that this account was deleted and when, with counts. Not your email, name or files.",
+    "In organizations you leave, what you made there stays theirs: parts, checks and records, shown as made by a deleted account. Their audit events keep no email, network address or browser of yours.",
+    "Backups and the storage provider's earlier versions of stored files: the application doesn't change them.",
+]
+
 
 # ---------------------------------------------------------------------------
 # Database phase
@@ -752,30 +761,27 @@ async def org_deletion_preview(session: AsyncSession, org_id: str) -> dict[str, 
     }
 
 
-async def delete_organization(
-    session: AsyncSession, *, org_id: str, user_id: int, confirm_name: str,
-) -> DataDeletion:
-    """Delete the organization and everything in it. The caller is its admin.
+@dataclass
+class OrgRemoval:
+    """What removing one organization's rows found, and the stored files left to remove."""
 
-    ``confirm_name`` must equal the organization's name (surrounding spaces
-    ignored). The org row is locked FOR UPDATE, which waits for any part
-    deletion holding its share lock. Idempotent at the HTTP layer: a second
-    call finds no organization (the caller's active org is then another one).
+    counts: dict[str, int]
+    steps: list[dict]
+    members: list[tuple[int, str]]
+
+
+async def remove_org_rows(
+    session: AsyncSession, *, org_id: str, user_id: int, deletion_ulid: str, actor_email: str,
+) -> OrgRemoval:
+    """The database part of deleting an organization (the caller holds its row lock).
+
+    Counts what it holds, redacts its audit rows, keeps its usage counts without
+    file hashes, records ``organization.deleted`` (as ``actor_email``) and deletes
+    the organization row, which cascades to every org-scoped table. It doesn't
+    commit, move members to another organization or write the receipt: deleting
+    an organization (``delete_organization``) and deleting an account
+    (``account_deletion_service``) each do that their own way.
     """
-    if not org_id or not _SAFE_ORG.fullmatch(org_id):
-        raise HTTPException(status_code=404, detail="Organization not found")
-    org = (
-        await session.execute(select(Organization).where(Organization.id == org_id).with_for_update())
-    ).scalar_one_or_none()
-    if org is None:
-        raise HTTPException(status_code=404, detail="Organization not found")
-    if (confirm_name or "").strip() != (org.name or "").strip():
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "confirm_name_mismatch", "message": "Type the organization's name exactly to delete it."},
-        )
-
-    deletion_ulid = str(ULID())
     counts = await _org_counts(session, org_id)
     batches = (await session.execute(select(Batch.ulid).where(Batch.org_id == org_id))).scalars().all()
     recon_jobs = (
@@ -825,7 +831,7 @@ async def delete_organization(
         AuditLog(
             user_id=user_id,
             org_id=None,
-            user_email=await _email(session, user_id),
+            user_email=actor_email,
             action="organization.deleted",
             resource_type="organization",
             resource_id=org_id,
@@ -833,6 +839,38 @@ async def delete_organization(
         )
     )
     await session.execute(delete(Organization).where(Organization.id == org_id).execution_options(synchronize_session=False))
+    return OrgRemoval(counts=counts, steps=steps, members=[(int(m), e) for m, e in members])
+
+
+async def delete_organization(
+    session: AsyncSession, *, org_id: str, user_id: int, confirm_name: str,
+) -> DataDeletion:
+    """Delete the organization and everything in it. The caller is its admin.
+
+    ``confirm_name`` must equal the organization's name (surrounding spaces
+    ignored). The org row is locked FOR UPDATE, which waits for any part
+    deletion holding its share lock. Idempotent at the HTTP layer: a second
+    call finds no organization (the caller's active org is then another one).
+    """
+    if not org_id or not _SAFE_ORG.fullmatch(org_id):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    org = (
+        await session.execute(select(Organization).where(Organization.id == org_id).with_for_update())
+    ).scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if (confirm_name or "").strip() != (org.name or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "confirm_name_mismatch", "message": "Type the organization's name exactly to delete it."},
+        )
+
+    deletion_ulid = str(ULID())
+    removal = await remove_org_rows(
+        session, org_id=org_id, user_id=user_id, deletion_ulid=deletion_ulid,
+        actor_email=await _email(session, user_id),
+    )
+    counts, steps, members = removal.counts, removal.steps, removal.members
 
     # Every member lands in an organization that still exists, and is signed out.
     from src.auth.org_context import ensure_personal_org
@@ -977,6 +1015,11 @@ async def _run_step(org_id: str, step: dict) -> int:
         return await _unlink_copies(org_id, step["value"], set(step.get("copies") or []))
     if kind == "scrub_lineage":
         return await _scrub_lineage(org_id, step["value"])
+    if kind == "crm_archive":
+        from src.services.customer_sync import archive_notion_user
+
+        await archive_notion_user(int(step["user_id"]), step.get("page_id"))
+        return 0  # a record elsewhere, not a stored file
     return await asyncio.to_thread(_run_step_sync, org_id, step)
 
 
@@ -1164,7 +1207,7 @@ def serialize_receipt(row: DataDeletion) -> dict[str, Any]:
         },
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
-        "kept": KEPT_AFTER_PART_DELETE if row.scope == PART else KEPT_AFTER_ORG_DELETE,
+        "kept": {PART: KEPT_AFTER_PART_DELETE, ACCOUNT: KEPT_AFTER_ACCOUNT_DELETE}.get(row.scope, KEPT_AFTER_ORG_DELETE),
     }
 
 

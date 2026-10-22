@@ -1,10 +1,10 @@
 /**
- * Calls for deleting a part or the organization, and for share links that end.
+ * Calls for deleting a part, the organization or your account, and for share links that end.
  * Signed-in calls go through the same-origin authed proxy (`API_BASE`); the
  * public share reads go to the backend's public routes.
  */
 import { API_BASE, browserOrBackendUrl } from "@/lib/api-base";
-import type { ExpiryChoice, LinkStatus, OrgPreview, PartPreview, Receipt } from "./words";
+import type { AccountPreview, ExpiryChoice, LinkStatus, OrgPreview, PartPreview, Receipt } from "./words";
 
 export class DataApiError extends Error {
   readonly status: number;
@@ -70,6 +70,15 @@ export function orgDeletionPreview(): Promise<OrgPreview> {
 
 export function deleteOrg(confirmName: string): Promise<Receipt> {
   return call<Receipt>("/orgs/current/delete", jsonBody("POST", { confirm_name: confirmName }));
+}
+
+export function accountDeletionPreview(): Promise<AccountPreview> {
+  return call<AccountPreview>("/account/deletion-preview");
+}
+
+/** Deletes the signed-in person's account. The session stops working on the server at once. */
+export function deleteAccount(confirmEmail: string): Promise<Receipt> {
+  return call<Receipt>("/account/delete", jsonBody("POST", { confirm_email: confirmEmail }));
 }
 
 export function deletionStatus(id: string): Promise<Receipt> {

@@ -66,6 +66,43 @@ async def sync_notion_user(client: httpx.AsyncClient, user: dict, data_source: s
     return str(UUID(response.json()["id"]))
 
 
+def _notion_client(token: str) -> httpx.AsyncClient:
+    return httpx.AsyncClient(base_url="https://api.notion.com", timeout=10, headers={
+        "Authorization": f"Bearer {token}", "Notion-Version": "2025-09-03",
+    })
+
+
+async def archive_notion_user(user_id: int, page_id: str | None) -> bool:
+    """Move a deleted account's customer-list page to Notion's trash.
+
+    Called by account deletion (a resumable step, retried until it succeeds).
+    False when the CRM isn't configured here; True when the page is in the
+    trash or there was none. Finds the page by its Account ID when the account
+    never stored one (a lost create response).
+    """
+    token = os.getenv("NOTION_INTEGRATION_TOKEN", "").strip()
+    data_source = os.getenv("NOTION_CRM_DATA_SOURCE_ID", "").strip()
+    if not token or not data_source:
+        return False
+    data_source = str(UUID(data_source))
+    async with _notion_client(token) as client:
+        if not page_id:
+            response = await client.post(f"/v1/data_sources/{data_source}/query", json={
+                "filter": {"property": "Account ID", "rich_text": {"equals": f"scalecad-user-{int(user_id)}"}},
+                "page_size": 1,
+            })
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            if not results:
+                return True
+            page_id = results[0]["id"]
+        response = await client.patch(f"/v1/pages/{UUID(str(page_id))}", json={"in_trash": True})
+        if response.status_code == 404:
+            return True
+        response.raise_for_status()
+    return True
+
+
 async def sync_customer_accounts(ctx: dict) -> None:
     token = os.getenv("NOTION_INTEGRATION_TOKEN", "").strip()
     data_source = os.getenv("NOTION_CRM_DATA_SOURCE_ID", "").strip()

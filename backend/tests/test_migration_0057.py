@@ -57,7 +57,7 @@ def test_models_match_the_migration():
     assert {c.name for c in table.columns} == {"email_hmac", "checks_used", "catalog_parts_used", "deleted_at"}
     assert _check(table, migration.LEDGER_CHECK) == migration.LEDGER_RULE
     # The ledger never holds an email.
-    assert not any("email" == c.name or c.name.endswith("_email") for c in table.columns)
+    assert not any(c.name == "email" or c.name.endswith("_email") for c in table.columns)
 
 
 def test_upgrade_after_head_adds_constraints_not_valid_then_validates():

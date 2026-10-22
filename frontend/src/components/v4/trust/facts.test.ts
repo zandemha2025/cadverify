@@ -35,8 +35,12 @@ test("deleting says what goes, who may, what stays, and promises nothing about b
   assert.match(text, /Backups and the storage provider’s earlier versions of files aren’t changed by it/);
   // No retention period is promised for backups.
   assert.doesNotMatch(text, /\b\d+ days\b/);
-  // Account deletion is still a request.
-  assert.match(text, /Deleting a sign-in account isn’t in ScaleCAD yet/);
+  // Account deletion is in the app, with what blocks it and what stays.
+  assert.match(text, /You can delete your sign-in account in Account, Security/);
+  assert.match(text, /Not while you’re the only admin of an organization others are in/);
+  assert.match(text, /one-way fingerprint of its email with the number of free checks used, so free checks aren’t issued twice/);
+  assert.match(text, /The email can’t be read back from the fingerprint/);
+  assert.doesNotMatch(text, /isn’t in ScaleCAD yet/);
 });
 
 test("staff access is disclosed, including file names", () => {
