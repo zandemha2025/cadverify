@@ -123,9 +123,12 @@ async def list_change_requests(
     """All change requests for the caller's org, newest first; optional ?status."""
     org_id = await resolve_org(session, user.user_id)
     if not org_id:
-        return {"change_requests": []}
+        return {"change_requests": [], "admins": 0}
     rows = await svc.list_requests(session, org_id, status=status)
-    return {"change_requests": [svc.serialize_request(r) for r in rows]}
+    # How many admins can review: with more than one, a proposer's own change
+    # waits for another admin (ce-13).
+    return {"change_requests": [svc.serialize_request(r) for r in rows],
+            "admins": await svc.org_admins(session, org_id)}
 
 
 @router.get("/change-requests/{request_id}")

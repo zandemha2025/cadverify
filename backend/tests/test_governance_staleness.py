@@ -25,6 +25,7 @@ from src.db.models import (
     AuditLog,
     ChangeRequest,
     CostDecision,
+    Membership,
     Notification,
     Organization,
     RateCardVersion,
@@ -108,7 +109,7 @@ def _governance_app(maker):
 async def test_approving_a_change_request_marks_older_decisions_stale(asset_type):
     engine, maker = await sqlite_sessionmaker(
         Organization, User, ApiKey, AuditLog, Notification, ChangeRequest,
-        RateCardVersion, ShopProfileVersion, CostDecision,
+        RateCardVersion, ShopProfileVersion, CostDecision, Membership,
     )
     try:
         cr_id = await _seed(maker, asset_type)

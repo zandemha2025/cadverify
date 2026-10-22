@@ -14,12 +14,11 @@ delegates to those modules' ``publish_version`` so there is exactly one publish
 code path (honest: governance decides WHO may trigger the switch and records the
 review, it does not duplicate the switch).
 
-SELF-APPROVAL POLICY (v1, DOCUMENTED DEFAULT): v1 is PERMISSIVE — any org admin
-may approve, including the proposer. Real separation-of-duties (reviewer must
-differ from proposer) is a later slice; enforcing it now would gate behavior the
-tests don't cover. The seam is here (``approve`` receives ``reviewer_id`` and
-the row carries ``proposed_by``) so a future ``allow_self_approve=False`` is a
-one-line guard with its own test.
+SELF-APPROVAL POLICY (ce-13): the proposer can't approve their own change when the
+organization has another admin to review it (403 ``self_approval``); in a
+single-admin organization they can, and the request is labelled ``self_approved``
+so nobody reads it as a second pair of eyes. ``other_admins`` counts the admins
+besides the reviewer from ``memberships``.
 
 HONESTY (non-negotiable rules #1/#2): governance never launders an assumption
 into a fact. Approving a change request only triggers the existing publish path;
@@ -141,6 +140,32 @@ async def get_request(
     ).scalars().first()
 
 
+async def other_admins(session: AsyncSession, org_id: str, user_id: Optional[int]) -> int:
+    """How many admins the organization has besides ``user_id``."""
+    from sqlalchemy import func
+
+    from src.db.models import Membership
+
+    stmt = select(func.count()).select_from(Membership).where(
+        Membership.org_id == org_id, Membership.org_role == "admin")
+    if user_id is not None:
+        stmt = stmt.where(Membership.user_id != user_id)
+    return int((await session.execute(stmt)).scalar_one() or 0)
+
+
+async def org_admins(session: AsyncSession, org_id: str) -> int:
+    """How many admins the organization has (the review page says who can approve)."""
+    return await other_admins(session, org_id, None)
+
+
+def self_approval_refusal(n_others: int) -> HTTPException:
+    return HTTPException(status_code=403, detail={
+        "code": "self_approval",
+        "message": (f"You proposed this change, so another admin approves it. Your organization has "
+                    f"{n_others} other {'admin' if n_others == 1 else 'admins'}."),
+    })
+
+
 async def approve(
     session: AsyncSession,
     org_id: str,
@@ -158,11 +183,15 @@ async def approve(
     draft was concurrently published, or an effective-date conflict) surfaces as
     the library's own HTTPException and the request is NOT marked approved.
 
-    SELF-APPROVAL: permitted in v1 (see module docstring). ``reviewer_id`` is
-    recorded so a future separation-of-duties policy has the data it needs.
+    SELF-APPROVAL: refused (403) when the reviewer proposed it and the org has
+    another admin; allowed in a single-admin org and labelled ``self_approved``.
     """
     row = await _load_decidable(session, org_id, request_id)
     lib = _library_for(row.asset_type)
+    if reviewer_id is not None and row.proposed_by == reviewer_id:
+        n = await other_admins(session, org_id, reviewer_id)
+        if n > 0:
+            raise self_approval_refusal(n)
     # Publish FIRST so a publish failure (409/404/400) aborts before we mark the
     # request approved — approval and publish stay atomic within this session.
     published = await lib.publish_version(session, org_id, row.target_version_id)
@@ -238,4 +267,7 @@ def serialize_request(row: ChangeRequest) -> dict:
         "reviewed_by": row.reviewed_by,
         "created_at": _iso(row.created_at),
         "decided_at": _iso(row.decided_at),
+        # Approved by the person who proposed it (only possible with no other admin).
+        "self_approved": bool(row.status == "approved" and row.proposed_by is not None
+                              and row.proposed_by == row.reviewed_by),
     }

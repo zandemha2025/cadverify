@@ -247,4 +247,8 @@ def test_serialize_request_shape():
         "reviewed_by": 20,
         "created_at": ts.isoformat(),
         "decided_at": ts.isoformat(),
+        "self_approved": False,
     }
+    # approved by the person who proposed it: labelled
+    assert svc.serialize_request(_cr(status="approved", reviewed_by=10))["self_approved"] is True
+    assert svc.serialize_request(_cr(status="rejected", reviewed_by=10))["self_approved"] is False

@@ -186,6 +186,39 @@ def diff_payloads(a: dict, b: dict, *, _prefix: str = "") -> dict:
     return {"changed": changed, "added": added, "removed": removed}
 
 
+def changes_against(base: Optional[dict], payload: Any) -> list[dict]:
+    """Every value ``payload`` sets differently from ``base`` (the typical
+    ``RATE_CARD_V0`` when None): ``[{"path": "process.cnc_3axis.machine_rate",
+    "from": 75, "to": 82}, {"path": "material_prices.Mild Steel", "from": None,
+    "to": 2.4}]``. Paths use the stored (JSON) keys."""
+    import json
+
+    def norm(x):
+        return json.loads(json.dumps(x, default=str))
+
+    a = norm(base if base is not None else RATE_CARD_V0)
+    b = norm(payload if isinstance(payload, dict) else {})
+    d = diff_payloads(a, b)
+    out = [dict(c) for c in d["changed"]]
+
+    def leaf(obj, path):
+        for k in path.split("."):
+            if not isinstance(obj, dict) or k not in obj:
+                return None
+            obj = obj[k]
+        return obj
+
+    for path in d["added"]:
+        v = leaf(b, path)
+        if isinstance(v, dict):
+            out.extend({"path": f"{path}.{k}", "from": None, "to": x} for k, x in v.items())
+        else:
+            out.append({"path": path, "from": None, "to": v})
+    for path in d["removed"]:
+        out.append({"path": path, "from": leaf(a, path), "to": None})
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Resolution cache (single-process; invalidated on publish)
 # ---------------------------------------------------------------------------

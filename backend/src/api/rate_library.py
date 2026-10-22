@@ -166,7 +166,14 @@ async def get_rate_card(
     row = await svc.get_version(session, org_id, version_id) if org_id else None
     if row is None:
         raise HTTPException(status_code=404, detail="version not found")
-    return svc.serialize_version(row, include_payload=True)
+    out = svc.serialize_version(row, include_payload=True)
+    # What this version changes against the card in effect now (the typical v0
+    # table when none is published): every leaf, labor, overhead, margin, each
+    # machine rate and material price, so a reviewer sees all of it (ce-13).
+    effective = await svc.resolve_rate_table_for_org(session, org_id)
+    out["changes"] = svc.changes_against(effective, row.payload)
+    out["changes_against"] = "in_effect" if effective is not None else "typical_v0"
+    return out
 
 
 @router.post("")

@@ -255,3 +255,26 @@ async def test_saved_records_read_their_card_from_the_org_timeline(monkeypatch):
     assert old["text"] == "Priced at rates v0; your rates are v1." and old["out_of_date"] is True
     assert new == {"priced": 1, "current": 1, "out_of_date": False, "text": "Priced at your rates v1."}
     rate_library_service.invalidate("ORG-NFP")
+
+
+def test_a_draft_lists_every_value_it_changes_for_review():
+    """ce-13: a rate-card draft can change machine rates, overhead, margin and material
+    prices, and the review shows each change, not only labor."""
+    from src.services.rate_library_service import changes_against
+
+    p = _v1_payload()
+    p["global"]["overhead"] = 0.15
+    p["global"]["margin"] = 0.10
+    p["process"][PT.CNC_3AXIS]["machine_rate"] = 82
+    p["material_prices"] = {"Mild Steel": 2.4}
+    rows = {c["path"]: (c["from"], c["to"]) for c in changes_against(None, p)}
+    assert rows == {
+        "global.labor_rate": (35.0, 58.0),
+        "global.overhead": (0.0, 0.15),
+        "global.margin": (0.0, 0.10),
+        "process.cnc_3axis.machine_rate": (75, 82),
+        "material_prices.Mild Steel": (None, 2.4),
+    }
+    # against a published card: only what differs from it
+    assert {c["path"] for c in changes_against(_v1_payload(), p)} == {
+        "global.overhead", "global.margin", "process.cnc_3axis.machine_rate", "material_prices.Mild Steel"}
