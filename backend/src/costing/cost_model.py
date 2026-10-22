@@ -804,6 +804,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     else:
         labor_src = (f"post-process {post_hr_part + post_hr_build / n:g} hr × "
                      f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}")
+    if family in ("casting", "forging"):
+        # Said plainly: this time is per piece and doesn't grow with the part, so at
+        # volume a casting or forging twice the size is barely dearer (the metal, which
+        # does scale, is a small share of a small part's price).
+        what = ("shakeout, fettling and cleaning" if family == "casting"
+                else "descaling and flash cleanup")
+        labor_src += (f"; {what} per piece, the same time at any size "
+                      f"(typical value, not confirmed by a shop)")
     drivers_out.append(Driver(
         name="labor_cost", value=round(labor_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"), source=labor_src, error_band_pct=20.0,

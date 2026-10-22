@@ -465,3 +465,23 @@ def test_a_tiny_part_never_reads_zero_kg():
         assert "0.0000 kg" not in _driver(e, "material_cost")["source"], e["process"]
     from src.costing.cost_model import kg_text
     assert (kg_text(0.0136), kg_text(0.0000412), kg_text(0.00085)) == ("0.0136", "0.0000412", "0.000850")
+
+
+@pytest.mark.parametrize("process", ["sand_casting", "investment_casting", "forging"])
+def test_a_casting_or_forging_twice_the_size_pays_8x_the_metal_and_the_same_per_piece_time(process):
+    # Round 7 item 5: at 10,000 a 2x part was barely dearer. The metal is modelled by
+    # weight (8x the volume, 8x the material cost); what doesn't grow is the per-piece
+    # time (fettling, pour, press), which the labor line now says in words.
+    small = trimesh.creation.box(extents=[40.0, 30.0, 20.0])
+    big = trimesh.creation.box(extents=[80.0, 60.0, 40.0])
+    est = {}
+    for name, mesh in (("small", small), ("big", big)):
+        report = estimate_decision(*_analyze(mesh), EstimateOptions(quantities=[10000], material_class="aluminum"))
+        est[name] = _est(report, process, 10000)
+        assert est[name] is not None
+    mat = [_driver(est[k], "material_cost")["value"] for k in ("small", "big")]
+    assert mat[1] / mat[0] == pytest.approx(8.0, rel=0.01)
+    assert est["big"]["material_mass"]["used_kg"] / est["small"]["material_mass"]["used_kg"] == pytest.approx(8.0, rel=0.01)
+    labor = [_driver(est[k], "labor_cost") for k in ("small", "big")]
+    assert labor[0]["value"] == labor[1]["value"]
+    assert "per piece, the same time at any size" in labor[0]["source"]
