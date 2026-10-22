@@ -232,3 +232,10 @@ test("the file storage line names the configured region and per-file encryption 
   const local = healthRows({ ...base, object_store: { ok: false, expected: false, backend: "local", error: null } } as never);
   assert.equal(local.find((r) => r.name === "File storage")!.note, "No object store on this deployment");
 });
+
+test("Activity counts cost records as cost records, not decisions (it-21)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./activity-screen.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /Decisions saved/);
+  assert.match(src, /\["Cost records", counts\?\.cost_decisions\]/);
+});

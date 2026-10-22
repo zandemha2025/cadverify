@@ -55,7 +55,7 @@ export function ActivityScreen({ health: first }: { health: HealthDeep & { check
           ...(admin
             ? [
                 <span key="c">Part checks <b className="num">{counts ? counts.analyses : "—"}</b></span>,
-                <span key="s">Decisions saved <b className="num">{counts ? counts.cost_decisions : "—"}</b></span>,
+                <span key="s">Cost records <b className="num">{counts ? counts.cost_decisions : "—"}</b></span>,
                 <span key="w">Webhook deliveries <b className="num">{counts ? counts.webhook_deliveries : "—"}</b></span>,
               ]
             : []),
@@ -83,7 +83,7 @@ export function ActivityScreen({ health: first }: { health: HealthDeep & { check
                 {(
                   [
                     ["Part checks", counts?.analyses],
-                    ["Decisions saved", counts?.cost_decisions],
+                    ["Cost records", counts?.cost_decisions],
                     ["Usage events", counts?.usage_events],
                     ["Webhook deliveries", counts?.webhook_deliveries],
                   ] as [string, number | undefined][]
