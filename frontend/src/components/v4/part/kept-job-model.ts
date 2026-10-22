@@ -59,7 +59,11 @@ export function keptWorkLine(s: KeptJobStatus): { state: "running" | "done" | "s
   return { state: "running", label: repair ? `Repairing a copy of ${name}` : `Re-pricing ${name}`, detail: keptStageWord(s.stage), href: partHref, progress: s.progress };
 }
 
-/** What the part page says while its kept file is worked on by the worker. */
-export function keptToastLine(stage: string | null | undefined): string {
-  return `a large file, on ScaleCAD’s worker: ${keptStageWord(stage).toLowerCase()}`;
+/**
+ * What the part page says while its kept file is worked on by the worker: a large file goes there
+ * first; a re-check that ran out of time on the web request (a busy server meshing a STEP/IGES)
+ * is moved there to finish (buyer-04, me-14).
+ */
+export function keptToastLine(stage: string | null | undefined, moved = false): string {
+  return `${moved ? "moved to ScaleCAD’s worker, which has more time" : "a large file, on ScaleCAD’s worker"}: ${keptStageWord(stage).toLowerCase()}`;
 }

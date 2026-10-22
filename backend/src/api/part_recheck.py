@@ -141,9 +141,43 @@ async def recheck_stored_part(
         response.status_code = 202
         response.headers["Cache-Control"] = "no-store"
         return checks.public_status(job)
-    result = await recheck_kept(session, org_id=ctx.org_id, digest=digest, user=user, response=response, **options)
+    try:
+        result = await recheck_kept(session, org_id=ctx.org_id, digest=digest, user=user, response=response, **options)
+    except HTTPException as exc:
+        if not ran_out_of_time(exc):
+            raise
+        # The web request ran out of time on a file the worker's larger budget can finish (a busy
+        # server turning a STEP/IGES into a mesh, buyer-04/me-14): re-price it there instead of
+        # refusing, and answer with the job (202) as for a big kept file.
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        job = await kept.start_and_enqueue(
+            session, user_id=user.user_id, org_id=ctx.org_id, mesh_hash=digest, action=kept.RECHECK,
+            filename=await _kept_name(session, ctx.org_id, digest, info.suffix), info=info, options=options,
+        )
+        response.status_code = 202
+        response.headers["Cache-Control"] = "no-store"
+        return {**checks.public_status(job), "moved_to_worker": "web_time_limit"}
     response.headers["Cache-Control"] = "no-store"
     return result
+
+
+_TIME_CAP = re.compile(r"exceeded \d+(?:\.\d+)?\s*s (?:cap|timeout)", re.IGNORECASE)
+
+
+def ran_out_of_time(exc: HTTPException) -> bool:
+    """A re-check that stopped on the web request's time limit, not on the file: the analysis
+    timeout (504), or every mesh strategy stopped by its time cap (400 "... rung 2 exceeded 15s
+    cap ..."). A file gmsh can't mesh at all (a periodic surface, a broken B-rep) is still a 400."""
+    detail = exc.detail
+    if isinstance(detail, dict):
+        detail = detail.get("message") or detail.get("detail") or ""
+    text = str(detail or "")
+    if exc.status_code == 504:
+        return True
+    return exc.status_code == 400 and "Could not tessellate" in text and bool(_TIME_CAP.search(text))
 
 
 async def recheck_kept(

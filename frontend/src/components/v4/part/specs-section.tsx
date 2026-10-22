@@ -12,6 +12,7 @@ import * as React from "react";
 import "./specs.css";
 import { ConfirmButton, cx } from "../ui";
 import { usePart } from "./ctx";
+import { recheckingLabel, useStoredRecheck } from "./recheck-state";
 import { costLines, methodName, money, qtyWord } from "./model";
 import {
   CERTIFICATIONS,
@@ -89,6 +90,7 @@ export function SpecsSection() {
   const added = costLines(est).filter((l) => l.key.startsWith("spec_"));
   const specDays = (est?.lead_time?.components as Record<string, number> | undefined)?.specs ?? null;
   const must = mustHold(stored);
+  const running = useStoredRecheck(key);
 
   return (
     <>
@@ -102,13 +104,14 @@ export function SpecsSection() {
           <span>Methods, prices and machine fit update when the part is checked again with the saved specs.</span>
           <span>
             {p.canRecheck ? (
-              <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
-                Re-verify with saved specs
+              <button className="btn sm ink" type="button" disabled={!!running} aria-live="polite" onClick={() => p.recheck()}>
+                {running ? recheckingLabel(running.seconds) : "Re-verify with saved specs"}
               </button>
             ) : (
               <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Drop the file on the part to re-verify it with the saved specs.</span>
             )}
           </span>
+          {running ? <span style={{ color: "var(--ink2)", fontSize: 12.5 }}>{running.worker ? "On ScaleCAD’s worker, which has more time" : "From the file kept with this part"} · no check used</span> : null}
         </div>
       ) : null}
       <Pick label="Surface finish" options={FINISHES} values={draft.finishes} onToggle={(v) => set({ finishes: toggle(draft.finishes, v, "finishes") })} />

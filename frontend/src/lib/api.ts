@@ -982,6 +982,8 @@ export interface CostRecommendation {
   in_house?: boolean;
   basis?: CostPickBasis;
   machine?: string;
+  /** An outside pick that is your own process bought from a job shop at its fully loaded rate. */
+  same_process_outside?: boolean;
 }
 
 /** Why the engine picked in-house or outside when a machine you own clears a route (decision.IN_HOUSE_RULE). */

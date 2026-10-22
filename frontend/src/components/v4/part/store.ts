@@ -25,6 +25,7 @@ import { fetchAssemblyAnalysisV4, probeAssemblyV4 } from "./api";
 import { markWorkSeen, registerWork } from "../work/work-bar";
 import { startStoredCheck } from "./stored-check";
 import { R } from "../routes";
+import { plainError } from "./plain-errors";
 
 export type Failure =
   | { kind: "quota"; message: string }
@@ -207,7 +208,10 @@ async function loadPreview(id: number) {
       if (blob) void putCachedMesh({ hash: key, blob, faceHash: pm.faceHash, faceSpace: pm.faceSpace, filename: s.file.name, savedAt: Date.now() });
     }
   } catch (e) {
-    patch(id, { preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: e instanceof Error ? e.message : "No 3D preview" } });
+    // Plain words for the engine's own ("gmsh could not mesh the geometry [rung 2 exceeded 15s cap]").
+    const said = e instanceof Error ? e.message : null;
+    const plain = plainError("view", 0, said);
+    patch(id, { preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: plain.detail ? plain.text : said ?? "No 3D preview" } });
   }
 }
 

@@ -21,6 +21,7 @@ import { envStrikes, readVerification } from "@/lib/verify/verification";
 import { R } from "../routes";
 import { ConfirmButton, cx } from "../ui";
 import { usePart } from "./ctx";
+import { recheckingLabel, useStoredRecheck } from "./recheck-state";
 import { MATERIAL_CLASS_LABEL, cheapestAt, money, priceAt, qtyWord } from "./model";
 import { RunNotice, SheetTop, type FigItem } from "./sheet-bits";
 import { SpecsSection } from "./specs-section";
@@ -83,6 +84,7 @@ export function UseLayer() {
 export function UseSheet() {
   const p = usePart();
   const key = p.data.key;
+  const running = useStoredRecheck(key);
   const stored = React.useMemo(() => storedServiceEnvironment(p.data.context), [p.data.context]);
   const storedDraft = React.useMemo(() => draftFromServiceEnvironment(stored), [stored]);
   const [draft, setDraft] = React.useState<ServiceConditionsDraft>(storedDraft);
@@ -145,13 +147,14 @@ export function UseSheet() {
                 <span>Methods, prices and machine fit update when the part is checked again with the saved conditions.</span>
                 <span>
                   {p.canRecheck ? (
-                    <button className="btn sm ink" type="button" onClick={() => p.recheck()}>
-                      Re-verify with saved conditions
+                    <button className="btn sm ink" type="button" disabled={!!running} aria-live="polite" onClick={() => p.recheck()}>
+                      {running ? recheckingLabel(running.seconds) : "Re-verify with saved conditions"}
                     </button>
                   ) : (
                     <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Drop the file on the part to re-verify it with the saved conditions.</span>
                   )}
                 </span>
+                {running ? <span style={{ color: "var(--ink2)", fontSize: 12.5 }}>{running.worker ? "On ScaleCAD’s worker, which has more time" : "From the file kept with this part"} · no check used</span> : null}
               </div>
             ) : null}
             <div className="gh">

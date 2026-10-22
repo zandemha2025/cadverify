@@ -197,3 +197,42 @@ def test_recheck_uses_no_check_and_has_the_free_ceiling(store, monkeypatch):
     second = client.post(f"/api/v1/parts/{digest}/recheck?qty=10")
     assert second.status_code == 429
     assert second.json()["detail"]["code"] == "free_tool_limit" and second.json()["detail"]["tool"] == "recheck"
+
+
+def test_a_recheck_that_runs_out_of_time_moves_to_the_worker(store, monkeypatch):
+    """buyer-04 / me-14: under load the kept IGES ran out of mesh time on the web request and the
+    re-check answered 400 ("... rung 2 exceeded 15s cap ...") or 504; it now goes to the worker's
+    larger budget and answers with the job (202). A file that can't be meshed at all is still a 400."""
+    from fastapi import HTTPException
+
+    from src.api import part_recheck
+    from src.services import stored_check_service
+
+    digest = _save(ORG_A, "bored-block.iges", _cube_stl())
+    queued: list[str] = []
+
+    async def enqueue(job):
+        queued.append(job.ulid)
+
+    monkeypatch.setattr(stored_check_service, "enqueue", enqueue)
+    capped = ("Could not tessellate this part: gmsh could not mesh the geometry "
+              "[rung 2 exceeded 15s cap] (all 3 mesh strategies failed).")
+
+    async def out_of_time(*_a, **_k):
+        raise HTTPException(status_code=400, detail=capped)
+
+    monkeypatch.setattr(part_recheck, "recheck_kept", out_of_time)
+    r = TestClient(_app(1)).post(f"/api/v1/parts/{digest}/recheck?qty=250&material_class=aluminum")
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["action"] == "recheck" and body["source"] == "kept" and body["moved_to_worker"] == "web_time_limit"
+    assert queued == [body["check_id"]]
+
+    async def unmeshable(*_a, **_k):
+        raise HTTPException(status_code=400, detail="Could not tessellate this part: gmsh cannot mesh a periodic "
+                                                     "surface in the geometry (all 3 mesh strategies failed).")
+
+    monkeypatch.setattr(part_recheck, "recheck_kept", unmeshable)
+    assert TestClient(_app(1)).post(f"/api/v1/parts/{digest}/recheck?qty=250").status_code == 400
+    assert part_recheck.ran_out_of_time(HTTPException(status_code=504, detail="Cost analysis exceeded 60s timeout."))
+    assert not part_recheck.ran_out_of_time(HTTPException(status_code=400, detail="Unknown material_class 'x'."))

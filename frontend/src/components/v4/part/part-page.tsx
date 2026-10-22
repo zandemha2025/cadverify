@@ -13,11 +13,13 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchRevisions, linkRevision, loadPartMesh, loadSavedPart, recheckStored, RecheckError, type SavedPart } from "./api";
+import { recheckSummary } from "./recheck-words";
+import { setStoredRecheck } from "./recheck-state";
 import { keptToastLine } from "./kept-job-model";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
-import { qtyWord, withQuantity } from "./model";
+import { defaultQty, qtyWord, quantitiesOf, withQuantity } from "./model";
 import { urlSlot, type UrlSlot } from "./mesh-url";
 import { revisionForSession, type Revisions } from "./revision-link";
 import { PartView, type MeshSource } from "./part-view";
@@ -52,11 +54,20 @@ export function PartPage({ partKey }: { partKey: string }) {
   const [dropped, setDropped] = React.useState<File | null>(null);
   const [lens, setLens] = React.useState<Lens | null>(null);
   const [askedQty, setAskedQty] = React.useState<number | null>(null);
+  // The record shown: ?record= (a re-check's answer, kept across a reload), else the newest.
+  const [recordId, setRecordId] = React.useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("record"),
+  );
   const [quotaClosed, setQuotaClosed] = React.useState(false);
   const [reload, setReload] = React.useState(0);
+  const recheckLanding = React.useRef(false);
   // A re-check of a saved part from the file its organization kept (no file here, no check used).
   // worker: the stage, when the kept file is large enough to be re-priced on ScaleCAD's worker.
-  const [stored, setStored] = React.useState<{ s: "running"; what: string; worker?: string } | { s: "done"; what: string } | { s: "error"; msg: string; limit: boolean } | null>(null);
+  // done: what the re-check changed, said until closed (buyer-04: a 4-second note went unseen and the page
+  // looked the same). error: the refusal in plain words, the server's own under Details.
+  const [stored, setStored] = React.useState<
+    { s: "running"; what: string; worker?: string; moved?: boolean } | { s: "done"; text: string } | { s: "error"; msg: string; detail: string | null; limit: boolean } | null
+  >(null);
   const sessionDone = session?.status === "done";
   // A finished check is on screen here: the work bar lets it go.
   React.useEffect(() => {
@@ -77,14 +88,23 @@ export function PartPage({ partKey }: { partKey: string }) {
   React.useEffect(() => {
     let live = true;
     setState((s) => (saved ? s : "loading"));
-    loadSavedPart(partKey)
+    loadSavedPart(partKey, recordId)
       .then((p) => {
         if (!live) return;
         setSaved(p);
         setState("ready");
+        // A finished re-check's button reads "Re-checking…" until its record is on the page.
+        if (recheckLanding.current) {
+          recheckLanding.current = false;
+          setStoredRecheck(null);
+        }
       })
       .catch((e) => {
         if (!live) return;
+        if (recheckLanding.current) {
+          recheckLanding.current = false;
+          setStoredRecheck(null);
+        }
         setError(e instanceof Error ? e.message : "This part didn't load.");
         setState("error");
       });
@@ -92,7 +112,9 @@ export function PartPage({ partKey }: { partKey: string }) {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partKey, sessionDone, reload]);
+  }, [partKey, sessionDone, reload, recordId]);
+  // Leaving the part forgets its re-check's button state (the re-check itself goes on server-side).
+  React.useEffect(() => () => setStoredRecheck(null), [partKey]);
 
   // A fixed file uploaded from a problem card is that part's next revision: link them once the check is
   // saved, and read this part's links (either way) for the header.
@@ -169,6 +191,17 @@ export function PartPage({ partKey }: { partKey: string }) {
   // A re-check keeps the orientation of the check on screen unless it asks for another.
   const shownOrientation = session ? session.orientation : orientationParam(matOf(recordOf(data?.validation) ?? recordOf(data?.cost)));
   const storedRunning = stored?.s === "running";
+  // Show one record and keep it in the URL (?record=), so a reload shows it too.
+  const showRecord = React.useCallback((id: string) => {
+    setRecordId(id);
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("record", id);
+      window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      /* the page still shows it */
+    }
+  }, []);
   const recheck = React.useCallback(
     (opts?: { materialClass?: string; orientation?: string | null; qty?: number }) => {
       const materialClass = opts?.materialClass ?? session?.materialClass ?? data?.cost?.material_class ?? "polymer";
@@ -188,23 +221,47 @@ export function PartPage({ partKey }: { partKey: string }) {
       // upload's, so reloading the part shows it.
       if (kept !== true || storedRunning) return;
       const what = qty ? `at ${qtyWord(opts!.qty!)}` : materialClass !== (data?.cost?.material_class ?? "polymer") ? `in ${MATERIAL_WORD[materialClass] ?? materialClass}` : "with your machines and conditions";
+      // What the page shows now, to say what the re-check changed against it.
+      const before = data?.cost ?? null;
+      // The records the page knew when pressed: one that appears later was saved meanwhile.
+      const knownIds = new Set((saved?.decisions ?? []).map((d) => d.id));
+      const pageQty = opts?.qty ?? askedQty ?? defaultQty(quantitiesOf(before));
       setStored({ s: "running", what });
-      const onWorker = (stage: string) => setStored((cur) => (cur?.s === "running" ? { ...cur, worker: stage } : cur));
+      // The button that started it says so where it was pressed (the toast sits by the 3D view).
+      const startedAt = Date.now();
+      setStoredRecheck({ key: partKey, startedAt, worker: false });
+      const onWorker = (stage: string, moved: boolean) => {
+        setStoredRecheck({ key: partKey, startedAt, worker: true });
+        setStored((cur) => (cur?.s === "running" ? { ...cur, worker: stage, moved } : cur));
+      };
       void recheckStored(partKey, { materialClass, qty: qty ?? data?.cost?.quantities, owned: ownedProcessesFrom(saved?.machines ?? []), orientation: shownOrientation, onWorker })
-        .then(() => {
-          setStored({ s: "done", what });
+        .then((r) => {
+          recheckLanding.current = true;
+          // The page moves to the new record (reloaded below) and says what moved.
+          const answered = r.cost.saved?.id ?? null;
+          setStored({ s: "done", text: recheckSummary(before, r.cost, pageQty, answered, answered != null && knownIds.has(answered)) });
           if (qty) setAskedQty(opts!.qty!);
+          // Show the record the re-check answered with, also when it matches an older one (not the newest).
+          if (answered) showRecord(answered);
           setReload((n) => n + 1);
         })
-        .catch((e: unknown) => setStored({ s: "error", msg: e instanceof Error ? e.message : "The re-check didn’t finish.", limit: e instanceof RecheckError && e.limit }));
+        .catch(async (e: unknown) => {
+          setStoredRecheck(null);
+          const err = e instanceof RecheckError ? e : null;
+          let msg = e instanceof Error ? e.message : "The re-check didn’t finish.";
+          // An earlier press can still save its record after this page stopped waiting for it (the page was
+          // reloaded mid re-check): read the part again, and say so when a newer record is now shown.
+          const fresh = await loadSavedPart(partKey).catch(() => null);
+          const appeared = fresh?.decisions.find((d) => !knownIds.has(d.id)) ?? null;
+          if (appeared) {
+            showRecord(appeared.id);
+            msg = `${msg.replace(" Nothing was saved; the record on this page is unchanged.", " This press saved nothing.")} A newer record, #${appeared.id.slice(-6)} from an earlier re-check, is shown now.`;
+          }
+          setStored({ s: "error", msg, detail: err?.detail ?? null, limit: !!err?.limit });
+        });
     },
-    [file, kept, storedRunning, partKey, saved?.machines, session?.materialClass, session?.sample, data?.cost?.material_class, data?.cost?.quantities, shownOrientation],
+    [file, kept, storedRunning, partKey, saved?.machines, saved?.decisions, showRecord, session?.materialClass, session?.sample, data?.cost, askedQty, shownOrientation],
   );
-  React.useEffect(() => {
-    if (stored?.s !== "done") return;
-    const t = window.setTimeout(() => setStored(null), 4200);
-    return () => window.clearTimeout(t);
-  }, [stored]);
 
   if (!lens) return null;
   if (!data) {
@@ -282,15 +339,21 @@ export function PartPage({ partKey }: { partKey: string }) {
           <span>
             {stored.s === "running"
               ? stored.worker
-                ? `Re-checking ${data.fileName} ${stored.what}, ${keptToastLine(stored.worker)} · no check used`
+                ? `Re-checking ${data.fileName} ${stored.what}, ${keptToastLine(stored.worker, stored.moved)} · no check used`
                 : `Re-checking ${data.fileName} ${stored.what}, from the file kept with this part · no check used`
               : stored.s === "done"
-                ? `Re-checked ${stored.what} · saved as a new record · no check used`
+                ? stored.text
                 : stored.msg}
+            {stored.s === "error" && stored.detail ? (
+              <details className="ptoast-details">
+                <summary>Details</summary>
+                <span>{stored.detail}</span>
+              </details>
+            ) : null}
           </span>
-          {stored.s === "error" ? (
+          {stored.s !== "running" ? (
             <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8 }}>
-              {stored.limit ? <Link href={R.billing}>Plans</Link> : null}
+              {stored.s === "error" && stored.limit ? <Link href={R.billing}>Plans</Link> : null}
               <button className="btn sm ghost" type="button" onClick={() => setStored(null)}>
                 Close
               </button>

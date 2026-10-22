@@ -53,4 +53,6 @@ test("a refusal shows its first sentence; stages read in plain words", () => {
   assert.equal(keptStageWord("sizing"), "Sizing the file");
   assert.equal(keptStageWord("mystery"), "Working");
   assert.equal(keptToastLine("repairing"), "a large file, on ScaleCAD’s worker: repairing a copy");
+  // A re-check that ran out of time on the web request is moved there, and says so (buyer-04, me-14).
+  assert.equal(keptToastLine("queued", true), "moved to ScaleCAD’s worker, which has more time: waiting for a worker");
 });
