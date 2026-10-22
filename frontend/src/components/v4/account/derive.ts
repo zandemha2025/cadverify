@@ -27,6 +27,17 @@ export const ORG_ROLE_DOES: Record<OrgRole, string> = {
   admin: "Members, invites, sign-on, rates, approvals.",
 };
 
+/**
+ * The one line under Members: each person has one role here, the org role.
+ * The account tier ("workspace role", users.role) is set by ScaleCAD staff;
+ * every account is "analyst" unless staff narrow it to view-only, so only
+ * staff see it, and others see it only on a view-only account.
+ */
+export function orgRoleNote(orgName: string, staff: boolean): string {
+  const base = `Each person has one role in ${orgName}: a Viewer opens parts and records; a Member also checks and changes parts; an Admin also manages members, invites and sign-in.`;
+  return staff ? `${base} Account tier (staff only) is set by ScaleCAD: a view-only account can't change anything in any organization.` : base;
+}
+
 /** What a viewer loses or gains when their org role changes, for the confirm. */
 export function orgRoleChange(
   target: { email: string; role: OrgRole; self: boolean },

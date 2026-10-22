@@ -41,6 +41,7 @@ import {
   orgRoleChange,
   orgRoleLocked,
   planName,
+  orgRoleNote,
   roleName,
   signIn,
   workspaceRoleChange,
@@ -161,7 +162,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
         router.refresh();
       } else if (ask.kind === "ws") {
         await api.setWorkspaceRole(ask.userId, ask.next);
-        setDone(`Workspace role changed to ${roleName(ask.next)}.`);
+        setDone(`Account tier changed to ${roleName(ask.next)}.`);
         setAsk(null);
         await load();
       } else if (ask.kind === "remove") {
@@ -278,7 +279,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
                 ) : null}
               </div>
               <p className="a-fh" style={{ margin: "4px 16px 12px" }}>
-                Org role sets what you can manage here. Workspace role sets what you can do in parts and records.
+                {orgRoleNote(orgName, superadmin)}
               </p>
             </Panel>
             <SignoffPanel />
@@ -372,6 +373,7 @@ export function OrgScreen({ authMode, magicLink }: { authMode: string; magicLink
             authMode={authMode}
             magicLink={magicLink}
             isAdmin={isAdmin}
+            staff={superadmin}
           />
         ) : (
           <div className="top">
@@ -451,13 +453,16 @@ function MembersTable(props: {
   onCancel: () => void;
 }) {
   const { members, me, isAdmin, superadmin, platform, adminCount, orgName, ask } = props;
-  const cols = "minmax(0,1.6fr) 120px 150px 110px 90px";
+  // One role per person: the org role. The account tier ("workspace role",
+  // set by ScaleCAD staff) is shown only to staff, and to everyone only when
+  // it narrows a person to view-only.
+  const cols = superadmin ? "minmax(0,1.6fr) 120px 150px 110px 90px" : "minmax(0,1.6fr) 120px 110px 90px";
   return (
     <div role="table" aria-label="Members">
       <div className="a-tr th" role="row" style={{ gridTemplateColumns: cols }}>
         <span role="columnheader">Member</span>
         <span role="columnheader">Org role</span>
-        <span role="columnheader">Workspace role</span>
+        {superadmin ? <span role="columnheader">Account tier (staff)</span> : null}
         <span role="columnheader">Joined</span>
         <span role="columnheader">
           <span className="sr">Actions</span>
@@ -485,7 +490,7 @@ function MembersTable(props: {
                       {m.email}
                     </b>
                     <small>
-                      {[domainOf(m.email), self ? "You" : null, m.is_active ? null : "Deactivated"].filter(Boolean).join(" · ")}
+                      {[domainOf(m.email), self ? "You" : null, m.is_active ? null : "Deactivated", !superadmin && wsRole === "viewer" ? "View-only account (set by ScaleCAD)" : null].filter(Boolean).join(" · ")}
                     </small>
                   </span>
                 </button>
@@ -512,10 +517,11 @@ function MembersTable(props: {
                   </Chip>
                 )}
               </span>
-              <span role="cell" data-l="Workspace role">
-                {superadmin && !self ? (
+              {superadmin ? (
+              <span role="cell" data-l="Account tier (staff)">
+                {!self ? (
                   <label>
-                    <span className="sr">Workspace role for {m.email}</span>
+                    <span className="sr">Account tier for {m.email}</span>
                     <select value={wsAsk ? wsAsk.next : wsRole ?? ""} disabled={props.busy || !wsRole} onChange={(e) => {
                       const next = e.target.value;
                       if (next === wsRole) props.onCancel();
@@ -535,11 +541,12 @@ function MembersTable(props: {
                     </select>
                   </label>
                 ) : (
-                  <span title="Workspace roles are set by ScaleCAD staff." aria-label={`Workspace role for ${m.email}: ${roleName(wsRole)}`}>
+                  <span title="Account tiers are set by ScaleCAD staff." aria-label={`Account tier for ${m.email}: ${roleName(wsRole)}`}>
                     {roleName(wsRole)}
                   </span>
                 )}
               </span>
+              ) : null}
               <span role="cell" className="num" data-l="Joined">
                 {dateLabel(m.joined_at)}
               </span>
@@ -734,6 +741,8 @@ function MemberSheet(p: {
   authMode: string;
   magicLink: boolean;
   isAdmin: boolean;
+  /** ScaleCAD staff (superadmin): sees each account's tier. */
+  staff: boolean;
 }) {
   const ws = p.platform?.role ?? (p.self ? p.myPlatformRole : null);
   const provider = p.platform?.auth_provider ?? (p.self ? p.myProvider : null);
@@ -755,11 +764,13 @@ function MemberSheet(p: {
               {p.orgName}
             </small>
           </div>
-          <div className="fig">
-            <span>Workspace</span>
-            <b className="t">{roleName(ws)}</b>
-            <small>role</small>
-          </div>
+          {p.staff || ws === "viewer" ? (
+            <div className="fig">
+              <span>Account</span>
+              <b className="t">{ws === "viewer" ? "View-only" : roleName(ws)}</b>
+              <small>{p.staff ? "tier (staff)" : "set by ScaleCAD"}</small>
+            </div>
+          ) : null}
           <div className="fig">
             <span>Joined</span>
             <b className="num">{dayLabel(p.m.joined_at)}</b>
@@ -783,7 +794,7 @@ function MemberSheet(p: {
           rows={[
             ["Password or email link", si.passwordOn || si.linkOn ? "On" : "Off"],
             ["Single sign-on", ssoLine],
-            ["Directory sync (SCIM)", "Needs an org admin key"],
+            ["Directory sync (SCIM)", "Set up with ScaleCAD support"],
             ["Groups to roles", p.isAdmin ? (p.mappings == null ? "—" : String(p.mappings)) : "Admins see these"],
           ]}
         />

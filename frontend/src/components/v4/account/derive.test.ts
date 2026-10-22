@@ -9,6 +9,7 @@ import {
   allowanceLine,
   actionName,
   auditTitle,
+  orgRoleNote,
   auditWhat,
   dateLabel,
   groupNotifications,
@@ -208,4 +209,17 @@ test("two-step and session events read as plain words in Activity", () => {
   assert.equal(actionName("auth.two_step_locked"), "Code entry paused after wrong codes");
   assert.equal(actionName("org.two_step_policy_changed"), "Two-step rule changed");
   assert.equal(actionName("user.sessions_revoked"), "Sessions ended");
+});
+
+test("one role per person: the org role; the account tier is staff-only (it-20)", async () => {
+  assert.equal(
+    orgRoleNote("Kestrel Aero", false),
+    "Each person has one role in Kestrel Aero: a Viewer opens parts and records; a Member also checks and changes parts; an Admin also manages members, invites and sign-in.",
+  );
+  assert.match(orgRoleNote("Kestrel Aero", true), /Account tier \(staff only\) is set by ScaleCAD/);
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./org-screen.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /Workspace role sets what you can do/);
+  assert.match(src, /\{superadmin \? <span role="columnheader">Account tier \(staff\)<\/span> : null\}/);
+  assert.match(src, /View-only account \(set by ScaleCAD\)/);
 });
