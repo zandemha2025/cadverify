@@ -57,6 +57,7 @@ import {
   sortRows,
   totalsText,
   type Board,
+  type BoardMachine,
   type BoardRow,
   type BucketBreakdown,
   type BucketTotal,
@@ -452,7 +453,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     </thead>
                     <tbody>
                       {shown.map((r) => (
-                        <PartRow key={r.item_id} r={r} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
+                        <PartRow key={r.item_id} r={r} machines={board.machines} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
                       ))}
                     </tbody>
                   </table>
@@ -481,7 +482,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                     </thead>
                     <tbody>
                       {sortRows(apart, sort).map((r) => (
-                        <PartRow key={r.item_id} r={r} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
+                        <PartRow key={r.item_id} r={r} machines={board.machines} onRecheck={() => void recheck([r.item_id])} rechecking={rechecking.has(r.item_id)} />
                       ))}
                     </tbody>
                   </table>
@@ -553,11 +554,11 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   );
 }
 
-function PartRow({ r, onRecheck, rechecking }: { r: BoardRow; onRecheck?: () => void; rechecking?: boolean }) {
+function PartRow({ r, machines, onRecheck, rechecking }: { r: BoardRow; machines?: BoardMachine[]; onRecheck?: () => void; rechecking?: boolean }) {
   const router = useRouter();
   const { unit } = useUnits();
   const d = bucketDef(r.bucket);
-  const line = partLine(r);
+  const line = partLine(r, machines ?? []);
   // The engine's words (reason, body, spec line, withheld price, note) in the person's unit.
   const words = rowWords(r, unit, rowSpecLine(r));
   const href = r.part_key ? R.part(r.part_key) : null;

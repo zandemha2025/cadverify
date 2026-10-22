@@ -8,6 +8,7 @@
  */
 import { machineKind, processName } from "../process-names.ts";
 import { inText, type LengthUnit } from "../units/units.ts";
+import { runningRateWhy } from "../shop/running-rate.ts";
 
 /* ------------------------------------------------------------------ */
 /*  The board, as GET /batch/{id}/catalog returns it                   */
@@ -311,7 +312,7 @@ export interface PartLine {
   price: string;
 }
 
-export function partLine(r: BoardRow): PartLine {
+export function partLine(r: BoardRow, machines: BoardMachine[] = []): PartLine {
   const q = r.quantity;
   const time = finite(r.hours_each) ? `${hoursText(r.hours_each)} each${finite(r.hours_total) && q > 1 ? ` · ${hoursText(r.hours_total)} for ${q.toLocaleString("en-US")}` : ""}` : "—";
   const matName = r.material.name ?? (r.material.declared ? r.material.declared : null);
@@ -329,7 +330,12 @@ export function partLine(r: BoardRow): PartLine {
       : "";
   const material = matName ? `${matName}${mass}${listed}` : "—";
   let ownership = "—";
-  if (r.route?.owned) ownership = `Your ${r.route.machine ?? procName(r.route.process)}${r.marginal && finite(r.machine_rate_usd) ? ` · running rate ${money(r.machine_rate_usd)}/h` : r.marginal ? " · running rate" : ""}`;
+  if (r.route?.owned) {
+    // The running rate with its reason in the same cell (buyer-03: "$56.55/h" against the $87 typed, explained only in a closed line).
+    const m = machines.find((x) => x.name === r.route?.machine && finite(x.hourly_rate_usd));
+    const why = m && finite(m.hourly_rate_usd) ? `: ${runningRateWhy(m.hourly_rate_usd, m.capital_frac, !!m.capital_frac_set)}` : "";
+    ownership = `Your ${r.route.machine ?? procName(r.route.process)}${r.marginal && finite(r.machine_rate_usd) ? ` · running rate ${money(r.machine_rate_usd)}/h${why}` : r.marginal ? " · running rate" : ""}`;
+  }
   else if (r.could_make) ownership = `Bought · your ${r.could_make.machine ?? procName(r.could_make.process)} could make it`;
   else if (r.bucket === "new_machine") {
     const cap = r.capability;

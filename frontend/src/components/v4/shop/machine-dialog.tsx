@@ -25,6 +25,7 @@ import { Dialog } from "./common";
 import { LATHE, PROCS, SIZE_FIELDS, machineName, procName, sizeFieldsIn, sizeFieldsToMm, type SizeField } from "./shop-derive";
 import { useUnits } from "../units/use-units";
 import type { LengthUnit } from "../units/units";
+import { runningRateLine } from "./running-rate";
 
 type Form = {
   name: string;
@@ -394,7 +395,9 @@ export function MachineDialog({
           />
           {err("capital")}
           <span className="fh" id={`${ids}-caph`}>
-            Share of the rate that pays for the machine. Left out of in-house cost for owned machines.
+            {/* What the in-house prices will use, worked out as you type (buyer-03: $87 typed, $56.55 shown). */}
+            {runningRateLine(Number(form.rate.trim()) || null, form.capital.trim() ? Number(form.capital.replace("%", "").trim()) : null) ??
+              "Share of the rate that pays for the machine. Left out of in-house cost for owned machines."}
           </span>
         </label>
         <label className="field full">

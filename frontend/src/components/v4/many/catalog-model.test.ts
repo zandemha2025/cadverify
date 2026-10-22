@@ -302,3 +302,11 @@ test("a refused Check again says why on the board and offers the parts list when
   assert.equal(recheckStarted({ rechecking: ["a", "b"], files_gone: [] }), "Checking 2 parts again. Each lands back on its own row.");
   assert.equal(recheckStarted({ rechecking: ["a"], files_gone: ["b", "c"] }), "Checking 1 part again. It lands back on its own row. 2 files are no longer stored; start a new run with them.");
 });
+
+test("the running rate says, in its own cell, what you typed and the share left out (buyer-03)", () => {
+  const machines = [{ name: "Haas VF-2", process: "cnc_3axis", hourly_rate_usd: 75, capital_frac: 0.35, capital_frac_set: false, running_rate_usd: 48.75 }];
+  assert.equal(
+    partLine(row({ quantity: 25 }), machines).ownership,
+    "Your Haas VF-2 · running rate $48.75/h: $75.00/h you set, less a typical 35% that pays for the machine you already own",
+  );
+});
