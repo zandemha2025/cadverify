@@ -6,13 +6,14 @@
  * Pages render inside `.ob`, the scope every v4 style lives under.
  */
 import * as React from "react";
+import { CAD_UPLOAD_ACCEPT } from "@/lib/cad-file";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/ui/auth-provider";
 import { API_BASE } from "@/lib/api-base";
 import { ANALYTICS_CONSENT } from "@/lib/analytics";
 import { NAV, R, GO_KEYS, sectionOf } from "./routes";
-import { CAD_ACCEPT, setPendingFile } from "./pending-file";
+import { setPendingFile } from "./pending-file";
 import { Palette, PaletteProvider, usePalette } from "./palette";
 import { cx } from "./ui";
 import { WorkBar } from "./work/work-bar";
@@ -151,7 +152,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           <input
             ref={fileRef}
             type="file"
-            accept={CAD_ACCEPT}
+            accept={CAD_UPLOAD_ACCEPT}
             aria-label="Check a part (top bar file picker)"
             tabIndex={-1}
             style={{ display: "none" }}

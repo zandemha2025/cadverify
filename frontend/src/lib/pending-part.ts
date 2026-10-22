@@ -6,10 +6,11 @@
  * after a short window either way.
  */
 
-import { CAD_MAX_BYTES } from "./upload-limit.ts";
+import { FORM_MAX_BYTES } from "./upload-limit.ts";
 
 export const PENDING_PART_TTL_MS = 2 * 60 * 60 * 1000;
-export const PENDING_PART_MAX_BYTES = CAD_MAX_BYTES;
+// Held in this browser over sign-in: a web request's size, not a big file's.
+export const PENDING_PART_MAX_BYTES = FORM_MAX_BYTES;
 
 export type PendingPartRecord = {
   file: Blob;

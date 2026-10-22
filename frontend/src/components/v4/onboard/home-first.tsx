@@ -14,11 +14,12 @@
  * stays until every step is done or it's dismissed; then Home is the usual one.
  */
 import * as React from "react";
+import { CAD_UPLOAD_ACCEPT } from "@/lib/cad-file";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchCostDecision, type CostDecisionDetail } from "@/lib/api";
 import { useAuth } from "@/components/ui/auth-provider";
-import { CAD_ACCEPT, setPendingFile } from "../pending-file";
+import { setPendingFile } from "../pending-file";
 import { R } from "../routes";
 import { CAD_LIMIT } from "@/lib/upload-limit";
 import { FileTrustLine } from "../trust/file-line";
@@ -28,7 +29,7 @@ import { cx } from "../ui";
 import { Frame, Column, Head } from "../home/frame";
 import { PartialAlert, Skeleton } from "../home/states";
 import { PartThumb } from "../home/thumb";
-import { refusal } from "../home/drop";
+import { classifyDrop, refusal } from "../home/drop";
 import { recentRows, yoursOf, type HomeInput } from "../home/home-derive";
 import * as api from "../home/data";
 import { firstSteps, homeMode, materialWord, ranOnMachines, resumeCard, type FirstStep, type HomeMode } from "./first-run";
@@ -374,7 +375,6 @@ function SetupSheet({ steps, done, foot, onDismiss }: { steps: FirstStep[]; done
   );
 }
 
-const OK = /\.(step|stp|stl|iges|igs)$/i;
 
 /** "Your own part": drop or choose one file; it checks right away and opens on its own page. */
 function OwnPartWay({ usesOne }: { usesOne: string }) {
@@ -384,7 +384,7 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
   const [many, setMany] = React.useState<File[]>([]);
   const handOff = useHandOffBatch();
   const batch = useBatchAccess();
-  const take = (files: FileList | null | undefined) => {
+  const take = async (files: FileList | null | undefined) => {
     setDrag(false);
     if (!files || !files.length) return;
     if (files.length > 1) {
@@ -392,7 +392,12 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
       return setMsg({ kind: "many", text: `${files.length} files dropped. Check them together as a batch.` });
     }
     const f = files[0];
-    if (!OK.test(f.name)) return setMsg({ kind: "bad", text: refusal(f.name) });
+    const kind = await classifyDrop(f);
+    if (kind === "bad") return setMsg({ kind: "bad", text: refusal(f.name) });
+    if (kind === "parts") {
+      setMany([f]);
+      return setMsg({ kind: "many", text: `${f.name} has several parts. Check them together as a batch.` });
+    }
     setMsg({ kind: "ok", text: `${f.name} · checking now` });
     setPendingFile(f);
     router.push(R.check);
@@ -415,7 +420,7 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
       }}
       onDrop={(e) => {
         e.preventDefault();
-        take(e.dataTransfer?.files);
+        void take(e.dataTransfer?.files);
       }}
       data-testid="home-drop"
     >
@@ -451,10 +456,10 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
           Choose file
           <input
             type="file"
-            accept={CAD_ACCEPT}
+            accept={CAD_UPLOAD_ACCEPT}
             aria-label="Choose a CAD file to check"
             onChange={(e) => {
-              take(e.target.files);
+              void take(e.target.files);
               e.target.value = "";
             }}
           />

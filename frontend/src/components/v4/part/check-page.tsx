@@ -23,6 +23,9 @@ import { CantReadView } from "./cant-read";
 import { RepairView } from "./repair";
 import { AssemblyView } from "./assembly";
 import { SampleFlow } from "../home/sample-result";
+import { needsStoredCheck } from "@/lib/upload-limit";
+import { followServerCheck, startStoredCheck } from "./stored-check";
+import { StoredCheckView } from "./stored-check-view";
 import "./part.css";
 
 export function liveMesh(s: CheckSession): MeshSource {
@@ -32,6 +35,8 @@ export function liveMesh(s: CheckSession): MeshSource {
 export function CheckPage() {
   const router = useRouter();
   const [sid, setSid] = React.useState<number | null>(null);
+  // A big or compressed file: uploaded to storage, checked on the worker (stored-check.ts).
+  const [stored, setStored] = React.useState<number | null>(null);
   const [picked, setPicked] = React.useState<File | null>(null);
   const [view, setView] = React.useState<"progress" | "cant" | "repair">("progress");
   const session = useSession(sid);
@@ -45,6 +50,12 @@ export function CheckPage() {
     setPicked(null);
     setDesign(null);
     setView("progress");
+    if (!opts.sample && needsStoredCheck(f)) {
+      setSid(null);
+      setStored(startStoredCheck(f));
+      return;
+    }
+    setStored(null);
     setSid(startCheck(f, opts));
   }, []);
 
@@ -74,6 +85,12 @@ export function CheckPage() {
           setDesign({ state: "done", name: file.name, revision, detail: [revision != null ? `Revision ${revision}` : null, "STEP from Design Studio", "checking now"].filter(Boolean).join(" · ") });
         })
         .catch((e) => setDesign({ state: "error", revision, detail: e instanceof Error ? e.message : "The design couldn't be imported." }));
+      return;
+    }
+    // A big file's check on the server (from the work bar, another tab, after a reload).
+    const job = new URLSearchParams(search).get("job");
+    if (job) {
+      setStored(followServerCheck(job));
       return;
     }
     if (new URLSearchParams(search).get("sample") === "1") {
@@ -115,6 +132,7 @@ export function CheckPage() {
     }
   }, [session?.key, session?.validation, session?.status, router]);
 
+  if (stored != null) return <StoredCheckView id={stored} onPick={(file) => begin(file)} onRetried={setStored} />;
   const designBanner = design ? <DesignImportBanner state={design.state} name={design.name} revision={design.revision} detail={design.detail} onDismiss={design.state === "done" ? () => setDesign(null) : undefined} /> : null;
   if (!session) {
     return <StartScreen file={picked} onFile={setPicked} onClear={() => setPicked(null)} onCheck={() => picked && begin(picked)} onSample={beginSample} notice={designBanner} />;

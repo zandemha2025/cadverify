@@ -13,12 +13,16 @@
  * Items with `persist` survive reloads and other tabs (localStorage). An item
  * hides itself on its own page (`href`), and a finished one stays until it is
  * opened or dismissed. Catalog runs are found on the server (GET /batches), so
- * a run started on another device or before a reload shows here too.
+ * a run started on another device or before a reload shows here too, and so
+ * are big files' checks (GET /checks: a part checked on the worker from its
+ * stored upload, part/stored-check.ts).
  */
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { listBatches } from "@/lib/api/batch";
+import { API_BASE } from "@/lib/api-base";
+import { pendingUploads } from "@/lib/api/part-upload";
 import "./work.css";
 
 export type WorkState = "running" | "done" | "stopped";
@@ -187,6 +191,95 @@ function useCatalogRuns(pathname: string) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Big files' checks, from the server                                 */
+/* ------------------------------------------------------------------ */
+
+const STAGE_WORDS: Record<string, string> = {
+  queued: "Waiting for a worker",
+  verifying: "Checking the upload",
+  unpacking: "Unpacking",
+  sizing: "Sizing the check",
+  measuring: "Measuring",
+  pricing: "Pricing",
+};
+
+interface ServerCheckRow {
+  check_id: string;
+  status: string;
+  stage: string;
+  progress: number | null;
+  filename: string | null;
+  part_filename: string | null;
+  mesh_hash: string | null;
+  geometry_invalid?: string | null;
+  error: { message: string } | null;
+}
+
+/** Same key as part/stored-check.ts, so the tab's own item and the server's are one. */
+const storedKey = (checkId: string) => `stored:${checkId}`;
+/** An upload this browser started and didn't finish (its tab closed): pick the file again to send the rest. */
+export const pausedUploadKey = (uploadId: string) => `upload:${uploadId}`;
+
+function usePausedUploads() {
+  React.useEffect(() => {
+    const running = [...items.values()].some((i) => i.state === "running" && i.key.startsWith("stored-local:"));
+    if (running) return;
+    for (const r of pendingUploads()) {
+      if (!r.uploadId) continue;
+      const key = pausedUploadKey(r.uploadId);
+      if (seenSet().has(key)) continue;
+      registerWork({ key, href: "/app/check", persist: false, state: "stopped", label: `${r.name}: upload paused`, detail: "Pick the same file again to send the rest" });
+    }
+  }, []);
+}
+
+function useStoredChecks(pathname: string) {
+  React.useEffect(() => {
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      let next = 30_000;
+      try {
+        const res = await fetch(`${API_BASE}/checks?limit=10`, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+        if (!res.ok) throw new Error(String(res.status));
+        const body = (await res.json()) as { checks: ServerCheckRow[] };
+        if (!live) return;
+        const seen = seenSet();
+        for (const c of body.checks ?? []) {
+          const key = storedKey(c.check_id);
+          if (seen.has(key)) continue;
+          const name = c.part_filename ?? c.filename ?? "part";
+          const known = items.get(key);
+          if (c.status === "queued" || c.status === "running") {
+            next = 6_000;
+            registerWork({ key, href: `/app/check?job=${encodeURIComponent(c.check_id)}`, persist: true, state: "running", label: `Checking ${name}`, detail: STAGE_WORDS[c.stage] ?? "Checking", progress: c.progress });
+          } else if (known && known.state === "running") {
+            const ok = c.status === "done";
+            registerWork({
+              key,
+              href: ok && c.mesh_hash && !c.geometry_invalid ? `/app/part/${encodeURIComponent(c.mesh_hash)}` : `/app/check?job=${encodeURIComponent(c.check_id)}`,
+              persist: true,
+              state: ok ? "done" : "stopped",
+              label: ok ? `Checked ${name}` : `${name}: not checked`,
+              detail: ok ? (c.geometry_invalid ? "Not a closed solid" : "Ready") : c.error?.message?.split(". ")[0] ?? "The check didn’t finish",
+              progress: 1,
+            });
+          }
+        }
+      } catch {
+        next = 60_000;
+      }
+      if (live) timer = setTimeout(tick, next);
+    };
+    void tick();
+    return () => {
+      live = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pathname]);
+}
+
+/* ------------------------------------------------------------------ */
 /*  The bar                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -194,7 +287,12 @@ export function WorkBar() {
   const pathname = usePathname() ?? "";
   const all = useWorkItems();
   useCatalogRuns(pathname);
-  const shown = all.filter((i) => i.href !== pathname && !pathname.startsWith(`${i.href}/`));
+  useStoredChecks(pathname);
+  usePausedUploads();
+  const shown = all.filter((i) => {
+    const path = i.href.split("?")[0];
+    return path !== pathname && !pathname.startsWith(`${path}/`);
+  });
   if (!shown.length) return null;
   const first = shown.slice(0, 2);
   return (

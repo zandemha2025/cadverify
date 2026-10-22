@@ -6,6 +6,8 @@
  * account's usage (the catalog allowance rides on GET /auth/me/usage).
  */
 import { API_BASE } from "@/lib/api-base";
+import { forgetResume, PartUploadError, uploadPart } from "@/lib/api/part-upload";
+import { STORED_CHECK_FROM_BYTES } from "@/lib/upload-limit";
 import type { Board, RunError } from "./catalog-model";
 
 export interface RunCreated {
@@ -53,11 +55,33 @@ export interface StartInput {
   quantity?: number | null;
 }
 
-/** Starts a run. ``onProgress`` gets the upload's 0..1 (null while the size is unknown). */
-export function startCatalogRun(input: StartInput, onProgress?: (fraction: number | null) => void): Promise<RunCreated> {
+/**
+ * Starts a run. ``onProgress`` gets the upload's 0..1 (null while the size is unknown).
+ *
+ * A large ZIP goes straight to storage first, in parts that are retried and
+ * resume after a dropped connection (lib/api/part-upload.ts); the run is then
+ * started from the stored ZIP. A small one is posted with the request.
+ */
+export async function startCatalogRun(input: StartInput, onProgress?: (fraction: number | null) => void): Promise<RunCreated> {
+  if (input.zip.size < STORED_CHECK_FROM_BYTES) return postCatalogRun(input, null, onProgress);
+  const file = input.zip instanceof File ? input.zip : new File([input.zip], input.zipName, { type: "application/zip", lastModified: Date.now() });
+  let uploaded;
+  try {
+    uploaded = await uploadPart(file, (p) => onProgress?.(p.total ? (p.phase === "hashing" ? 0 : p.done / p.total) : null), undefined, "batch_zip");
+  } catch (e) {
+    if (e instanceof PartUploadError) throw new CatalogRunError(e.message, e.status, e.code, null);
+    throw new CatalogRunError("The upload didn’t reach ScaleCAD. Check your connection and try again; nothing was started.", 0, "network", null);
+  }
+  const run = await postCatalogRun(input, uploaded.uploadId, onProgress);
+  forgetResume(uploaded.resumeKey);
+  return run;
+}
+
+function postCatalogRun(input: StartInput, directUploadId: string | null, onProgress?: (fraction: number | null) => void): Promise<RunCreated> {
   return new Promise((resolve, reject) => {
     const form = new FormData();
-    form.append("file", input.zip, input.zipName);
+    if (directUploadId) form.append("direct_upload_id", directUploadId);
+    else form.append("file", input.zip, input.zipName);
     if (input.list) form.append("manifest", input.list, input.list.name);
     if (input.materialClass) form.append("material_class", input.materialClass);
     if (input.quantity != null) form.append("quantity", String(input.quantity));

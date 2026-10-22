@@ -124,3 +124,51 @@ export async function storedZip(entries: readonly ZipInput[], onProgress?: (done
   end.setUint16(20, 0, true);
   return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
 }
+
+/**
+ * The entry names of a ZIP, read from its central directory only (the last few
+ * KB of the file), so a dropped ZIP can be told apart cheaply: one part is a
+ * single check, many parts a catalog run. Null when the ZIP can't be read this
+ * way (ZIP64, a comment longer than the search window, not a ZIP): the server
+ * then decides.
+ */
+export async function zipEntryNames(file: Blob): Promise<string[] | null> {
+  const tailSize = Math.min(file.size, 22 + 65_535);
+  if (tailSize < 22) return null;
+  const tail = new DataView(await file.slice(file.size - tailSize).arrayBuffer());
+  let eocd = -1;
+  for (let i = tailSize - 22; i >= 0; i--) {
+    if (tail.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return null;
+  const count = tail.getUint16(eocd + 10, true);
+  const cdSize = tail.getUint32(eocd + 12, true);
+  const cdOffset = tail.getUint32(eocd + 16, true);
+  if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) return null; // ZIP64
+  if (cdOffset + cdSize > file.size || cdSize > 16 * 1024 * 1024) return null;
+  const cd = new DataView(await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
+  const dec = new TextDecoder();
+  const names: string[] = [];
+  for (let p = 0, n = 0; n < count && p + 46 <= cd.byteLength; n++) {
+    if (cd.getUint32(p, true) !== 0x02014b50) return null;
+    const nameLen = cd.getUint16(p + 28, true);
+    const extraLen = cd.getUint16(p + 30, true);
+    const commentLen = cd.getUint16(p + 32, true);
+    names.push(dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nameLen)));
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return names;
+}
+
+/** CAD parts among a ZIP's entries (folders and OS clutter left out), as the server counts them. */
+export function cadEntries(names: readonly string[]): string[] {
+  return names.filter((n) => {
+    const parts = n.split("/");
+    const base = parts[parts.length - 1] ?? "";
+    if (!base || n.endsWith("/") || parts.includes("__MACOSX") || base.startsWith("._")) return false;
+    return /\.(step|stp|iges|igs|stl)$/i.test(base);
+  });
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { crc32, storedZip } from "./catalog-zip.ts";
+import { cadEntries, crc32, storedZip, zipEntryNames } from "./catalog-zip.ts";
 
 test("CRC-32 matches the standard check value", () => {
   assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
@@ -60,4 +60,17 @@ test("a stored ZIP of many files keeps folders, renames exact repeats and reads 
   ]);
   assert.equal(seen, 13 + 19 + 19);
   assert.equal(zip.type, "application/zip");
+});
+
+test("a dropped ZIP's parts are counted from its central directory alone", async () => {
+  const enc = new TextEncoder();
+  const zip = await storedZip([
+    { name: "Bracket Rev B/bracket.step", data: new Blob([enc.encode("ISO-10303-21;")]) },
+    { name: "Bracket Rev B/notes.txt", data: new Blob([enc.encode("n")]) },
+    { name: "__MACOSX/._bracket.step", data: new Blob([enc.encode("x")]) },
+  ]);
+  const names = await zipEntryNames(zip);
+  assert.deepEqual(names, ["Bracket Rev B/bracket.step", "Bracket Rev B/notes.txt", "__MACOSX/._bracket.step"]);
+  assert.deepEqual(cadEntries(names!), ["Bracket Rev B/bracket.step"]);
+  assert.equal(await zipEntryNames(new Blob([enc.encode("not a zip at all, just text")])), null);
 });

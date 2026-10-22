@@ -7,10 +7,11 @@
  * knows its exact bytes), make a simple part, set up your shop.
  */
 import * as React from "react";
+import { CAD_UPLOAD_ACCEPT } from "@/lib/cad-file";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { R } from "../routes";
-import { CAD_ACCEPT, setPendingFile } from "../pending-file";
+import { setPendingFile } from "../pending-file";
 import { useShell } from "../shell";
 import { CAD_LIMIT } from "@/lib/upload-limit";
 import { FileTrustLine } from "../trust/file-line";
@@ -130,7 +131,7 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
         <label className="h-opt main">
           <input
             type="file"
-            accept={CAD_ACCEPT}
+            accept={CAD_UPLOAD_ACCEPT}
             data-autofocus
             aria-label={`Check a CAD file: STEP, STL or IGES, ${CAD_LIMIT}`}
             onChange={(e) => {

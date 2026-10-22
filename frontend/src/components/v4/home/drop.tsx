@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Home's drop target (board P1 "Start"): one CAD file goes to the check page;
- * several files go to a new catalog run, already picked; anything else is
- * named and refused.
+ * Home's drop target (board P1 "Start"): one CAD file goes to the check page
+ * (gzipped, or a ZIP holding one part, too: the worker unpacks it); several
+ * files, or a ZIP of several parts, go to a new catalog run, already picked;
+ * anything else is named and refused.
  * Drag-over shows "Drop to check it". The file is handed over in memory only.
  */
 import * as React from "react";
@@ -12,13 +13,22 @@ import { useRouter } from "next/navigation";
 import { R } from "../routes";
 import { FileTrustLine } from "../trust/file-line";
 import { overCadLimit, overCadLimitText } from "@/lib/upload-limit";
-import { CAD_ACCEPT, setPendingFile } from "../pending-file";
+import { setPendingFile } from "../pending-file";
+import { CAD_UPLOAD_ACCEPT, isUploadableCad } from "@/lib/cad-file";
 import { cx } from "../ui";
 import { useHandOffBatch } from "../many/catalog-entry";
+import { cadEntries, zipEntryNames } from "../many/catalog-zip";
 
-const OK = /\.(step|stp|stl|iges|igs)$/i;
+type Dropped = { kind: "ok"; name: string } | { kind: "bad"; name: string } | { kind: "big"; size: number } | { kind: "many"; files: File[]; parts?: number };
 
-type Dropped = { kind: "ok"; name: string } | { kind: "bad"; name: string } | { kind: "big"; size: number } | { kind: "many"; files: File[] };
+/** One dropped file: a single part to check, a ZIP of many parts (a catalog run), or not a part. */
+export async function classifyDrop(f: File): Promise<"part" | "parts" | "bad"> {
+  if (!isUploadableCad(f.name)) return "bad";
+  if (!/\.zip$/i.test(f.name)) return "part";
+  // Only the ZIP's central directory is read (its last few KB).
+  const names = await zipEntryNames(f).catch(() => null);
+  return names && cadEntries(names).length > 1 ? "parts" : "part";
+}
 
 export function refusal(name: string): string {
   const dot = name.lastIndexOf(".");
@@ -32,7 +42,7 @@ export function DropZone() {
   const [drop, setDrop] = React.useState<Dropped | null>(null);
   const handOff = useHandOffBatch();
 
-  const take = (files: FileList | null | undefined) => {
+  const take = async (files: FileList | null | undefined) => {
     setDrag(false);
     if (!files || !files.length) return;
     if (files.length > 1) {
@@ -40,8 +50,14 @@ export function DropZone() {
       return;
     }
     const f = files[0];
-    if (!OK.test(f.name)) {
+    const kind = await classifyDrop(f);
+    if (kind === "bad") {
       setDrop({ kind: "bad", name: f.name });
+      return;
+    }
+    if (kind === "parts") {
+      const names = await zipEntryNames(f).catch(() => null);
+      setDrop({ kind: "many", files: [f], parts: names ? cadEntries(names).length : undefined });
       return;
     }
     if (overCadLimit(f.size)) {
@@ -60,7 +76,7 @@ export function DropZone() {
   };
 
   const title = drag ? "Drop to check it" : drop?.kind === "ok" ? drop.name : "Drop a part to check it";
-  const msg = !drop ? null : drop.kind === "ok" ? "Checking now" : drop.kind === "many" ? `${drop.files.length} files dropped. Check them together as a batch.` : drop.kind === "big" ? `${overCadLimitText(drop.size)}.` : refusal(drop.name);
+  const msg = !drop ? null : drop.kind === "ok" ? "Checking now" : drop.kind === "many" ? (drop.parts ? `${drop.files[0].name} has ${drop.parts} parts. Check them together as a batch.` : `${drop.files.length} files dropped. Check them together as a batch.`) : drop.kind === "big" ? `${overCadLimitText(drop.size)}.` : refusal(drop.name);
 
   return (
     <div
@@ -74,12 +90,12 @@ export function DropZone() {
       }}
       onDrop={(e) => {
         e.preventDefault();
-        take(e.dataTransfer?.files);
+        void take(e.dataTransfer?.files);
       }}
       data-testid="home-drop"
     >
       <b>{title}</b>
-      <span>STEP, STL or IGES · one file</span>
+      <span>STEP, STL or IGES · one file, or a .zip or .gz of it</span>
       <FileTrustLine />
       {msg ? (
         <span className={drop?.kind === "ok" ? "h-ok" : "h-msg"} role="status">
@@ -91,11 +107,11 @@ export function DropZone() {
           Choose file
           <input
             type="file"
-            accept={CAD_ACCEPT}
+            accept={CAD_UPLOAD_ACCEPT}
             aria-label="Choose a CAD file to check"
             onChange={(e) => {
               const files = e.target.files;
-              take(files);
+              void take(files);
               e.target.value = "";
             }}
           />
@@ -107,7 +123,7 @@ export function DropZone() {
         ) : null}
         {drop?.kind === "many" ? (
           <button className="btn sm" type="button" onClick={() => handOff(drop.files)}>
-            Check {drop.files.length} as a batch
+            Check {drop.parts ?? drop.files.length} as a batch
           </button>
         ) : null}
       </span>

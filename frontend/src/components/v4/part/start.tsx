@@ -6,13 +6,13 @@ import Link from "next/link";
 import { listMachines } from "@/lib/verify/machine-api";
 import { effectiveRateCard } from "@/lib/verify/rate-api";
 import { fetchCostDecisions } from "@/lib/api";
-import { CAD_ACCEPT } from "../pending-file";
+import { CAD_UPLOAD_ACCEPT } from "@/lib/cad-file";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { useShell } from "../shell";
 import { checkedBefore } from "../onboard/checked";
 import { FileTrustLine } from "../trust/file-line";
-import { CAD_MAX_MB, overCadLimit, overCadLimitText } from "@/lib/upload-limit";
+import { CAD_LIMIT, needsStoredCheck, overCadLimit, overCadLimitText } from "@/lib/upload-limit";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`;
@@ -53,7 +53,8 @@ export function StartScreen({
   // A file checked before doesn't use another check (a check means a part). The sample never uses one.
   const [seen, setSeen] = React.useState<{ file: File; checked: boolean | null } | null>(null);
   React.useEffect(() => {
-    if (!file) return;
+    // A big or compressed file isn't read here: its fingerprint is taken on the worker.
+    if (!file || needsStoredCheck(file)) return;
     let live = true;
     void checkedBefore(file).then((checked) => live && setSeen({ file, checked }));
     return () => {
@@ -122,7 +123,7 @@ export function StartScreen({
             </svg>
           </span>
           <b aria-live="polite">{file ? file.name : over ? "Drop to check it" : "Drop a STEP, STL or IGES file"}</b>
-          <span role={tooBig ? "alert" : undefined}>{file ? (tooBig ? overCadLimitText(file.size) : `${mb(file.size)} · ready to check${uses}`) : `Up to ${CAD_MAX_MB} MB`}</span>
+          <span role={tooBig ? "alert" : undefined}>{file ? (tooBig ? overCadLimitText(file.size) : `${mb(file.size)} · ready to check${uses}`) : `STEP, STL or IGES, ${CAD_LIMIT} · .zip or .gz too`}</span>
           {file ? (
             <span className="swap" style={{ display: "flex", gap: 8, marginTop: 6 }}>
               {tooBig ? null : (
@@ -151,7 +152,7 @@ export function StartScreen({
           <input
             ref={input}
             type="file"
-            accept={CAD_ACCEPT}
+            accept={CAD_UPLOAD_ACCEPT}
             aria-label="Choose a CAD file to check"
             tabIndex={-1}
             style={{ display: "none" }}
