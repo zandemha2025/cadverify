@@ -279,7 +279,7 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
         # -- measuring ---------------------------------------------------
         await progress.stage("measuring", mesh_hash=mesh_hash, memory=result["memory"])
         op = "analysis"
-        budget_sec = svc.time_budget_sec(part_bytes)
+        budget_sec = svc.time_budget_sec(part_bytes, name)
         factory = get_session_factory()
         with larger_limits(budget_sec=budget_sec, max_triangles=_BIG_MAX_TRIANGLES, max_bytes=uploads.part_max_size_bytes()):
             async with factory() as session:
@@ -340,6 +340,7 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
                 if check_id:
                     await finish_check(user.user_id, check_id, "cost", "cost_error" not in result)
                 op = None
+                await _keep_preview(meta["org_id"], mesh_hash, name, data, params.get("units"), result)
         await progress.stop()
         result["timings_ms"] = progress.timings
         await _finish(job_ulid, ok=True, result=result)
@@ -374,6 +375,40 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
                 os.unlink(p)
             except OSError:
                 pass
+
+
+async def _keep_preview(org_id: str, mesh_hash: str, name: str, data: bytes, units: Optional[str], result: dict) -> None:
+    """Build and keep the part's 3D preview now, while its parse is cached in this process.
+
+    The part's page then serves it as is (GET /parts/{hash}/preview.glb) instead
+    of parsing a big file in a web request. Best effort: without it the page
+    builds the preview the usual way.
+    """
+    from src.api.routes import _build_preview_glb, _parse_mesh_async
+    from src.costing.units import mesh_source_units, scale_mesh_to_mm
+    from src.services.source_artifact_service import save_preview_glb
+
+    try:
+        t = time.perf_counter()
+        suffix = os.path.splitext(name.lower())[1]
+        filename = f"source{suffix}"
+        mesh, parsed_suffix = await _parse_mesh_async(data, filename)
+        # The part's page asks for the mm interpretation (preview.glb?units=mm).
+        mesh = scale_mesh_to_mm(mesh, mesh_source_units(filename, "mm"))
+        glb, original_faces, preview_faces, decimated, face_hash = await asyncio.to_thread(
+            _build_preview_glb, mesh, filename, for_analysis=True
+        )
+        await save_preview_glb(org_id, mesh_hash, glb, {
+            "X-Mesh-Original-Faces": str(original_faces),
+            "X-Mesh-Preview-Faces": str(preview_faces),
+            "X-Mesh-Decimated": "true" if decimated else "false",
+            "X-Mesh-Source": parsed_suffix.lstrip("."),
+            "X-Mesh-Face-Space": "analysis",
+            "X-Mesh-Face-Hash": face_hash,
+        }, source_units="mm")
+        result["preview_ms"] = round((time.perf_counter() - t) * 1000, 1)
+    except Exception:
+        logger.warning("stored check preview not kept for %s", mesh_hash[:12], exc_info=True)
 
 
 async def _release(user_id: int, check_id: str, op: str) -> None:

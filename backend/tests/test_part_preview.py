@@ -143,3 +143,27 @@ def test_viewing_a_stored_part_never_counts_as_a_check():
         found = set(calls(route.dependant))
         assert enforce_validation_caps not in found, route.path
         assert enforce_org_limits not in found, route.path
+
+
+def test_a_preview_kept_by_the_worker_is_served_without_parsing(stored_cube, monkeypatch):
+    """A big part's preview was built when it was checked: the page gets it as is."""
+    import asyncio
+
+    import src.api.routes as routes
+    from src.services.source_artifact_service import save_preview_glb
+
+    digest, _raw = stored_cube
+    headers = {"X-Mesh-Original-Faces": "12", "X-Mesh-Preview-Faces": "12", "X-Mesh-Decimated": "false",
+               "X-Mesh-Source": "stl", "X-Mesh-Face-Space": "analysis", "X-Mesh-Face-Hash": "f" * 64}
+    asyncio.run(save_preview_glb(ORG_A, digest, b"glTF-kept-preview", headers))
+
+    async def _no_parse(*_a, **_k):
+        raise AssertionError("a kept preview must not parse the source")
+
+    monkeypatch.setattr(routes, "_parse_mesh_async", _no_parse)
+    r = TestClient(_app(1)).get(f"/api/v1/parts/{digest}/preview.glb?units=mm")
+    assert r.status_code == 200
+    assert r.content == b"glTF-kept-preview"
+    assert r.headers["x-mesh-face-hash"] == "f" * 64
+    # Another org's request for the same hash still sees nothing.
+    assert TestClient(_app(2)).get(f"/api/v1/parts/{digest}/preview.glb?units=mm").status_code == 404

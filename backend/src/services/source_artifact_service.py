@@ -187,3 +187,41 @@ async def read_source_artifact(
             raise ObjectNotFoundError(prefix)
         key = sorted(keys)[0]
     return await asyncio.to_thread(store.get, key), Path(key).suffix.lower()
+
+
+# ---------------------------------------------------------------------------
+# The browser preview of a big part, built once on the worker
+# ---------------------------------------------------------------------------
+# A big file's check (src.jobs.stored_check_tasks) builds the part's 3D
+# preview (the same GLB GET /parts/{hash}/preview.glb builds) while its mesh is
+# in memory, and keeps it next to the source, so opening the part never parses
+# a big file in a web request. Deleting the part's prefix deletes it too.
+
+def preview_key(org_id: str, mesh_hash: str, source_units: str = "mm") -> str:
+    from src.costing.units import mesh_source_units
+
+    mesh_source_units("source.stl", source_units)  # validate before forming a key
+    return artifact_key(org_id, mesh_hash, ".stl").replace("/source.stl", f"/preview-{source_units}.glb")
+
+
+async def save_preview_glb(org_id: str, mesh_hash: str, glb: bytes, headers: dict[str, str], *, source_units: str = "mm") -> None:
+    import json
+
+    key = preview_key(org_id, mesh_hash, source_units)
+    store = _store()
+    await asyncio.to_thread(store.put, key, bytes(glb), content_type="model/gltf-binary")
+    await asyncio.to_thread(store.put, key + ".json", json.dumps(headers).encode("utf-8"), content_type="application/json")
+
+
+async def read_preview_glb(org_id: str, mesh_hash: str, *, source_units: str = "mm") -> tuple[bytes, dict[str, str]] | None:
+    """The kept preview and its headers, or None when there is none."""
+    import json
+
+    key = preview_key(org_id, mesh_hash, source_units)
+    store = _store()
+    try:
+        glb = await asyncio.to_thread(store.get, key)
+        headers = json.loads((await asyncio.to_thread(store.get, key + ".json")).decode("utf-8"))
+    except (ObjectNotFoundError, FileNotFoundError, ValueError):
+        return None
+    return glb, {str(k): str(v) for k, v in headers.items()}

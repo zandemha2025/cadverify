@@ -37,6 +37,7 @@ from src.costing.units import mesh_source_units, scale_mesh_to_mm
 from src.services.source_artifact_service import (
     find_source_artifact_suffix,
     read_source_artifact,
+    read_preview_glb,
 )
 from src.storage import ObjectNotFoundError
 
@@ -118,6 +119,12 @@ async def stored_preview_glb(
     if hit is not None and await find_source_artifact_suffix(org_id, digest) is None:
         _cache.pop(key, None)
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    if hit is None:
+        # A big part's preview was built on the worker when it was checked.
+        kept = await read_preview_glb(org_id, digest, source_units=units)
+        if kept is not None and await find_source_artifact_suffix(org_id, digest) is not None:
+            _cache_put(key, kept[0], kept[1])
+            hit = kept
     if hit is None:
         try:
             data, suffix = await read_source_artifact(org_id, digest)

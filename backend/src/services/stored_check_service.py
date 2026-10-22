@@ -57,19 +57,53 @@ class StoredCheckError(Exception):
 # How big a file this worker can check (memory), and what one check needs
 # ---------------------------------------------------------------------------
 
-# Peak resident memory one check adds to the worker (download and SHA-256,
-# parse, DFM analysis, cost decision, source kept): need = base + per-unit x
-# size, with the size in triangles for a binary STL and in bytes for STEP, IGES
-# and ASCII STL. PROVISIONAL: first-pass coefficients; the measured fit (one
-# check at a time on the real pipeline) replaces them with its table.
-MEMORY_MODEL: dict[str, dict[str, float]] = {
-    "stl": {"base_mb": 260.0, "per_triangle_bytes": 620.0},
-    "stl_ascii": {"base_mb": 260.0, "per_byte": 3.4},
-    "step": {"base_mb": 420.0, "per_byte": 24.0},
-    "iges": {"base_mb": 420.0, "per_byte": 26.0},
-}
+# Peak resident memory one check adds to a warmed worker (download and
+# SHA-256, parse, DFM analysis, cost decision, kept source and preview),
+# measured on the real pipeline one check at a time (docs/BIG_FILES.md has the
+# table and how it was taken). A binary STL is sized by its triangle count
+# (exact, from its header), an ASCII STL by its triangles estimated from its
+# size (~290 bytes a facet; measured to cost the same memory per triangle), and
+# STEP and IGES by file size, since their triangle count is only known after
+# tessellation. Between measured points the need is interpolated; past the last
+# one it grows at the last measured slope. Every figure carries 10% headroom.
+MEMORY_HEADROOM = 1.10
+# (triangles, MB added) for STL
+STL_MEMORY_POINTS: tuple[tuple[int, float], ...] = (
+    (0, 150.0), (10_240, 158.0), (81_920, 461.0), (327_680, 975.0), (1_310_720, 2016.0),
+)
+# (file MB, MB added) for STEP (assemblies of repeated bracket bodies, ~58k faces per MB)
+STEP_MEMORY_POINTS: tuple[tuple[float, float], ...] = (
+    (0.0, 270.0), (0.036, 275.0), (1.16, 745.0), (4.92, 1531.0), (10.07, 2396.0),
+)
+# IGES is sized like STEP. The IGES files measured (1.4 MB: 414 MB added; 5.7
+# MB: 660 MB) tessellated as open shells, so they skipped pricing and needed
+# less than a closed solid would; STEP's curve is the safe one for a solid.
+IGES_MEMORY_POINTS = STEP_MEMORY_POINTS
+ASCII_STL_BYTES_PER_TRIANGLE = 290
+MEMORY_MODEL = {"stl": STL_MEMORY_POINTS, "step": STEP_MEMORY_POINTS, "iges": IGES_MEMORY_POINTS}
 _KIND = {".stl": "stl", ".step": "step", ".stp": "step", ".iges": "iges", ".igs": "iges"}
 _FORMAT_WORD = {"stl": "STL", "stl_ascii": "STL", "step": "STEP", "iges": "IGES"}
+
+
+def _interp(points, x: float) -> float:
+    if x <= points[0][0]:
+        return points[0][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    (x0, y0), (x1, y1) = points[-2], points[-1]
+    return y1 + (y1 - y0) * (x - x1) / (x1 - x0)
+
+
+def _inverse(points, y: float) -> float:
+    """The largest x the (increasing) curve keeps at or under y."""
+    if y <= points[0][1]:
+        return 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if y <= y1:
+            return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
+    (x0, y0), (x1, y1) = points[-2], points[-1]
+    return x1 + (x1 - x0) * (y - y1) / (y1 - y0)
 
 
 def _container_memory_bytes() -> Optional[int]:
@@ -137,30 +171,26 @@ def estimate_memory_bytes(path: str, filename: str) -> tuple[int, dict[str, Any]
     basis: dict[str, Any] = {"format": kind, "bytes": size}
     if kind == "stl":
         triangles, binary = _stl_triangles(path, size)
-        if binary and triangles is not None:
-            m = MEMORY_MODEL["stl"]
-            basis["triangles"] = triangles
-            need = m["base_mb"] * 1024**2 + m["per_triangle_bytes"] * triangles
-        else:
+        if not binary or triangles is None:
             kind = "stl_ascii"
-            m = MEMORY_MODEL["stl_ascii"]
-            basis.update(format="stl_ascii", triangles=triangles)
-            need = m["base_mb"] * 1024**2 + m["per_byte"] * size
+            triangles = max(1, size // ASCII_STL_BYTES_PER_TRIANGLE)
+            basis["format"] = kind
+        basis["triangles"] = triangles
+        need_mb = _interp(STL_MEMORY_POINTS, triangles)
     else:
-        m = MEMORY_MODEL[kind]
-        need = m["base_mb"] * 1024**2 + m["per_byte"] * size
-    basis["model"] = dict(MEMORY_MODEL[kind])
-    return int(need), basis
+        need_mb = _interp(MEMORY_MODEL[kind], size / 1024**2)
+    basis["headroom"] = MEMORY_HEADROOM
+    return int(need_mb * MEMORY_HEADROOM * 1024**2), basis
 
 
 def largest_checkable_bytes(kind: str, budget: Optional[int] = None) -> int:
     """The largest file of a format one check fits in ``budget`` (the inverse of the model)."""
     budget = check_memory_budget_bytes() if budget is None else budget
-    m = MEMORY_MODEL[kind]
-    room = max(0.0, budget - m["base_mb"] * 1024**2)
-    if kind == "stl":
-        return int(84 + 50 * room / m["per_triangle_bytes"])
-    return int(room / m["per_byte"])
+    room_mb = budget / 1024**2 / MEMORY_HEADROOM
+    if kind in ("stl", "stl_ascii"):
+        triangles = _inverse(STL_MEMORY_POINTS, room_mb)
+        return int(84 + 50 * triangles) if kind == "stl" else int(triangles * ASCII_STL_BYTES_PER_TRIANGLE)
+    return int(_inverse(MEMORY_MODEL[kind], room_mb) * 1024**2)
 
 
 def _size_words(n: float) -> str:
@@ -180,22 +210,24 @@ def too_heavy_message(need: int, basis: dict[str, Any], budget: Optional[int] = 
     )
 
 
-# Wall-clock budget for one big check: the single-check budget plus time per MB
-# (``CHECK_SECONDS_PER_MB``, measured: docs/big-files.md), capped below arq's
-# per-job ceiling for this task.
+# Wall-clock budget for one big check: a base plus time per MB by format,
+# about twice what the measurements took on a loaded 4-core box (STL ~1.6 s/MB,
+# STEP ~40 s/MB, IGES ~45 s/MB; docs/BIG_FILES.md), capped below arq's ceiling
+# for the task. ``CHECK_SECONDS_PER_MB`` overrides the per-MB figure.
 STORED_CHECK_JOB_TIMEOUT_SECONDS = 3600
+SECONDS_PER_MB = {"stl": 5.0, "step": 90.0, "iges": 100.0}
 
 
-def time_budget_sec(part_bytes: int) -> float:
-    try:
-        per_mb = float(os.getenv("CHECK_SECONDS_PER_MB", "4"))
-    except ValueError:
-        per_mb = 4.0
-    try:
-        base = float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60"))
-    except ValueError:
-        base = 60.0
-    return min(STORED_CHECK_JOB_TIMEOUT_SECONDS - 300.0, max(base, 60.0) + per_mb * part_bytes / 1024**2)
+def time_budget_sec(part_bytes: int, filename: str = "") -> float:
+    kind = _KIND.get(os.path.splitext(filename.lower())[1], "step")
+    per_mb = SECONDS_PER_MB.get(kind, 90.0)
+    raw = os.getenv("CHECK_SECONDS_PER_MB", "").strip()
+    if raw:
+        try:
+            per_mb = float(raw)
+        except ValueError:
+            pass
+    return min(STORED_CHECK_JOB_TIMEOUT_SECONDS - 300.0, 120.0 + per_mb * part_bytes / 1024**2)
 
 
 # ---------------------------------------------------------------------------

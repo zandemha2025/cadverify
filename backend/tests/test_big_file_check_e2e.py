@@ -213,6 +213,11 @@ async def test_a_part_is_uploaded_checked_on_the_worker_and_kept(world):
     from src.services.source_artifact_service import find_source_artifact_suffix
 
     assert await find_source_artifact_suffix(world["orgs"]["main"], key) == ".stl"
+    # Its 3D preview was built on the worker and kept, so the part's page never parses it.
+    from src.services.source_artifact_service import read_preview_glb
+
+    kept = await read_preview_glb(world["orgs"]["main"], key)
+    assert kept is not None and kept[0][:4] == b"glTF" and kept[1]["X-Mesh-Face-Space"] == "analysis"
     row = await _upload_row(up["upload_id"])
     assert row.status == "consumed" and row.storage_cleaned_at is not None
     assert not (world["tmp"] / "incoming" / row.object_key).exists()
