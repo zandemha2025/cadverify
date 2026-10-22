@@ -405,7 +405,9 @@ function Peek({ row, v, onClose, onDeleted }: { row: PartRow; v: Verdict; onClos
   const f = row.findings;
   const size = sizeText(d?.result?.geometry?.bbox_mm);
   const kv: [string, string][] = [];
-  if (route) kv.push(["Process", [wayName(route.process), route.material].filter(Boolean).join(" · ")]);
+  // A part never priced has no route of its own: the analysis's suggestion isn't shown as one (op-23).
+  if (route && row.cost_decision) kv.push(["Process", [wayName(route.process), route.material].filter(Boolean).join(" · ")]);
+  else if (row.lifecycle_state === "Drafted") kv.push(["Process", "Not chosen yet: not priced"]);
   if (post && post.total) kv.push(["Cost inputs yours", `${post.shop + post.user} of ${post.total}`]);
   if (row.unit_cost?.qty != null) kv.push(["Shown at", `${row.unit_cost.qty.toLocaleString("en-US")} ${row.unit_cost.qty === 1 ? "part" : "parts"}`]);
   if (size) kv.push(["Size", size]);

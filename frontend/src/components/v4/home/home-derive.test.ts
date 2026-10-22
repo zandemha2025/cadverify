@@ -209,3 +209,19 @@ test("ce-19: the list's price is at the part page's quantity, and says when that
   assert.equal(priceText({ unit_cost: { ...uc, qty_basis: "default", declared_qty: 800 } } as never), "$36.69 at 100");
   assert.equal(priceText({ unit_cost: { ...uc, usd: 25.32, qty: 1000, qty_basis: "declared", declared_qty: 1000 } } as never), "$25.32 at 1,000 a year");
 });
+
+test("a part whose check stopped before its price names no process or material (op-23)", () => {
+  // A catalog part analysed but never priced: the DFM's own suggestion (a printer, PLA) isn't its route.
+  const drafted = part({
+    lifecycle_state: "Drafted",
+    recommended_route: { process: "fdm", material: "PLA", source: "dfm" },
+    unit_cost: null,
+    cost_decision: null,
+  });
+  const v = verdictOf(drafted, null);
+  assert.equal(v.label, "Not priced yet");
+  assert.doesNotMatch(v.where, /PLA|Filament|printing/i);
+  assert.equal(v.where, "Its check stopped before a process and price. Check it again.");
+  // A priced part keeps its route.
+  assert.match(verdictOf(part(), null).where, / · 6061-T6 Aluminum$/);
+});

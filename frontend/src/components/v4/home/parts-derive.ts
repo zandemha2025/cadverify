@@ -120,6 +120,11 @@ export function verdictOf(row: PartRow, make: Makeability | null | undefined): V
   if (v === "not_makeable") {
     return { key: "out", label: "Ruled out", tone: "bad", where: "No process clears the checks as drawn", stale };
   }
+  // Analysed but never priced (a catalog part whose check stopped, or was cut short): the
+  // analysis's own suggestion (often a printer and PLA) isn't the part's route or material.
+  if (row.lifecycle_state === "Drafted" && !row.cost_decision) {
+    return { key: "unknown", label: "Not priced yet", tone: "unk", where: "Its check stopped before a process and price. Check it again.", stale };
+  }
   // Checked and priced, but not yet against machines (none declared, or not re-checked since).
   return { key: "unknown", label: "No machine check", tone: "unk", where: routeLine(row), stale };
 }
