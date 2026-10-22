@@ -141,6 +141,7 @@ async def _part_context(
         "units_per_parent": row.units_per_parent,
         "annual_volume": row.annual_volume,
         "service_environment": row.service_environment,
+        "part_specs": row.part_specs,
         "provenance": "user_declared",
     }
 
@@ -209,6 +210,8 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
             "requested_process",
             "requested_material",
             "requested_quantity",
+            "part_specs",
+            "supplier_must_hold",
         ]
     )
     for item in items:
@@ -234,13 +237,27 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
                     requested.get("process"),
                     requested.get("material"),
                     requested.get("quantity"),
+                    "; ".join(context.get("spec_summary") or []),
+                    "; ".join(context.get("supplier_must_hold") or []),
                 ]
             ]
         )
     return buf.getvalue()
 
 
-def _supplier_brief(package: RfqPackage) -> str:
+def _spec_sections(items: list[dict[str, Any]] | None) -> list[tuple[str, list[str], list[str]]]:
+    """``(file name, spec lines, certifications)`` for each item that declares specs."""
+    out = []
+    for item in items or []:
+        ctx = item.get("part_context") or {}
+        lines = ctx.get("spec_summary") or []
+        if ctx.get("part_specs") and lines:
+            out.append((str((item.get("decision") or {}).get("filename") or "part"),
+                        [str(x) for x in lines], [str(x) for x in ctx.get("supplier_must_hold") or []]))
+    return out
+
+
+def _supplier_brief(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> str:
     lines = [
         f"# {package.title}",
         "",
@@ -257,13 +274,21 @@ def _supplier_brief(package: RfqPackage) -> str:
     note = (package.metadata_json or {}).get("note")
     if note:
         lines += ["", "## Buyer note", "", str(note)]
+    specs = _spec_sections(items)
+    if specs:
+        must = sorted({c for _f, _l, certs in specs for c in certs})
+        lines += ["", "## Part specs"]
+        if must:
+            lines += ["", "The supplier must hold: " + ", ".join(must) + "."]
+        for fname, spec_lines, _certs in specs:
+            lines += ["", f"### {fname}", ""] + [f"- {x}" for x in spec_lines]
     if package.warnings_json:
         lines += ["", "## Warnings"]
         lines += [f"- {w.get('code')}: {w.get('message')}" for w in package.warnings_json]
     return "\n".join(lines) + "\n"
 
 
-def _supplier_brief_html(package: RfqPackage) -> str:
+def _supplier_brief_html(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> str:
     """Render the package-level sourcing truth as a printable HTML document.
 
     The per-decision PDFs explain each should-cost calculation, while this
@@ -283,6 +308,14 @@ def _supplier_brief_html(package: RfqPackage) -> str:
     note_html = (
         f"<h2>Buyer note</h2><p>{html.escape(str(note))}</p>" if note else ""
     )
+    specs = _spec_sections(items)
+    if specs:
+        must = sorted({c for _f, _l, certs in specs for c in certs})
+        note_html += "<h2>Part specs</h2>" + (
+            f"<p>The supplier must hold: {html.escape(', '.join(must))}.</p>" if must else "")
+        for fname, spec_lines, _certs in specs:
+            note_html += (f"<p><strong>{html.escape(fname)}</strong></p><ul>"
+                          + "".join(f"<li>{html.escape(x)}</li>" for x in spec_lines) + "</ul>")
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -317,15 +350,15 @@ def _supplier_brief_html(package: RfqPackage) -> str:
 </html>"""
 
 
-def _render_supplier_brief_pdf_sync(package: RfqPackage) -> bytes:
+def _render_supplier_brief_pdf_sync(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> bytes:
     from weasyprint import HTML
 
-    return HTML(string=_supplier_brief_html(package)).write_pdf()
+    return HTML(string=_supplier_brief_html(package, items)).write_pdf()
 
 
-async def _supplier_brief_pdf(package: RfqPackage) -> bytes:
+async def _supplier_brief_pdf(package: RfqPackage, items: list[dict[str, Any]] | None = None) -> bytes:
     async with _RFQ_PDF_SEMAPHORE:
-        return await asyncio.to_thread(_render_supplier_brief_pdf_sync, package)
+        return await asyncio.to_thread(_render_supplier_brief_pdf_sync, package, items)
 
 
 async def _decision_item(
@@ -568,7 +601,9 @@ async def build_zip(
 ) -> bytes:
     try:
         supplier_pdf_name = "supplier-brief.pdf"
-        supplier_pdf = await _supplier_brief_pdf(package)
+        # Spec lines are built from the spec vocabulary only (no shop names).
+        supplier_pdf = await _supplier_brief_pdf(
+            package, [outbound.rfq_item(item) for item in package.items_json or []])
     except Exception:
         supplier_pdf_name = "supplier-brief-pdf-unavailable.txt"
         supplier_pdf = (
@@ -592,7 +627,7 @@ async def build_zip(
             json.dumps(manifest, indent=2, sort_keys=True, default=str),
         )
         zf.writestr("line-items.csv", _line_items_csv(items))
-        zf.writestr("supplier-brief.md", _supplier_brief(package))
+        zf.writestr("supplier-brief.md", _supplier_brief(package, items))
         zf.writestr(supplier_pdf_name, supplier_pdf)
         zf.writestr(
             "cost-decisions.json",

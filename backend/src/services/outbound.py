@@ -22,7 +22,10 @@ May leave
     price lines, the stated band, lead time, the engine's pick and crossover;
   * what the buyer chose to send: quantities, the declared part (number,
     description, material class, volumes, program), service conditions declared
-    on the part, the route they chose to buy outside, their note to the supplier.
+    on the part, the part specs declared on it (finishes and Ra, heat treatment,
+    inspection, the certifications the supplier must hold, NADCAP processes) and
+    the price lines and lead days those specs add, the route they chose to buy
+    outside, their note to the supplier.
 
 Never leaves
   * the shop's machines: names, counts, envelopes, fit verdicts (the
@@ -68,6 +71,12 @@ PART_DECLARATIONS = frozenset({
 })
 
 # ── the allowlists ────────────────────────────────────────────────────────────
+def _spec_ops() -> tuple:
+    from src.costing.part_specs import SPEC_OPS_V0
+
+    return tuple(SPEC_OPS_V0)
+
+
 DRIVER_NAMES = frozenset({
     "material_cost", "support_material", "parts_per_build", "machine_cost",
     "machine_region_split", "cycle_time", "labor_cost", "learning_curve",
@@ -75,12 +84,12 @@ DRIVER_NAMES = frozenset({
     "finishing_cost", "plate_removal_cost", "support_removal_cost",
     "stress_relief_cost", "sinter_cost", "finish_machining", "tolerance_class",
     "tooling_cost", "region_split", "min_charge_floor",
-})
+} | {f"spec_{op}_cost" for op in _spec_ops()})
 LINE_ITEMS = frozenset({
     "amortized_fixed", "material", "machine", "labor", "nre", "inspection",
     "consumables", "finishing", "tolerance", "plate_removal", "support_removal",
     "stress_relief", "sinter", "finish_machining", "min_charge_floor",
-})
+} | {f"spec_{op}" for op in _spec_ops()})
 ASSUMPTION_NAMES = frozenset({
     "labor_rate", "region_labor", "region_material", "region_tooling", "margin",
     "overhead", "utilization", "stock_allowance", "machine_labor_frac",
@@ -116,6 +125,11 @@ _PART_CONTEXT_KEYS = ("program", "parent_assembly", "units_per_parent", "annual_
 _SERVICE_ENV_KEYS = ("max_temp_c", "min_temp_c", "pressure_bar", "corrosive",
                      "sour_service", "medium", "standard")
 _RAW_CAD_KEYS = ("included", "reason", "filename", "bytes")
+# The part specs the buyer declared (src.costing.part_specs): every field is the
+# buyer's own statement about the part and what its maker must hold.
+PART_SPEC_KEYS = ("finishes", "ra_um", "ra_unit", "heat_treatments", "inspection",
+                  "certifications", "nadcap_processes")
+_SPEC_BLOCK_KEYS = ("summary", "ra_text", "nadcap_processes", "excluded_processes", "note")
 
 # Verdicts that mean a machine the shop owns makes the route.
 _IN_HOUSE_VERDICTS = frozenset({"makeable_in_house", "makeable_with_secondary_op"})
@@ -175,6 +189,9 @@ def _generic_rates() -> frozenset:
             found.add(round(float(node), 6))
 
     walk(RATE_CARD_V0)
+    from src.costing.part_specs import SPEC_OPS_V0
+
+    walk({op: {k: v for k, v in p.items() if k != "source"} for op, p in SPEC_OPS_V0.items()})
     for m in MATERIALS:
         walk(getattr(m, "cost_per_kg", None))
         walk(dict(getattr(m, "cost_per_kg_by_form", None) or {}))
@@ -486,7 +503,7 @@ def _capacity(cap: Any, terms: _Terms) -> Optional[dict]:
 def _estimate(e: dict, terms: _Terms) -> dict:
     out = _pick(e, ("process", "material", "quantity", "unit_cost_usd", "fixed_cost_usd",
                     "variable_cost_usd", "est_error_band_pct", "dfm_ready", "dfm_verdict",
-                    "dfm_score", "environment_excluded"))
+                    "dfm_score", "environment_excluded", "spec_excluded"))
     conf = _stated_band(e)
     if conf is not None:
         conf["basis"] = _field_text(conf.get("basis"), terms)
@@ -495,6 +512,12 @@ def _estimate(e: dict, terms: _Terms) -> dict:
         out["confidence"] = conf
     if "environment_exclusion_reason" in e:
         out["environment_exclusion_reason"] = _field_text(e["environment_exclusion_reason"], terms)
+    if "spec_exclusion_reason" in e:
+        out["spec_exclusion_reason"] = _field_text(e["spec_exclusion_reason"], terms)
+    if "spec_findings" in e:
+        out["spec_findings"] = _issues(e.get("spec_findings"), terms)
+    if e.get("spec_notes"):
+        out["spec_notes"] = _texts(e.get("spec_notes"), terms)
     out["dfm_blockers"] = [_field_text(b, terms) for b in e.get("dfm_blockers") or []]
     if "dfm_blocker_details" in e:
         out["dfm_blocker_details"] = _issues(e.get("dfm_blocker_details"), terms)
@@ -705,6 +728,40 @@ def cost_record(result_json: Any, *, terms: Iterable[str] = ()) -> dict:
     }
     if r.get("unit_warnings"):
         out["unit_warnings"] = [w for w in (_plain(w, t) for w in r["unit_warnings"]) if w]
+    spec_block = part_specs_block(r.get("specs"), t)
+    if spec_block:
+        out["specs"] = spec_block
+    return out
+
+
+def part_specs(specs: Any) -> Optional[dict]:
+    """The buyer's declared part specs, field by field (None when none)."""
+    if not isinstance(specs, dict):
+        return None
+    out = {k: copy.deepcopy(specs[k]) for k in PART_SPEC_KEYS if specs.get(k) is not None}
+    return out or None
+
+
+def supplier_must_hold(specs: Any) -> list:
+    """The certifications a supplier must hold, in words (AS9100, NADCAP, …)."""
+    from src.costing.part_specs import required_certifications
+
+    try:
+        return [c["label"] for c in required_certifications(part_specs(specs) or {})]
+    except (KeyError, TypeError):
+        return []
+
+
+def part_specs_block(node: Any, terms: _Terms) -> Optional[dict]:
+    """The record's specs block on outside terms: what was declared and required."""
+    if not isinstance(node, dict):
+        return None
+    out = _plain(_pick(node, _SPEC_BLOCK_KEYS), terms)
+    declared = part_specs(node.get("declared"))
+    if declared:
+        out["declared"] = declared
+    out["supplier_must_hold"] = supplier_must_hold(node.get("declared"))
+    out["ops"] = [_pick(o, ("op", "label")) for o in node.get("ops") or [] if isinstance(o, dict)]
     return out
 
 
@@ -803,6 +860,13 @@ def rfq_item(item: Any, *, terms: Iterable[str] = ()) -> dict:
         env = ctx.get("service_environment")
         if isinstance(env, dict):
             c["service_environment"] = _plain(_pick(env, _SERVICE_ENV_KEYS), _Terms(terms))
+        specs = part_specs(ctx.get("part_specs"))
+        if specs:
+            from src.costing.part_specs import spec_summary
+
+            c["part_specs"] = specs
+            c["spec_summary"] = spec_summary(specs)
+            c["supplier_must_hold"] = supplier_must_hold(specs)
         out["part_context"] = c
     else:
         out["part_context"] = None
