@@ -28,7 +28,7 @@ import {
 import { currentRunsSig, recost, runRateSets, useShops, useWb } from "./session";
 import { WbHead, WbLink, useNeedFile, useToast, useWbNav, wbHref } from "./chrome";
 import { baseMeta, rateMeta, useShopName } from "./decision";
-import { driverName, methodName, money, qtyText } from "./words";
+import { driverName, methodName, money, qtyText, signedMoney } from "./words";
 import type { TabProps } from "./workbench";
 
 let modeMem: "qty" | "shop" = "qty";
@@ -261,14 +261,18 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
               </div>
               <div className="sig">
                 {lineRows(cellEst).map((l) => (
-                  <React.Fragment key={l.label}>
-                    <span>{l.label}</span>
-                    <b className="num">{money(l.v)}</b>
+                  <React.Fragment key={l.key}>
+                    <span style={l.rounding ? { color: "var(--ink3)" } : undefined}>{l.label}</span>
+                    <b className="num">{l.rounding ? signedMoney(l.v) : money(l.v)}</b>
                   </React.Fragment>
                 ))}
                 <span className="t">Sum of the lines</span>
-                <b className={cx("t num", sumCheck(cellEst).coherent ? "" : "bdt")}>{money(sumCheck(cellEst).sum)}</b>
+                <b className={cx("t num", sumCheck(cellEst).coherent ? "" : "bdt")}>
+                  {money(sumCheck(cellEst).sum)}
+                  {sumCheck(cellEst).coherent ? "" : ` ≠ ${money(cellEst.unit_cost_usd)}`}
+                </b>
               </div>
+              {sumCheck(cellEst).note ? <p style={{ margin: "0 12px 8px", color: "var(--ink3)", fontSize: 12.5 }}>{sumCheck(cellEst).note}</p> : null}
               <div className="gh">
                 <span>Drivers</span>
                 <span>Tagged</span>

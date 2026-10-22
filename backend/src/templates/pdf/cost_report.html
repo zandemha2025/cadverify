@@ -247,22 +247,24 @@
     Band basis (assumption-based rows): {{ (estimates[0].get('confidence') or {}).get('basis') }}
   </p>
 
-  <!-- Line items: dense matrix, one row per estimate -->
+  <!-- Line items: dense matrix, one row per estimate. Each line is rounded to the
+       cent on its own; the Rounding column carries the difference, so every row
+       adds up to its unit cost to the cent (ce-01, src/costing/footing.py). -->
   <h3>Line items (USD/unit — sum to unit cost)</h3>
-  {% set li_keys = [] %}
-  {% for e in estimates %}
-    {% for k in (e.get('line_items') or {}).keys() %}
-      {% if k not in li_keys %}{% set _ = li_keys.append(k) %}{% endif %}
-    {% endfor %}
-  {% endfor %}
+  <p class="muted" style="margin:0 0 4px 0;">
+    Each line is rounded to the cent. The unit cost is rounded once, from the
+    unrounded lines, so a Rounding column carries the cent or two between them:
+    every row adds up to its unit cost.
+  </p>
+  {% set li_keys = estimates | line_keys %}
   <table class="line-items">
     <thead><tr>
       <th>Process</th><th>Material</th><th class="num">Qty</th>
-      {% for k in li_keys %}<th class="num">{{ k | replace('_', ' ') }}</th>{% endfor %}
+      {% for k in li_keys %}<th class="num">{{ k | line_name }}</th>{% endfor %}
       <th class="num">&Sigma; unit</th>
     </tr></thead>
     {% for e in estimates %}
-    {% set li = e.get('line_items') or {} %}
+    {% set li = e | footed %}
     <tr>
       <td>{{ e.get('process') | process_name }}</td>
       <td>{{ e.get('material') }}</td>

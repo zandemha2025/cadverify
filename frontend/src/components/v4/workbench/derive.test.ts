@@ -43,6 +43,7 @@ import {
   scaleMax,
   scenarioLabel,
   threeSource,
+  lineRows,
   sumCheck,
 } from "./derive.ts";
 import { assumptionValue, environmentLabel, findingTitle, qtyListText, shortSource } from "./words.ts";
@@ -351,6 +352,8 @@ test("small words", () => {
 test("a tiny cycle time reads in seconds or minutes, never 0 h", () => {
   assert.equal(driverValue({ value: 0.00001, unit: "hr" }), "0.036 s");
   assert.equal(driverValue({ value: 0.004, unit: "hr" }), "14 s");
+  // ce-04: the whole tool is once for the order, never one of the per-part dollars.
+  assert.equal(driverValue({ value: 5250, unit: "$/tool" }), "$5,250.00 once");
   assert.equal(driverValue({ value: 0.009, unit: "hr" }), "32 s");
   assert.equal(driverValue({ value: 0.0095, unit: "hr" }), "34 s");
   assert.equal(driverValue({ value: 1.25, unit: "hr" }), "1.25 h");
@@ -388,4 +391,35 @@ test("ce-16: a line priced at the org's published rates reads \"Your rates v1\",
   const chips = rateChips([{ name: "labor_rate", value: 58, unit: "$/hr", provenance: "SHOP", source: "x", rate_card: 1 }], {});
   assert.equal(chips.card.length, 1);
   assert.equal(chips.bound.length, 0);
+});
+
+test("sum check: her pocket block's lines foot to the cent with a Rounding line (ce-01)", () => {
+  // 3-axis at 100 from her CSV: 0.70 + 17.50 + 15.69 + 0.52 + 1.23 + 0.78 + 0.26 = 36.68 against $36.69.
+  const e = {
+    ...report().estimates[0],
+    unit_cost_usd: 36.69,
+    line_items: { nre: 0.7, labor: 17.5, machine: 15.6934, material: 0.5222, inspection: 1.225, consumables: 0.7847, amortized_fixed: 0.2625 },
+  };
+  const rows = lineRows(e);
+  assert.deepEqual(rows.map((r) => r.v), [0.7, 17.5, 15.69, 0.52, 1.23, 0.78, 0.26, 0.01]);
+  assert.equal(rows[rows.length - 1].label, "Rounding");
+  assert.equal(rows.find((r) => r.key === "amortized_fixed")!.label, "Setup");
+  const sc = sumCheck(e);
+  assert.ok(sc.coherent);
+  assert.equal(sc.sum.toFixed(2), "36.69");
+  assert.equal(sc.note, "Each line is rounded to the cent; unrounded they add to $36.6878, which is $36.69.");
+  // 5-axis at 100: the lines read $50.16 against $50.15, so Rounding is −$0.01.
+  const five = { ...e, unit_cost_usd: 50.15, line_items: { nre: 1.05, labor: 17.5, machine: 26.9374, material: 0.9574, inspection: 2.0125, consumables: 1.3469, amortized_fixed: 0.35 } };
+  assert.equal(lineRows(five).at(-1)!.v, -0.01);
+  assert.ok(sumCheck(five).coherent);
+  // The stepped shaft at 100: three lines round up, $23.84 against $23.82.
+  const shaft = { ...e, unit_cost_usd: 23.82, line_items: { nre: 0.35, labor: 10.5, machine: 9.73, material: 1.5665, inspection: 1.015, consumables: 0.4865, amortized_fixed: 0.175 } };
+  assert.equal(lineRows(shaft).at(-1)!.v, -0.02);
+  // At 1,000 the lines already foot: no Rounding line.
+  const k = { ...e, unit_cost_usd: 25.32, line_items: { nre: 0.07, labor: 12.332, machine: 11.0589, material: 0.5222, inspection: 0.7574, consumables: 0.5529, amortized_fixed: 0.0262 } };
+  assert.ok(!lineRows(k).some((r) => r.rounding));
+  // A $5 gap is not rounding: never a ✓.
+  const off = { ...e, unit_cost_usd: 41.69 };
+  assert.ok(!sumCheck(off).coherent);
+  assert.ok(!lineRows(off).some((r) => r.rounding));
 });

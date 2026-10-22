@@ -199,6 +199,11 @@ export function money(n: number | null | undefined): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** "+$0.01" / "−$0.01": a correction that adds to or takes from a sum (the Rounding line). */
+export function signedMoney(n: number): string {
+  return `${n < 0 ? "−" : "+"}${money(Math.abs(n))}`;
+}
+
 export function qtyText(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }

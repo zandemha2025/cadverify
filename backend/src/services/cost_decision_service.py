@@ -30,6 +30,7 @@ from ulid import ULID
 
 from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
+from src.costing.footing import footed_items
 from src.db.models import CostDecision, UsageEvent
 from src.services import share_links
 from src.services.share_service import generate_short_id
@@ -932,8 +933,10 @@ def build_estimates_csv(
 
     for e in result_json.get("estimates", []) or []:
         ci = e.get("confidence") or {}
-        line_items = e.get("line_items") or {}
-        li_str = "; ".join(f"{k}={v}" for k, v in line_items.items())
+        # ce-01: to the cent, with the rounding line that makes them add up to
+        # unit_cost_usd (src.costing.footing, the screen's and the PDF's rule).
+        li_str = "; ".join(f"{k}={v:.2f}" for k, v in footed_items(
+            e.get("line_items") or {}, e.get("unit_cost_usd")).items())
         writer.writerow(
             [
                 spreadsheet_safe_cell(value)

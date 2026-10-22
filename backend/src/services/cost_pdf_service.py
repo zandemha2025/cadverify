@@ -70,13 +70,37 @@ _jinja_env = Environment(
 
 
 def _format_money(value) -> str:
-    """Format a number as USD, tolerating None/'N/A'."""
+    """Format a number as USD, tolerating None/'N/A'. Cents round half-up on the
+    stored number, as the screen does (src.costing.footing): $0.175 reads $0.18 in
+    both, not $0.17 here and $0.18 there."""
     if value is None or value == "N/A":
         return "N/A"
     try:
-        return f"${float(value):,.2f}"
-    except (ValueError, TypeError):
+        from src.costing.footing import cents
+
+        return f"${cents(float(value)) / 100:,.2f}"
+    except (ValueError, TypeError, ArithmeticError):
         return str(value)
+
+
+def _footed(estimate) -> dict:
+    """An estimate's lines to the cent with the Rounding line that makes them add up (ce-01)."""
+    from src.costing.footing import footed_items
+
+    e = estimate or {}
+    return footed_items(e.get("line_items") or {}, e.get("unit_cost_usd"))
+
+
+def _line_keys(estimates) -> list:
+    from src.costing.footing import keys_in
+
+    return keys_in(estimates or [])
+
+
+def _line_name(key) -> str:
+    from src.costing.footing import line_name
+
+    return line_name(str(key))
 
 
 def _pdf_text(value) -> str:
@@ -92,6 +116,9 @@ def _pdf_text(value) -> str:
 
 _jinja_env.filters["format_number"] = _format_number
 _jinja_env.filters["format_money"] = _format_money
+_jinja_env.filters["footed"] = _footed
+_jinja_env.filters["line_keys"] = _line_keys
+_jinja_env.filters["line_name"] = _line_name
 _jinja_env.filters["pdf_text"] = _pdf_text
 # Engine process ids read as the same names the v4 screens use ("cnc_3axis" → "3-axis milling").
 _jinja_env.filters["process_name"] = _process_name

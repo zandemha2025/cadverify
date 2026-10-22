@@ -24,6 +24,7 @@ import type {
 import { deriveBreakeven, recommendAt, unitCostAt, type Breakeven, type ProcessCurve } from "../../../lib/breakeven.ts";
 import { flattenIssues, issueProcesses } from "../../../lib/dfm-scope.ts";
 import { parseCalibration } from "../../../lib/cost-views.ts";
+import { ROUNDING_KEY, footLines, roundingWords } from "../../../lib/cost-lines.ts";
 import {
   assumptionName,
   assumptionValue,
@@ -650,6 +651,8 @@ export function provOf(p: string | null | undefined, rateCard?: number | null): 
 
 export function driverValue(d: Pick<CostDriver, "value" | "unit">): string {
   if (d.unit === "$") return money(d.value);
+  // ce-04: a whole tool is paid once, not per part; the per-part share is its own line.
+  if (d.unit === "$/tool") return `${money(d.value)} once`;
   if (d.unit === "hr") {
     // A tiny part's cycle is seconds: "0.0000 h" read as no time at all.
     if (d.value > 0 && d.value < 0.01) return `${+(d.value * 3600).toPrecision(2)} s`;
@@ -681,13 +684,21 @@ export function methodsAt(report: CostReport, qty: number): MethodChoice[] {
     .map((e) => ({ process: e.process, name: methodName(e.process), material: e.material, unit: e.unit_cost_usd, ready: e.dfm_ready }));
 }
 
-export function lineRows(e: CostEstimate): { label: string; v: number }[] {
-  return Object.entries(e.line_items ?? {}).map(([k, v]) => ({ label: lineName(k), v }));
+/** The lines as printed, each rounded to the cent, then the Rounding line that makes them add up
+ *  to the unit cost when they don't on their own (ce-01, lib/cost-lines.ts). */
+export function lineRows(e: CostEstimate): { key: string; label: string; v: number; rounding?: boolean }[] {
+  const f = footLines(e.line_items, e.unit_cost_usd);
+  const rows: { key: string; label: string; v: number; rounding?: boolean }[] = f.lines.map((l) => ({ key: l.key, label: lineName(l.key), v: l.cents / 100 }));
+  if (f.roundingCents && f.isRounding) rows.push({ key: ROUNDING_KEY, label: "Rounding", v: f.roundingCents / 100, rounding: true });
+  return rows;
 }
 
-export function sumCheck(e: CostEstimate): { sum: number; coherent: boolean } {
-  const sum = Object.values(e.line_items ?? {}).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
-  return { sum, coherent: Math.abs(sum - e.unit_cost_usd) < Math.max(0.02, e.unit_cost_usd * 0.001) };
+/** The printed lines' sum, and whether it is the printed unit cost to the cent. A gap rounding
+ *  can't make is never covered by a Rounding line: the sum then shows it doesn't add up. */
+export function sumCheck(e: CostEstimate): { sum: number; coherent: boolean; note: string | null } {
+  const f = footLines(e.line_items, e.unit_cost_usd);
+  const shown = f.lines.reduce((s, l) => s + l.cents, 0) + (f.isRounding ? f.roundingCents : 0);
+  return { sum: shown / 100, coherent: f.lines.length > 0 && shown === f.unitCents, note: f.roundingCents ? roundingWords(f) : null };
 }
 
 export function governance(drivers: readonly CostDriver[]) {
