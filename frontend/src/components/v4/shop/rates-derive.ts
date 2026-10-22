@@ -29,7 +29,12 @@ const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 export const CARD_ROWS: RowSpec[] = [
   { key: "labor_rate", name: "Labor, loaded shop floor", note: "Finishing, setup, programming, inspection", fmt: (v) => `${money(v)}/h` },
   { key: "margin", name: "Margin", note: "Should-cost, not price", fmt: pct },
-  { key: "overhead", name: "Overhead on machining and labor", note: "", fmt: pct },
+  {
+    key: "overhead",
+    name: "Overhead",
+    note: "Indirect burden on conversion cost, the work done on the shop floor: machine (and the tools line, a share of it), labor, setup, programming, inspection, and finish machining, sintering, metal-printing post work or declared hand operations where the process has them; not material, tooling, EDM wire or outside finishing; price = cost × (1 + overhead) on those lines",
+    fmt: pct,
+  },
   { key: "utilization", name: "Machine utilization", note: "", fmt: pct },
   { key: "machine_capital_frac", name: "Machine payback share of rate", note: "Excluded for machines you own", fmt: pct },
   { key: "stock_allowance", name: "Machining stock allowance", note: "Billet over part size", fmt: (v) => `${v.toFixed(2)}×` },
@@ -277,6 +282,8 @@ export type DraftForm = {
   margin: string;
   /** process key → $/h, prefilled with the draft's own rate */
   machines: Record<string, string>;
+  /** process key → the hand work and handling allowance, hours a part (post_hr_part; 0.5 h typical on CNC) */
+  hands: Record<string, string>;
   /** material name → $/kg ("" = typical) */
   materials: { name: string; price: string }[];
 };
@@ -296,9 +303,12 @@ function procs(payload: unknown): Record<string, Record<string, unknown>> {
 /** The form for a draft, prefilled with the draft's own values (percent fields as percents). */
 export function draftFormFrom(payload: unknown): DraftForm {
   const machines: Record<string, string> = {};
+  const hands: Record<string, string> = {};
   for (const [p, f] of Object.entries(procs(payload))) {
     const r = f?.machine_rate;
     if (typeof r === "number") machines[p] = trimNum(r);
+    const h = f?.post_hr_part;
+    if (typeof h === "number") hands[p] = trimNum(h);
   }
   const mp = ((payload as { material_prices?: Record<string, unknown> } | null)?.material_prices ?? {}) as Record<string, unknown>;
   return {
@@ -306,6 +316,7 @@ export function draftFormFrom(payload: unknown): DraftForm {
     overhead: g(payload, "overhead") != null ? trimNum(g(payload, "overhead")! * 100) : "",
     margin: g(payload, "margin") != null ? trimNum(g(payload, "margin")! * 100) : "",
     machines,
+    hands,
     materials: Object.entries(mp).filter(([, v]) => typeof v === "number").map(([name, v]) => ({ name, price: trimNum(v as number) })),
   };
 }
@@ -369,6 +380,19 @@ export function applyDraft(
     if (!near(process[p].machine_rate, r)) {
       changes.push(`${procLabel(p)} machine ${typeof process[p].machine_rate === "number" ? m2(process[p].machine_rate as number) : "—"}/h → ${m2(r)}/h`);
       process[p] = { ...process[p], machine_rate: r };
+    }
+  }
+  for (const [p, raw] of Object.entries(form.hands ?? {})) {
+    if (!process[p] || raw.trim() === "") continue;
+    const t = raw.trim().replace(/\s*h$/i, "");
+    const h = DEC.test(t) ? Number(t) : NaN;
+    if (!(h >= 0 && h <= 24)) {
+      errors[`hand:${p}`] = "Hours a part, 0 to 24.";
+      continue;
+    }
+    if (!near(process[p].post_hr_part, h)) {
+      changes.push(`${procLabel(p)} hand work ${typeof process[p].post_hr_part === "number" ? `${process[p].post_hr_part} h` : "—"} → ${h} h a part`);
+      process[p] = { ...process[p], post_hr_part: h };
     }
   }
   const before = ((payload.material_prices as Record<string, unknown>) ?? {}) as Record<string, unknown>;

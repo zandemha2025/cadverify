@@ -45,7 +45,7 @@ const PROC_FIELD: Record<string, [string, (v: number) => string]> = {
   nre_hr: ["programming", (v) => `${v} h`],
   fai_hr: ["first article", (v) => `${v} h`],
   inspect_hr_part: ["inspection a part", (v) => `${v} h`],
-  post_hr_part: ["post-process a part", (v) => `${v} h`],
+  post_hr_part: ["hand work and handling a part", (v) => `${v} h`],
   min_charge: ["order minimum", (v) => money2(v)],
 };
 

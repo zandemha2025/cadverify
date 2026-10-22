@@ -168,7 +168,7 @@ test("outcome locks mirror the server: in-house needs your route, outside needs 
 test("cost inputs keep only dollar drivers and say where each came from", () => {
   const e = routeOptions(report(), 10)[0].est;
   const lines = costLines(e);
-  assert.deepEqual(lines.map((l) => [l.label, l.usd, l.srcLabel]), [["Material, API 13Cr", 0.12, "Typical"], ["Machine time", 1.43, "Yours"]]);
+  assert.deepEqual(lines.map((l) => [l.label, l.usd, l.srcLabel]), [["Material, API 13Cr", 0.12, "Typical"], ["Machine", 1.43, "Yours"]]);
   assert.deepEqual(rangeOf(e), { text: "$15.77–$47.31", pct: 50, validated: false, n: 0 });
   const plain = rangeOf(cheapestAt(report(), 10)?.est);
   assert.equal(plain?.text, "$6.75–$23.25");
@@ -283,4 +283,12 @@ test("a record's cost lines add up to its price, with a Rounding line (ce-01)", 
   assert.deepEqual(lines.map((l) => l.usd), [0.35, 10.5, 9.73, 1.57, 1.02, 0.49, 0.18, -0.02]);
   assert.equal(lines.at(-1)!.label, "Rounding");
   assert.equal(Math.round(lines.reduce((s, l) => s + l.usd, 0) * 100), 2382);
+});
+
+test("ce-20: compare keeps a decimal at the edge of 100%", async () => {
+  const { changePct } = await import("./facts.ts");
+  assert.equal(changePct(30123.93, 21.94), -99.9);
+  assert.equal(changePct(100, 105), 5);
+  assert.equal(changePct(100, 0), -100);
+  assert.equal(changePct(15002.03, 3.53), -99.98);
 });

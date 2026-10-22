@@ -720,13 +720,36 @@ export function governance(drivers: readonly CostDriver[]) {
 /** Assumption overrides the glass box can re-cost, with their editor label and unit. */
 export const EDITABLE_ASSUMPTIONS: Record<string, [string, string]> = {
   labor_rate: ["Labor rate", "$/h"],
-  margin: ["Margin", "fraction, 0.25 = 25%"],
-  overhead: ["Overhead", "fraction"],
-  utilization: ["Utilization", "fraction, 0 to 1"],
+  margin: ["Margin", "% markup on cost, 10 = 10%"],
+  overhead: ["Overhead", "% on in-house lines, 15 = 15%"],
+  utilization: ["Utilization", "%, 1 to 100"],
   stock_allowance: ["Stock allowance", "× billet"],
   daily_machine_hours: ["Machine hours per day", "h"],
   n_cavities: ["Mold cavities", "count"],
 };
+
+/** Assumptions edited as percents (the engine keeps them as fractions): 15 means 15%, never 1,500% (ce-17). */
+const PERCENT_LIMITS: Record<string, [number, number]> = { margin: [0, 300], overhead: [0, 300], utilization: [1, 100] };
+
+/** What the editor starts with: a percent for a percent assumption ("15" for 0.15). */
+export function assumptionDraft(name: string, value: number): string {
+  if (PERCENT_LIMITS[name]) return String(Math.round(value * 100 * 10000) / 10000);
+  return String(value);
+}
+
+/** The override value an edit sets, or the reason it can't: percents are read as percents and held to limits. */
+export function assumptionEdit(name: string, raw: string): { value: number; shown: string } | { err: string } {
+  const lim = PERCENT_LIMITS[name];
+  if (!lim) {
+    const n = Number(raw);
+    return raw.trim() && Number.isFinite(n) ? { value: n, shown: raw.trim() } : { err: "Enter a finite number." };
+  }
+  const t = raw.trim().replace(/\s*%$/, "");
+  const n = Number(t);
+  if (!t || !Number.isFinite(n)) return { err: "Enter a percent, for example 15 for 15%." };
+  if (n < lim[0] || n > lim[1]) return { err: `Enter a percent from ${lim[0]} to ${lim[1]} (15 is 15%).` };
+  return { value: n / 100, shown: `${t}%` };
+}
 
 /** The override key an assumption edit sets (`cavities` is a costing option, not a rate). */
 export function assumptionKey(name: string): string {
@@ -802,9 +825,12 @@ export function compareByRates(runs: { id: string; report: CostReport | null }[]
   return rows;
 }
 
+/** "−42%"; a change that rounds to the ±100% edge keeps a decimal, so $30,123.93 → $21.94 reads −99.9%, not −100% (ce-20). */
 export function changeText(pct: number | null): { text: string; cls: "dn" | "up" | "" } {
   if (pct == null || !Number.isFinite(pct)) return { text: "—", cls: "" };
-  return { text: `${pct < 0 ? "−" : "+"}${Math.abs(pct).toFixed(0)}%`, cls: pct < 0 ? "dn" : "up" };
+  const a = Math.abs(pct);
+  const digits = a >= 99.5 && a < 100 ? (a >= 99.95 ? 2 : 1) : 0;
+  return { text: `${pct < 0 ? "−" : "+"}${a.toFixed(digits)}%`, cls: pct < 0 ? "dn" : "up" };
 }
 
 /* ------------------------------------------------------------------ */

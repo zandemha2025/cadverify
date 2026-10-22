@@ -305,7 +305,8 @@ export function outcomeLocks(r: CostReport | null | undefined, route: RouteOptio
 
 const DRIVER: Record<string, string> = {
   material_cost: "Material",
-  machine_cost: "Machine time",
+  // A dollar line is "Machine"; machine time is the hours on the cycle line (ce-20).
+  machine_cost: "Machine",
   labor_cost: "Labor",
   setup_cost: "Setup",
   nre_cost: "Programming",
@@ -336,6 +337,7 @@ const DRIVER: Record<string, string> = {
   spec_cmm_report_cost: "CMM report",
   spec_full_100_cost: "100% inspection",
   spec_fine_finish_cost: "Grind or polish to the Ra",
+  blank_outside_cost: "Blank cut outside",
 };
 
 /** A cost input's plain name: "First article inspection (AS9102)", never "Spec fai as9102". */
@@ -433,9 +435,17 @@ export interface WayRow {
   process: string;
   a: WayCell | null;
   b: WayCell | null;
-  /** B vs A in whole percent, only when both are priced and neither is ruled out. */
+  /** B vs A in whole percent (a decimal kept at the ±100% edge), only when both are priced and neither is ruled out. */
   pct: number | null;
   pick: boolean;
+}
+
+/** A change in percent, whole unless it rounds to the ±100% edge: $30,123.93 → $21.94 is −99.9%, never −100% (ce-20). */
+export function changePct(a: number, b: number): number {
+  const p = (100 * (b - a)) / a;
+  const m = Math.abs(p);
+  const d = m >= 99.5 && m < 100 ? (m >= 99.95 ? 100 : 10) : 1;
+  return Math.round(p * d) / d;
 }
 
 export function wayTable(A: CostReport | null | undefined, B: CostReport | null | undefined, q: number): WayRow[] {
@@ -448,7 +458,7 @@ export function wayTable(A: CostReport | null | undefined, B: CostReport | null 
     const a = wayCell(A, p, q);
     const b = wayCell(B, p, q);
     const both = a?.usd != null && b?.usd != null && a.usd > 0;
-    return { process: p, a, b, pct: both ? Math.round((100 * (b!.usd! - a!.usd!)) / a!.usd!) : null, pick: p === pa || p === pb };
+    return { process: p, a, b, pct: both ? changePct(a!.usd!, b!.usd!) : null, pick: p === pa || p === pb };
   });
   const key = (r: WayRow) => Math.min(r.a?.usd ?? Infinity, r.b?.usd ?? Infinity);
   return rows.sort((x, y) => key(x) - key(y) || x.process.localeCompare(y.process));

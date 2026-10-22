@@ -511,6 +511,19 @@ function DraftControls({
               ) : null}
             </fieldset>
             <fieldset className="dset">
+              <legend>Hand work and handling allowance, hours a part{used.length && !allProcs ? " · the processes your checks used" : ""}</legend>
+              <div className="dgrid">
+                {shownProcs.filter((p) => form.hands[p] != null).map((p) => (
+                  <label className="field" key={p}>
+                    {procName(p)}
+                    <input type="text" inputMode="decimal" aria-label={`${procName(p)} hand work and handling allowance (hours a part)`} value={form.hands[p]} onChange={(e) => set({ hands: { ...form.hands, [p]: e.target.value } }, `hand:${p}`)} {...inv(`hand:${p}`)} />
+                    {err(`hand:${p}`)}
+                  </label>
+                ))}
+              </div>
+              <small className="fh">Deburr, wash, pack and handling each part gets, priced at the labor rate.</small>
+            </fieldset>
+            <fieldset className="dset">
               <legend>Material prices, $/kg · blank is the typical price</legend>
               <div className="dgrid">
                 {form.materials.map((m, i) => (

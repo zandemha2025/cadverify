@@ -25,7 +25,7 @@ import {
   sumCheck,
   type CompareRow,
 } from "./derive";
-import { currentRunsSig, recost, runRateSets, useShops, useWb } from "./session";
+import { canRecost, currentRunsSig, recost, runRateSets, useShops, useWb } from "./session";
 import { WbHead, WbLink, useNeedFile, useToast, useWbNav, wbHref } from "./chrome";
 import { baseMeta, rateMeta, useShopName } from "./decision";
 import { driverName, methodName, money, qtyText, signedMoney } from "./words";
@@ -57,7 +57,9 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
   const runIds = ["base", ...shops.map((x) => x.id)];
   const runReport = (id: string) => (id === curRun ? report : s.runsSig === currentRunsSig() ? s.runs[id]?.report ?? null : null);
   const runPhase = (id: string) => (id === curRun ? "done" : s.runsSig === currentRunsSig() ? s.runs[id]?.phase ?? "idle" : "idle");
-  const runName = (id: string) => (id === "base" ? "Typical" : shops.find((x) => x.id === id)?.name ?? id);
+  // The no-shop run is priced at the org's published rate card when there is one ("Your rates v1"), else typical rates.
+  const card = report?.rate_card?.version ?? null;
+  const runName = (id: string) => (id === "base" ? (card != null ? `Your rates v${card}` : "Typical") : shops.find((x) => x.id === id)?.name ?? id);
   const byRates = React.useMemo(
     () => (qc != null ? compareByRates(runIds.map((id) => ({ id, report: runReport(id) })), qc) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,7 +84,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
   const est = cellRep && pick ? estimateFor(cellRep, pick.process, pick.qty) : null;
   const cellEst = est && pick && est.quantity === pick.qty ? est : null;
   const name = pick ? methodName(pick.process) : "";
-  const rateLabel = pick ? (pick.run === "base" ? "typical rates" : runName(pick.run)) : "";
+  const rateLabel = pick ? (pick.run === "base" ? (card != null ? `your rates v${card}` : "typical rates") : runName(pick.run)) : "";
   const red = report ? redesignNote(report) : null;
   const priced = report ? new Set(report.estimates.filter((e) => !e.environment_excluded).map((e) => e.process)).size : 0;
   const meta = [
@@ -137,7 +139,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
             <div className="empty" style={{ padding: "22px 24px" }}>
               <b>Each rate set is a fresh engine run</b>
               <span>
-                {missing.length === 1 ? "1 more run" : `${missing.length} more runs`}, one after another, each saved to Cost records.{s.file ? "" : " Needs the CAD file."}
+                {missing.length === 1 ? "1 more run" : `${missing.length} more runs`}, one after another, each saved to Cost records.{s.file || canRecost() ? "" : " Needs the CAD file."}
               </span>
               <button className="btn sm ink" type="button" onClick={startRuns}>
                 Price with each rate set

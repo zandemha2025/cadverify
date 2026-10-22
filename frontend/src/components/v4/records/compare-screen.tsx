@@ -371,7 +371,7 @@ export function CompareScreen() {
           </div>
           {!ready ? null : shared.length ? (
             <div style={{ padding: "0 12px 6px" }}>
-              <span className="seg" role="group" aria-label="Quantity">
+              <span className="seg wrap" role="group" aria-label="Quantity">
                 {shared.map((v) => (
                   <button key={v} type="button" className={cx("num", v === qv && "on")} aria-pressed={v === qv} onClick={() => setQ(v)}>
                     {num(v)}

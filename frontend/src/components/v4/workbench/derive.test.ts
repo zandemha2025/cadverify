@@ -423,3 +423,27 @@ test("sum check: her pocket block's lines foot to the cent with a Rounding line 
   assert.ok(!sumCheck(off).coherent);
   assert.ok(!lineRows(off).some((r) => r.rounding));
 });
+
+test("ce-17: overhead and margin are typed as percents; 15 never becomes 1,500%", async () => {
+  const { assumptionDraft, assumptionEdit } = await import("./derive.ts");
+  assert.equal(assumptionDraft("overhead", 0.15), "15");
+  assert.equal(assumptionDraft("labor_rate", 58), "58");
+  assert.deepEqual(assumptionEdit("overhead", "15"), { value: 0.15, shown: "15%" });
+  assert.deepEqual(assumptionEdit("overhead", "15%"), { value: 0.15, shown: "15%" });
+  assert.deepEqual(assumptionEdit("margin", "10"), { value: 0.1, shown: "10%" });
+  assert.match((assumptionEdit("overhead", "1500") as { err: string }).err, /from 0 to 300/);
+  assert.match((assumptionEdit("utilization", "0") as { err: string }).err, /from 1 to 100/);
+  assert.deepEqual(assumptionEdit("labor_rate", "58"), { value: 58, shown: "58" });
+  // what reaches the engine is the fraction it reads: 0.15, which gave her $56.99 (not 15 -> $786.17)
+  assert.equal((assumptionEdit("overhead", "15") as { value: number }).value, 0.15);
+});
+
+test("ce-20: a change at the edge of 100% keeps a decimal", () => {
+  // forging $30,123.93 at 1 -> $21.94 at 10,000: -99.93%
+  const pct = ((21.94 - 30123.93) / 30123.93) * 100;
+  assert.equal(changeText(pct).text, "−99.9%");
+  assert.equal(changeText(-42.4).text, "−42%");
+  assert.equal(changeText(-100).text, "−100%");
+  assert.equal(changeText(-99.97).text, "−99.97%");
+  assert.equal(changeText(12).text, "+12%");
+});

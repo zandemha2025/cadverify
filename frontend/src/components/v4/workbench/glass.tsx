@@ -16,6 +16,8 @@ import { deriveBreakeven } from "@/lib/breakeven";
 import { Empty, cx } from "../ui";
 import {
   EDITABLE_ASSUMPTIONS,
+  assumptionDraft,
+  assumptionEdit,
   assumptionKey,
   bandPct,
   costedQtys,
@@ -164,15 +166,17 @@ export function GlassTab({ part, qty }: TabProps) {
   const apply = () => {
     const e = edit;
     if (!e) return;
-    const err = costOverrideError(e.vname, e.draft);
-    if (err) {
-      setEdit({ ...e, err });
+    // Percent assumptions (overhead, margin, utilization) are typed as percents: 15 is 15% (ce-17).
+    const parsed = assumptionEdit(e.vname, e.draft);
+    const err = "err" in parsed ? parsed.err : costOverrideError(e.vname, String(parsed.value));
+    if (err || "err" in parsed) {
+      setEdit({ ...e, err: err ?? "Enter a number." });
       return;
     }
-    const n = Number(e.draft);
+    const n = parsed.value;
     setEdit(null);
     if (e.key === "cavities") runWith({ ...s.opts, cavities: Math.round(n) }, `Mold cavities set to ${Math.round(n)}. Re-costed.`);
-    else runWith({ ...s.opts, overrides: { ...ov, [e.key]: n } }, `Override ${e.key} = ${n}. Re-costed, tagged Yours.`);
+    else runWith({ ...s.opts, overrides: { ...ov, [e.key]: n } }, `${e.label} ${parsed.shown}${parsed.shown.endsWith("%") ? "" : ` ${e.unit}`}. Re-costed, tagged Yours.`);
   };
 
   const laborNow = ov.labor_rate ?? report?.assumptions.find((a) => a.name === "labor_rate")?.value ?? null;
@@ -185,6 +189,17 @@ export function GlassTab({ part, qty }: TabProps) {
     const label = driverRateLabel(d.name);
     setOpen(d.name);
     setEdit({ row: `drv:${d.name}`, key, vname: key, label: label[0].toUpperCase() + label.slice(1), unit, draft: curV == null ? "" : String(curV), err: "" });
+  };
+
+  // The hand work and handling allowance on the Labor line (post_hr_part.<PROCESS>, 0.5 h by default):
+  // a what-if that re-costs with your hours a part (ce-18).
+  const handKey = proc ? `post_hr_part.${proc.toUpperCase()}` : null;
+  const startHandEdit = (d: CostDriver) => {
+    if (!handKey) return;
+    const m = /(?:post-process|finish)\s+([0-9]+(?:\.[0-9]+)?)\s?hr/.exec(d.source ?? "");
+    const cur = ov[handKey] ?? (m ? Number(m[1]) : null);
+    setOpen(d.name);
+    setEdit({ row: `drv:${d.name}`, key: handKey, vname: handKey, label: "Hand work and handling allowance", unit: "hours a part", draft: cur == null ? "" : String(cur), err: "" });
   };
 
   const meta = [...baseMeta(s), report ? `Quantities ${qtyListText(report.quantities)}` : ""];
@@ -326,6 +341,11 @@ export function GlassTab({ part, qty }: TabProps) {
                           <button className="btn sm" type="button" onClick={() => startDriverEdit(d)}>
                             Override {driverRateLabel(d.name)}
                           </button>
+                          {d.name === "labor_cost" && handKey ? (
+                            <button className="btn sm" type="button" onClick={() => startHandEdit(d)}>
+                              Hand work hours a part
+                            </button>
+                          ) : null}
                           <span className="hintx">Tags it Yours and re-costs</span>
                         </div>
                       ) : null}
@@ -412,7 +432,7 @@ export function GlassTab({ part, qty }: TabProps) {
                               vname: a.name,
                               label: EDITABLE_ASSUMPTIONS[a.name][0],
                               unit: EDITABLE_ASSUMPTIONS[a.name][1],
-                              draft: String(key === "cavities" ? s.opts.cavities ?? a.value : ov[key] ?? a.value),
+                              draft: key === "cavities" ? String(s.opts.cavities ?? a.value) : assumptionDraft(a.name, ov[key] ?? a.value),
                               err: "",
                             })
                           }
