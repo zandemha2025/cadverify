@@ -14,7 +14,11 @@ only what the running configuration makes true:
   DEPLOYMENT_ENCRYPTION_AT_REST, DEPLOYMENT_BACKUP_RETENTION_DAYS); when unset
   the answer is null and the pages say it isn't stated, never a guess.
 
-No bucket names, hostnames, keys or endpoints are returned.
+Never returned: bucket names, endpoint URLs or hostnames, account ids, ARNs,
+keys or any other credential. The store's own settings are reduced to a kind,
+a region code and an encryption flag; an operator's declared text is limited to
+plain words and refused outright if it looks like a URL, an ARN, an account
+id, an email address or a key.
 """
 from __future__ import annotations
 
@@ -25,15 +29,26 @@ from fastapi import APIRouter, Response
 
 router = APIRouter(tags=["deployment"])
 
-_TEXT = re.compile(r"[^\w .,;:()/+&'’-]")
+# Plain words only: letters, digits, spaces and light punctuation (no ":", "/",
+# "@" or "=" so no URL, ARN, email or key=value can be formed).
+_TEXT = re.compile(r"[^\w .,;()&'’-]")
+# Shapes that must never be published even after the character filter.
+_SECRET_LIKE = re.compile(
+    r"https?|s3\b|\barn\b|amazonaws|\.com\b|\.net\b|\.io\b|bucket"  # locations
+    r"|\d{10,}"  # account ids and other long numbers
+    r"|[A-Za-z0-9_\-]{24,}",  # tokens and keys
+    re.IGNORECASE,
+)
 
 
 def _declared_text(name: str) -> str | None:
     raw = os.getenv(name, "").strip()
-    if not raw:
+    if not raw or _SECRET_LIKE.search(raw):
         return None
-    clean = _TEXT.sub("", raw)[:200].strip()
-    return clean or None
+    clean = " ".join(_TEXT.sub("", raw).split())[:200].strip()
+    if not clean or _SECRET_LIKE.search(clean):
+        return None
+    return clean
 
 
 def _declared_days(name: str) -> int | None:
