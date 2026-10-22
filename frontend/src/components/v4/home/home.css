@@ -136,8 +136,8 @@
 .ob .h-tile:focus-visible{outline:2px solid var(--file);outline-offset:2px}
 .ob .h-tile.on{background:#fff;box-shadow:0 0 0 2px var(--ink),0 8px 24px rgba(20,24,31,.08)}
 .ob .h-tile .h-pic{position:relative;height:112px;display:flex;align-items:center;justify-content:center;color:rgba(20,24,31,.2)}
-.ob .h-tile b{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ob .h-tile small{display:block;color:var(--ink3);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ob .h-tile b{font-weight:600;font-size:14px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.ob .h-tile small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;color:var(--ink3);font-size:12.5px;overflow:hidden;overflow-wrap:anywhere}
 .ob .h-tile .h-tr{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
 .ob .h-tile .h-tr .c{font-weight:600}
 .ob .h-tile .h-sz{position:absolute;right:0;top:0;font-size:11.5px;color:var(--ink3)}

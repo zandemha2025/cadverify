@@ -25,7 +25,7 @@ export const VERDICT_FILTERS: { key: VerdictKey; label: string; always?: boolean
   { key: "machine", label: "Needs a machine", always: true },
   { key: "out", label: "Ruled out", always: true },
   { key: "outside", label: "Outside only" },
-  { key: "unknown", label: "Not checked" },
+  { key: "unknown", label: "No machine check" },
   { key: "invalid", label: "Can't read" },
 ];
 
@@ -89,7 +89,8 @@ function routeLine(row: PartRow): string {
 /**
  * The part's verdict. A blocked route (the engine withheld its price) wins: it
  * needs a design change whatever the machines say. Otherwise the machine
- * verdict from its makeability bucket; a part with no bucket row is "Not checked".
+ * verdict from its makeability bucket; a part with no bucket row has had no
+ * machine check (it was checked: every listed part has an analysis or a cost).
  */
 export function verdictOf(row: PartRow, make: Makeability | null | undefined): Verdict {
   const stale = Boolean(make?.stale);
@@ -119,14 +120,21 @@ export function verdictOf(row: PartRow, make: Makeability | null | undefined): V
   if (v === "not_makeable") {
     return { key: "out", label: "Ruled out", tone: "bad", where: "No process clears the checks as drawn", stale };
   }
-  return { key: "unknown", label: "Not checked", tone: "unk", where: routeLine(row), stale };
+  // Checked and priced, but not yet against machines (none declared, or not re-checked since).
+  return { key: "unknown", label: "No machine check", tone: "unk", where: routeLine(row), stale };
 }
 
-/** The tile's price: the unit cost when the engine priced the route, "—" when withheld or never priced. */
+/** The tile's price at its quantity ("$30.00 at 1"): the unit cost when the engine priced the route, "—" when withheld or never priced. */
 export function priceText(row: PartRow): string {
   const uc = row.unit_cost;
   if (!uc || uc.withheld || uc.usd == null) return "—";
-  return money(uc.usd);
+  return uc.qty != null ? `${money(uc.usd)} at ${uc.qty.toLocaleString("en-US")}` : money(uc.usd);
+}
+
+/** The part page opened on the tile's quantity, so it shows the price the tile showed. */
+export function partQuery(row: PartRow): string {
+  const q = row.unit_cost?.qty;
+  return q != null && q > 0 && !row.unit_cost?.withheld ? `?lens=make&qty=${q}` : "";
 }
 
 export interface PartFilter {

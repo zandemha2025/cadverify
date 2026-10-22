@@ -28,6 +28,7 @@ import {
   NO_FILTER,
   partsFacts,
   peekFigs,
+  partQuery,
   priceText,
   searchFromFilter,
   verdictOf,
@@ -458,7 +459,7 @@ function Peek({ row, v, onClose, onDeleted }: { row: PartRow; v: Verdict; onClos
           <p className="h-foot">This part has no manufacturability check yet.</p>
         )}
         <div className="h-sheetacts">
-          <Link className="btn ink sm" href={R.part(row.part_key)}>
+          <Link className="btn ink sm" href={`${R.part(row.part_key)}${partQuery(row)}`}>
             Open part
           </Link>
           {row.cost_decision ? (

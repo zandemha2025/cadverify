@@ -12,10 +12,12 @@ import {
   gapLine,
   matches,
   NO_FILTER,
+  partQuery,
   partsFacts,
   priceText,
   searchFromFilter,
   tidyReason,
+  VERDICT_FILTERS,
   verdictOf,
 } from "./parts-derive.ts";
 import type { MakeSummary, PartRow, RecordRow } from "./model.ts";
@@ -140,10 +142,14 @@ test("verdict: a blocked route wins over the machine bucket", () => {
   assert.equal(priceText(blocked), "—");
 });
 
-test("verdict: buckets map to plain labels; no bucket row is 'Not checked'", () => {
+test("verdict: buckets map to plain labels; no bucket row is 'No machine check', never 'Not checked'", () => {
   assert.equal(verdictOf(part(), { verdict: "makeable_in_house", stale: false, gap: null }).label, "On your machines");
   assert.equal(verdictOf(part(), { verdict: "environment_excluded", stale: false, gap: null }).key, "out");
-  assert.equal(verdictOf(part(), null).label, "Not checked");
+  assert.equal(verdictOf(part(), null).label, "No machine check");
+  assert.equal(VERDICT_FILTERS.find((f) => f.key === "unknown")?.label, "No machine check");
+  assert.equal(priceText(part()), "$19.05 at 10");
+  assert.equal(partQuery(part()), "?lens=make&qty=10");
+  assert.equal(partQuery(part({ unit_cost: null })), "");
   const big = verdictOf(part(), { verdict: "makeable_not_on_owned", stale: false, gap: { gap: [{ gate: "envelope", axis: "minimum_width_mm", need: 268.81, have: 254.0000001, human: "x" }] } });
   assert.equal(big.label, "Bigger machine");
   assert.equal(big.where, "Needs 269 mm; your machines take 254 mm");
