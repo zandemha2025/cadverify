@@ -132,6 +132,26 @@ export function whenLabel(iso: string | null | undefined, now: Date = new Date()
   return same ? timeLabel(iso) : `${dayLabel(iso)} ${timeLabel(iso)}`;
 }
 
+/**
+ * A time in the person's own time zone (me-22: notification times read in UTC
+ * for a shop in Ohio): "16:14" on the same local day as `now`, else
+ * "Oct 17 23:10". `timeZone` defaults to the device's zone.
+ */
+export function whenLocal(iso: string | null | undefined, now: Date = new Date(), timeZone?: string): string {
+  const d = parse(iso);
+  if (!d) return "—";
+  const day = (x: Date) => x.toLocaleDateString("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+  const time = d.toLocaleTimeString("en-US", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false });
+  if (day(d) === day(now)) return time;
+  return `${d.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" })} ${time}`;
+}
+
+/** The zone's short name for the times shown ("EDT", "GMT+1"); the device's zone by default. */
+export function zoneLabel(at: Date = new Date(), timeZone?: string): string {
+  const part = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(at).find((x) => x.type === "timeZoneName");
+  return part?.value ?? "local time";
+}
+
 // ── plan ───────────────────────────────────────────────────────────────────
 export type Usage = { plan: string; tier?: string; unlimited: boolean; used: number | null; cap: number | null; remaining: number | null };
 

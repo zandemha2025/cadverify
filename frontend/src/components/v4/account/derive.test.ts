@@ -27,6 +27,8 @@ import {
   signIn,
   usageEventsLine,
   whenLabel,
+  whenLocal,
+  zoneLabel,
   workerFig,
   type NotificationRow,
 } from "./derive.ts";
@@ -72,6 +74,16 @@ test("initials and dates", () => {
   const now = new Date("2026-10-18T12:00:00Z");
   assert.equal(whenLabel("2026-10-18T05:00:33Z", now), "05:00");
   assert.equal(whenLabel("2026-10-17T23:10:00Z", now), "Oct 17 23:10");
+});
+
+test("notification times read in the person's own time zone (me-22)", () => {
+  // The bracket's check landed 16:14 UTC; in Ohio (America/New_York, EDT, UTC-4) that is 12:14.
+  const now = new Date("2026-10-22T20:00:00Z");
+  assert.equal(whenLocal("2026-10-22T16:14:34Z", now, "America/New_York"), "12:14");
+  assert.equal(zoneLabel(now, "America/New_York"), "EDT");
+  // 02:30 UTC on Oct 22 is still Oct 21 in New York.
+  assert.equal(whenLocal("2026-10-22T02:30:00Z", now, "America/New_York"), "Oct 21 22:30");
+  assert.equal(whenLocal(null, now, "UTC"), "—");
 });
 
 test("plan names and the allowance line never invent a number", () => {

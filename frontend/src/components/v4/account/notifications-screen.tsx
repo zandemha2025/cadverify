@@ -22,7 +22,7 @@ import { Content, KV, Loading, Sheet, cx } from "../ui";
 import { R } from "../routes";
 import { AccountFrame, AccountHead, Banner, PartGlyph } from "./frame";
 import { messageFrom } from "./api";
-import { dayLabel, groupNotifications, kindName, notificationHref, plural, whenLabel, type NotificationRow } from "./derive";
+import { dayLabel, groupNotifications, kindName, notificationHref, plural, whenLocal, zoneLabel, type NotificationRow } from "./derive";
 
 type View = "all" | "unread" | "dismissed";
 
@@ -231,7 +231,7 @@ export function NotificationsScreen() {
                     <span style={{ minWidth: 0 }}>
                       <b title={x.file}>{x.file}</b>
                       <small>
-                        {x.kind} · {plural(n, x.isPart ? "check" : "notification")} · latest {whenLabel(x.latest, now)} UTC
+                        {x.kind} · {plural(n, x.isPart ? "check" : "notification")} · latest {whenLocal(x.latest, now)} {zoneLabel(now)}
                       </small>
                     </span>
                     <span className="c num" style={{ color: "var(--ink3)", fontWeight: 500 }}>
@@ -268,7 +268,8 @@ export function NotificationsScreen() {
             <div className="scroll">
               <div style={{ padding: "4px 0" }} aria-live="polite">
                 {items.map((i) => {
-                  const t = whenLabel(i.created_at, now);
+                  // me-22: in the person's own time zone, said with it.
+                  const t = whenLocal(i.created_at, now);
                   const what = `${kindName(i).toLowerCase()}, ${g.file}, ${t}`;
                   const isDis = view === "dismissed";
                   return (
@@ -277,7 +278,7 @@ export function NotificationsScreen() {
                         <b>{kindName(i)}</b>
                         <small>{isDis ? `Dismissed ${dayLabel(i.dismissed_at)}` : i.is_read ? `Read ${dayLabel(i.read_at)}` : "Unread"}</small>
                       </span>
-                      <span className="a-when num">{t} UTC</span>
+                      <span className="a-when num">{t} {zoneLabel(now)}</span>
                       <span className="a-nacts">
                         <a className="btn sm" href={notificationHref(i)} aria-label={`Open notification: ${what}`} aria-busy={busy === `open:${i.id}`} onClick={(e) => void open(i, e)}>
                           {busy === `open:${i.id}` ? "Opening…" : "Open"}
