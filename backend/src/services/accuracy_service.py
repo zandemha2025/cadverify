@@ -205,8 +205,6 @@ def compare(actual: dict, record: Optional[dict]) -> dict:
         notes.append(f"Cost not compared: {est.cost_note}")
     if _num(actual.get("actual_machine_hours")) and base["hours"] is None:
         notes.append("Hours not compared: ScaleCAD has no machine time for this method")
-    if cost is not None and est.cost_basis == "between":
-        notes.append(f"Cost estimate {est.cost_note}")
     base["note"] = "; ".join(notes) or None
     return base
 

@@ -198,7 +198,7 @@ export function AccuracyPanel({
     <Panel
       id="accuracy"
       title="Checked against your real numbers"
-      note={s ? (s.parts ? `${partsWord(s.parts)}${s.test ? ` · ${s.test} test` : ""}` : s.test ? `${s.test} test` : undefined) : undefined}
+      note={s && (s.parts || s.test) ? <span className="val-note">{s.parts ? `${partsWord(s.parts)}${s.test ? ` · ${s.test} test` : ""}` : `${s.test} test`}</span> : undefined}
       actions={
         <span className="val-noprint" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {compact ? (

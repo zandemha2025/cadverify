@@ -124,8 +124,8 @@
   {% set a = r.accuracy %}
   {% if a.parts %}
   <p>
-    {% if a.hours.n %}Machine hours: median error {{ a.hours.median_abs_pct }}% on {{ a.hours.parts }} {{ 'part' if a.hours.parts == 1 else 'parts' }}, worst {{ a.hours.worst_pct | pct }}{% if a.hours.with_range %}; {{ a.hours.inside }} of {{ a.hours.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
-    {% if a.cost.n %}Cost per part: median error {{ a.cost.median_abs_pct }}% on {{ a.cost.parts }} {{ 'part' if a.cost.parts == 1 else 'parts' }}, worst {{ a.cost.worst_pct | pct }}{% if a.cost.with_range %}; {{ a.cost.inside }} of {{ a.cost.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
+    {% if a.hours.n %}Machine hours: median error {{ a.hours.median_abs_pct | round | int }}% on {{ a.hours.parts }} {{ 'part' if a.hours.parts == 1 else 'parts' }}, worst {{ a.hours.worst_pct | pct }}{% if a.hours.with_range %}; {{ a.hours.inside }} of {{ a.hours.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
+    {% if a.cost.n %}Cost per part: median error {{ a.cost.median_abs_pct | round | int }}% on {{ a.cost.parts }} {{ 'part' if a.cost.parts == 1 else 'parts' }}, worst {{ a.cost.worst_pct | pct }}{% if a.cost.with_range %}; {{ a.cost.inside }} of {{ a.cost.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
   </p>
   {% if a.per_process %}
   <table class="avoid-break">
@@ -135,11 +135,11 @@
       <tr>
         <td>{{ p.process | proc }}</td>
         <td class="num">{{ p.hours.n }}</td>
-        <td class="num">{% if p.hours.n %}{{ p.hours.median_abs_pct }}%{% else %}—{% endif %}</td>
+        <td class="num">{% if p.hours.n %}{{ p.hours.median_abs_pct | round | int }}%{% else %}—{% endif %}</td>
         <td class="num">{{ p.hours.worst_pct | pct }}</td>
         <td class="num">{% if p.hours.with_range %}{{ p.hours.inside }} of {{ p.hours.with_range }}{% else %}—{% endif %}</td>
         <td class="num">{{ p.cost.n }}</td>
-        <td class="num">{% if p.cost.n %}{{ p.cost.median_abs_pct }}%{% else %}—{% endif %}</td>
+        <td class="num">{% if p.cost.n %}{{ p.cost.median_abs_pct | round | int }}%{% else %}—{% endif %}</td>
         <td class="num">{{ p.cost.worst_pct | pct }}</td>
         <td class="num">{% if p.cost.with_range %}{{ p.cost.inside }} of {{ p.cost.with_range }}{% else %}—{% endif %}</td>
       </tr>
