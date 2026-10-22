@@ -71,7 +71,12 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
 
 
 def check_watertight(mesh: trimesh.Trimesh) -> list[Issue]:
-    """Check if the mesh is watertight (manifold, no holes)."""
+    """Check if the mesh is watertight (manifold, no holes).
+
+    Closed bodies that share an edge where they touch (a weldment's members
+    exported as one STL, say) aren't one closed solid, but nothing is open either:
+    that reads as BODIES_SHARE_EDGES, not as an open shell to repair.
+    """
     issues = []
     if not mesh.is_watertight:
         # Find boundary edges (edges that belong to only one face)
@@ -79,6 +84,29 @@ def check_watertight(mesh: trimesh.Trimesh) -> list[Issue]:
         if hasattr(mesh, "edges_unique") and hasattr(mesh, "edges_unique_inverse"):
             edge_face_count = np.bincount(mesh.edges_unique_inverse)
             boundary_count = int(np.sum(edge_face_count == 1))
+
+        if boundary_count == 0:
+            from src.analysis.part_types import body_count
+
+            try:
+                counted = body_count(mesh)
+            except Exception:
+                counted = None
+            if counted is not None and counted.share_edges:
+                issues.append(Issue(
+                    code="BODIES_SHARE_EDGES",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"The file holds {counted.bodies} closed bodies that share edges where they "
+                        "touch, so as one shape it isn't a closed solid. Each body on its own is closed."
+                    ),
+                    process=None,
+                    fix_suggestion=(
+                        "Nothing to repair. ScaleCAD checks each body as its own part (Bodies). "
+                        "If they are one part, join them into one solid in your CAD tool."
+                    ),
+                ))
+                return issues
 
         issues.append(Issue(
             code="NON_WATERTIGHT",
@@ -175,12 +203,21 @@ def check_disconnected_components(mesh: trimesh.Trimesh) -> list[Issue]:
     """Check for multiple disconnected bodies.
 
     The shell of a sealed internal void is part of the solid around it, not a
-    second body: a 40 mm cube with a sealed 20 mm cavity is one part.
+    second body: a 40 mm cube with a sealed 20 mm cavity is one part. Closed
+    bodies that only share an edge or a corner where they touch are still
+    separate bodies (counted from the mesh's manifold edges).
     """
     from src.analysis.context import solid_body_count
+    from src.analysis.part_types import body_count as counted_bodies
 
     issues = []
     body_count = solid_body_count(mesh)
+    try:
+        counted = counted_bodies(mesh)
+        if counted.all_closed and counted.bodies > body_count:
+            body_count = counted.bodies
+    except Exception:
+        pass
     if body_count > 1:
         issues.append(Issue(
             code="MULTIPLE_BODIES",
@@ -188,8 +225,8 @@ def check_disconnected_components(mesh: trimesh.Trimesh) -> list[Issue]:
             message=f"Mesh contains {body_count} disconnected bodies.",
             process=None,
             fix_suggestion=(
-                "Combine into a single solid body using boolean union, or "
-                "separate into individual files for independent manufacturing."
+                "ScaleCAD checks each body as its own part (Bodies). If they are "
+                "one part, join them into one solid in your CAD tool."
             ),
         ))
     return issues

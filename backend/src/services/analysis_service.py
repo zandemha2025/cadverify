@@ -603,6 +603,11 @@ async def run_analysis(
         dec_issue = decimation_issue(ctx)
         if dec_issue is not None:
             universal_issues.append(dec_issue)
+        # What the file holds (one solid, or several bodies and what kind of set),
+        # on the analysis mesh so body faces line up with the 3D view.
+        sync_started = time.perf_counter()
+        part_type = _part_type(ctx.mesh)
+        sync_timings["part_type"] = _elapsed_ms(sync_started)
 
         process_scores = []
         sync_started = time.perf_counter()
@@ -658,7 +663,7 @@ async def run_analysis(
                 logger.warning("analysed-part reuse skipped", exc_info=True)
         return (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings, cost_entry,
+            signature_vec, sync_timings, cost_entry, part_type,
         )
 
     timeout_sec = analysis_timeout_sec_fn()
@@ -666,7 +671,7 @@ async def run_analysis(
     try:
         (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings, cost_entry,
+            signature_vec, sync_timings, cost_entry, part_type,
         ) = (
             await asyncio.wait_for(
                 loop.run_in_executor(None, _run_analysis_sync),
@@ -706,6 +711,8 @@ async def run_analysis(
     stage_started = time.perf_counter()
     result_dict = to_response_fn(result, features, pack)
     result_dict["analysis_mesh_hash"] = analysis_mesh_hash(ctx.mesh)
+    if part_type is not None:
+        result_dict["part_type"] = part_type
     if orientation is not None:
         from src.analysis.orientation import record_points_to_file
 
@@ -897,6 +904,26 @@ async def run_analysis(
         return_persisted_id,
         stage_timings_ms,
     )
+
+
+def _part_type(mesh) -> dict | None:
+    """``src.analysis.part_types.describe`` for the check, bounded; None if it fails.
+
+    A one-shell file answers at once; several bodies get their stock shapes and
+    contacts within ``PART_TYPE_BUDGET_SEC`` (default 8 s).
+    """
+    from src.analysis.part_types import describe
+
+    try:
+        budget = float(os.getenv("PART_TYPE_BUDGET_SEC", "8"))
+    except ValueError:
+        budget = 8.0
+    try:
+        out = _sanitize_nonfinite(describe(mesh, single_detail=False, time_budget_sec=max(1.0, budget)))
+        return out if isinstance(out, dict) else None
+    except Exception:
+        logger.warning("part type reading failed; the check goes on without it", exc_info=True)
+        return None
 
 
 def _cost_engine_entry(mesh, geometry, ctx, universal_issues, process_scores, suffix, filename):
