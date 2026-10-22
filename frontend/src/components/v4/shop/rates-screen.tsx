@@ -485,7 +485,7 @@ function DraftControls({
               <label className="field">
                 Overhead, %
                 <input type="text" inputMode="decimal" aria-label="Overhead (percent)" value={form.overhead} onChange={(e) => set({ overhead: e.target.value }, "overhead")} {...inv("overhead")} />
-                {err("overhead") ?? <small>On machine, labor and setup. 15 is 15%.</small>}
+                {err("overhead") ?? <small>On the shop-floor lines (machine, labor, setup, programming, inspection), not material or outside finishing. 15 is 15%.</small>}
               </label>
               <label className="field">
                 Margin, %
