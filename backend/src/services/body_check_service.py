@@ -340,9 +340,13 @@ def check_bodies_sync(
             "complete": all(d.get("status") == "ok" for d in designs),
         }
     if pt["kind"] == "assembly":
+        step = Path(filename or "").suffix.lower() in (".step", ".stp", ".iges", ".igs")
         out["assembly"] = {
-            "words": ("Fit, interference between the parts and quantities read from the product tree "
-                      "are in the assembly check, a pilot tool. The bodies here are checked one by one."),
+            "words": (("Fit, interference between the parts and quantities read from the product tree "
+                       "are in the assembly check, a pilot tool. ") if step else
+                      ("Fit and interference between the parts are in the assembly check, a pilot tool; "
+                       "it reads a STEP or IGES export of the assembly. "))
+                     + "The bodies here are checked one by one.",
             "pilot": True,
         }
     out["elapsed_sec"] = round(time.monotonic() - started, 2)
