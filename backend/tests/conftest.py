@@ -47,6 +47,16 @@ async def _close_auth_redis_clients():
     await _close_registered_redis_clients_impl()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_compute_budget():
+    """The compute budget is process-wide: every test starts with an empty one."""
+    from src.services import compute_budget
+
+    compute_budget.reset_for_tests()
+    yield
+    compute_budget.reset_for_tests()
+
+
 # ──────────────────────────────────────────────────────────────
 # DB test fixtures — mocked async sessions for Phase 3 tests
 # ──────────────────────────────────────────────────────────────
