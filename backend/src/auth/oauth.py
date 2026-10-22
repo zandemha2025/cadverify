@@ -40,7 +40,8 @@ router = APIRouter()
 
 @router.get("/google/start")
 async def google_start(request: Request):
-    # AUTH-08: per-IP signup limit applies to OAuth start too (3/hr/IP).
+    # AUTH-08: the per-IP signup limit applies to OAuth start too (office-sized,
+    # SIGNUPS_PER_IP_PER_HOUR, default 60 an hour).
     # Per-email limit is NOT applied here — it would lock out legitimate
     # re-sign-ins; applied only at magic-link start where one email = one
     # fresh signup intent.

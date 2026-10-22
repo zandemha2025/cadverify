@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  authErrorMessage,
   isPhoneVerificationMessage,
   apiProblemDetail,
   apiResourceFromUrl,
@@ -156,4 +157,15 @@ test("a refused STEP probe out of checks reads as out of checks, not as an unrea
   assert.ok(isPhoneVerificationMessage(refusalDetail(403, phone, "verification")));
   const bad = { detail: { code: "unreadable_step", message: "The STEP file has no solids." } };
   assert.equal(refusalDetail(422, bad, "verification"), "The STEP file has no solids.");
+});
+
+test("a sign-in limit says its real wait, not \"try again shortly\"", () => {
+  const message = "Too many sign-in and sign-up attempts from this network. Try again in 37 minutes.";
+  const nested = { detail: { code: "signup_rate_limited", message, limit: "ip", retry_after_seconds: 2215 } };
+  assert.equal(authErrorMessage(429, nested, "Could not send a sign-in link."), message);
+  // The API's error handler can also answer with the fields at the top level.
+  assert.equal(authErrorMessage(429, { code: "magic_link_limited", message: "Too many sign-in links sent to this email. Try again in 12 minutes.", retry_after_seconds: 717 }, "x"),
+    "Too many sign-in links sent to this email. Try again in 12 minutes.");
+  // A 429 without a stated wait keeps the general recovery copy.
+  assert.match(authErrorMessage(429, { detail: { message: "Slow down." } }, "x"), /try again shortly/i);
 });

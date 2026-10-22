@@ -87,7 +87,21 @@ export function refusalDetail(status: number, payload: unknown, resource: string
 }
 
 /** A failed sign-in service must not be reported as rejected credentials. */
+/** A limit's refusal that states its own real wait ("Try again in 37 minutes"):
+ *  it carries ``retry_after_seconds``, so its message is shown as it is. */
+export function exactWaitMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const body = payload as { retry_after_seconds?: unknown; detail?: unknown };
+  const nested = body.detail && typeof body.detail === "object" ? body.detail as { retry_after_seconds?: unknown } : null;
+  const wait = nested?.retry_after_seconds ?? body.retry_after_seconds;
+  return typeof wait === "number" && wait > 0 ? apiProblemDetail(payload) : null;
+}
+
 export function authErrorMessage(status: number, payload: unknown, fallback: string): string {
+  if (status === 429) {
+    const exact = exactWaitMessage(payload);
+    if (exact) return exact;
+  }
   if (status >= 500 || status === 429) {
     return apiRecoveryMessage({ status, payload, resource: "account" });
   }

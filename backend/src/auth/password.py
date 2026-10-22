@@ -416,16 +416,17 @@ async def _run_abuse_controls(request: Request, email_norm: str) -> str:
     # Per-IP throttle: only when Redis is configured (deploy-gated). The local
     # E2E launcher intentionally creates many throwaway accounts from 127.0.0.1;
     # allow that only outside production so repeated proof runs stay deterministic.
-    from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit
+    from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit, release_slots
 
-    if ip_signup_limit_enabled():
-        await per_ip_signup_limit(request)
+    counted = await per_ip_signup_limit(request) if ip_signup_limit_enabled() else None
 
     # Disposable classification. Soft-flag set lives in Redis; use an empty set
     # locally so the pure in-process hard-reject list still applies.
     soft_set: set[str] = set()
     verdict = classify(email_norm, soft_set)
     if verdict == "hard_reject":
+        # A refused sign-up doesn't count toward the network's limit.
+        await release_slots([counted])
         raise _err(
             400,
             "email_domain_blocked",
@@ -461,6 +462,10 @@ async def signup(body: SignupIn, request: Request) -> dict:
         signup_metadata=profile_metadata(body),
     )
     if uid is None:
+        from src.auth.signup_limits import ip_signup_key, ip_signup_limit_enabled, release_slots
+
+        if ip_signup_limit_enabled():
+            await release_slots([ip_signup_key(request)])  # refused: it doesn't count
         raise _err(
             409,
             "email_taken",

@@ -49,6 +49,7 @@ from src.auth.signup_limits import (
     ip_signup_limit_enabled,
     per_email_magic_link_limit,
     per_ip_signup_limit,
+    release_slots,
 )
 from src.auth.turnstile import verify_turnstile
 
@@ -360,31 +361,38 @@ async def magic_start(
 ):
     # AUTH-08: cheapest check first (per-IP window), then Turnstile, then
     # per-email window. Hard-reject throwaway domains; soft-flag disposables
-    # into a tighter 1/7d cap (D-11 override).
+    # into a tighter 1/7d cap (D-11 override). Only a link that goes out
+    # counts: a refusal by any later check, or a failed send, gives the
+    # network and email slots back.
     email_clean = (email or "").strip()
     if len(email_clean) > 320 or not _EMAIL_RE.match(email_clean):
         raise _err(400, "invalid_email", "Enter a valid email address.")
+    counted: list[str] = []
     if ip_signup_limit_enabled():
-        await per_ip_signup_limit(request)
-    await verify_turnstile(
-        cf_turnstile_response,
-        client_ip(request),
-    )
-    email_norm = normalize_email(email_clean)
-    soft_set = await get_soft_flag_set()
-    verdict = classify(email_norm, soft_set)
-    if verdict == "hard_reject":
-        raise HTTPException(
-            400,
-            detail={
-                "code": "email_domain_blocked",
-                "message": "Signups from this email domain are not allowed.",
-                "doc_url": error_doc_url("email_domain_blocked"),
-            },
+        counted.append(await per_ip_signup_limit(request))
+    try:
+        await verify_turnstile(
+            cf_turnstile_response,
+            client_ip(request),
         )
-    await per_email_magic_link_limit(
-        email_norm, soft_flagged=(verdict == "soft_flag")
-    )
+        email_norm = normalize_email(email_clean)
+        soft_set = await get_soft_flag_set()
+        verdict = classify(email_norm, soft_set)
+        if verdict == "hard_reject":
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "email_domain_blocked",
+                    "message": "Signups from this email domain are not allowed.",
+                    "doc_url": error_doc_url("email_domain_blocked"),
+                },
+            )
+        counted.append(await per_email_magic_link_limit(
+            email_norm, soft_flagged=(verdict == "soft_flag")
+        ))
+    except HTTPException:
+        await release_slots(counted)
+        raise
     token = _mint(email_norm)
     key = _token_key(token, email_norm)
     active_key = _active_token_key(email_norm)
@@ -413,9 +421,11 @@ async def magic_start(
         # The Resend SDK is synchronous; keep network I/O off the event loop.
         await asyncio.to_thread(resend.Emails.send, payload)
     except Exception:
-        # Let the person retry after provider failure. Keep the IP attempt (it
-        # still consumed resources), but roll back both the unusable token and
-        # per-email send window without logging the email or bearer token.
+        # Let the person retry after provider failure: no link went out, so
+        # give back the network and email slots, and roll back both the
+        # unusable token and per-email send window without logging the email
+        # or bearer token.
+        await release_slots(counted)
         try:
             await _cleanup_failed_send(
                 r,
