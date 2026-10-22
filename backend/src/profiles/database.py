@@ -243,11 +243,13 @@ MACHINES: list[MachineProfile] = [
             materials_note="Desktop Metal qualifies 17-4 PH and 316L on the Shop System.",
             checked=_CHECKED)),
     # CNC: ``materials`` are engine material classes, kept conservative: plastics
-    # (Delrin, PEEK) cut on any mill or lathe that cuts aluminum; stainless and
-    # titanium are left for the shop to add.
+    # (Delrin, PEEK) cut on any mill or lathe that cuts aluminum; titanium is left
+    # for the shop to add.
     MachineProfile(
-        "Haas VF-2", "Haas", ProcessType.CNC_3AXIS, (762, 406, 508), notes="30x16x20 inches, 8100 RPM",
-        materials=["aluminum", "steel", "polymer"],
+        # Haas specifies inches (30 x 16 x 20 in): kept exact in mm, so the form shows 16 in, not 15.98 (me-22).
+        # The catalog defaults include stainless because job shops cut it (op-03).
+        "Haas VF-2", "Haas", ProcessType.CNC_3AXIS, (762, 406.4, 508), notes="30x16x20 inches, 8100 RPM",
+        materials=["aluminum", "steel", "stainless", "polymer"],
         spec=MakerSpec(
             "https://www.haascnc.com/machines/vertical-mills/vf-series/models/small/vf-2.html",
             max_workpiece_kg=1361.0,
@@ -255,7 +257,7 @@ MACHINES: list[MachineProfile] = [
             materials_basis=MAKER_DESCRIBED,
             materials_url="https://www.haascnc.com/productivity/spindles/8-1k-40t-in.html",
             materials_note=("Haas lists no materials; it calls the standard 8100-rpm 40-taper spindle "
-                            "all-purpose. Aluminum, steel and plastics: add stainless or titanium if you cut them."),
+                            "all-purpose. Aluminum, steel, stainless and plastics: add titanium if you cut it."),
             checked=_CHECKED)),
     MachineProfile(
         "DMG MORI DMU 50", "DMG MORI", ProcessType.CNC_5AXIS, (650, 520, 475),
@@ -271,9 +273,10 @@ MACHINES: list[MachineProfile] = [
                             "construction, aerospace, medical and automotive work. Aluminum, steel, "
                             "stainless and plastics: add titanium if you cut it."),
             checked=_CHECKED)),
+    # The catalog defaults include stainless because job shops cut it (op-03).
     MachineProfile(
         "Haas ST-20", "Haas", ProcessType.CNC_TURNING, (254, 254, 533), notes="8.3-inch chuck, 4000 RPM",
-        materials=["aluminum", "steel", "polymer"],
+        materials=["aluminum", "steel", "stainless", "polymer"],
         spec=MakerSpec(
             "https://www.haascnc.com/service/troubleshooting-and-how-to/reference-documents/lathe-work-piece-weight-limits.html",
             max_workpiece_kg=68.0,
@@ -281,7 +284,7 @@ MACHINES: list[MachineProfile] = [
                      "centers needs a tailstock. Haas calls these estimates, not a safe setup."),
             materials_basis=MAKER_DESCRIBED,
             materials_url="https://www.haascnc.com/machines/lathes/st/models/standard/st-20.html",
-            materials_note="Haas lists no materials for the ST-20. Aluminum, steel and plastics: add stainless or titanium if you turn them.",
+            materials_note="Haas lists no materials for the ST-20. Aluminum, steel, stainless and plastics: add titanium if you turn it.",
             checked=_CHECKED)),
     MachineProfile(
         "Sodick ALC600G", "Sodick", ProcessType.WIRE_EDM, (600, 400, 350), notes="Linear motor, 0.01mm accuracy",

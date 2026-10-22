@@ -103,13 +103,14 @@ def test_an_edit_makes_the_value_the_shops_own():
     assert kg_edit["capabilities"]["maker_spec"]["fields"] == ["materials"]
     fit = fit_machine(_aluminum_block(), _cap(kg_edit))
     assert fit.passes and fit.resource_hint["maker_spec"]["fields"] == ("materials",)
+    # The catalog VF-2 lists aluminum, steel, stainless and plastics (op-03); dropping plastics is the shop's own list.
     both = _saved("Haas VF-2", max_workpiece_kg=500.0, materials=["aluminum", "steel", "stainless"])
     assert "maker_spec" not in both["capabilities"]
     assert svc.machine_to_public(_row(both))["field_provenance"] == {}
     fit = fit_machine(_aluminum_block(), _cap(both))
     assert fit.passes and "maker_spec" not in fit.resource_hint
     # Same materials in another order is still the maker's list.
-    reordered = _saved("Haas VF-2", materials=["polymer", "steel", "aluminum"])
+    reordered = _saved("Haas VF-2", materials=["polymer", "stainless", "steel", "aluminum"])
     assert reordered["capabilities"]["maker_spec"]["fields"] == ["max_workpiece_kg", "materials"]
 
 

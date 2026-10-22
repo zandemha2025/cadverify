@@ -45,3 +45,11 @@ def test_what_each_grade_was_read_as_is_said():
     assert material_readings(["SS316L"], "cnc_3axis") == []
     with pytest.raises(ValueError, match="unknown material 'Inconel 9999'"):
         validate_machine({"process": "cnc_3axis", "materials": ["Inconel 9999"]})
+
+
+def test_the_catalog_vf2_reads_16_in_of_y_travel_not_15_98():
+    """me-22: Haas gives the VF-2 as 30 x 16 x 20 in; 406 mm read back as 15.98 in."""
+    from src.services.machine_inventory_service import add_from_catalog
+
+    caps = add_from_catalog("Haas VF-2")["capabilities"]
+    assert [round(caps[k] / 25.4, 6) for k in ("x", "y", "z")] == [30.0, 16.0, 20.0]
