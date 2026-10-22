@@ -33,7 +33,8 @@ import os
 import re
 from typing import Any, Iterable, Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, literal_column, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Analysis, Batch, BatchItem, CostDecision
@@ -587,11 +588,66 @@ def run_meta(batch: Batch) -> dict:
     return dict((batch.manifest_json or {}).get("catalog") or {})
 
 
+# The part of a cost decision the board reads (derive_part_row), cut down in the
+# database. A decision's ``estimates`` (every process at every quantity, with
+# each driver's provenance) is ~170 KB of its ~190 KB; the board needs only a
+# few fields of each estimate and the name and value of three of its drivers.
+# Other keys are kept exactly as stored (present, absent or JSON null), so a row
+# reads the same as from the whole record (tests/test_catalog_run_e2e.py
+# compares them).
+_BOARD_DECISION_KEYS = ("status", "reason", "verification", "geometry")
+_BOARD_DECISION_BLOCK_KEYS = ("recommendation", "make_now_process")
+_BOARD_ESTIMATE_KEYS = ("process", "quantity", "material", "unit_cost_usd", "dfm_ready", "dfm_blockers")
+_BOARD_DRIVERS = ("cycle_time", "machine_cost", "owned_in_house")
+
+
+def _sql_names(names: Iterable[str]) -> str:
+    return ", ".join(f"'{n}'" for n in names)
+
+
+def _sql_array(expr: str) -> str:
+    return f"CASE WHEN jsonb_typeof({expr}) = 'array' THEN {expr} ELSE '[]'::jsonb END"
+
+
+_BOARD_DECISION_SQL = f"""(
+CASE WHEN cost_decisions.result_json IS NULL THEN NULL ELSE
+  COALESCE((SELECT jsonb_object_agg(k, v) FROM jsonb_each(cost_decisions.result_json) AS t(k, v)
+            WHERE k IN ({_sql_names(_BOARD_DECISION_KEYS)})), '{{}}'::jsonb)
+  || CASE WHEN jsonb_typeof(cost_decisions.result_json -> 'decision') = 'object' THEN jsonb_build_object('decision',
+       COALESCE((SELECT jsonb_object_agg(k, v) FROM jsonb_each(cost_decisions.result_json -> 'decision') AS t(k, v)
+                 WHERE k IN ({_sql_names(_BOARD_DECISION_BLOCK_KEYS)})), '{{}}'::jsonb))
+     WHEN cost_decisions.result_json ? 'decision' THEN jsonb_build_object('decision', cost_decisions.result_json -> 'decision')
+     ELSE '{{}}'::jsonb END
+  || CASE WHEN cost_decisions.result_json ? 'estimates' THEN jsonb_build_object('estimates', COALESCE((
+       SELECT jsonb_agg(
+         COALESCE((SELECT jsonb_object_agg(k, v) FROM jsonb_each(e) AS t(k, v)
+                   WHERE k IN ({_sql_names(_BOARD_ESTIMATE_KEYS)})), '{{}}'::jsonb)
+         || CASE WHEN e ? 'drivers' THEN jsonb_build_object('drivers', COALESCE((
+              SELECT jsonb_agg(jsonb_build_object('name', d -> 'name', 'value', d -> 'value') ORDER BY n) FROM jsonb_array_elements({_sql_array("e -> 'drivers'")}) WITH ORDINALITY AS dd(d, n)
+              WHERE d ->> 'name' IN ({_sql_names(_BOARD_DRIVERS)})), '[]'::jsonb))
+            ELSE '{{}}'::jsonb END
+         ORDER BY i)
+       FROM jsonb_array_elements({_sql_array("cost_decisions.result_json -> 'estimates'")}) WITH ORDINALITY AS ee(e, i)
+       WHERE jsonb_typeof(e) = 'object'), '[]'::jsonb))
+     ELSE '{{}}'::jsonb END
+END)"""
+
+
 async def build_board(session: AsyncSession, batch: Batch) -> dict:
-    """The run's board: every item as a row, bucket totals and the run's facts."""
+    """The run's board: every item as a row, bucket totals and the run's facts.
+
+    Polled every few seconds while a run goes, so it reads only the columns and
+    the slice of each decision the rows use (``_BOARD_DECISION_SQL``).
+    """
     meta = run_meta(batch)
     items = (await session.execute(
-        select(BatchItem, Analysis, CostDecision)
+        select(
+            BatchItem.ulid, BatchItem.filename, BatchItem.status, BatchItem.error_message, BatchItem.duration_ms,
+            Analysis.ulid, Analysis.mesh_hash,
+            CostDecision.ulid, CostDecision.mesh_hash,
+            literal_column(_BOARD_DECISION_SQL, type_=JSONB),
+        )
+        .select_from(BatchItem)
         .outerjoin(Analysis, and_(BatchItem.analysis_id == Analysis.id, Analysis.org_id == BatchItem.org_id))
         .outerjoin(CostDecision, and_(BatchItem.cost_decision_id == CostDecision.id, CostDecision.org_id == BatchItem.org_id))
         .where(BatchItem.batch_id == batch.id)
@@ -601,14 +657,15 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
     per_file = meta.get("items") or {}
     default_qty = int(meta.get("quantity") or DEFAULT_RUN_QUANTITY)
     rows = []
-    for item, analysis, decision in items:
+    for (item_ulid, filename, status, error_message, duration_ms,
+         analysis_ulid, analysis_hash, decision_ulid, decision_hash, decision_slice) in items:
         rows.append(derive_part_row(
-            item={"ulid": item.ulid, "filename": item.filename, "status": item.status,
-                  "error_message": item.error_message, "duration_ms": item.duration_ms},
-            analysis=({"ulid": analysis.ulid, "mesh_hash": analysis.mesh_hash} if analysis is not None else None),
-            decision=({"ulid": decision.ulid, "mesh_hash": decision.mesh_hash, "result_json": decision.result_json or {}}
-                      if decision is not None else None),
-            meta=per_file.get(item.filename),
+            item={"ulid": item_ulid, "filename": filename, "status": status,
+                  "error_message": error_message, "duration_ms": duration_ms},
+            analysis=({"ulid": analysis_ulid, "mesh_hash": analysis_hash} if analysis_ulid is not None else None),
+            decision=({"ulid": decision_ulid, "mesh_hash": decision_hash, "result_json": decision_slice or {}}
+                      if decision_ulid is not None else None),
+            meta=per_file.get(filename),
             machines=machines,
             default_quantity=default_qty,
         ))

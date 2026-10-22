@@ -250,6 +250,36 @@ async def test_catalog_run_sorts_parts_on_the_orgs_machines(world):
     assert result["verification"]["best_machine"] == "Bambu Lab X1C"
     assert 25 in result["quantities"]
 
+    # The board reads a slice of each decision in SQL; every row reads exactly as
+    # it does from the whole record, and the slice is a small part of it.
+    from src.services import catalog_run_service as crs
+
+    async with eng.get_session_factory()() as s:
+        full = (await s.execute(text(
+            "SELECT bi.ulid, bi.filename, bi.status, bi.error_message, bi.duration_ms, a.ulid, a.mesh_hash, "
+            "cost_decisions.ulid, cost_decisions.mesh_hash, cost_decisions.result_json, "
+            "length(cost_decisions.result_json::text), "
+            f"length(({crs._BOARD_DECISION_SQL})::text) "
+            "FROM batch_items bi JOIN batches b ON b.id = bi.batch_id "
+            "LEFT JOIN analyses a ON a.id = bi.analysis_id "
+            "LEFT JOIN cost_decisions ON cost_decisions.id = bi.cost_decision_id "
+            "WHERE b.ulid = :b ORDER BY bi.id"), {"b": body["batch_id"]})).all()
+        manifest = (await s.execute(text("SELECT manifest_json FROM batches WHERE ulid = :b"),
+                                    {"b": body["batch_id"]})).scalar_one()
+    from types import SimpleNamespace
+
+    meta = crs.run_meta(SimpleNamespace(manifest_json=manifest))
+    from_full = [crs.derive_part_row(
+        item={"ulid": r[0], "filename": r[1], "status": r[2], "error_message": r[3], "duration_ms": r[4]},
+        analysis={"ulid": r[5], "mesh_hash": r[6]} if r[5] else None,
+        decision={"ulid": r[7], "mesh_hash": r[8], "result_json": r[9] or {}} if r[7] else None,
+        meta=(meta.get("items") or {}).get(r[1]), machines=board["machines"],
+        default_quantity=int(meta.get("quantity") or crs.DEFAULT_RUN_QUANTITY),
+    ) for r in full]
+    assert from_full == board["rows"]
+    sized = [(r[10], r[11]) for r in full if r[10]]
+    assert sized and all(slim < whole / 5 for whole, slim in sized), sized
+
     csv = await _get(app, f"/api/v1/batch/{body['batch_id']}/catalog.csv")
     assert csv.status_code == 200
     lines = csv.text.strip().splitlines()
