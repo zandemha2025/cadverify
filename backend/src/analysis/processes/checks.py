@@ -700,6 +700,64 @@ def check_wire_reach(
     return []
 
 
+_CUP_MAX_SECTIONS = 32
+
+
+def cup_faces(mesh, *, normals: np.ndarray | None = None, centroids: np.ndarray | None = None,
+              bbox_diag: float | None = None) -> np.ndarray:
+    """Faces that roof a cup open toward the resin tank (build direction +Z).
+
+    In a resin printer the part hangs from the plate and each layer is peeled
+    off the tank floor. A cavity whose opening faces the tank and whose walls
+    close around it holds resin against the film: suction on every peel. Its
+    roof is a downward face that is (a) above the part's base (the base sits on
+    the plate), (b) open straight down (nothing of the part below it), and
+    (c) closed in by the part on every side just below the roof, in its own
+    plane. A flat-bottomed solid has none; an upturned cup or a box open at
+    the bottom does.
+    """
+    normals = np.asarray(mesh.face_normals if normals is None else normals, dtype=np.float64)
+    centroids = np.asarray(mesh.triangles_center if centroids is None else centroids, dtype=np.float64)
+    if len(normals) == 0 or not mesh.is_watertight:
+        return np.empty(0, dtype=int)
+    diag = float(np.linalg.norm(mesh.extents)) if bbox_diag is None else float(bbox_diag)
+    z = centroids[:, 2]
+    base = z <= float(z.min()) + max(0.1, diag * 1e-3)
+    down = np.flatnonzero((normals[:, 2] < -0.8) & ~base)
+    if len(down) == 0:
+        return np.empty(0, dtype=int)
+    probe = max(_WIRE_PROBE_MM, diag * 1e-5)
+    origins = centroids[down] + normals[down] * probe
+    try:
+        blocked = np.asarray(mesh.ray.intersects_any(origins, np.tile([0.0, 0.0, -1.0], (len(down), 1))), dtype=bool)
+    except Exception:
+        logger.warning("Cup check rays failed", exc_info=True)
+        return np.empty(0, dtype=int)
+    open_down = down[~blocked]
+    if len(open_down) == 0:
+        return np.empty(0, dtype=int)
+    # One section answers for a whole flat roof (a facet); test the largest roofs first.
+    all_areas = np.asarray(mesh.area_faces)
+    group = -1 - np.arange(len(normals))
+    try:
+        for index, facet in enumerate(mesh.facets):
+            group[np.asarray(facet, dtype=int)] = index
+    except Exception:
+        pass
+    unique, inverse = np.unique(group[open_down], return_inverse=True)
+    totals = np.bincount(inverse, weights=all_areas[open_down])
+    cups = []
+    for slot in np.argsort(-totals)[:_CUP_MAX_SECTIONS]:
+        members = open_down[inverse == slot]
+        face = int(members[np.argmax(all_areas[members])])
+        try:
+            if _closed_in_plane(mesh, centroids[face] + normals[face] * probe, np.array([0.0, 0.0, -1.0])):
+                cups.append(members)
+        except Exception:
+            logger.warning("Cup section failed", exc_info=True)
+    return np.concatenate(cups) if cups else np.empty(0, dtype=int)
+
+
 def _closed_in_plane(mesh, origin: np.ndarray, normal: np.ndarray) -> bool:
     """True when ``origin`` lies in a hole of the part's section by its plane."""
     from shapely.geometry import Point, Polygon

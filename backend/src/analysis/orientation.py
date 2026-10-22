@@ -5,7 +5,7 @@ The engine reads the analysed mesh's +Z as up. What depends on it:
 * Printing (build direction): faces past a process's overhang limit need
   support (``check_overhangs``: FDM 45°, SLA 19°, DLP 30°, DMLS/SLM 45°,
   EBM 50°, DED/WAAM 60°; faces resting on the plate are exempt); large
-  downward areas cup in a resin tank (SLA ``CUPPING_RISK``); a large flat area
+  a cavity opening toward the resin tank cups (SLA ``CUPPING_RISK``); a large flat area
   parallel to the plate can curl in metal powder beds (``RESIDUAL_STRESS_RISK``).
 * Molding, casting and forging (the direction the tool opens): walls parallel
   to it need draft (``check_draft_angles``: injection molding and die casting
@@ -496,7 +496,7 @@ def _facet_info(mesh: trimesh.Trimesh) -> tuple[list[np.ndarray], np.ndarray]:
 
 def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total_area: float,
                extra: dict | None = None, facets: tuple[list[np.ndarray], np.ndarray] | None = None) -> dict:
-    from src.analysis.processes.checks import draft_sidewalls, overhang_faces
+    from src.analysis.processes.checks import cup_faces, draft_sidewalls, overhang_faces
 
     o = Orientation.of(R)
     placed = o.apply(mesh)
@@ -521,7 +521,8 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
     down_area = float(areas[normals[:, 2] < -0.8].sum()) if len(normals) else 0.0
     # The same rules the analyzers use for the findings that read the build direction.
     surface = float(placed.area) or 1.0
-    cupping = down_area / surface >= 0.10  # sla._check_cupping
+    cups = cup_faces(placed, normals=normals, centroids=centroids, bbox_diag=float(m["bbox_diag"]))
+    cupping = float(areas[cups].sum()) / surface >= 0.10  # sla._check_cupping
     # check_residual_stress: a facet >= 15% of the surface, parallel to the plate
     groups, means = facets if facets is not None else _facet_info(mesh)
     curl = False

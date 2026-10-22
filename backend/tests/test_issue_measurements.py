@@ -116,10 +116,35 @@ def test_sheet_hole_reports_diameter_against_the_gauge():
     assert issue.required_value == pytest.approx(2.0) and issue.measurement_unit == "mm"
 
 
-def test_resin_cupping_reports_the_downward_share():
-    issue = _one(get_analyzer(ProcessType.SLA).analyze(_ctx(trimesh.creation.box(extents=[10.0] * 3))), "CUPPING_RISK")
-    assert issue.measured_value == pytest.approx(100.0 / 6.0)
+def test_resin_cupping_reports_the_roof_share_of_a_real_cup():
+    # A 20 mm box with an 18 x 18 x 5 mm cavity open at the bottom: an upturned
+    # cup, its opening toward the resin tank.
+    cavity = trimesh.creation.box(extents=[18.0, 18.0, 5.0])
+    cavity.apply_translation([0.0, 0.0, -7.6])
+    cup = _difference(trimesh.creation.box(extents=[20.0] * 3), cavity)
+    issue = _one(get_analyzer(ProcessType.SLA).analyze(_ctx(cup)), "CUPPING_RISK")
+    roof = 18.0 * 18.0
+    assert issue.measured_value == pytest.approx(roof / cup.area * 100.0)
     assert issue.required_value == 10.0 and issue.measurement_unit == "percent"
+
+
+@pytest.mark.parametrize("shape", ["cube", "plate", "cup_open_up", "mushroom"])
+def test_a_flat_bottomed_solid_is_not_a_resin_cup(shape):
+    """The face a part stands on is on the build plate; an overhang open at the side is not a cup."""
+    if shape == "cube":
+        mesh = trimesh.creation.box(extents=[10.0] * 3)
+    elif shape == "plate":
+        mesh = trimesh.creation.box(extents=[100.0, 60.0, 3.0])
+    elif shape == "cup_open_up":
+        cavity = trimesh.creation.box(extents=[16.0, 16.0, 15.0])
+        cavity.apply_translation([0.0, 0.0, 2.6])
+        mesh = _difference(trimesh.creation.box(extents=[20.0] * 3), cavity)
+    else:
+        post = trimesh.creation.box(extents=[10.0, 10.0, 20.0])
+        cap = trimesh.creation.box(extents=[40.0, 40.0, 5.0])
+        cap.apply_translation([0.0, 0.0, 12.5])
+        mesh = trimesh.boolean.union([post, cap], engine="manifold")
+    assert not [i for i in get_analyzer(ProcessType.SLA).analyze(_ctx(mesh)) if i.code == "CUPPING_RISK"]
 
 
 def test_thin_boss_reports_its_outside_diameter_only():
