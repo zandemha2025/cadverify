@@ -216,6 +216,18 @@ async def resolve_rate_table_for_org(
     flag is off, there is no org, or the org has no published card in effect.
     ``None`` keeps the cost path byte-identical to pre-W4.
     """
+    card = await resolve_rate_card_for_org(session, org_id, as_of)
+    return card["payload"] if card is not None else None
+
+
+async def resolve_rate_card_for_org(
+    session: AsyncSession,
+    org_id: Optional[str],
+    as_of: Optional[datetime] = None,
+) -> Optional[dict]:
+    """``{"payload", "version"}`` of the org's card in effect at ``as_of``, or
+    ``None`` under the same rules as ``resolve_rate_table_for_org``. The version
+    is what a price says it was figured at ("your rates v1")."""
     if not rate_library_enabled() or not org_id:
         return None
     now = as_of or _now()
@@ -224,7 +236,7 @@ async def resolve_rate_table_for_org(
     if cached is not None:
         ef, et = cached["effective_from"], cached["effective_to"]
         if ef is not None and ef <= now and (et is None or et > now):
-            return cached["payload"]
+            return {"payload": cached["payload"], "version": cached["version"]}
 
     rows = (
         await session.execute(
@@ -243,7 +255,7 @@ async def resolve_rate_table_for_org(
         "effective_to": row.effective_to,
         "version": row.version,
     }
-    return row.payload
+    return {"payload": row.payload, "version": row.version}
 
 
 # ---------------------------------------------------------------------------

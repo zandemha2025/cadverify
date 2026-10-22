@@ -1850,6 +1850,7 @@ async def _run_cost_decision(
     # (demo route, flag off, or an unprovisioned session).
     analogy_records = None
     cal_org_id = None
+    rate_card = None  # the org's published card in effect, {"payload", "version"}
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
@@ -1923,15 +1924,15 @@ async def _run_cost_decision(
             # If RATE_LIBRARY_ENABLED is on AND the org has a PUBLISHED rate card
             # in effect now, use it as the base DEFAULT table under shop/user
             # overrides. Flag off / no published card => None => hardcoded
-            # RATE_CARD_V0 => byte-identical to pre-W4. A governed card is a table
-            # of DEFAULT assumptions — provenance stays DEFAULT, never validated.
+            # RATE_CARD_V0 => byte-identical to pre-W4. Never validated; the values
+            # the org changed tag their lines as its own (rate_card_basis, below).
             from src.services.rate_library_service import (
-                resolve_rate_table_for_org,
+                resolve_rate_card_for_org,
             )
 
-            base_table = await resolve_rate_table_for_org(session, cal_org_id)
-            if base_table is not None:
-                options.base_rate_table = base_table
+            rate_card = await resolve_rate_card_for_org(session, cal_org_id)
+            if rate_card is not None:
+                options.base_rate_table = rate_card["payload"]
 
             # ── W4 governed materials library ───────────────────────────────
             # If MATERIAL_LIBRARY_ENABLED is on AND the org has a PUBLISHED
@@ -2229,6 +2230,13 @@ async def _run_cost_decision(
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
         result_dict = report_to_dict(report)
+    # The org's published rate card: the record says which version priced it, and
+    # the lines that use the org's own rates say so (ce-10, ce-16). No card in
+    # effect => unchanged.
+    if rate_card is not None:
+        from src.services.rate_card_basis import apply_rate_card
+
+        result_dict = apply_rate_card(result_dict, rate_card["version"], rate_card["payload"])
     # The org's calibration from its own actuals (if one is applied); unchanged otherwise.
     from src.services.calibration_service import apply_org_calibration
 

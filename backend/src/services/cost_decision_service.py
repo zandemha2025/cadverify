@@ -442,6 +442,9 @@ async def latest_per_part(
         .limit(limit)
     )).scalars().all()
     shown = rows[:detail_limit]
+    from src.services.rate_card_basis import basis_for
+
+    rates = await basis_for(session, rows[0].org_id, rows) if rows else {}
     results: dict = {}
     if shown:
         found = (await session.execute(
@@ -450,12 +453,13 @@ async def latest_per_part(
         )).all()
         results = {row_id: rj for row_id, rj in found}
     return {
-        "parts": [_list_item(d) for d in rows],
+        "parts": [{**_list_item(d), "rates": rates.get(d.ulid)} for d in rows],
         "total_parts": int(total or 0),
         "has_more": int(total or 0) > len(rows),
         "details": [
             {
                 **_list_item(d),
+                "rates": rates.get(d.ulid),
                 "headline_qty": headline_qty(d.quantities),
                 "result": slim_result(results.get(d.id), d.quantities),
             }

@@ -121,8 +121,11 @@ async def list_cost_decisions(
     has_more = len(rows) > limit
     items = rows[:limit]
 
+    from src.services.rate_card_basis import basis_for
+
+    rates = await basis_for(session, items[0].org_id, items) if items else {}
     return {
-        "cost_decisions": [svc._list_item(d) for d in items],
+        "cost_decisions": [{**svc._list_item(d), "rates": rates.get(d.ulid)} for d in items],
         "next_cursor": items[-1].ulid if has_more and items else None,
         "has_more": has_more,
     }
@@ -188,10 +191,15 @@ async def get_cost_decision(
 ):
     """Full saved cost decision by id (own decisions only; 404 for others)."""
     d = await svc.get_owned(session, decision_id, user.user_id)
+    from src.services.rate_card_basis import basis_for
+
+    rates = (await basis_for(session, d.org_id, [d]))[d.ulid]
     return {
         "id": d.ulid,
         "filename": d.filename,
         "file_type": d.file_type,
+        # Which rate card priced this record and which is in effect now (ce-10).
+        "rates": rates,
         "label": d.label,
         "created_at": d.created_at.isoformat(),
         "engine_version": d.engine_version,
