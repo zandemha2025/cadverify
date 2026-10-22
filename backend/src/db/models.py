@@ -996,7 +996,10 @@ class BatchItem(Base):
 
 
 class DirectUpload(Base):
-    """Org-owned capability for one server-addressed S3 multipart upload.
+    """Org-owned capability for one server-addressed multipart upload.
+
+    ``purpose`` is ``batch_zip`` (a batch's ZIP) or ``part`` (one CAD file,
+    checked on the worker from the stored object; migration 0055).
 
     Provider coordinates are deliberately private persistence details. Public
     APIs address this row by ``ulid`` and every read is org-scoped; callers can
@@ -1006,7 +1009,7 @@ class DirectUpload(Base):
     __tablename__ = "direct_uploads"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('batch_zip')",
+            "purpose IN ('batch_zip', 'part')",
             name="ck_direct_uploads_purpose",
         ),
         CheckConstraint(
