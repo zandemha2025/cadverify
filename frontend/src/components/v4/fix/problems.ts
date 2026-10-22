@@ -722,3 +722,12 @@ export function forProcessLine(p: Problem, code: string, label: string): string 
   const need = nt == null ? null : m.dir === "max" ? `allows at most ${nt}` : `needs at least ${nt}`;
   return `${verb} ${lower(label)}${need ? `: ${need}${meas ? `, measured ${meas}` : ""}` : ""}`;
 }
+
+/**
+ * The problem an "Upload the fixed file" from the all-problems list is for (R3 hand-off): the one picked
+ * in the list, else the only one; with several and none picked, none. Cards and fix dialogs pass their own.
+ */
+export function problemInContext(ids: string[], picked: string | null | undefined): string | null {
+  if (picked && ids.includes(picked)) return picked;
+  return ids.length === 1 ? ids[0] : null;
+}

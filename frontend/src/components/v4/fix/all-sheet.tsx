@@ -12,7 +12,7 @@ import { usePart } from "../part/ctx";
 import { classLabel } from "../part/sheet-bits";
 import { cheapestAt, money, priceAt, qtyWord } from "../part/model";
 import { allQuantities, useFix } from "./ctx";
-import { appliesTo, forProcessLine } from "./problems";
+import { appliesTo, forProcessLine, problemInContext } from "./problems";
 import { placeName, placesOf, type Unlock } from "./rank";
 import { fixRoute, whoFixes } from "./capabilities";
 import { useUploadFixed } from "./problem-sheet";
@@ -40,8 +40,9 @@ export function AllProblemsSheet() {
   const { unit } = useUnits();
   const ut = (t: string | null | undefined) => inText(t, unit);
   const shell = useShell();
-  const up = useUploadFixed();
   const v = fx.view?.kind === "all" ? fx.view : null;
+  // The fixed file is the next revision for the problem picked in the list (or the only one), like a card's.
+  const up = useUploadFixed(problemInContext(fx.shown.map((u) => u.problem.id), v?.sel ?? null));
   const processes = React.useMemo(() => processOrder(fx.set.processes), [fx.set.processes]);
   const { only, setOnly } = fx;
   if (!v) return null;

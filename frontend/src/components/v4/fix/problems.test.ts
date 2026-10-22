@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alternativeOf, appliesTo, buildProblems, callout, findProblem, fixText, forProcessLine, methodHead, notListedKind, pickMethod, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
+import { alternativeOf, appliesTo, buildProblems, callout, findProblem, fixText, forProcessLine, methodHead, notListedKind, pickMethod, problemInContext, plainReason, problemFigs, problemForIssue, ruleOf, shortText, tidy, whereLine } from "./problems.ts";
 import { canFixLine, fixRoute, studioParam, studioValueProblem, whoFixes, type FixOrigin } from "./capabilities.ts";
 import { cadPath as cadSteps, withDraftAngles } from "./cad-tools.ts";
 import { enclosureCostOnly, shellCost, shellValidation } from "./fixtures.test-data.ts";
@@ -255,4 +255,11 @@ test("a cost driver's derivation reads in plain figures", async () => {
   const { howText } = await import("./problems.ts");
   assert.equal(howText("1.8833 hr × $8/hr × region-labor ×1 · calibrated"), "1.88 hr × $8/hr · calibrated");
   assert.equal(howText("2 hr × $60/hr × region-labor ×1.25"), "2 hr × $60/hr × regional labor ×1.25");
+});
+
+test("Upload the fixed file from the list is for the picked problem, else the only one (R3 hand-off)", () => {
+  assert.equal(problemInContext(["thin", "draft"], "draft"), "draft");
+  assert.equal(problemInContext(["thin"], null), "thin");
+  assert.equal(problemInContext(["thin", "draft"], null), null);
+  assert.equal(problemInContext(["thin", "draft"], "gone"), null);
 });
