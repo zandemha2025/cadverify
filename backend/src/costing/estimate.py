@@ -41,6 +41,13 @@ class EstimateOptions:
     # declaration always wins upstream and this stays False in that case.
     # Default False => byte-identical to pre-CAD-material behaviour.
     material_class_from_cad: bool = False
+    # The material a parts list names, as written ("4140 steel", "Delrin"). Each
+    # route is priced in that grade where the engine has it for the route; a
+    # metal route without it is priced in the cheapest grade of the same metal
+    # (the estimate names the grade used), a plastic route without it isn't
+    # priced (routing.select_material). None (default) => the class rule,
+    # byte-identical. Implies material_class_is_user.
+    material_name: Optional[str] = None
     region_is_user: bool = False             # set True when the caller explicitly chose a region
     # Per-shop calibration (bucket #1): a ShopProfile, a stored profile name, a
     # path, a dict, or None. When bound, every default it covers flips to SHOP.
@@ -199,6 +206,10 @@ def _material_class_source(options: "EstimateOptions") -> str:
     """What material the prices assume, and why, in plain words (M19)."""
     cls = options.material_class
     words = _CLASS_WORDS.get(cls, cls)
+    if options.material_name:
+        return (f"priced in {options.material_name} where a process runs it, as the parts list "
+                f"names it; a metal process that doesn't is priced in the nearest {words} grade "
+                f"it runs, and says which")
     if options.material_class_is_user:
         return f"priced in {words}, as you set it"
     if options.material_class_from_cad:
@@ -352,7 +363,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     ]
     elig = eligible_processes(result, drivers, options.material_class, rates,
                               strict_dfm=options.strict_dfm,
-                              env=options.service_environment)
+                              env=options.service_environment,
+                              prefer=options.material_name)
 
     # ── Phase C: machine-inventory verification (additive; no-op when unused) ──
     # Only engaged when the org DECLARED machines OR a service environment. When
@@ -610,6 +622,15 @@ def _prefer_owned_materials(elig: list, options) -> list:
         machines = [m for m in options.inventory
                     if getattr(m.process, "value", m.process) == process.value and m.materials]
         mat = item["material"]
+        named = getattr(options, "material_name", None)
+        if named:
+            from src.costing.material_grades import same_grade
+
+            if same_grade(mat.name, named):
+                # The grade the parts list names stays: a machine not declared for it
+                # says so in its fit instead of the route moving to another grade.
+                out.append(item)
+                continue
         if (not machines or process == _PT.SHEET_METAL
                 or any(material_declared(mat.name, MATERIAL_FAMILY.get(mat.name, ""), m.materials)
                        for m in machines)):

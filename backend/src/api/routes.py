@@ -1622,9 +1622,15 @@ async def _run_cost_decision(
     session: Optional[AsyncSession] = None,
     response: Optional[Response] = None,
     orientation: Optional[str] = None,
+    material_name: Optional[str] = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
+
+    ``material_name`` (internal callers only, the catalog run): the material a
+    parts list names; each route is priced in that grade where it runs it
+    (``EstimateOptions.material_name``). Its family may then be ``nickel``,
+    which the public routes don't take as a class on its own.
 
     Validates options (fail fast), parses the mesh, runs the cost engine off
     the event loop, emits exactly one structured outcome event, and returns the
@@ -1661,7 +1667,7 @@ async def _run_cost_decision(
             status_code=400,
             detail=f"Unknown complexity '{complexity}'. Use one of {sorted(_COMPLEXITY)}",
         )
-    if material_class not in _MATERIAL_CLASSES:
+    if material_class not in _MATERIAL_CLASSES and not (material_name and material_class == "nickel"):
         raise HTTPException(
             status_code=400,
             detail=f"Unknown material_class '{material_class}'. Use one of {sorted(_MATERIAL_CLASSES)}",
@@ -1722,7 +1728,7 @@ async def _run_cost_decision(
     # must be computed off this original value — filling a non-polymer class
     # FROM the CAD file must never get flagged USER (that would misrepresent an
     # unconfirmed CAD annotation as a buyer declaration).
-    material_class_is_user = material_class != "polymer"
+    material_class_is_user = material_class != "polymer" or bool(material_name)
     material_class_from_cad = False
 
     # Span 1/4 — mesh parse: read the upload, tessellate/parse to a trimesh,
@@ -1797,6 +1803,7 @@ async def _run_cost_decision(
         material_class=material_class,
         material_class_is_user=material_class_is_user,
         material_class_from_cad=material_class_from_cad,
+        material_name=material_name or None,
         region=effective_region,
         region_is_user=region_is_user,
         shop=shop_binding,
@@ -2242,6 +2249,7 @@ async def _run_cost_decision(
                 overrides=rate_overrides,
                 source_units=effective_units,
                 orientation=placed.key if placed is not None else None,
+                material=material_name or None,
             )
             mesh_hash = compute_mesh_hash(data)
             try:

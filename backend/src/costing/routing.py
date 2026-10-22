@@ -185,11 +185,32 @@ def _item_env_valid(item: dict, env: dict | None) -> bool:
     )
 
 
+def _named_grade(mats: list, material_class: str, prefer: Optional[str]):
+    """``(exact, allowed)`` for a route given the grade a parts list names.
+
+    ``exact``: the route's materials that are that grade (any form). ``allowed``:
+    whether the route may still be priced in another grade of the class when it
+    has none (metals yes, plastics no; ``material_grades.substitutes_allowed``).
+    No grade named: ``([], True)``, the class rule unchanged.
+    """
+    if not prefer:
+        return [], True
+    from src.costing.material_grades import same_grade, substitutes_allowed
+
+    exact = [m for m in mats if same_grade(m.name, prefer)]
+    return exact, substitutes_allowed(material_class)
+
+
 def select_material(process: ProcessType, material_class: str, rates: RateCard,
-                    env: dict | None = None):
+                    env: dict | None = None, prefer: Optional[str] = None):
     """Cheapest material compatible with (process, material_class) — the sane
     default pick. No positional materials[0]; no superalloy on a polymer part.
     Returns a MaterialProfile or None (process not eligible for this class).
+
+    ``prefer``: a grade a parts list names ("4140", "Delrin"). The route is
+    priced in that grade when it runs it; a metal route that doesn't is priced
+    in the cheapest grade of the same metal (the estimate names it), a plastic
+    route that doesn't isn't priced (None).
     """
     mats = [
         m for m in get_materials_for_process(process)
@@ -208,6 +229,11 @@ def select_material(process: ProcessType, material_class: str, rates: RateCard,
                     mats.append(m)
     if not mats:
         return None
+    exact, allowed = _named_grade(mats, material_class, prefer)
+    if exact:
+        mats = exact
+    elif not allowed:
+        return None
     mats = _env_preferred_materials(process, mats, env)
     return min(mats, key=lambda m: m.cost_per_kg)
 
@@ -220,7 +246,7 @@ def _sheet_stock(material_class: str) -> tuple[list, list]:
 
 
 def select_sheet_material(material_class: str, rates: RateCard,
-                          env: dict | None = None):
+                          env: dict | None = None, prefer: Optional[str] = None):
     """Sheet stock for the sheet-metal route, cheapest blank (density × $/kg).
 
     A metal class is priced in its own sheet stock. When none is on file
@@ -233,7 +259,12 @@ def select_sheet_material(material_class: str, rates: RateCard,
     mats, in_class = _sheet_stock(material_class)
     if not mats:
         return None
-    if in_class:
+    exact, allowed = _named_grade(in_class, material_class, prefer)
+    if exact:
+        pool = exact
+    elif prefer and not allowed:
+        return None  # a named plastic is never priced as sheet metal
+    elif in_class:
         pool = in_class
     elif material_class == "polymer":
         pool = mats
@@ -267,7 +298,8 @@ def _routing_sane(process: ProcessType, material_class: str, drivers) -> bool:
 
 
 def eligible_processes(result, drivers, material_class: str, rates: RateCard,
-                       strict_dfm: bool = False, env: dict | None = None):
+                       strict_dfm: bool = False, env: dict | None = None,
+                       prefer: Optional[str] = None):
     """Return the costable shortlist as a list of dicts:
 
         {process, material, score(ProcessScore)}
@@ -302,10 +334,10 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
                 # sheet metal is always a metal; pick metal stock regardless of the
                 # (polymer) default class so the flat-panel route yields a real $.
                 mat = select_sheet_material(material_class, rates,
-                                            env=env_for_materials)
+                                            env=env_for_materials, prefer=prefer)
             else:
                 mat = select_material(process, material_class, rates,
-                                      env=env_for_materials)
+                                      env=env_for_materials, prefer=prefer)
             if mat is None:
                 continue
             if strict_dfm and (ps.verdict == "fail" or ps.score <= 0):

@@ -72,6 +72,7 @@ def compute_params_hash(
     overrides: Optional[dict],
     source_units: str = "mm",
     orientation: Optional[str] = None,
+    material: Optional[str] = None,
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
@@ -94,6 +95,9 @@ def compute_params_hash(
     if orientation is not None:
         # Only a turned part adds the key, so the file's own hash is unchanged.
         params["orientation"] = orientation
+    if material:
+        # Only a named material (a parts list's) adds the key; the class alone is unchanged.
+        params["material"] = material
     canonical = json.dumps(params, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
