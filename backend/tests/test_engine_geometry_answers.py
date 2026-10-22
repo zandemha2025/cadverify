@@ -181,10 +181,11 @@ def test_a_binary_stl_cube_reads_like_the_exact_cube(offset):
 
 
 def test_a_wall_on_the_limit_still_says_the_file_cannot_settle_it():
-    ctx = _ctx(_stl(_box((60, 40, 0.8), at=(100, 200, 300))))
+    # FDM's wall floor is 0.6 mm (1.5x a 0.4 mm nozzle; audit W2).
+    ctx = _ctx(_stl(_box((60, 40, 0.6), at=(100, 200, 300))))
     issue = next(i for i in _issues(ctx, "fdm") if i.code == "WALL_THICKNESS_PRECISION")
     assert issue.severity == Severity.WARNING
-    assert issue.required_value == 0.8 and abs(issue.measured_value - 0.8) < 1e-3
+    assert issue.required_value == 0.6 and abs(issue.measured_value - 0.6) < 1e-3
 
 
 # ── M7 / C10: build-direction aspect and real ribs ───────────────────────────

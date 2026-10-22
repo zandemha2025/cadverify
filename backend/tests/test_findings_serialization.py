@@ -68,15 +68,15 @@ def test_near_threshold_evidence_survives_analysis_cost_and_heatmap_serializatio
     from src.api.routes import _to_response
     from src.costing import EstimateOptions, estimate_decision
 
-    result, mesh, ctx = _analyze(trimesh.creation.box(extents=[30, 20, 0.79999]))
+    result, mesh, ctx = _analyze(trimesh.creation.box(extents=[30, 20, 0.59999]))
     response = _to_response(result, wall_thickness=ctx.wall_thickness)
     fdm = next(s for s in response["process_scores"] if s["process"] == "fdm")
     wall = next(i for i in fdm["issues"] if i["code"] == "THIN_WALL")
     assert wall["measurement_unit"] == "mm"
     assert next(i for i in response["priority_fixes"] if i["code"] == "THIN_WALL")["measurement_unit"] == "mm"
-    assert wall["measured_value"] < wall["required_value"] == 0.8
-    assert "0.79999mm" in wall["message"]
-    assert min(response["wall_thickness_map"]["values"]) < 0.8
+    assert wall["measured_value"] < wall["required_value"] == 0.6
+    assert "0.59999mm" in wall["message"]
+    assert min(response["wall_thickness_map"]["values"]) < 0.6
     report = estimate_decision(result, mesh, ctx.features, EstimateOptions(quantities=[100]))
     fdm_estimates = [e for e in report.estimates if e["process"] == "fdm"]
     assert fdm_estimates

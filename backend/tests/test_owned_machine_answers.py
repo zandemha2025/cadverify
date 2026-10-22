@@ -111,3 +111,28 @@ def test_a_printer_with_no_materials_declared_is_cant_confirm_not_outside_only()
     rep = _run("Carbon M2", "polymer", size=20.0)
     assert _route(rep, "dlp")["verdict"] == "unknown"
     assert rep["verification"]["verdict"] == "unknown"
+
+
+def _cup(wall):
+    outer = trimesh.creation.box(extents=[60, 40, 30])
+    outer.apply_translation([0, 0, 15])
+    inner = trimesh.creation.box(extents=[60 - 2 * wall, 40 - 2 * wall, 30])
+    inner.apply_translation([0, 0, 15 + wall])
+    return trimesh.boolean.difference([outer, inner], engine="manifold")
+
+
+@pytest.mark.parametrize("wall, verdict", [(0.5, "fail"), (0.6, "issues"), (1.0, "pass")])
+def test_the_fdm_wall_floor_follows_a_standard_nozzle(wall, verdict):
+    # W2: a 0.4 mm nozzle lays a 0.6 mm wall; below two perimeters it's weak, not unmakeable.
+    result, mesh, feats = _analyze(_cup(wall))
+    fdm = next(p for p in result.process_scores if p.process.value == "fdm")
+    assert fdm.verdict == verdict
+    opts = EstimateOptions(quantities=[1, 10], inventory=(_catalog_cap("Bambu Lab X1C"),),
+                           shop_caps=ShopCaps(ops={}))
+    rep = report_to_dict(estimate_decision(result, mesh, feats, opts))
+    route = _route(rep, "fdm")
+    if verdict == "fail":
+        assert route["verdict"] == "not_makeable"
+    else:
+        assert route["verdict"] == "makeable_in_house"
+        assert rep["verification"]["verdict"] == "makeable_in_house"

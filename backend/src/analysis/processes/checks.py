@@ -121,13 +121,42 @@ def check_wall_thickness(
     process: ProcessType,
     *,
     cite: str = "",
+    warn_below_mm: Optional[float] = None,
+    warn_note: str = "",
 ) -> list[Issue]:
+    """Walls under ``min_wall_mm`` (an error when they're more than 10% of the
+    measured faces). ``warn_below_mm`` adds a softer band: walls from the minimum
+    up to it print but are weak, a WARNING saying so (``warn_note``)."""
     wt = ctx.wall_thickness
     finite = np.isfinite(wt)
-    thin = finite & (_wall_upper(ctx) < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
+    tol = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    thin = finite & (_wall_upper(ctx) < min_wall_mm - tol)
     thin_faces = np.where(thin)[0]
     issues = _wall_precision_issues(ctx, process, min_wall_mm)
     if len(thin_faces) == 0:
+        if warn_below_mm and warn_below_mm > min_wall_mm:
+            soft = finite & (_wall_upper(ctx) < warn_below_mm - tol)
+            soft_faces = np.where(soft)[0]
+            if len(soft_faces):
+                pct = len(soft_faces) / max(int(_wall_measured(ctx).sum()), 1) * 100
+                thinnest = float(wt[soft].min())
+                issues.append(Issue(
+                    code="THIN_WALL",
+                    measurement_unit="mm",
+                    severity=Severity.WARNING,
+                    message=(
+                        f"{len(soft_faces)} faces ({pct:.1f}%) below {warn_below_mm}mm for "
+                        f"{process.value}. Thinnest: {format_measurement(thinnest, warn_below_mm)}mm. "
+                        f"{warn_note}".rstrip()
+                    ),
+                    process=process,
+                    affected_faces=soft_faces.tolist(),
+                    region_center=_region_center(ctx, soft_faces),
+                    measured_value=thinnest,
+                    required_value=warn_below_mm,
+                    fix_suggestion=f"Thicken walls to >= {warn_below_mm}mm for strength. {cite}".rstrip(),
+                    citation=parse_citation(cite),
+                ))
         return issues
     # Share of the faces actually measured: only those can prove a thin wall.
     pct = len(thin_faces) / max(int(_wall_measured(ctx).sum()), 1) * 100
@@ -973,10 +1002,11 @@ def check_draft_angles(
         code="INSUFFICIENT_DRAFT",
         measurement_unit="deg",
         severity=Severity.ERROR,
+        # The first sentence is the one screens quote; the pull direction follows.
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-            f"below {min_draft_deg}° draft for {process.value}, with the tool opening along {pull}. "
-            f"Smallest draft: {smallest:.1f}°{breakdown}."
+            f"below {min_draft_deg}° draft for {process.value}. "
+            f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}."
         ),
         process=process,
         affected_faces=no_draft_faces.tolist(),

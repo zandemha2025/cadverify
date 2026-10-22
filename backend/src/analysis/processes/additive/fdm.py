@@ -23,8 +23,14 @@ class FDMAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
-        i.extend(check_wall_thickness(ctx, 0.8, self.process,
-                 cite="2x nozzle diameter (0.4mm). Stratasys DFM §3."))
+        # The wall floor follows the nozzle: a standard 0.4 mm nozzle lays a
+        # 0.6 mm wall reliably; below two of its perimeters (0.8 mm) the wall
+        # prints but is weak. A printer's own nozzle is checked against the
+        # thinnest wall in machine fit (makeability, nozzle_dia_mm).
+        i.extend(check_wall_thickness(ctx, 0.6, self.process,
+                 cite="1.5x a standard 0.4mm nozzle, its thinnest reliable wall. Stratasys DFM §3.",
+                 warn_below_mm=0.8,
+                 warn_note="A 0.4mm nozzle prints it as one or two perimeters: check strength."))
         # Flat spans between walls print as bridges (PrusaSlicer's default).
         i.extend(check_overhangs(ctx, 45.0, self.process,
                  cite="ISO/ASTM 52910:2018 §5.3.", bridges=True))

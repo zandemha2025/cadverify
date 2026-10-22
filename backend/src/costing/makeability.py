@@ -290,7 +290,7 @@ def thinnest_measured_wall(process_score) -> "float | None":
     """The thinnest wall the route's DFM check MEASURED (duck-typed ProcessScore).
 
     The wall-thickness check reports ``THIN_WALL`` with ``measured_value`` = the
-    thinnest ray-cast wall among the faces below its limit (FDM 0.8 mm). Absent
+    thinnest ray-cast wall among the faces below its limit (FDM: 0.8 mm, an error below 0.6 mm). Absent
     such an issue the walls are at least that limit, so this returns ``None``
     (no measured thin wall), never a fabricated thickness.
     """
