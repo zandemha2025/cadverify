@@ -62,9 +62,35 @@ _SECOND_LEVEL = {"co", "com", "org", "net", "ac", "gov", "edu", "ltd", "plc", "o
 ORG_NAME_MAX = 80
 
 
+# Trade words a run-together company domain ends with ("northfieldpumps" -> "Northfield
+# Pumps", "tricountyprecision" -> "Tricounty Precision"). Only a trailing word is split
+# off, and only when at least 3 letters stay in front; anything else stays one word.
+_TRADE_WORDS = tuple(sorted({
+    "pumps", "pump", "valves", "valve", "fluid", "fluids", "precision", "machining", "machine",
+    "machines", "manufacturing", "mfg", "industries", "industrial", "systems", "engineering",
+    "aerospace", "aero", "tooling", "tools", "tool", "works", "metals", "metal", "products",
+    "controls", "robotics", "motors", "motor", "technologies", "tech", "labs", "design",
+    "fabrication", "fab", "castings", "casting", "forge", "forging", "plastics", "molding",
+    "moulding", "components", "devices", "medical", "energy", "power", "solutions", "group",
+    "automation", "dynamics", "instruments", "electric", "electronics", "hydraulics", "gears",
+    "gear", "parts", "supply", "marine", "motion", "fasteners", "springs", "bearings", "steel",
+    "foundry", "industries", "equipment", "sensors", "optics", "defense", "defence",
+}, key=len, reverse=True))
+
+
+def _split_trade_word(word: str) -> list[str]:
+    for t in _TRADE_WORDS:
+        if word.endswith(t) and len(word) - len(t) >= 3:
+            return [*_split_trade_word(word[: -len(t)]), t]
+    return [word]
+
+
 def company_from_domain(domain: str) -> str | None:
-    """The company word in a work email's domain: "ridgelinefluid.com" -> "Ridgelinefluid",
-    "mail.acme-aero.co.uk" -> "Acme Aero". None when there's no usable label."""
+    """The company in a work email's domain: "northfieldpumps.com" -> "Northfield Pumps",
+    "mail.acme-aero.co.uk" -> "Acme Aero", "ridgelinefluid.com" -> "Ridgeline Fluid". A
+    run-together name is split before a trailing trade word (``_TRADE_WORDS``); it is
+    a reading of the domain, so the org can be renamed (PATCH /orgs/current) and the
+    app asks once. None when there's no usable label."""
     labels = [label for label in domain.strip().lower().rstrip(".").split(".") if label]
     if len(labels) < 2:
         return None
@@ -72,7 +98,15 @@ def company_from_domain(domain: str) -> str | None:
     words = [w for w in re.split(r"[-_]+", pick) if w and not w.isdigit()]
     if not words:
         return None
+    words = [part for w in words for part in _split_trade_word(w)]
     return " ".join(w[:1].upper() + w[1:] for w in words)[:ORG_NAME_MAX]
+
+
+def same_org_name(a: object, b: object) -> bool:
+    """Two org names that differ only in spacing and case ("Northfieldpumps" and the
+    "Northfield Pumps" sign-up gives now) are the same name."""
+    norm = lambda x: re.sub(r"\s+", "", str(x or "")).lower()  # noqa: E731
+    return bool(norm(a)) and norm(a) == norm(b)
 
 
 def personal_org_display_name(email: str, full_name: str | None = None) -> str:

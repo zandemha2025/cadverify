@@ -506,7 +506,7 @@ async def _settle_personal_workspace(session: AsyncSession, user: User, joined_o
     them in it, still under the name sign-up gave it) is renamed
     "<First name>'s workspace"; one they renamed or share is left alone.
     """
-    from src.auth.org_context import personal_org_display_name
+    from src.auth.org_context import personal_org_display_name, same_org_name
 
     email = user.email or ""
     auto_name = personal_org_display_name(email, user.full_name)
@@ -527,7 +527,7 @@ async def _settle_personal_workspace(session: AsyncSession, user: User, joined_o
                 select(func.count()).select_from(Membership).where(Membership.org_id == org.id)
             )
         ).scalar_one()
-        if members == 1 and org.name == auto_name:
+        if members == 1 and same_org_name(org.name, auto_name):
             org.name = workspace_name(email, user.full_name)
 
 

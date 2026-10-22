@@ -52,7 +52,13 @@ def test_personal_org_name():
 
 
 def test_company_from_domain():
-    assert company_from_domain("ridgelinefluid.com") == "Ridgelinefluid"
+    assert company_from_domain("ridgelinefluid.com") == "Ridgeline Fluid"
+    # ce-20 / me-22: a run-together company splits before its trade word
+    assert company_from_domain("northfieldpumps.com") == "Northfield Pumps"
+    assert company_from_domain("tricountyprecision.com") == "Tricounty Precision"
+    assert company_from_domain("acmeaeromachining.com") == "Acme Aero Machining"
+    assert company_from_domain("partsplus.com") == "Partsplus"
+    assert company_from_domain("toolworks.com") == "Tool Works"
     assert company_from_domain("mail.acme-aero.co.uk") == "Acme Aero"
     assert company_from_domain("plant2.northfield_tool.com") == "Northfield Tool"
     assert company_from_domain("localhost") is None
@@ -60,7 +66,7 @@ def test_company_from_domain():
 
 
 def test_new_accounts_org_is_named_after_the_company_or_the_person():
-    assert personal_org_display_name("dana.ruiz.13894715@ridgelinefluid.com", "Dana Ruiz") == "Ridgelinefluid"
+    assert personal_org_display_name("dana.ruiz.13894715@ridgelinefluid.com", "Dana Ruiz") == "Ridgeline Fluid"
     assert personal_org_display_name("jordan.pike.8beel@gmail.com", "  Jordan   Pike ") == "Jordan Pike's workspace"
     assert personal_org_display_name("jordan.pike@gmail.com") == "jordan.pike's workspace"
     assert len(personal_org_display_name("x@gmail.com", "N" * 200)) == 80
