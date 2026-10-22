@@ -9,9 +9,9 @@
  * Access comes first. GET /validate/fit/capability answers from the role and
  * server setting before any file is read (the tool is on every plan, the free
  * trial included): a server with the setting off says so, and the two preview
- * meshes are fetched only once the tool can run. Measuring never uses a check;
- * on a free account each preview holds a check slot for up to an hour unless
- * that file is checked, and the server limits measurements an hour and a day.
+ * meshes are fetched only once the tool can run. Neither the previews
+ * (?purpose=fit) nor the measurement uses a check; the server limits how many a
+ * free account runs an hour and a day.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -128,7 +128,8 @@ function FitTool({
     let live = true;
     const owned: Pv[] = [];
     const load = async (file: File, u: "mm" | "inch"): Promise<Pv | null> => {
-      const p: PreviewMesh | null = await fetchPreviewMesh(file, { units: u });
+      // Fit's own previews: like the measurement, they use no check.
+      const p: PreviewMesh | null = await fetchPreviewMesh(file, { units: u, forFit: true });
       if (!p) return null;
       const v = { url: p.url, decimated: p.decimated, faces: p.originalFaces, revoke: p.revoke };
       if (!live) v.revoke();

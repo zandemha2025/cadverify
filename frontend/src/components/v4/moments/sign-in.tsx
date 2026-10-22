@@ -15,6 +15,7 @@ import { authErrorMessage } from "@/lib/api-recovery";
 import { isSupportedCad } from "@/lib/cad-file";
 import { browserPendingPartStore, holdPendingPart, PENDING_PART_MAX_BYTES } from "@/lib/pending-part";
 import { safeLocalPath } from "@/lib/safe-return-path";
+import { CAD_LIMIT } from "@/lib/upload-limit";
 import { CAD_ACCEPT } from "../pending-file";
 import { Chip, cx } from "../ui";
 import { tierHint } from "./email-tier";
@@ -35,7 +36,7 @@ const MAIL = (
 function partProblem(file: File): string | null {
   if (!isSupportedCad(file.name)) return "Use a STEP, STL or IGES file.";
   if (!file.size) return "That file is empty.";
-  if (file.size > PENDING_PART_MAX_BYTES) return "Parts up to 200 MB can wait here. Add it after you sign in.";
+  if (file.size > PENDING_PART_MAX_BYTES) return `Parts ${CAD_LIMIT} can wait here. Add it after you sign in.`;
   return null;
 }
 

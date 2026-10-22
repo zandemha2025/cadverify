@@ -25,7 +25,7 @@ export default function Page() {
   {
     "id": "use",
     "title": "How it is used",
-    "body": "To authenticate users, compute and store verification records, support pilots, diagnose incidents, prevent abuse, and improve the engine when you have agreed to that use."
+    "body": "To authenticate users, compute and store verification records, support pilots, diagnose incidents and prevent abuse. Uploaded CAD files aren’t used to train or improve any model or engine, and aren’t added to any shared dataset; they’re used only to check, cost and fix your parts for your organization."
   },
   {
     "id": "retention",

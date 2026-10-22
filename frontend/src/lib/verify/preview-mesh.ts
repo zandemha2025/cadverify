@@ -48,8 +48,20 @@ type PreviewData = Omit<PreviewMesh, "url" | "revoke"> & { blob: Blob };
 // another operation; each consumer owns its URL, while File lifetime bounds memory.
 const previews = new WeakMap<File, Map<string, Promise<PreviewData | null>>>();
 
-export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boolean; units?: "mm" | "inch" }): Promise<PreviewMesh | null> {
-  const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : options?.units ? `?units=${options.units}` : "";
+export type PreviewOptions = { forAnalysis?: boolean; forFit?: boolean; units?: "mm" | "inch" };
+
+/**
+ * The preview request's query. `forFit`: Fit in assembly's own previews, which
+ * reserve no check on the server (they have their own free-account ceiling).
+ */
+export function previewQuery(options?: PreviewOptions): string {
+  if (options?.forAnalysis) return `?purpose=analysis&units=${options.units ?? "mm"}`;
+  if (options?.forFit) return `?purpose=fit&units=${options.units ?? "mm"}`;
+  return options?.units ? `?units=${options.units}` : "";
+}
+
+export async function fetchPreviewMesh(file: File, options?: PreviewOptions): Promise<PreviewMesh | null> {
+  const query = previewQuery(options);
   let byQuery = previews.get(file);
   if (!byQuery) { byQuery = new Map(); previews.set(file, byQuery); }
   let pending = byQuery.get(query);

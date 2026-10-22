@@ -20,6 +20,7 @@ import { fetchCostDecision, type CostDecisionDetail } from "@/lib/api";
 import { useAuth } from "@/components/ui/auth-provider";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { R } from "../routes";
+import { CAD_LIMIT } from "@/lib/upload-limit";
 import { FileTrustLine } from "../trust/file-line";
 import { useShell } from "../shell";
 import { BatchEntryButton, BatchEntryRow, batchEntryNote, useBatchAccess, useHandOffBatch } from "../many/catalog-entry";
@@ -442,7 +443,7 @@ function OwnPartWay({ usesOne }: { usesOne: string }) {
         </span>
       </div>
       <h2 id="nb-w1">Your own part</h2>
-      <p>STEP, STL or IGES · up to 200 MB · one file</p>
+      <p>STEP, STL or IGES · {CAD_LIMIT} · one file</p>
       <small>{usesOne}</small>
       <FileTrustLine style={{ margin: "4px 0 0", textAlign: "inherit" }} />
       <span className="acts">

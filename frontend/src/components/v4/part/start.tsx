@@ -12,6 +12,7 @@ import { cx } from "../ui";
 import { useShell } from "../shell";
 import { checkedBefore } from "../onboard/checked";
 import { FileTrustLine } from "../trust/file-line";
+import { CAD_MAX_MB, overCadLimit, overCadLimitText } from "@/lib/upload-limit";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`;
@@ -47,6 +48,8 @@ export function StartScreen({
   const [checked, setChecked] = React.useState<number | null>(null);
   const [rates, setRates] = React.useState<string | null>(null);
   const input = React.useRef<HTMLInputElement>(null);
+  // Over the API's limit: say so now instead of after the upload.
+  const tooBig = !!file && overCadLimit(file.size);
   // A file checked before doesn't use another check (a check means a part). The sample never uses one.
   const [seen, setSeen] = React.useState<{ file: File; checked: boolean | null } | null>(null);
   React.useEffect(() => {
@@ -119,12 +122,14 @@ export function StartScreen({
             </svg>
           </span>
           <b aria-live="polite">{file ? file.name : over ? "Drop to check it" : "Drop a STEP, STL or IGES file"}</b>
-          <span>{file ? `${mb(file.size)} · ready to check${uses}` : "Up to 200 MB"}</span>
+          <span role={tooBig ? "alert" : undefined}>{file ? (tooBig ? overCadLimitText(file.size) : `${mb(file.size)} · ready to check${uses}`) : `Up to ${CAD_MAX_MB} MB`}</span>
           {file ? (
             <span className="swap" style={{ display: "flex", gap: 8, marginTop: 6 }}>
-              <button className="btn go" type="button" onClick={onCheck}>
-                Check it
-              </button>
+              {tooBig ? null : (
+                <button className="btn go" type="button" onClick={onCheck}>
+                  Check it
+                </button>
+              )}
               <button className="btn" type="button" onClick={onClear}>
                 Choose another
               </button>

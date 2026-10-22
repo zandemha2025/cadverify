@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { R } from "../routes";
 import { CAD_ACCEPT, setPendingFile } from "../pending-file";
 import { useShell } from "../shell";
+import { CAD_LIMIT } from "@/lib/upload-limit";
 import { FileTrustLine } from "../trust/file-line";
 import { cx } from "../ui";
 import "./home.css";
@@ -131,7 +132,7 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
             type="file"
             accept={CAD_ACCEPT}
             data-autofocus
-            aria-label="Check a CAD file: STEP, STL or IGES, up to 200 MB"
+            aria-label={`Check a CAD file: STEP, STL or IGES, ${CAD_LIMIT}`}
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
@@ -148,7 +149,7 @@ export function GetStarted({ onClose, onSample }: { onClose: () => void; onSampl
           </span>
           <span>
             <b>Check a CAD file</b>
-            <small>STEP, STL or IGES · up to 200 MB</small>
+            <small>STEP, STL or IGES · {CAD_LIMIT}</small>
           </span>
           <span aria-hidden="true">→</span>
         </label>

@@ -13,6 +13,7 @@ import Link from "next/link";
 import { API_BASE } from "@/lib/api-base";
 import type { RepairResult, StoredRepairResult } from "@/lib/api";
 import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
+import { CAD_LIMIT } from "@/lib/upload-limit";
 import { CAD_ACCEPT } from "../pending-file";
 import { R } from "../routes";
 import { dimsText, plural } from "./model";
@@ -394,7 +395,7 @@ export function RepairView({ session, onPick, onBack }: { session: CheckSession;
                   Upload a fixed file
                 </button>
               ) : null}
-              <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{picked ? `${picked.name} · checking, uses 1 check` : "A fixed file: STEP, STL or IGES · up to 200 MB · uses 1 check"}</span>
+              <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>{picked ? `${picked.name} · checking, uses 1 check` : `A fixed file: STEP, STL or IGES · ${CAD_LIMIT} · uses 1 check`}</span>
             </div>
           ) : null}
           <input

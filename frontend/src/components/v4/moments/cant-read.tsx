@@ -21,6 +21,7 @@
  */
 import * as React from "react";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
+import { CAD_LIMIT } from "@/lib/upload-limit";
 import { cx } from "../ui";
 import "./moments.css";
 
@@ -151,7 +152,7 @@ export function CantReadSheet({
         <div className="sep" />
         <div className="step">
           <b>Upload another file</b>
-          <p>STEP, STL or IGES · up to 200 MB</p>
+          <p>STEP, STL or IGES · {CAD_LIMIT}</p>
           <span>
             <button className="btn ink sm" type="button" onClick={onPick}>
               Choose file
