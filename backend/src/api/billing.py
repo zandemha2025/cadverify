@@ -283,9 +283,14 @@ async def stripe_webhook(request: Request) -> dict:
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > MAX_WEBHOOK_BYTES:
         raise _problem(413, "payload_too_large", "Webhook payload too large.")
-    payload = await request.body()
-    if len(payload) > MAX_WEBHOOK_BYTES:
-        raise _problem(413, "payload_too_large", "Webhook payload too large.")
+    # Read with the cap applied as the body arrives, so a body without a
+    # Content-Length (chunked) is refused once it passes the limit.
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_WEBHOOK_BYTES:
+            raise _problem(413, "payload_too_large", "Webhook payload too large.")
+    payload = bytes(body)
     try:
         event = verify_webhook(payload, request.headers.get("stripe-signature"))
     except ValueError:
