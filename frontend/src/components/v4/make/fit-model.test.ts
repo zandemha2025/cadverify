@@ -1,5 +1,5 @@
 /**
- * Fit in context rules: access is decided before any file moves, file kinds and
+ * Fit in assembly rules: access is decided before any file moves, file kinds and
  * units, the nudge, seating words, and how the measured result reads.
  * Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/components/v4/make/fit-model.test.ts
  */

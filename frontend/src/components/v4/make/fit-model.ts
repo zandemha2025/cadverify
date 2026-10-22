@@ -1,5 +1,5 @@
 /**
- * Fit in context (board F2) rules, kept pure so they can be tested: who may use
+ * Fit in assembly (board F2) rules, kept pure so they can be tested: who may use
  * it (asked before any file moves), file kinds and units, the XYZ nudge, the
  * seating words, and how the measured result reads. Every number comes from
  * POST /validate/fit; nothing here measures geometry.
