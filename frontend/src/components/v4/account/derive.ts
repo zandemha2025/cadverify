@@ -289,12 +289,15 @@ const ACTION: Record<string, string> = {
   "member.removed": "Member removed",
   "member.left": "Member left",
   "user.role_changed": "Workspace role changed",
+  "user.plan_changed": "Plan changed",
   "saml.group_mapping.created": "Group mapping added",
   "saml.group_mapping.deleted": "Group mapping deleted",
   "rate_card.published": "Rates published",
   "change_request.approved": "Change approved",
   "change_request.rejected": "Change rejected",
 };
+
+const PLAN_NAME: Record<string, string> = { trial: "Free trial", pro: "Pro", pilot: "Pilot" };
 
 const DISPOSITION: Record<string, string> = {
   inhouse: "make in-house",
@@ -391,6 +394,7 @@ export function auditWhat(e: AuditLike): string {
   const group = str(d.group_value);
   if (group) parts.push(group);
   if (e.action === "org.became_shared" && typeof d.members === "number") parts.push(`${d.members} members`);
+  if (e.action === "user.plan_changed" && str(d.from) && str(d.to)) parts.push(`${PLAN_NAME[str(d.from)!] ?? str(d.from)} → ${PLAN_NAME[str(d.to)!] ?? str(d.to)}`);
   if (e.result_summary && !parts.length) parts.push(e.result_summary);
   else if (e.result_summary && e.action === "analysis.created") parts.push(e.result_summary === "issues" ? "has findings" : e.result_summary);
   if (!parts.length && e.resource_type) parts.push(`${e.resource_type.replace(/_/g, " ")}${e.resource_id ? ` ${e.resource_id.slice(0, 10)}` : ""}`);

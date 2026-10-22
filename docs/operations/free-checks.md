@@ -34,14 +34,30 @@ These still require the pilot entitlement (`require_paid_access`, `403 paid_acce
 
 ## Giving an account more checks
 
-There is no admin screen for this. An authorized operator changes one of two existing fields with a parameterized database update for the verified account ID or email:
+There is no admin screen for this. An authorized operator with database access uses one of two tools for the verified account:
 
-- `users.free_check_grant` (integer, nullable): the account's lifetime free-check allowance is `max(free_check_grant, tier default)`. It is a total, not a top-up: completed checks never reset, so to give an account that has used 15 checks five more, set it to 20. It has no effect while the account is on an active Pro subscription (Pro uses the monthly allowance) and none on pilot. Setting it back to NULL returns the account to its tier default.
-- `users.plan = 'pilot'`: unlimited checks plus the tools above that need approved access. Stripe billing only moves accounts between `trial` and `pro`, so it never overwrites `pilot`. Setting the plan back to `trial` restores the remaining lifetime allowance; it does not erase usage.
+- **The plan: `backend/scripts/set_plan.py`.** Don't set `users.plan` by hand. The script sets it, prints the account before and after, and writes a `user.plan_changed` audit row (actor `staff script`, with from, to and your reason) in the same transaction, so the organization's Activity shows "Plan changed · Free trial → Pilot". The same plan again changes nothing and writes nothing. It is a command, never a web route.
+
+  ```
+  cd backend
+  DATABASE_URL=postgresql://… python -m scripts.set_plan \
+      --email dana@northfieldpumps.com --plan pilot \
+      --reason "Pilot agreed with Northfield Pumps, 2026-10-22"
+
+  Before: account 52 dana@northfieldpumps.com · plan trial · organization 01M5H5… · no Stripe subscription
+  After:  account 52 dana@northfieldpumps.com · plan pilot · organization 01M5H5… · no Stripe subscription
+  Done. Audit row user.plan_changed written (actor "staff script").
+  ```
+
+  In the API image the backend is at `/app` (`cd /app` instead of `cd backend`), and the API's `DATABASE_URL` secret is the database it changes. `--plan` is `trial`, `pro` or `pilot`; `--email` and a non-empty `--reason` are required. It refuses (exit 2, nothing changed) an unknown email, a deleted account, a missing reason or another plan name.
+  - `pilot`: unlimited checks plus the tools above that need approved access. Stripe billing only moves accounts between `trial` and `pro`, so it never overwrites `pilot`.
+  - `trial`: back to the remaining lifetime allowance; it does not erase usage. An account with an active Pro subscription is set back to `pro` by Stripe's next subscription event (the script says so).
+  - `pro`: Pro's monthly allowance needs an active Stripe subscription. Without one the account keeps the free allowance until Stripe records one (the script says so). Use Stripe for paid Pro.
+- **More free checks: `users.free_check_grant`** (integer, nullable), with a parameterized database update for the verified account ID or email: the account's lifetime free-check allowance is `max(free_check_grant, tier default)`. It is a total, not a top-up: completed checks never reset, so to give an account that has used 15 checks five more, set it to 20. It has no effect while the account is on an active Pro subscription (Pro uses the monthly allowance) and none on pilot. Setting it back to NULL returns the account to its tier default.
 
 `FREE_CHECKS_WORK` and `FREE_CHECKS_PERSONAL` change the default for every free account at once. Do not change platform roles or organization membership to grant access.
 
-There is no checkout for the pilot plan in this release. The **Request paid access** link opens an email draft to the existing contact address. It neither sends an email automatically nor grants access. Agree the commercial terms separately before setting `pilot`.
+There is no checkout for the pilot plan in this release. The **Request paid access** link opens an email draft to the existing contact address. It neither sends an email automatically nor grants access. Agree the commercial terms separately before setting `pilot` with `set_plan.py`.
 
 ## Deployment
 

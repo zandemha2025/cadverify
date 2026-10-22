@@ -126,6 +126,12 @@ test("audit lines read in plain words", () => {
     auditWhat({ action: "org.became_shared", resource_type: "org", resource_id: "01M5JP3Z2WS11P5ATN3RC1X7DP", detail: { members: 2, via: "invite" }, result_summary: null }),
     "2 members",
   );
+  // Staff set a plan with backend/scripts/set_plan.py (actor "staff script").
+  assert.equal(actionName("user.plan_changed"), "Plan changed");
+  assert.equal(
+    auditWhat({ action: "user.plan_changed", resource_type: "user", resource_id: "52", detail: { from: "trial", to: "pilot", reason: "Pilot agreed", by: "staff script", user_id: 52, email: "dana@northfieldpumps.com" }, result_summary: null }),
+    "dana@northfieldpumps.com · Free trial → Pilot",
+  );
   assert.equal(domainOf("deleted-account-52@deleted.invalid"), "");
   assert.equal(domainOf("dana@northfieldpumps.com"), "northfieldpumps.com");
   assert.equal(
