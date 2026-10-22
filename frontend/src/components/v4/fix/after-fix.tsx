@@ -604,7 +604,7 @@ function StudioAfter({ run, mesh, problem, shell, flash }: { run: StudioRun; mes
         <Left items={items} n={`${items.length} on revision ${nA}`} />
         <Keep
           opts={[
-            [`Keep revision ${nA} as current`, `Revision ${nB} stays downloadable and verifiable.`],
+            [`Keep revision ${nA} as current`, `Revision ${nB} stays as it was, to download or check.`],
             [`Go back to revision ${nB}’s plan`, `Makes revision ${nA + 1} from revision ${nB}’s plan. Revision ${nA} stays in the history.`],
           ]}
           keep={keep}

@@ -601,7 +601,7 @@ function StudioBody({ P, close }: { P: Problem; close: () => void }) {
         </div>
         <Steps
           steps={[
-            { k: `Generates revision ${next}`, s: `Real CAD from the same template, in an isolated CAD process. Revision ${origin.revision} stays downloadable and verifiable.`, c: "" },
+            { k: `Generates revision ${next}`, s: `Real CAD from the same template, in an isolated CAD process. Revision ${origin.revision} stays as it was, to download or check.`, c: "" },
             { k: `Checks revision ${next}`, s: newCheckLine(shell.usage, "The same check and prices as an upload"), c: "" },
             { k: "Shows both revisions", s: "What changed: processes, prices and problems left", c: "" },
           ]}

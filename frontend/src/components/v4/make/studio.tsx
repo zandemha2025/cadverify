@@ -363,7 +363,7 @@ export function StudioScreen() {
   useRegisterPaletteItems(
     "make-studio",
     selected && viewed?.status === "ready" && canMutate
-      ? [{ id: "studio-check", group: "This design", label: `Verify revision ${viewNo} of ${selected.name}`, href: checkHref(R.check, selected.id, viewNo), words: "design studio check verify revision" }]
+      ? [{ id: "studio-check", group: "This design", label: `Check revision ${viewNo} of ${selected.name}`, href: checkHref(R.check, selected.id, viewNo), words: "design studio check verify revision" }]
       : [],
   );
 
@@ -502,7 +502,7 @@ export function StudioScreen() {
           ) : null}
           <div className="stats num">
             <span>
-              Envelope<b>{envelopeText(geometry?.bbox_mm)}</b>
+              Size<b>{envelopeText(geometry?.bbox_mm)}</b>
             </span>
             <span>
               Volume<b>{geometry ? `${volumeText(geometry.volume_cm3)} cm³` : "—"}</b>
@@ -511,7 +511,7 @@ export function StudioScreen() {
               STEP<b>{formatBytes(viewed?.step_size_bytes)}</b>
             </span>
             <span>
-              Evidence hash<b title={viewed?.geometry_hash ?? undefined}>{viewed?.geometry_hash ? viewed.geometry_hash.slice(0, 12) : "—"}</b>
+              Fingerprint<b title={viewed?.geometry_hash ? `Shape fingerprint ${viewed.geometry_hash}` : undefined}>{viewed?.geometry_hash ? viewed.geometry_hash.slice(0, 12) : "—"}</b>
             </span>
           </div>
         </div>
@@ -579,7 +579,7 @@ export function StudioScreen() {
             <span>{selected ? viewText(viewNo, selected.current_revision) : ""}</span>
           </div>
           {!selected ? (
-            <Empty title="No revisions yet">Each Generate makes a new revision. Older ones stay downloadable and verifiable.</Empty>
+            <Empty title="No revisions yet">Each Generate makes a new revision. Older ones stay as they were, to download or check.</Empty>
           ) : (
             <>
               <div className="chips" role="group" aria-label="Revision">
@@ -591,7 +591,7 @@ export function StudioScreen() {
                 ))}
               </div>
               <p className="fine" style={{ margin: "0 16px 6px", fontSize: 12 }}>
-                Older revisions stay downloadable and verifiable.
+                Older revisions stay as they were, to download or check.
               </p>
               {history.state === "error" ? (
                 <div className="errx" role="alert">
@@ -666,7 +666,7 @@ export function StudioScreen() {
                   </a>
                   {canMutate ? (
                     <Link className="btn sm ink" href={checkHref(R.check, selected.id, viewNo)}>
-                      Verify revision {viewNo}
+                      Check revision {viewNo}
                     </Link>
                   ) : null}
                 </div>
