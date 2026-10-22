@@ -231,3 +231,48 @@ async def test_google_links_an_account_only_on_its_exact_address_and_its_own_sub
         assert await sub_of(uid) == f"sub-{tag}"
     finally:
         await _drop(email)
+
+
+def test_same_mailbox_sets_aside_case_and_only_gmail_dots():
+    from src.auth.models import _same_mailbox
+
+    assert _same_mailbox("Dana.Smith@Gmail.com", "danasmith@gmail.com")
+    assert _same_mailbox("danasmith@gmail.com", "dana.smith@gmail.com")
+    assert _same_mailbox("dana.smith@googlemail.com", "DanaSmith@GoogleMail.com")
+    assert _same_mailbox("Dana@Corp.example", "dana@corp.example")
+    # A "+tag" is never set aside, and dots count everywhere else.
+    assert not _same_mailbox("danasmith@gmail.com", "danasmith+x@gmail.com")
+    assert not _same_mailbox("dana@corp.example", "dana+x@corp.example")
+    assert not _same_mailbox("dana.smith@corp.example", "danasmith@corp.example")
+    assert not _same_mailbox("danasmith@gmail.com", "danasmith@googlemail.com.evil.example")
+
+
+@_requires_pg
+@_pytest.mark.asyncio
+async def test_google_links_a_gmail_account_whose_dots_differ_either_way_but_never_a_plus_tag():
+    """Google guarantees dots never matter on Gmail: a dotted Google address
+    links to an undotted stored one and the reverse. A "+tag" stays refused."""
+    from fastapi import HTTPException
+
+    from src.auth.disposable import normalize_email
+    from src.auth.models import upsert_user
+
+    tag = _uuid.uuid4().hex[:8]
+    undotted, dotted_google = f"danasmith{tag}@gmail.com", f"Dana.Smith{tag}@gmail.com"
+    dotted, undotted_google = f"lee.ray{tag}@gmail.com", f"leeray{tag}@gmail.com"
+    try:
+        stored_undotted = await _password_account(undotted)
+        stored_dotted = await _password_account(dotted)
+        # A "+tag" on the not-yet-linked account: refused, and it stays unlinked.
+        plus = f"lee.ray{tag}+x@gmail.com"
+        with _pytest.raises(HTTPException) as refused:
+            await upsert_user(plus, f"sub-c-{tag}", normalize_email(plus), auth_provider="google")
+        assert refused.value.status_code == 409 and refused.value.detail["code"] == "google_link_refused"
+        assert "different form of this address" in refused.value.detail["message"]
+
+        assert await upsert_user(dotted_google, f"sub-a-{tag}", normalize_email(dotted_google),
+                                 auth_provider="google") == stored_undotted
+        assert await upsert_user(undotted_google, f"sub-b-{tag}", normalize_email(undotted_google),
+                                 auth_provider="google") == stored_dotted
+    finally:
+        await _drop(undotted, dotted)

@@ -75,9 +75,10 @@ async def upsert_user(
     dots dropped), so it can name an account whose own address differs. A
     Google subject therefore reaches an existing account only when that
     account is already linked to the same subject, or is linked to none and its
-    stored address is this exact address (case aside). "dana+x@corp.example" never
-    opens "dana@corp.example", and a different Google account never opens one
-    already linked: both get a 409 and the account is left untouched.
+    stored address is this exact address (:func:`_same_mailbox`: case aside, and
+    dots aside on Gmail). "dana+x@corp.example" never opens "dana@corp.example",
+    and a different Google account never opens one already linked: both get a
+    409 and the account is left untouched.
     """
     provider = (auth_provider or "google").strip().lower()
     async with _session()() as s:
@@ -115,7 +116,7 @@ async def upsert_user(
                 if existing[2] is not None and existing[2] != google_sub:
                     raise _google_link_refused("other_google_account")
                 if existing[2] is None:
-                    if (existing[1] or "").strip().lower() != (email or "").strip().lower():
+                    if not _same_mailbox(existing[1] or "", email or ""):
                         raise _google_link_refused("other_address_form")
                     await s.execute(
                         text("UPDATE users SET google_sub = :g WHERE id = :u"),
@@ -156,6 +157,27 @@ async def upsert_user(
         await ensure_personal_org(s, uid, email)
         await s.commit()
         return uid
+
+
+# Domains where Google guarantees dots in the local part never matter:
+# "d.ana@gmail.com" and "dana@gmail.com" are one mailbox.
+_DOTLESS_LOCAL_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
+
+
+def _same_mailbox(stored: str, signed_in: str) -> bool:
+    """Whether two addresses are the same mailbox, so a Google sign-in may link.
+
+    Case never matters, and on gmail.com/googlemail.com neither do dots in the
+    local part. Nothing else is set aside: a "+tag" or a dot on any other domain
+    can be someone else's mailbox.
+    """
+    def canonical(address: str) -> str:
+        local, _, domain = address.strip().lower().partition("@")
+        if domain in _DOTLESS_LOCAL_DOMAINS:
+            local = local.replace(".", "")
+        return f"{local}@{domain}"
+
+    return canonical(stored) == canonical(signed_in)
 
 
 def _google_link_refused(reason: str) -> "HTTPException":
