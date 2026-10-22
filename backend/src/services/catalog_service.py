@@ -1666,6 +1666,12 @@ def route_at_quantity(result_json: dict, annual_volume: Optional[int]) -> Option
     r = rec.get(str(q)) or {}
     opt = (decision.get("options") or {}).get(str(q)) or {}
     inside = opt.get("in_house") or {}
+    if not inside.get("process"):
+        # No in-house side priced at this quantity: the machine the fit chose, unpriced.
+        res = ((result_json or {}).get("verification") or {}).get("resource") or {}
+        if isinstance(res, dict) and res.get("process"):
+            inside = {"process": res.get("process"), "machine": res.get("machine"), "material": None,
+                      "unit_cost_usd": None}
     out = {"qty": q, "basis": "declared" if q == annual_volume else "record", "in_house": bool(r.get("in_house"))}
     if inside.get("process"):
         out["owned"] = {"process": inside.get("process"), "machine": inside.get("machine"),
@@ -1686,7 +1692,9 @@ async def _routes_at_quantity(session: AsyncSession, org_id: str, page) -> dict:
         return {}
     slice_sql = ("jsonb_build_object('decision', jsonb_build_object("
                  "'recommendation', cost_decisions.result_json -> 'decision' -> 'recommendation', "
-                 "'options', cost_decisions.result_json -> 'decision' -> 'options'))")
+                 "'options', cost_decisions.result_json -> 'decision' -> 'options'), "
+                 "'verification', jsonb_build_object('resource', "
+                 "cost_decisions.result_json -> 'verification' -> 'resource'))")
     try:
         decisions = {u: j for u, j in (await session.execute(
             select(CostDecision.ulid, literal_column(slice_sql, type_=JSONB))

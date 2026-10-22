@@ -41,3 +41,10 @@ def test_without_a_volume_the_smallest_quantity_above_one():
     assert route_at_quantity({}, 40) is None
     inside = route_at_quantity(RESULT, 100)
     assert inside["in_house"] is True and inside["machine"] == "Haas VF-2"
+
+
+def test_an_in_house_part_without_a_priced_side_still_names_the_machine():
+    result = {"decision": {"recommendation": {"10": {"process": "sheet_metal", "unit_cost_usd": 4.0}}},
+              "verification": {"resource": {"process": "cnc_3axis", "machine": "Haas VF-2"}}}
+    r = route_at_quantity(result, None)
+    assert r["owned"] == {"process": "cnc_3axis", "machine": "Haas VF-2", "material": None, "usd": None}
