@@ -35,6 +35,7 @@ logger = logging.getLogger("cadverify.stored_check_tasks")
 
 # Triangle ceiling for a big check: memory (the sizing stage) is the real bound.
 _BIG_MAX_TRIANGLES = 200_000_000
+HEARTBEAT_SECONDS = 30.0
 
 
 def _now() -> datetime:
@@ -87,8 +88,17 @@ class _Progress:
         self.done = n
 
     async def _tick(self) -> None:
+        beat = 0.0
         while True:
             await asyncio.sleep(2.0)
+            # A heartbeat, so a check whose worker died is seen as stopped
+            # (stored_check_service.STALLED_AFTER), not "checking" forever.
+            if time.monotonic() - beat >= HEARTBEAT_SECONDS:
+                beat = time.monotonic()
+                try:
+                    await _patch(self.job_ulid, heartbeat_at=datetime.now(timezone.utc).isoformat())
+                except Exception:
+                    logger.debug("heartbeat write failed", exc_info=True)
             if self.total and self.done:
                 frac = round(min(1.0, self.done / self.total), 3)
                 if frac != self._sent:
@@ -381,6 +391,32 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
                 os.unlink(p)
             except OSError:
                 pass
+        _give_memory_back(result.get("mesh_hash"))
+
+
+def _give_memory_back(mesh_hash: Optional[str]) -> None:
+    """After a big check: drop its parse from the mesh cache and hand freed memory to the OS.
+
+    One big mesh would otherwise sit in the parsed-mesh cache, and glibc keeps
+    the arenas a 2 GB check freed, so the worker's resident size stays at its
+    peak for the batch items and checks that follow.
+    """
+    import gc
+
+    try:
+        if mesh_hash:
+            from src.parsers import mesh_cache
+
+            mesh_cache.forget_hashes([mesh_hash])
+    except Exception:
+        logger.debug("mesh cache forget failed", exc_info=True)
+    gc.collect()
+    try:
+        import ctypes
+
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 async def _keep_preview(org_id: str, mesh_hash: str, name: str, data: bytes, units: Optional[str], result: dict) -> None:
@@ -424,3 +460,14 @@ async def _release(user_id: int, check_id: str, op: str) -> None:
         await finish_check(user_id, check_id, op, False)
     except Exception:
         logger.warning("could not release check %s/%s", check_id, op, exc_info=True)
+
+
+async def sweep_stalled_stored_checks(ctx: dict) -> int:
+    """Cron: end checks whose worker died mid-check (no heartbeat for STALLED_AFTER)."""
+    from src.services.stored_check_service import fail_stalled_checks
+
+    async with get_session_factory()() as session:
+        ended = await fail_stalled_checks(session)
+    if ended:
+        logger.info("ended %d stalled stored checks", ended)
+    return ended

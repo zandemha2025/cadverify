@@ -401,3 +401,34 @@ async def test_a_worker_restart_mid_check_says_so_and_charges_nothing(world, mon
     assert "worker restarted" in done["error"]["message"]
     usage = await _usage(uid)
     assert usage["used"] == 0 and usage["reserved"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_check_whose_worker_died_reads_as_interrupted_and_is_ended(world):
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+    from src.jobs.stored_check_tasks import sweep_stalled_stored_checks
+
+    uid = world["users"]["pilot"]
+    async with _client(world["app"], uid) as ac:
+        up = await _upload(ac, "bracket.stl", _stl(seed=12))
+        check_id = (await ac.post("/api/v1/checks", json={"direct_upload_id": up["upload_id"]})).json()["check_id"]
+        # The worker took it, then died: running, last heartbeat five minutes ago.
+        old = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        async with eng.get_session_factory()() as s, s.begin():
+            await s.execute(text(
+                "UPDATE jobs SET status = 'running', started_at = now() - interval '6 minutes', "
+                "result_json = result_json || jsonb_build_object('stage', 'measuring', 'heartbeat_at', CAST(:b AS text)) "
+                "WHERE ulid = :u"), {"u": check_id, "b": old})
+            await s.execute(text("UPDATE direct_uploads SET status = 'preparing' WHERE ulid = :u"), {"u": up["upload_id"]})
+        seen = (await ac.get(f"/api/v1/checks/{check_id}")).json()
+        assert seen["status"] == "failed" and seen["error"]["code"] == "CHECK_INTERRUPTED"
+        assert await sweep_stalled_stored_checks({}) >= 1  # this one (and any other stale row in the DB)
+        assert await sweep_stalled_stored_checks({}) == 0
+        after = (await ac.get(f"/api/v1/checks/{check_id}")).json()
+    assert after["status"] == "failed" and "worker restarted or ran out of memory" in after["error"]["message"]
+    row = await _upload_row(up["upload_id"])
+    assert row.status == "failed" and row.storage_cleaned_at is not None

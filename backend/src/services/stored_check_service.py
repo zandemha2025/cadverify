@@ -260,10 +260,70 @@ def _validated_options(options: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# A running check writes a heartbeat every 30 s (stored_check_tasks). One that
+# has missed it for this long lost its worker (a restart, out of memory).
+STALLED_AFTER = timedelta(minutes=3)
+STALLED_MESSAGE = (
+    "The check stopped before it finished: its worker restarted or ran out of memory. "
+    "Nothing was charged; check the file again."
+)
+
+
+def is_stalled(job: Job, now: Optional[datetime] = None) -> bool:
+    if job.status != "running":
+        return False
+    now = now or datetime.now(timezone.utc)
+    beat = (job.result_json or {}).get("heartbeat_at")
+    try:
+        last = datetime.fromisoformat(beat) if beat else job.started_at
+    except (TypeError, ValueError):
+        last = job.started_at
+    if last is None:
+        return False
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return now - last > STALLED_AFTER
+
+
 def public_status(job: Job, upload: Optional[DirectUpload] = None) -> dict[str, Any]:
     params = job.params_json or {}
     result = job.result_json or {}
     key = result.get("mesh_hash")
+    if is_stalled(job):
+        # Said as it is the moment it's known; the sweep makes it durable.
+        result = {**result, "stage": "failed", "error": {"code": "CHECK_INTERRUPTED", "message": STALLED_MESSAGE, "charged": False}}
+        return {**_status_fields(job, params, result, key), "status": "failed", "stage": "failed", "error": result["error"]}
+    return _status_fields(job, params, result, key)
+
+
+async def fail_stalled_checks(session: AsyncSession, *, limit: int = 50) -> int:
+    """Durably end checks whose worker died, and end their uploads (the cron runs this)."""
+    from src.services import direct_upload_service as uploads
+
+    rows = list((await session.execute(
+        select(Job).where(Job.job_type == JOB_TYPE, Job.status == "running")
+        .order_by(Job.started_at).limit(limit).with_for_update(skip_locked=True)
+    )).scalars().all())
+    ended = 0
+    for job in rows:
+        if not is_stalled(job):
+            continue
+        job.status = "failed"
+        job.completed_at = datetime.now(timezone.utc)
+        job.result_json = {**(job.result_json or {}), "stage": "failed",
+                           "error": {"code": "CHECK_INTERRUPTED", "message": STALLED_MESSAGE, "charged": False}}
+        ended += 1
+        upload = (await session.execute(select(DirectUpload).where(
+            DirectUpload.ulid == (job.params_json or {}).get("direct_upload_id"), DirectUpload.org_id == job.org_id,
+        ).with_for_update())).scalars().first()
+        await session.commit()
+        if upload is not None and upload.status in ("attached", "preparing"):
+            await uploads.finish_part_upload(session, upload, ok=False, error_code="CHECK_INTERRUPTED", error_message=STALLED_MESSAGE)
+    await session.commit()
+    return ended
+
+
+def _status_fields(job: Job, params: dict, result: dict, key: Optional[str]) -> dict[str, Any]:
     return {
         "check_id": job.ulid,
         "status": job.status,
