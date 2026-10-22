@@ -107,6 +107,11 @@ class EstimateOptions:
     # Feeds the environment gate (drops env-invalid materials/routes with a cited
     # exclusion). None (default) => the gate is a no-op => byte-identical.
     service_environment: "dict | None" = None
+    # The part's DECLARED specs (part_context.part_specs; costing.part_specs):
+    # finishes + Ra, heat treatments, inspection, certifications. Each op adds a
+    # cost line and lead time; a route that can't deliver them is flagged
+    # spec_excluded. None (default) => no-op => byte-identical.
+    part_specs: "dict | None" = None
     # ── declared CAD source units (B5 units landmine) ────────────────────────
     # STL carries NO units; the engine interprets vertex coordinates as MILLIMETRES.
     # An inch-authored STL therefore silently mis-costs by 25.4**3 (~16,387x). The
@@ -150,6 +155,9 @@ class DecisionReport:
     # NO key => byte-identical. Populated only when the plausibility net fires;
     # each entry is provenance-honest (MEASURED geometry vs ASSUMED units).
     unit_warnings: list = field(default_factory=list)
+    # Declared part specs block (costing.part_specs.SpecSession.block). None =>
+    # no specs declared => report_to_dict adds NO key => byte-identical.
+    specs: Optional[dict] = None
 
 
 def _geo_summary(g) -> dict:
@@ -352,6 +360,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     # empty, so every cost_breakdown call below gets machine_override=None and the
     # whole report is byte-identical to pre-Phase-C.
     verification = None
+    from src.costing.part_specs import session_for as _spec_session
+    specs = _spec_session(options, rates, region, drivers)   # None without declared specs
     machine_override_by_pv: dict = {}
     env_excluded: dict = {}
     if options.inventory:
@@ -360,7 +370,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         elig = _prefer_owned_materials(elig, options)
     if options.inventory or options.service_environment:
         verification, machine_override_by_pv, env_excluded = _build_verification(
-            elig, drivers, options, rates)
+            elig, drivers, options, rates, specs=specs)
     if options.inventory and verification is not None:
         # The inventory decides what is owned: a route a machine of yours clears
         # is priced as owned (capital sunk), declared or not; a declared process
@@ -409,6 +419,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
             lt = lead_time(process, cycle_hr, q, rates,
                            in_house=in_house_by_pv.get(process.value))
+            if specs:
+                est, lt = specs.price(est, lt, process, material, options.material_class)
             leadtimes_by_key[(process.value, q)] = lt
             estimates_by_pq[(process.value, q)] = est
             estimates_serialized.append(
@@ -416,10 +428,11 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                            options.calibration))
 
     costed_processes = {e["process"] for e in estimates_serialized}
+    spec_excluded = specs.annotate(estimates_serialized, options.material_class) if specs else set()
     rec = recommend_routing(drivers, options.material_class,
                             dfm_failed=dfm_failed, dfm_clean=dfm_clean,
                             available_processes=costed_processes
-                            - set(env_excluded.get("excluded_pv") or ()))
+                            - set(env_excluded.get("excluded_pv") or ()) - spec_excluded)
     routing_info = {
         "archetype": rec.archetype,
         "recommended_process": rec.process,
@@ -473,6 +486,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                              tolerance_class=options.tolerance_class,
                              machine_override=machine_override_by_pv.get(
                                  item["process"].value))
+        if specs:
+            est = specs.price(est, None, item["process"], item["material"],
+                              options.material_class)[0]
         return est.unit_cost_usd
 
     range_by_key = {
@@ -484,8 +500,11 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     } if in_house_by_pv else None
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
                            unit_cost_fn=_unit_cost_fn,
-                           excluded_pv=env_excluded.get("excluded_pv"),
-                           env_note=env_excluded.get("note"),
+                           excluded_pv=(set(env_excluded.get("excluded_pv") or ()) | spec_excluded)
+                           or None,
+                           env_note="; ".join(n for n in (env_excluded.get("note"),
+                                                          specs.note(spec_excluded) if specs else None)
+                                              if n) or None,
                            in_house=in_house_by_pv,
                            range_by_key=range_by_key)
 
@@ -541,6 +560,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         notes.append(
             "Decision: no environment-valid make-as-is option — "
             + env_excluded["note"] + ".")
+    elif decision is None and spec_excluded:
+        notes.append("Decision: no route meets the declared specs; "
+                     + specs.note(spec_excluded) + ".")
 
     geo = _geo_summary(g)
     return DecisionReport(
@@ -557,6 +579,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         routing=routing_info,
         verification=verification,
         unit_warnings=_unit_plausibility_warnings(g, options),
+        specs=specs.block(estimates_serialized) if specs else None,
     )
 
 
@@ -731,7 +754,7 @@ def _env_decision_note(env, excluded_materials, excluded_routes=()) -> str:
             f"decision computed over {over}")
 
 
-def _build_verification(elig, drivers, options, rates):
+def _build_verification(elig, drivers, options, rates, specs=None):
     """Compute the §0 makeability verdict + per-process marginal-rate overrides.
 
     Returns ``(verification_dict, machine_override_by_pv, env_excluded)`` where
@@ -786,6 +809,8 @@ def _build_verification(elig, drivers, options, rates):
                            minimum_width_bound_mm=preq.minimum_width_bound_mm * scale,
                            enclosing_cylinder_mm=(tuple(d * scale for d in preq.enclosing_cylinder_mm)
                                                   if preq.enclosing_cylinder_mm else None))
+        if specs:
+            preq = specs.part_req(preq, process, mat, options.material_class)
         part_req_by_route[process.value] = preq
         if preq.material_name:
             material_props[preq.material_name] = props

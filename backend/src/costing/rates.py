@@ -826,6 +826,12 @@ def _apply_override(data: dict, raw_key: str, value) -> None:
         if field_name == "complexity_factor":
             data["complexity_factor"][suffix] = float(value)
             return
+        # declared-spec op prices (finish / heat treatment / inspection):
+        # ``spec.<op>.<field>`` — see costing.part_specs.SPEC_OPS_V0
+        if field_name == "spec":
+            from src.costing.part_specs import apply_override as _spec_override
+            _spec_override(data, suffix, value)
+            return
         # material lot price: suffix is a material NAME or "@<class>" sentinel
         if field_name == "material_price":
             data.setdefault("material_prices", {})[suffix] = float(value)

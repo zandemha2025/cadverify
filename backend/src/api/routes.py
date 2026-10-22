@@ -1842,6 +1842,13 @@ async def _run_cost_decision(
                 )
                 if _env:
                     options.service_environment = _env
+                # The part's declared specs (finish, heat treatment, inspection,
+                # certifications) price and gate the routes; none → no-op.
+                from src.costing.part_specs import stored_specs as _stored_specs
+
+                _specs = _stored_specs(_ctx)
+                if _specs:
+                    options.part_specs = _specs
             except Exception:
                 logger.warning(
                     "machine-inventory feed failed for org %s; decision proceeds "

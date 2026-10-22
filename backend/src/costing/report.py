@@ -48,6 +48,11 @@ def report_to_dict(report) -> dict:
     unit_warnings = getattr(report, "unit_warnings", None)
     if unit_warnings:
         d["unit_warnings"] = unit_warnings
+    # Declared part specs (finish, heat treatment, inspection, certifications):
+    # same tail-append + truthiness guard; no specs → no key → byte-identical.
+    specs = getattr(report, "specs", None)
+    if specs:
+        d["specs"] = specs
     return d
 
 

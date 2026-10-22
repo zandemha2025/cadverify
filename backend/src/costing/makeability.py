@@ -109,6 +109,13 @@ class PartReq:
     # below its process limit, or the route was not checked — never a guess.
     # (``min_feature_mm`` above is 2·V/A, a nominal-wall average, not a minimum.)
     min_wall_mm: "float | None" = None
+    # Declared part specs (``costing.part_specs``): the finishing / heat-treat /
+    # inspection ops an in-house route needs from the shop, the certifications
+    # whoever makes the part must hold (shop-capability keys), and the specs this
+    # route can't deliver at all (``spec`` FitFailures). Empty => no specs.
+    spec_ops: tuple = ()
+    certifications: tuple = ()
+    spec_failures: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -121,7 +128,7 @@ class FitFailure:
     whose only failures are unknown to the ``unknown`` verdict, never a gap.
     """
 
-    gate: str            # dfm|envelope|mass|material|tolerance|axes|force|thickness|min_feature|secondary_op|environment
+    gate: str            # dfm|spec|envelope|mass|material|tolerance|axes|force|thickness|min_feature|secondary_op|certification|environment
     axis: str
     need: object = None
     have: object = None
@@ -175,8 +182,8 @@ BASE_PROCESS_IT: dict = {
 # the rest. "Binding-constraint first" — see gap_analysis docstring. A route's
 # own DFM blocker ("dfm") leads: no machine acquisition closes a design rule.
 GATE_PRIORITY: list = [
-    "dfm", "envelope", "axes", "material", "tolerance", "mass",
-    "force", "thickness", "min_feature", "secondary_op", "environment",
+    "dfm", "spec", "envelope", "axes", "material", "tolerance", "mass",
+    "force", "thickness", "min_feature", "secondary_op", "certification", "environment",
 ]
 
 # Corrosion-resistant-alloy classes (for corrosive/sour environment gating).
@@ -260,6 +267,21 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
 _SIZE_CODES = frozenset({"EXCEEDS_BUILD_VOLUME", "BUILD_ENVELOPE_UNVERIFIED"})
 _OP_WORDS = {"stress_relief": "stress relief", "sinter": "sintering", "hip": "HIP (hot isostatic pressing)",
              "grinding": "grinding"}
+# Ops and certifications named by declared part specs (``costing.part_specs``).
+_SPEC_OP_WORDS = {
+    "bead_blast": "bead blasting", "anodize_ii": "Type II anodizing", "anodize_iii": "hard anodizing (Type III)",
+    "passivate": "passivation", "electropolish": "electropolishing", "powder_coat": "powder coating",
+    "plating": "plating", "stress_relief": "stress relief", "solution_age": "solution treating and ageing",
+    "quench_temper": "quench and temper", "case_harden": "case hardening", "hip": "HIP (hot isostatic pressing)",
+    "fai_as9102": "an AS9102 first article inspection", "cmm_report": "a CMM report",
+    "full_100": "100% inspection", "grinding": "grinding or polishing to the Ra",
+}
+_CERT_WORDS = {"as9100": "AS9100", "iso9001": "ISO 9001", "itar": "ITAR registration",
+               "nadcap_chemical_processing": "NADCAP for chemical processing",
+               "nadcap_heat_treating": "NADCAP for heat treating",
+               "nadcap_nondestructive_testing": "NADCAP for nondestructive testing",
+               "nadcap_coatings": "NADCAP for coatings", "nadcap_welding": "NADCAP for welding",
+               "nadcap_measurement_inspection": "NADCAP for measurement and inspection"}
 _ENVELOPE_AXIS = {"swing_dia": "swing diameter", "between_centers": "length between centers",
                   "minimum_width_mm": "its narrowest width against the work area's smallest side",
                   "diameter_mm": "its widest extent against the work area's diagonal"}
@@ -798,6 +820,43 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
         else:  # True / available, unbounded
             needed_secondary.append(op)
 
+    # (i) DECLARED-SPEC OPS (finish / heat treatment / inspection) ----------
+    #   Same rule as (h) for "never asked": undeclared is UNKNOWN, not "no". A
+    #   shop that declared it does NOT do the op in-house sends it out: the part
+    #   is still made on this machine, with that op bought outside (its price is
+    #   already the outside service price), so it is not a gap.
+    sent_out: list = []
+    for op in part_req.spec_ops:
+        if op in part_req.required_secondary_ops:
+            continue  # already decided by (h)
+        avail = ops.get(op)
+        words = _SPEC_OP_WORDS.get(op, op.replace("_", " "))
+        if avail is None:
+            failures.append(FitFailure(
+                "secondary_op", op, op, None,
+                f"needs {words}; not declared whether you do it in-house or send it out"))
+        elif avail is False:
+            sent_out.append(op)
+        else:
+            needed_secondary.append(op)
+
+    # (j) CERTIFICATIONS whoever makes the part must hold ---------------------
+    #   Undeclared → UNKNOWN; declared not held → a concrete gap. AS9100 covers
+    #   ISO 9001 (it is ISO 9001 plus aerospace requirements).
+    for cert in part_req.certifications:
+        have = ops.get(cert)
+        if cert == "iso9001" and have is None and ops.get("as9100") not in (None, False):
+            have = True
+        words = _CERT_WORDS.get(cert, cert.replace("_", " "))
+        if have is None:
+            failures.append(FitFailure(
+                "certification", cert, words, None,
+                f"needs {words}; not declared whether your shop holds it"))
+        elif have is False:
+            failures.append(FitFailure(
+                "certification", cert, words, False,
+                f"needs {words}; your shop doesn't hold it"))
+
     passes = len(failures) == 0
     resource_hint = None
     if passes:
@@ -807,7 +866,9 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             "rate_basis": "machine_hr",
             "hourly_rate_usd": machine_cap.hourly_rate_usd,
             "capital_frac": machine_cap.capital_frac,
-            "secondary_ops": tuple(dict.fromkeys(needed_secondary)),
+            "secondary_ops": tuple(dict.fromkeys(needed_secondary + sent_out)),
+            # Declared-spec ops the shop sends out (declared not done in-house).
+            **({"sent_out": tuple(dict.fromkeys(sent_out))} if sent_out else {}),
             **({"build_env_mm": tuple(cap[k] for k in ("x", "y", "z"))}
                if part_req.process in {"fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting"}
                and all(_is_number(cap.get(k)) for k in ("x", "y", "z")) else {}),
@@ -1073,6 +1134,9 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
             # own work areas the envelope gate gives the real answer ("too big
             # for your X: needs N, has M", or a fit on a bigger machine of yours).
             dfm = ()
+        # A declared spec the route can't deliver (Ra as made, anodize on steel…)
+        # blocks it like a design rule: no machine closes it.
+        dfm = dfm + tuple(getattr(preq, "spec_failures", ()) or ())
         if dfm:
             # The process's own design rules fail on this geometry as drawn. No
             # machine (owned or outside) closes that, so the route is never
@@ -1184,7 +1248,8 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
         machine_gap = () if any(f.passes for f in fits) else gap_analysis(fits)
         return MakeabilityVerdict(
             verdict="not_makeable",
-            gap=tuple(route_req[route].dfm_failures) + machine_gap,
+            gap=(tuple(route_req[route].dfm_failures)
+                 + tuple(getattr(route_req[route], "spec_failures", ()) or ()) + machine_gap),
             env_exclusions=exclusions_t, per_route=per_route)
 
     return MakeabilityVerdict(verdict="not_makeable", env_exclusions=exclusions_t,
