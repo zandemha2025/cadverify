@@ -796,6 +796,8 @@ def test_oidc_end_to_end_real_provisioning_and_group_role_pg(app, oidc_env, monk
 
     tag = uuid.uuid4().hex[:10]
     org_id = str(ULID())
+    # The mapped org owns this deployment's IdP, so its mappings apply.
+    monkeypatch.setenv("SSO_ORG_ID", org_id)
     email = f"oidc-e2e-{tag}@example.com"
     email_lower = email.lower()
     group_value = f"cad-engineers-{tag}"

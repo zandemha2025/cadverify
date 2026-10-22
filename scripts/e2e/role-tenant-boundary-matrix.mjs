@@ -1412,18 +1412,16 @@ asyncio.run(main())
         });
         this.equal("ROLE-03", "restored member regains analyst mutation", restoredCreate.status, 200);
 
+        // This QA org does not own the deployment's identity provider
+        // (SSO_ORG_ID), so a group mapping in it is refused and nothing is stored.
         const mapping = await this.request(owner, "/api/v1/orgs/saml/group-mappings", {
           method: "POST",
           data: { attribute_name: "groups", group_value: `proofshape-qa-${tag}`, org_role: "member" },
         });
-        this.equal("ROLE-03", "SAML group mapping create status", mapping.status, 201);
-        this.equal("ROLE-03", "SAML group mapping exact role", mapping.json?.org_role, "member");
+        this.equal("ROLE-03", "SAML group mapping outside the IdP's org is refused", mapping.status, 403);
+        this.equal("ROLE-03", "SAML group mapping refusal code", mapping.json?.code, "sso_org_required");
         const mappings = await this.request(owner, "/api/v1/orgs/saml/group-mappings");
-        this.ok("ROLE-03", "SAML group mapping is durable", (mappings.json?.mappings || []).some((item) => item.id === mapping.json?.id));
-        const deleted = await this.request(owner, `/api/v1/orgs/saml/group-mappings/${mapping.json?.id}`, { method: "DELETE" });
-        this.equal("ROLE-03", "SAML group mapping delete status", deleted.status, 200);
-        const afterDelete = await this.request(owner, "/api/v1/orgs/saml/group-mappings");
-        this.equal("ROLE-03", "deleted SAML group mapping is absent", (afterDelete.json?.mappings || []).some((item) => item.id === mapping.json?.id), false);
+        this.equal("ROLE-03", "refused SAML group mapping was not stored", (mappings.json?.mappings || []).length, 0);
 
         await owner.page.goto("/settings/organization", { waitUntil: "domcontentloaded" });
         await owner.page.getByText(inviteEmail, { exact: true }).waitFor({ timeout: 15_000 });
@@ -1434,8 +1432,7 @@ asyncio.run(main())
           inviteId: invite.json?.id,
           inviteStatus: revoked.json?.status,
           analystRole: restored.json?.org_role,
-          mappingId: mapping.json?.id,
-          mappingDeleted: true,
+          mappingRefused: mapping.status === 403,
           screenshot,
         };
         return this.adminLifecyclePersisted;

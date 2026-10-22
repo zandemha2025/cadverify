@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.auth.disposable import normalize_email
-from src.auth.org_context import is_personal_org, revoke_org_api_keys
-from src.db.models import Membership, Organization, ScimIdentity, User
+from src.auth.org_context import revoke_org_api_keys
+from src.db.models import Membership, ScimIdentity, User
 from src.services.org_service import VALID_ORG_ROLES
 
 CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
@@ -305,18 +305,6 @@ async def _users_by_email(session: AsyncSession, email: str) -> list[User]:
             )
         ).scalars().all()
     )
-
-
-async def org_is_personal(session: AsyncSession, org_id: str) -> bool:
-    """True for a personal org (the one every account gets at sign-up)."""
-    row = (
-        await session.execute(
-            select(Organization.name, Organization.slug).where(Organization.id == org_id)
-        )
-    ).first()
-    if row is None:
-        return False
-    return is_personal_org(row[0], row[1])
 
 
 async def _in_org_scope(session: AsyncSession, org_id: str, user_id: int) -> bool:

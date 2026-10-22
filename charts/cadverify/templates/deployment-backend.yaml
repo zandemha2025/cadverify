@@ -88,6 +88,8 @@ spec:
             {{- end }}
             - name: AUTH_MODE
               value: {{ .Values.auth.mode | quote }}
+            - name: SSO_ORG_ID
+              value: {{ .Values.auth.ssoOrgId | default "" | quote }}
             - name: PASSWORD_LOGIN_ENABLED
               value: {{ ternary "1" "0" (has .Values.auth.mode (list "password" "hybrid")) | quote }}
             - name: MAGIC_LINK_ENABLED

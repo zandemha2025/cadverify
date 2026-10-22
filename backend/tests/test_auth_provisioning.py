@@ -214,6 +214,8 @@ async def test_sso_keys_follow_active_org_and_remain_manageable(monkeypatch):
     issuer = "https://idp.example.test"
     identity = FederatedIdentity("oidc", issuer, f"subject-{tag}", True)
     mapped_org_id = str(ULID())
+    # The mapped org owns this deployment's IdP, so its mappings apply.
+    monkeypatch.setenv("SSO_ORG_ID", mapped_org_id)
     group_value = f"cad-key-users-{tag}"
     _reset_engine()
     try:

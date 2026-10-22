@@ -277,9 +277,12 @@ def _assert_production_identity_config() -> None:
     """Validate provider-specific production configuration before serving."""
     from src.auth.oidc import assert_production_oidc_settings
     from src.auth.saml import assert_production_saml_settings
+    from src.auth.sso_org import assert_sso_org_configured
 
     assert_production_saml_settings()
     assert_production_oidc_settings()
+    # SSO group mappings and SAML account linking need the IdP's owning org.
+    assert_sso_org_configured()
 
 
 _assert_production_secrets()

@@ -5,6 +5,12 @@ This service turns a configured claim value into a CadVerify org membership at
 login time. It is deliberately JIT assignment, not SCIM: matching groups can
 grant/promote membership and choose the active org; missing groups never demote
 or deprovision existing memberships.
+
+Mappings belong to the identity provider's own organization: only the org named
+by ``SSO_ORG_ID`` (see ``src.auth.sso_org``) can create one, and sign-in reads
+only that org's mappings. A mapping row in any other org (an older one, or one
+copied elsewhere) is never applied, so it can neither pull this IdP's users into
+another org nor make their sign-in ambiguous.
 """
 from __future__ import annotations
 
@@ -16,6 +22,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.org_context import org_is_personal
+from src.config.public_urls import error_doc_url
+from src.auth.sso_org import SSO_ORG_ENV, sso_org_id
 from src.db.models import Membership, SamlGroupMapping, User
 from src.services.org_service import ORG_ROLE_RANK, VALID_ORG_ROLES
 
@@ -147,6 +156,20 @@ async def create_saml_group_mapping(
     org_role: str,
     created_by: int | None,
 ) -> SamlGroupMapping:
+    owner = sso_org_id()
+    if owner is None or org_id != owner or await org_is_personal(session, org_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "sso_org_required",
+                "message": (
+                    "Group mappings can be set up only in the organization that "
+                    "owns this deployment's single sign-on identity provider "
+                    f"({SSO_ORG_ENV}), never in a personal organization."
+                ),
+                "doc_url": error_doc_url("sso_org_required"),
+            },
+        )
     attr = _clean_config_text(attribute_name, "attribute_name", MAX_ATTRIBUTE_NAME_LEN)
     value = _clean_config_text(group_value, "group_value", MAX_GROUP_VALUE_LEN)
     role = _validate_org_role(org_role)
@@ -215,6 +238,10 @@ async def resolve_saml_group_assignment(
     normalized = normalize_saml_attributes(attributes)
     if not normalized:
         return SamlGroupAssignment(matched=False)
+    owner = sso_org_id()
+    if owner is None:
+        # No org owns this IdP, so no mapping is trusted to place its users.
+        return SamlGroupAssignment(matched=False, attribute_names=tuple(sorted(normalized)))
 
     pairs = {
         (attribute_name, group_value)
@@ -226,6 +253,7 @@ async def resolve_saml_group_assignment(
     rows = (
         await session.execute(
             select(SamlGroupMapping).where(
+                SamlGroupMapping.org_id == owner,
                 SamlGroupMapping.attribute_name.in_(sorted(normalized)),
                 SamlGroupMapping.group_value.in_(values),
             )

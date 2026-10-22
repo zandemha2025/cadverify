@@ -35,6 +35,10 @@ serviceAccount:
 auth:
   mode: saml
   publicPasswordSignup: false
+  # Replace with the id of the organization that owns the agency IdP (or "none"
+  # for the first install, then the real id once that organization exists); see
+  # docs/REGULATED_PRODUCTION_RUNBOOK.md.
+  ssoOrgId: replace-me-idp-owning-org-id
 
 reconstruction:
   backend: local

@@ -24,7 +24,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.db.models import ApiKey, Batch, Membership, User
+from src.db.models import ApiKey, Batch, Membership, Organization, User
 
 # org_role values allowed by the memberships CHECK constraint (migration 0009).
 ORG_ROLES = ("admin", "member", "viewer")
@@ -79,6 +79,18 @@ def is_personal_org(name: object, slug: object) -> bool:
     stem = _SLUG_SANITIZE.sub("-", local.lower()).strip("-") or "org"
     prefix = f"{stem}-"
     return slug.startswith(prefix) and _SHORT_ULID_RE.fullmatch(slug[len(prefix):]) is not None
+
+
+async def org_is_personal(session: AsyncSession, org_id: str) -> bool:
+    """True for a personal org (the one every account gets at sign-up)."""
+    row = (
+        await session.execute(
+            select(Organization.name, Organization.slug).where(Organization.id == org_id)
+        )
+    ).first()
+    if row is None:
+        return False
+    return is_personal_org(row[0], row[1])
 
 
 def caller_org_subquery(user_id: int):

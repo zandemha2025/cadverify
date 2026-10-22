@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.org_context import org_is_personal
 from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role
 from src.db.engine import get_db_session
 from src.services import scim_service as svc
@@ -83,7 +84,7 @@ async def _org_id(ctx: OrgAuthContext, session: AsyncSession) -> str:
         raise _scim_org_required(
             "SCIM provisioning requires an org-scoped admin API key."
         )
-    if await svc.org_is_personal(session, ctx.org_id):
+    if await org_is_personal(session, ctx.org_id):
         raise _scim_org_required(
             "SCIM provisioning works only for a shared organization, not a "
             "personal one. Create an organization for your team and use an "

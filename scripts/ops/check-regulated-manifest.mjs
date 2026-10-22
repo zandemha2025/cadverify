@@ -28,6 +28,7 @@ const checks = [
   ["HTTPS redirect enforced", /nginx\.ingress\.kubernetes\.io\/ssl-redirect: ["']?true["']?/.test(manifest)],
   ["backend ingress is limited to /api/v1", /^\s*- path: \/api\/v1$/m.test(manifest) && !/^\s*- path: \/api$/m.test(manifest)],
   ["public share pages remain on Next", !/^\s*- path: \/s$/m.test(manifest)],
+  ["backend names the org that owns the IdP", /name: SSO_ORG_ID\s*\n\s*value: ["']?[^"'\s]+["']?/.test(manifest)],
   ["SSO and SCIM ingress routes rendered", /^\s*- path: \/auth$/m.test(manifest) && /^\s*- path: \/scim\/v2$/m.test(manifest)],
   ["no mutable latest image", !/^\s*image: .*:latest\s*$/m.test(manifest)],
   ["images pinned by sha256 digest", (manifest.match(/^\s*image: ["']?.+@sha256:[a-f0-9]{64}["']?\s*$/gm) || []).length >= 4],
