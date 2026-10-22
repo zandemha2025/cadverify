@@ -69,7 +69,7 @@ def test_spec_excluded_routes_say_why_outside_too():
     fdm = next(e for e in out["estimates"] if e["process"] == "fdm")
     assert fdm["spec_excluded"] is True and "MakerVerse" in fdm["spec_exclusion_reason"]
     assert fdm["spec_findings"][0]["code"] == "SPEC_RA_UNREACHABLE"
-    assert set(fdm["spec_findings"][0]) <= set(outbound._ISSUE_KEYS)
+    assert set(fdm["spec_findings"][0]) <= set(outbound._ISSUE_KEYS) | {"citation"}
 
 
 def test_rfq_item_carries_the_buyer_specs_and_drops_unknown_keys():

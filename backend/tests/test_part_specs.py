@@ -94,7 +94,9 @@ def test_fdm_cannot_print_ra_0_4_but_a_mill_grinds_to_it():
     assert fdm.excluded
     f = fdm.findings[0]
     assert f["code"] == "SPEC_RA_UNREACHABLE" and f["required_value"] == 0.4 and f["measured_value"] == 10.0
-    assert "MakerVerse" in f["message"] and "isn't priced" in f["message"]
+    assert f["message"] == ("Filament printing (FDM/FFF) prints at Ra 10–25 µm; Ra 0.4 µm needs machining and "
+                            "polishing after, which isn't priced here. Source: MakerVerse 3D-printing roughness guide.")
+    assert f["citation"]["standard"].startswith("MakerVerse, Understanding surface roughness")
     mill = ps.evaluate_route(specs, "cnc_3axis", "6061-T6 Aluminum", "aluminum")
     assert not mill.excluded
     assert mill.ops == ["fine_finish"] and mill.shop_ops == ["grinding"]

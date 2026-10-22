@@ -194,6 +194,28 @@ SRC_MV = "MakerVerse, Understanding surface roughness in 3D printing"
 SRC_XOM = "Xometry Europe, Surface roughness in 3D printing"
 SRC_EBM = "Defect analysis of as-built EBM Ti6Al4V (Arizona State University): Ra 6–27 µm by side and build direction"
 
+# Short names for the roughness sources, as a finding cites them.
+_SHORT = {
+    SRC_MH: "Machinery's Handbook roughness chart",
+    SRC_MV: "MakerVerse 3D-printing roughness guide",
+    SRC_XOM: "Xometry 3D-printing roughness guide",
+    SRC_EBM: "ASU study of as-built EBM Ti6Al4V",
+    SRC_ASSUMED: "ScaleCAD's assumption",
+}
+
+
+def short_source(src: str) -> str:
+    """"Machinery's Handbook roughness chart" for the long citation (the start of it)."""
+    for long, short in _SHORT.items():
+        if src.startswith(long):
+            return short
+    return src.split(" (")[0]
+
+
+def _cap(words: str) -> str:
+    return words[:1].upper() + words[1:]
+
+
 # process value → (finest typical Ra as made, coarsest typical, source, how it is made)
 RA_AS_MADE: dict = {
     "fdm": (10.0, 25.0, SRC_MV, "prints at"),
@@ -542,17 +564,19 @@ def evaluate_route(specs: dict, process: str, material_name: str, material_class
         elif fam in _MACHINED_FAMILIES and ra >= FINE_FINISH_FLOOR_UM:
             r.ops.append("fine_finish")
             r.shop_ops.append("grinding")
-            r.notes.append(f"{words.capitalize()} {verb} {rng} ({src}); Ra {_g(ra)} µm takes grinding "
-                           f"or polishing after, priced as a fine-finish line.")
+            r.notes.append(f"{_cap(words)} {verb} {rng}; Ra {_g(ra)} µm takes grinding or polishing "
+                           f"after, priced as a fine-finish line. Source: {short_source(src)}.")
         else:
             after = ("lapping or superfinishing, which isn't priced"
                      if fam in _MACHINED_FAMILIES else
                      "machining and polishing after, which isn't priced here")
             r.findings.append(_finding(
                 "SPEC_RA_UNREACHABLE", process,
-                f"{words.capitalize()} {verb} {rng} ({src}); Ra {_g(ra)} µm needs {after}.",
+                f"{_cap(words)} {verb} {rng}; Ra {_g(ra)} µm needs {after}. "
+                f"Source: {short_source(src)}.",
                 "Choose a machined route, or allow a rougher finish.",
                 measured=best, required=ra, unit="µm Ra"))
+            r.findings[-1]["citation"] = {"standard": src}
     r.excluded = bool(r.findings)
     return r
 
