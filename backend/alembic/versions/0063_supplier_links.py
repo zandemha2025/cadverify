@@ -10,7 +10,9 @@ unless the buyer turns that on for that link (``src.services.share_links``):
 * ``rfq_packages`` gets the link columns a record has (0053): ``is_public``,
   ``share_short_id``, ``share_created_at``, ``share_created_by``,
   ``share_expires_at``, ``share_revoked_at``, plus ``share_options``, so a
-  package is shared as one link. A partial index finds a package by its short id.
+  package is shared as one link. A partial unique index finds a package by its
+  short id, so a public link can never match two packages (as analyses, 0002,
+  and cost_decisions, 0008).
 
 Additive and nullable (``is_public`` defaults to false), no backfill. Downgrade
 drops the columns: package links stop resolving, and record links show what
@@ -51,7 +53,7 @@ def upgrade():
     op.add_column("rfq_packages", sa.Column("share_expires_at", sa.TIMESTAMP(timezone=True), nullable=True))
     op.add_column("rfq_packages", sa.Column("share_revoked_at", sa.TIMESTAMP(timezone=True), nullable=True))
     op.add_column("rfq_packages", sa.Column("share_options", _json(), nullable=True))
-    op.create_index(INDEX, "rfq_packages", ["share_short_id"],
+    op.create_index(INDEX, "rfq_packages", ["share_short_id"], unique=True,
                     postgresql_where=sa.text("share_short_id IS NOT NULL"))
 
 
