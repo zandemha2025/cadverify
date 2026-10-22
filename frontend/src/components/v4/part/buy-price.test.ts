@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buyCompareText, buyPriceText, readTypedPrice } from "./buy-price.ts";
+import { buyCompareText, buyPriceText, keepBuyingWhy, makeOrBuy, readTypedPrice } from "./buy-price.ts";
 
 test("what you pay today reads with where it came from (oo-21)", () => {
   assert.equal(buyPriceText({ usd_each: 12.4, source: "you" }), "$12.40 each · you entered it");
@@ -23,4 +23,16 @@ test("a typed price is read in dollars with an optional per count", () => {
   assert.equal(readTypedPrice("", ""), null);
   assert.match(String(readTypedPrice("abc", "")), /US dollars/);
   assert.match(String(readTypedPrice("3", "1.5")), /how many parts/);
+});
+
+test("make or buy against what you pay follows the run's rule (op-08)", () => {
+  // RFS-21039 at 500 a year: make $26.17 against $33.05 paid; at 100 the make price is $33.92.
+  assert.equal(makeOrBuy({ usd: 26.17, low: 22.0 }, 33.05), "make");
+  assert.equal(makeOrBuy({ usd: 33.92, low: 34.0 }, 33.05), "buy");
+  // Inside the in-house range: the two can't be told apart; it stays on your machine.
+  assert.equal(makeOrBuy({ usd: 33.92, low: 29.0 }, 33.05), "make");
+  assert.equal(makeOrBuy(null, 33.05), null);
+  assert.equal(makeOrBuy({ usd: 10 }, null), null);
+  assert.equal(keepBuyingWhy({ usd: 33.92, low: 34.0, high: 40.1, machine: "Haas VF-2" }, 33.05),
+    "What you pay today, $33.05 each, is below making it on your Haas VF-2 ($33.92 each, $34.00–$40.10).");
 });

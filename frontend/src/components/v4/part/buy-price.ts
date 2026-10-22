@@ -47,6 +47,27 @@ export function buyCompareText(b: BuyPrice | null | undefined, make: { usd: numb
   return `${lead} costs ${times >= 1.95 ? `${times.toFixed(1)}×` : `${money(-diff)} more than`} what you pay${times >= 1.95 ? "" : " each"}: buying it is cheaper.`;
 }
 
+export type MakeOrBuy = "make" | "buy";
+
+/**
+ * Making it on your machine against what you pay today, by the run's own rule
+ * (catalog_run_service.make_or_buy_pick): make when your machine costs no more
+ * than what you pay; buy when what you pay is below the low end of the in-house
+ * range; in between, the two can't be told apart and it stays on your machine.
+ */
+export function makeOrBuy(make: { usd: number; low?: number | null } | null, priceEach: number | null | undefined): MakeOrBuy | null {
+  if (!make || priceEach == null || !Number.isFinite(priceEach) || priceEach <= 0 || !Number.isFinite(make.usd)) return null;
+  if (make.usd <= priceEach) return "make";
+  const low = make.low != null && Number.isFinite(make.low) ? make.low : make.usd;
+  return priceEach < low ? "buy" : "make";
+}
+
+/** Why ScaleCAD's pick is to keep buying: "What you pay, $33.05 each, is below making it on your Haas VF-2 ($33.92 each, $31.10–$36.80)." */
+export function keepBuyingWhy(make: { usd: number; low?: number | null; high?: number | null; machine: string }, priceEach: number): string {
+  const range = make.low != null && make.high != null ? `, ${money(make.low)}–${money(make.high)}` : "";
+  return `What you pay today, ${money(priceEach)} each, is below making it on your ${make.machine} (${money(make.usd)} each${range}).`;
+}
+
 /** Read a typed price: "$1,250", "12.40", with a "per" count. Null for nothing typed; an error string when it can't be read. */
 export function readTypedPrice(price: string, per: string): { price_usd: number; per: number } | null | string {
   const p = price.replace(/[$,\s]|usd/gi, "");

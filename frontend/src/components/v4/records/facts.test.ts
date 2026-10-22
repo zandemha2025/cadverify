@@ -161,8 +161,14 @@ test("outcome locks mirror the server: in-house needs your route, outside needs 
   assert.equal(f.redesign, null);
   assert.equal(f.acquire, null);
   const die = { ...forging, process: "die_casting", est: r.estimates.find((e) => e.process === "die_casting")! };
-  assert.ok(Object.values(outcomeLocks(r, die, 10, false)).every((v) => v && /rule out/.test(v)));
-  assert.ok(Object.values(outcomeLocks(r, null, 100, false)).every((v) => v && /No computed price at 100/.test(v)));
+  const { supplier: keepDie, ...onDie } = outcomeLocks(r, die, 10, false);
+  assert.ok(Object.values(onDie).every((v) => v && /rule out/.test(v)));
+  const { supplier: keepNone, ...noRoute } = outcomeLocks(r, null, 100, false);
+  assert.ok(Object.values(noRoute).every((v) => v && /No computed price at 100/.test(v)));
+  // Keep buying from our supplier names no route of ScaleCAD's: only a quantity.
+  assert.equal(keepDie, null);
+  assert.equal(keepNone, null);
+  assert.match(outcomeLocks(r, null, null, false).supplier ?? "", /No priced quantity/);
 });
 
 test("cost inputs keep only dollar drivers and say where each came from", () => {

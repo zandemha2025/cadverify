@@ -278,6 +278,7 @@ const DISPOSITION: Record<string, string> = {
   outside: "make outside",
   acquire: "acquire capability",
   redesign: "redesign",
+  supplier: "keep buying from our supplier",
 };
 
 /** The Event column: "Refused: share a part" for a refused write, else the action's name. */

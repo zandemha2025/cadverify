@@ -25,6 +25,7 @@ import {
   biggestTypicalNote,
   ratesNote,
   verdictAnswer,
+  openingQty,
 } from "./model.ts";
 import type { Method } from "./model.ts";
 import type { CostEstimate } from "@/lib/api";
@@ -522,4 +523,14 @@ test("one material basis: rows say when they're priced in another grade, and can
   assert.equal(by("fdm").runsClass, false);
   // FDM passes DFM but can't run steel: it isn't one of the processes that can make it.
   assert.equal(canMakeCount(methods.filter((m) => m.members.length === 1)), 4);
+});
+
+test("a part opens at its yearly quantity when its record priced it (op-08)", () => {
+  // RFS-21039: 500 a year on the parts list; its record priced 1, 100, 500, 2,000, 5,000, 10,000.
+  assert.equal(openingQty([1, 100, 500, 2000, 5000, 10000], 500), 500);
+  assert.equal(openingQty([1, 100, 800, 2000, 5000, 10000], 800), 800);
+  // Not priced at it, or none declared: 10, else the first priced quantity of 10 or more.
+  assert.equal(openingQty([1, 100, 1000, 2000, 5000, 10000], 750), 100);
+  assert.equal(openingQty([1, 10, 100], null), 10);
+  assert.equal(openingQty([], 500), 1);
 });

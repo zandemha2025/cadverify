@@ -18,7 +18,7 @@ import { R } from "../routes";
 import { cx } from "../ui";
 import { useRegisterPaletteItems, usePalette, type PaletteItem } from "../palette";
 import { LENSES, PartProvider, initialPick, useMethods, type Lens, type PartCtxValue, type PartData, type Toast } from "./ctx";
-import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId } from "./model";
+import { KIND_COLOR, cheapestAt, dimsText, machineViews, methodName, money, nearestComputed, openingQty, priceAt, qtyWord, shortId } from "./model";
 import type { ViewerController, ViewerHighlight, ViewerState } from "./viewer";
 import { no3dTitle } from "./mesh-url";
 import { revisionLine, type Revisions } from "./revision-link";
@@ -104,7 +104,9 @@ export function PartView({
   React.useEffect(() => setData(initial), [initial]);
   const { methods, rows, qs } = useMethods(data);
   const [asked, setAsked] = React.useState<number | null>(initialQty);
-  const startQty = (list: number[]) => (asked != null ? nearestComputed(list, asked, defaultQty(list)) : defaultQty(list));
+  // A part opens at its yearly quantity (its parts list), the one the run answered at (op-08).
+  const yearly = data.context?.resolved_annual_volume ?? data.context?.annual_volume ?? null;
+  const startQty = (list: number[]) => (asked != null ? nearestComputed(list, asked, openingQty(list, yearly)) : openingQty(list, yearly));
   const [q, setQState] = React.useState<number>(() => startQty(qs));
   // Whether the person chose the quantity (picked it here); until then the page follows the
   // default for the quantities priced (np-19: the check handed over before prices, so the page
@@ -122,7 +124,7 @@ export function PartView({
     if (!qs.length) return;
     if (!qs.includes(q) || (!chosen && asked == null && q !== startQty(qs))) setQState(startQty(qs));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qs, q, asked, chosen]);
+  }, [qs, q, asked, chosen, yearly]);
   const setQ = React.useCallback((n: number) => {
     setAsked(null);
     setChosen(true);

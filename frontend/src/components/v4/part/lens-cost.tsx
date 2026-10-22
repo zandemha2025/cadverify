@@ -496,7 +496,31 @@ export function CostSheet() {
             <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0,1fr)", gap: 10, alignItems: "end", padding: "10px 12px 0" }}>
               <label className="field">
                 Other quantity
-                <input type="number" min={1} step={1} inputMode="numeric" placeholder="250" value={p.oq} onChange={(e) => p.setOq(e.target.value)} />
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="250"
+                  value={p.oq}
+                  onChange={(e) => p.setOq(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || oqN == null) return;
+                    e.preventDefault();
+                    // A quantity this record already priced is shown (op-08: 800 + Enter stayed at 100);
+                    // a new one is priced, as its button does.
+                    if (p.qs.includes(oqN)) {
+                      p.setQ(oqN);
+                      p.setOq("");
+                    } else if (oq.on && p.canRecheck && !p.checking) p.recheck({ qty: oqN });
+                  }}
+                  onBlur={() => {
+                    if (oqN != null && p.qs.includes(oqN)) {
+                      p.setQ(oqN);
+                      p.setOq("");
+                    }
+                  }}
+                />
               </label>
               <span className="num" style={{ fontSize: 12.5, color: "var(--ink2)", paddingBottom: 9, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} aria-live="polite">
                 <span>{oq.text}</span>

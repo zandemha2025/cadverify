@@ -59,28 +59,26 @@ export async function loadSavedPart(key: string, recordId: string | null = null)
     listMachines().then((p) => p.machines).catch(() => [] as OwnedMachine[]),
   ]);
   const decisions = page.cost_decisions ?? [];
-  let latest: CostDecisionDetail | null = null;
-  let latestError: string | null = null;
-  if (recordId) {
-    // Only a record of this part: another part's id in the URL is ignored.
-    latest = await fetchCostDecision(recordId).then((d) => (d.mesh_hash === key ? d : null)).catch(() => null);
-  }
-  if (!latest && decisions[0]) {
-    try {
-      latest = await fetchCostDecision(decisions[0].id);
-    } catch (e) {
-      latestError = msg(e, "The saved record didn't load.");
-    }
-  }
-  let validation: ValidationResult | null = null;
   const analysisId = catalog?.analysis?.id ?? null;
-  if (analysisId) {
-    try {
-      validation = (await fetchAnalysis(analysisId)).result_json;
-    } catch {
-      validation = null;
+  // The record and the analysis load side by side, not one after the other (phone load time).
+  const record = async (): Promise<{ latest: CostDecisionDetail | null; latestError: string | null }> => {
+    let latest: CostDecisionDetail | null = null;
+    if (recordId) {
+      // Only a record of this part: another part's id in the URL is ignored.
+      latest = await fetchCostDecision(recordId).then((d) => (d.mesh_hash === key ? d : null)).catch(() => null);
     }
-  }
+    if (!latest && decisions[0]) {
+      try {
+        latest = await fetchCostDecision(decisions[0].id);
+      } catch (e) {
+        return { latest: null, latestError: msg(e, "The saved record didn't load.") };
+      }
+    }
+    return { latest, latestError: null };
+  };
+  const analysis = (): Promise<ValidationResult | null> =>
+    analysisId ? fetchAnalysis(analysisId).then((a) => a.result_json).catch(() => null) : Promise.resolve(null);
+  const [{ latest, latestError }, validation] = await Promise.all([record(), analysis()]);
   return { decisions, hasMore: !!page.has_more, latest, latestError, catalog, validation, analysisId, context, machines };
 }
 

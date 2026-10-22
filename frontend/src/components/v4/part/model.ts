@@ -425,6 +425,18 @@ export function defaultQty(qs: number[]): number {
   return qs.find((q) => q >= 10) ?? qs[qs.length - 1] ?? 1;
 }
 
+/**
+ * The quantity a part opens at: its declared yearly quantity (a catalog run's
+ * parts list, or set on the part) when the record priced it, so the part page,
+ * its Decision and the run answer at the same quantity (op-08); else
+ * `defaultQty` (10, else the first priced quantity of 10 or more, else the
+ * largest). The backend's catalog_service opening quantity follows this rule.
+ */
+export function openingQty(qs: number[], yearly: number | null | undefined): number {
+  if (yearly != null && yearly > 0 && qs.includes(yearly)) return yearly;
+  return defaultQty(qs);
+}
+
 export interface MakeRow {
   kind: "group" | "row";
   label?: string;
@@ -973,7 +985,7 @@ export function machineViews(machines: OwnedMachine[], methods: Method[], cost: 
 
 /* ── decide ────────────────────────────────────────────────────────────── */
 
-export type Disposition = "inhouse" | "outside" | "acquire" | "redesign";
+export type Disposition = "inhouse" | "outside" | "acquire" | "redesign" | "supplier";
 
 export interface DecideOption {
   id: string;

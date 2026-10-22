@@ -25,7 +25,7 @@ export interface RowGov {
   record_out_of_date?: boolean;
 }
 
-const OUTCOME: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
+const OUTCOME: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign", supplier: "Keep buying from our supplier" };
 
 /** "Anodize, Type II · Ra 1.6 µm · FAI" — the declared specs, without the inspection default. */
 export function rowSpecLine(r: RowGov): string | null {

@@ -32,7 +32,7 @@ import "./part.css";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
 
-const DISPOSITION: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
+const DISPOSITION: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign", supplier: "Keep buying from our supplier" };
 
 function when(iso: string): string {
   const d = new Date(iso);

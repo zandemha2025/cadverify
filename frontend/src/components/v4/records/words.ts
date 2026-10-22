@@ -103,6 +103,7 @@ export const OUTCOMES = [
   { key: "outside", label: "Make outside" },
   { key: "acquire", label: "Acquire capability" },
   { key: "redesign", label: "Redesign" },
+  { key: "supplier", label: "Keep buying from our supplier" },
 ] as const;
 
 export type OutcomeKey = (typeof OUTCOMES)[number]["key"];

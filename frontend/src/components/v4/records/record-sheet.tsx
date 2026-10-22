@@ -101,7 +101,10 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
     return () => window.removeEventListener("keydown", onKey);
   }, [confirm]);
 
-  const selected = (k: OutcomeKey) => dec === k && !!basis && !!route && basis.quantity === q && basis.process === route.process && basis.material === route.material;
+  // "Keep buying from our supplier" names no route of ScaleCAD's: only its quantity.
+  const selected = (k: OutcomeKey) =>
+    k === "supplier" ? dec === k && !!basis && basis.quantity === q : dec === k && !!basis && !!route && basis.quantity === q && basis.process === route.process && basis.material === route.material;
+  const basisWords = (sep: string) => (!basis ? "" : basis.supplier ? `${sep}at ${num(basis.quantity)}` : `${sep}${way(basis.process)}${sep}at ${num(basis.quantity)}`);
 
   const run = async (name: string, fn: () => Promise<unknown>, ok: string) => {
     if (busy) return;
@@ -127,6 +130,11 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
       return;
     }
     setWhy(null);
+    if (k === "supplier") {
+      if (selected(k) || q == null) return;
+      void run(k, () => setOutcome(detail.id, { disposition: k, note, quantity: q }), reopened("Outcome saved"));
+      return;
+    }
     if (selected(k) || !route || q == null) return;
     void run(k, () => setOutcome(detail.id, { disposition: k, note, quantity: q, process: route.process, material: route.material }), reopened("Outcome saved"));
   };
@@ -198,7 +206,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
         <div className="gh">
           <span>Outcome</span>
           <span>
-            {dec ? `${outcomeLabel(dec)}${basis ? ` · ${wayLower(basis.process)} at ${num(basis.quantity)}` : ""}` : "None recorded"}
+            {dec ? `${outcomeLabel(dec)}${basis ? (basis.supplier ? ` · at ${num(basis.quantity)}` : ` · ${wayLower(basis.process)} at ${num(basis.quantity)}`) : ""}` : "None recorded"}
           </span>
         </div>
         {canEdit ? (
@@ -301,7 +309,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
           <div style={{ padding: "6px 12px 0", display: "flex", flexDirection: "column", gap: 8 }}>
             <span className={cx("opt ro", dec && "on")} aria-label={dec ? `Recorded outcome: ${outcomeLabel(dec)}` : "No outcome recorded"}>
               <i aria-hidden="true" />
-              {dec ? `${outcomeLabel(dec)}${basis ? ` · ${way(basis.process)} · at ${num(basis.quantity)}` : ""}` : "No outcome recorded"}
+              {dec ? `${outcomeLabel(dec)}${basisWords(" · ")}` : "No outcome recorded"}
             </span>
             {savedNote ? <p style={{ margin: 0, fontSize: 13, color: "var(--ink2)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{savedNote}</p> : null}
             <p className="ro-note" style={{ margin: 0 }}>

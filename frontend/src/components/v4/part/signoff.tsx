@@ -84,6 +84,8 @@ export function SignOff({ id, gov, onChange }: { id: string | null; gov: CostDec
   const signed = gov.approval_status === "approved";
   const stale = !!gov.is_stale;
   const can = !!r?.can_sign_off;
+  // The quantity the outcome was recorded at: what the sign-off is for (op-08).
+  const at = gov.disposition_basis?.quantity ? ` · at ${gov.disposition_basis.quantity.toLocaleString("en-US")} parts` : "";
 
   const run = async (method: "POST" | "DELETE") => {
     setBusy(true);
@@ -106,6 +108,7 @@ export function SignOff({ id, gov, onChange }: { id: string | null; gov: CostDec
         {signed ? (
           <span>
             {so?.by ?? "Signed off"} · {when(so?.at ?? gov.approved_at)}
+            {at}
             {(so?.note ?? gov.approval_note) ? ` · “${so?.note ?? gov.approval_note}”` : ""}
           </span>
         ) : (
@@ -128,7 +131,9 @@ export function SignOff({ id, gov, onChange }: { id: string | null; gov: CostDec
             <button className="btn sm ink" type="button" disabled={busy} onClick={() => void run("POST")}>
               {busy ? "Signing off…" : "Sign off"}
             </button>
-            <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>Your name and the time go on the record. A changed outcome reopens it.</span>
+            <span style={{ color: "var(--ink3)", fontSize: 12.5 }}>
+              Signs off {gov.user_disposition_label ?? "the outcome"}{at.replace(" · ", " ")}. Your name and the time go on the record. A changed outcome or quantity reopens it.
+            </span>
           </span>
         </>
       ) : null}

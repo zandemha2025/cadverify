@@ -19,9 +19,18 @@ import { enginePick, pairAt, pickWhy } from "./choice";
 import { SignOff } from "./signoff";
 import { mustHold, normalizeSpecs } from "./specs";
 import { hoursText, massText, routeResources, runLine } from "./resources";
-import { buyCompareText, buyPriceText, readTypedPrice, saveBuyPrice } from "./buy-price";
+import { buyCompareText, buyPriceText, keepBuyingWhy, makeOrBuy, readTypedPrice, saveBuyPrice } from "./buy-price";
 
-const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign" };
+const LABEL: Record<string, string> = { inhouse: "Make in-house", outside: "Make outside", acquire: "Acquire capability", redesign: "Redesign", supplier: "Keep buying from our supplier" };
+
+/** An outcome on the list: the engine's routes, plus "Keep buying from our supplier", which names none of ScaleCAD's. */
+type Option = DecideOption;
+
+/** The part's yearly quantity (its parts list, or set on the part). */
+function yearlyOf(ctx: { resolved_annual_volume?: number | null; annual_volume?: number | null } | null | undefined): number | null {
+  const y = ctx?.resolved_annual_volume ?? ctx?.annual_volume ?? null;
+  return y != null && y > 0 ? y : null;
+}
 
 /** What an outcome's route takes at its quantity (machine time, material), from the engine's estimate for that process. */
 function useRouteRes() {
@@ -46,8 +55,9 @@ function useOptions() {
   const p = usePart();
   const bp = p.data.decision?.disposition_basis?.process ?? null;
   const kind = p.data.decision?.user_disposition ?? null;
+  const price = p.data.context?.buy_price ?? null;
   return React.useMemo(() => {
-    const opts = decideOptions(p.methods, p.data.cost, p.q, p.data.machines.length);
+    const opts: Option[] = decideOptions(p.methods, p.data.cost, p.q, p.data.machines.length);
     // A process chosen in Make ("Make it this way") that isn't one of the listed outcomes: list it too, so the saved one shows.
     if ((kind === "inhouse" || kind === "outside") && bp && !opts.some((o) => o.kind === kind && o.route?.process === bp)) {
       const m = p.methods.find((x) => x.code === bp);
@@ -66,12 +76,23 @@ function useOptions() {
         });
       }
     }
+    // Keep buying from the supplier the part is bought from today, at what you pay (op-08).
+    const at = opts.findIndex((o) => o.kind === "acquire");
+    opts.splice(at < 0 ? opts.length : at, 0, {
+      id: "supplier",
+      kind: "supplier",
+      label: "Keep buying from our supplier",
+      sub: price ? `What you pay today · ${buyPriceText(price)}` : "At what you pay today · no price entered yet",
+      cost: price?.usd_each ?? null,
+      off: false,
+      route: null,
+    });
     return opts;
-  }, [p.methods, p.data.cost, p.q, p.data.machines.length, kind, bp]);
+  }, [p.methods, p.data.cost, p.q, p.data.machines.length, kind, bp, price]);
 }
 
 /** The option the record's saved outcome points at, if it's on the list. */
-function savedOption(opts: DecideOption[], disposition: string | null | undefined, basis: { process: string } | null | undefined): DecideOption | null {
+function savedOption(opts: Option[], disposition: string | null | undefined, basis: { process: string } | null | undefined): Option | null {
   if (!disposition) return null;
   const same = opts.filter((o) => o.kind === disposition);
   const exact = same.find((o) => o.route && basis && o.route.process === basis.process);
@@ -81,9 +102,27 @@ function savedOption(opts: DecideOption[], disposition: string | null | undefine
 }
 
 /** The option ScaleCAD's pick at this quantity lands on (in-house when its rule keeps your machine). */
-function pickOption(opts: DecideOption[], pick: ReturnType<typeof enginePick>): DecideOption | null {
+function pickOption(opts: Option[], pick: ReturnType<typeof enginePick>): Option | null {
   if (!pick) return null;
   return opts.find((o) => !o.off && o.route?.process === pick.process && (o.kind === "inhouse") === pick.inHouse) ?? opts.find((o) => !o.off && o.route?.process === pick.process) ?? null;
+}
+
+/**
+ * ScaleCAD's pick at this quantity. With what you pay today, it is the run's own
+ * rule (make or buy against that price), so the part page and the run agree;
+ * without one, the engine's pick between your machine and the cheapest outside route.
+ */
+function pickAt(p: ReturnType<typeof usePart>, opts: Option[]): { option: Option | null; keepBuying: string | null } {
+  const price = p.data.context?.buy_price?.usd_each ?? null;
+  const supplier = opts.find((o) => o.kind === "supplier") ?? null;
+  const pair = p.costOff ? null : pairAt(p.data.cost, p.q);
+  if (price != null && price > 0) {
+    if (!pair) return { option: supplier, keepBuying: null };
+    const make = { usd: pair.in_house.unit_cost_usd, low: pair.in_house.low_usd, high: pair.in_house.high_usd, machine: pair.in_house.machine ?? methodName(pair.in_house.process) };
+    if (makeOrBuy(make, price) === "buy") return { option: supplier, keepBuying: keepBuyingWhy(make, price) };
+    return { option: opts.find((o) => o.kind === "inhouse" && !o.off) ?? pickOption(opts, enginePick(p.data.cost, p.q)), keepBuying: null };
+  }
+  return { option: pickOption(opts, enginePick(p.data.cost, p.q)), keepBuying: null };
 }
 
 export function useDecideState() {
@@ -91,10 +130,10 @@ export function useDecideState() {
   const opts = useOptions();
   const gov = p.data.decision;
   const saved = savedOption(opts, gov?.user_disposition, gov?.disposition_basis ?? null);
-  const picked = pickOption(opts, enginePick(p.data.cost, p.q));
+  const { option: picked, keepBuying } = pickAt(p, opts);
   // Nothing recorded yet: ScaleCAD's pick is preselected, one click to record or another to change.
   const chosen = opts.find((o) => o.id === p.decidePick) ?? saved ?? (gov?.user_disposition ? null : picked) ?? null;
-  return { opts, gov, saved, chosen, picked, setPick: p.setDecidePick };
+  return { opts, gov, saved, chosen, picked, keepBuying, setPick: p.setDecidePick };
 }
 
 export function DecideTicket() {
@@ -136,7 +175,7 @@ export function DecideTicket() {
 export function DecideSheet() {
   const p = usePart();
   const { user } = useAuth();
-  const { opts, gov, chosen, picked, setPick } = useDecideState();
+  const { opts, gov, chosen, picked, keepBuying, setPick } = useDecideState();
   const views = useMachineViews();
   const resOf = useRouteRes();
   const [note, setNote] = React.useState<string>(gov?.disposition_note ?? "");
@@ -154,7 +193,11 @@ export function DecideSheet() {
   const oqOff = !!p.oq && Number(p.oq) > 0 && !p.qs.includes(Number(p.oq));
   const offAt = oqOff || p.costOff || !p.data.cost;
   const loadErr = !!p.data.decisionError;
-  const isSaved = !!gov?.user_disposition && !!chosen && chosen.kind === gov.user_disposition && (!chosen.route || !gov.disposition_basis || (chosen.route.process === gov.disposition_basis.process && gov.disposition_basis.quantity === p.q));
+  const isSaved =
+    !!gov?.user_disposition && !!chosen && chosen.kind === gov.user_disposition &&
+    (chosen.kind === "supplier"
+      ? (gov.disposition_basis?.quantity ?? null) === p.q
+      : !chosen.route || !gov.disposition_basis || (chosen.route.process === gov.disposition_basis.process && gov.disposition_basis.quantity === p.q));
   const saveOff = !chosen || chosen.off || offAt || loadErr || !id || (isSaved && !noteDirty) || !!busy;
   const saveLabel = isSaved && noteDirty ? "Save note" : isSaved ? "Recorded" : "Record decision";
 
@@ -241,7 +284,7 @@ export function DecideSheet() {
   const owner = user?.email ?? "you";
   const crossover = p.data.cost?.decision?.crossover_qty;
   const enabled = opts.filter((o) => !o.off && !offAt);
-  const roving = (e: React.KeyboardEvent, o: DecideOption) => {
+  const roving = (e: React.KeyboardEvent, o: Option) => {
     const d = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
     if (!d || !enabled.length) return;
     e.preventDefault();
@@ -260,13 +303,18 @@ export function DecideSheet() {
         ? { text: `make it on your ${inHouseName}, then log the hours and cost so the estimate is checked against the job.`, link: "Log a finished job", href: R.actuals }
         : chosen.kind === "outside"
           ? { text: "download the RFQ package below, or share a link, and send it for quotes. ScaleCAD doesn’t send it." }
-          : chosen.kind === "acquire"
-            ? { text: "weigh the machine against your other parts.", link: "Parts it would unlock", href: R.triage }
-            : { text: "fix what blocks it (see Make), then check the revised file." };
+          : chosen.kind === "supplier"
+            ? { text: "nothing changes with your supplier. The record keeps the quantity and what you pay today, so the answer can be checked again when either changes." }
+            : chosen.kind === "acquire"
+              ? { text: "weigh the machine against your other parts.", link: "Parts it would unlock", href: R.triage }
+              : { text: "fix what blocks it (see Make), then check the revised file." };
   const basis = gov?.disposition_basis;
+  // The part's yearly quantity from its parts list: the run's answer is at it (op-08).
+  const yearly = yearlyOf(p.data.context);
+  const yearlyPriced = yearly != null && p.qs.includes(yearly);
   const specsMust = mustHold(normalizeSpecs(p.data.context?.part_specs ?? null));
   const recText = gov?.user_disposition
-    ? `${LABEL[gov.user_disposition] ?? gov.user_disposition}${basis ? `, ${methodName(basis.process).toLowerCase()}` : ""} · ${gov.disposition_updated_at ? new Date(gov.disposition_updated_at).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : ""} · ${basis ? `${qtyWord(basis.quantity)} parts · ` : ""}${shortId(id)}`
+    ? `${LABEL[gov.user_disposition] ?? gov.user_disposition}${basis && !basis.supplier ? `, ${methodName(basis.process).toLowerCase()}` : ""} · ${gov.disposition_updated_at ? new Date(gov.disposition_updated_at).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : ""} · ${basis?.quantity ? `${qtyWord(basis.quantity)} parts · ` : ""}${basis?.supplier && basis.usd_each != null ? `${money(basis.usd_each)} each · ` : ""}${shortId(id)}`
     : "";
   return (
     <>
@@ -279,7 +327,27 @@ export function DecideSheet() {
               <span>Outcome</span>
               <span>each at {qtyWord(p.q)}</span>
             </div>
-            {pair && !p.costOff ? (
+            {yearly != null && yearly !== p.q ? (
+              <p className="note" role="status" style={{ margin: "0 12px 6px" }}>
+                <span>
+                  This part is {qtyWord(yearly)} a year on its parts list; this shows {qtyWord(p.q)}.{" "}
+                  {yearlyPriced ? (
+                    <button className="btn sm" type="button" onClick={() => { p.setQ(yearly); p.setOq(""); }}>
+                      Show {qtyWord(yearly)}
+                    </button>
+                  ) : p.canRecheck ? (
+                    <button className="btn sm" type="button" disabled={p.checking} onClick={() => p.recheck({ qty: yearly })}>
+                      Price {qtyWord(yearly)}
+                    </button>
+                  ) : null}
+                </span>
+              </p>
+            ) : null}
+            {keepBuying ? (
+              <p style={{ margin: "0 12px 6px", color: "var(--ink2)", fontSize: 13 }}>
+                <b style={{ fontWeight: 600 }}>ScaleCAD’s pick:</b> keep buying. {keepBuying}
+              </p>
+            ) : pair && !p.costOff ? (
               <p style={{ margin: "0 12px 6px", color: "var(--ink2)", fontSize: 13 }}>
                 <b style={{ fontWeight: 600 }}>ScaleCAD’s pick:</b> {pickWhy(pair, p.q)}
               </p>

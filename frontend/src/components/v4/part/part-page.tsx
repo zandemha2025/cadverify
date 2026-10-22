@@ -19,7 +19,7 @@ import { keptToastLine } from "./kept-job-model";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
-import { defaultQty, qtyWord, quantitiesOf, withQuantity } from "./model";
+import { openingQty, qtyWord, quantitiesOf, withQuantity } from "./model";
 import { urlSlot, type UrlSlot } from "./mesh-url";
 import { revisionForSession, type Revisions } from "./revision-link";
 import { PartView, type MeshSource } from "./part-view";
@@ -225,7 +225,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       const before = data?.cost ?? null;
       // The records the page knew when pressed: one that appears later was saved meanwhile.
       const knownIds = new Set((saved?.decisions ?? []).map((d) => d.id));
-      const pageQty = opts?.qty ?? askedQty ?? defaultQty(quantitiesOf(before));
+      const pageQty = opts?.qty ?? askedQty ?? openingQty(quantitiesOf(before), saved?.context?.resolved_annual_volume ?? saved?.context?.annual_volume ?? null);
       setStored({ s: "running", what });
       // The button that started it says so where it was pressed (the toast sits by the 3D view).
       const startedAt = Date.now();
@@ -260,7 +260,7 @@ export function PartPage({ partKey }: { partKey: string }) {
           setStored({ s: "error", msg, detail: err?.detail ?? null, limit: !!err?.limit });
         });
     },
-    [file, kept, storedRunning, partKey, saved?.machines, saved?.decisions, showRecord, session?.materialClass, session?.sample, data?.cost, askedQty, shownOrientation],
+    [file, kept, storedRunning, partKey, saved?.machines, saved?.decisions, saved?.context, showRecord, session?.materialClass, session?.sample, data?.cost, askedQty, shownOrientation],
   );
 
   if (!lens) return null;

@@ -290,7 +290,9 @@ export function routeOptions(r: CostReport | null | undefined, q: number | null)
 /** Why each outcome can't be recorded on a route (null = allowed). Mirrors the server's rules. */
 export function outcomeLocks(r: CostReport | null | undefined, route: RouteOption | null, q: number | null, hasMine: boolean): Record<OutcomeKey, string | null> {
   const none = q == null ? "No priced quantity on this record." : `No computed price at ${num(q)}. Pick another quantity.`;
-  const all = (why: string | null) => Object.fromEntries(OUTCOMES.map((o) => [o.key, why])) as Record<OutcomeKey, string | null>;
+  // Keep buying from our supplier needs no route of ScaleCAD's, only a quantity.
+  const all = (why: string | null) =>
+    Object.fromEntries(OUTCOMES.map((o) => [o.key, o.key === "supplier" && q != null ? null : why])) as Record<OutcomeKey, string | null>;
   if (!r || !route || !route.est) return all(none);
   if (r.status === "GEOMETRY_INVALID") return all("The file's geometry didn't pass, so no outcome can be recorded. Check a repaired file.");
   if (route.est.environment_excluded) return all("The part's conditions rule out this route. Pick a route that survives them.");
