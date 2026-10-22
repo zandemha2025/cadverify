@@ -425,6 +425,7 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=20,
             deposition_rate_kg_hr=1.0,  # feedstock deposited per hour (DEFAULT)
             feedstock_mult=1.15,        # near-net overbuild: deposited = net × 1.15 (DEFAULT)
+            machining_stock_mm=2.0,     # stock left on every face to machine off: the DED analyzer's 2–5 mm, its low end (ce-07)
             finish_machining_frac=0.30, # finish-machining allowance as fraction of deposition cost (DEFAULT)
             # Size floor: 2–4 mm beads and 2–5 mm of machining stock on every face
             # (the DED analyzer's citations) stop being near-net on a small part, so
@@ -439,6 +440,7 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=20,
             deposition_rate_kg_hr=3.0,  # wire-arc deposits FAST (DEFAULT)
             feedstock_mult=1.15,
+            machining_stock_mm=3.0,     # the WAAM analyzer's 3–5 mm on every face, its low end (ce-07)
             finish_machining_frac=0.30,
             # Size floor: wire-arc is for large near-net parts; 4–8 mm beads and
             # 3–5 mm of machining stock on every face (the WAAM analyzer's
@@ -826,7 +828,7 @@ _NUMERIC_FIELDS = {
     "plate_removal_hr", "support_removal_hr", "stress_relief_hr_build",
     "support_vol_frac", "metal_am_powder_mult",
     "sinter_hr_build", "sinter_rate", "shrinkage_linear", "parts_per_sinter_batch",
-    "deposition_rate_kg_hr", "feedstock_mult", "finish_machining_frac",
+    "deposition_rate_kg_hr", "feedstock_mult", "finish_machining_frac", "machining_stock_mm",
 }
 
 

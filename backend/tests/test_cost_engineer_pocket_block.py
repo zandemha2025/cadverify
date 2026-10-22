@@ -217,3 +217,37 @@ def test_steel_is_one_grade_across_the_machining_routes():
     assert feas["investment_casting"]["not_priced_reason"].startswith(
         "No steel grade is on file for investment casting, so ScaleCAD doesn't price it in steel")
     assert feas["fdm"]["runs_class"] is False and feas["fdm"]["not_priced_reason"] == "Filament printing (FDM/FFF) can't run steel."
+
+
+# ── ce-07: like-for-like crossover ────────────────────────────────────────────
+
+def test_forging_learns_like_milling_and_says_its_price_is_a_blank(block):
+    """ce-07: "3-axis milling gets a 0.9 learning curve on machine time, Forging gets none,
+    and the forging line says 'a near-net blank: finish machining is not included'".
+    Now the same rule on both: touch labor learns (forging's descaling 0.2 h × $35 = $7.00
+    × 0.584 at 10,000 = $4.09), machine time never; and the forging carries what finishing
+    every face on a 3-axis mill would add, 106.92 cm² ÷ 600 cm²/hr = 0.1782 h × $75 = $13.37."""
+    rates = build_rate_card()
+    mat = select_material(PT.FORGING, "steel", rates)
+    f = cost_breakdown(PT.FORGING, _pocket_block(), mat, "steel", 10000, rates, "US")
+    a10k = (100 + 100 * ((10000 / 100) ** 0.848 - 1) / 0.848) / 10000
+    assert f.line_items["labor"] == pytest.approx(0.2 * 35 * a10k, abs=0.01)
+    assert f.line_items["machine"] == pytest.approx(cost_breakdown(PT.FORGING, _pocket_block(), mat, "steel", 100,
+                                                                   rates, "US").line_items["machine"])
+    assert f.finish_excluded["per_part_usd"] == pytest.approx(106.92 / 600 * 75, abs=0.01)
+    assert "not in this price" in f.finish_excluded["source"]
+    # Finished, the forging at 10,000 is above milling's $27.84: no crossover like-for-like.
+    finished = f.unit_cost_usd + f.finish_excluded["per_part_usd"] + f.finish_excluded["once_usd"] / 10000
+    assert finished > block(10000).unit_cost_usd
+
+
+def test_the_decision_note_says_a_casting_price_is_a_blank():
+    from src.costing.decision import _build_note
+    from types import SimpleNamespace as NS
+
+    make = NS(process="cnc_3axis", material="Mild Steel")
+    tool = NS(process="forging", material="Mild Steel", dfm_ready=True,
+              finish_excluded={"per_part_usd": 13.37, "once_usd": 96.25})
+    note = _build_note(make, tool, None, 100, 10000, 36.69, 19.03, {})
+    assert "Forging's price is a near-net blank without finish machining" in note
+    assert "$13.37 a part and $96.25 once (an upper bound), about $32.41 each at 10,000" in note

@@ -24,6 +24,7 @@ Physics recap (every constant is a DEFAULT assumption, un-validated):
 from __future__ import annotations
 
 import math
+import pytest
 
 from src.analysis.models import ProcessType as PT
 from src.profiles.models import MaterialProfile
@@ -221,15 +222,17 @@ def test_binder_jet_material_reflects_green_oversize_cube():
 
 def test_ded_machine_scales_with_deposited_mass_over_rate():
     """DED/WAAM cycle time = deposited mass ÷ deposition_rate. WAAM deposits 3× faster
-    than DED (3.0 vs 1.0 kg/hr) for identical feedstock ⇒ WAAM cycle = DED cycle ÷ 3."""
+    than DED (3.0 vs 1.0 kg/hr). Since ce-07 the deposit carries machining stock on every
+    face (DED 2 mm, WAAM 3 mm) when that beats the near-net allowance on the volume:
+    30 cm³ + 74 cm² × 0.2 cm = 44.8 cm³ (DED), + 74 × 0.3 = 52.2 cm³ (WAAM), × 4.43 g/cm³."""
     rc, d, mat = build_rate_card(), _drivers(), _ti()
     ded = cost_breakdown(PT.DED, d, mat, "titanium", 100, rc, "US")
     waam = cost_breakdown(PT.WAAM, d, mat, "titanium", 100, rc, "US")
     cyc_ded = _driver(ded, "cycle_time").value
     cyc_waam = _driver(waam, "cycle_time").value
     assert cyc_ded > cyc_waam
-    # rate ratio 3.0/1.0 => DED cycle ~ 3× WAAM cycle (same feedstock_mult)
-    assert abs(cyc_ded / cyc_waam - 3.0) < 0.05
+    assert cyc_ded == pytest.approx(44.8 * 4.43 / 1000 / 1.0, abs=1e-4)
+    assert cyc_waam == pytest.approx(52.2 * 4.43 / 1000 / 3.0, abs=1e-4)
 
 
 def test_ded_waam_carry_the_widest_band():

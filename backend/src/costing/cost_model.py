@@ -48,7 +48,15 @@ def _print_note() -> str:
 # Master on/off for the volume/learning economics (S1 fix). Defaults ON. Set
 # CADVERIFY_CNC_LEARNING=0 to recover the flat, volume-invariant conversion cost.
 # (A learning_rate=1.0 rate override is the equivalent per-quote off-switch.)
-_LEARNING_FAMILIES = {"subtractive", "fabrication"}
+# ce-07: the same rule on every process: touch labor learns from the first lot of
+# ``learning_first_lot`` parts (100, machining's first lot), machine-paced time never.
+_LEARNING_FAMILIES = {"subtractive", "fabrication", "casting", "forging", "edm", "formative",
+                      "additive", "metal_powder_bed", "binder_jet", "ded"}
+
+
+def learning_first_lot(rates: RateCard) -> float:
+    """The first lot every process's touch labor learns from (the rate card's hours are its standard)."""
+    return float(rates.data["global"].get("learning_first_lot", 100))
 
 
 def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
@@ -439,6 +447,21 @@ def _metal_am_post(process, n, rates: RateCard):
     ]
 
 
+def _deposit_overbuild(process, drivers, rates: RateCard) -> tuple:
+    """(cm³ deposited beyond the part, words). A deposited part carries machining stock
+    on every face (2–5 mm for DED, 3–5 mm for WAAM, the analyzers' citations), so a
+    thin wall is deposited several times its own thickness: the overbuild is the larger
+    of the near-net allowance on the volume and the stock on the surface (ce-07)."""
+    fm = rates.p(process, "feedstock_mult")
+    stock_mm = rates.pget(process, "machining_stock_mm", 2.0 if process == PT.DED else 3.0)
+    by_volume = drivers.volume_cm3 * max(fm - 1.0, 0.0)
+    by_surface = drivers.surface_area_cm2 * stock_mm / 10.0
+    if by_surface > by_volume:
+        return by_surface, (f"{stock_mm:g} mm of machining stock on its {drivers.surface_area_cm2:.1f} cm² "
+                            f"= {by_surface:.1f} cm³ overbuild")
+    return by_volume, f"×{fm - 1.0:g} near-net overbuild = {by_volume:.1f} cm³"
+
+
 def _ded_cycle(process, drivers, material, rates: RateCard):
     """DED / WAAM deposition-rate cycle: deposited feedstock mass ÷ deposition rate.
 
@@ -450,11 +473,11 @@ def _ded_cycle(process, drivers, material, rates: RateCard):
     (machine_hr, deposited_kg, src).
     """
     net_mass = drivers.mass_kg(material.density)
-    fm = rates.p(process, "feedstock_mult")
-    deposited = net_mass * fm
+    overbuild_cm3, ob_words = _deposit_overbuild(process, drivers, rates)
+    deposited = (drivers.volume_cm3 + overbuild_cm3) * material.density / 1000.0
     rate_kg_hr = rates.p(process, "deposition_rate_kg_hr")
     machine_hr = deposited / rate_kg_hr if rate_kg_hr > 0 else 0.0
-    src = (f"deposit {deposited:.4f}kg (net {net_mass:.4f}kg × {fm:g} near-net overbuild) "
+    src = (f"deposit {deposited:.4f}kg (net {net_mass:.4f}kg + {ob_words}) "
            f"÷ {rate_kg_hr:g}kg/hr deposition = {machine_hr:.4f}hr  (a rough deposition-rate "
            f"model: real deposition time depends on the part, the path and the shop; "
            f"typical value, not confirmed by a shop)")
@@ -587,12 +610,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     elif process in DED_FAMILY:
         # feedstock (wire/powder) = net part mass × near-net overbuild, at material price
         net_mass = drivers.mass_kg(material.density)
-        fm = rates.p(process, "feedstock_mult")
-        input_mass = net_mass * fm
-        mass_src = (f"feedstock (wire/powder) = net {kg_text(net_mass)} kg × {fm:g} near-net "
-                    f"overbuild (CAD volume {drivers.volume_cm3:.2f} cm³ × {material.name} "
-                    f"density {material.density:.2f} g/cm³) [DED/WAAM assumption, not "
-                    f"shop-validated]")
+        _ob_cm3, _ob_words = _deposit_overbuild(process, drivers, rates)
+        input_mass = (drivers.volume_cm3 + _ob_cm3) * material.density / 1000.0
+        mass_src = (f"feedstock (wire/powder) = net {kg_text(net_mass)} kg (CAD volume "
+                    f"{drivers.volume_cm3:.2f} cm³ × {material.name} density {material.density:.2f} "
+                    f"g/cm³) + {_ob_words} [DED/WAAM assumption, not shop-validated]")
     elif print_plan is not None:
         est, _placement = print_plan
         input_mass = est.material_cm3 * material.density / 1000.0
@@ -746,8 +768,9 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # sets up each plate: setups follow the plates the order fills.
     per_plate = lot_raw == "build"
     n_setups = max(1.0, qty / lot_size) if per_plate else 1.0
-    learn_mult, learn_src = _learning_multiplier(family, qty, lot_size, rates)
-    qm["learning"] = _learning_params(family, lot_size, rates)
+    learn_anchor = learning_first_lot(rates)
+    learn_mult, learn_src = _learning_multiplier(family, qty, learn_anchor, rates)
+    qm["learning"] = _learning_params(family, learn_anchor, rates)
 
     # formative: a multi-cavity tool makes n_cavities parts per machine cycle
     cav_div = n_cavities if family == "formative" else 1
@@ -795,7 +818,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
     learn_note = (f" × {learn_mult:.3f} learning (the average part of {qty:,}, from the first lot of "
-                  f"{lot_size:g})") if learn_mult != 1.0 else ""
+                  f"{learn_anchor:g})") if learn_mult != 1.0 else ""
     if rl_machine != rl:
         _frac = rates.g("machine_labor_frac")
         region_mach_note = (f" × region-machine ×{rl_machine:g} (labor {_frac:g} of "
@@ -1086,9 +1109,18 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     if family == "metal_powder_bed":
         for line_key, drv_name, comp_hr, comp_src in _metal_am_post(process, n, rates):
             comp_cost = comp_hr * labor_rate * rl * mgn * burden
+            # ce-07: cutting parts off the plate and grinding supports are hand work and
+            # learn like any touch labor; the stress-relief furnace cycle doesn't.
+            touch = line_key != "stress_relief" and qm["learning"] is not None
+            if touch:
+                qm["learning_usd"] += comp_cost
+                comp_cost *= learn_mult
+                if learn_note:
+                    comp_src += learn_note
+            else:
+                qm["per_part_usd"] += comp_cost
             metal_post_items[line_key] = round(comp_cost, 4)
             extra_variable += comp_cost
-            qm["per_part_usd"] += comp_cost
             drivers_out.append(Driver(
                 name=drv_name, value=round(comp_cost, 4), unit="$",
                 provenance=Provenance.DEFAULT,
@@ -1120,8 +1152,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # setup and programming once for the order. (It was 30% of the deposition
         # cost, which put a wire-arc block level with milling it from solid.)
         mill = PT.CNC_3AXIS
-        fm = rates.p(process, "feedstock_mult")
-        overbuild_cm3 = drivers.volume_cm3 * max(fm - 1.0, 0.0)
+        overbuild_cm3, _ob_words = _deposit_overbuild(process, drivers, rates)
         mrr = rates.mrr(material_class)
         rough_hr = overbuild_cm3 / (mrr * 60.0) if mrr > 0 else 0.0
         finish_hr = drivers.surface_area_cm2 / rates.p(mill, "finish")
@@ -1129,20 +1160,31 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mill_rate = rates.p(mill, "machine_rate")
         per_part = mill_hr * mill_rate * rl_machine * mgn * burden
         once_hr = rates.p(mill, "setup_hr") + rates.pget(mill, "nre_hr")
-        once = once_hr * labor_rate * rl * mgn * burden
-        ded_finish_scaled = per_part + once / qty
-        extra_variable += per_part
+        # ce-07: like-for-like with milling the part: the mill's hand work and handling
+        # allowance and its inspection (first article once, in-process each part), on
+        # the same basis and learning as the 3-axis route.
+        hand_hr = rates.p(mill, "post_hr_part")
+        fai_hr_mill = rates.pget(mill, "fai_hr")
+        insp_hr_mill = rates.pget(mill, "inspect_hr_part")
+        once_hr_all = once_hr + fai_hr_mill
+        once = once_hr_all * labor_rate * rl * mgn * burden
+        touch_part = (hand_hr + insp_hr_mill) * labor_rate * rl * mgn * burden
+        ded_finish_scaled = per_part + once / qty + touch_part * learn_mult
+        extra_variable += per_part + touch_part * learn_mult
         extra_fixed += once
         qm["per_part_usd"] += per_part
         qm["once_usd"] += once
+        qm["learning_usd" if qm["learning"] else "per_part_usd"] += touch_part
         drivers_out.append(Driver(
             name="finish_machining", value=round(ded_finish_scaled, 4), unit="$",
             provenance=Provenance.DEFAULT,
             source=(f"finish machining on a 3-axis mill (a deposited part is near-net): mill off the "
                     f"{overbuild_cm3:.1f} cm³ overbuild ({rough_hr:.3f} hr) and finish {drivers.surface_area_cm2:.1f} cm² "
-                    f"({finish_hr:.3f} hr) = {mill_hr:.3f} hr × ${mill_rate:g}/hr, + the mill's setup and "
-                    f"programming {once_hr:g} hr × ${labor_rate:g}/hr once for the order ÷ {qty}{conversion_note} "
-                    f"(typical value, not confirmed by a shop)"),
+                    f"({finish_hr:.3f} hr) = {mill_hr:.3f} hr × ${mill_rate:g}/hr, + the mill's setup, "
+                    f"programming and first article {once_hr_all:g} hr × ${labor_rate:g}/hr once for the order "
+                    f"÷ {qty}, + the 3-axis route's hand work and handling {hand_hr:g} hr and in-process "
+                    f"inspection {insp_hr_mill:g} hr a part × ${labor_rate:g}/hr{learn_note}{conversion_note}, "
+                    f"as milling the part prices them (typical value, not confirmed by a shop)"),
             error_band_pct=band,
         ))
 
@@ -1246,6 +1288,25 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         tooling_cost = 0.0
 
     tooling_amort_scaled = (tooling_cost / qty) * rt * mgn
+    # ce-07: a casting or forging is priced as a near-net blank. What finishing it on a
+    # 3-axis mill would add (every face, so an upper bound) rides along, not in the
+    # price, so a comparison with a machined route can say so and show both.
+    finish_excluded = None
+    if family in ("casting", "forging"):
+        _mill = PT.CNC_3AXIS
+        _f_hr = drivers.surface_area_cm2 / rates.p(_mill, "finish")
+        _f_rate = rates.p(_mill, "machine_rate")
+        _f_once_hr = rates.p(_mill, "setup_hr") + rates.pget(_mill, "nre_hr")
+        finish_excluded = {
+            "per_part_usd": round(_f_hr * _f_rate * rl_machine * mgn * burden, 4),
+            "once_usd": round(_f_once_hr * labor_rate * rl * mgn * burden, 4),
+            "source": (f"not in this price: finishing every face on a 3-axis mill, "
+                       f"{drivers.surface_area_cm2:.1f} cm² ÷ {rates.p(_mill, 'finish'):g} cm²/hr = {_f_hr:.3f} hr × "
+                       f"${_f_rate:g}/hr a part, + its setup and programming {_f_once_hr:g} hr × "
+                       f"${labor_rate:g}/hr once; an upper bound, since a "
+                       f"{'casting' if family == 'casting' else 'forging'} usually needs only some faces "
+                       f"machined (typical value, not confirmed by a shop)"),
+        }
     if tooling_cost > 0:
         # ce-04: the tool is its own line. The whole tool is paid once (unit "$/tool",
         # never in a column of per-part values); each part carries its share. Tool
@@ -1407,6 +1468,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         material_mass=material_mass,
         qty_model=qtymod.finish(qm),
         band_basis=band_basis,
+        finish_excluded=finish_excluded,
     )
     est.assert_sums()
     return est

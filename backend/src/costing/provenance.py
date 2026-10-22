@@ -100,6 +100,9 @@ class CostEstimate:
     qty_model: Optional[dict] = None
     # ce-02: how est_error_band_pct was rolled up from the lines' own bands, in words.
     band_basis: Optional[str] = None
+    # ce-07: a casting's or forging's finish machining, not in its price: {per_part_usd,
+    # once_usd, source}. None for routes whose price is a finished part.
+    finish_excluded: Optional[dict] = None
 
     def assert_sums(self, tol: float = 0.01) -> None:
         """Hard invariant (gate G3): unit cost == sum of line items, or it is a bug."""

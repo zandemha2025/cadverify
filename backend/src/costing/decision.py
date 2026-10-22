@@ -461,6 +461,17 @@ def _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
     else:
         crossover_clause = " No tooled process becomes cheaper in this comparison."
 
+    # ce-07: like-for-like. A casting or forging is priced as a blank: say so, and
+    # show it finished, so the crossover can be read against a machined part.
+    fin = getattr(tool_champion, "finish_excluded", None) if tool_champion is not None else None
+    if fin and tool_unit_hi is not None:
+        tool = process_label(tool_champion.process)
+        finished = float(tool_unit_hi) + fin["per_part_usd"] + fin["once_usd"] / q_hi
+        crossover_clause += (
+            f" {tool}'s price is a near-net blank without finish machining; finishing every face "
+            f"on a 3-axis mill would add about ${fin['per_part_usd']:,.2f} a part and "
+            f"${fin['once_usd']:,.2f} once (an upper bound), about ${finished:,.2f} each at {q_hi:,}.")
+
     tooling_clause = ""
     if tool_champion is not None and not tool_champion.dfm_ready:
         blocker = tool_champion.dfm_blockers[0] if tool_champion.dfm_blockers else "it lacks draft"
