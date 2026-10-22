@@ -301,3 +301,17 @@ async def test_a_package_link_takes_the_record_links_short_id_and_retries_a_take
     with pytest.raises(Exception) as err:
         await supplier_links._fresh_package_short_id(session)
     assert err.value.status_code == 503 and "wasn't made" in err.value.detail
+
+
+def test_with_no_quantity_asked_the_picker_prices_where_the_part_page_opens():
+    """buyer-11: the part page's quantity (10, else the smallest run of 10 or more), never 1."""
+    assert svc.page_quantity([1, 250, 1000]) == 250
+    assert svc.page_quantity([1, 10, 100]) == 10
+    assert svc.page_quantity([1, 2, 5]) == 5
+    assert svc.page_quantity([]) is None
+    rj = {"quantities": [1, 100, 1000], "decision": {"recommendation": {
+        "1": {"process": "cnc_3axis", "unit_cost_usd": 665.55}, "100": {"process": "fdm", "unit_cost_usd": 30.76}}}}
+    assert svc.price_at(rj, None) is None
+    assert svc.price_at(rj, None, fallback=True) == {"quantity": 100, "unit_cost_usd": 30.76, "process": "fdm",
+                                                     "dfm_ready": None, "basis": "part_page"}
+    assert svc.price_at(rj, 250, fallback=True) is None  # asked for 250, not priced there: no other quantity's price

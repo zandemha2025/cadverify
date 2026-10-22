@@ -898,18 +898,35 @@ async def create_package(
 PREVIEW_MAX = 100
 
 
-def price_at(result_json: Any, quantity: int | None) -> dict[str, Any] | None:
+def page_quantity(quantities: Any) -> int | None:
+    """The quantity a part's page opens on: 10 if priced, else the smallest priced
+    run of 10 or more, else the largest (frontend part/model.ts ``defaultQty``)."""
+    qs = sorted({q for q in quantities or [] if isinstance(q, int) and q > 0})
+    if not qs:
+        return None
+    if 10 in qs:
+        return 10
+    return next((q for q in qs if q >= 10), qs[-1])
+
+
+def price_at(result_json: Any, quantity: int | None, *, fallback: bool = False) -> dict[str, Any] | None:
     """The engine's pick and its price at the quantity asked for (the part page's
-    pick at that quantity); None when that quantity wasn't priced. For the buyer
-    in ScaleCAD only: never in a supplier's copy unless they include the cost."""
-    rec = (((result_json or {}).get("decision") or {}).get("recommendation")) or {}
+    pick at that quantity); None when that quantity wasn't priced. With
+    ``fallback`` and no quantity asked for, at the quantity the part's page opens
+    on (``basis: "part_page"``). For the buyer in ScaleCAD only: never in a
+    supplier's copy unless they include the cost."""
+    rj = result_json or {}
+    rec = ((rj.get("decision") or {}).get("recommendation")) or {}
+    basis = "asked"
+    if quantity is None and fallback:
+        quantity, basis = page_quantity(rj.get("quantities") or [int(k) for k in rec if str(k).isdigit()]), "part_page"
     if quantity is None:
         return None
     row = rec.get(str(quantity))
     if not isinstance(row, dict) or row.get("unit_cost_usd") is None:
         return None
     return {"quantity": quantity, "unit_cost_usd": row.get("unit_cost_usd"), "process": row.get("process"),
-            "dfm_ready": row.get("dfm_ready")}
+            "dfm_ready": row.get("dfm_ready"), "basis": basis}
 
 
 async def preview_items(
@@ -949,7 +966,7 @@ async def preview_items(
             "id": d.ulid, **{k: req[k] for k in ("name", "part_number", "material", "quantity",
                                                   "quantity_source", "yearly_volume")},
             "specs": spec_summary(specs) if specs else [],
-            "price": price_at(d.result_json, req["quantity"]),
+            "price": price_at(d.result_json, req["quantity"], fallback=True),
             "cad_kept": bool(kept.get("included")) if cad else None,
             "cad_too_large": kept.get("reason") == "too_large",
         })

@@ -151,7 +151,7 @@ async def test_a_package_carries_the_kept_cad_of_a_single_check_and_of_a_recheck
             assert "Inspection: First article inspection, AS9102" in rows[w["single"]]["specs"]
             # buyer-11: the picker's price is at that quantity, with the engine's pick there.
             assert rows[w["rechecked"]]["price"] == {"quantity": 250, "unit_cost_usd": 193.18,
-                                                     "process": "cnc_3axis", "dfm_ready": None}
+                                                     "process": "cnc_3axis", "dfm_ready": None, "basis": "asked"}
             assert rows[w["single"]]["price"] is None  # 1,200 wasn't priced: no price, never another quantity's
             assert preview.json()["requested_by"] == {"name": "Marcus Bell", "company": "Kestrel Contract Manufacturing",
                                                       "email": f"buyer-{w['tag']}@example.com"}
