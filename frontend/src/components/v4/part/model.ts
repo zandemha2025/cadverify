@@ -502,6 +502,9 @@ const DRIVER_LABEL: Record<string, (q: number, d: CostDriver) => string> = {
   material_cost: () => "Material",
   consumables_cost: () => "Tools and coolant",
   tooling_cost: (q) => `Tooling, shared over ${qtyWord(q)}`,
+  // de-20: a lot priced at the process's order minimum ($300 for wire-arc) says so.
+  min_charge_floor: (q) => (q === 1 ? "Order minimum, on one part" : `Order minimum, shared over ${qtyWord(q)}`),
+  finish_machining: () => "Finish machining",
   finishing_cost: () => "Finishing",
   post_process_cost: () => "Finishing",
   sintering_cost: () => "Sintering",

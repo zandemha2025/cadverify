@@ -380,3 +380,12 @@ test("a grouped row speaks for every member: casting and forging split by verdic
   assert.deepEqual(blocked.members, ["sand_casting", "forging"]);
   assert.equal(blocked.name, "Casting and forging, 2 ways");
 });
+
+test("an order minimum and finish machining are named lines (de-20)", () => {
+  const floor = { name: "min_charge_floor", value: 120, unit: "$", provenance: "DEFAULT", source: "order minimum $300 ÷ 1 = $300.00 a part (applied)", error_band_pct: null };
+  const mill = { name: "finish_machining", value: 40, unit: "$", provenance: "DEFAULT", source: "finish machining on a 3-axis mill", error_band_pct: 50 };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const names = (q: number) => costLines({ drivers: [floor, mill], quantity: q, unit_cost_usd: 300 } as any).map((l) => l.name).sort();
+  assert.deepEqual(names(1), ["Finish machining", "Order minimum, on one part"]);
+  assert.deepEqual(names(10), ["Finish machining", "Order minimum, shared over 10"]);
+});
