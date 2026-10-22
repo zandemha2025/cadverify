@@ -262,3 +262,6 @@
 .ob .pkrow .c{display:none}
 .ob .rc-back{padding:12px}
 }
+
+/* A picked record's or package's sheet scrolls itself into view on a phone (buyer-17). */
+.ob .sheet.rc-sheet{scroll-margin-top:12px}

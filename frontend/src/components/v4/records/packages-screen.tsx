@@ -37,6 +37,7 @@ import {
   type PackagePreviewItem,
   type Requester,
 } from "./api";
+import { normalizeSpecs, specLines } from "../part/specs";
 import { Confirm, FileIcon, Glyph, LoadFailed, NoneYet, NotFound, RecSheet, RecWorld, Skeleton, useToast } from "./common";
 import { groupByPart } from "./facts";
 import { QTY_FROM, pickerLine } from "./package-words";
@@ -665,6 +666,7 @@ function Builder({
 type PkgItem = RfqPackageDetail["items"][number] & {
   request?: { name?: string | null; quantity?: number | null; material?: string | null } | null;
   raw_cad?: { included: boolean; reason?: string; filename?: string } | null;
+  part_context?: { part_specs?: unknown } | null;
 };
 type Pkg = Omit<RfqPackageDetail, "items"> & {
   items: PkgItem[];
@@ -694,7 +696,7 @@ function PackageSheet({ id, toast, canEdit, onChanged }: { id: string; toast: (m
 
   if (!pkg) {
     return (
-      <RecSheet label="The package">
+      <RecSheet label="The package" reveal>
         {err ? (
           err.notFound ? (
             <NotFound title="Package not found" back={{ label: "Back to RFQ packages", href: R.packages }} onRetry={() => void load()}>
@@ -709,14 +711,14 @@ function PackageSheet({ id, toast, canEdit, onChanged }: { id: string; toast: (m
       </RecSheet>
     );
   }
-  const meta = (pkg.metadata ?? {}) as { raw_cad_requested?: boolean; include_cost_estimate?: boolean; reply_by?: string | null; requested_by?: Requester | null };
+  const meta = (pkg.metadata ?? {}) as { raw_cad_requested?: boolean; include_cost_estimate?: boolean; reply_by?: string | null; requested_by?: Requester | null; note?: string | null };
   const withCost = meta.include_cost_estimate === true;
   const cadKept = pkg.items.filter((i) => i.raw_cad?.included).length;
   const linkOn = pkg.share_status === "active" && pkg.share_url;
   const full = linkOn && typeof window !== "undefined" ? window.location.origin + pkg.share_url : null;
   const who = [meta.requested_by?.name, meta.requested_by?.company, meta.requested_by?.email].filter(Boolean).join(", ");
   return (
-    <RecSheet label="The package">
+    <RecSheet label="The package" reveal>
       <div className="top">
         <h2 className="stitle" style={{ overflowWrap: "anywhere" }}>
           {pkg.title || "RFQ package"}
@@ -832,6 +834,8 @@ function PackageSheet({ id, toast, canEdit, onChanged }: { id: string; toast: (m
           <b>{who || "Not given"}</b>
           <span>Reply by</span>
           <b>{meta.reply_by ? new Date(`${meta.reply_by}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "Not given"}</b>
+          <span>Note to the supplier</span>
+          <b style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontWeight: 500 }}>{meta.note?.trim() || "None"}</b>
         </div>
         <div className="gh">
           <span>Parts in this package</span>
@@ -845,6 +849,10 @@ function PackageSheet({ id, toast, canEdit, onChanged }: { id: string; toast: (m
                 <small style={{ display: "block" }}>
                   {[i.request?.material, i.request?.quantity != null ? `quantity ${num(i.request.quantity)}` : "no quantity", i.raw_cad?.included ? "CAD included" : "no CAD", `#${short(i.decision.id)}`].filter(Boolean).join(" · ")}
                 </small>
+                {/* The specs the supplier is asked for, as the brief says them (buyer-17). */}
+                {specLines(normalizeSpecs(i.part_context?.part_specs ?? null)).length ? (
+                  <small style={{ display: "block" }}>{specLines(normalizeSpecs(i.part_context?.part_specs ?? null)).join(" · ")}</small>
+                ) : null}
               </span>
               <span className="o">Open</span>
             </Link>

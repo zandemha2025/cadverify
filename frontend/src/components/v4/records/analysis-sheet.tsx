@@ -28,7 +28,7 @@ export function AnalysisSheet({ id, toast }: { id: string; toast: (m: string) =>
   const { detail, error, notFound, loading, retry } = useAnalysis(id);
   if (!detail) {
     return (
-      <RecSheet label="The selected analysis">
+      <RecSheet label="The selected analysis" reveal>
         {notFound ? (
           <NotFound title="Analysis not found" back={{ label: "Back to analyses", href: R.analyses }} onRetry={() => void retry()}>
             It was removed, or the link is wrong.
@@ -126,7 +126,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
   const shown = allWays ? ways : ways.slice(0, 3);
 
   return (
-    <RecSheet label="The selected analysis">
+    <RecSheet label="The selected analysis" reveal>
       <div className="top">
         <h2 className="stitle" style={{ overflowWrap: "anywhere" }}>
           {detail.filename}

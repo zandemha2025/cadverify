@@ -23,10 +23,43 @@ export function RecWorld({ label, children }: { label: string; children: React.R
   );
 }
 
-/** The right sheet. These pages have no dial under them, so it runs to the bottom (and on phones ends with a plain margin). */
-export function RecSheet({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * The right sheet. These pages have no dial under them, so it runs to the bottom (and on phones ends with a plain margin).
+ * `reveal`: the sheet of something just picked (a record, a package, an analysis). On a phone it sits under the
+ * whole list, so it scrolls itself to the top of the screen; a tap used to change nothing visible (buyer-17).
+ */
+export function RecSheet({ label, children, reveal = false }: { label: string; children: React.ReactNode; reveal?: boolean }) {
+  const ref = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!reveal || !el || typeof window === "undefined" || !window.matchMedia?.("(max-width: 900px)").matches) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // The lists above it are still loading on a fresh page, so it is kept in view while they grow (a few
+    // seconds), until the person scrolls or touches the page themselves.
+    let theirs = false;
+    const mine = () => {
+      theirs = true;
+    };
+    const keep = () => {
+      if (!theirs) el.scrollIntoView({ block: "start", behavior: "auto" });
+    };
+    el.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(keep);
+    ro?.observe(document.body);
+    const stop = window.setTimeout(() => ro?.disconnect(), 4000);
+    window.addEventListener("touchstart", mine, { passive: true });
+    window.addEventListener("wheel", mine, { passive: true });
+    window.addEventListener("keydown", mine);
+    return () => {
+      ro?.disconnect();
+      window.clearTimeout(stop);
+      window.removeEventListener("touchstart", mine);
+      window.removeEventListener("wheel", mine);
+      window.removeEventListener("keydown", mine);
+    };
+  }, [reveal]);
   return (
-    <aside className="sheet rc-sheet" aria-label={label}>
+    <aside ref={ref} className="sheet rc-sheet" aria-label={label}>
       {children}
     </aside>
   );

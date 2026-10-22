@@ -35,7 +35,7 @@ export function RecordSheet({ id, toast }: { id: string; toast: (m: string) => v
   const { detail, error, notFound, loading, retry } = useRecord(id);
   if (!detail) {
     return (
-      <RecSheet label="The selected record">
+      <RecSheet label="The selected record" reveal>
         {notFound ? (
           <NotFound title="Record not found" back={{ label: "Back to records", href: R.records }} onRetry={() => void retry()}>
             It was removed, or the link is wrong.
@@ -151,7 +151,7 @@ function Loaded({ detail, toast }: { detail: Detail; toast: (m: string) => void 
   const who = (uid: number | null | undefined) => (uid == null ? "Someone" : user?.id === uid ? "You" : people?.get(uid) ?? `User ${uid}`);
 
   return (
-    <RecSheet label="The selected record">
+    <RecSheet label="The selected record" reveal>
       <div className="top">
         <h2 className="stitle" style={{ overflowWrap: "anywhere" }}>
           {detail.label || detail.filename}
