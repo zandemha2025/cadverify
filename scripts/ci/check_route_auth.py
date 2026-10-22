@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Verify every API route across backend/src/api/ declares an auth dependency.
+"""Verify every route in backend/src/api/ and backend/src/auth/ declares an auth dependency.
 
-Globs EVERY module under ``backend/src/api/`` that defines an ``APIRouter`` (not
-just ``routes.py``) and, for each route function, confirms it declares an auth
+Globs EVERY module under ``backend/src/api/`` and ``backend/src/auth/`` that
+defines an ``APIRouter`` (not just ``routes.py``) and, for each route function,
+confirms it declares an auth
 dependency — ``require_api_key`` / ``require_role`` / ``require_org_role`` /
 ``require_role_and_org_role`` / ``require_dashboard_session`` — either directly
 in the function signature or via the route decorator's ``dependencies=[...]``.
@@ -11,8 +12,8 @@ Module-level aliases of those factories (e.g.
 an aliased gate still counts as auth.
 
 Any route WITHOUT auth must appear in the explicit per-module ``PUBLIC_ALLOWLIST``
-below (the intentional public surface). An un-allowlisted public route in ANY api
-module exits nonzero — this is the guard that keeps a new router from silently
+below (the intentional public surface; auth modules are keyed ``auth/<file>``).
+An un-allowlisted public route in ANY scanned module exits nonzero — this is the guard that keeps a new router from silently
 shipping an unauthenticated endpoint (the original check only ever parsed
 ``routes.py`` and was blind to the nine newer routers).
 """
@@ -24,6 +25,10 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[2]
 API_DIR = ROOT / "backend/src/api"
+AUTH_DIR = ROOT / "backend/src/auth"
+# Every directory whose routers are checked: the API routers and the sign-in /
+# key-management routers under src/auth.
+ROUTER_DIRS = [API_DIR, AUTH_DIR]
 
 # Auth-dependency factories (or the AuthedUser/context dep) that gate a route.
 AUTH_DEPENDENCIES = {
@@ -72,6 +77,53 @@ PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
         # Stripe webhook. Authenticated by the Stripe-Signature HMAC (verified
         # before any write), not by a ScaleCad session or API key.
         ("post", "/stripe-webhook"),
+    },
+    # ── src/auth: sign-in flows a visitor uses before any session exists ──
+    "auth/magic_link.py": {
+        # Send a sign-in link (rate-limited, bot-checked), exchange its one-time
+        # token for a session, and the emailed link's own landing.
+        ("post", "/magic/start"),
+        ("post", "/magic/exchange"),
+        ("get", "/magic/verify"),
+    },
+    "auth/oauth.py": {
+        # Google sign-in: start, and the state-checked provider callback.
+        ("get", "/google/start"),
+        ("get", "/google/callback"),
+    },
+    "auth/oidc.py": {
+        # Whether OIDC sign-in is configured (no account data), its start, and
+        # the PKCE/state/nonce-checked provider callback.
+        ("get", "/status"),
+        ("get", "/login"),
+        ("get", "/callback"),
+    },
+    "auth/password.py": {
+        # Deploy probe authenticated by the signed frontend-proxy handshake.
+        ("get", "/proxy-health"),
+        # Public pilot intake (rate-limited, bot-checked).
+        ("post", "/pilot-request"),
+        # Password sign-up and sign-in (rate-limited, timing-equalised).
+        ("post", "/signup"),
+        ("post", "/login"),
+        # Ends the caller's own browser session.
+        ("post", "/logout"),
+        # CRM geo webhook authenticated by its own bearer token.
+        ("post", "/crm/location"),
+    },
+    "auth/password_reset.py": {
+        # Request a reset email; complete with the single-use emailed token.
+        ("post", "/password/reset/start"),
+        ("post", "/password/reset/complete"),
+    },
+    "auth/saml.py": {
+        # SAML SP endpoints the IdP and browser reach before a session exists:
+        # start, assertion consumer (signature-checked), single logout, and the
+        # public SP metadata.
+        ("get", "/login"),
+        ("post", "/acs"),
+        ("get", "/logout"),
+        ("get", "/metadata"),
     },
     "corpus_router.py": {
         # DEV-ONLY labeling tool: mounted solely under LABELING_ENABLED=1 and
@@ -168,10 +220,15 @@ def function_declares_auth(fn: ast.AST, auth_names: set[str]) -> bool:
     return any(depends_on_auth(node, auth_names) for node in ast.walk(fn))
 
 
+def allowlist_key(module: Path) -> str:
+    """API modules are keyed by file name; any other directory as ``<dir>/<file>``."""
+    return module.name if module.parent == API_DIR else f"{module.parent.name}/{module.name}"
+
+
 def main() -> int:
-    modules = sorted(API_DIR.glob("*.py"))
+    modules = [m for d in ROUTER_DIRS for m in sorted(Path(d).glob("*.py"))]
     if not modules:
-        print(f"No api modules found under {API_DIR}")
+        print(f"No router modules found under {', '.join(str(d) for d in ROUTER_DIRS)}")
         return 1
 
     failures: list[str] = []
@@ -182,7 +239,8 @@ def main() -> int:
         if not rnames:
             continue
         auth_names = AUTH_DEPENDENCIES | auth_aliases(tree)
-        allow = PUBLIC_ALLOWLIST.get(module.name, set())
+        key = allowlist_key(module)
+        allow = PUBLIC_ALLOWLIST.get(key, set())
         for node in ast.walk(tree):
             if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
                 continue
@@ -192,7 +250,7 @@ def main() -> int:
                     continue
                 if not function_declares_auth(node, auth_names):
                     failures.append(
-                        f"{module.name}: {method.upper()} {path} -> {node.name}"
+                        f"{key}: {method.upper()} {path} -> {node.name}"
                     )
 
     if failures:
@@ -200,7 +258,7 @@ def main() -> int:
         for failure in failures:
             print(f"  {failure}")
         return 1
-    print(f"route-auth-coverage OK ({checked} routes across api modules)")
+    print(f"route-auth-coverage OK ({checked} routes across api and auth modules)")
     return 0
 
 
