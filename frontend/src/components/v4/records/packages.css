@@ -10,6 +10,11 @@
 .ob .pk-costwarn{margin:-4px 0 0 28px;padding:8px 10px;border-radius:10px;background:var(--warn-bg);color:var(--warn);font-size:12.5px}
 .ob .pk-link{display:flex;flex-direction:column;gap:8px;padding:2px 12px 8px}
 .ob .pk-link input{font-family:var(--font-geist-mono),ui-monospace,monospace;font-size:12.5px}
+/* The picker's price sits in its own column; where that column is hidden (records.css, phones), in the line. */
+.ob .pkbtn small .pkp{display:none}
+@media (max-width:900px){
+  .ob .pkbtn small .pkp{display:inline}
+}
 @media (max-width:560px){
   .ob .pk-two{grid-template-columns:minmax(0,1fr)}
   .ob .pk-costwarn{margin-left:0}

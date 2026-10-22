@@ -290,6 +290,7 @@ export function PackagesScreen() {
                           <b>{r.filename}</b>
                           <small>
                             {line.what}
+                            {line.price ? <span className="pkp"> · {line.price}</span> : null}
                             {flags} · #{short(r.id)}
                           </small>
                         </span>
