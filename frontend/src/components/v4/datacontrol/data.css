@@ -1,6 +1,8 @@
 /* Data control: the delete dialog, the delete-organization panel and the share-links list. */
 .ob .dc-back{position:fixed;inset:0;z-index:60;background:rgba(20,24,31,.28);display:grid;place-items:center;padding:24px;transition:opacity 200ms var(--ease)}
 @starting-style{.ob .dc-back{opacity:0}}
+/* After a deletion the part behind is gone too: the page under the receipt is covered, not shown as if it still existed. */
+.ob .dc-back.gone{background:var(--ground,#EEF0F3)}
 .ob .dc-dlg{width:min(560px,100%);max-height:calc(100dvh - 48px);overflow:auto;background:var(--solid);border-radius:20px;border:1px solid var(--rule);box-shadow:0 18px 50px rgba(20,24,31,.18);padding:18px 20px 20px;transition:transform 240ms var(--sheet),opacity 200ms var(--ease)}
 @starting-style{.ob .dc-dlg{transform:translateY(10px);opacity:0}}
 .ob .dc-dlg h2{margin:0;font-family:var(--v4-disp);font-size:19px;font-weight:600;letter-spacing:-.01em}

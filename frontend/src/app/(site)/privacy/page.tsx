@@ -13,7 +13,7 @@ export default function Page() {
   {
     "id": "analytics",
     "title": "Analytics preferences",
-    "body": "With your analytics permission, PostHog records page and product activity, campaign attribution, browser/device information, performance and sanitized errors. It may infer approximate country, region and city from your connection; this is not precise device location. For signed-in accounts, these approximate location fields may also be stored in our Notion CRM for support and pilot follow-up. Masked recordings are limited to public pages. Forms, passwords and CAD content are excluded. Use Analytics preferences on any page to decline or change your choice. Do Not Track is respected."
+    "body": "With your analytics permission, PostHog records page and product activity, campaign attribution, browser/device information, performance and sanitized errors. It may infer approximate country, region and city from your connection; this is not precise device location. For signed-in accounts, these approximate location fields may also be stored in our Notion CRM for support and pilot follow-up. Masked recordings are limited to public pages. Forms, passwords and CAD content are excluded. Use Analytics preferences at the foot of any public page (or Analytics in the account menu once signed in) to decline or change your choice. Do Not Track is respected."
   },
   {
     "id": "visitor-identification",

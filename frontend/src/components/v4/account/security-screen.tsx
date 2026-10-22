@@ -42,6 +42,8 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
           <span key="m">Sign-in <b>{si.mode}</b></span>,
           <span key="p">Password <b>{pwState}</b></span>,
           <span key="o">Sign out <b>All browsers</b></span>,
+          <a key="d" href="#delete-account">Delete account</a>,
+          <Link key="f" href={R.data}>Your files and data</Link>,
         ]}
       />
       <Content>
@@ -106,7 +108,9 @@ export function SecurityScreen({ authMode, magicLink, hasPassword }: { authMode:
             />
           ) : null}
         </Panel>
-        <DeleteAccountPanel email={user?.email ?? null} />
+        <div id="delete-account" style={{ scrollMarginTop: 80 }}>
+          <DeleteAccountPanel email={user?.email ?? null} />
+        </div>
       </Content>
       <Sheet label="Sign-in rules" style={{ bottom: 20 }}>
         <div className="top">

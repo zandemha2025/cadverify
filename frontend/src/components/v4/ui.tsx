@@ -313,6 +313,7 @@ export function ConfirmButton({
   onConfirm,
   className = "btn sm",
   disabled,
+  onAsking,
 }: {
   label: string;
   question: string;
@@ -320,8 +321,14 @@ export function ConfirmButton({
   onConfirm: () => void | Promise<void>;
   className?: string;
   disabled?: boolean;
+  /** Told when the question shows or goes, so a host can hide its own Cancel (one Cancel at a time). */
+  onAsking?: (asking: boolean) => void;
 }) {
-  const [asking, setAsking] = React.useState(false);
+  const [asking, setAskingState] = React.useState(false);
+  const setAsking = (v: boolean) => {
+    setAskingState(v);
+    onAsking?.(v);
+  };
   const [busy, setBusy] = React.useState(false);
   if (!asking)
     return (

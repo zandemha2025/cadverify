@@ -7,6 +7,7 @@ import posthog from "posthog-js";
 import { ANALYTICS_CONSENT, analyticsAllowed, track } from "@/lib/analytics";
 import { cleanAnalyticsEvent, publicReplayAllowed, routeLabel } from "@/lib/analytics-privacy";
 import { RB2B_SCRIPT, rb2bAllowed } from "@/lib/rb2b";
+import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
 
 export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
   const path = usePathname();
@@ -96,6 +97,13 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
     return () => { document.removeEventListener("click", navigate, true); window.removeEventListener("popstate", reload); };
   }, [visitorTracking]);
 
+  // "Analytics preferences" at the foot of public pages asks again (nothing floats over the page once chosen).
+  React.useEffect(() => {
+    const ask = () => setChoice(null);
+    window.addEventListener(ANALYTICS_PREFERENCES_EVENT, ask);
+    return () => window.removeEventListener(ANALYTICS_PREFERENCES_EVENT, ask);
+  }, []);
+
   function choose(value: string) {
     try { localStorage.setItem(ANALYTICS_CONSENT, value); } catch { return; }
     setChoice(value);
@@ -107,14 +115,10 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
   const inApp = !!path && (path === "/app" || path.startsWith("/app/"));
   return <>
     {visitorTracking && <Script id="scalecad-rb2b" nonce={nonce} strategy="afterInteractive">{RB2B_SCRIPT}</Script>}
-    {inApp ? null : choice === null ? (
-    <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-4 left-4 right-4 sm:right-auto z-50 max-w-sm rounded-xl border border-black/15 bg-white p-4 text-sm text-black shadow-lg">
-      <p>Allow analytics, masked public-page recordings and RB2B business visitor identification for sales follow-up? Passwords and CAD content are excluded. <a href="/privacy" className="underline">Privacy details</a></p>
-      <div className="mt-3 flex gap-3"><button type="button" onClick={() => choose("yes")} className="rounded bg-black px-3 py-2 text-white">Allow analytics</button><button type="button" onClick={() => choose("no")} className="rounded border px-3 py-2">Decline</button></div>
-    </aside>
-    ) : (
-    <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-3 left-3 z-50">
-      <button type="button" onClick={() => setChoice(null)} className="rounded-full border border-black/15 bg-white/90 px-3 py-1.5 text-xs text-black shadow-sm">Analytics preferences</button>
+    {inApp || choice !== null ? null : (
+    <aside aria-label="Analytics preferences" data-private className="ph-no-capture fixed bottom-3 left-3 right-3 sm:right-auto z-50 max-w-md rounded-xl border border-black/15 bg-white px-3 py-2.5 text-[13px] leading-snug text-black shadow-lg">
+      <p><b>Allow</b>: we count visits, record public pages with text masked, and our sales tool sees which company visited. <b>Decline</b>: none of that. Your files and passwords are never included. <a href="/privacy#analytics" className="underline">Details</a></p>
+      <div className="mt-2 flex gap-2"><button type="button" onClick={() => choose("yes")} className="rounded bg-black px-3 py-1.5 text-white">Allow</button><button type="button" onClick={() => choose("no")} className="rounded border px-3 py-1.5">Decline</button></div>
     </aside>
     )}
   </>;

@@ -328,7 +328,8 @@ function AccountMenu({
 
   const links: [string, string, string][] = [
     ["Organization", R.org, "members, roles"],
-    ["Security", R.security, "sign-in, sessions"],
+    ["Security", R.security, "sign-in, sessions, delete account"],
+    ["Your files and data", R.data, "who sees them, deleting"],
     ["API and keys", R.api, ""],
     ["Plan and billing", R.billing, pro ? "Pro" : usage?.unlimited ? "Pilot" : "Free trial"],
     ["Notifications", R.notifications, ""],
@@ -442,9 +443,9 @@ function AccountMenu({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px" }}>
             <span>
               Analytics{" "}
-              <a href="/privacy" style={{ fontSize: 12.5 }}>
+              <Link href={R.data} onClick={() => setOpen(false)} style={{ fontSize: 12.5 }}>
                 Privacy details
-              </a>
+              </Link>
             </span>
             <span className="seg" role="group" aria-label="Analytics">
               {(["yes", "no"] as const).map((v) => (

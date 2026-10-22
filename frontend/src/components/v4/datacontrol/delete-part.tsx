@@ -96,6 +96,7 @@ function DeletePartDialog({ partKey, fileName, onClose, onDeleted }: { partKey: 
   const [loadErr, setLoadErr] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<Receipt | null>(null);
+  const [asking, setAsking] = React.useState(false);
   const receipt = useReceipt(done);
   const id = React.useId();
   const close = done ? onDeleted : onClose;
@@ -131,7 +132,7 @@ function DeletePartDialog({ partKey, fileName, onClose, onDeleted }: { partKey: 
   const lines = preview ? partRemovalLines(preview, keepCopies) : [];
   const links = preview ? linksLine(preview) : null;
   return (
-    <div className="dc-back" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <div className={receipt ? "dc-back gone" : "dc-back"} onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div ref={ref} className="dc-dlg" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={onKeyDown}>
         <h2 id={id}>{receipt ? "Part deleted" : "Delete this part"}</h2>
         <p className="dc-meta">
@@ -216,11 +217,14 @@ function DeletePartDialog({ partKey, fileName, onClose, onDeleted }: { partKey: 
             ) : null}
             <div className="dc-acts">
               {preview.can_delete ? (
-                <ConfirmButton className="btn sm ink" label="Delete part" question="Delete it for everyone? This can't be undone." confirmLabel="Delete" onConfirm={confirm} />
+                <ConfirmButton className="btn sm ink" label="Delete part" question="Delete it for everyone? This can't be undone." confirmLabel="Delete" onConfirm={confirm} onAsking={setAsking} />
               ) : null}
-              <button className="btn sm" type="button" onClick={onClose}>
-                Cancel
-              </button>
+              {/* While "Delete it for everyone?" asks, its own Cancel is the only one. */}
+              {asking ? null : (
+                <button className="btn sm" type="button" onClick={onClose}>
+                  Cancel
+                </button>
+              )}
             </div>
           </>
         )}

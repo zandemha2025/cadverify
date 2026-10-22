@@ -6,6 +6,13 @@ export const metadata: Metadata = {"title": "Security — ScaleCAD", "descriptio
 export default function Page() {
   return <DocumentPage label="Security" title="Understand the boundaries before sharing the CAD." intro="Your geometry is valuable intellectual property. Review the deployment, access and data handling that apply to your work before uploading sensitive files." sections={[
   {
+    "id": "your-account",
+    "title": "Your own account, in plain words.",
+    "body": "Only people in your organization can open your files; on a personal account that is just you. ScaleCAD's administrators see account details, file names and check results, but can't open your files in ScaleCAD; people who run the servers can reach the storage, as with any hosted service. Your files aren't used to train any model and are never compared with another organization's parts. They're kept until you delete them: a part from the part's page, your whole account in Account, Security. The full list, with every outside service and what it receives, is on Your files and data once you sign in.",
+    "href": "/app/account/data",
+    "link": "Your files and data"
+  },
+  {
     "id": "deployment",
     "title": "Choose the deployment boundary.",
     "body": "Hosted and self-hosted requirements are part of the pilot discussion. Confirm where files are processed, where records are retained and which external services are involved for your deployment."

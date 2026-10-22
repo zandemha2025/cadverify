@@ -115,7 +115,7 @@
 .ob .h-box .kv{padding:2px 0 0}
 .ob .h-fine{color:var(--ink3);font-size:12.5px;margin:0}
 
-.ob .h-gbar{position:absolute;left:20px;right:492px;top:84px;z-index:3;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px 10px 14px;border-radius:16px;background:#fff;border:1px solid rgba(20,24,31,.1);box-shadow:0 6px 20px rgba(20,24,31,.07)}
+.ob .h-gbar{position:absolute;left:20px;right:492px;top:auto;bottom:100px;z-index:3;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px 10px 14px;border-radius:16px;background:#fff;border:1px solid rgba(20,24,31,.1);box-shadow:0 6px 20px rgba(20,24,31,.07)}
 .ob .h-gic{width:26px;height:26px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;background:var(--ok);flex:none}
 .ob .h-gic.warn{background:var(--warn)}
 .ob .h-gtx{flex:1;min-width:200px;display:flex;flex-direction:column}

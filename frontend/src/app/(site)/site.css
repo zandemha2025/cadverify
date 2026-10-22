@@ -173,6 +173,9 @@
 .cv-footer-grid nav a:hover, .cv-footer-bottom a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .cv-footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 25px; width: min(1280px,100%); margin: 49px auto 0; border-top: 1px solid var(--site-line); padding-block: 22px; font-size: 11px; color: var(--site-body); }
 .cv-footer-bottom nav { display: flex; gap: 22px; }
+.cv-footer-pref { all: unset; cursor: pointer; font: inherit; color: inherit; }
+.cv-footer-pref:hover { text-decoration: underline; text-underline-offset: 4px; }
+.cv-footer-pref:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 /* Read surfaces share the same type and spacing; a contents rail replaces theater scrolling. */
 .cv-document { padding-block: 60px 100px; }
 .cv-document .cv-breadcrumb { font-size: 13px; color: var(--site-body); margin-bottom: 32px; }
