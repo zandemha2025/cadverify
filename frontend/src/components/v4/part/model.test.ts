@@ -246,6 +246,22 @@ test("a machine that fits but needs something never declared reads can't confirm
   assert.equal(v2.why, "Not declared on Your shop: Type II anodizing and AS9100. Declare what you do in-house, send out or hold to confirm.");
 });
 
+test("a metal printer that fits says it assumes the shop's own stress relief (round 7)", () => {
+  const f = fixture();
+  const eos = { ...f.machines[0], id: "m7", name: "EOS M 400-4", process: "mjf", materials: ["PP"] };
+  const fit = { verdict: "makeable_with_secondary_op", machines_evaluated: 1, best_machine: "EOS M 400-4", failures: [], secondary_ops: ["stress_relief"], assumed_in_house: ["stress_relief"] };
+  const cost = { ...f.cost, verification: { ...f.cost.verification, verdict: "makeable_with_secondary_op", per_route: { mjf: fit } } };
+  const [v] = machineViews([eos] as never, buildMethods({ ...f, cost, machines: [eos] as never }), cost, 10, [20, 15, 10]);
+  assert.equal(v.verdict, "Can make");
+  assert.equal(v.tone, "ok");
+  assert.match(v.why, / Assumes your shop does its own stress relief; change this in Your shop\.$/);
+  assert.doesNotMatch(v.why, /Needs stress relief afterwards/);
+  // Declared in-house: a step it needs, not an assumption.
+  const done = { ...cost, verification: { ...cost.verification, per_route: { mjf: { ...fit, assumed_in_house: undefined } } } };
+  const [w] = machineViews([eos] as never, buildMethods({ ...f, cost: done, machines: [eos] as never }), done, 10, [20, 15, 10]);
+  assert.match(w.why, / Needs stress relief afterwards\.$/);
+});
+
 test("decide offers the real routes and binds each to an exact estimate", () => {
   const f = fixture();
   const methods = buildMethods(f);

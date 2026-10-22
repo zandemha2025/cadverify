@@ -309,10 +309,21 @@ def _density(material: Optional[str]) -> Optional[float]:
     return _num(getattr(m, "density", None)) if m is not None else None
 
 
+# A size the engine wrote unrounded ("268.814272mm") in records made before its
+# sentences rounded them: shown to 0.1 mm, like every size the engine writes now.
+_RAW_MM = re.compile(r"(?<![\d.])(\d+\.\d{3,})(?=\s?mm\b)")
+
+
+def _tidy_mm(s: Optional[str]) -> Optional[str]:
+    if not isinstance(s, str):
+        return s
+    return _RAW_MM.sub(lambda m: f"{round(float(m.group(1)), 1):g}", s)
+
+
 def _first_sentence(s: Optional[str]) -> Optional[str]:
     if not s:
         return None
-    t = s.strip()
+    t = _tidy_mm(s).strip()
     i = t.find(". ")
     return (t[:i] if i > 0 else t).rstrip(".")
 
@@ -505,8 +516,8 @@ def derive_part_row(
             "single": gap.get("single"),
             "need": first.get("need"),
             "have": first.get("have"),
-            "human": first.get("human"),
-            "all": [f.get("human") for f in fails if f.get("human")],
+            "human": _tidy_mm(first.get("human")),
+            "all": [_tidy_mm(f.get("human")) for f in fails if f.get("human")],
         }
         row["route"] = {"process": process, "machine": None, "owned": False}
     else:  # cant_make

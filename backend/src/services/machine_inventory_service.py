@@ -1254,7 +1254,9 @@ _CATALOG_MATERIALS: dict[tuple[str, str], Optional[str]] = {
     ("mjf", "PP"): "PP (MJF)",
     ("mjf", "TPU"): None,              # the registry's powder TPU is SLS-only
     ("binder_jetting", "17-4 PH"): "17-4 PH SS",
-    ("binder_jetting", "Sand"): None,  # sand molds and cores, not a part material
+    # Sand molds and cores, not a part material: stored as "sand", so a sand
+    # printer reads "prints sand molds and cores", never "materials not declared".
+    ("binder_jetting", "Sand"): "sand",
 }
 
 

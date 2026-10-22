@@ -196,7 +196,13 @@ def test_priced_build_fit_controls_all_quantities_overrides_and_owned_machines()
     original = asdict(result)
     report = estimate_decision(result, mesh, features, options)
     assert not any(e["process"] in {"dmls", "slm"} for e in report.estimates)
-    assert any("dmls" in n and "250" in n and "withheld" in n for n in report.notes)
+    assert any(n.startswith("Metal powder printing (DMLS): price withheld") and "250" in n
+               for n in report.notes)
+    # The sentence names the process in words, never by its engine id (W13), and
+    # its sizes in rounded millimetres.
+    assert not any(n.startswith(("dmls:", "slm:")) for n in report.notes)
+    assert any("the 320 × 320 × 320 mm enclosing box in the priced build envelope 250 × 250 × 325 mm" in n
+               for n in report.notes)
     assert asdict(result) == original  # generic DFM evidence is a separate check
     assert all(not row["costed"] for row in report.engine_feasibility
                if row["process"] in {"dmls", "slm"})

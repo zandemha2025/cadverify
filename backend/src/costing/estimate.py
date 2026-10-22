@@ -803,7 +803,10 @@ def _build_verification(elig, drivers, options, rates, specs=None):
                                      process_score=item.get("score"))
         if process.value == "binder_jetting":
             scale = 1 + rates.p(process, "shrinkage_linear")
+            # The green part is printed oversize so it shrinks to size when
+            # sintered: that larger part is what has to fit the machine.
             preq = replace(preq, bbox_mm=tuple(d * scale for d in preq.bbox_mm),
+                           print_oversize=scale - 1,
                            geometry_precision_mm=preq.geometry_precision_mm * scale,
                            geometry_tolerance_mm=preq.geometry_tolerance_mm * scale,
                            minimum_width_bound_mm=preq.minimum_width_bound_mm * scale,
@@ -904,9 +907,16 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
                 # (a catalog machine kept unedited), not the shop's own.
                 entry["maker_spec"] = {"catalog": res["maker_spec"]["catalog"],
                                        "fields": list(res["maker_spec"]["fields"])}
+            if res.get("assumed_in_house"):
+                # The machine's own post-processing (stress relief, sintering)
+                # assumed done in-house: Your shop never said it's sent out.
+                entry["assumed_in_house"] = list(res["assumed_in_house"])
+            if res.get("sent_out"):
+                entry["sent_out"] = list(res["sent_out"])
             if res.get("notes"):
-                # What the fit didn't check, e.g. a printer with no plate load:
-                # "weight: no plate load published or declared; build volume governs".
+                # What the fit didn't check or assumed, said plainly, e.g. a printer
+                # with no plate load: "weight: no plate load published or declared;
+                # build volume governs".
                 entry["notes"] = list(res["notes"])
         per_route[pv] = entry
     return {
@@ -924,8 +934,10 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
         "note": (
             "Machine fit compares the part's measured size and features with what was "
             "declared for each machine. It reads \"can't confirm\" when a machine's "
-            "capabilities aren't declared or no fitting setup is established; it never "
-            "assumes a pass. A process that fails its design checks can't make the part "
+            "capabilities aren't declared or no fitting setup is established. The one "
+            "thing it assumes, and says on the fit: a shop that owns a metal printer or "
+            "binder jetter does that machine's own stress relief or sintering, unless Your "
+            "shop says it's sent out. A process that fails its design checks can't make the part "
             "as drawn, whatever machine fits. Material exclusions cite the property or "
             "standard. Not checked here: whether the part needs 5-axis or undercut access "
             "comes from the process checks, not a new measurement; press force (tonnage, "

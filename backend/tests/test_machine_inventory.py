@@ -358,10 +358,14 @@ def test_every_catalog_entry_saves_unedited():
 
 
 def test_catalog_material_translations_are_registry_materials_for_that_process():
+    from src.costing.makeability import NOT_PART_MATERIALS
     from src.profiles.database import get_material_by_name
 
     for (proc, name), target in svc._CATALOG_MATERIALS.items():
         if target is None:
+            continue
+        if target in NOT_PART_MATERIALS:  # sand: a mold printer's material, named as such
+            assert (proc, name) == ("binder_jetting", "Sand")
             continue
         mat = get_material_by_name(target)
         assert mat is not None and mat.name == target, (name, target)

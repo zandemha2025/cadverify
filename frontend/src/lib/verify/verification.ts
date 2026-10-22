@@ -41,6 +41,11 @@ export interface PerRouteFit {
   machine_rate_usd?: number | null;
   capital_frac?: number | null;
   secondary_ops?: string[];
+  /** On a pass: the machine's own post-processing (stress relief, sintering)
+   *  assumed done in-house because Your shop never said it's sent out. */
+  assumed_in_house?: string[];
+  /** On a pass: steps Your shop sends out (the part is still made on the machine). */
+  sent_out?: string[];
   /** On a pass: the fields the fit took from the maker's published spec (a
    *  catalog machine kept unedited), not the shop's own values. */
   maker_spec?: { catalog: string; fields: ("max_workpiece_kg" | "materials")[] };

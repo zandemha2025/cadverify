@@ -162,6 +162,25 @@ def test_needs_a_new_machine_names_the_missing_capability():
     assert r["hours_each"] == 0.5
 
 
+def test_a_size_an_older_record_wrote_unrounded_reads_rounded():
+    # Round 7 item 8: records from before the engine rounded its sentences carry
+    # "268.814272mm"; the board and the pilot report show it like the rest.
+    fail = {"gate": "envelope", "axis": "minimum_width_mm", "need": 268.8142723042861, "have": 254.00000009071616,
+            "human": "Part minimum width is at least 268.814272mm > smallest chamber span 254.000000mm. "
+                     "This necessary bound is not a machine specification."}
+    d = _decision(
+        "makeable_not_on_owned",
+        estimates=[_est("cnc_turning", 10, 40.0)],
+        make_now="cnc_turning",
+        per_route={"cnc_turning": {"verdict": "makeable_not_on_owned", "failures": [fail]}},
+    )
+    r = _row(d)
+    assert r["capability"]["human"].startswith("Part minimum width is at least 268.8mm > smallest chamber span 254mm.")
+    assert r["capability"]["all"] == [r["capability"]["human"]]
+    assert r["reason"].endswith("Part minimum width is at least 268.8mm > smallest chamber span 254mm")
+    assert cr._tidy_mm("needs 201 mm, has 200 mm; 0.6mm wall; 12.75 mm") == "needs 201 mm, has 200 mm; 0.6mm wall; 12.75 mm"
+
+
 def test_cant_be_made_as_drawn_gives_the_engines_reason():
     d = _decision("not_makeable", estimates=[],
                   gap=[{"gate": "dfm", "human": "All walls 0.5 mm. No method makes them as drawn."}])

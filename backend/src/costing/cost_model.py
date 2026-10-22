@@ -23,6 +23,7 @@ import math
 import os
 
 from src.analysis.models import ProcessType
+from src.analysis.process_names import process_label
 from src.costing.drivers import basis_words, build_orientation, parts_per_build
 from src.costing.provenance import TYPICAL, CostEstimate, Driver, Provenance
 from src.costing.rates import (
@@ -97,6 +98,11 @@ class BuildEnvelopeError(ValueError):
     """No fitting setup established for the machine being priced."""
 
 
+def mm_dims(dims) -> str:
+    """``(318.2004, 405.0, 559.3769)`` → ``"318.2 × 405 × 559.4"``: sizes in sentences, to 0.1 mm."""
+    return " × ".join(f"{round(float(d), 1):g}" for d in dims)
+
+
 def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
     """Build-plate nesting model (weaknesses #1, #2).
 
@@ -127,9 +133,9 @@ def _additive_machine(process, drivers, rates: RateCard, machine_override=None):
     n = parts_per_build(process, bbox, rates, envelope, cylinder)
     if orientation is None or n == 0:
         raise BuildEnvelopeError(
-            f"{process.value}: price withheld — no fitting orientation established for "
-            f"the {tuple(round(d, 4) for d in bbox)}mm enclosing box in the priced build "
-            f"envelope {tuple(envelope)}mm. Confirm a build setup or select a larger "
+            f"{process_label(process)}: price withheld — no fitting orientation established for "
+            f"the {mm_dims(bbox)} mm enclosing box in the priced build "
+            f"envelope {mm_dims(envelope)} mm. Confirm a build setup or select a larger "
             "machine; this is not proof that every possible orientation fails.")
     mode = rates.nesting_mode(process)
     if mode == "build_job":
@@ -438,8 +444,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         if print_plan is None:
             f = drivers.print_features
             raise BuildEnvelopeError(
-                f"{process.value}: price withheld — no way of laying the part on a side of its box "
-                f"fits the {tuple(envelope)}mm work area (as checked {f.x_mm:.1f} × {f.y_mm:.1f} × "
+                f"{process_label(process)}: price withheld — no way of laying the part on a side of its box "
+                f"fits the {mm_dims(envelope)} mm work area (as checked {f.x_mm:.1f} × {f.y_mm:.1f} × "
                 f"{f.height_mm:.1f} mm). Select a larger machine; this is not proof that every "
                 "possible orientation fails.")
 
@@ -1001,7 +1007,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             tier = family_to_size_tier(tooling_size)
             cav = float(n_cavities) ** rates.data["cavity_exponent"]
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"size tier {tier} (largest side {tooling_size}mm, {basis_words(tooling_basis)}) "
+            tool_src = (f"size tier {tier} (largest side {round(tooling_size, 1):g}mm, {basis_words(tooling_basis)}) "
                         f"× {n_cavities} cav^{rates.data['cavity_exponent']:g} (={cav:.2f}) "
                         f"× {complexity} (={comp:.2f}) = ${tooling_cost:,.0f}; "
                         f"±60%, you can override it {tooling_note}")
@@ -1028,7 +1034,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 mult = rates.data["tooling_forging_mult"]
                 what = "hardened closed-die set"
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"{what}: size tier {tier} (largest side {tooling_size}mm, {basis_words(tooling_basis)}) "
+            tool_src = (f"{what}: size tier {tier} (largest side {round(tooling_size, 1):g}mm, {basis_words(tooling_basis)}) "
                         f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
                         f"= ${tooling_cost:,.0f}; ±55%, you can override it "
                         f"{tooling_note}")

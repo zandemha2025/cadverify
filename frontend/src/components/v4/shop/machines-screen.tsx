@@ -26,7 +26,7 @@ import { MachineDialog } from "./machine-dialog";
 import { MachineSheet } from "./machine-sheet";
 import { downloadText, getMachineLoad, getShopCapabilities, putShopCapabilities, type MachineLoad, type ShopLoad } from "./shop-api";
 import { SpecCaps } from "./spec-caps";
-import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, tileSub, toggleOp } from "./shop-derive";
+import { SHOP_OPS, envelopeOf, hoursShort, isoBox, loadFor, loadTile, machineName, machineStatus, opOn, opSavedNote, tileSub, toggleOp } from "./shop-derive";
 import { BatchEntryButton, batchEntryNote, useBatchAccess } from "../many/catalog-entry";
 
 type DialogState = { mode: "add"; process?: string } | { mode: "edit"; machine: OwnedMachine } | null;
@@ -442,7 +442,7 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
     try {
       const r = await putShopCapabilities(next);
       setOps(r.ops ?? next);
-      setNote({ ok: true, text: `${label} ${opOn(r.ops ?? next, key) ? "is done in-house" : "isn't done in-house"}. Older decisions are marked for re-costing.` });
+      setNote({ ok: true, text: `${opSavedNote(label, r.ops ?? next, key)} Older decisions are marked for re-costing.` });
       onSaved();
     } catch (e) {
       setNote({ ok: false, text: `Couldn't save: ${e instanceof Error ? e.message : "try again."}` });
@@ -518,7 +518,9 @@ function ShopOps({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
       <p className={cx("fh")} aria-live="polite" style={{ margin: "-6px 16px 12px", color: note && !note.ok ? "var(--bad)" : undefined }}>
-        {note ? note.text : "A part that needs one of these fits in-house only when it's on."}
+        {note
+          ? note.text
+          : "Stress relief and sintering, a metal printer's own steps, count as done in-house until you turn them off (sent out). HIP and grinding count only when on."}
       </p>
       {!error ? <SpecCaps ops={ops} saving={saving} onSet={(k, v, l) => void setKey(k, v, l)} /> : null}
     </Panel>

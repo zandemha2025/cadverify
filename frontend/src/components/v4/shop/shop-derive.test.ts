@@ -10,6 +10,7 @@ import {
   isoBox,
   machineStatus,
   opOn,
+  opSavedNote,
   perHour,
   procName,
   rateCardView,
@@ -75,6 +76,22 @@ test("shop ops: toggling one keeps the others and a declared limits object", () 
   assert.deepEqual(toggleOp(ops, "sinter"), { ...ops, sinter: true });
   const off = toggleOp(ops, "grinding");
   assert.deepEqual(off, { hip: { dia_mm: 300, height_mm: 600 }, anodize: true, sinter: false });
+});
+
+test("shop ops: a machine's own step counts as in-house until it's turned off, then it's sent out", () => {
+  // Round 7: stress relief and sintering, never said, read as done in-house (the engine assumes it).
+  assert.equal(opOn({}, "stress_relief"), true);
+  assert.equal(opOn({}, "sinter"), true);
+  assert.equal(opOn({}, "hip"), false);
+  assert.equal(opOn({}, "grinding"), false);
+  // Turned off: declared sent out (false), never just forgotten (which would read in-house again).
+  const sent = toggleOp({ grinding: true }, "stress_relief");
+  assert.deepEqual(sent, { grinding: true, stress_relief: false });
+  assert.equal(opOn(sent, "stress_relief"), false);
+  assert.equal(opSavedNote("Stress relief", sent, "stress_relief"), "Stress relief is sent out; parts that need it are still made on your machines.");
+  assert.deepEqual(toggleOp(sent, "stress_relief"), { grinding: true, stress_relief: true });
+  assert.equal(opSavedNote("HIP", {}, "hip"), "HIP isn't done in-house.");
+  assert.equal(opSavedNote("Grinding", { grinding: true }, "grinding"), "Grinding is done in-house.");
 });
 
 test("rate card: default v0 with nothing authored", () => {

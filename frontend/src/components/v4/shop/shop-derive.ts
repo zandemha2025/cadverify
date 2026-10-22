@@ -140,18 +140,33 @@ export const SHOP_OPS: readonly (readonly [string, string])[] = [
   ["grinding", "Grinding"],
 ];
 
-/** An op is in-house when declared true or with size limits; `false` or absent is not. */
+/** A machine's own post-processing (makeability `MACHINE_OWN_OPS`): stress relief after a metal print,
+ *  sintering a binder-jet part. The engine counts it as done in-house until it's declared sent out. */
+export const MACHINE_OWN_OPS: ReadonlySet<string> = new Set(["stress_relief", "sinter"]);
+
+/** An op is in-house when declared true or with size limits, or, for a machine's own op, when not said;
+ *  `false` (sent out) or another op left unsaid is not. */
 export function opOn(ops: Record<string, unknown>, key: string): boolean {
   const v = ops[key];
+  if (v === undefined && MACHINE_OWN_OPS.has(key)) return true;
   return v === true || (typeof v === "object" && v !== null);
 }
 
-/** Toggle one op, keeping every other op (and a declared limits object) as it is. */
+/** Toggle one op, keeping every other op (and a declared limits object) as it is. A machine's own op
+ *  turned off is declared sent out (`false`); any other op turned off is no longer declared. */
 export function toggleOp(ops: Record<string, unknown>, key: string): Record<string, unknown> {
   const next = { ...ops };
-  if (opOn(ops, key)) delete next[key];
-  else next[key] = true;
+  if (opOn(ops, key)) {
+    if (MACHINE_OWN_OPS.has(key)) next[key] = false;
+    else delete next[key];
+  } else next[key] = true;
   return next;
+}
+
+/** What turning one op on or off now means, for the note after it's saved. */
+export function opSavedNote(label: string, ops: Record<string, unknown>, key: string): string {
+  if (opOn(ops, key)) return `${label} is done in-house.`;
+  return MACHINE_OWN_OPS.has(key) ? `${label} is sent out; parts that need it are still made on your machines.` : `${label} isn't done in-house.`;
 }
 
 /* ------------------------------------------------------------------ */

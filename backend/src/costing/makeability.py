@@ -116,6 +116,10 @@ class PartReq:
     spec_ops: tuple = ()
     certifications: tuple = ()
     spec_failures: tuple = ()
+    # Linear oversize the route prints the part at (a binder-jet green part is
+    # printed larger so it shrinks to size when sintered); ``bbox_mm`` already
+    # includes it. 0 => printed at size. Named in a size miss so it reads why.
+    print_oversize: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -229,6 +233,31 @@ def _env_pressure_critical(env) -> bool:
     )
 
 
+# The post-processing the machine itself needs on every part it makes, by process
+# family: a metal powder-bed or deposition print is stress-relieved before it comes
+# off the plate, a binder-jet green part is sintered. A shop that owns the machine
+# does these as part of running it, so they are ASSUMED done in-house until Your
+# shop says they're sent out (``fit_machine`` (h)). Ops the part's buyer asks for
+# (HIP for a pressure-critical duty, declared finishes, inspection) are not
+# assumed: not declared stays "can't confirm".
+MACHINE_OWN_OPS: dict = {
+    "metal_powder_bed": ("stress_relief",),
+    "ded": ("stress_relief",),
+    "binder_jet": ("sinter",),
+}
+
+
+def machine_own_ops(process) -> tuple:
+    """The ops ``process``'s machine needs on every part (``MACHINE_OWN_OPS``)."""
+    pt = _resolve_pt(process)
+    return MACHINE_OWN_OPS.get(process_family(pt), ()) if pt is not None else ()
+
+
+def assumed_op_note(op: str) -> str:
+    """The line a fit carries for a machine's own op it assumed the shop does."""
+    return f"Assumes your shop does its own {_OP_WORDS.get(op, op.replace('_', ' '))}; change this in Your shop"
+
+
 def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     """Derive the secondary ops a part REQUIRES from material+process+env.
 
@@ -243,10 +272,7 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     """
     ops: list = []
     fam = process_family(pt) if pt is not None else None
-    if fam in ("metal_powder_bed", "ded"):
-        ops.append("stress_relief")
-    if fam == "binder_jet":
-        ops.append("sinter")
+    ops.extend(MACHINE_OWN_OPS.get(fam, ()))
     if _env_pressure_critical(env) and fam in (
         "casting", "metal_powder_bed", "binder_jet", "ded"
     ):
@@ -571,6 +597,11 @@ def material_declared(material_name: str, material_class: str, materials) -> boo
     return bool(want) and any(material_identity(t) == want for t in tokens)
 
 
+# Declared machine materials that are not part materials: what such a machine
+# prints is named instead of "not qualified".
+NOT_PART_MATERIALS: dict = {"sand": "sand molds and cores"}
+
+
 def _material_qualified(part: PartReq, materials: tuple) -> bool:
     return material_declared(part.material_name, part.material_class, materials)
 
@@ -614,12 +645,14 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
     # (a) ENVELOPE ----------------------------------------------------------
     #   A concrete miss names the machine and the numbers ("too big for your
     #   BigRep ONE: needs 1306 mm, has 1005 mm"), the same delta the gap carries.
+    oversize = (f"; printed {part_req.print_oversize * 100:.0f}% oversize so it shrinks to size when sintered"
+                if part_req.print_oversize > 0 else "")
     for f in _envelope_failures(part_req, cap):
         if f.have is not None and _is_number(f.need) and _is_number(f.have):
             what = _ENVELOPE_AXIS.get(f.axis) or (f.human.split(" ", 1)[0] if f.axis == "envelope" else f.axis.replace("_", " "))
             f = FitFailure(f.gate, f.axis, f.need, f.have,
                            f"too big for your {machine_cap.name or 'machine'}: needs "
-                           f"{float(f.need):.0f} mm, has {float(f.have):.0f} mm ({what})")
+                           f"{float(f.need):.0f} mm, has {float(f.have):.0f} mm ({what}{oversize})")
         failures.append(f)
 
     # (b) MASS --------------------------------------------------------------
@@ -646,10 +679,15 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
         failures.append(FitFailure("material", "material", part_req.material_name,
                                    None, "no qualified materials declared"))
     elif not _material_qualified(part_req, machine_cap.materials):
+        what = part_req.material_name or part_req.material_class
+        tokens = {str(m).strip().lower() for m in machine_cap.materials}
+        human = f"not qualified for {what}"
+        if tokens <= NOT_PART_MATERIALS.keys():
+            prints = " and ".join(sorted(NOT_PART_MATERIALS[t] for t in tokens))
+            human = f"prints {prints}, not {what} parts"
         failures.append(FitFailure(
             "material", "material", part_req.material_name,
-            tuple(machine_cap.materials),
-            f"not qualified for {part_req.material_name or part_req.material_class}"))
+            tuple(machine_cap.materials), human))
 
     # (d) TOLERANCE / PRECISION --------------------------------------------
     #   standard (>=IT11) is the neutral no-op — gate does not engage.
@@ -784,24 +822,37 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
                 f"thinnest wall; confirm using source CAD"))
 
     # (h) SECONDARY OPS (physics-mandated; grinding is owned by the tol gate) --
+    #   The machine's own post-processing (stress relief after a metal print,
+    #   sintering a binder-jet green part) is assumed done in-house by the shop
+    #   that owns the machine, and said so; declared sent out, the part is still
+    #   made on this machine with that step bought outside. Any other required op
+    #   (HIP for a pressure-critical duty) never asked is unknown, not a pass.
+    own_ops = machine_own_ops(part_req.process)
+    assumed: list = []
+    sent_out: list = []
     for op in part_req.required_secondary_ops:
         if op == "grinding":
             continue
         avail = ops.get(op)
-        if avail is None:
+        words = _OP_WORDS.get(op, op.replace('_', ' '))
+        if op in own_ops and avail is None:
+            needed_secondary.append(op)
+            assumed.append(op)
+            notes.append(assumed_op_note(op))
+        elif op in own_ops and avail is False:
+            sent_out.append(op)
+        elif avail is None:
             # Never asked: whether the shop does this op is UNKNOWN (have=None),
-            # not a gap. A metal printer's owner usually stress-relieves, but
-            # nothing the shop declared says so either way.
+            # not a gap.
             failures.append(FitFailure(
                 "secondary_op", op, op, None,
-                f"needs {_OP_WORDS.get(op, op.replace('_', ' '))} afterwards; not "
-                f"declared whether you do it in-house"))
+                f"needs {words} afterwards; not declared whether you do it in-house"))
         elif avail is False:
             # Declared unavailable: a concrete gap (have=False, a hard failure).
             # ``False`` must never read as present.
             failures.append(FitFailure(
                 "secondary_op", op, op, False,
-                f"requires {op}; not available in-house"))
+                f"needs {words}; not done in-house"))
         elif isinstance(avail, dict):
             # size-limited op (e.g. HIP vessel) — part must fit its envelope
             b = part_req.bbox_mm
@@ -825,7 +876,6 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
     #   shop that declared it does NOT do the op in-house sends it out: the part
     #   is still made on this machine, with that op bought outside (its price is
     #   already the outside service price), so it is not a gap.
-    sent_out: list = []
     for op in part_req.spec_ops:
         if op in part_req.required_secondary_ops:
             continue  # already decided by (h)
@@ -867,8 +917,11 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             "hourly_rate_usd": machine_cap.hourly_rate_usd,
             "capital_frac": machine_cap.capital_frac,
             "secondary_ops": tuple(dict.fromkeys(needed_secondary + sent_out)),
-            # Declared-spec ops the shop sends out (declared not done in-house).
+            # Ops the shop sends out (declared not done in-house).
             **({"sent_out": tuple(dict.fromkeys(sent_out))} if sent_out else {}),
+            # The machine's own post-processing assumed done in-house (never
+            # declared either way in Your shop); the note says so.
+            **({"assumed_in_house": tuple(assumed)} if assumed else {}),
             **({"build_env_mm": tuple(cap[k] for k in ("x", "y", "z"))}
                if part_req.process in {"fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting"}
                and all(_is_number(cap.get(k)) for k in ("x", "y", "z")) else {}),

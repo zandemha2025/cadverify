@@ -146,14 +146,19 @@ MACHINES: list[MachineProfile] = [
             materials_url="https://formlabs.com/global/materials/",
             materials_note="Formlabs lists Standard, Tough, Flexible and Castable Wax resins for the Form 4.",
             checked=_CHECKED)),
+    # Carbon's resins (RPU 70, EPU 41, CE 221) have no price in ScaleCAD, so the
+    # machine is declared for the class they belong to, plastic, and a part on it
+    # is priced in ScaleCAD's own resin: the fit is about the machine, the note
+    # says which resins the maker names.
     MachineProfile(
         "Carbon M2", "Carbon", ProcessType.DLP, (189, 118, 326), 0.025, 0.1, 0.075,
-        ["RPU 70", "EPU 41", "CE 221"],
+        ["polymer"],
         spec=MakerSpec(
             "https://learn.carbon3d.com/hardware/m1-m2-features",
-            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_SPEC,
+            kg_note=_NO_PLATE_LOAD, materials_basis=MAKER_DESCRIBED,
             materials_url="https://docs.carbon3d.com/files/design-guides/dg_dls-design-quick-guide.pdf",
-            materials_note="Carbon lists RPU 70, EPU 41 and CE 221.",
+            materials_note=("Carbon lists RPU 70, EPU 41 and CE 221, its own plastic resins. ScaleCAD has "
+                            "no price for them, so the M2 is set up for plastic and priced in ScaleCAD's resin."),
             checked=_CHECKED)),
     MachineProfile(
         "Elegoo Saturn 4 Ultra", "Elegoo", ProcessType.DLP, (218.88, 122.88, 220), 0.01, 0.2, 0.019,

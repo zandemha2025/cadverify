@@ -783,7 +783,12 @@ export function machineViews(machines: OwnedMachine[], methods: Method[], cost: 
       verdict = "Can make";
       price = method ? priceAt(method, q) : null;
       why = env ? `Fits its ${env.map((n) => trimNum(n, 0)).join(" × ")} mm work area.` : "Clears every gate the engine checked.";
-      if (fit.secondary_ops?.length) why += ` Needs ${joinWords(fit.secondary_ops.map(opWord))} afterwards.`;
+      // The machine's own post-processing the shop was assumed to do (never said either way) is said as an
+      // assumption; any other step it needs afterwards is listed as a need.
+      const assumed = fit.assumed_in_house ?? [];
+      const after = (fit.secondary_ops ?? []).filter((op) => !assumed.includes(op));
+      if (after.length) why += ` Needs ${joinWords(after.map(opWord))} afterwards.`;
+      if (assumed.length) why += ` Assumes your shop does its own ${joinWords(assumed.map(opWord))}; change this in Your shop.`;
     } else if (fit?.verdict === "unknown" && failures.length && failures.every((f) => f.have == null)) {
       // Fits as far as it was declared; something it needs was never declared (a material, an op).
       tone = "warn";

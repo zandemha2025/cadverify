@@ -400,29 +400,64 @@ def test_secondary_op_required_present_soft_pass():
     assert "stress_relief" in fr.resource_hint["secondary_ops"]
 
 
-def test_secondary_op_required_absent_hard_fail():
-    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
-                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
-                   capabilities={"x": 400, "y": 400, "z": 400})
-    fr = fit_machine(part(process="dmls", material_name="Ti6Al4V",
-                          material_class="titanium", bbox=(50, 100, 200),
-                          sec=("stress_relief",)), m, ShopCaps(ops={}))
-    sf = [f for f in fr.failures if f.gate == "secondary_op"][0]
-    # never declared: no pass, and an unknown (have=None), not a gap
-    assert not fr.passes and "stress relief" in sf.human and sf.have is None
+def _eos():
+    return MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
+                      hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
+                      capabilities={"x": 400, "y": 400, "z": 400})
+
+
+def _ti_print(sec=("stress_relief",)):
+    return part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
+                bbox=(50, 100, 200), sec=sec)
+
+
+def test_a_machines_own_op_never_declared_is_assumed_done_in_house_and_said():
+    # Stress relief is part of running a metal printer: the shop that owns one is
+    # assumed to do it until Your shop says it's sent out, and the fit says so.
+    fr = fit_machine(_ti_print(), _eos(), ShopCaps(ops={}))
+    assert fr.passes, fr.failures
+    assert fr.resource_hint["secondary_ops"] == ("stress_relief",)
+    assert fr.resource_hint["assumed_in_house"] == ("stress_relief",)
+    assert "Assumes your shop does its own stress relief; change this in Your shop" in fr.resource_hint["notes"]
+    # A binder jetter's sintering, the same rule.
+    dm = MachineCap(process="binder_jetting", name="Shop System", materials=("17-4 PH SS",),
+                    capabilities={"x": 350, "y": 220, "z": 200})
+    green = part(process="binder_jetting", material_name="17-4 PH SS", material_class="stainless",
+                 bbox=(30, 40, 50), sec=("sinter",))
+    bj = fit_machine(green, dm, ShopCaps(ops={}))
+    assert bj.passes and bj.resource_hint["assumed_in_house"] == ("sinter",)
+    assert "Assumes your shop does its own sintering; change this in Your shop" in bj.resource_hint["notes"]
+
+
+def test_a_machines_own_op_declared_in_house_is_not_an_assumption():
+    fr = fit_machine(_ti_print(), _eos(), ShopCaps(ops={"stress_relief": True}))
+    assert fr.passes and fr.resource_hint["secondary_ops"] == ("stress_relief",)
+    assert "assumed_in_house" not in fr.resource_hint and "notes" not in fr.resource_hint
+
+
+def test_a_machines_own_op_declared_sent_out_is_made_here_and_bought_outside():
+    fr = fit_machine(_ti_print(), _eos(), ShopCaps(ops={"stress_relief": False}))
+    assert fr.passes, fr.failures
+    assert fr.resource_hint["sent_out"] == ("stress_relief",)
+    assert "assumed_in_house" not in fr.resource_hint
+
+
+def test_a_required_op_the_buyer_asks_for_stays_unknown_when_never_declared():
+    # HIP comes from a declared pressure-critical duty, not from the machine:
+    # never declared is "can't confirm", not assumed.
+    fr = fit_machine(_ti_print(sec=("stress_relief", "hip")), _eos(), ShopCaps(ops={}))
+    sf = [f for f in fr.failures if f.gate == "secondary_op"]
+    assert not fr.passes and [(f.axis, f.have) for f in sf] == [("hip", None)]
+    assert "HIP" in sf[0].human and "not declared whether you do it in-house" in sf[0].human
 
 
 def test_secondary_op_declared_false_is_absent_not_a_pass():
     # validate_shop_ops accepts booleans; ``false`` must never read as in-house.
-    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
-                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
-                   capabilities={"x": 400, "y": 400, "z": 400})
-    fr = fit_machine(part(process="dmls", material_name="Ti6Al4V",
-                          material_class="titanium", bbox=(50, 100, 200),
-                          sec=("stress_relief",)), m,
-                     ShopCaps(ops={"stress_relief": False}))
+    fr = fit_machine(_ti_print(sec=("stress_relief", "hip")), _eos(),
+                     ShopCaps(ops={"hip": False}))
     sf = [f for f in fr.failures if f.gate == "secondary_op"]
     assert not fr.passes and sf and sf[0].have is False
+    assert sf[0].human == "needs HIP (hot isostatic pressing); not done in-house"
     tight = fit_machine(part(it=6), mill(it=9), ShopCaps(ops={"grinding": False}))
     tf = [f for f in tight.failures if f.gate == "tolerance"]
     assert not tight.passes and tf and tf[0].have == 9
@@ -680,29 +715,28 @@ def test_verdict_makeable_not_on_owned_with_gap():
 
 
 def test_verdict_not_on_owned_when_required_op_absent():
-    # owns the DMLS machine, but the mandated stress-relief op is declared absent
-    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
-                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
-                   capabilities={"x": 400, "y": 400, "z": 400})
-    p = part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
-             bbox=(50, 100, 200), sec=("stress_relief",), it=STANDARD_IT)
-    v = verify_part({"dmls": p}, [m], ShopCaps(ops={"stress_relief": False}))
+    # owns the DMLS machine, but the HIP its declared duty needs is declared absent
+    p = _ti_print(sec=("stress_relief", "hip"))
+    v = verify_part({"dmls": p}, [_eos()], ShopCaps(ops={"hip": False}))
     assert v.verdict == "makeable_not_on_owned"
     assert any(g.gate == "secondary_op" for g in v.gap)
 
 
-def test_verdict_unknown_when_required_op_never_declared():
-    # Audit M2: a stress-relief op the shop was never asked about is unknown,
-    # not "not available in-house"; the owned printer that fits is not a gap.
-    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
-                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
-                   capabilities={"x": 400, "y": 400, "z": 400})
-    p = part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
-             bbox=(50, 100, 200), sec=("stress_relief",), it=STANDARD_IT)
-    v = verify_part({"dmls": p}, [m], ShopCaps(ops={}))
+def test_verdict_in_house_when_the_machines_own_op_was_never_declared():
+    # Round 7: the owned metal printer that fits makes the part; its stress relief
+    # is assumed done in-house and said, not "can't confirm".
+    v = verify_part({"dmls": _ti_print()}, [_eos()], ShopCaps(ops={}))
+    assert v.verdict == "makeable_with_secondary_op" and v.best_machine == "EOS"
+    route = v.per_route["dmls"]
+    assert route["verdict"] == "makeable_with_secondary_op" and route["failures"] == ()
+    assert route["resource"]["assumed_in_house"] == ("stress_relief",)
+
+
+def test_verdict_unknown_when_a_buyer_op_was_never_declared():
+    v = verify_part({"dmls": _ti_print(sec=("stress_relief", "hip"))}, [_eos()], ShopCaps(ops={}))
     assert v.verdict == "unknown"
     f = v.per_route["dmls"]["failures"][0]
-    assert f.gate == "secondary_op" and f.have is None
+    assert f.gate == "secondary_op" and f.axis == "hip" and f.have is None
     assert "not declared whether you do it in-house" in f.human
 
 

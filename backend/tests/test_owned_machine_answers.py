@@ -91,26 +91,57 @@ def test_an_owned_machine_is_priced_owned_without_a_typed_rate():
     assert all(not e.get("owned_in_house") for e in rep["estimates"] if e["process"] != "cnc_3axis")
 
 
-def test_post_processing_never_asked_is_unknown_not_missing():
-    # M2 + W1: an unedited metal printer that fits, stress relief never declared.
-    rep = _run("EOS M 400-4", "titanium", size=40.0)
-    route = _route(rep, "dmls")
-    assert route["verdict"] == "unknown"
-    assert [(f["gate"], f["have"]) for f in route["failures"]] == [("secondary_op", None)]
-    assert "not declared whether you do it in-house" in route["failures"][0]["human"]
-    assert rep["verification"]["verdict"] == "unknown"  # not "outside only"
-    # Declared: in-house with the op; declared unavailable: a real gap.
-    done = _run("EOS M 400-4", "titanium", size=40.0, ops={"stress_relief": True})
-    assert _route(done, "dmls")["verdict"] == "makeable_with_secondary_op"
-    none = _run("EOS M 400-4", "titanium", size=40.0, ops={"stress_relief": False})
-    assert _route(none, "dmls")["verdict"] == "makeable_not_on_owned"
+@pytest.mark.parametrize("name, cls, proc, op, words", [
+    ("EOS M 400-4", "titanium", "dmls", "stress_relief", "stress relief"),
+    ("SLM 500", "titanium", "slm", "stress_relief", "stress relief"),
+    ("Arcam Q20plus", "titanium", "ebm", "stress_relief", "stress relief"),
+    ("Desktop Metal Shop System", "stainless", "binder_jetting", "sinter", "sintering"),
+])
+def test_the_machines_own_post_processing_is_assumed_in_house_and_said(name, cls, proc, op, words):
+    # Round 7 (owner's call): an unedited metal printer or binder jetter that fits
+    # makes the part in-house; its own stress relief or sintering is assumed done
+    # by the shop that owns it, in one line, until Your shop says it's sent out.
+    rep = _run(name, cls, size=40.0)
+    route = _route(rep, proc)
+    assert route["verdict"] == "makeable_with_secondary_op", route
+    assert route["best_machine"] == name and route["failures"] == []
+    assert route["assumed_in_house"] == [op]
+    assert f"Assumes your shop does its own {words}; change this in Your shop" in route["notes"]
+    assert rep["verification"]["verdict"] == "makeable_with_secondary_op"
+    # Declared in-house: no assumption to state. Declared sent out: still made on
+    # the machine, the step bought outside.
+    done = _route(_run(name, cls, size=40.0, ops={op: True}), proc)
+    assert done["verdict"] == "makeable_with_secondary_op" and "assumed_in_house" not in done
+    out = _route(_run(name, cls, size=40.0, ops={op: False}), proc)
+    assert out["verdict"] == "makeable_with_secondary_op" and out["sent_out"] == [op]
 
 
-def test_a_printer_with_no_materials_declared_is_cant_confirm_not_outside_only():
-    # W1: Carbon M2 unedited (its resins have no registry equivalent).
+def test_a_catalog_carbon_m2_carries_its_materials_and_makes_a_plastic_part():
+    # Round 7: Carbon's resins have no price in ScaleCAD; the catalog entry
+    # declares their class (plastic) instead of nothing, and says which resins.
+    payload = next(p for p in mis.catalog_options() if p["name"] == "Carbon M2")
+    assert payload["materials"] == ["polymer"]
+    assert "RPU 70, EPU 41 and CE 221" in payload["spec"]["materials_note"]
+    assert payload["field_provenance"]["materials"]["source"] == "maker_described"
     rep = _run("Carbon M2", "polymer", size=20.0)
-    assert _route(rep, "dlp")["verdict"] == "unknown"
-    assert rep["verification"]["verdict"] == "unknown"
+    route = _route(rep, "dlp")
+    assert route["verdict"] == "makeable_in_house" and route["best_machine"] == "Carbon M2"
+    assert rep["verification"]["verdict"] == "makeable_in_house"
+    dlp = [e for e in rep["estimates"] if e["process"] == "dlp"]
+    assert dlp and all(e.get("owned_in_house") is True for e in dlp)
+
+
+def test_a_sand_printer_says_it_prints_molds_not_metal_parts():
+    # The ExOne S-Max Pro prints sand molds and cores. Unedited, it says so for a
+    # stainless part, rather than "no qualified materials declared".
+    payload = next(p for p in mis.catalog_options() if p["name"] == "ExOne S-Max Pro")
+    assert payload["materials"] == ["sand"]
+    rep = _run("ExOne S-Max Pro", "stainless", size=40.0)
+    route = _route(rep, "binder_jetting")
+    assert route["verdict"] == "makeable_not_on_owned", route
+    mat = [f for f in route["failures"] if f["gate"] == "material"]
+    assert mat and mat[0]["human"].startswith("prints sand molds and cores, not ")
+    assert mat[0]["human"].endswith(" parts")
 
 
 def _cup(wall):
@@ -181,3 +212,35 @@ def test_size_against_the_shops_own_machine(name, size, cls, verdict, needs):
     else:
         # priced on the owned machine's own work area
         assert any(e["process"] == proc for e in rep["estimates"])
+
+
+def test_a_binder_jet_size_miss_says_the_green_part_is_printed_oversize():
+    # Round 7: a part at 85% of the Shop System's work area misses because the
+    # green part is printed 18% oversize (it shrinks to size when sintered): the
+    # engine is right, and the message says why.
+    result, mesh, feats = _analyze(trimesh.creation.box(extents=[170.0, 187.0, 297.5]))
+    opts = EstimateOptions(quantities=[1, 10], material_class="stainless", material_class_is_user=True,
+                           inventory=(_catalog_cap("Desktop Metal Shop System"),), shop_caps=ShopCaps(ops={}))
+    rep = report_to_dict(estimate_decision(result, mesh, feats, opts))
+    route = _route(rep, "binder_jetting")
+    assert route["verdict"] == "makeable_not_on_owned", route
+    env = [f for f in route["failures"] if f["gate"] == "envelope"]
+    assert env and env[0]["need"] == pytest.approx(170.0 * 1.18, abs=0.5) and env[0]["have"] == pytest.approx(200.0)
+    assert env[0]["human"] == (
+        "too big for your Desktop Metal Shop System: needs 201 mm, has 200 mm (its narrowest width "
+        "against the work area's smallest side; printed 18% oversize so it shrinks to size when sintered)")
+    # A route printed at size says nothing about oversize.
+    assert not any("oversize" in f["human"] for r in rep["verification"]["per_route"].values()
+                   for f in r["failures"] if r is not route)
+
+
+def test_a_lathe_size_miss_reads_in_whole_millimetres():
+    # Round 7 item 8: the turning envelope sentence rounds like every other size.
+    result, mesh, feats = _analyze(trimesh.creation.cylinder(radius=134.4071, height=120.0, sections=96))
+    opts = EstimateOptions(quantities=[1, 10], material_class="aluminum", material_class_is_user=True,
+                           inventory=(_catalog_cap("Haas ST-20"),), shop_caps=ShopCaps(ops={}))
+    rep = report_to_dict(estimate_decision(result, mesh, feats, opts))
+    route = _route(rep, "cnc_turning")
+    env = [f for f in route["failures"] if f["gate"] == "envelope"]
+    assert env, route
+    assert env[0]["human"] == "too big for your Haas ST-20: needs 269 mm, has 254 mm (swing diameter)"
