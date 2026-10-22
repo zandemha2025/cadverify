@@ -125,7 +125,7 @@ export function DeleteAccountPanel({ email }: { email: string | null }) {
                   <li key={l}>{l}</li>
                 ))}
               </ul>
-              <p className="dc-warn">This can&apos;t be undone. Export records and download files you need first. Signing up again with this email starts a new, empty account.</p>
+              <p className="dc-warn">This can&apos;t be undone. Export records and download files you need first. Signing up again with this email starts a new, empty account with the free checks this one had left.</p>
               <details className="dc-kept" open>
                 <summary>What stays</summary>
                 <ul>
