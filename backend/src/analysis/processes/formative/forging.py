@@ -1,5 +1,6 @@
 """Forging — impression die, hot / cold."""
 
+from src.analysis.process_names import process_phrase
 from src.analysis.context import GeometryContext
 from src.analysis.serialization import format_measurement
 from src.analysis.models import Issue, ProcessType, Severity
@@ -55,7 +56,7 @@ class ForgingAnalyzer:
             message=(
                 f"Rib at ({where}) is {format_measurement(worst['height_mm'])}mm tall and "
                 f"{format_measurement(worst['thickness_mm'])}mm thick: {format_measurement(ratio, limit)}:1 "
-                f"exceeds the 6:1 rib height:thickness limit for {self.process.value}"
+                f"exceeds the 6:1 rib height:thickness limit for {process_phrase(self.process)}"
                 + (f" ({len(tall)} ribs over it)." if len(tall) > 1 else ".")
             ),
             process=self.process,

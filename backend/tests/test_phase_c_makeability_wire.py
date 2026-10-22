@@ -378,12 +378,12 @@ def test_thin_wall_trap_is_not_in_house_on_a_fitting_vf2(vf2_reports, name, thin
     assert route["best_machine"] == "Haas VF-2"  # the machine fits; the design does not
     # Every DFM blocker is listed; the user sees each reason.
     blockers = [f["human"] for f in route["failures"]]
-    thin = next(h for h in blockers if "below 0.8mm min wall for cnc_3axis" in h)
+    thin = next(h for h in blockers if "below 0.8mm min wall for 3-axis milling" in h)
     assert f"Thinnest: {thinnest}" in thin
     if name == "trap-wall-0.5mm-shell.stl":
         # The shell is sealed: no cutter reaches its inside whatever the wall,
         # and thicker walls would not change that, so the void leads.
-        assert "sealed internal void" in blockers[0] and "cnc_3axis can't make" in blockers[0]
+        assert "sealed internal void" in blockers[0] and "3-axis milling can't make" in blockers[0]
     else:
         assert blockers[0] == thin
     _assert_dfm_failed_routes_not_makeable(rep)

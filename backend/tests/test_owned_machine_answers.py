@@ -162,7 +162,7 @@ def test_bigger_than_the_common_size_is_a_warning_and_bigger_than_every_machine_
     huge = fdm((2000, 1200, 1100))
     assert huge.verdict == "fail"
     assert any(i.code == "EXCEEDS_BUILD_VOLUME" and i.severity.value == "error"
-               and "Larger than any fdm machine ScaleCAD knows" in i.message for i in huge.issues)
+               and "Larger than any filament printing (FDM/FFF) machine ScaleCAD knows" in i.message for i in huge.issues)
 
 
 @pytest.mark.parametrize("name, size, cls, verdict, needs", [

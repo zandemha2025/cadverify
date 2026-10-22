@@ -973,7 +973,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     # Reuse the part's enclosing stock candidate, not its uploaded-axis box.
     # Suppress transform roundoff at tier boundaries (six decimal places in mm).
-    tooling_size = round(max(drivers.billet_bbox_mm), 6) if drivers.billet_bbox_mm else drivers.max_bbox_mm
+    # M12: the tier reads the measured size, not the enclosing box's allowance
+    # for STL coordinate rounding (2 × the coordinate error): a 300 mm STL cube
+    # read 300.00005 mm and its tool jumped a tier, $30,000 to $60,000, against
+    # the same part as STEP.
+    tooling_size = (round(max(drivers.billet_bbox_mm) - float(getattr(drivers, "bbox_precision_mm", 0.0) or 0.0), 6)
+                    if drivers.billet_bbox_mm else drivers.max_bbox_mm)
     tooling_basis = drivers.billet_basis if drivers.billet_bbox_mm else "file-axis fallback"
     # ponytail: size-tier proxy; a verified tool layout needs pull direction and allowances.
     tooling_note = "(estimated from the part's size; no tool was laid out; typical value, not confirmed by a shop)"
@@ -1068,7 +1073,9 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         ))
 
     # ---- MIN CHARGE clamp (weakness #3) — adds a line item only if it bites
-    order_min = rates.min_charge(process) * n_setups
+    # M17: one minimum per order, not per production lot: DED/WAAM lots are 10
+    # parts, so a $300 minimum per lot held every quantity at $30 a part or more.
+    order_min = rates.min_charge(process)
     floor_per_unit = order_min / qty if qty else 0.0
     if floor_per_unit > unit_cost:
         delta = floor_per_unit - unit_cost
@@ -1077,8 +1084,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         drivers_out.append(Driver(
             name="min_charge_floor", value=round(delta, 4), unit="$",
             provenance=rates.prov_tag(f"min_charge.{process.name}"),
-            source=(f"shop/order minimum ${rates.min_charge(process):g}/lot × {n_setups} "
-                    f"lots ÷ {qty} = ${floor_per_unit:.2f}/unit floor (applied)"),
+            source=(f"order minimum ${rates.min_charge(process):g} ÷ {qty} = "
+                    f"${floor_per_unit:.2f} a part (applied)"),
             error_band_pct=None,
         ))
 

@@ -60,7 +60,7 @@ def test_two_degree_taper_passes_one_degree_and_fails_three_with_its_angle():
     assert issue is not None
     assert issue.measured_value == pytest.approx(2.0, abs=1e-9)
     assert issue.required_value == 3.0
-    assert "below 3.0° draft for sand_casting. Smallest draft: 2.0°." in issue.message
+    assert "below 3.0° draft for sand casting. Smallest draft: 2.0°." in issue.message
     assert len(issue.affected_faces) == 8  # four leaning sides, two triangles each
 
 
@@ -71,7 +71,7 @@ def test_message_keeps_the_sentence_the_screens_already_read():
     assert legacy.match(issue.message)
     assert re.search(r"below ([0-9]+(?:\.[0-9]+)?)\s*°\s*draft", issue.message).group(1) == "1.0"
     first = re.split(r"(?<=\.)\s", issue.message)[0]
-    assert first == "8 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding."
+    assert first == "8 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection molding."
     assert issue.measured_value == 0.4
 
 

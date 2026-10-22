@@ -19,6 +19,7 @@ from typing import Optional
 
 import numpy as np
 
+from src.analysis.process_names import process_phrase
 from src.analysis.citations import parse_citation
 from src.analysis.serialization import format_measurement
 from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
@@ -92,7 +93,7 @@ def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_
             measurement_unit="mm", measured_value=closest, required_value=min_wall_mm,
             message=(
                 f"{int(near.sum())} wall readings are within measuring precision of the {min_wall_mm}mm "
-                f"limit for {process.value} (closest {format_measurement(closest, min_wall_mm)}mm), "
+                f"limit for {process_phrase(process)} (closest {format_measurement(closest, min_wall_mm)}mm), "
                 "so this file can't settle whether those walls pass."
             ),
             fix_suggestion="Confirm these walls in the source CAD; a STEP export carries exact coordinates.",
@@ -151,7 +152,7 @@ def check_wall_thickness(
                     severity=Severity.WARNING,
                     message=(
                         f"{len(soft_faces)} faces ({pct:.1f}%) below {warn_below_mm}mm for "
-                        f"{process.value}. Thinnest: {format_measurement(thinnest, warn_below_mm)}mm. "
+                        f"{process_phrase(process)}. Thinnest: {format_measurement(thinnest, warn_below_mm)}mm. "
                         f"{warn_note}".rstrip()
                     ),
                     process=process,
@@ -174,7 +175,7 @@ def check_wall_thickness(
         severity=sev,
         message=(
             f"{len(thin_faces)} faces ({pct:.1f}%) below {min_wall_mm}mm "
-            f"min wall for {process.value}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
+            f"min wall for {process_phrase(process)}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
         ),
         process=process,
         affected_faces=thin_faces.tolist(),
@@ -296,7 +297,7 @@ def check_overhangs(
         severity=Severity.WARNING,
         message=(
             f"{len(oh_faces)} faces ({pct:.1f}%) exceed {max_angle_deg}° "
-            f"overhang threshold for {process.value}. Supports required.{bridged_note}"
+            f"overhang threshold for {process_phrase(process)}. Supports required.{bridged_note}"
         ),
         process=process,
         affected_faces=oh_faces.tolist(),
@@ -305,7 +306,7 @@ def check_overhangs(
         required_value=max_angle_deg,
         fix_suggestion=(
             f"Reorient part or redesign overhangs < {max_angle_deg}° "
-            f"for {process.value}. {cite}"
+            f"for {process_phrase(process)}. {cite}"
         ),
         citation=parse_citation(cite),
     )]
@@ -355,7 +356,7 @@ def small_feature_issues(
         severity=Severity.WARNING,
         message=(
             f"{len(small)} geometric boundary spans ({pct:.1f}%) below {min_size_mm}mm "
-            f"resolution for {process.value}. Smallest: {format_measurement(smallest, min_size_mm)}mm."
+            f"resolution for {process_phrase(process)}. Smallest: {format_measurement(smallest, min_size_mm)}mm."
         ),
         process=process,
         measured_value=smallest,
@@ -406,7 +407,7 @@ def check_build_volume(
                 code="BUILD_REORIENTATION_REQUIRED",
                 severity=Severity.INFO,
                 message=(
-                    f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process.value}, "
+                    f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process_phrase(process)}, "
                     f"but a {tuple(round(d, 6) for d in fitting)}mm enclosing box fits after reorientation "
                     f"({basis})."
                 ),
@@ -429,7 +430,7 @@ def check_build_volume(
         return [Issue(
             code="BUILD_ENVELOPE_PRECISION", severity=Severity.WARNING, process=process,
             message=(f"Source-coordinate rounding (enclosing dimensions up to ±{precision:.3g}mm) "
-                     f"overlaps the {max_dims_mm}mm envelope for {process.value}; fit remains uncertain."),
+                     f"overlaps the {max_dims_mm}mm envelope for {process_phrase(process)}; fit remains uncertain."),
             fix_suggestion="Confirm dimensions and the planned orientation in source CAD, or use a larger machine.",
             citation=parse_citation(cite),
         )]
@@ -439,7 +440,7 @@ def check_build_volume(
     # the shop's own machines take it is machine fit's answer ("too big for
     # your X: needs N, has M").
     larger = _larger_machine_that_fits(ctx, process, dims, max_dims_mm)
-    common = f"the {_mm(max_dims_mm)}mm build size ScaleCAD assumes for {process.value} when no machine is named"
+    common = f"the {_mm(max_dims_mm)}mm build size ScaleCAD assumes for {process_phrase(process)} when no machine is named"
     if larger is not None:
         name, env = larger
         return [Issue(
@@ -447,7 +448,7 @@ def check_build_volume(
                   else "BUILD_ENVELOPE_UNVERIFIED"),
             severity=Severity.WARNING, process=process,
             message=(f"Larger than {common} ({_size_reason(bound, dims)}). It fits a larger "
-                     f"{process.value} machine, such as the {name} ({_mm(env)}mm): check it "
+                     f"{process_phrase(process)} machine, such as the {name} ({_mm(env)}mm): check it "
                      f"against the machine that will make it."),
             fix_suggestion="Check the size against your machine, or use a larger-format machine.",
             citation=parse_citation(cite),
@@ -456,8 +457,8 @@ def check_build_volume(
         return [Issue(
             code="EXCEEDS_BUILD_VOLUME" if bound else "BUILD_ENVELOPE_UNVERIFIED",
             severity=Severity.ERROR, process=process,
-            message=(f"Larger than any {process.value} machine ScaleCAD knows ({_size_reason(bound, dims)})." if bound else
-                     f"No fitting setup established for the {max_dims_mm}mm envelope for {process.value}. "
+            message=(f"Larger than any {process_phrase(process)} machine ScaleCAD knows ({_size_reason(bound, dims)})." if bound else
+                     f"No fitting setup established for the {max_dims_mm}mm envelope for {process_phrase(process)}. "
                      "The limited geometry/orientation check does not prove the part is too large."),
             fix_suggestion="Verify the full XYZ setup in source CAD, including tool access, supports and fixtures.",
             citation=parse_citation(cite),
@@ -466,7 +467,7 @@ def check_build_volume(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,
         message=(
-            f"Larger than any {process.value} machine ScaleCAD knows: "
+            f"Larger than any {process_phrase(process)} machine ScaleCAD knows: "
             + ", ".join(exceeds) + f". {cite}"
         ),
         process=process,
@@ -554,7 +555,7 @@ def check_aspect_ratio(
         severity=Severity.WARNING,
         message=(
             f"Built {format_measurement(height)}mm tall on a footprint {format_measurement(width)}mm wide: "
-            f"{format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for {process.value}. "
+            f"{format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for {process_phrase(process)}. "
             "Tall, thin parts risk failure."
         ),
         process=process,
@@ -642,7 +643,7 @@ def check_trapped_volumes(
                 severity=Severity.ERROR,
                 message=(
                     f"Drain opening {format_measurement(diameter, min_drain_mm)}mm is below the {min_drain_mm}mm "
-                    f"minimum for {process.value}; material can remain trapped."
+                    f"minimum for {process_phrase(process)}; material can remain trapped."
                 ),
                 process=process,
                 affected_faces=affected_faces,
@@ -673,7 +674,7 @@ def check_trapped_volumes(
                     severity=Severity.ERROR,
                     message=(
                         f"Internal cavity ({sub_volume:.0f}mm³) traps material "
-                        f"in {process.value}. Needs >= {min_drain_mm}mm drain holes."
+                        f"in {process_phrase(process)}. Needs >= {min_drain_mm}mm drain holes."
                     ),
                     process=process,
                     region_center=tuple(float(v) for v in center),
@@ -693,7 +694,7 @@ def check_trapped_volumes(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
             message=(
-                f"Trapped-volume check incomplete for {process.value} "
+                f"Trapped-volume check incomplete for {process_phrase(process)} "
                 f"(geometry/containment error)."
             ),
             process=process,
@@ -732,7 +733,7 @@ def check_sealed_voids(
         severity=Severity.ERROR,
         message=(
             f"The part has {what} with no opening to the outside. No {tool} can reach "
-            f"{'it' if len(voids) == 1 else 'them'}, so {process.value} can't make the part as drawn."
+            f"{'it' if len(voids) == 1 else 'them'}, so {process_phrase(process)} can't make the part as drawn."
         ),
         process=process,
         region_center=center,
@@ -877,7 +878,7 @@ def check_wire_reach(
                     message=(
                         f"A face at ({point[0]:.1f}, {point[1]:.1f}, {point[2]:.1f}) is closed in on every "
                         "side in its own plane, like the floor of a closed-bottom cavity or blind hole. "
-                        f"A wire has to run along a face it cuts, so {process.value} can't make it."
+                        f"A wire has to run along a face it cuts, so {process_phrase(process)} can't make it."
                     ),
                     process=process,
                     affected_faces=[int(face)],
@@ -1123,7 +1124,7 @@ def check_draft_angles(
         # The first sentence is the one screens quote; the pull direction follows.
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-            f"below {min_draft_deg}° draft for {process.value}. "
+            f"below {min_draft_deg}° draft for {process_phrase(process)}. "
             f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}."
         ),
         process=process,
@@ -1247,7 +1248,7 @@ def check_wall_uniformity(
             code="THIN_WALL_MOLDING",
             measurement_unit="mm",
             severity=Severity.ERROR,
-            message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process.value}.",
+            message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process_phrase(process)}.",
             process=process,
             measured_value=t_min,
             required_value=min_wall,
@@ -1304,7 +1305,7 @@ def check_wall_uniformity(
             severity=Severity.WARNING,
             message=(
                 f"Thickest sampled section {format_measurement(t_max, max_wall)}mm is within source-coordinate "
-                f"rounding of the {max_wall}mm limit for {process.value}, so this file can't settle whether it passes."
+                f"rounding of the {max_wall}mm limit for {process_phrase(process)}, so this file can't settle whether it passes."
             ),
             process=process,
             measured_value=t_max,
@@ -1349,7 +1350,7 @@ def check_wall_uniformity(
             severity=Severity.WARNING,
             message=(
                 f"Sampled wall ratio {format_measurement(t_max / t_min, 2.0)}:1 ({format_measurement(t_min)}–{format_measurement(t_max)}mm) "
-                f"may increase warping risk in {process.value}."
+                f"may increase warping risk in {process_phrase(process)}."
             ),
             process=process,
             measured_value=t_max / t_min,
@@ -1416,7 +1417,7 @@ def check_undercuts_molding(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
             message=(
-                f"Undercut check incomplete for {process.value}: release along Z "
+                f"Undercut check incomplete for {process_phrase(process)}: release along Z "
                 "could not be traced for this mesh."
             ),
             process=process,
@@ -1430,7 +1431,7 @@ def check_undercuts_molding(
         severity=Severity.WARNING,
         message=(
             f"{len(uc_faces)} faces form undercuts requiring side actions "
-            f"in {process.value} tooling, with the mold opening along {_pull_direction(ctx)}."
+            f"in {process_phrase(process)} tooling, with the mold opening along {_pull_direction(ctx)}."
         ),
         process=process,
         affected_faces=uc_faces.tolist(),
@@ -1462,7 +1463,7 @@ def check_internal_radii(
         severity=Severity.WARNING,
         message=(
             f"{sharp_count} sharp concave edges — tool radius {min_radius_mm}mm "
-            f"cannot reach. Applies to {process.value}."
+            f"cannot reach. Applies to {process_phrase(process)}."
         ),
         process=process,
         required_value=min_radius_mm,
@@ -1490,7 +1491,7 @@ def check_fixture_surfaces(
         code="NO_FIXTURE_SURFACES",
         measurement_unit="percent",
         severity=Severity.WARNING,
-        message=f"Only {flat_pct:.1f}% flat area — hard to fixture for {process.value}.",
+        message=f"Only {flat_pct:.1f}% flat area — hard to fixture for {process_phrase(process)}.",
         process=process,
         measured_value=flat_pct,
         required_value=min_flat_pct,
@@ -1524,7 +1525,7 @@ def check_fillet_requirements(
         severity=Severity.WARNING,
         message=(
             f"{count} sharp concave mesh edges need >= {min_fillet_mm}mm fillets "
-            f"for {process.value} flow and stress distribution."
+            f"for {process_phrase(process)} flow and stress distribution."
         ),
         process=process,
         required_value=min_fillet_mm,
@@ -1555,7 +1556,7 @@ def check_shrinkage_risk(
         severity=Severity.WARNING,
         message=(
             f"V/SA ratio {format_measurement(compactness, max_compactness)}mm — bulky sections cause shrinkage "
-            f"porosity in {process.value}."
+            f"porosity in {process_phrase(process)}."
         ),
         process=process,
         measured_value=compactness,
@@ -1590,7 +1591,7 @@ def check_residual_stress(
                 severity=Severity.WARNING,
                 message=(
                     f"Large horizontal surface ({area:.0f}mm², "
-                    f"{area / total * 100:.0f}% of total) — curl risk in {process.value}."
+                    f"{area / total * 100:.0f}% of total) — curl risk in {process_phrase(process)}."
                 ),
                 process=process,
                 measured_value=area / total * 100,
@@ -1685,7 +1686,7 @@ def check_length_diameter_ratio(
         severity=Severity.WARNING,
         message=(
             f"L/D ratio {format_measurement(ld, max_ld)}:1 exceeds {max_ld}:1 — deflection risk "
-            f"on {process.value}. Steady rest recommended."
+            f"on {process_phrase(process)}. Steady rest recommended."
         ),
         process=process,
         measured_value=ld,
@@ -1893,7 +1894,7 @@ def check_core_feasibility(
                         measurement_unit="ratio", measured_value=dims[2] / dims[0],
                         message=(
                             f"Core aspect ratio {dims[2] / dims[0]:.1f}:1 "
-                            f"— may break during {process.value}."
+                            f"— may break during {process_phrase(process)}."
                         ),
                         process=process,
                         region_center=tuple(float(v) for v in center),
@@ -1909,7 +1910,7 @@ def check_core_feasibility(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
             message=(
-                f"Core feasibility check incomplete for {process.value} "
+                f"Core feasibility check incomplete for {process_phrase(process)} "
                 f"(watertightness/containment error)."
             ),
             process=process,
@@ -1941,7 +1942,7 @@ def check_hole_depth_ratio(
                 severity=Severity.WARNING,
                 message=(
                     f"Hole depth/diameter {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 "
-                    f"for {process.value} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
+                    f"for {process_phrase(process)} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
                 ),
                 process=process,
                 measured_value=ratio,
