@@ -226,7 +226,8 @@ export type GroundTruthIn = {
   part_id: string;
   process: string;
   quantity: number;
-  actual_unit_cost_usd: number;
+  /** Empty for an hours-only actual. */
+  actual_unit_cost_usd: number | null;
   material_class: string;
   source: string;
   source_type: string;

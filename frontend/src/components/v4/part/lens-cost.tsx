@@ -27,6 +27,7 @@ import { useFix } from "../fix/ctx";
 import { problemForIssue } from "../fix/problems";
 import { wbHref } from "../workbench/chrome";
 import { followed, recordedChoice } from "./choice";
+import { PartActuals } from "../validation/part-actuals";
 
 /** The process the chart and its lines show: one you picked here, else your choice for the part, else ScaleCAD's pick, else the cheapest. */
 export function useChartSel(): Method | null {
@@ -355,6 +356,7 @@ export function CostSheet() {
               {p.methods.some((m) => m.inHouse && m.prices.has(p.q)) ? "In-house lead time is print time on the machines you declared, with no shipping; your own queue isn’t included. " : ""}
               Outside lead times are a queue model, not a quote. Model prices, not quotes.
             </p>
+            {p.data.key ? <PartActuals partKey={p.data.key} /> : null}
             <div style={{ display: "grid", gridTemplateColumns: "132px minmax(0,1fr)", gap: 10, alignItems: "end", padding: "10px 12px 0" }}>
               <label className="field">
                 Other quantity

@@ -21,6 +21,8 @@ import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useT
 import { etaText } from "./batch-model";
 import { downloadBoardCsv, fetchBoard } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
+import { AccuracyPanel } from "../validation/accuracy-panel";
+import { reportHref } from "../validation/routes";
 import {
   BUCKETS,
   OTHER,
@@ -203,6 +205,9 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
             <Link className="btn sm" href={runSummaryHref(batchId)}>
               Summary to print
             </Link>
+            <Link className="btn sm" href={reportHref(batchId)}>
+              Pilot report
+            </Link>
             <button className="btn sm" type="button" onClick={() => void copyLink()}>
               Copy link
             </button>
@@ -354,6 +359,8 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 <span>Machine time, material and prices are model estimates from your machines and rates, not quotes. Open a part for its sources.</span>
               </p>
             </Panel>
+
+            {TERMINAL.has(board.status) ? <AccuracyPanel run={batchId} compact /> : null}
 
             {board.unmatched.length ? (
               <Panel title="In the parts list, no file in the run" note={`${board.parts_list?.unmatched ?? board.unmatched.length}`}>

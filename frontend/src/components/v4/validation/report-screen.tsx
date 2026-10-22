@@ -1,0 +1,355 @@
+"use client";
+
+/**
+ * The pilot report, laid out for paper: for one catalog run or every part, how
+ * many parts, sorted into make in-house / buy outside / needs a new machine /
+ * can't be made; the machine hours and material the in-house parts need; the
+ * biggest wins; decisions recorded and who recorded them; and how close
+ * ScaleCAD came to your actuals, with the caveats. Print from the browser, or
+ * download the PDF the server renders from the same figures.
+ */
+import * as React from "react";
+import Link from "next/link";
+import { R } from "../routes";
+import { Empty, Loading } from "../ui";
+import { getReport, reportPdfUrl, type Report } from "./api";
+import { reportHref } from "./routes";
+import { absPct, dateWord, hoursWord, methodWord, moneyWord, pctWord, statsLine, summaryLine } from "./words";
+import "./validation.css";
+
+function kg(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return v < 100 ? `${v.toFixed(2)} kg` : `${Math.round(v).toLocaleString("en-US")} kg`;
+}
+
+function partial(n: number, of: number): string {
+  return n && n !== of ? ` (${n} of ${of})` : "";
+}
+
+const OTHER_WORDS: Record<string, string> = { not_sorted: "checked without a machine verdict", not_checked: "couldn’t be checked", checking: "still checking" };
+
+export function ReportScreen({ run }: { run: string | null }) {
+  const [rep, setRep] = React.useState<Report | null>(null);
+  const [err, setErr] = React.useState<{ msg: string; status: number } | null>(null);
+  const [n, setN] = React.useState(0);
+  React.useEffect(() => {
+    let live = true;
+    setRep(null);
+    setErr(null);
+    getReport(run).then(
+      (r) => live && setRep(r),
+      (e) => live && setErr({ msg: e instanceof Error ? e.message : "The report didn’t load.", status: (e as { status?: number }).status ?? 0 })
+    );
+    return () => {
+      live = false;
+    };
+  }, [run, n]);
+
+  const back = run ? R.batch(run) : R.triage;
+  if (err) {
+    return (
+      <div className="val-paper">
+        <Empty
+          title={err.status === 404 ? "This run isn’t available" : "The report didn’t load"}
+          actions={
+            <>
+              <Link className="btn sm" href={back}>
+                Back
+              </Link>
+              {err.status !== 404 ? (
+                <button className="btn sm" type="button" onClick={() => setN((x) => x + 1)}>
+                  Retry
+                </button>
+              ) : null}
+            </>
+          }
+        >
+          {err.msg}
+        </Empty>
+      </div>
+    );
+  }
+  if (!rep) {
+    return (
+      <div className="val-paper">
+        <Loading rows={6} label="Putting the report together" />
+      </div>
+    );
+  }
+  const a = rep.accuracy;
+  const other = Object.entries(rep.other);
+  return (
+    <article className="val-paper val-rep" aria-label="Pilot report">
+      <div className="val-bar val-noprint">
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Link className="btn sm" href={back}>
+            {run ? "Back to the run" : "Back to Make or buy"}
+          </Link>
+          {run ? (
+            <Link className="btn sm ghost" href={reportHref(null)}>
+              Every part instead
+            </Link>
+          ) : null}
+        </span>
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <a className="btn sm" href={reportPdfUrl(run)} download>
+            Download PDF
+          </a>
+          <button className="btn sm ink" type="button" onClick={() => window.print()}>
+            Print
+          </button>
+        </span>
+      </div>
+
+      <h1>Pilot report</h1>
+      <p className="pmeta">
+        {rep.organization ? <span>{rep.organization}</span> : null}
+        <span>{rep.scope.kind === "run" ? `Catalog run of ${dateWord(rep.scope.created_at ?? null)}${rep.scope.parts_list?.name ? `, parts list ${rep.scope.parts_list.name}` : ""}` : `Every part checked, at ${rep.scope.quantity} of each`}</span>
+        <span>{dateWord(rep.generated_at)}</span>
+      </p>
+
+      <div className="rbk" role="group" aria-label="Parts by where they're made">
+        <div>
+          <span>Parts</span>
+          <b className="num">{rep.parts}</b>
+          <small>{other.length ? `${other.reduce((s, [, v]) => s + v, 0)} not sorted` : "all sorted"}</small>
+        </div>
+        {rep.buckets.map((b) => (
+          <div key={b.key}>
+            <span>{b.label}</span>
+            <b className="num">{b.parts}</b>
+            <small>{b.hours ? `${hoursWord(b.hours)} machine time` : b.parts ? "no machine time" : "none"}</small>
+          </div>
+        ))}
+      </div>
+
+      <h2>Sorted</h2>
+      <div className="val-wide">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Where</th>
+              <th scope="col" className="r">
+                Parts
+              </th>
+              <th scope="col" className="r">
+                Quantity
+              </th>
+              <th scope="col" className="r">
+                Machine time
+              </th>
+              <th scope="col" className="r">
+                Material
+              </th>
+              <th scope="col" className="r">
+                Cost at quantity
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rep.buckets.map((b) => (
+              <tr key={b.key}>
+                <td>{b.label}</td>
+                <td className="r num">{b.parts}</td>
+                <td className="r num">{(b.quantity ?? 0).toLocaleString("en-US")}</td>
+                <td className="r num">
+                  {hoursWord(b.hours)}
+                  {partial(b.hours_parts, b.parts)}
+                </td>
+                <td className="r num">
+                  {kg(b.mass_kg)}
+                  {partial(b.mass_parts, b.parts)}
+                </td>
+                <td className="r num">
+                  {moneyWord(b.cost_usd)}
+                  {partial(b.cost_parts, b.parts)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {other.length ? <p className="foot">Not sorted: {other.map(([k, v]) => `${v} ${OTHER_WORDS[k] ?? k}`).join(", ")}.</p> : null}
+
+      <h2>What making in-house takes</h2>
+      {rep.in_house.parts ? (
+        <>
+          <p className="rp">
+            {rep.in_house.parts} {rep.in_house.parts === 1 ? "part" : "parts"} on your machines: {hoursWord(rep.in_house.hours)} of machine time and {kg(rep.in_house.mass_kg)} of material at the quantities checked.
+          </p>
+          {rep.in_house.machines.length ? (
+            <div className="val-wide">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Machine</th>
+                    <th scope="col">Method</th>
+                    <th scope="col" className="r">
+                      Parts
+                    </th>
+                    <th scope="col" className="r">
+                      Machine time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rep.in_house.machines.map((m) => (
+                    <tr key={m.machine}>
+                      <td>{m.machine}</td>
+                      <td>{methodWord(m.process)}</td>
+                      <td className="r num">{m.parts}</td>
+                      <td className="r num">{hoursWord(m.hours)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <p className="rp muted">No part sorted to your machines.</p>
+      )}
+
+      <h2>Biggest wins</h2>
+      {rep.wins.length ? (
+        <>
+          <div className="val-wide">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Part</th>
+                  <th scope="col">On</th>
+                  <th scope="col" className="r">
+                    Quantity
+                  </th>
+                  <th scope="col" className="r">
+                    In-house each
+                  </th>
+                  <th scope="col" className="r">
+                    Cheapest outside each
+                  </th>
+                  <th scope="col" className="r">
+                    Difference at quantity
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rep.wins.map((w) => (
+                  <tr key={`${w.part_key}-${w.quantity}`}>
+                    <td>
+                      {w.part_key ? <Link href={R.part(w.part_key)}>{w.file_name}</Link> : w.file_name}
+                      {w.part_number ? <small>{w.part_number}</small> : null}
+                    </td>
+                    <td>{w.machine ?? methodWord(w.process)}</td>
+                    <td className="r num">{w.quantity.toLocaleString("en-US")}</td>
+                    <td className="r num">{moneyWord(w.in_house_each)}</td>
+                    <td className="r num">
+                      {moneyWord(w.outside_each)}
+                      <small>{methodWord(w.outside_process)}</small>
+                    </td>
+                    <td className="r num">{moneyWord(w.saving_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="foot">Your machine at its marginal rate against the cheapest outside route, both ScaleCAD estimates at the same quantity.</p>
+        </>
+      ) : (
+        <p className="rp muted">No in-house part has both an in-house and an outside price to compare.</p>
+      )}
+
+      <h2>Decisions recorded</h2>
+      {rep.decisions.length ? (
+        <div className="val-wide">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Part</th>
+                <th scope="col">Decision</th>
+                <th scope="col">By</th>
+                <th scope="col">Date</th>
+                <th scope="col">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rep.decisions.map((d) => (
+                <tr key={d.part_key}>
+                  <td>
+                    <Link href={R.part(d.part_key)}>{d.file_name}</Link>
+                    {d.part_number ? <small>{d.part_number}</small> : null}
+                  </td>
+                  <td>
+                    {d.decision}
+                    {d.process ? <small>{methodWord(d.process)}</small> : null}
+                  </td>
+                  <td>{d.by ?? "Not recorded"}</td>
+                  <td>{dateWord(d.at)}</td>
+                  <td>{d.note ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="rp muted">No decision recorded on these parts yet. Record one on a part’s Decide view.</p>
+      )}
+
+      <h2>Checked against your actuals</h2>
+      <p className="rp">{summaryLine(a)}</p>
+      {a.parts ? (
+        <div className="val-wide">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Method</th>
+                <th scope="col">Machine hours</th>
+                <th scope="col">Cost per part</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <b>All methods</b>
+                </td>
+                <td>{statsLine(a.hours)}</td>
+                <td>{statsLine(a.cost)}</td>
+              </tr>
+              {a.per_process.map((p) => (
+                <tr key={p.process}>
+                  <td>
+                    {methodWord(p.process)}
+                    {!p.hours.enough && !p.cost.enough ? <small>Fewer than {a.min_per_method} actuals</small> : null}
+                  </td>
+                  <td>{statsLine(p.hours)}</td>
+                  <td>{statsLine(p.cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {a.parts && a.hours.worst?.file_name ? (
+        <p className="foot">
+          Largest machine-hours miss: {a.hours.worst.file_name} ({pctWord(a.hours.worst_pct)}). Median by size {absPct(a.hours.median_abs_pct)}. Error is ScaleCAD’s estimate against your actual: +10% means ScaleCAD said 10% more.
+        </p>
+      ) : null}
+      {rep.calibration ? (
+        <p className="rp">
+          Calibration in effect since {dateWord(rep.calibration.applied_at)}
+          {rep.calibration.applied_by ? `, applied by ${rep.calibration.applied_by}` : ""}:{" "}
+          {Object.entries(rep.calibration.factors)
+            .map(([p, f]) => `${methodWord(p)}${f.hours ? `, machine time × ${f.hours}` : ""}${f.cost ? `, cost × ${f.cost}` : ""}`)
+            .join("; ")}
+          .
+        </p>
+      ) : null}
+      <ul className="cav">
+        {rep.caveats.map((c) => (
+          <li key={c}>{c}</li>
+        ))}
+      </ul>
+      <p className="foot">ScaleCAD pilot report · {rep.generated_at.slice(0, 16).replace("T", " ")} UTC · engine estimates and your own numbers, not quotes.</p>
+    </article>
+  );
+}

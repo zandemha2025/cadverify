@@ -1,18 +1,25 @@
 "use client";
 
 /**
- * Real costs (board S2): send real job costs back (one job at a time or a CSV),
- * see what's logged, and recalibrate (pilot plan) once the organization has
- * enough real records. A method's range turns measured only from its own
- * held-out real results; stand-ins never count.
+ * Actual costs (board S2, and the validation moment): bring your shop's real
+ * numbers in the way you have them (a CSV or Excel export, one job at a time),
+ * see how close ScaleCAD came on each part and overall ("checked against your
+ * real numbers", every plan), and calibrate ScaleCAD with them (applying it is
+ * part of the pilot; who applied it and when is recorded, and it can be
+ * undone). Stand-in and test rows never count.
  */
 import * as React from "react";
 import Link from "next/link";
 import { listMachines, type OwnedMachine } from "@/lib/verify/machine-api";
-import { ApiError, groundTruthTemplate, importGroundTruthCsv, listGroundTruth, recalibrate, type GroundTruthImportSummary, type InsufficientGroundTruth } from "@/lib/verify/calibration-api";
+import { groundTruthTemplate, listGroundTruth } from "@/lib/verify/calibration-api";
 import { R, TABS } from "../routes";
-import { useShell } from "../shell";
 import { Content, Loading, PageHead, Panel, Sheet, cx, usd } from "../ui";
+import { AccuracyPanel } from "../validation/accuracy-panel";
+import { CalibrationPanel } from "../validation/calibration-panel";
+import { ImportDialog } from "../validation/import-dialog";
+import { reportHref } from "../validation/routes";
+import type { ImportResult } from "../validation/api";
+import { basisWord, hoursWord } from "../validation/words";
 import { Banner, ShopWorld, usePartRecords } from "./common";
 import { downloadText, logJob, ShopApiError, type RecordDetail } from "./shop-api";
 import { PROCS, longDate, procName } from "./shop-derive";
@@ -24,23 +31,15 @@ import {
   MIN_REAL_RECORDS,
   bandPos,
   countRecords,
-  methodRows,
   parseJob,
   rangeOf,
   type GtRecord,
   type JobErrors,
   type JobForm,
-  type RecalResult,
 } from "./actuals-derive";
 
 type BannerState =
-  | { kind: "ask" }
-  | { kind: "refused"; n: number; min: number; reason?: string }
-  | { kind: "pilot"; text: string }
-  | { kind: "recalOk"; r: RecalResult }
-  | { kind: "recalError"; msg: string }
-  | { kind: "imported"; s: GroundTruthImportSummary }
-  | { kind: "importError"; msg: string }
+  | { kind: "imported"; r: ImportResult }
   | { kind: "template" }
   | { kind: "templateError"; msg: string }
   | null;
@@ -52,17 +51,15 @@ const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const REQUIRED_COLUMNS = 4; // part_id, process, quantity, actual_unit_cost_usd (groundtruth_service.CSV_REQUIRED_COLUMNS)
 
 export function ActualsScreen() {
-  const { usage } = useShell();
   const [records, setRecords] = React.useState<GtRecord[] | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [machines, setMachines] = React.useState<OwnedMachine[]>([]);
   const [banner, setBanner] = React.useState<BannerState>(null);
-  const [busy, setBusy] = React.useState<"recal" | "csv" | null>(null);
-  const [recal, setRecal] = React.useState<RecalResult | null>(null);
   const [columns, setColumns] = React.useState<string[] | null>(null);
-  const csvRef = React.useRef<HTMLInputElement>(null);
-  const askRef = React.useRef<HTMLButtonElement>(null);
-  const recalBtn = React.useRef<HTMLButtonElement>(null);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [tick, setTick] = React.useState(0);
+  const [ask, setAsk] = React.useState(0);
+  const fileRef = React.useRef<HTMLInputElement>(null);
   // One request per load: every part's newest record, the newest 12 with details.
   const recs = usePartRecords(12);
   const details: RecordDetail[] | null = recs.data?.details ?? null;
@@ -71,10 +68,10 @@ export function ActualsScreen() {
     setLoadError(null);
     try {
       const page = await listGroundTruth();
-      setRecords(page.records as GtRecord[]);
-      return page.records as GtRecord[];
+      setRecords(page.records as unknown as GtRecord[]);
+      return page.records as unknown as GtRecord[];
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Couldn't load real costs.");
+      setLoadError(e instanceof Error ? e.message : "Couldn't load your actuals.");
       return null;
     }
   }, []);
@@ -91,64 +88,8 @@ export function ActualsScreen() {
     );
   }, [load]);
 
-  React.useEffect(() => {
-    if (banner?.kind === "ask") askRef.current?.focus();
-  }, [banner]);
-
   const { real, standIn } = countRecords(records);
-  const estimates = React.useMemo(() => (details ?? []).map(headlineEstimate), [details]);
-  const rows = methodRows({
-    machines,
-    records: records ?? [],
-    savedProcesses: (recs.data?.parts ?? []).map((r) => r.make_now_process),
-    estimates,
-    recal,
-  });
-  const anyMeasured = rows.some((r) => r.measured);
-  const pilot = usage ? usage.plan === "pilot" : null;
-
-  const askRecal = () => {
-    if (pilot === false) {
-      setBanner({ kind: "pilot", text: "Recalibration is part of a pilot plan. Your plan covers single-part checks." });
-      return;
-    }
-    setBanner({ kind: "ask" });
-  };
-
-  const doRecal = async () => {
-    setBusy("recal");
-    try {
-      const r = (await recalibrate()) as unknown as RecalResult;
-      setRecal(r);
-      setBanner({ kind: "recalOk", r });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 422) {
-        const d = (e.body as { detail?: InsufficientGroundTruth } | null)?.detail;
-        setBanner({ kind: "refused", n: d?.n_real ?? real, min: d?.min_real ?? MIN_REAL_RECORDS });
-      } else if (e instanceof ApiError && e.status === 403) {
-        setBanner({ kind: "pilot", text: e.message || "Recalibration is part of a pilot plan." });
-      } else {
-        setBanner({ kind: "recalError", msg: e instanceof Error ? e.message : "Recalibration failed." });
-      }
-    } finally {
-      setBusy(null);
-      recalBtn.current?.focus();
-    }
-  };
-
-  const onCsv = async (file: File) => {
-    setBusy("csv");
-    setBanner(null);
-    try {
-      const s = await importGroundTruthCsv(file);
-      setBanner({ kind: "imported", s });
-      await load();
-    } catch (e) {
-      setBanner({ kind: "importError", msg: e instanceof Error ? e.message : "Import failed." });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const matchedParts = new Set((records ?? []).filter((r) => !r.stand_in && r.evidence_sha256).map((r) => r.evidence_sha256)).size;
 
   const onTemplate = async () => {
     try {
@@ -159,148 +100,88 @@ export function ActualsScreen() {
     }
   };
 
-  const nOf = records ? (real > MIN_REAL_RECORDS ? `${real} real` : `${real} of ${MIN_REAL_RECORDS}`) : "…";
+  const changed = async () => {
+    await load();
+    setTick((t) => t + 1);
+  };
 
   return (
-    <ShopWorld label="Real costs">
+    <ShopWorld label="Actual costs">
       <PageHead
-        title="Real costs"
+        title="Actual costs"
         actions={
           <>
-            <button className="btn sm" type="button" onClick={() => csvRef.current?.click()} disabled={busy === "csv"}>
-              {busy === "csv" ? "Importing…" : "Import CSV"}
+            <button className="btn sm" type="button" onClick={() => fileRef.current?.click()}>
+              Import actuals
             </button>
             <button className="btn sm" type="button" onClick={onTemplate}>
               Download template<span className="new">New</span>
             </button>
-            <button className="btn ink sm" type="button" ref={recalBtn} onClick={askRecal} disabled={busy === "recal"}>
-              {busy === "recal" ? "Recalibrating…" : "Recalibrate"} <span className="pilot">Pilot</span>
+            <Link className="btn sm" href={reportHref(null)}>
+              Pilot report
+            </Link>
+            <button className="btn ink sm" type="button" onClick={() => setAsk((n) => n + 1)}>
+              Recalibrate <span className="pilot">Pilot</span>
             </button>
           </>
         }
         meta={[
           <>
-            Real records <b className="num">{records ? real : "…"}</b>
+            Parts with actuals <b className="num">{records ? matchedParts : "…"}</b>
           </>,
           <>
-            Stand-ins <b className="num">{records ? standIn : "…"}</b>
+            Actuals <b className="num">{records ? real : "…"}</b>
           </>,
           <>
-            Floor <b>{MIN_REAL_RECORDS} real</b>
+            Test <b className="num">{records ? standIn : "…"}</b>
           </>,
           <>
-            Range <b>{anyMeasured ? "Measured" : "Typical"}</b>
+            Fair picture <b>{MIN_REAL_RECORDS} parts</b>
           </>,
         ]}
         tabs={TABS.shop}
         tabsLabel="Your shop"
       />
       <input
-        ref={csvRef}
+        ref={fileRef}
         type="file"
-        accept=".csv,text/csv"
-        aria-label="Choose a real costs CSV to import"
+        accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        aria-label="Choose a CSV or Excel file of your actuals"
         tabIndex={-1}
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
-          if (f) void onCsv(f);
+          if (f) {
+            setBanner(null);
+            setFile(f);
+          }
         }}
       />
       <Content>
-        {banner?.kind === "ask" ? (
-          <div className="banner" role="alertdialog" aria-label="Recalibrate">
-            <span>
-              <b>
-                Recalibrate from {real} real {real === 1 ? "record" : "records"}?
-              </b> Results are held out by part. Stand-ins don&apos;t count.
-            </span>
-            <span className="bx">
-              <button className="btn ink sm" type="button" onClick={() => void doRecal()} disabled={busy === "recal"}>
-                {busy === "recal" ? "Recalibrating…" : "Recalibrate"}
-              </button>
-              <button className="btn sm" type="button" ref={askRef} onClick={() => setBanner(null)} disabled={busy === "recal"}>
-                Cancel
-              </button>
-            </span>
-          </div>
-        ) : null}
-        {banner?.kind === "refused" ? (
-          <Banner tone="bad" alert onDismiss={() => setBanner(null)}>
-            <b>
-              Recalibration refused: {banner.n} real of {banner.min} needed.
-            </b>{" "}
-            Stand-in and synthetic records never count. Add real jobs and retry.
-          </Banner>
-        ) : null}
-        {banner?.kind === "pilot" ? (
-          <Banner
-            tone="warn"
-            alert
-            onDismiss={() => setBanner(null)}
-            actions={
-              <a className="btn sm ink" href="/pilot">
-                Plan pilot
-              </a>
-            }
-          >
-            <b>Pilot plan.</b> {banner.text} Logging jobs and importing CSVs work on every plan.
-          </Banner>
-        ) : null}
-        {banner?.kind === "recalOk" ? (
-          <Banner tone={banner.r.validated ? "ok" : "warn"} onDismiss={() => setBanner(null)}>
-            {banner.r.validated ? (
-              <>
-                <b>Recalibrated.</b> Measured range for {(banner.r.validated_processes ?? []).map(procName).join(", ")} from{" "}
-                {(banner.r.validated_processes ?? []).reduce((n, p) => n + (banner.r.heldout_metrics_real?.per_process?.[p]?.n ?? 0), 0)} held-out results.
-              </>
-            ) : (
-              <>
-                <b>Recalibrated.</b> No method has {MIN_HELD_OUT} held-out real results yet, so ranges stay typical.
-              </>
-            )}
-            {banner.r.n_skipped ? (
-              <ul>
-                {(banner.r.skipped ?? []).slice(0, 5).map((s, i) => (
-                  <li key={i}>
-                    {s.part_id} · {procName(s.process)} × {s.quantity}: {s.reason}
-                  </li>
-                ))}
-                {banner.r.n_skipped > 5 ? <li>{banner.r.n_skipped - 5} more couldn&apos;t be costed.</li> : null}
-              </ul>
-            ) : null}
-          </Banner>
-        ) : null}
-        {banner?.kind === "recalError" ? (
-          <Banner tone="bad" alert onDismiss={() => setBanner(null)}>
-            <b>Recalibration failed.</b> {banner.msg}
-          </Banner>
-        ) : null}
         {banner?.kind === "imported" ? (
-          <Banner tone={banner.s.errors.length ? "warn" : "ok"} onDismiss={() => setBanner(null)}>
+          <Banner tone={banner.r.not_imported.length ? "warn" : "ok"} onDismiss={() => setBanner(null)}>
             <b>
-              {banner.s.imported} imported · {banner.s.skipped} skipped · {banner.s.total} total
+              {banner.r.imported} {banner.r.imported === 1 ? "actual" : "actuals"} imported for {banner.r.parts} {banner.r.parts === 1 ? "part" : "parts"}
+              {banner.r.test ? ` (${banner.r.test} test)` : ""}
+              {banner.r.not_imported.length ? ` · ${banner.r.not_imported.length} not imported` : ""}
             </b>
-            {banner.s.errors.length ? (
+            {banner.r.not_imported.length ? (
               <ul>
-                {banner.s.errors.map((er, i) => (
+                {banner.r.not_imported.slice(0, 8).map((er, i) => (
                   <li key={i}>
-                    Line {er.line}: {er.reason}
+                    {er.line ? `Row ${er.line}: ` : ""}
+                    {er.reason}
                   </li>
                 ))}
+                {banner.r.not_imported.length > 8 ? <li>{banner.r.not_imported.length - 8} more.</li> : null}
               </ul>
             ) : null}
-          </Banner>
-        ) : null}
-        {banner?.kind === "importError" ? (
-          <Banner tone="bad" alert onDismiss={() => setBanner(null)}>
-            <b>Import failed.</b> {banner.msg} Nothing already logged was changed.
           </Banner>
         ) : null}
         {banner?.kind === "template" ? (
           <Banner tone="ok" onDismiss={() => setBanner(null)}>
-            <b>ground-truth-template.csv downloaded.</b> Header row and one example line.
+            <b>ground-truth-template.csv downloaded.</b> Header row and one example line. Any export works with Import actuals: you pick the columns.
           </Banner>
         ) : null}
         {banner?.kind === "templateError" ? (
@@ -318,67 +199,27 @@ export function ActualsScreen() {
               </button>
             }
           >
-            <b>Couldn&apos;t load real costs.</b> {loadError}
+            <b>Couldn&apos;t load your actuals.</b> {loadError}
           </Banner>
         ) : null}
+
+        <AccuracyPanel tick={tick} onImport={() => fileRef.current?.click()} />
+
+        <CalibrationPanel ask={ask} onChanged={() => setTick((t) => t + 1)} />
 
         <LogJob
           parts={recs.data?.parts ?? []}
           machines={machines}
-          onSaved={async () => countRecords(await load()).real}
+          onSaved={async () => {
+            const r = await load();
+            setTick((t) => t + 1);
+            return countRecords(r).real;
+          }}
         />
-
-        <Panel title="Calibration" note={`${MIN_REAL_RECORDS} real records to recalibrate · ${MIN_HELD_OUT} held-out results per method for a measured range`}>
-          <div className="floorrow">
-            <b style={{ fontSize: 13, fontWeight: 600 }}>Real records</b>
-            <span className="slots8" role="img" aria-label={`${real} of ${MIN_REAL_RECORDS} real records`}>
-              {Array.from({ length: MIN_REAL_RECORDS }, (_, i) => (
-                <span key={i} className={cx(real > i && "on")} />
-              ))}
-            </span>
-            <span className="num" style={{ textAlign: "right", fontWeight: 600 }}>
-              {nOf}
-            </span>
-          </div>
-          <div className="tr th" style={{ gridTemplateColumns: "minmax(0,1fr) 110px 150px 120px" }}>
-            <span>Method</span>
-            <span>Real records</span>
-            <span>Held-out results</span>
-            <span>Range</span>
-          </div>
-          {rows.length === 0 ? (
-            <p className="fh" style={{ margin: "4px 16px 12px" }}>
-              Methods show here once you add a machine or log a job.
-            </p>
-          ) : (
-            rows.map((r) => (
-              <div className="tr" key={r.process} style={{ gridTemplateColumns: "minmax(0,1fr) 110px 150px 120px" }}>
-                <span>
-                  <b>{procName(r.process)}</b>
-                  <small>
-                    {[r.machines.join(", ") || "No machine", r.savedParts ? `${r.savedParts} saved part${r.savedParts === 1 ? "" : "s"}` : "no saved parts"].join(" · ")}
-                  </small>
-                </span>
-                <span className="num">
-                  <span className="sr">Real records </span>
-                  {r.real}
-                </span>
-                <span className="num">
-                  <span className="sr">Held-out results </span>
-                  {r.heldOut == null ? "Not run" : `${r.heldOut} of ${MIN_HELD_OUT}`}
-                </span>
-                <span className={cx("chip", r.measured ? "c-ok" : "c-unk")} style={{ justifySelf: "start" }}>
-                  <i aria-hidden="true" />
-                  {r.measured ? "Measured" : "Typical"}
-                </span>
-              </div>
-            ))
-          )}
-        </Panel>
 
         <LoggedJobs records={records} error={loadError} />
 
-        <Panel title="CSV columns" note="Header row, any order, lower case">
+        <Panel title="CSV columns" note="For the template; Import actuals takes any export">
           {columns == null ? (
             <Loading rows={1} label="Loading the CSV columns" />
           ) : columns.length === 0 ? (
@@ -402,6 +243,17 @@ export function ActualsScreen() {
       <Sheet label="Range for one part" style={{ bottom: 20 }}>
         <PartRangeSheet details={details} real={real} standIn={standIn} loadError={recs.error} />
       </Sheet>
+      {file ? (
+        <ImportDialog
+          file={file}
+          onClose={() => setFile(null)}
+          onImported={(r) => {
+            setFile(null);
+            setBanner({ kind: "imported", r });
+            void changed();
+          }}
+        />
+      ) : null}
     </ShopWorld>
   );
 }
@@ -451,7 +303,7 @@ function LogJob({
     try {
       await logJob(r.body);
       const n = await onSaved();
-      setSaved(`Saved. ${n} real.`);
+      setSaved(`Saved. ${n} ${n === 1 ? "actual" : "actuals"}.`);
       setF((x) => ({ ...BLANK, part: x.part, process: x.process, material: x.material, kind: x.kind }));
     } catch (e) {
       setSaveError(e instanceof ShopApiError && e.status === 422 ? `Check the values: ${e.message}` : e instanceof Error ? e.message : "Couldn't save.");
@@ -474,7 +326,7 @@ function LogJob({
           Log a job<span className="new">New</span>
         </>
       }
-      note="Same part, method and quantity replaces the earlier entry"
+      note="Cost each, machine hours each, or both · same part, method and quantity replaces the earlier entry"
     >
       <div className="frow" style={{ gridTemplateColumns: "2fr 1.3fr 0.8fr 1fr 1fr" }}>
         <label className="field">
@@ -523,7 +375,7 @@ function LogJob({
         </label>
         <label className="field">
           Cost each (USD)
-          <input aria-label="Cost each (USD)" type="text" inputMode="decimal" placeholder="31.80" value={f.cost} onChange={(e) => set("cost", e.target.value)} {...inv("cost")} />
+          <input aria-label="Cost each (USD)" type="text" inputMode="decimal" placeholder="opt." value={f.cost} onChange={(e) => set("cost", e.target.value)} {...inv("cost")} />
           {err("cost")}
         </label>
         <label className="field">
@@ -558,8 +410,8 @@ function LogJob({
           {err("date")}
         </label>
         <label className="field">
-          Machine h
-          <input aria-label="Machine hours" type="text" inputMode="decimal" placeholder="opt." value={f.machineH} onChange={(e) => set("machineH", e.target.value)} {...inv("machineH")} />
+          Machine h each
+          <input aria-label="Machine hours per part" type="text" inputMode="decimal" placeholder="opt." value={f.machineH} onChange={(e) => set("machineH", e.target.value)} {...inv("machineH")} />
           {err("machineH")}
         </label>
         <label className="field">
@@ -604,30 +456,45 @@ function LogJob({
 
 function LoggedJobs({ records, error }: { records: GtRecord[] | null; error: string | null }) {
   const shown = (records ?? []).slice(0, 25);
+  const cols = "minmax(0,1fr) 80px 100px 100px 96px";
   return (
-    <Panel title="Logged jobs" note={records ? String(records.length) : undefined}>
+    <Panel title="Logged actuals" note={records ? String(records.length) : undefined}>
       {error ? null : records == null ? (
-        <Loading rows={2} label="Loading logged jobs" />
+        <Loading rows={2} label="Loading logged actuals" />
       ) : records.length === 0 ? (
         <p className="fh" style={{ margin: "0 16px 12px" }}>
-          No jobs logged yet. Log one above or import a CSV.
+          Nothing logged yet. Import an export of your jobs or log one above.
         </p>
       ) : (
         <>
-          <div className="tr th" style={{ gridTemplateColumns: "minmax(0,1fr) 90px 110px 110px" }}>
+          <div className="tr th" style={{ gridTemplateColumns: cols }}>
             <span>Part and method</span>
             <span>Quantity</span>
+            <span>Machine h each</span>
             <span>Cost each</span>
             <span>Counts</span>
           </div>
           {shown.map((r, i) => (
-            <div className="tr" key={`${r.part_id}-${r.process}-${r.quantity}-${i}`} style={{ gridTemplateColumns: "minmax(0,1fr) 90px 110px 110px" }}>
+            <div className="tr" key={`${r.part_id}-${r.process}-${r.quantity}-${i}`} style={{ gridTemplateColumns: cols }}>
               <span style={{ minWidth: 0 }}>
-                <b style={{ overflowWrap: "anywhere" }}>{r.part_id}</b>
+                {r.evidence_sha256 ? (
+                  <Link href={R.part(r.evidence_sha256)} style={{ fontWeight: 600, overflowWrap: "anywhere", color: "inherit" }}>
+                    {r.part_id}
+                  </Link>
+                ) : (
+                  <b style={{ overflowWrap: "anywhere" }}>{r.part_id}</b>
+                )}
                 <small>
-                  {procName(r.process)}
-                  {r.source ? ` · ${r.source}` : ""}
-                  {r.invoice_date ? ` · ${longDate(r.invoice_date)}` : r.created_at ? ` · logged ${longDate(r.created_at)}` : ""}
+                  {[
+                    r.part_number,
+                    procName(r.process),
+                    r.machine ? `on ${r.machine}` : null,
+                    r.source && !/STAND-IN/i.test(r.source) ? r.source : null,
+                    r.invoice_date ? longDate(r.invoice_date) : r.created_at ? `logged ${longDate(r.created_at)}` : null,
+                    r.match_basis ? `matched by ${basisWord(r.match_basis)}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </small>
               </span>
               <span className="num">
@@ -635,12 +502,16 @@ function LoggedJobs({ records, error }: { records: GtRecord[] | null; error: str
                 {r.quantity}
               </span>
               <span className="num">
+                <span className="sr">Machine hours each </span>
+                {r.actual_machine_hours != null ? hoursWord(r.actual_machine_hours) : "—"}
+              </span>
+              <span className="num">
                 <span className="sr">Cost each </span>
-                {usd(r.actual_unit_cost_usd)}
+                {r.actual_unit_cost_usd != null ? usd(r.actual_unit_cost_usd) : "—"}
               </span>
               <span className={cx("chip", r.stand_in ? "c-unk" : "c-ok")} style={{ justifySelf: "start" }}>
                 <i aria-hidden="true" />
-                {r.stand_in ? "Stand-in" : "Real"}
+                {r.stand_in ? "Test" : "Real"}
               </span>
             </div>
           ))}
@@ -662,21 +533,21 @@ function PartRangeSheet({ details, real, standIn, loadError }: { details: Record
   const r = cur ? rangeOf(cur.e) : null;
   const facts = (
     <div className="kv">
-      <span>Real records</span>
+      <span>Actuals</span>
       <b className="num">{real}</b>
-      <span>Stand-ins</span>
+      <span>Test</span>
       <b className="num">{standIn}</b>
-      <span>Floor</span>
-      <b>{MIN_REAL_RECORDS} real, whole organization</b>
-      <span>Measured range</span>
-      <b>{MIN_HELD_OUT} held-out results for the method</b>
+      <span>Fair picture</span>
+      <b>{MIN_REAL_RECORDS} parts with actuals</b>
+      <span>Per method</span>
+      <b>{MIN_HELD_OUT} actuals before its figure says much</b>
       <span>Held out</span>
       <b>By part, so one part never grades itself</b>
       <span>Never count</span>
       <b>Synthetic, seed, demo, stand-in</b>
-      <span>Recalibrate</span>
+      <span>Apply a calibration</span>
       <b>Pilot plan</b>
-      <span>Log and import</span>
+      <span>Import and compare</span>
       <b>Members and admins, all plans</b>
     </div>
   );
@@ -713,9 +584,9 @@ function PartRangeSheet({ details, real, standIn, loadError }: { details: Record
             </small>
           </div>
           <div className="fig">
-            <span>Real records</span>
+            <span>Actuals</span>
             <b className="num">{real}</b>
-            <small>of {MIN_REAL_RECORDS}</small>
+            <small>{standIn ? `${standIn} test` : "your whole organization"}</small>
           </div>
         </div>
       </div>
@@ -741,9 +612,7 @@ function PartRangeSheet({ details, real, standIn, loadError }: { details: Record
         <p style={{ margin: "6px 12px 0", color: "var(--ink2)", fontSize: 13.5 }}>
           {r.measured
             ? "Measured from your held-out real records."
-            : real >= MIN_REAL_RECORDS
-              ? "Enough real records. Recalibrate to measure."
-              : `Typical until ${MIN_REAL_RECORDS} real records and ${MIN_HELD_OUT} held-out ${lowerFirst(procName(cur.e!.process))} results.`}
+            : `Typical: the band ScaleCAD states for ${lowerFirst(procName(cur.e!.process))}. How often your actuals fall inside it is under Checked against your real numbers.`}
         </p>
         <div className="gh" style={{ marginTop: 12 }}>
           <span>Legend</span>

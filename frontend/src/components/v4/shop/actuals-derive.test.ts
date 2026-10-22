@@ -58,6 +58,18 @@ test("log a job: malformed values are reported, never coerced", () => {
   assert.equal(r.errors.quantity, "Whole number, 1 or more.");
 });
 
+test("log a job: machine hours alone are an actual; neither is asked for", () => {
+  const r = parseJob({ ...form, cost: "", machineH: "2.5" });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.body.actual_unit_cost_usd, null);
+    assert.equal(r.body.actual_machine_hours, 2.5);
+  }
+  const none = parseJob({ ...form, cost: "", machineH: "" });
+  assert.equal(none.ok, false);
+  if (!none.ok) assert.equal(none.errors.cost, "Cost each, machine hours each, or both.");
+});
+
 test("a part's range comes from its estimate's band", () => {
   const e = { unit_cost_usd: 31.54, confidence: { low_usd: 15.77, high_usd: 47.31, point_usd: 31.54, half_width_pct: 50, validated: false, n_samples: 0 } } as EstimateRow;
   const r = rangeOf(e)!;

@@ -11,7 +11,23 @@ export const MIN_REAL_RECORDS = 8;
 /** Held-out real results a method needs for a measured range. */
 export const MIN_HELD_OUT = 3;
 
-export type GtRecord = { part_id: string; process: string; quantity: number; actual_unit_cost_usd: number; stand_in: boolean; source: string; created_at: string | null; source_type?: string | null; invoice_date?: string | null };
+export type GtRecord = {
+  part_id: string;
+  process: string;
+  quantity: number;
+  /** Empty when the actual carries machine hours only. */
+  actual_unit_cost_usd: number | null;
+  stand_in: boolean;
+  source: string;
+  created_at: string | null;
+  source_type?: string | null;
+  invoice_date?: string | null;
+  actual_machine_hours?: number | null;
+  part_number?: string | null;
+  machine?: string | null;
+  match_basis?: string | null;
+  evidence_sha256?: string | null;
+};
 
 export function countRecords(records: GtRecord[] | null): { real: number; standIn: number } {
   const real = (records ?? []).filter((r) => !r.stand_in).length;
@@ -134,7 +150,11 @@ export function parseJob(f: JobForm): { ok: true; body: GroundTruthIn } | { ok: 
   const q = f.quantity.trim();
   if (!/^\d+$/.test(q) || Number(q) < 1) errors.quantity = "Whole number, 1 or more.";
   const c = f.cost.trim().replace(/^\$/, "");
-  if (!DECIMAL.test(c) || !(Number(c) > 0)) errors.cost = "Cost each in dollars, more than 0.";
+  let cost: number | null = null;
+  if (c) {
+    if (!DECIMAL.test(c) || !(Number(c) > 0)) errors.cost = "Cost each in dollars, more than 0.";
+    else cost = Number(c);
+  }
   let date: string | null = null;
   const d = f.date.trim();
   if (d) {
@@ -147,6 +167,8 @@ export function parseJob(f: JobForm): { ok: true; body: GroundTruthIn } | { ok: 
   const setupH = hours(f.setupH, "Setup hours", errors, "setupH");
   const laborH = hours(f.laborH, "Labor hours", errors, "laborH");
   const inspectH = hours(f.inspectH, "Inspection hours", errors, "inspectH");
+  // A cost each, machine hours each, or both: an hours-only actual is real too.
+  if (!c && !(machineH && machineH > 0) && !errors.machineH) errors.cost = "Cost each, machine hours each, or both.";
   if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
@@ -154,7 +176,7 @@ export function parseJob(f: JobForm): { ok: true; body: GroundTruthIn } | { ok: 
       part_id: f.part.trim(),
       process: f.process,
       quantity: Number(q),
-      actual_unit_cost_usd: Number(c),
+      actual_unit_cost_usd: cost,
       material_class: f.material || "polymer",
       source: f.source.trim(),
       source_type: f.kind || "actual",
