@@ -18,6 +18,7 @@ from src.config.public_urls import error_doc_url
 import asyncio
 import logging
 import os
+import re
 import zipfile
 from datetime import datetime, timezone
 from typing import Optional, cast
@@ -873,6 +874,12 @@ async def _catalog_run_from_upload(
                 pass
 
 
+def _download_stem(value: str) -> str:
+    """A Content-Disposition-safe file stem: letters, digits, ``_ . -`` only."""
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", value or "").strip("._")
+    return stem[:80] or "batch"
+
+
 async def _catalog_batch(session: AsyncSession, batch_id: str, user_id: int) -> Batch:
     batch = (
         await session.execute(
@@ -916,7 +923,7 @@ async def get_catalog_board_csv(
     return StreamingResponse(
         iter([body]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=catalog_run_{batch_id}.csv"},
+        headers={"Content-Disposition": f'attachment; filename="catalog_run_{_download_stem(batch.ulid)}.csv"'},
     )
 
 
@@ -1119,7 +1126,7 @@ async def get_batch_results_csv(
         csv_generator,
         media_type="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename=batch_{batch_id}_results.csv"
+            "Content-Disposition": f'attachment; filename="batch_{_download_stem(batch.ulid)}_results.csv"'
         },
     )
 
