@@ -28,7 +28,7 @@ function partial(n: number, of: number): string {
   return n && n !== of ? ` (${n} of ${of})` : "";
 }
 
-const OTHER_WORDS: Record<string, string> = { not_sorted: "checked without a machine verdict", not_checked: "couldn’t be checked", checking: "still checking" };
+const OTHER_WORDS: Record<string, string> = { not_sorted: "checked without a machine verdict", not_checked: "couldn’t be checked", checking: "to go" };
 
 export function ReportScreen({ run }: { run: string | null }) {
   const [rep, setRep] = React.useState<Report | null>(null);

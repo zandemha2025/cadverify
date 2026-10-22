@@ -21,7 +21,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { listBatches } from "@/lib/api/batch";
-import { runCounts, runWork } from "../many/batch-model";
+import { runCounts, runCountsLine, runWork } from "../many/batch-model";
 import { API_BASE } from "@/lib/api-base";
 import { keptWorkLine, type KeptJobStatus } from "../part/kept-job-model";
 import { pendingUploads } from "@/lib/api/part-upload";
@@ -177,9 +177,10 @@ function useCatalogRuns(pathname: string) {
             const w = runWork(runCounts(b));
             registerWork({ key, href, persist: true, state: "running", label: n ? w.label : "Checking parts", detail: n ? w.detail : "Starting", progress: n ? w.progress : null });
           } else if (known && known.state === "running" && !seen.has(key)) {
+            // The run page's own breakdown: the parts list's files, the rest apart (op-28).
             const c = runCounts(b);
-            const left = c.notChecked + c.toGo;
-            registerWork({ key, href, persist: true, state: b.status === "completed" ? "done" : "stopped", label: b.status === "completed" ? (left ? "Run finished" : `${n} ${n === 1 ? "part" : "parts"} checked`) : b.status === "failed" ? "Run stopped" : "Run cancelled", detail: left ? `${runWork(c).detail} · ${left} not checked` : "Sorted", progress: 1 });
+            const left = c.notChecked + c.toGo + c.unlistedNotChecked + c.unlistedToGo;
+            registerWork({ key, href, persist: true, state: b.status === "completed" ? "done" : "stopped", label: b.status === "completed" ? (left ? "Run finished" : `${n} ${n === 1 ? "part" : "parts"} checked`) : b.status === "failed" ? "Run stopped" : "Run cancelled", detail: left ? runCountsLine(c) : "Sorted", progress: 1 });
           }
         }
       } catch {

@@ -142,7 +142,7 @@ test("a run counts its files one way everywhere: checked, not checked, to go (op
   const { runCounts, runCountsLine } = await import("./batch-model.ts");
   // Batch 23 after it stopped: 28 checked, 270 skipped. Never "296 of 296 checked".
   const stopped = runCounts(P({ status: "failed", total_items: 298, completed_items: 28, failed_items: 0, skipped_items: 270, pending_items: 0 }));
-  assert.deepEqual(stopped, { total: 298, checked: 28, notChecked: 270, toGo: 0 });
+  assert.deepEqual(stopped, { total: 298, checked: 28, notChecked: 270, toGo: 0, checking: 0, unlisted: 0, unlistedChecked: 0, unlistedNotChecked: 0, unlistedToGo: 0 });
   assert.equal(runCountsLine(stopped), "28 of 298 checked · 270 not checked");
   const going = runCounts(P({ total_items: 298, completed_items: 8, failed_items: 1, skipped_items: 0, pending_items: 289 }));
   assert.equal(runCountsLine(going), "8 of 298 checked · 1 not checked · 289 to go");
@@ -154,14 +154,15 @@ test("a run counts its files one way everywhere: checked, not checked, to go (op
     { item_id: "C", bucket: "not_checked" },
     { item_id: "D", bucket: "checking" },
   ];
-  assert.deepEqual(runCounts(null, rows), { total: 4, checked: 2, notChecked: 1, toGo: 1 });
+  assert.deepEqual(runCounts(null, rows), { total: 4, checked: 2, notChecked: 1, toGo: 1, checking: 0, unlisted: 0, unlistedChecked: 0, unlistedNotChecked: 0, unlistedToGo: 0 });
 });
 
 test("a stopped run says when it stopped and what is left, in plain words (op-16)", async () => {
   const { stoppedLine } = await import("./batch-model.ts");
-  const counts = { total: 298, checked: 28, notChecked: 270, toGo: 0 };
+  const none = { checking: 0, unlisted: 0, unlistedChecked: 0, unlistedNotChecked: 0, unlistedToGo: 0 };
+  const counts = { total: 298, checked: 28, notChecked: 270, toGo: 0, ...none };
   assert.equal(stoppedLine(counts, "16:55"), "28 of 298 checked; 270 not checked: the run stopped at 16:55. Check them again.");
-  assert.equal(stoppedLine({ total: 3, checked: 2, notChecked: 1, toGo: 0 }, null), "2 of 3 checked; 1 not checked: the run stopped. Check it again.");
+  assert.equal(stoppedLine({ total: 3, checked: 2, notChecked: 1, toGo: 0, ...none }, null), "2 of 3 checked; 1 not checked: the run stopped. Check it again.");
 });
 
 test("time left comes from the run's measured pace when the server has one (op-11)", () => {
@@ -178,6 +179,9 @@ test("the work bar and the run page say the same thing about a run, and it only 
   const { runCounts, runWork } = await import("./batch-model.ts");
   const a = runWork(runCounts(P({ total_items: 298, completed_items: 6, failed_items: 2, skipped_items: 0, pending_items: 290 })));
   assert.deepEqual(a, { label: "Checking 298 parts", detail: "6 of 298 checked", progress: 8 / 298 });
+  // With a parts list: the list's parts, and the files it doesn't name said apart; the bar covers every file.
+  const listed = runWork(runCounts({ ...P({ total_items: 298 }), run_counts: { total: 296, checked: 6, not_checked: 2, to_go: 288, checking: 4, unlisted: 2, unlisted_checked: 1, unlisted_not_checked: 0, unlisted_to_go: 1 } } as never));
+  assert.deepEqual(listed, { label: "Checking 296 parts", detail: "6 of 296 checked · 2 files aren’t on your parts list", progress: 9 / 298 });
   const b = runWork(runCounts(null, [{ item_id: "A", bucket: "in_house" }, { item_id: "B", bucket: "checking" }]));
   assert.deepEqual(b, { label: "Checking 2 parts", detail: "1 of 2 checked", progress: 0.5 });
 });
@@ -193,4 +197,29 @@ test("Home's way back to a run says what the run page says: a run that checked p
   assert.equal(lastRunLine(row({ status: "completed", total_items: 50, completed_items: 34, failed_items: 16, skipped_items: 0 })), "Finished · 34 of 50 checked · 16 not checked");
   assert.equal(lastRunLine(row({ status: "completed", total_items: 1, completed_items: 1, skipped_items: 0 })), "Finished · 1 of 1 checked");
   assert.equal(lastRunLine(row({ status: "cancelled", total_items: 50, completed_items: 10, skipped_items: 40 })), "Cancelled · 10 of 50 checked · 40 not checked");
+});
+
+
+test("one breakdown of a run's files everywhere: the parts list's, with files it doesn't name apart (op-28)", async () => {
+  const { runCounts, runCountsLine, stoppedLine, apartLine, lastRunLine } = await import("./batch-model.ts");
+  // Batch 23 stopped: 296 listed (28 checked, 268 not checked) and 2 files not on the list, not checked.
+  const wire = { total: 296, checked: 28, not_checked: 268, to_go: 0, checking: 0, unlisted: 2, unlisted_checked: 0, unlisted_not_checked: 2, unlisted_to_go: 0 };
+  const c = runCounts({ ...P({ status: "failed", total_items: 298, completed_items: 28, skipped_items: 270, failed_items: 0, pending_items: 0 }), run_counts: wire } as never);
+  assert.equal(runCountsLine(c), "28 of 296 checked · 268 not checked · 2 files aren’t on your parts list");
+  assert.equal(stoppedLine(c, "16:55"), "28 of 296 checked; 268 not checked: the run stopped at 16:55. Check them again.");
+  assert.equal(apartLine(c), "2 files that aren’t on your parts list weren’t checked either.");
+  assert.equal(lastRunLine({ status: "failed", total_items: 298, completed_items: 28, failed_items: 0, skipped_items: 270, run_counts: wire } as never), "Stopped · 28 of 296 checked · 268 not checked · 2 files aren’t on your parts list");
+  // The board's own rows give the same counts when the server's aren't there (an older API).
+  const rows = [
+    ...Array.from({ length: 28 }, (_, i) => ({ item_id: `L${i}`, bucket: "in_house", listed: true })),
+    ...Array.from({ length: 268 }, (_, i) => ({ item_id: `N${i}`, bucket: "not_checked", listed: true })),
+    { item_id: "X1", bucket: "not_checked", listed: false },
+    { item_id: "X2", bucket: "not_checked", listed: false },
+  ];
+  assert.deepEqual(runCounts(null, { has_list: true, rows }), c);
+  // Re-checking: queued and checking parts are still to go.
+  const going = runCounts(null, { has_list: true, rows: [{ item_id: "A", bucket: "in_house", listed: true }, { item_id: "B", bucket: "checking", status: "processing", listed: true }, { item_id: "C", bucket: "checking", status: "pending", listed: true }, { item_id: "D", bucket: "checking", status: "pending", listed: false }] });
+  assert.equal(runCountsLine(going), "1 of 3 checked · 2 to go · 1 file isn’t on your parts list");
+  assert.equal(going.checking, 1);
+  assert.equal(apartLine(going), null);
 });

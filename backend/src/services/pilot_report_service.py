@@ -298,15 +298,19 @@ def answer_words(a: Optional[dict], has_list: bool) -> Optional[dict]:
         rest.append(f"{a['ties']} either way: no saving, within {TIE_PCT:g}% of what you pay")
     if a.get("new_machine"):
         rest.append(f"{a['new_machine']} need a new machine")
-    if a.get("undecided"):
+    # A part that can't be made as drawn is answered (op-28); the rest that aren't
+    # decided say why, and on their own when there is only one reason.
+    if a.get("cant_make"):
+        rest.append(f"{a['cant_make']} can’t be made as drawn")
+    undecided = (a.get("undecided") or 0) - (a.get("cant_make") or 0)
+    if undecided > 0:
         unsorted = (a.get("not_sorted") or 0) - (a.get("not_priced") or 0)
-        why = ", ".join(w for w in (
-            f"{a['cant_make']} can’t be made as drawn" if a.get("cant_make") else None,
+        why = [w for w in (
             f"{a['not_checked']} not checked" if a.get("not_checked") else None,
             f"{a['not_priced']} not priced yet" if a.get("not_priced") else None,
             f"{unsorted} not sorted" if unsorted else None,
-            f"{a['checking']} still checking" if a.get("checking") else None) if w)
-        rest.append(f"{a['undecided']} can’t be decided yet ({why})")
+            f"{a['checking']} to go" if a.get("checking") else None) if w]
+        rest.append(why[0] if len(why) == 1 else f"{undecided} can’t be decided yet ({', '.join(why)})")
     if has_list:
         rest.append("parts on your list, at their listed quantities")
     if saving is None:
@@ -321,25 +325,30 @@ def answer_words(a: Optional[dict], has_list: bool) -> Optional[dict]:
     return {"head": head, "sub": " · ".join(rest), "missing": missing}
 
 
-def coverage(rows: list[dict]) -> dict:
-    """How many parts the answer covers: ``28 of 298 checked; 270 not checked``, with each part
-    not checked and why (op-20), and parts checked without an answer said apart."""
-    from src.services.catalog_run_service import BUCKETS
-
-    answered = [r for r in rows if r.get("bucket") in BUCKETS]
+def coverage(rows: list[dict], unlisted: int = 0) -> dict:
+    """How many parts the answer covers, in the run page's breakdown (op-28):
+    ``28 of 296 checked; 268 not checked; 2 files aren’t on your parts list``,
+    with each part not checked and why (op-20), and parts checked without an
+    answer said apart. ``unlisted``: files of the run its parts list doesn't name."""
     unchecked = [r for r in rows if r.get("bucket") in ("not_checked", "checking")]
+    to_go = sum(1 for r in unchecked if r.get("bucket") == "checking")
     unsorted = [r for r in rows if r.get("bucket") == "not_sorted"]
     reasons: dict[str, int] = {}
     for r in unchecked:
         why = r.get("reason") or "Not checked"
         reasons[why] = reasons.get(why, 0) + 1
-    text = f"{len(answered):,} of {len(rows):,} checked"
-    if unchecked:
-        text += f"; {len(unchecked):,} not checked"
+    text = f"{len(rows) - len(unchecked):,} of {len(rows):,} checked"
+    if len(unchecked) - to_go:
+        text += f"; {len(unchecked) - to_go:,} not checked"
+    if to_go:
+        text += f"; {to_go:,} to go"
     if unsorted:
         text += f"; {len(unsorted):,} checked without a machine verdict"
+    if unlisted:
+        text += f"; {unlisted:,} {'file isn’t' if unlisted == 1 else 'files aren’t'} on your parts list"
     return {
-        "parts": len(rows), "checked": len(answered), "not_checked": len(unchecked), "not_sorted": len(unsorted),
+        "parts": len(rows), "checked": len(rows) - len(unchecked), "not_checked": len(unchecked), "to_go": to_go,
+        "not_sorted": len(unsorted), "unlisted": unlisted,
         "text": text,
         "reasons": [{"reason": k, "parts": v} for k, v in sorted(reasons.items(), key=lambda kv: -kv[1])],
         "unchecked": [{"part": r.get("part_number") or r.get("filename"), "reason": r.get("reason")}
@@ -446,6 +455,7 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
         scoped = [r for r in rows if r.get("listed")] if board.get("has_list") else rows
         answer = board.get("answer") or make_or_buy_answer(scoped)
         has_list = bool(board.get("has_list"))
+        unlisted_files = (board.get("run_counts") or {}).get("unlisted") or 0
         machines = board.get("machines") or []
     else:
         rows, records = await _rows_for_all_parts(session, org_id)
@@ -456,6 +466,7 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
         scoped = rows
         answer = make_or_buy_answer(rows)
         has_list = any(r.get("quantity_source") == "list" for r in rows)
+        unlisted_files = 0
         machines = await _org_machines(session, org_id)
     rates_version = rate_card_basis.in_effect(await rate_card_basis.org_rate_rows(session, org_id),
                                               datetime.now(timezone.utc))
@@ -483,7 +494,7 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
         # Page one: the run's answer as its page says it, what it covers, and what the prices assume.
         "answer": answer,
         "headline": answer_words(answer, has_list),
-        "coverage": coverage(scoped),
+        "coverage": coverage(scoped, unlisted=unlisted_files),
         "basis": basis_lines(machines, rates_version=rates_version, answer=answer, parts=len(scoped)),
         "overloaded": overloaded_words(hours_by_machine),
         # The parts the answer is about (with a parts list, the ones on it), as the buckets count them.

@@ -76,6 +76,8 @@ export interface BatchProgress {
   pace_per_hour?: number | null;
   /** Time left at that pace, in seconds. */
   eta_seconds?: number | null;
+  /** A catalog run's files counted as its page counts them (op-28). */
+  run_counts?: import("@/components/v4/many/batch-model").RunCountsWire | null;
 }
 
 export interface BatchItem {
@@ -116,6 +118,8 @@ export interface BatchSummaryRow {
   completed_items: number;
   failed_items: number;
   skipped_items: number;
+  /** A catalog run's files counted as its page counts them (op-28). */
+  run_counts?: import("@/components/v4/many/batch-model").RunCountsWire | null;
   created_at: string | null;
 }
 

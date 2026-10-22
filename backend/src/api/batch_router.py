@@ -1072,6 +1072,8 @@ async def list_batches(
     status_counts = await batch_service.get_batch_item_status_counts(
         session, [batch.id for batch in batches]
     )
+    # A catalog run's files, counted as its page counts them (the work bar and Home read these, op-28).
+    run_counts = await batch_service.catalog_run_counts(session, list(batches))
 
     return {
         "batches": [
@@ -1085,6 +1087,7 @@ async def list_batches(
                 "completed_items": status_counts.get(b.id, {}).get("completed", 0),
                 "failed_items": status_counts.get(b.id, {}).get("failed", 0),
                 "skipped_items": status_counts.get(b.id, {}).get("skipped", 0),
+                "run_counts": run_counts.get(b.id),
                 "created_at": b.created_at.isoformat() if b.created_at else None,
             }
             for b in batches

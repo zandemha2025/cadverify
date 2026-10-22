@@ -576,3 +576,31 @@ def test_a_machine_shows_the_running_rate_you_set_on_every_row():
     r = cr.derive_part_row(item=ITEM, analysis=None, decision=d, meta=None, default_quantity=10,
                            machines=[vf2, {"name": "Bambu Lab X1C", "process": "fdm"}])
     assert r["machine_rate_usd"] == 55.25 and r["marginal"] is True
+
+
+def _dana_meta():
+    """Batch 23's shape: a parts list of 296 rows matched to 296 of the ZIP's 298 files."""
+    items = {f"RFS-{i:05d}.step": {"row": i + 2} for i in range(296)}
+    items.update({"extra-1.step": {"row": None}, "extra-2.step": {}})
+    return {"parts_list": {"name": "list.csv", "rows": 296, "matched": 296, "unmatched": 0}, "items": items}
+
+
+def test_a_run_counts_its_files_one_way_with_files_not_on_the_list_apart():
+    """op-28: the banner said 270 not checked, the buckets 268 (+2 not on the list)."""
+    meta = _dana_meta()
+    names = sorted(meta["items"])
+    listed = [n for n in names if n.startswith("RFS-")]
+    pairs = ([(n, "completed") for n in listed[:28]] + [(n, "skipped") for n in listed[28:]]
+             + [("extra-1.step", "skipped"), ("extra-2.step", "skipped")])
+    assert cr.run_counts(meta, pairs) == {
+        "total": 296, "checked": 28, "not_checked": 268, "to_go": 0, "checking": 0,
+        "unlisted": 2, "unlisted_checked": 0, "unlisted_not_checked": 2, "unlisted_to_go": 0}
+    # Re-checking: queued and checking are both still to go; only processing is "checking".
+    going = ([(n, "completed") for n in listed[:31]] + [(n, "processing") for n in listed[31:35]]
+             + [(n, "pending") for n in listed[35:]] + [("extra-1.step", "queued"), ("extra-2.step", "completed")])
+    c = cr.run_counts(meta, going)
+    assert (c["total"], c["checked"], c["not_checked"], c["to_go"], c["checking"]) == (296, 31, 0, 265, 4)
+    assert (c["unlisted"], c["unlisted_checked"], c["unlisted_to_go"]) == (2, 1, 1)
+    # Without a parts list every file is the run's.
+    plain = cr.run_counts({}, [("a.stl", "completed"), ("b.stl", "failed")])
+    assert (plain["total"], plain["checked"], plain["not_checked"], plain["unlisted"]) == (2, 1, 1, 0)

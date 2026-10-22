@@ -109,63 +109,147 @@ export function paceWords(perHour: number, noun: [string, string] = ["item", "it
   return `${n.toLocaleString("en-US")} ${n === 1 ? noun[0] : noun[1]} an hour`;
 }
 
-/** A run's files counted one way everywhere: checked, not checked (failed or skipped), still to go. */
+/**
+ * A run's files counted one way everywhere (op-28): its page, banner, side
+ * panel, the work bar, Home and the summary to print. With a parts list,
+ * `total` and its split cover the files the list names (the parts the answer
+ * and the buckets cover); files it doesn't name are counted apart.
+ */
 export interface RunCounts {
   total: number;
   checked: number;
+  /** Failed or skipped. */
   notChecked: number;
+  /** Queued or being checked. */
   toGo: number;
+  /** Of those to go, the ones a worker is checking now. */
+  checking: number;
+  unlisted: number;
+  unlistedChecked: number;
+  unlistedNotChecked: number;
+  unlistedToGo: number;
+}
+
+/** The server's counts (GET /batch/{id}/catalog, /batch/{id}, /batches: `run_counts`). */
+export interface RunCountsWire {
+  total: number;
+  checked: number;
+  not_checked: number;
+  to_go: number;
+  checking: number;
+  unlisted: number;
+  unlisted_checked: number;
+  unlisted_not_checked: number;
+  unlisted_to_go: number;
+}
+
+type CountRow = { item_id: string; bucket: string; status?: string; listed?: boolean };
+type CountBoard = { has_list?: boolean; rows: CountRow[]; run_counts?: RunCountsWire | null };
+
+const NO_COUNTS: RunCounts = { total: 0, checked: 0, notChecked: 0, toGo: 0, checking: 0, unlisted: 0, unlistedChecked: 0, unlistedNotChecked: 0, unlistedToGo: 0 };
+
+function fromWire(w: RunCountsWire): RunCounts {
+  return {
+    total: w.total,
+    checked: w.checked,
+    notChecked: w.not_checked,
+    toGo: w.to_go,
+    checking: w.checking ?? 0,
+    unlisted: w.unlisted ?? 0,
+    unlistedChecked: w.unlisted_checked ?? 0,
+    unlistedNotChecked: w.unlisted_not_checked ?? 0,
+    unlistedToGo: w.unlisted_to_go ?? 0,
+  };
+}
+
+/** From the board's rows: a file checked body by body is one file; with a parts list, the files it doesn't name apart. */
+function fromRows(rows: readonly CountRow[], hasList: boolean): RunCounts {
+  const files = new Map<string, { bucket: string; processing: boolean; listed: boolean }>();
+  for (const r of rows) {
+    const id = String(r.item_id).split(":")[0];
+    const was = files.get(id);
+    // A file is still to go while any of its rows is; not checked when its row says so.
+    if (was && (was.bucket === "checking" || was.bucket === "not_checked")) continue;
+    files.set(id, { bucket: r.bucket, processing: r.status === "processing", listed: !hasList || !!r.listed });
+  }
+  const c = { ...NO_COUNTS };
+  for (const f of files.values()) {
+    const state = f.bucket === "checking" ? "ToGo" : f.bucket === "not_checked" ? "NotChecked" : "Checked";
+    if (f.listed) {
+      c.total += 1;
+      if (state === "ToGo") c.toGo += 1;
+      else if (state === "NotChecked") c.notChecked += 1;
+      else c.checked += 1;
+      if (f.processing && state === "ToGo") c.checking += 1;
+    } else {
+      c.unlisted += 1;
+      if (state === "ToGo") c.unlistedToGo += 1;
+      else if (state === "NotChecked") c.unlistedNotChecked += 1;
+      else c.unlistedChecked += 1;
+    }
+  }
+  return c;
 }
 
 /**
- * The run's counts from its progress read (durable item states), else from the
- * board's rows (a file checked body by body is one file). The run page, its
- * side panel and the work bar all read this, so they never disagree.
+ * The run's counts: the server's one breakdown when it gives it (the board's,
+ * else the progress read's), else the board's rows, else the progress read's
+ * durable item counts. The run page, its side panel, the work bar and Home all
+ * read this, so they never disagree.
  */
 export function runCounts(
-  p: Pick<BatchProgress, "total_items" | "completed_items" | "failed_items" | "skipped_items"> | null,
-  rows?: { item_id: string; bucket: string }[] | null,
+  p: (Pick<BatchProgress, "total_items" | "completed_items" | "failed_items" | "skipped_items"> & { run_counts?: RunCountsWire | null }) | null,
+  src?: CountRow[] | CountBoard | null,
 ): RunCounts {
+  const board = src && !Array.isArray(src) ? src : null;
+  const rows = Array.isArray(src) ? src : (board?.rows ?? null);
+  if (board?.run_counts) return fromWire(board.run_counts);
+  if (p?.run_counts) return fromWire(p.run_counts);
+  if (board?.has_list && rows?.length) return fromRows(rows, true);
   if (p && p.total_items) {
     const checked = p.completed_items;
     const notChecked = p.failed_items + p.skipped_items;
-    return { total: p.total_items, checked, notChecked, toGo: Math.max(0, p.total_items - checked - notChecked) };
+    return { ...NO_COUNTS, total: p.total_items, checked, notChecked, toGo: Math.max(0, p.total_items - checked - notChecked) };
   }
-  const files = new Map<string, string>();
-  for (const r of rows ?? []) {
-    const id = String(r.item_id).split(":")[0];
-    const was = files.get(id);
-    // A file is still checking while any of its rows is; not checked when its row says so.
-    if (was === "checking" || was === "not_checked") continue;
-    files.set(id, r.bucket);
-  }
-  let checked = 0;
-  let notChecked = 0;
-  let toGo = 0;
-  for (const b of files.values()) {
-    if (b === "checking") toGo += 1;
-    else if (b === "not_checked") notChecked += 1;
-    else checked += 1;
-  }
-  return { total: files.size, checked, notChecked, toGo };
+  return fromRows(rows ?? [], false);
 }
 
-/** "8 of 298 checked · 1 not checked · 289 to go" */
+const num = (v: number) => v.toLocaleString("en-US");
+
+/** "2 files aren’t on your parts list" */
+function unlistedWords(n: number): string {
+  return `${num(n)} ${n === 1 ? "file isn’t" : "files aren’t"} on your parts list`;
+}
+
+/** "28 of 296 checked · 268 not checked · 2 files aren’t on your parts list" */
 export function runCountsLine(c: RunCounts): string {
-  const n = (v: number) => v.toLocaleString("en-US");
-  const bits = [`${n(c.checked)} of ${n(c.total)} checked`];
-  if (c.notChecked) bits.push(`${n(c.notChecked)} not checked`);
-  if (c.toGo) bits.push(`${n(c.toGo)} to go`);
+  const bits = [`${num(c.checked)} of ${num(c.total)} checked`];
+  if (c.notChecked) bits.push(`${num(c.notChecked)} not checked`);
+  if (c.toGo) bits.push(`${num(c.toGo)} to go`);
+  if (c.unlisted) bits.push(unlistedWords(c.unlisted));
   return bits.join(" · ");
 }
 
-/** The run's line in the work bar, the same wherever it's registered: checked of total, and how far along. */
+/** On a stopped or finished run: "2 files that aren’t on your parts list weren’t checked either." */
+export function apartLine(c: RunCounts): string | null {
+  const k = c.unlistedNotChecked;
+  if (!k) return null;
+  return `${num(k)} ${k === 1 ? "file that isn’t" : "files that aren’t"} on your parts list ${k === 1 ? "wasn’t" : "weren’t"} checked${c.notChecked ? " either" : ""}.`;
+}
+
+/** A finished run's parts on the list that weren't checked: "268 parts weren’t checked" (null when none). */
+export function notCheckedLine(c: RunCounts): string | null {
+  return c.notChecked ? `${num(c.notChecked)} ${c.notChecked === 1 ? "part wasn’t" : "parts weren’t"} checked` : null;
+}
+
+/** The run's line in the work bar, the same wherever it's registered: checked of total, and how far along (every file). */
 export function runWork(c: RunCounts): { label: string; detail: string; progress: number | null } {
-  const n = (v: number) => v.toLocaleString("en-US");
+  const all = c.total + c.unlisted;
+  const done = c.checked + c.notChecked + c.unlistedChecked + c.unlistedNotChecked;
   return {
-    label: `Checking ${n(c.total)} ${c.total === 1 ? "part" : "parts"}`,
-    detail: `${n(c.checked)} of ${n(c.total)} checked`,
-    progress: c.total ? (c.checked + c.notChecked) / c.total : null,
+    label: `Checking ${num(c.total)} ${c.total === 1 ? "part" : "parts"}`,
+    detail: `${num(c.checked)} of ${num(c.total)} checked${c.unlisted ? ` · ${unlistedWords(c.unlisted)}` : ""}`,
+    progress: all ? done / all : null,
   };
 }
 
@@ -174,19 +258,19 @@ export function runWork(c: RunCounts): { label: string; detail: string; progress
  * "Stopped · 28 of 298 checked · 270 not checked". A run that checked parts and
  * then stopped is "Stopped"; only one that never checked a part "Didn’t start".
  */
-export function lastRunLine(b: Pick<BatchProgress, "total_items" | "completed_items" | "failed_items" | "skipped_items"> & { status: string }): string {
+export function lastRunLine(b: Pick<BatchProgress, "total_items" | "completed_items" | "failed_items" | "skipped_items"> & { status: string; run_counts?: RunCountsWire | null }): string {
   const c = runCounts(b);
+  const files = c.total + c.unlisted;
   const state =
-    b.status === "completed" ? "Finished" : b.status === "cancelled" ? "Cancelled" : b.status === "failed" ? (c.checked ? "Stopped" : "Didn’t start") : "Running";
-  if (state === "Didn’t start" || !c.total) return `${state} · ${c.total.toLocaleString("en-US")} ${c.total === 1 ? "file" : "files"}`;
+    b.status === "completed" ? "Finished" : b.status === "cancelled" ? "Cancelled" : b.status === "failed" ? (c.checked + c.unlistedChecked ? "Stopped" : "Didn’t start") : "Running";
+  if (state === "Didn’t start" || !files) return `${state} · ${num(files)} ${files === 1 ? "file" : "files"}`;
   return `${state} · ${runCountsLine(c)}`;
 }
 
-/** "28 of 298 checked; 270 not checked: the run stopped at 16:55. Check them again." */
+/** "28 of 296 checked; 268 not checked: the run stopped at 16:55. Check them again." (files not on the list: apartLine) */
 export function stoppedLine(c: RunCounts, at: string | null): string {
-  const n = (v: number) => v.toLocaleString("en-US");
   const left = c.notChecked + c.toGo;
-  return `${n(c.checked)} of ${n(c.total)} checked; ${n(left)} not checked: the run stopped${at ? ` at ${at}` : ""}. Check ${left === 1 ? "it" : "them"} again.`;
+  return `${num(c.checked)} of ${num(c.total)} checked; ${num(left)} not checked: the run stopped${at ? ` at ${at}` : ""}. Check ${left === 1 ? "it" : "them"} again.`;
 }
 
 /** The cancel question's body. Unfinished items include any in progress: the server skips those too. */

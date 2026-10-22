@@ -15,11 +15,11 @@ import { R } from "../routes";
 import { Empty, Loading } from "../ui";
 import { errorText } from "./common";
 import { fetchBoard } from "./catalog-api";
+import { runCounts, runCountsLine } from "./batch-model";
 import { useUnits } from "../units/use-units";
 import { inText } from "../units/units";
 import {
   answerText,
-  boardProgress,
   machinesText,
   money,
   procName,
@@ -97,7 +97,6 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
   }
   const rows = scopedRows(board);
   const apart = unlistedRows(board);
-  const prog = boardProgress(board);
   const answer = answerText(board);
   const by = (k: string) => sortRows(rows.filter((r) => r.bucket === k), "cost");
   const make = by("in_house");
@@ -123,10 +122,11 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
         <span>
           {qty(rows.length)} {rows.length === 1 ? "part" : "parts"}
           {board.has_list ? " on the parts list" : ""}
+          {apart.length ? ` · ${qty(apart.length)} ${apart.length === 1 ? "file isn’t" : "files aren’t"} on it` : ""}
         </span>
         <span>{board.machines.length ? `${machinesText(board)}: ${machines}` : "No machines declared"}</span>
         <span>{board.has_list ? "Quantities a year from the parts list" : `${qty(board.quantity)} each`}</span>
-        {prog.checking ? <span>{prog.checking} still checking</span> : null}
+        <span>{runCountsLine(runCounts(null, board))}</span>
       </p>
 
       {answer ? (
@@ -256,7 +256,7 @@ export function CatalogSummary({ batchId }: { batchId: string }) {
         <section>
           <h2>In the ZIP, not on the parts list · {apart.length}</h2>
           <p className="cp-list">
-            {apart.map((r) => `${rowName(r)} (${bucketDef(r.bucket).label.toLowerCase()})`).join("; ")}. Checked at the run’s quantity and material; not in the answer above.
+            {apart.map((r) => `${rowName(r)} (${bucketDef(r.bucket).label.toLowerCase()})`).join("; ")}. At the run’s quantity and material, and not in the answer above.
           </p>
         </section>
       ) : null}

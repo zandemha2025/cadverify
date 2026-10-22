@@ -742,6 +742,8 @@ async def get_batch_progress(
         # time left at that pace (None until a few parts have finished).
         "pace_per_hour": pace_per_hour,
         "eta_seconds": eta_seconds,
+        # A catalog run's files counted as its page counts them (op-28).
+        "run_counts": (await catalog_run_counts(session, [batch])).get(batch.id),
     }
 
 
@@ -779,6 +781,22 @@ async def measured_pace(
         first = first.replace(tzinfo=timezone.utc)
     span = max(60.0, (now - first).total_seconds())
     return len(rows) / span
+
+
+async def catalog_run_counts(session: AsyncSession, batches: list[Batch]) -> dict[int, dict]:
+    """Each catalog run's files counted one way everywhere (``catalog_run_service.run_counts``, op-28)."""
+    from src.services.catalog_run_service import run_counts, run_meta
+
+    runs = {b.id: b for b in batches if b.job_type == "catalog"}
+    if not runs:
+        return {}
+    pairs: dict[int, list[tuple[str, str]]] = {i: [] for i in runs}
+    rows = await session.execute(
+        select(BatchItem.batch_id, BatchItem.filename, BatchItem.status).where(BatchItem.batch_id.in_(list(runs)))
+    )
+    for batch_id, filename, status in rows.all():
+        pairs[batch_id].append((filename, status))
+    return {i: run_counts(run_meta(runs[i]), pairs[i]) for i in runs}
 
 
 async def get_batch_item_status_counts(

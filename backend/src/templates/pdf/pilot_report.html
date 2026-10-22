@@ -94,7 +94,7 @@
     {% endfor %}
     </tbody>
   </table>
-  {% if r.other %}<p class="muted">Not sorted: {% for k, v in r.other.items() %}{{ v }} {{ {'not_sorted': 'checked without a machine verdict', 'not_checked': "couldn't be checked", 'checking': 'still checking'}[k] }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+  {% if r.other %}<p class="muted">Not sorted: {% for k, v in r.other.items() %}{{ v }} {{ {'not_sorted': 'checked without a machine verdict', 'not_checked': "couldn't be checked", 'checking': 'to go'}[k] }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
 
   <h2>What making in-house takes</h2>
   {% if r.in_house.parts %}

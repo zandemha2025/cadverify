@@ -224,6 +224,8 @@ export interface Board {
   totals: Record<string, BucketTotal>;
   /** Present from the server; derived from the rows when it isn't. */
   breakdown?: Record<string, BucketBreakdown>;
+  /** The run's files counted one way everywhere (op-28): the parts list's, the rest apart. */
+  run_counts?: import("./batch-model").RunCountsWire | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -490,10 +492,14 @@ export function answerText(board: Board | null): { head: string; sub: string; mi
   if (a.saving_usd != null && a.saving_parts) rest.push(`Buy ${a.buy}`);
   if (a.ties) rest.push(`${a.ties} either way: no saving, within 2% of what you pay`);
   if (a.new_machine) rest.push(`${a.new_machine} need a new machine`);
-  if (a.undecided) {
+  // A part that can't be made as drawn is answered (op-28); the rest that aren't
+  // decided say why, and on their own when there is only one reason.
+  if (a.cant_make) rest.push(`${a.cant_make} can’t be made as drawn`);
+  const undecided = a.undecided - a.cant_make;
+  if (undecided > 0) {
     const unsorted = a.not_sorted - (a.not_priced ?? 0);
-    const why = [a.cant_make ? `${a.cant_make} can’t be made as drawn` : null, a.not_checked ? `${a.not_checked} not checked` : null, a.not_priced ? `${a.not_priced} not priced yet` : null, unsorted ? `${unsorted} not sorted` : null, a.checking ? `${a.checking} still checking` : null].filter(Boolean).join(", ");
-    rest.push(`${a.undecided} can’t be decided yet (${why})`);
+    const why = [a.not_checked ? `${a.not_checked} not checked` : null, a.not_priced ? `${a.not_priced} not priced yet` : null, unsorted ? `${unsorted} not sorted` : null, a.checking ? `${a.checking} to go` : null].filter((w): w is string => !!w);
+    rest.push(why.length === 1 ? why[0] : `${undecided} can’t be decided yet (${why.join(", ")})`);
   }
   if (board.has_list) rest.push("parts on your list, at their listed quantities");
   const sub = rest.join(" · ");

@@ -1313,6 +1313,37 @@ def run_meta(batch: Batch) -> dict:
     return dict((batch.manifest_json or {}).get("catalog") or {})
 
 
+RUN_COUNT_KEYS = ("total", "checked", "not_checked", "to_go", "checking",
+                  "unlisted", "unlisted_checked", "unlisted_not_checked", "unlisted_to_go")
+
+
+def run_counts(meta: Optional[dict], pairs: Iterable[tuple[str, Optional[str]]]) -> dict:
+    """The run's files counted one way everywhere (op-28): its page, banner, side panel, work bar and reports.
+
+    ``meta``: the run's catalog meta (``run_meta``); ``pairs``: each item's
+    ``(filename, status)``. With a parts list, ``total`` and its split
+    (``checked``, ``not_checked``: failed or skipped, ``to_go``: queued or being
+    checked, ``checking``: of those, the ones a worker has now) cover the files
+    the list names, the same parts the answer and the buckets cover; the files
+    it doesn't name are counted apart (``unlisted`` and their own split).
+    Without a list every file is the run's.
+    """
+    meta = meta or {}
+    has_list = bool(meta.get("parts_list"))
+    per_file = meta.get("items") or {}
+    out = dict.fromkeys(RUN_COUNT_KEYS, 0)
+    for filename, status in pairs:
+        state = "checked" if status == "completed" else "not_checked" if status in ("failed", "skipped") else "to_go"
+        if not has_list or (per_file.get(filename) or {}).get("row") is not None:
+            out["total"] += 1
+            out[state] += 1
+            out["checking"] += status == "processing"
+        else:
+            out["unlisted"] += 1
+            out[f"unlisted_{state}"] += 1
+    return out
+
+
 def run_title(batch: Batch) -> Optional[str]:
     """A run's name: the one it was given, else (older runs) its parts list's, without the extension."""
     meta = run_meta(batch)
@@ -1662,6 +1693,8 @@ async def build_board(session: AsyncSession, batch: Batch) -> dict:
         "name": meta.get("name"),
         "org_name": org_name,
         "files": len(items),
+        # The run's files counted one way everywhere (op-28), the list's apart from the rest.
+        "run_counts": run_counts(meta, ((it[1], it[2]) for it in items)),
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
         "rows": rows,

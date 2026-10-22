@@ -18,7 +18,7 @@ import { R } from "../routes";
 import { Content, Empty, Fig, Figs, Loading, PageHead, Panel, Sheet, cx } from "../ui";
 import { markWorkSeen, registerWork, runKey } from "../work/work-bar";
 import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useToast, whenLabel } from "./common";
-import { etaText, runCounts, runCountsLine, runWork, stoppedLine } from "./batch-model";
+import { apartLine, etaText, notCheckedLine, runCounts, runCountsLine, runWork, stoppedLine } from "./batch-model";
 import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { CatalogRunError, downloadBoardCsv, fetchBoard, inviteToRun, recheckParts } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
@@ -130,7 +130,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
   const running = status != null && !TERMINAL.has(status);
   const prog = boardProgress(board);
   // One count of the run's files everywhere (this page, its side panel, the work bar).
-  const counts = runCounts(progress, board?.rows);
+  const counts = runCounts(progress, board);
   const work = runWork(counts);
   // A viewer sees the run; checking parts again or cancelling it is a member's.
   const readOnly = useReadOnly("check parts again or cancel a run");
@@ -318,12 +318,9 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
 
             {failed.length && !running ? (
               <div className="panel cr-note cr-again" role="note">
-                <b>
-                  {board.status === "failed"
-                    ? stoppedLine(counts, stopTime(board.completed_at))
-                    : `${failed.length} ${failed.length === 1 ? "part wasn’t" : "parts weren’t"} checked`}
-                </b>
+                <b>{board.status === "failed" ? stoppedLine(counts, stopTime(board.completed_at)) : (notCheckedLine(counts) ?? apartLine(counts))}</b>
                 {stopReason(board) ? <span>{stopReason(board)}</span> : null}
+                {apartLine(counts) && (board.status === "failed" || counts.notChecked) ? <span>{apartLine(counts)}</span> : null}
                 <span>{failed.length === 1 ? "It goes" : "They go"} back in this run at {failed.length === 1 ? "its" : "their"} listed quantity and land on {failed.length === 1 ? "its own row" : "their own rows"}.</span>
                 <span>
                   <button className="btn sm ink" type="button" onClick={() => void recheck()} disabled={rechecking.size > 0 || !!readOnly} title={readOnly ?? undefined}>
@@ -407,7 +404,7 @@ export function CatalogBoard({ batchId }: { batchId: string }) {
                 ))}
                 <span>
                   Buckets sum to <b className="num">{total}</b>
-                  {apart.length ? ` · ${apart.length} not on your parts list, below` : ""}
+                  {apart.length ? ` · ${unlistedText(counts.unlisted || apart.length)}, below` : ""}
                 </span>
               </div>
             </section>
@@ -702,7 +699,7 @@ function RunSheet({
         <p className="smeta">
           {sel
             ? `${selRows.length} of ${total} parts · ${sel.note}`
-            : `${runCountsLine(runCounts(progress, board.rows))}${progress?.started_at ? ` · started ${whenLabel(progress.started_at)}` : ""}`}
+            : `${runCountsLine(runCounts(progress, board))}${progress?.started_at ? ` · started ${whenLabel(progress.started_at)}` : ""}`}
         </p>
         {!sel ? (
           <Figs>
@@ -938,6 +935,11 @@ function InviteToRun({ batchId }: { batchId: string }) {
       ) : null}
     </form>
   );
+}
+
+/** "2 files aren’t on your parts list" */
+function unlistedText(n: number): string {
+  return `${n.toLocaleString("en-US")} ${n === 1 ? "file isn’t" : "files aren’t"} on your parts list`;
 }
 
 /** When a run stopped, for its line: "16:55" today, else the day and time. */

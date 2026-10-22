@@ -605,6 +605,33 @@ async def test_check_again_on_a_run_whose_zip_was_never_unpacked(run_world, api)
     assert r.json()["detail"]["code"] == "catalog_run_not_ready"
 
 
+@pytest.mark.asyncio
+async def test_the_board_the_progress_read_and_the_run_list_count_the_files_one_way(run_world, api):
+    """op-28: with a parts list, the run's counts cover the list's files and name the rest apart."""
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    ulid = await run_world["make_run"](5)
+    meta = {"parts_list": {"name": "list.csv", "rows": 4, "matched": 4, "unmatched": 0},
+            "items": {f"part-{i:03d}.stl": {"row": i + 2} for i in range(4)}}
+    async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text(
+            "UPDATE batches SET manifest_json = jsonb_set(manifest_json, '{catalog}', "
+            "(manifest_json->'catalog') || CAST(:m AS jsonb)) WHERE ulid = :u"), {"u": ulid, "m": json.dumps(meta)})
+    await _stop_run(ulid, checked=1)
+    want = {"total": 4, "checked": 1, "not_checked": 3, "to_go": 0, "checking": 0,
+            "unlisted": 1, "unlisted_checked": 0, "unlisted_not_checked": 1, "unlisted_to_go": 0}
+    async with AsyncClient(transport=ASGITransport(app=api["app"]), base_url="http://test") as ac:
+        board = (await ac.get(f"/api/v1/batch/{ulid}/catalog")).json()
+        progress = (await ac.get(f"/api/v1/batch/{ulid}")).json()
+        listed = (await ac.get("/api/v1/batches")).json()
+    assert board["run_counts"] == want
+    assert progress["run_counts"] == want
+    assert next(b for b in listed["batches"] if b["batch_ulid"] == ulid)["run_counts"] == want
+
+
 # ---------------------------------------------------------------------------
 # 4. Honest status: the time left comes from the measured pace (op-11)
 # ---------------------------------------------------------------------------

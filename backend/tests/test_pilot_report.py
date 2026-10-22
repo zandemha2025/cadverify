@@ -15,8 +15,12 @@ def test_the_headline_is_the_run_pages_own_words():
     w = pr.answer_words(ANSWER, True)
     assert w["head"] == ("Make 20 parts in-house: save $398,445 a year against what you pay today "
                          "(on the 17 with a current price)")
-    assert w["sub"] == ("Buy 6 · 270 can’t be decided yet (2 can’t be made as drawn, 268 not checked) · "
+    # op-28: a part that can't be made as drawn is answered, not "can't be decided yet".
+    assert w["sub"] == ("Buy 6 · 2 can’t be made as drawn · 268 not checked · "
                         "parts on your list, at their listed quantities")
+    mixed = pr.answer_words({**ANSWER, "not_checked": 9, "not_sorted": 3, "not_priced": 3, "checking": 4, "undecided": 18}, True)
+    assert mixed["sub"] == ("Buy 6 · 2 can’t be made as drawn · 16 can’t be decided yet (9 not checked, 3 not priced yet, "
+                            "4 to go) · parts on your list, at their listed quantities")
     assert w["missing"] == "3 in-house parts have no current price, so they aren’t in the saving."
     every = {**ANSWER, "make": 17, "make_without_price": 0, "undecided": 0, "cant_make": 0, "not_checked": 0}
     assert pr.answer_words(every, False)["head"] == "Make these 17 parts in-house: save $398,445 against what you pay today"
@@ -30,6 +34,10 @@ def test_coverage_counts_and_lists_every_part_not_checked():
             + [{"bucket": "not_checked", "part_number": f"S{i}", "reason": "Skipped"} for i in range(268)])
     c = pr.coverage(rows)
     assert c["text"] == "28 of 296 checked; 268 not checked"
+    # op-28: the run page's breakdown, with the files that aren't on the parts list said apart.
+    assert pr.coverage(rows, unlisted=2)["text"] == "28 of 296 checked; 268 not checked; 2 files aren’t on your parts list"
+    going = rows[:28] + [{"bucket": "checking", "reason": "Queued"}] * 268 + [{"bucket": "not_sorted", "reason": "x"}] * 3
+    assert pr.coverage(going)["text"] == "31 of 299 checked; 268 to go; 3 checked without a machine verdict"
     assert c["reasons"] == [{"reason": "Skipped", "parts": 268}]
     assert len(c["unchecked"]) == 268 and c["unchecked"][0] == {"part": "S0", "reason": "Skipped"}
 

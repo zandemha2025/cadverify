@@ -256,14 +256,17 @@ test("the run's answer leads with the saving against what you pay today, or says
   const board = { rows: [], has_list: true, answer } as never;
   const t = answerText(board)!;
   assert.equal(t.head, "Make these 12 parts in-house: save $41,200 a year against what you pay today");
-  assert.equal(t.sub, "Buy 20 · 3 need a new machine · 19 can’t be decided yet (10 can’t be made as drawn, 9 not checked) · parts on your list, at their listed quantities");
+  // A part that can't be made as drawn is answered, never "can't be decided yet" (op-28).
+  assert.equal(t.sub, "Buy 20 · 3 need a new machine · 10 can’t be made as drawn · 9 not checked · parts on your list, at their listed quantities");
   assert.equal(t.missing, null);
   // op-07: ties are said apart, with the tolerance, and add nothing to the saving.
   const tied = answerText({ rows: [], has_list: true, answer: { ...answer, ties: 2 } } as never)!;
-  assert.equal(tied.sub, "Buy 20 · 2 either way: no saving, within 2% of what you pay · 3 need a new machine · 19 can’t be decided yet (10 can’t be made as drawn, 9 not checked) · parts on your list, at their listed quantities");
+  assert.equal(tied.sub, "Buy 20 · 2 either way: no saving, within 2% of what you pay · 3 need a new machine · 10 can’t be made as drawn · 9 not checked · parts on your list, at their listed quantities");
   const none = answerText({ rows: [], has_list: true, answer: { ...answer, saving_usd: null, saving_parts: 0, with_price: 0, make_without_price: 12 } } as never)!;
   assert.equal(none.head, "Make 12 parts in-house, buy 20");
-  assert.equal(none.sub, "3 need a new machine · 19 can’t be decided yet (10 can’t be made as drawn, 9 not checked) · parts on your list, at their listed quantities");
+  assert.equal(none.sub, "3 need a new machine · 10 can’t be made as drawn · 9 not checked · parts on your list, at their listed quantities");
+  const mixed = answerText({ rows: [], has_list: true, answer: { ...answer, not_checked: 9, not_sorted: 3, not_priced: 3, checking: 4, undecided: 26 } } as never)!;
+  assert.equal(mixed.sub, "Buy 20 · 3 need a new machine · 10 can’t be made as drawn · 16 can’t be decided yet (9 not checked, 3 not priced yet, 4 to go) · parts on your list, at their listed quantities");
   assert.equal(runTitle({ name: null, parts_list: { name: "parts-list.csv" } } as never), "parts-list");
   assert.equal(runTitle({ name: "Ridgeline-bought-parts" } as never), "Ridgeline-bought-parts");
   assert.equal(runTitle(null), "Catalog run");
