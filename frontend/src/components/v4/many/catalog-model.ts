@@ -52,6 +52,12 @@ export interface BoardRow {
   cheaper_outside: { process: string; unit_cost_usd: number } | null;
   duration_ms: number | null;
   error: string | null;
+  /** The part specs the run priced with (or the parts list declared), and what the supplier must hold. */
+  specs?: import("./row-specs").RowSpecs | null;
+  /** The outcome recorded on the part's record, and its sign-off. */
+  outcome?: string | null;
+  signoff?: import("./row-specs").RowSignoff | null;
+  record_out_of_date?: boolean;
 }
 
 export interface BucketTotal {

@@ -276,7 +276,21 @@ export type Report = {
   /** Made outside: the processes no machine of yours does, with their machine time. */
   outside?: BreakdownMachine[];
   wins: { file_name: string | null; part_number: string | null; part_key: string | null; quantity: number; process: string | null; machine: string | null; in_house_each: number; outside_each: number; outside_process: string | null; saving_total: number; hours_total: number | null }[];
-  decisions: { part_key: string; file_name: string | null; part_number: string | null; decision: string; code: string; process: string | null; note: string | null; by: string | null; at: string | null }[];
+  decisions: {
+    part_key: string;
+    file_name: string | null;
+    part_number: string | null;
+    decision: string;
+    code: string;
+    process: string | null;
+    note: string | null;
+    by: string | null;
+    at: string | null;
+    /** The sign-off on the recorded decision, and whether what was signed off has changed since. */
+    signoff?: { by: string | null; at: string | null; note: string | null; stale: boolean; stale_reason: string | null } | null;
+  }[];
+  /** Recorded decisions signed off, and how many of those are now out of date. */
+  signoffs?: { signed_off: number; out_of_date: number; recorded: number };
   accuracy: Summary;
   accuracy_rows: Comparison[];
   calibration: CalibrationEntry | null;

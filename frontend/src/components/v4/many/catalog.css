@@ -35,6 +35,11 @@
 .ob .cr-why{display:flex;gap:6px;align-items:baseline;color:var(--ink2);font-size:12.5px;line-height:1.35}
 .ob .cr-why i{width:8px;height:8px;border-radius:999px;flex:none;transform:translateY(-1px)}
 .ob .cr-warn{color:var(--warn)!important}
+.ob .cr-spec{color:var(--ink2)!important}
+.ob .cr-sign{font-weight:600}
+.ob .cr-sign.ok{color:var(--ok)!important}
+.ob .cr-sign.warn{color:var(--warn)!important}
+.ob .cr-sign.unk{color:var(--ink3)!important}
 .ob .cr-un small{font-size:12px;color:var(--ink3)}
 .ob .cr-p0{margin:2px 12px 8px;color:var(--ink3);font-size:12.5px}
 .ob .cr-acts{display:flex;gap:8px;flex-wrap:wrap;padding:4px 12px 6px}

@@ -17,6 +17,7 @@ import { getReport, reportPdfUrl, type Report } from "./api";
 import { reportHref } from "./routes";
 import { absPct, dateWord, factorWord, hoursWord, methodWord, moneyWord, pctWord, statsLine, summaryLine } from "./words";
 import "./validation.css";
+import { outOfDateText } from "../part/signoff";
 
 function kg(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -356,6 +357,11 @@ export function ReportScreen({ run }: { run: string | null }) {
       )}
 
       <h2>Decisions recorded</h2>
+      {rep.signoffs && rep.signoffs.recorded ? (
+        <p className="rp">
+          {rep.signoffs.signed_off} of {rep.signoffs.recorded} signed off{rep.signoffs.out_of_date ? `, ${rep.signoffs.out_of_date} of them now out of date: what they were signed off on has changed` : ""}.
+        </p>
+      ) : null}
       {rep.decisions.length ? (
         <div className="val-wide">
           <table>
@@ -366,6 +372,7 @@ export function ReportScreen({ run }: { run: string | null }) {
                 <th scope="col">By</th>
                 <th scope="col">Date</th>
                 <th scope="col">Note</th>
+                <th scope="col">Signed off</th>
               </tr>
             </thead>
             <tbody>
@@ -382,6 +389,17 @@ export function ReportScreen({ run }: { run: string | null }) {
                   <td>{d.by ?? "Not recorded"}</td>
                   <td>{dateWord(d.at)}</td>
                   <td>{d.note ?? ""}</td>
+                  <td>
+                    {d.signoff ? (
+                      <>
+                        {d.signoff.by ?? "Signed off"}, {dateWord(d.signoff.at)}
+                        {d.signoff.note ? <small>{d.signoff.note}</small> : null}
+                        {d.signoff.stale ? <small style={{ color: "var(--warn)", fontWeight: 600 }}>Out of date: {outOfDateText(d.signoff.stale_reason).toLowerCase()}</small> : null}
+                      </>
+                    ) : (
+                      <span className="muted">Not signed off</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

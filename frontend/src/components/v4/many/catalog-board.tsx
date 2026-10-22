@@ -50,6 +50,7 @@ import {
   type SortKey,
 } from "./catalog-model";
 import "./catalog.css";
+import { rowMustHold, rowSignoffLine, rowSpecLine } from "./row-specs";
 
 const POLL_MS = 4000;
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
@@ -421,6 +422,7 @@ function PartRow({ r }: { r: BoardRow }) {
   const [m1, m2] = sub(line.material);
   const [o1, o2] = sub(line.ownership);
   const [p1, p2] = sub(line.price);
+  const sign = rowSignoffLine(r);
   return (
     <tr
       className={cx("cr-r", href && "click")}
@@ -449,6 +451,9 @@ function PartRow({ r }: { r: BoardRow }) {
             <span className="sr">{d.label}: </span>
             {r.reason ?? d.label}
           </span>
+          {rowSpecLine(r) ? <small className="cr-spec">{rowSpecLine(r)}</small> : null}
+          {rowMustHold(r) ? <small className="cr-spec">{rowMustHold(r)}</small> : null}
+          {sign ? <small className={cx("cr-sign", sign.tone)}>{sign.text}</small> : null}
           {r.material.note ? <small className="cr-warn">{r.material.note}; priced in {r.material.class ? materialWord(r.material.class).toLowerCase() : "the run’s material"}</small> : null}
         </span>
         </div>
