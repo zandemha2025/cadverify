@@ -418,3 +418,23 @@ test("an order minimum and finish machining are named lines (de-20)", () => {
   assert.deepEqual(names(1), ["Finish machining", "Order minimum, on one part"]);
   assert.deepEqual(names(10), ["Finish machining", "Order minimum, shared over 10"]);
 });
+
+test("ce-16 / me-05: the labor line at the org's published $58/h reads \"Your rates v1\" and drops \"Add your labor rate\"", () => {
+  // Pocket block at 100 off, rates v1: labor 0.5 h x $58 = $29.00 of $49.63
+  const e = {
+    quantity: 100,
+    unit_cost_usd: 49.63,
+    drivers: [
+      { name: "labor_cost", value: 29, unit: "$", provenance: "SHOP", source: "post-process 0.5 hr x $58/hr; $58/h labor rate from your rates v1", error_band_pct: 20, rate_card: 1 },
+      { name: "machine_cost", value: 15.6934, unit: "$", provenance: "DEFAULT", source: "0.209245 h x $75/hr", error_band_pct: 30 },
+    ],
+  } as unknown as CostEstimate;
+  const [labor, machine] = costLines(e);
+  assert.equal(labor.src.label, "Your rates v1");
+  assert.equal(labor.src.kind, "yours");
+  assert.match(labor.band, /rate from your rates v1/);
+  assert.equal(machine.src.label, "Typical");
+  assert.equal(groundedCount(e).grounded, 1);
+  // the biggest line is hers now: no "it's a typical value ... Add your labor rate" note
+  assert.equal(biggestTypicalNote(e, "process"), null);
+});

@@ -632,12 +632,14 @@ export function featureCells(features: FeatureInfo[] | null | undefined): { n: s
 
 export type ProvKind = "file" | "shop" | "yours" | "typ";
 
-export function provOf(p: string | null | undefined): { cls: string; label: string; kind: ProvKind; color: string } {
+/** Where a line or input comes from. `rateCard`: the org's published rate card version it was priced at ("Your rates v1"). */
+export function provOf(p: string | null | undefined, rateCard?: number | null): { cls: string; label: string; kind: ProvKind; color: string } {
   switch (p) {
     case "MEASURED":
     case "CAD":
       return { cls: "s-file", label: "Your file", kind: "file", color: "#1F4FC4" };
     case "SHOP":
+      if (rateCard != null) return { cls: "s-yours", label: `Your rates v${rateCard}`, kind: "yours", color: "#5B3FC4" };
       return { cls: "s-shop", label: "Shop", kind: "shop", color: "#0E7C86" };
     case "USER":
       return { cls: "s-yours", label: "Yours", kind: "yours", color: "#5B3FC4" };
@@ -690,7 +692,7 @@ export function sumCheck(e: CostEstimate): { sum: number; coherent: boolean } {
 
 export function governance(drivers: readonly CostDriver[]) {
   const counts: Record<ProvKind, number> = { file: 0, shop: 0, yours: 0, typ: 0 };
-  for (const d of drivers) counts[provOf(d.provenance).kind] += 1;
+  for (const d of drivers) counts[provOf(d.provenance, d.rate_card).kind] += 1;
   const total = drivers.length;
   const order: ProvKind[] = ["file", "shop", "yours", "typ"];
   const color: Record<ProvKind, string> = { file: "#1F4FC4", shop: "#0E7C86", yours: "#5B3FC4", typ: "#9AA3AE" };
@@ -724,7 +726,9 @@ export function rateChips(assumptions: readonly CostAssumption[], overrides: Rec
   const ov = overrides ?? {};
   const t = (a: CostAssumption) => `${assumptionName(a.name)} ${assumptionValue(a.name, a.value, a.unit)}`;
   return {
-    bound: assumptions.filter((a) => a.provenance === "SHOP").map(t),
+    bound: assumptions.filter((a) => a.provenance === "SHOP" && a.rate_card == null).map(t),
+    /** Values from the org's published rate card ("Labor rate $58/h"). */
+    card: assumptions.filter((a) => a.provenance === "SHOP" && a.rate_card != null).map(t),
     still: assumptions.filter((a) => a.provenance === "DEFAULT" && ov[a.name] == null).map(t),
   };
 }

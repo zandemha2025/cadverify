@@ -274,7 +274,7 @@ export function CompareTab({ part, qty, setQty }: TabProps) {
                 <span>Tagged</span>
               </div>
               {cellEst.drivers.map((d) => {
-                const p = provOf(d.provenance);
+                const p = provOf(d.provenance, d.rate_card);
                 return (
                   <div className="dl2" key={d.name}>
                     <span>{driverName(d.name)}</span>

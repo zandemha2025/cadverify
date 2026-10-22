@@ -27,6 +27,7 @@ import {
   findingRows,
   formToOptions,
   governance,
+  provOf,
   historyRows,
   methodMatrix,
   methodsAt,
@@ -371,4 +372,20 @@ test("the Summary's 3D uses the part's kept preview, like the part page, and ask
   assert.equal(threeSource({ ...base, kept: null, hasKeptMesh: false, filename: null }).kind, "needs-file");
   assert.deepEqual(threeSource({ ...base, hasKeptMesh: false, keptError: "Service unavailable" }), { kind: "kept-error", text: "Service unavailable." }, "a sentence either way");
   assert.deepEqual(threeSource({ ...base, kept: false, hasKeptMesh: true }), { kind: "kept" }, "this browser's own copy counts too");
+});
+
+test("ce-16: a line priced at the org's published rates reads \"Your rates v1\", never Typical", () => {
+  // Priyanka's pocket block after publishing v1 ($58/h): labor 0.5 h x $58 = $29.00
+  const labor = { name: "labor_cost", value: 29, unit: "$", provenance: "SHOP" as const, source: "post-process 0.5 hr x $58/hr; $58/h labor rate from your rates v1", error_band_pct: 20, rate_card: 1 };
+  const machine = { name: "machine_cost", value: 15.69, unit: "$", provenance: "DEFAULT" as const, source: "0.2092 h x $75/hr", error_band_pct: 30 };
+  assert.equal(provOf(labor.provenance, labor.rate_card).label, "Your rates v1");
+  assert.equal(provOf(labor.provenance, labor.rate_card).kind, "yours");
+  assert.equal(provOf(machine.provenance).label, "Typical");
+  // a shop profile's value (no card version) is still "Shop"
+  assert.equal(provOf("SHOP").label, "Shop");
+  const g = governance([labor, machine]);
+  assert.equal(g.grounded, 1);
+  const chips = rateChips([{ name: "labor_rate", value: 58, unit: "$/hr", provenance: "SHOP", source: "x", rate_card: 1 }], {});
+  assert.equal(chips.card.length, 1);
+  assert.equal(chips.bound.length, 0);
 });

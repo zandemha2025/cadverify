@@ -276,7 +276,7 @@ export function GlassTab({ part, qty }: TabProps) {
           </div>
           <div className="drv">
             {drivers.map((d) => {
-              const p = provOf(d.provenance);
+              const p = provOf(d.provenance, d.rate_card);
               const isOpen = openRow === d.name;
               const row = `drv:${d.name}`;
               const can = canOverrideDriver(d.name);
@@ -373,7 +373,7 @@ export function GlassTab({ part, qty }: TabProps) {
                 const row = `asm:${a.name}`;
                 const can = !!EDITABLE_ASSUMPTIONS[a.name];
                 const isOv = key === "cavities" ? false : ov[key] != null;
-                const p = provOf(isOv ? "USER" : a.provenance);
+                const p = provOf(isOv ? "USER" : a.provenance, isOv ? null : a.rate_card);
                 const editing = edit?.row === row;
                 return (
                   <div className="ar" key={a.name}>
@@ -558,7 +558,7 @@ export function GlassTab({ part, qty }: TabProps) {
                     <span />
                   </li>
                   {drivers.map((d) => {
-                    const p = provOf(d.provenance);
+                    const p = provOf(d.provenance, d.rate_card);
                     return (
                       <li className="lnn" key={d.name}>
                         <i style={{ background: p.kind === "typ" ? "#fff" : p.color, borderColor: p.color }} />
@@ -624,7 +624,7 @@ export function GlassTab({ part, qty }: TabProps) {
                   <span>Each line tagged and sourced</span>
                 </div>
                 {drivers.map((d) => {
-                  const p = provOf(d.provenance);
+                  const p = provOf(d.provenance, d.rate_card);
                   return (
                     <div className="sx" key={d.name}>
                       <div>

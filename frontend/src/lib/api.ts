@@ -874,6 +874,17 @@ export interface CostDriver {
   provenance: Provenance;
   source: string;
   error_band_pct: number | null;
+  /** The org's published rate card version this line's rate comes from ("Your rates v1"); absent for a typical rate. */
+  rate_card?: number;
+}
+
+/** Which rate card a saved record was priced at, and which is in effect now (0 = typical rates). */
+export interface RateBasis {
+  priced: number;
+  current: number;
+  out_of_date: boolean;
+  /** "Priced at rates v0; your rates are v1." */
+  text: string;
 }
 
 /**
@@ -1045,6 +1056,8 @@ export interface CostAssumption {
   unit: string;
   provenance: Provenance;
   source: string;
+  /** The org's published rate card version this value comes from; absent for a typical value. */
+  rate_card?: number;
 }
 
 export interface CostGeometry {
@@ -1108,6 +1121,8 @@ export interface CostReport {
   /** The part specs this check was priced with (present only when declared). */
   specs?: CostSpecsBlock | null;
   decision: CostDecision | null;
+  /** The org's published rate card this check was priced at; absent when priced at typical rates (v0). */
+  rate_card?: { version: number; changed: Record<string, number>; source: string };
   /** Persisted machine-fit verdict lattice. Present when the organization has
    *  declared inventory and/or a service environment. This is independent of
    *  the route's DFM status and must remain the authority for makeability copy. */
@@ -1300,6 +1315,8 @@ export interface CostDecisionGovernance {
   disposition_updated_by_user_id?: number | null;
   /** The sign-off as people see it (who, when, note, and whether it went out of date). */
   signoff?: CostSignoff | null;
+  /** Which rate card priced this record and which is in effect now. */
+  rates?: RateBasis | null;
 }
 
 export interface CostSignoff {
