@@ -41,6 +41,7 @@ import {
   sameForm,
   scaleMax,
   scenarioLabel,
+  threeSource,
   sumCheck,
 } from "./derive.ts";
 import { assumptionValue, environmentLabel, findingTitle, qtyListText, shortSource } from "./words.ts";
@@ -352,4 +353,22 @@ test("a tiny cycle time reads in seconds or minutes, never 0 h", () => {
   assert.equal(driverValue({ value: 0.009, unit: "hr" }), "32 s");
   assert.equal(driverValue({ value: 0.0095, unit: "hr" }), "34 s");
   assert.equal(driverValue({ value: 1.25, unit: "hr" }), "1.25 h");
+});
+
+test("the Summary's 3D uses the part's kept preview, like the part page, and asks for the file only without one", () => {
+  const base = { hasFile: false, part: "abc", kept: true as boolean | null | undefined, hasKeptMesh: true, keptError: null as string | null, filename: "bracket.step" };
+  assert.deepEqual(threeSource(base), { kind: "kept" }, "kept with the part: no file needed");
+  assert.deepEqual(threeSource({ ...base, hasFile: true }), { kind: "file" });
+  assert.deepEqual(threeSource({ ...base, kept: undefined, hasKeptMesh: false }), { kind: "loading" });
+  assert.deepEqual(threeSource({ ...base, kept: false, hasKeptMesh: false }), {
+    kind: "needs-file",
+    text: "bracket.step isn’t in this browser, and its file wasn’t kept with the part. Choose it again to turn the part and see findings on it.",
+  });
+  assert.deepEqual(threeSource({ ...base, hasKeptMesh: false, keptError: "The 3D view of the kept file couldn't reach the server." }), {
+    kind: "kept-error",
+    text: "The 3D view of the kept file couldn't reach the server.",
+  });
+  assert.equal(threeSource({ ...base, kept: null, hasKeptMesh: false, filename: null }).kind, "needs-file");
+  assert.deepEqual(threeSource({ ...base, hasKeptMesh: false, keptError: "Service unavailable" }), { kind: "kept-error", text: "Service unavailable." }, "a sentence either way");
+  assert.deepEqual(threeSource({ ...base, kept: false, hasKeptMesh: true }), { kind: "kept" }, "this browser's own copy counts too");
 });

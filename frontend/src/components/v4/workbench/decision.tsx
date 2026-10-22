@@ -270,6 +270,7 @@ export function DecisionTab({ part, qty, setQty }: TabProps) {
   const turntable = (
     <Turntable
       file={s.file}
+      part={part}
       filename={s.filename}
       units={s.opts.units}
       label={`${filename}${report ? ` in ${materialName(report.material_class).toLowerCase()}` : ""}.`}

@@ -864,3 +864,39 @@ export function scenarioLabel(shopName: string | null, overrides: Record<string,
   for (const [k, v] of Object.entries(overrides ?? {})) parts.push(`${k} ${v}`);
   return parts.length ? parts.join(" · ") : "Engine";
 }
+
+/* ------------------------------------------------------------------ */
+/*  3D on the Summary                                                  */
+/* ------------------------------------------------------------------ */
+
+export type ThreeSource =
+  | { kind: "file" }
+  | { kind: "kept" }
+  | { kind: "loading" }
+  | { kind: "kept-error"; text: string }
+  | { kind: "needs-file"; text: string };
+
+/**
+ * Where the Summary's 3D view comes from, like the part page: the file in this
+ * tab, else the part's kept preview (this browser's copy, or the file the
+ * organization kept, built on the server; no check used). Only when neither
+ * exists does it ask for the file, and it says why.
+ */
+export function threeSource(o: {
+  hasFile: boolean;
+  /** the part's mesh hash; null without one */
+  part: string | null;
+  /** undefined while asking; null when the kept file's status didn't load */
+  kept: boolean | null | undefined;
+  hasKeptMesh: boolean;
+  keptError: string | null;
+  filename: string | null;
+}): ThreeSource {
+  if (o.hasFile) return { kind: "file" };
+  const name = o.filename ?? "The CAD file";
+  if (o.part && o.kept === undefined) return { kind: "loading" };
+  if (o.part && o.hasKeptMesh) return { kind: "kept" };
+  if (o.part && o.kept === true && o.keptError) return { kind: "kept-error", text: /[.?!]$/.test(o.keptError.trim()) ? o.keptError.trim() : `${o.keptError.trim()}.` };
+  if (o.part && o.kept === false) return { kind: "needs-file", text: `${name} isn’t in this browser, and its file wasn’t kept with the part. Choose it again to turn the part and see findings on it.` };
+  return { kind: "needs-file", text: `${name} isn’t in this browser. Choose it again to turn the part and see findings on it.` };
+}

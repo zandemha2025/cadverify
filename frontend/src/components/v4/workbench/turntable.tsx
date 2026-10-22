@@ -10,6 +10,11 @@
  *
  * The pin marks one real flagged face (or the finding's region centre), tracked
  * every frame; it hides when the part turns it away.
+ *
+ * Without the file in this tab it shows the part's kept preview, the same one
+ * the part page shows (this browser's copy, else the file the organization kept,
+ * tessellated on the server in the analysis face space; no check used). It asks
+ * for the file only when neither exists.
  */
 import * as React from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -21,6 +26,8 @@ import { computeHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import { perspectiveFramingDistance } from "@/lib/camera-framing";
 import { cx } from "../ui";
+import { loadPartMesh } from "../part/api";
+import { threeSource } from "./derive";
 
 type Loaded = { geometry: THREE.BufferGeometry; faceHash: string | null; aligned: boolean; transform: THREE.Matrix4 };
 
@@ -39,31 +46,63 @@ function loadShell(file: File, units: "mm" | "inch"): Promise<Loaded> {
     const preview = await fetchPreviewMesh(file, { forAnalysis: true, units });
     if (!preview) throw new Error("Preview unavailable");
     try {
-      const gltf = await new GLTFLoader().loadAsync(preview.url);
-      gltf.scene.updateMatrixWorld(true);
-      let geometry: THREE.BufferGeometry | null = null;
-      const transform = new THREE.Matrix4();
-      gltf.scene.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        if (!geometry) {
-          transform.copy(mesh.matrixWorld);
-          geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
-          geometry.applyMatrix4(transform);
-        }
-        mesh.geometry.dispose();
-      });
-      const g = geometry as THREE.BufferGeometry | null;
-      if (!g?.getAttribute("position")?.count) throw new Error("Empty preview");
-      g.computeVertexNormals();
-      g.computeBoundingBox();
-      return { geometry: g, faceHash: preview.faceSpace === "analysis" ? preview.faceHash : null, aligned: preview.faceSpace === "analysis", transform };
+      return await shellFromGlb(preview.url, preview.faceHash, preview.faceSpace);
     } finally {
       preview.revoke();
     }
   })();
   byUnits.set(units, p);
   p.catch(() => byUnits!.delete(units));
+  return p;
+}
+
+async function shellFromGlb(url: string, faceHash: string | null, faceSpace: "analysis" | "preview"): Promise<Loaded> {
+  const gltf = await new GLTFLoader().loadAsync(url);
+  gltf.scene.updateMatrixWorld(true);
+  let geometry: THREE.BufferGeometry | null = null;
+  const transform = new THREE.Matrix4();
+  gltf.scene.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (!geometry) {
+      transform.copy(mesh.matrixWorld);
+      geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+      geometry.applyMatrix4(transform);
+    }
+    mesh.geometry.dispose();
+  });
+  const g = geometry as THREE.BufferGeometry | null;
+  if (!g?.getAttribute("position")?.count) throw new Error("Empty preview");
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  return { geometry: g, faceHash: faceSpace === "analysis" ? faceHash : null, aligned: faceSpace === "analysis", transform };
+}
+
+type Kept = { loaded: Loaded | null; kept: boolean | null; error: string | null };
+
+// The kept preview per part (parsed once per tab; a retry asks again).
+const keptShells = new Map<string, Promise<Kept>>();
+
+function loadKeptShell(key: string, filename: string | null, again = false): Promise<Kept> {
+  const hit = keptShells.get(key);
+  if (hit && !again) return hit;
+  const p = (async (): Promise<Kept> => {
+    const r = await loadPartMesh(key, filename);
+    if (!r.mesh) return { loaded: null, kept: r.kept, error: r.error };
+    const url = URL.createObjectURL(r.mesh.blob);
+    try {
+      return { loaded: await shellFromGlb(url, r.mesh.faceHash, r.mesh.faceSpace), kept: r.kept, error: null };
+    } catch {
+      return { loaded: null, kept: r.kept, error: "The 3D view of the kept file didn’t open." };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  })();
+  keptShells.set(key, p);
+  // A miss or a failure isn't remembered: coming back asks again.
+  void p.then((k) => {
+    if (!k.loaded) keptShells.delete(key);
+  });
   return p;
 }
 
@@ -290,6 +329,7 @@ function Rig() {
 
 export function Turntable({
   file,
+  part,
   filename,
   units,
   analysisMeshHash,
@@ -300,6 +340,8 @@ export function Turntable({
   className,
 }: {
   file: File | null;
+  /** the part's mesh hash: without the file here, its kept preview is shown */
+  part?: string | null;
   filename: string | null;
   units: "mm" | "inch";
   /** the DFM result's face fingerprint; faces are painted only when the preview matches it */
@@ -313,6 +355,8 @@ export function Turntable({
   const [webgl, setWebgl] = React.useState<boolean | null>(null);
   const [state, setState] = React.useState<{ file: File; units: string; loaded: Loaded | null; error: string | null } | null>(null);
   const [retry, setRetry] = React.useState(0);
+  const [keptState, setKeptState] = React.useState<{ key: string; k: Kept } | null>(null);
+  const [keptRetry, setKeptRetry] = React.useState(0);
   const [drag, setDrag] = React.useState(false);
   const [touched, setTouched] = React.useState(false);
   const [deg, setDeg] = React.useState(0);
@@ -338,8 +382,22 @@ export function Turntable({
     };
   }, [file, units, retry]);
 
+  // No file in this tab: the part's kept preview, like the part page.
+  React.useEffect(() => {
+    if (file || !part) return;
+    let live = true;
+    void loadKeptShell(part, filename, keptRetry > 0).then((k) => live && setKeptState({ key: part, k }));
+    return () => {
+      live = false;
+    };
+    // The file name only labels the browser's cached copy; it doesn't change the part.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, part, keptRetry]);
+
   const current = state && state.file === file && state.units === units ? state : null;
-  const loaded = current?.loaded ?? null;
+  const keptCur = !file && part && keptState?.key === part ? keptState.k : null;
+  const loaded = (file ? current?.loaded : keptCur?.loaded) ?? null;
+  const src = threeSource({ hasFile: !!file, part: part ?? null, kept: keptCur ? keptCur.kept : undefined, hasKeptMesh: !!keptCur?.loaded, keptError: keptCur?.error ?? null, filename });
   const aligned = !!loaded && loaded.aligned && !!analysisMeshHash && loaded.faceHash === analysisMeshHash;
   const color = highlight ? KIND_COLOR[highlight.kind] ?? KIND_COLOR.none : KIND_COLOR.none;
   const hl = React.useMemo(() => (aligned && highlight && highlight.faces.length ? { faces: highlight.faces, color } : null), [aligned, highlight, color]);
@@ -384,11 +442,11 @@ export function Turntable({
   };
 
   let body: React.ReactNode;
-  if (!file) {
+  if (src.kind === "needs-file") {
     body = (
       <div className="vmsg">
         <b>3D needs the file</b>
-        <span>{filename ? `${filename} isn’t kept in this browser.` : "The CAD file isn’t kept in this browser."} Choose it again to turn the part and see findings on it.</span>
+        <span>{src.text}</span>
         {onChooseFile ? (
           <button className="btn sm ink" type="button" onClick={onChooseFile}>
             Choose file
@@ -396,7 +454,17 @@ export function Turntable({
         ) : null}
       </div>
     );
-  } else if (current?.error) {
+  } else if (src.kind === "kept-error") {
+    body = (
+      <div className="vmsg" role="alert">
+        <b>Couldn’t load the 3D view of the kept file</b>
+        <span>{src.text} Results are unaffected.</span>
+        <button className="btn sm" type="button" onClick={() => setKeptRetry((n) => n + 1)}>
+          Retry preview
+        </button>
+      </div>
+    );
+  } else if (file && current?.error) {
     body = (
       <div className="vmsg" role="alert">
         <b>Couldn’t load the 3D preview</b>
