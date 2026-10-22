@@ -25,7 +25,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -69,8 +68,8 @@ _MAX_SIZE_MM = 50.0          # ceiling so huge parts don't vanish
 # sizing on curved faces, MeshSizeMax on flat ones): with 1 mm fillets the
 # enclosure meshes to 218,356 faces instead of 291,482, the same flat-wall
 # sampling as its unfilleted self (with 0.5 mm, 231,636 instead of 672,924 --
-# but that first pass alone takes ~25 s, past the time cap below, so that part
-# stays as it was).
+# but that first pass alone takes ~25 s and is past the triangle cap below, so
+# that part stays as it was).
 # Pass 2 runs only when flat faces really are inflated (_flat_inflation), so a
 # part that is simply big at the default size goes straight to coarsening:
 # MeshSizeMax grows (flat faces only; curved faces stay curvature-sized) by at
@@ -180,17 +179,56 @@ def _flat_coarse_sizing(size_max: float, diag: float) -> dict | None:
     return sizing
 
 
+# The refit's gate counts triangles, never time. A part's mesh must not depend
+# on how busy the machine is: gated on wall time, the rounded 120 x 80 x 40 mm
+# Studio enclosure refit to 218,356 faces on an idle box but kept its
+# 291,482-face first pass at load average 14 on 4 CPUs (that first pass took
+# 18 s there, and the refit no longer fit). CPU time is no better: contention
+# stretches it too, and the enclosure, whose refit fits within a few per cent
+# of the cap, flipped between the two meshes from one loaded run to the next.
+# So a pass's cost is its triangle count at a fixed meshing rate, and the same
+# part gets the same passes on any box at any load. The clocks stay outer
+# bounds, in the parse pool: a rung that uses its CPU cap is killed and the
+# ladder tries its next strategy, and running out of the ladder's wall time
+# ends as busy.
+#
+# The rate. gmsh 4.15.2, single-threaded (General.NumThreads 1), on this
+# project's 4-vCPU build box (Xeon @ 2.80 GHz) at load average 9 to 14, in CPU
+# seconds per generate(2) pass:
+#   enclosure, 1 mm fillets  pass 1: 291,482 in 9.78 / 10.19 / 10.98 s
+#                            (29.8k / 28.6k / 26.5k per s); pass 2: 218,356
+#                            in 7.30 s (29.9k per s); rung 0 in all 18.1 s
+#   perf part 0 (sphere pocket)  194,454 in 6.15 s (31.6k per s)
+#   rounded pocket (0.5 mm)      181,312 in 5.37 s (33.8k per s)
+# _FIT_TRIANGLES_PER_SEC is 27,000, about the slowest of those runs. A pass
+# starts only while the triangles meshed so far plus the next pass's expected
+# triangles stay within that rate x _fit_time_cap_sec(): 518,400 triangles at
+# the default 60 s budget. That cap is 80% of the pool's rung-0 CPU cap
+# (24 s), so the most meshing the gate allows still finishes inside the rung-0
+# cap on a CPU that meshes 22,500 triangles per CPU second (518,400 in 23 s,
+# with 1 s of import), about three quarters of this box's measured rate. On a
+# slower CPU rung 0 can use up its cap, and the ladder moves on as for any
+# rung that does; time never swaps the first-pass mesh in for the refit. A
+# lower rate would refuse the enclosure's refit everywhere: it needs
+# 291,482 + 291,482 / 1.38 = 502,701.
+_FIT_TRIANGLES_PER_SEC = 27_000
+
+
 def _fit_time_cap_sec() -> float:
-    """Wall-clock a refit may bring one tessellation to: 80% of the pool's rung-0
-    cap (the same cap the in-thread ladder is held to), so a refit never turns
-    a rung that finished in time into one the pool kills."""
+    """Seconds of meshing a refit may bring one tessellation to: 80% of the pool's
+    rung-0 CPU cap. The gate turns it into triangles (``_fit_triangle_cap``) and
+    never reads a clock."""
     from src.parsers.parse_pool import _budget_sec, _rung_caps
 
     return 0.8 * _rung_caps(_budget_sec(), len(_MESH_RUNGS))[0]
 
 
-def _fit_to_budget(size_max: float, started: float, first_pass_sec: float,
-                   flat: dict | None = None) -> dict | None:
+def _fit_triangle_cap() -> int:
+    """Triangles one tessellation may mesh in all passes, first pass included."""
+    return int(_FIT_TRIANGLES_PER_SEC * _fit_time_cap_sec())
+
+
+def _fit_to_budget(size_max: float, flat: dict | None = None) -> dict | None:
     """Re-mesh the loaded model until it fits the analysis budget.
 
     Called after the first ``generate(2)``. Returns None when the first pass
@@ -198,35 +236,36 @@ def _fit_to_budget(size_max: float, started: float, first_pass_sec: float,
     Pass 2 runs only when flat faces are inflated by their boundaries; the
     coarsening passes then grow MeshSizeMax (at most ``_FIT_MAX_COARSEN`` in
     all). The last pass has the fewest triangles and is the one kept. A pass
-    whose estimated time (the first pass's, scaled by triangle count) would
-    run past ``_fit_time_cap_sec`` is not started: the part then keeps its
-    first-pass mesh and the engine decimates it, as before.
+    that would bring the triangles meshed in all past ``_fit_triangle_cap`` is
+    not started: the part then keeps its first-pass mesh and the engine
+    decimates it, as before. The decision reads triangle counts only, so a part
+    gets the same passes on an idle box and a loaded one.
     """
     budget = _analysis_face_budget()
     count = _triangle_count()
     if flat is not None:
-        return _fit_flat_coarse(size_max, started, first_pass_sec, flat, budget, count)
+        return _fit_flat_coarse(size_max, flat, budget, count)
     if count <= budget or not _fit_budget_enabled():
         return None
-    first = count
-    cap = _fit_time_cap_sec()
+    cap = _fit_triangle_cap()
+    meshed = count
 
     def affordable(expected_faces: float) -> bool:
-        estimate = first_pass_sec * expected_faces / max(first, 1)
-        return (time.perf_counter() - started) + estimate <= cap
+        return meshed + expected_faces <= cap
 
     inflation = _flat_inflation(size_max)
     passes = [{"pass": 1, "faces": count, "size_max": size_max, "extend_from_boundary": 1,
-               "flat_inflation": round(inflation, 2), "seconds": round(first_pass_sec, 2)}]
-    record = {"budget": budget, "passes": passes, "fits": False}
+               "flat_inflation": round(inflation, 2)}]
+    record = {"budget": budget, "triangle_cap": cap, "passes": passes, "fits": False}
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     if inflation > _FIT_INFLATED:
-        if not affordable(first / inflation):
+        if not affordable(count / inflation):
             record["stopped"] = "time"
             return record
         gmsh.model.mesh.clear()
         gmsh.model.mesh.generate(2)
         count = _triangle_count()
+        meshed += count
         passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size_max,
                        "extend_from_boundary": 0})
     size = size_max
@@ -240,28 +279,27 @@ def _fit_to_budget(size_max: float, started: float, first_pass_sec: float,
         gmsh.model.mesh.clear()
         gmsh.model.mesh.generate(2)
         count = _triangle_count()
+        meshed += count
         passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
                        "extend_from_boundary": 0})
     record["fits"] = count <= budget
     return record
 
 
-def _fit_flat_coarse(size_max: float, started: float, first_pass_sec: float, flat: dict,
-                     budget: int, count: int) -> dict:
+def _fit_flat_coarse(size_max: float, flat: dict, budget: int, count: int) -> dict:
     """The flat-coarse pass is meshed; if curved faces alone still put it over
     the budget, grow their size cap (at most ``_FIT_MAX_COARSEN``) under the
-    same time cap as any refit. Always returns the record, so the log says
+    same triangle cap as any refit. Always returns the record, so the log says
     which path a part took."""
-    first = count
-    cap = _fit_time_cap_sec()
+    cap = _fit_triangle_cap()
+    meshed = count
     passes = [{"pass": 1, "faces": count, "size_max": size_max, "flat_size": flat["flat_size"],
-               "predicted_first_pass": flat["predicted"], "extend_from_boundary": 0,
-               "seconds": round(first_pass_sec, 2)}]
-    record = {"budget": budget, "passes": passes, "fits": False, "flat_coarse": True}
+               "predicted_first_pass": flat["predicted"], "extend_from_boundary": 0}]
+    record = {"budget": budget, "triangle_cap": cap, "passes": passes, "fits": False,
+              "flat_coarse": True}
     size = size_max
     while count > budget and size < _FIT_MAX_COARSEN * size_max - 1e-12:
-        estimate = first_pass_sec * _FIT_TARGET * budget / max(first, 1)
-        if (time.perf_counter() - started) + estimate > cap:
+        if meshed + _FIT_TARGET * budget > cap:
             record["stopped"] = "time"
             break
         factor = max(1.05, (count / (_FIT_TARGET * budget)) ** 0.5)
@@ -270,6 +308,7 @@ def _fit_flat_coarse(size_max: float, started: float, first_pass_sec: float, fla
         gmsh.model.mesh.clear()
         gmsh.model.mesh.generate(2)
         count = _triangle_count()
+        meshed += count
         passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
                        "flat_size": flat["flat_size"], "extend_from_boundary": 0})
     record["fits"] = count <= budget
@@ -585,7 +624,6 @@ def _tessellate_once(
     # signal.signal() and only works on the MAIN thread. The route meshes in a
     # ThreadPoolExecutor (A.5), so the default would raise "signal only works in
     # main thread of the main interpreter".
-    started = time.perf_counter()
     gmsh.initialize(interruptible=False)
     try:
         gmsh.option.setNumber("General.Terminal", 0)          # no stdout spew
@@ -614,10 +652,8 @@ def _tessellate_once(
         # None (and no change at all) unless the B-rep predicts a first pass
         # clearly over the analysis budget; see _PREDICT_OVER.
         flat = _flat_coarse_sizing(size_max, diag)
-        first_pass = time.perf_counter()
         gmsh.model.mesh.generate(2)          # 2D surface mesh = triangulated shell
-        fit = _fit_to_budget(               # no-op unless over the analysis budget
-            size_max, started, time.perf_counter() - first_pass, flat)
+        fit = _fit_to_budget(size_max, flat)  # no-op unless over the analysis budget
         if fit is not None:
             logger.info("STEP mesh refit to the analysis budget: %s", fit)
 

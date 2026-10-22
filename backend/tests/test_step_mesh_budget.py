@@ -125,8 +125,38 @@ def test_a_refit_that_would_run_past_the_rung_cap_is_not_started(tmp_path, monke
 def test_the_time_cap_follows_the_pool_rung_cap(monkeypatch):
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "60")
     assert sm._fit_time_cap_sec() == pytest.approx(0.8 * 24.0)
+    assert sm._fit_triangle_cap() == int(sm._FIT_TRIANGLES_PER_SEC * 0.8 * 24.0)
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "20")
     assert sm._fit_time_cap_sec() == pytest.approx(0.8 * 8.0)
+    assert sm._fit_triangle_cap() == int(sm._FIT_TRIANGLES_PER_SEC * 0.8 * 8.0)
+
+
+def test_a_busy_machine_gets_the_same_refit(tmp_path, monkeypatch, caplog):
+    """The refit's gate counts triangles: a part gets the same passes whatever the
+    clocks say. Every clock here jumps 1,000 s at each reading (a box far busier than
+    any cap), and the refit is still made, pass for pass and triangle for triangle."""
+    import itertools
+    import time
+
+    part = _rounded_pocket(tmp_path / "rounded-pocket.step")
+    monkeypatch.setenv("STEP_MESH_FIT_ANALYSIS_BUDGET", "0")
+    first = _mesh(part)
+    monkeypatch.setenv("STEP_MESH_FIT_ANALYSIS_BUDGET", "1")
+    monkeypatch.setenv("MAX_ANALYSIS_FACES", str(len(first.faces) - 1))
+    with caplog.at_level(logging.INFO, logger="cadverify.step_mesher"):
+        calm = _mesh(part)
+    calm_fit = _refit_record(caplog)
+    caplog.clear()
+    for name in ("perf_counter", "monotonic", "thread_time", "process_time", "time"):
+        ticks = itertools.count(1_000.0, 1_000.0)
+        monkeypatch.setattr(time, name, lambda ticks=ticks: next(ticks))
+    with caplog.at_level(logging.INFO, logger="cadverify.step_mesher"):
+        busy = _mesh(part)
+    busy_fit = _refit_record(caplog)
+    monkeypatch.undo()
+    assert len(calm_fit["passes"]) >= 2 and calm_fit["fits"], calm_fit
+    assert busy_fit == calm_fit
+    assert np.array_equal(busy.faces, calm.faces) and np.array_equal(busy.vertices, calm.vertices)
 
 
 def test_switch_off_restores_the_first_pass(tmp_path, monkeypatch):
