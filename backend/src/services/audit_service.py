@@ -277,6 +277,9 @@ async def export_audit_csv(
 
         rows = (await session.execute(stmt)).scalars().all()
 
+        # Same formula neutralising as every other CSV export.
+        from src.services.cost_decision_service import spreadsheet_safe_cell
+
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
@@ -284,7 +287,7 @@ async def export_audit_csv(
             "resource_id", "ip_address", "file_hash", "result_summary",
         ])
         for e in rows:
-            writer.writerow([
+            writer.writerow([spreadsheet_safe_cell(cell) for cell in (
                 e.timestamp.isoformat() if e.timestamp else "",
                 e.user_email,
                 e.action,
@@ -293,7 +296,7 @@ async def export_audit_csv(
                 e.ip_address or "",
                 e.file_hash or "",
                 e.result_summary or "",
-            ])
+            )])
 
         return output.getvalue()
     finally:
