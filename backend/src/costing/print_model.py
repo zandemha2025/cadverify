@@ -40,6 +40,7 @@ from __future__ import annotations
 import hashlib
 import math
 import threading
+import weakref
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
@@ -200,12 +201,74 @@ def pad_area_cm2(mesh, margin_mm: float | None = None) -> float:
 _cache: "OrderedDict[str, PrintFeatures]" = OrderedDict()
 _lock = threading.Lock()
 _CACHE_ENTRIES = 32
+# The other ways down of a part (``_ways_down``) and the full features of those measured, by the
+# part's key: a price reads them once per quantity and process (the make-vs-buy crossover alone
+# asks dozens of times).
+_alternates: "OrderedDict[str, tuple]" = OrderedDict()
+_ALTERNATES_ENTRIES = 8
+# The analysis-bounded copy of a part over the face cap (its vertices, faces and metadata), by the
+# part's key, so the part is decimated once per price: its other ways down turn this copy instead
+# of decimating each turned copy again. Arrays only (a few MB each), not the mesh and its caches.
+_bounded: "OrderedDict[str, tuple]" = OrderedDict()
+_BOUNDED_ENTRIES = 2
+# The key of a mesh object already hashed, while it lives and its arrays are unchanged
+# (trimesh's own hash of the data, cached until they change): id → (weakref, trimesh hash, key).
+_keys: "OrderedDict[int, tuple]" = OrderedDict()
+_KEYS_ENTRIES = 64
 
 
 def _key(mesh) -> str:
+    """SHA-1 of the mesh's exact vertices and faces; hashed once per trimesh object while unchanged."""
+    import trimesh
+
+    fast = None
+    if isinstance(mesh, trimesh.Trimesh):
+        fast = hash(mesh)  # xxh3 of the data arrays, recomputed by trimesh only after they change
+        seen = _keys.get(id(mesh))
+        if seen is not None and seen[0]() is mesh and seen[1] == fast:
+            return seen[2]
     v = np.ascontiguousarray(mesh.vertices, dtype=np.float64)
     f = np.ascontiguousarray(mesh.faces, dtype=np.int64)
-    return hashlib.sha1(v.tobytes() + f.tobytes()).hexdigest()
+    key = hashlib.sha1(v.tobytes() + f.tobytes()).hexdigest()
+    if fast is not None:
+        _remember(_keys, id(mesh), (weakref.ref(mesh), fast, key), _KEYS_ENTRIES)
+    return key
+
+
+def _remember(store: OrderedDict, key, value, entries: int) -> None:
+    with _lock:
+        store[key] = value
+        store.move_to_end(key)
+        while len(store) > entries:
+            store.popitem(last=False)
+
+
+def _bounded_mesh(mesh, key: str):
+    """The analysis-bounded copy of ``mesh`` (the check's own decimation over the face cap), or
+    ``mesh`` itself under the cap; decimated once per key while it is remembered."""
+    import trimesh
+
+    from src.analysis.context import _max_analysis_faces, _maybe_decimate
+
+    if len(mesh.faces) <= _max_analysis_faces():
+        return mesh
+    with _lock:
+        hit = _bounded.get(key)
+        if hit is not None:
+            _bounded.move_to_end(key)
+    if hit is not None:
+        if hit[0] is None:  # decimation didn't reduce it: the mesh itself, as _maybe_decimate keeps it
+            return mesh
+        vertices, faces, metadata = hit
+        out = trimesh.Trimesh(vertices=vertices.copy(), faces=faces.copy(), process=False)
+        out.metadata.update(metadata)
+        return out
+    bounded, _ = _maybe_decimate(mesh)
+    kept = ((None, None, None) if bounded is mesh else
+            (np.array(bounded.vertices, dtype=np.float64), np.array(bounded.faces, dtype=np.int64),
+             dict(bounded.metadata or {})))
+    _remember(_bounded, key, kept, _BOUNDED_ENTRIES)
+    return bounded
 
 
 def placed_features(mesh) -> PrintFeatures:
@@ -214,23 +277,30 @@ def placed_features(mesh) -> PrintFeatures:
     Support is read on the analysis-bounded mesh (the check's own decimation of
     very large meshes); volume, area and extents on the mesh itself.
     """
-    from scipy.spatial import ConvexHull
-
-    from src.analysis.context import _maybe_decimate
-    from src.analysis.orientation import OVERHANG_LIMIT_DEG, placed_measures
-    from src.analysis.support import support_regions
-
     key = _key(mesh)
     with _lock:
         hit = _cache.get(key)
         if hit is not None:
             _cache.move_to_end(key)
             return hit
+    out = _measure(mesh, _bounded_mesh(mesh, key))
+    _remember(_cache, key, out, _CACHE_ENTRIES)
+    return out
+
+
+def _measure(mesh, bounded, volume_cm3: float | None = None, area_cm2: float | None = None) -> PrintFeatures:
+    """Features of ``mesh`` as placed, support and cross-sections read on ``bounded`` (the
+    analysis-bounded copy placed the same way, or ``mesh`` itself). ``volume_cm3`` and ``area_cm2``,
+    the same in every orientation, may come from the part as checked."""
+    from scipy.spatial import ConvexHull
+
+    from src.analysis.orientation import OVERHANG_LIMIT_DEG, placed_measures
+    from src.analysis.support import support_regions
+
     nz = np.asarray(mesh.face_normals)[:, 2]
     areas = np.asarray(mesh.area_faces)
     lo, hi = mesh.bounds
     ext = hi - lo
-    bounded, _ = _maybe_decimate(mesh)
     m = placed_measures(bounded)
     fdm = support_regions(bounded, OVERHANG_LIMIT_DEG["fdm"], measures=m)
     resin = support_regions(bounded, OVERHANG_LIMIT_DEG["sla"], measures=m, bridging=False)
@@ -240,8 +310,9 @@ def placed_features(mesh) -> PrintFeatures:
         outline = tuple(map(tuple, xy[ConvexHull(xy).vertices].round(6)))
     except Exception:
         outline = ()
-    out = PrintFeatures(
-        volume_cm3=float(mesh.volume) / 1000.0, area_cm2=float(mesh.area) / 100.0,
+    return PrintFeatures(
+        volume_cm3=float(mesh.volume) / 1000.0 if volume_cm3 is None else volume_cm3,
+        area_cm2=float(mesh.area) / 100.0 if area_cm2 is None else area_cm2,
         wall_cm2=float(areas[np.abs(nz) < 0.5].sum()) / 100.0, height_mm=float(ext[2]),
         x_mm=float(ext[0]), y_mm=float(ext[1]), footprint_cm2=float(ext[0] * ext[1]) / 100.0,
         fdm_need_cm2=fdm.area_mm2 / 100.0, fdm_column_cm3=fdm.column_mm3 / 1000.0, fdm_bridges=fdm.bridges,
@@ -249,11 +320,6 @@ def placed_features(mesh) -> PrintFeatures:
         layer_perimeter_mm=tuple(perimeter.round(4)), layer_area_mm2=tuple(area.round(4)),
         pad_cm2=pad_area_cm2(bounded),
     )
-    with _lock:
-        _cache[key] = out
-        while len(_cache) > _CACHE_ENTRIES:
-            _cache.popitem(last=False)
-    return out
 
 
 def plate_capacity(f: PrintFeatures, envelope, spacing_mm: float, packing: float) -> int:
@@ -360,16 +426,73 @@ _SIDES = (("−X", (-1.0, 0.0, 0.0)), ("+X", (1.0, 0.0, 0.0)), ("−Y", (0.0, -1
           ("+Y", (0.0, 1.0, 0.0)), ("+Z", (0.0, 0.0, 1.0)))
 
 
-def alternates(mesh) -> list[tuple[str, PrintFeatures]]:
-    """The part laid on each other side of its box (as checked), lowest first."""
+@dataclass(frozen=True)
+class _Placement:
+    """A way down of the part: what the plate nest reads (``plate_capacity``)."""
+
+    height_mm: float
+    x_mm: float
+    y_mm: float
+    outline_xy: tuple = field(default=(), repr=False, compare=False)
+
+
+def _side_turn(side: int):
     from src.analysis.orientation import Orientation, rotation_down
 
-    out = []
-    for name, d in _SIDES:
-        placed = Orientation.of(rotation_down(d)).apply(mesh)
+    return Orientation.of(rotation_down(_SIDES[side][1]))
+
+
+def _ways_down(mesh, key: str) -> tuple:
+    """(ways, features): each other side as (words, placement, side), lowest first, and the full
+    features of the sides measured so far. Memoized by the part's key."""
+    from scipy.spatial import ConvexHull
+
+    with _lock:
+        hit = _alternates.get(key)
+        if hit is not None:
+            _alternates.move_to_end(key)
+            return hit
+    ways = []
+    for side, (name, _) in enumerate(_SIDES):
+        placed = _side_turn(side).apply(mesh)
+        lo, hi = placed.bounds
+        ext = hi - lo
+        try:
+            xy = np.asarray(placed.vertices)[:, :2]
+            outline = tuple(map(tuple, xy[ConvexHull(xy).vertices].round(6)))
+        except Exception:
+            outline = ()
         words = "upside down" if name == "+Z" else f"on its {name} side (as checked)"
-        out.append((words, placed_features(placed)))
-    return sorted(out, key=lambda w: (round(w[1].height_mm, 6), w[0]))
+        ways.append((words, _Placement(float(ext[2]), float(ext[0]), float(ext[1]), outline), side))
+    ways.sort(key=lambda w: (round(w[1].height_mm, 6), w[0]))
+    entry = (tuple(ways), {})
+    _remember(_alternates, key, entry, _ALTERNATES_ENTRIES)
+    return entry
+
+
+def _side_features(mesh, key: str, measured: dict, side: int) -> PrintFeatures:
+    """Full features of the part laid on ``side``. A part over the face cap is decimated once:
+    the turn (an exact quarter or half turn) is applied to that bounded copy rather than
+    decimating the turned part again. Volume and area are the part's own as checked."""
+    with _lock:
+        hit = measured.get(side)
+    if hit is not None:
+        return hit
+    bounded = _bounded_mesh(mesh, key)
+    base = placed_features(mesh)
+    turn = _side_turn(side)
+    placed = turn.apply(mesh)
+    out = _measure(placed, placed if bounded is mesh else turn.apply(bounded), base.volume_cm3, base.area_cm2)
+    with _lock:
+        measured[side] = out
+    return out
+
+
+def alternates(mesh) -> list[tuple[str, PrintFeatures]]:
+    """The part laid on each other side of its box (as checked), lowest first."""
+    key = _key(mesh)
+    ways, measured = _ways_down(mesh, key)
+    return [(words, _side_features(mesh, key, measured, side)) for words, _, side in ways]
 
 
 def plan(process: str, drivers, envelope, spacing_mm: float, packing: float) -> tuple[PrintEstimate, str] | None:
@@ -391,9 +514,13 @@ def plan(process: str, drivers, envelope, spacing_mm: float, packing: float) -> 
     mesh = getattr(drivers, "print_mesh", None)
     if mesh is None:
         return None
-    for words, g in alternates(mesh):
-        n = plate_capacity(g, envelope, spacing_mm, packing)
+    # The nest reads only each way's height and outline; only the way priced is measured in full.
+    key = _key(mesh)
+    ways, measured = _ways_down(mesh, key)
+    for words, way, side in ways:
+        n = plate_capacity(way, envelope, spacing_mm, packing)
         if n:
+            g = _side_features(mesh, key, measured, side)
             return estimate(g, n), (
                 f"as checked it doesn't fit the {X:g} × {Y:g} × {Z:g} mm work area standing "
                 f"({f.height_mm:.0f} mm tall on {f.x_mm:.0f} × {f.y_mm:.0f} mm); priced laid {words}, "

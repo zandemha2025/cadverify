@@ -221,3 +221,75 @@ def test_a_part_too_tall_standing_is_priced_the_lowest_way_it_fits():
     assert "20 mm tall" in placement
     assert est.layers == 100
     assert print_model.plan("fdm", drivers, (100, 100, 100), 4.0, 0.5) is None
+
+
+def test_the_other_ways_down_are_the_part_turned_and_measured():
+    from src.analysis.orientation import Orientation, rotation_down
+
+    mesh = _cantilever(30)
+    ways = print_model.alternates(mesh)
+    assert [w for w, _ in ways] == [w for w, _ in print_model.alternates(mesh)]  # memoized, same order
+    heights = [g.height_mm for _, g in ways]
+    assert heights == sorted(heights)
+    sides = {"upside down": "+Z", **{f"on its {n} side (as checked)": n for n in ("−X", "+X", "−Y", "+Y")}}
+    for words, g in ways:
+        direction = dict(print_model._SIDES)[sides[words]]
+        want = placed_features(Orientation.of(rotation_down(direction)).apply(mesh))
+        for name in ("volume_cm3", "area_cm2"):  # the part's own, as checked: the same every way down
+            assert getattr(g, name) == pytest.approx(getattr(want, name), rel=1e-9)
+        for name in ("wall_cm2", "height_mm", "x_mm", "y_mm", "footprint_cm2", "fdm_need_cm2", "fdm_column_cm3",
+                     "fdm_bridges", "resin_column_cm3", "pad_cm2", "outline_xy", "layer_perimeter_mm",
+                     "layer_area_mm2"):
+            assert getattr(g, name) == getattr(want, name), (words, name)
+
+
+def test_a_mesh_changed_in_place_is_measured_again():
+    m = _box((40, 30, 20), (20, 15, 10))
+    before = placed_features(m)
+    assert placed_features(m) is before
+    m.apply_scale(2.0)  # the same object, new coordinates
+    after = placed_features(m)
+    assert after.volume_cm3 == pytest.approx(8 * before.volume_cm3)
+
+
+def test_a_400k_triangle_stl_is_decimated_once_per_price(tmp_path, monkeypatch):
+    """A part over the face cap, too tall to stand: its other ways down turn the one bounded copy
+    (the make-vs-buy crossover prices it at dozens of quantities, for FDM and SLA)."""
+    from collections import OrderedDict
+
+    from src.analysis import context
+    from src.costing.drivers import GeoDrivers
+    from src.parsers.stl_parser import parse_stl
+
+    for store in ("_cache", "_alternates", "_bounded", "_keys"):
+        monkeypatch.setattr(print_model, store, OrderedDict())
+    tall = trimesh.creation.cylinder(radius=10, height=260, sections=100_000)
+    tall.apply_translation(-tall.bounds[0])
+    path = tmp_path / "tall-400k.stl"
+    tall.export(path)
+    mesh = parse_stl(path)
+    assert len(mesh.faces) == 400_000 > context._max_analysis_faces()
+    decimated = []
+    real = context._decimate_to
+    monkeypatch.setattr(context, "_decimate_to", lambda m, target: decimated.append(len(m.faces)) or real(m, target))
+
+    f = placed_features(mesh)
+    assert decimated == [400_000]
+    drivers = GeoDrivers(volume_cm3=f.volume_cm3, surface_area_cm2=f.area_cm2, bbox_mm=(20, 20, 260),
+                         bbox_volume_cm3=104.0, hull_volume_cm3=f.volume_cm3, nominal_wall_mm=5.0,
+                         face_count=400_000, max_bbox_mm=260, is_valid=True, rotational=True, rot_axis_len_mm=260,
+                         rot_cross_dia_mm=20, print_features=f, print_mesh=mesh)
+    for _ in range(20):  # quantities, as the crossover asks
+        for process, envelope in (("fdm", (300, 300, 250)), ("sla", (300, 300, 200))):
+            est, placement = print_model.plan(process, drivers, envelope, 4.0, 0.5)
+            assert "doesn't fit" in placement and "20 mm tall" in placement
+    assert decimated == [400_000]  # once, for the part as checked; never per turned copy
+    ways = print_model.alternates(mesh)  # every way down, measured in full: still the one decimation
+    assert decimated == [400_000]
+    assert all(g.volume_cm3 == f.volume_cm3 for _, g in ways)
+    assert ways[0][1].height_mm == pytest.approx(20, abs=0.01)
+    assert ways[-1][1].height_mm == pytest.approx(260)  # upside down
+    # Support and sections read on the bounded copy, the same part turned: the support under a
+    # cylinder lying down is its lower half, the same along its length.
+    lying = ways[0][1]
+    assert lying.fdm_need_cm2 > 0 and lying.layer_area_mm2
