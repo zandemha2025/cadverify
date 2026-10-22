@@ -14,10 +14,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadPartMesh, loadSavedPart, recheckStored, RecheckError, type SavedPart } from "./api";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
-import { previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
+import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
 import { PartView, type MeshSource } from "./part-view";
 import { ProgressPanel } from "./progress";
+import { PartUrlSync } from "./url-sync";
 import { OutOfChecks } from "./blocked";
 import { liveMesh } from "./check-page";
 import { SampleFlow } from "../home/sample-result";
@@ -52,6 +53,10 @@ export function PartPage({ partKey }: { partKey: string }) {
   // A re-check of a saved part from the file its organization kept (no file here, no check used).
   const [stored, setStored] = React.useState<{ s: "running"; what: string } | { s: "done"; what: string } | { s: "error"; msg: string; limit: boolean } | null>(null);
   const sessionDone = session?.status === "done";
+  // A finished check is on screen here: the work bar lets it go.
+  React.useEffect(() => {
+    if (session && session.status !== "running") markCheckOpened(session.id);
+  }, [session?.id, session?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ?lens= opens a lens; ?qty=N (from a program's "Price at N") opens Cost at that quantity.
   React.useEffect(() => {
@@ -236,6 +241,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       ) : null}
       {quotaMessage ? <OutOfChecks message={quotaMessage} onClose={() => setQuotaClosed(true)} /> : null}
       <FirstRun />
+      <PartUrlSync />
       <OrientPanel recheck={(orientation) => recheck({ orientation })} canRecheck={!!file} />
       {stored ? (
         <div className="toast ptoast" role={stored.s === "error" ? "alert" : "status"} aria-live="polite">

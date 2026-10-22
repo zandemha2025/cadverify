@@ -21,6 +21,8 @@ import { retryVerificationCost, runVerification, type VerifyResult } from "@/lib
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 import { putCachedMesh } from "./mesh-cache";
 import { fetchAssemblyAnalysisV4, probeAssemblyV4 } from "./api";
+import { markWorkSeen, registerWork } from "../work/work-bar";
+import { R } from "../routes";
 
 export type Failure =
   | { kind: "quota"; message: string }
@@ -72,6 +74,8 @@ export interface CheckSession {
   assembly: AssemblyState | null;
   /** Whether the progress panel is showing; it survives the hand-over to the part page. */
   panel: boolean;
+  /** Its result has been on screen (the part page or the check page), so the work bar lets it go. */
+  opened?: boolean;
 }
 
 let nextId = 1;
@@ -91,7 +95,48 @@ function patch(id: number, p: Partial<CheckSession> | ((s: CheckSession) => Part
   const next = { ...s, ...(typeof p === "function" ? p(s) : p) };
   sessions.set(id, next);
   if (next.key) byKey.set(next.key, id);
+  if (next.status !== s.status || next.key !== s.key || !!next.validation !== !!s.validation) syncWork(next);
   emit();
+}
+
+/* ── the work bar: a check you leave stays one click away ──────────────── */
+
+const workKey = (id: number) => `check:${id}`;
+
+/**
+ * The work bar's item for a check (work/work-bar.tsx), from start until its result
+ * has been on screen. It links to the part once the check page has handed over to
+ * it (a closed solid), else to the check page, which resumes the newest check.
+ */
+function syncWork(s: CheckSession) {
+  if (s.opened && s.status !== "running") return markWorkSeen(workKey(s.id));
+  const name = s.sample ? "the sample bracket" : s.file.name;
+  const handed = !!s.key && s.validation?.geometry.is_watertight === true;
+  const href = handed ? R.part(s.key!) : R.check;
+  const item = s.status === "running"
+    ? { label: `Checking ${name}`, detail: s.validation ? "Measured · pricing" : "Measuring", state: "running" as const }
+    : s.status === "done" || s.status === "assembly"
+      ? { label: `Checked ${name}`, detail: "Ready", state: "done" as const }
+      : s.status === "stopped"
+        ? { label: `${name}: not a closed solid`, detail: "Nothing priced · repair it or upload a fixed file", state: "stopped" as const }
+        : { label: `${name}: not checked`, detail: s.failure && "title" in s.failure ? s.failure.title : "The check didn’t finish", state: "stopped" as const };
+  registerWork({ key: workKey(s.id), href, persist: false, progress: null, ...item });
+}
+
+/** The check's result is on screen: the work bar lets a finished one go. */
+export function markCheckOpened(id: number) {
+  const s = sessions.get(id);
+  if (!s || s.opened || s.status === "running") return;
+  sessions.set(id, { ...s, opened: true });
+  markWorkSeen(workKey(id));
+  emit();
+}
+
+/** The newest check still running, or finished and not yet opened: what the check page resumes. */
+export function resumableSession(): number | null {
+  let best: CheckSession | null = null;
+  for (const s of sessions.values()) if ((s.status === "running" || !s.opened) && (!best || s.startedAt > best.startedAt)) best = s;
+  return best?.id ?? null;
 }
 
 export function subscribe(l: () => void): () => void {
@@ -277,6 +322,7 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
     assembly: null,
     panel: true,
   });
+  syncWork(sessions.get(id)!);
   emit();
   void run(id);
   return id;

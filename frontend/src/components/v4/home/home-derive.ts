@@ -344,9 +344,21 @@ export interface RecentRow {
   href: string;
 }
 
-/** One line per recent record: what the engine picked and where the record stands. */
+/**
+ * One line per recently checked part, newest first: what the engine picked and
+ * where its latest record stands. It opens the part itself (its saved result, 3D
+ * from the kept file, every view), not only the record; a re-checked part shows
+ * once, at its latest record.
+ */
 export function recentRows(records: RecordRow[] | null, now: Date = new Date(), n = 8): RecentRow[] {
-  return (records ?? []).slice(0, n).map((r) => {
+  const seen = new Set<string>();
+  const latest = (records ?? []).filter((r) => {
+    const k = r.mesh_hash || `record:${r.id}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return latest.slice(0, n).map((r) => {
     const way = r.make_now_process ? wayName(r.make_now_process) : "No price";
     const state = r.user_disposition_label
       ? `decided: ${r.user_disposition_label.toLowerCase()}`
@@ -355,7 +367,7 @@ export function recentRows(records: RecordRow[] | null, now: Date = new Date(), 
         : r.is_stale
           ? "out of date"
           : "not reviewed";
-    return { id: r.id, file: r.label || r.filename, sub: `${way} · ${state}`, time: shortWhen(r.created_at, now), href: R.record(r.id) };
+    return { id: r.id, file: r.label || r.filename, sub: `${way} · ${state}`, time: shortWhen(r.created_at, now), href: r.mesh_hash ? R.part(r.mesh_hash) : R.record(r.id) };
   });
 }
 

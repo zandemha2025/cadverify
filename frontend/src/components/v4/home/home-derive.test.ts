@@ -103,12 +103,18 @@ test("facts list only loaded counts, with links", () => {
   assert.deepEqual(f.map((x) => `${x.n} ${x.t}`), ["3 need attention", "9 parts", "1+ records", "2 machines"]);
 });
 
-test("recent rows say what was picked and where the record stands", () => {
+test("recent rows say what was picked and where the record stands, and open the part", () => {
   const now = new Date("2026-10-18T12:00:00");
-  const rows = recentRows([rec({ user_disposition_label: "Make in-house", make_now_process: "cnc_3axis" }), rec({ id: "R2", make_now_process: null, is_stale: true })], now);
+  const rows = recentRows([rec({ user_disposition_label: "Make in-house", make_now_process: "cnc_3axis" }), rec({ id: "R2", mesh_hash: "n".repeat(64), make_now_process: null, is_stale: true })], now);
   assert.equal(rows[0].sub, "3-axis milling · decided: make in-house");
   assert.equal(rows[1].sub, "No price · out of date");
-  assert.equal(rows[0].href, "/app/parts/records/R1");
+  assert.equal(rows[0].href, `/app/part/${"m".repeat(64)}`, "one click to the part, not only its record");
+});
+
+test("a part checked again shows once, at its latest record; a record without a part opens the record", () => {
+  const rows = recentRows([rec({ id: "R3", make_now_process: "mjf" }), rec({ id: "R1" }), rec({ id: "R2", mesh_hash: null as unknown as string })]);
+  assert.deepEqual(rows.map((r) => r.id), ["R3", "R2"]);
+  assert.equal(rows[1].href, "/app/parts/records/R2");
 });
 
 test("setup: new org locks programs and actuals; failures say so", () => {

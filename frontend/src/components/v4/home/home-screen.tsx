@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Home (board P1): what needs you, recent records, setup, and a drop target to
+ * Home (board P1): what needs you, recent parts, setup, and a drop target to
  * check a part. Every count is loaded from the organization's data; a source
  * that fails is named in one alert with Retry, and nothing it would have
  * produced is shown as zero. The Get started overlay (X9) opens over Home.
@@ -223,21 +223,14 @@ export function HomeScreen() {
           </Panel>
 
           <Panel
-            title="Recent records"
-            note={
-              input.records && input.records.length ? (
-                <Link href={R.records}>
-                  All {input.records.length}
-                  {input.recordsMore ? "+" : ""}
-                </Link>
-              ) : null
-            }
+            title="Recent parts"
+            note={input.records && input.records.length ? <Link href={R.parts}>All parts</Link> : null}
           >
             {input.records == null ? (
               failed.has("records") ? (
                 <InlineFailed what="records" onRetry={retry} />
               ) : (
-                <Skeleton rows={5} label="Loading recent records" />
+                <Skeleton rows={5} label="Loading recent parts" />
               )
             ) : recent.length === 0 ? (
               <NoneYet
@@ -251,7 +244,7 @@ export function HomeScreen() {
                 One is saved each time you check a part.
               </NoneYet>
             ) : (
-              <div style={{ padding: "0 6px 8px" }} role="list" aria-label="Recent records">
+              <div style={{ padding: "0 6px 8px" }} role="list" aria-label="Recent parts">
                 {recent.map((r) => (
                   <div role="listitem" key={r.id}>
                     <Link className="h-rr" href={r.href}>

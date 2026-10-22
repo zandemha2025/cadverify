@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { sampleBracketFile } from "@/lib/verify/sample-cad";
 import { takePendingFile } from "../pending-file";
 import { R } from "../routes";
-import { startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
+import { markCheckOpened, resumableSession, startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
 import { StartScreen } from "./start";
 import { OutOfChecks } from "./blocked";
 import { DesignImportBanner, PhoneGateView } from "../moments";
@@ -79,8 +79,18 @@ export function CheckPage() {
     if (new URLSearchParams(search).get("sample") === "1") {
       window.history.replaceState(window.history.state, "", R.check);
       beginSample();
+      return;
     }
+    // Back on this page with no new file: the check that was left (still running, or
+    // finished and not yet looked at) carries on here, rather than a blank start.
+    const resume = resumableSession();
+    if (resume != null) setSid(resume);
   }, [begin, beginSample]);
+
+  // A finished check is on screen here: the work bar lets it go.
+  React.useEffect(() => {
+    if (session && session.status !== "running") markCheckOpened(session.id);
+  }, [session?.id, session?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A file picked from the top bar while this page is open.
   React.useEffect(() => {
