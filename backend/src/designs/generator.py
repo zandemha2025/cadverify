@@ -210,6 +210,46 @@ def _build_shape(gmsh: Any, plan: Any) -> list[tuple[int, int]]:
     return _fuse(gmsh, components)
 
 
+def _orient_outward(gmsh: Any, solids: list[tuple[int, int]]) -> None:
+    """Wind every boundary surface's triangles outward from its solid.
+
+    The mesher winds a surface by its own parametrisation. OpenCASCADE boxes and
+    boolean results carry outward faces, but a solid sewn from hand-made plane
+    surfaces (``_tapered_block``) does not, so its preview STL came out with
+    some faces wound inward (INCONSISTENT_NORMALS) while its STEP was a valid
+    solid. A point just off a triangle's front side must lie outside the solid;
+    a surface whose triangles face in is reversed.
+    """
+    mesh = gmsh.model.mesh
+    for dim, tag in solids:
+        box = gmsh.model.getBoundingBox(dim, tag)
+        size = max(box[3] - box[0], box[4] - box[1], box[5] - box[2])
+        for _sdim, surface in gmsh.model.getBoundary([(dim, tag)], combined=False, oriented=False):
+            surface = abs(int(surface))
+            types, _tags, nodes = mesh.getElements(2, surface)
+            tri = next((list(n) for t, n in zip(types, nodes) if int(t) == 2 and len(n)), None)
+            if tri is None:
+                continue
+            best = None
+            for i in range(0, len(tri), 3):
+                a, b, c = (mesh.getNode(int(n))[0] for n in tri[i:i + 3])
+                u = [b[k] - a[k] for k in range(3)]
+                v = [c[k] - a[k] for k in range(3)]
+                normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+                area2 = math.sqrt(sum(x * x for x in normal))
+                if best is None or area2 > best[0]:
+                    best = (area2, [(a[k] + b[k] + c[k]) / 3.0 for k in range(3)], normal)
+                if i >= 300:  # the largest of the first hundred triangles is plenty
+                    break
+            area2, centre, normal = best
+            if area2 <= 0:
+                continue
+            step = max(1e-4, 1e-4 * size)
+            probe = [centre[k] + step * normal[k] / area2 for k in range(3)]
+            if gmsh.model.isInside(dim, tag, probe) > 0:
+                mesh.reverse([(2, surface)])
+
+
 def _child_generate(plan_data: dict[str, Any], step_path: str, stl_path: str, result_queue: Any) -> None:
     """Child-process entrypoint. All exceptions become bounded status data."""
     try:
@@ -236,6 +276,7 @@ def _child_generate(plan_data: dict[str, Any], step_path: str, stl_path: str, re
             gmsh.option.setNumber("Mesh.MeshSizeMax", max(0.5, min(10.0, max_dim / 35.0)))
             gmsh.option.setNumber("Mesh.MeshSizeMin", max(0.1, min(2.0, max_dim / 140.0)))
             gmsh.model.mesh.generate(2)
+            _orient_outward(gmsh, solids)
             gmsh.write(stl_path)
             # ``getElements(2)[1]`` is a list of element-tag arrays. Keep the
             # metadata calculation explicit to avoid depending on numpy.

@@ -139,3 +139,25 @@ def test_drafted_plate_keeps_its_bottom_face_and_opens_the_holes_upward():
     # The stated diameter holds at the bottom face (the narrowest point).
     assert np.hypot(v[bottom, 0] + 30.0, v[bottom, 1] + 15.0).min() == pytest.approx(radius, abs=1e-3)
     assert np.hypot(v[upper, 0] + 30.0, v[upper, 1] + 15.0).min() == pytest.approx(top, abs=1e-3)
+
+
+@pytest.mark.parametrize("plan", [
+    {"kind": "plate", "width_mm": 80.0, "depth_mm": 50.0, "thickness_mm": 6.0, "draft_angle_deg": 2.0},
+    {"kind": "plate", "width_mm": 80.0, "depth_mm": 50.0, "thickness_mm": 6.0, "draft_angle_deg": 2.0,
+     "holes": [{"x_mm": -30.0, "y_mm": -15.0, "diameter_mm": 6.0}]},
+    {**_ENCLOSURE, "draft_angle_deg": 3.0},
+    {"kind": "bracket", "width_mm": 40.0, "depth_mm": 30.0, "height_mm": 40.0, "thickness_mm": 3.0},
+])
+def test_preview_stl_reads_as_the_same_valid_solid_as_the_step(plan):
+    """W15: the preview of a drafted plate came out with inward-wound faces
+    (INCONSISTENT_NORMALS → geometry invalid) while its STEP was a valid solid."""
+    from src.analysis.base_analyzer import run_universal_checks
+    from src.api import routes
+
+    result = generate_design_artifacts(plan, timeout_seconds=30.0)
+    verdicts = {}
+    for name, data in (("preview.stl", result.stl_bytes), ("model.step", result.step_bytes)):
+        mesh, _ = routes._parse_mesh(data, name)
+        assert mesh.is_winding_consistent and mesh.is_volume, name
+        verdicts[name] = sorted(i.code for i in run_universal_checks(mesh) if i.severity.value == "error")
+    assert verdicts == {"preview.stl": [], "model.step": []}
