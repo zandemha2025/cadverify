@@ -25,6 +25,7 @@ import {
   shouldCostWords,
   priceAt,
   qtyWord,
+  replacedBy,
   trimNum,
   type Method,
 } from "./model";
@@ -347,6 +348,8 @@ export function CostSheet() {
   const oq = otherQtyNote(p.methods, p.qs, p.oq);
   const oqRaw = Number.parseInt(p.oq, 10);
   const oqN = Number.isFinite(oqRaw) && oqRaw >= 1 && oqRaw <= 1_000_000 ? oqRaw : null;
+  // A check prices six quantities: say which one a new quantity replaces before pricing it (ce-08).
+  const oqOut = oqN != null ? replacedBy(p.data.cost?.quantities ?? [], oqN) : null;
   const fx = useFix();
   const insight = cost ? insightOf(p, fx) : null;
   const d = cost?.decision ?? null;
@@ -499,9 +502,16 @@ export function CostSheet() {
                 <span>{oq.text}</span>
                 {oq.on && oqN != null ? (
                   p.canRecheck ? (
-                    <button className="btn sm ink" type="button" disabled={p.checking} onClick={() => p.recheck({ qty: oqN })}>
-                      {p.checking ? `Pricing ${qtyWord(oqN)}…` : `Price ${qtyWord(oqN)}`}
-                    </button>
+                    <>
+                      <button className="btn sm ink" type="button" disabled={p.checking} onClick={() => p.recheck({ qty: oqN })}>
+                        {p.checking ? `Pricing ${qtyWord(oqN)}…` : oqOut != null ? `Price ${qtyWord(oqN)} in place of ${qtyWord(oqOut)}` : `Price ${qtyWord(oqN)}`}
+                      </button>
+                      {oqOut != null && !p.checking ? (
+                        <span style={{ flexBasis: "100%", color: "var(--ink3)" }}>
+                          A check prices six quantities, so {qtyWord(oqOut)} gives way. Its price stays on the earlier record.
+                        </span>
+                      ) : null}
+                    </>
                   ) : (
                     <span>Drop the file on the part to price {qtyWord(oqN)}.</span>
                   )
