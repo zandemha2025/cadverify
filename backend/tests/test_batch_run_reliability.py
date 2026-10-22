@@ -624,3 +624,55 @@ async def test_no_time_left_until_the_pace_is_measured(run_world):
     async with eng.get_session_factory()() as s:
         p = await batch_service.get_batch_progress(s, ulid, run_world["uid"])
     assert p["pace_per_hour"] is None and p["eta_seconds"] is None
+
+
+# ---------------------------------------------------------------------------
+# A batch item is priced at the org's published rate card, as a single check is
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_cost_batch_item_is_priced_at_the_orgs_published_rate_card(run_world, monkeypatch):
+    import copy
+
+    import trimesh
+    from sqlalchemy import select
+
+    import src.db.engine as eng
+    from src.costing.rates import RATE_CARD_V0
+    from src.db.models import Batch, BatchItem, CostDecision, RateCardVersion
+    from src.jobs import batch_tasks
+    from src.services import batch_service, rate_library_service
+
+    monkeypatch.setenv("RATE_LIBRARY_ENABLED", "1")
+    org, uid = run_world["org"], run_world["uid"]
+    rate_library_service.invalidate(org)
+    v1 = copy.deepcopy(RATE_CARD_V0)
+    v1["global"]["labor_rate"] = float(RATE_CARD_V0["global"]["labor_rate"]) + 23.0
+    ulid = await run_world["make_run"](1, blobs=False)
+    name = "part-000.stl"
+    batch_service._batch_store().put(
+        batch_service._batch_key(ulid, name), trimesh.creation.box(extents=(60, 40, 20)).export(file_type="stl")
+    )
+    async with eng.get_session_factory()() as s, s.begin():
+        s.add(RateCardVersion(org_id=org, version=1, name="v1", status="published", payload=v1,
+                              effective_from=datetime.now(timezone.utc) - timedelta(minutes=5)))
+        b = (await s.execute(select(Batch).where(Batch.ulid == ulid))).scalar_one()
+        b.job_type = "cost"
+        item = (await s.execute(select(BatchItem).where(BatchItem.batch_id == b.id))).scalar_one()
+        item.status = "processing"
+        item.material_class = "aluminum"
+        item.quantities = "100"
+
+    async with eng.get_session_factory()() as s:
+        b = (await s.execute(select(Batch).where(Batch.ulid == ulid))).scalar_one()
+        item = (await s.execute(select(BatchItem).where(BatchItem.batch_id == b.id))).scalar_one()
+        extra = await batch_tasks._run_cost_item(s, b, item)
+    assert extra["cost_decision_id"]
+    async with eng.get_session_factory()() as s:
+        rec = (await s.execute(select(CostDecision).where(CostDecision.ulid == extra["cost_decision_id"]))).scalar_one()
+    assert (rec.result_json.get("rate_card") or {}).get("version") == 1
+    # The labor rate it used is the card's, not the engine's typical one.
+    labor = [a for a in rec.result_json.get("assumptions") or [] if a.get("name") == "labor_rate"]
+    assert labor and float(labor[0]["value"]) == v1["global"]["labor_rate"], labor
+    rate_library_service.invalidate(org)

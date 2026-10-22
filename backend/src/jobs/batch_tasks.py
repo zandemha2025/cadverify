@@ -1444,6 +1444,41 @@ def _compute_cost_report(file_bytes: bytes, filename: str, options):
     return estimate_decision(result, m, features, options), suffix
 
 
+async def _bind_org_rate_tables(session, org_id, options) -> dict | None:
+    """Price on the org's governed tables, exactly as POST /validate/cost does.
+
+    The published rate card in effect (RATE_LIBRARY_ENABLED) becomes the base
+    table under shop/user overrides, and the published materials catalog's
+    per-kg prices and materials are laid over it (MATERIAL_LIBRARY_ENABLED).
+    Returns the card (``{"payload", "version"}``) for the record's stamp, or
+    None when the org has none in effect (then the engine's own V0 table, as
+    the route). Mirrors ``routes._run_cost_decision``'s W4 blocks.
+    """
+    import copy
+
+    from src.costing.rates import RATE_CARD_V0
+    from src.services.material_library_service import resolve_material_overrides_for
+    from src.services.rate_library_service import resolve_rate_card_for_org
+
+    if not (isinstance(org_id, str) and org_id):
+        return None
+    rate_card = await resolve_rate_card_for_org(session, org_id)
+    if rate_card is not None:
+        options.base_rate_table = rate_card["payload"]
+    mat_payload = await resolve_material_overrides_for(session, org_id)
+    mat_prices = (mat_payload or {}).get("material_prices") or {}
+    mat_defs = (mat_payload or {}).get("materials") or {}
+    if mat_prices or mat_defs:
+        # The card payload may be the rate library's cached object: copy, never mutate it.
+        base = copy.deepcopy(options.base_rate_table if options.base_rate_table is not None else RATE_CARD_V0)
+        if mat_prices:
+            base["material_prices"] = {**(base.get("material_prices") or {}), **mat_prices}
+        if mat_defs:
+            base["materials"] = {**(base.get("materials") or {}), **mat_defs}
+        options.base_rate_table = base
+    return rate_card
+
+
 async def _run_cost_item(session, batch, item) -> dict:
     """Cost one batch item and link the resulting decision to it.
 
@@ -1544,6 +1579,8 @@ async def _run_cost_item(session, batch, item) -> dict:
             options.residual_model = residual_model
         if calibration is not None:
             options.calibration = calibration
+    # ---- the org's published rate card and materials, as the route binds them -
+    rate_card = await _bind_org_rate_tables(session, cal_org_id, options)
 
     # ---- parse + cost, bounded by the same timeout the route uses -----------
     timeout = _cost_timeout_sec()
@@ -1578,6 +1615,12 @@ async def _run_cost_item(session, batch, item) -> dict:
         }
 
     result_dict = report_to_dict(report)
+    # The record says which of the org's rate cards priced it, and the lines that
+    # use the org's own rates say so, as a single check's record does.
+    if rate_card is not None:
+        from src.services.rate_card_basis import apply_rate_card
+
+        result_dict = apply_rate_card(result_dict, rate_card["version"], rate_card["payload"])
     # The org's calibration from its own actuals (if one is applied); unchanged otherwise.
     from src.services.calibration_service import apply_org_calibration
 
