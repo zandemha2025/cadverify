@@ -1338,6 +1338,18 @@ def check_sheet_gauge(
     issues: list[Issue] = []
     dims = ctx.flat_sheet_dimensions
     if dims is None:
+        thick = _section_thicker_than_sheet(ctx)
+        if thick is not None:
+            return [Issue(
+                code="NOT_SHEET_STOCK", severity=Severity.ERROR,
+                measurement_unit="mm", measured_value=thick, required_value=SHEET_GAUGE_MAX_MM,
+                message=(
+                    f"A {format_measurement(thick, SHEET_GAUGE_MAX_MM)}mm-thick section fits inside the part; "
+                    f"sheet stock is at most {SHEET_GAUGE_MAX_MM:g}mm (the default gauge list), so this isn't a sheet part."
+                ),
+                process=process,
+                fix_suggestion="Machine, cast or print it, or redesign it as a constant-thickness sheet part.",
+            )]
         return [Issue(
             code="SHEET_GAUGE_UNVERIFIED", severity=Severity.WARNING,
             message="A constant flat-sheet gauge could not be verified from this geometry.",
@@ -1363,12 +1375,17 @@ def check_sheet_gauge(
             fix_suggestion=f"Use >= {SHEET_GAUGE_MIN_MM:g}mm for default sheet profiles; confirm material-specific stock and machine limits.",
         ))
     elif t > SHEET_GAUGE_MAX_MM + tolerance:
+        # Thicker than the thickest gauge is plate or bar, not sheet: a 30 mm
+        # block, a bar or a tube end-on all measure their length here.
         issues.append(Issue(
-            code="TOO_THICK_SHEET", severity=Severity.WARNING,
+            code="TOO_THICK_SHEET", severity=Severity.ERROR,
             measurement_unit="mm",
-            message=f"Thickness {format_measurement(t, SHEET_GAUGE_MAX_MM)}mm exceeds the default {SHEET_GAUGE_MAX_MM:g}mm maximum sheet gauge.",
+            message=(
+                f"Thickness {format_measurement(t, SHEET_GAUGE_MAX_MM)}mm exceeds the default "
+                f"{SHEET_GAUGE_MAX_MM:g}mm maximum sheet gauge: this is plate or bar stock, not sheet."
+            ),
             process=process, measured_value=t, required_value=SHEET_GAUGE_MAX_MM,
-            fix_suggestion="Confirm stock and machine capacity for this thickness, or consider plate machining.",
+            fix_suggestion="Machine it, or have it cut from plate by a shop that cuts this thickness.",
         ))
     closest = min(STANDARD_GAUGES, key=lambda g: abs(g - t))
     if (
@@ -1383,6 +1400,27 @@ def check_sheet_gauge(
             fix_suggestion=f"Confirm supplier stock; {closest:g}mm is the nearest gauge in the default catalog.",
         ))
     return issues
+
+
+def _section_thicker_than_sheet(ctx: GeometryContext) -> float | None:
+    """A measured interior section thicker than any sheet gauge, or None.
+
+    ``maximum_inscribed_diameter`` is a ball that fits inside the material at
+    a sampled point (a lower bound on the thickest section). Sheet of gauge t,
+    flat or bent, contains no ball wider than t, so a wider one proves the
+    part was not formed from default sheet stock. Not claimed on a decimated
+    mesh or when source rounding could account for the excess.
+    """
+    if ctx.metadata.get("decimation", {}).get("succeeded"):
+        return None
+    t_max = ctx.maximum_inscribed_diameter
+    if t_max is None or not np.isfinite(t_max):
+        return None
+    error = 2.0 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
+    if t_max - error > SHEET_GAUGE_MAX_MM + tolerance:
+        return float(t_max)
+    return None
 
 
 # ──────────────────────────────────────────────────────────────

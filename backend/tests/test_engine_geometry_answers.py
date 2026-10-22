@@ -125,6 +125,37 @@ def test_through_profiles_stay_wire_cuttable(part):
     assert _verdict(ctx, "wire_edm") != "fail"
 
 
+# ── W7: sheet metal says can't for plate, bar, block and tube ────────────────
+@pytest.mark.parametrize("part,code", [
+    ("cube30", "TOO_THICK_SHEET"),
+    ("cylinder", "TOO_THICK_SHEET"),
+    ("tube", "TOO_THICK_SHEET"),
+    ("pocketed_block", "NOT_SHEET_STOCK"),
+])
+def test_sheet_metal_refuses_parts_that_are_not_sheet(part, code):
+    if part == "cube30":
+        mesh = _box((30, 30, 30))
+    elif part == "cylinder":
+        mesh = trimesh.creation.cylinder(radius=10, height=60, sections=128)
+    elif part == "tube":
+        mesh = trimesh.creation.annulus(r_min=15, r_max=20, height=80, sections=128)
+    else:
+        mesh = _diff(_box((80, 60, 30)), _box((60, 40, 25), at=(10, 10, 10)))
+    ctx = _ctx(_stl(mesh))
+    issue = next(i for i in _issues(ctx, "sheet_metal") if i.code == code)
+    assert issue.severity == Severity.ERROR
+    assert _verdict(ctx, "sheet_metal") == "fail"
+
+
+@pytest.mark.parametrize("part", ["plate", "lbracket"])
+def test_sheet_parts_are_not_refused(part):
+    mesh = _box((100, 60, 3)) if part == "plate" else _union(_box((40, 30, 3)), _box((3, 30, 40)))
+    ctx = _ctx(_stl(mesh))
+    codes = _codes(ctx, "sheet_metal")
+    assert not {"TOO_THICK_SHEET", "NOT_SHEET_STOCK", "TOO_THIN_SHEET"} & codes
+    assert _verdict(ctx, "sheet_metal") != "fail"
+
+
 # ── M10: FDM leaves a sealed void empty; powder and resin trap material ──────
 def test_fdm_needs_no_drain_for_a_sealed_void_but_resin_and_powder_do():
     ctx = _ctx(_stl(_sealed_cube()))
