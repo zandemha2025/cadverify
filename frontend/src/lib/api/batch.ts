@@ -105,6 +105,9 @@ export interface BatchItemsResponse {
 export interface BatchSummaryRow {
   batch_ulid: string;
   status: string;
+  job_type?: string;
+  /** A catalog run's name (its ZIP's, else its parts list's). */
+  name?: string | null;
   total_items: number;
   completed_items: number;
   failed_items: number;

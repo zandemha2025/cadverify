@@ -156,7 +156,7 @@ export function BatchesScreen() {
                   <tr>
                     <th scope="col">Batch</th>
                     <th scope="col">Status</th>
-                    <th scope="col">Items</th>
+                    <th scope="col">Files</th>
                     <th scope="col">Created</th>
                     <th scope="col">
                       <span className="sr">Results</span>
@@ -165,8 +165,10 @@ export function BatchesScreen() {
                 </thead>
                 <tbody>
                   {rows.map((b) => {
-                    const s = batchStatus(b.status);
-                    const catalogRun = (b as { job_type?: string }).job_type === "catalog";
+                    const catalogRun = b.job_type === "catalog";
+                    // A catalog run reads as its own page does: its name, "Finished", files and not checked.
+                    const s = catalogRun && b.status === "completed" ? { label: "Finished", tone: "ok" as const } : batchStatus(b.status);
+                    const title = catalogRun ? b.name || "Catalog run" : `${b.batch_ulid.slice(0, 12)}…`;
                     const canCsv = catalogRun || b.status === "completed" || b.status === "failed";
                     return (
                       <tr
@@ -178,17 +180,17 @@ export function BatchesScreen() {
                         }}
                       >
                         <td>
-                          <Link className="rowlink" href={R.batch(b.batch_ulid)} aria-label={`Open ${catalogRun ? "catalog run" : "batch"} ${b.batch_ulid}`}>
-                            {b.batch_ulid.slice(0, 12)}…
+                          <Link className="rowlink" href={R.batch(b.batch_ulid)} aria-label={`Open ${catalogRun ? `catalog run ${title}` : `batch ${b.batch_ulid}`}`}>
+                            {title}
                           </Link>
-                          <span className="sub">{catalogRun ? "Catalog run" : "DFM batch"}</span>
+                          <span className="sub">{catalogRun ? `Catalog run${b.name ? "" : ` ${b.batch_ulid.slice(0, 8)}`}` : "DFM batch"}</span>
                         </td>
                         <td>
                           <Chip tone={s.tone}>{s.label}</Chip>
                         </td>
-                        <td className="num" data-k="Items">
-                          {b.completed_items}/{b.total_items}
-                          {b.failed_items > 0 ? <span style={{ color: "var(--bad)" }}> · {b.failed_items} failed</span> : null}
+                        <td className="num" data-k={catalogRun ? "Files" : "Items"}>
+                          {catalogRun ? `${b.total_items.toLocaleString("en-US")} ${b.total_items === 1 ? "file" : "files"}` : `${b.completed_items}/${b.total_items}`}
+                          {b.failed_items > 0 ? <span style={{ color: catalogRun ? "var(--ink2)" : "var(--bad)" }}> · {b.failed_items} {catalogRun ? "not checked" : "failed"}</span> : null}
                           {b.skipped_items > 0 ? <span style={{ color: "var(--ink3)" }}> · {b.skipped_items} skipped</span> : null}
                         </td>
                         <td className="num" style={{ color: "var(--ink2)" }}>

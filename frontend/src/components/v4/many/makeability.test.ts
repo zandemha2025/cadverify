@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bucketDef, costLabel, orderedBuckets, reasonOf, wallTooThin, type MakeRow } from "./makeability.ts";
+import { bucketDef, cheaperToBuy, costLabel, orderedBuckets, reasonOf, wallTooThin, type MakeRow } from "./makeability.ts";
 
 const row = (o: Partial<MakeRow> & { verdict?: string | null; gap?: unknown }): MakeRow =>
   ({
@@ -48,4 +48,19 @@ test("cost labels show the quantity and say withheld, never a made-up number", (
   assert.equal(costLabel(row({ unit_cost: { qty: 1, usd: 30, withheld: false } })), "$30.00");
   assert.equal(costLabel(row({ unit_cost: { qty: 10, usd: null, withheld: true } })), "Withheld");
   assert.equal(costLabel(row({ unit_cost: null })), "—");
+});
+
+test("on your machines names your machine and prices at the part's quantity (oo-14)", () => {
+  const r = row({
+    recommended_route: { process: "sheet_metal", material: "5052 Aluminum (Sheet)" },
+    unit_cost: { qty: 1, usd: 30, withheld: false },
+    at_quantity: { qty: 40, basis: "declared", in_house: false, owned: { process: "cnc_3axis", machine: "Haas VF-2", material: "Mild Steel", usd: 38.92 }, process: "sheet_metal", usd: 5.74 },
+  });
+  assert.equal(reasonOf(r, machines), "Haas VF-2 · Mild Steel");
+  assert.equal(costLabel(r), "$38.92 at 40");
+  assert.equal(cheaperToBuy(r), true);
+  const keep = row({ at_quantity: { qty: 100, basis: "record", in_house: true, owned: { process: "cnc_3axis", machine: "Haas VF-2", material: "6061-T6 Aluminum", usd: 20 } } });
+  assert.equal(cheaperToBuy(keep), false);
+  const out = row({ verdict: "makeable_outsource_only", at_quantity: { qty: 25, basis: "record", in_house: false, process: "sls", usd: 12.5 } });
+  assert.equal(costLabel(out), "$12.50 at 25");
 });

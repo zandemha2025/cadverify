@@ -25,6 +25,22 @@ export interface MakeRow {
     stale: boolean | null;
     gap: MakeGap | null;
   } | null;
+  /** The part's route and price at its own quantity (the yearly volume a run declared, else the record's). */
+  at_quantity?: AtQuantity | null;
+}
+
+export interface AtQuantity {
+  qty: number;
+  basis: "declared" | "record";
+  /** The engine keeps it on a machine of yours at this quantity. */
+  in_house: boolean;
+  /** The cheapest route on a machine of yours, when one makes it. */
+  owned?: { process: string | null; machine: string | null; material: string | null; usd: number | null } | null;
+  process?: string | null;
+  material?: string | null;
+  usd?: number | null;
+  machine?: string | null;
+  dfm_ready?: boolean;
 }
 
 export interface GapEntry {
@@ -176,8 +192,12 @@ export function reasonOf(row: MakeRow, machines?: readonly Machine[] | null): st
   const material = route?.material ? ` · ${route.material}` : "";
   switch (v) {
     case "makeable_in_house":
-    case "makeable_with_secondary_op":
+    case "makeable_with_secondary_op": {
+      // The machine of yours that makes it, never the make-now route (a process you may not own).
+      const owned = row.at_quantity?.owned;
+      if (owned?.process) return `${owned.machine ?? routeName(owned.process, machines)}${owned.material ? ` · ${owned.material}` : ""}`;
       return `${routeName(route?.process, machines)}${material}`;
+    }
     case "makeable_not_on_owned":
       if (entry) return `${routeName(gap?.process, machines)} · ${gapPhrase(entry, gap?.process, machines)}`;
       return "Owns the kind of machine; none fits";
@@ -199,8 +219,21 @@ export function reasonOf(row: MakeRow, machines?: readonly Machine[] | null): st
   }
 }
 
-/** "$19.54 at 10", "Withheld", or "—". Never invents a figure. */
+/** True when a machine of yours makes it, but the engine's own comparison buys it at the part's quantity. */
+export function cheaperToBuy(row: MakeRow): boolean {
+  const a = row.at_quantity;
+  return !!a && !!a.owned?.process && a.in_house === false && (row.makeability?.verdict === "makeable_in_house" || row.makeability?.verdict === "makeable_with_secondary_op");
+}
+
+/** "$19.54 at 10", "Withheld", or "—". At the part's own quantity when the row carries it. Never invents a figure. */
 export function costLabel(row: MakeRow): string {
+  const a = row.at_quantity;
+  const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (a) {
+    const inside = (row.makeability?.verdict === "makeable_in_house" || row.makeability?.verdict === "makeable_with_secondary_op") && a.owned?.usd != null;
+    const usd = inside ? a.owned!.usd : a.dfm_ready === false ? null : a.usd;
+    if (typeof usd === "number" && Number.isFinite(usd)) return `${money(usd)} at ${a.qty.toLocaleString("en-US")}`;
+  }
   const c = unitCost(row);
   if (!c) return "—";
   if (c.withheld || c.usd == null) return c.withheld ? "Withheld" : "—";

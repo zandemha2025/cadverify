@@ -77,6 +77,9 @@ async def test_the_listed_material_is_priced_and_in_house_means_cheaper(world):
     # oo-12: named after the ZIP; the shop's machines counted as Your shop counts them.
     assert board["name"] == "Ridgeline-bought-parts"
     assert board["machine_count"] == 2 and board["files"] == 6
+    # oo-23: the Batches list names the run as its page does.
+    listed = (await _get(app, "/api/v1/batches")).json()["batches"]
+    assert [b["name"] for b in listed if b["batch_ulid"] == batch_id] == ["Ridgeline-bought-parts"]
     assert board["org_name"].startswith("catalog-")
 
     # oo-08: Delrin is machined in Delrin (the mill isn't declared for plastic), never printed in PLA.
@@ -104,6 +107,15 @@ async def test_the_listed_material_is_priced_and_in_house_means_cheaper(world):
     assert cheap["could_make"]["machine"] == "Haas VF-2" and cheap["could_make"]["times"] > 1
     assert cheap["reason"].startswith("Could make in-house at $") and "× the buy price" in cheap["reason"]
     assert cheap["unit_cost_usd"] == 0.5
+
+    # oo-14: the Make or buy tab names the machine of yours, at the part's listed quantity.
+    from src.api.catalog import router as catalog_router
+
+    app.include_router(catalog_router, prefix="/api/v1/catalog")
+    page = (await _get(app, "/api/v1/catalog/makeability?bucket=makeable_in_house")).json()
+    tab = {row["part_key"]: row for row in page["rows"]}
+    assert tab[dear["part_key"]]["at_quantity"]["qty"] == 200
+    assert tab[dear["part_key"]]["at_quantity"]["owned"]["machine"] == "Haas VF-2"
 
     # oo-10: a file not on the list is apart from the answer.
     assert rows["not-on-the-list.stl"]["listed"] is False

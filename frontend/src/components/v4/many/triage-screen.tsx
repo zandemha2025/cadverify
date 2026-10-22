@@ -24,7 +24,8 @@ import { useCatalogAccess } from "./catalog-access";
 import { CapabilitySheet, type Ranking } from "./capability-sheet";
 import { ToolingSheet } from "./tooling-sheet";
 import { fetchBucket, fetchMachines, fetchRollup, type Rollup } from "./many-api";
-import { bucketDef, costLabel, countOf, isStale, orderedBuckets, reasonOf, wallTooThin, type Machine, type MakeRow } from "./makeability";
+import { bucketDef, cheaperToBuy, costLabel, countOf, isStale, orderedBuckets, reasonOf, wallTooThin, type Machine, type MakeRow } from "./makeability";
+import { listBatches } from "@/lib/api/batch";
 
 export const TRIAGE_GATE = {
   title: "Make or buy",
@@ -67,6 +68,21 @@ export function TriageScreen() {
   const [importMsg, setImportMsg] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const toolFrom = React.useRef<string | null>(null);
+  // The newest catalog run: its page is the make-or-buy answer, by cost, at the listed quantities.
+  const [lastRun, setLastRun] = React.useState<{ id: string; name: string } | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    listBatches({ limit: 20 }).then(
+      (r) => {
+        const run = r.batches.find((b) => b.job_type === "catalog");
+        if (live && run) setLastRun({ id: run.batch_ulid, name: run.name || "your catalog run" });
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const loadRoll = React.useCallback(async () => {
     setRollErr(null);
@@ -244,6 +260,21 @@ export function TriageScreen() {
             <span>Loading</span>
           )}
         </p>
+        <p className="tr-scope">
+          Every part checked in this organization, by what your machines can make: one row per part at its latest check, single checks and catalog runs together.
+          {" "}
+          {lastRun ? (
+            <>
+              Whether to make or buy, by cost and against what you pay, is on the run:{" "}
+              <Link className="lk" href={R.batch(lastRun.id)}>
+                {lastRun.name}
+              </Link>
+              .
+            </>
+          ) : (
+            "Whether to make or buy, by cost, is on a catalog run’s page."
+          )}
+        </p>
         <div className="hrow">
           <nav className="subnav" aria-label="Many parts">
             {tabs.map((t) => (
@@ -406,6 +437,7 @@ export function TriageScreen() {
                             <small>{reasonOf(r, machines)}</small>
                           </span>
                           <span className="flags">
+                            {cheaperToBuy(r) ? <span className="flag f-stale">Cheaper to buy at {r.at_quantity!.qty.toLocaleString("en-US")}</span> : null}
                             {wallTooThin(r) ? <span className="flag f-wall">Wall too thin</span> : null}
                             {isStale(r) ? <span className="flag f-stale">Out of date</span> : null}
                           </span>
@@ -418,9 +450,9 @@ export function TriageScreen() {
                             data-tool={r.part_key}
                             onClick={() => openTool(r)}
                             aria-pressed={on}
-                            aria-label={`Tooling alternative for ${name}`}
+                            aria-label={`Tooling payback for ${name}: a mold or die against making it as drawn`}
                           >
-                            Tooling
+                            Tooling payback
                           </button>
                         ) : (
                           <span />

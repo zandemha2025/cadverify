@@ -993,6 +993,8 @@ async def list_batches(
                 "batch_ulid": b.ulid,
                 "status": b.status,
                 "job_type": b.job_type,
+                # A catalog run's name (its ZIP's, else its parts list's), as its page shows it.
+                "name": catalog_run_service.run_title(b) if b.job_type == "catalog" else None,
                 "total_items": b.total_items,
                 "completed_items": status_counts.get(b.id, {}).get("completed", 0),
                 "failed_items": status_counts.get(b.id, {}).get("failed", 0),

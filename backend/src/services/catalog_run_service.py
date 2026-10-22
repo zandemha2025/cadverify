@@ -1153,6 +1153,15 @@ def run_meta(batch: Batch) -> dict:
     return dict((batch.manifest_json or {}).get("catalog") or {})
 
 
+def run_title(batch: Batch) -> Optional[str]:
+    """A run's name: the one it was given, else (older runs) its parts list's, without the extension."""
+    meta = run_meta(batch)
+    if meta.get("name"):
+        return meta["name"]
+    pending = (batch.manifest_json or {}).get(PENDING_KEY) or {}
+    return run_name(pending.get("zip_name"), ((meta.get("parts_list") or {}).get("name")) or pending.get("list_name"))
+
+
 # ---------------------------------------------------------------------------
 # A run's parts: their quantities and materials, and the free allowance
 # ---------------------------------------------------------------------------

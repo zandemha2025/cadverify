@@ -33,6 +33,7 @@ Honesty contract (identical to the live decision / FE catalog):
 from __future__ import annotations
 
 import base64
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
@@ -43,6 +44,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.process_names import PROCESS_NAME, process_label as shared_process_label
 from src.db.models import Analysis, CostDecision, PartContext, PartSummary
 from src.services import part_context_service as pcsvc
+
+logger = logging.getLogger("cadverify.catalog_service")
 
 # ---------------------------------------------------------------------------
 # Config
@@ -1624,12 +1627,13 @@ async def build_makeability_bucket_page(
     fetched = (await session.execute(q)).all()
     has_more = len(fetched) > limit
     page = fetched[:limit]
+    at_qty = await _routes_at_quantity(session, org_id, page)
     rows = [
         {**r.row_json, "makeability": {
             "verdict": r.makeability_verdict,
             "stale": r.makeability_stale,
             "gap": r.makeability_gap,
-        }}
+        }, "at_quantity": at_qty.get(r.mesh_hash)}
         for r in page
     ]
     next_cursor: Optional[str] = None
@@ -1639,6 +1643,61 @@ async def build_makeability_bucket_page(
             last.row_json["updated_at"], last.mesh_hash
         )
     return {"rows": rows, "next_cursor": next_cursor}
+
+
+def route_at_quantity(result_json: dict, annual_volume: Optional[int]) -> Optional[dict]:
+    """The part's route and price at its own quantity, from its saved decision.
+
+    The quantity is the part's declared yearly volume when the record priced it
+    (a catalog run prices each part at its listed quantity and declares it),
+    else the record's smallest quantity above one. On a machine of yours when the
+    engine's own comparison keeps it in-house there, naming that machine (never
+    the make-now route, which may be a process you don't own); else the engine's
+    pick. Engine numbers only; None when the record has no recommendation.
+    """
+    decision = (result_json or {}).get("decision") or {}
+    rec = decision.get("recommendation") or {}
+    if not isinstance(rec, dict) or not rec:
+        return None
+    qs = sorted(int(k) for k in rec if str(k).isdigit())
+    if not qs:
+        return None
+    q = annual_volume if annual_volume in qs else next((x for x in qs if x > 1), qs[0])
+    r = rec.get(str(q)) or {}
+    opt = (decision.get("options") or {}).get(str(q)) or {}
+    inside = opt.get("in_house") or {}
+    out = {"qty": q, "basis": "declared" if q == annual_volume else "record", "in_house": bool(r.get("in_house"))}
+    if inside.get("process"):
+        out["owned"] = {"process": inside.get("process"), "machine": inside.get("machine"),
+                        "material": inside.get("material"), "usd": inside.get("unit_cost_usd")}
+    out.update(process=r.get("process"), material=r.get("material"), usd=r.get("unit_cost_usd"),
+               machine=r.get("machine"), dfm_ready=r.get("dfm_ready", True))
+    return out
+
+
+async def _routes_at_quantity(session: AsyncSession, org_id: str, page) -> dict:
+    """``{mesh_hash: route_at_quantity}`` for a page of makeability rows (two small reads)."""
+    from sqlalchemy import literal_column
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    ids = {r.mesh_hash: ((r.row_json or {}).get("cost_decision") or {}).get("id") for r in page}
+    ulids = [u for u in ids.values() if u]
+    if not ulids:
+        return {}
+    slice_sql = ("jsonb_build_object('decision', jsonb_build_object("
+                 "'recommendation', cost_decisions.result_json -> 'decision' -> 'recommendation', "
+                 "'options', cost_decisions.result_json -> 'decision' -> 'options'))")
+    try:
+        decisions = {u: j for u, j in (await session.execute(
+            select(CostDecision.ulid, literal_column(slice_sql, type_=JSONB))
+            .where(CostDecision.org_id == org_id, CostDecision.ulid.in_(ulids)))).all()}
+        volumes = {h: v for h, v in (await session.execute(
+            select(PartContext.mesh_hash, PartContext.annual_volume)
+            .where(PartContext.org_id == org_id, PartContext.mesh_hash.in_(list(ids))))).all()}
+    except Exception:
+        logger.warning("routes at quantity unavailable for org %s", org_id, exc_info=True)
+        return {}
+    return {h: route_at_quantity(decisions.get(u) or {}, volumes.get(h)) for h, u in ids.items() if u in decisions}
 
 
 async def build_capability_investment(
@@ -1767,12 +1826,13 @@ async def build_capability_investment_page(
     fetched = (await session.execute(q)).all()
     has_more = len(fetched) > limit
     page = fetched[:limit]
+    at_qty = await _routes_at_quantity(session, org_id, page)
     rows = [
         {**r.row_json, "makeability": {
             "verdict": r.makeability_verdict,
             "stale": r.makeability_stale,
             "gap": r.makeability_gap,
-        }}
+        }, "at_quantity": at_qty.get(r.mesh_hash)}
         for r in page
     ]
     next_cursor: Optional[str] = None
