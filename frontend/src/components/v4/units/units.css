@@ -1,0 +1,3 @@
+/* The mm | in switch where lengths are shown: compact, beside the figures it changes. */
+.ob .seg.unit-switch{padding:2px;vertical-align:middle}
+.ob .seg.unit-switch button{height:22px;padding:0 9px;font-size:12px}

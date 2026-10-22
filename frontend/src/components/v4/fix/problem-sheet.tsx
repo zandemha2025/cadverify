@@ -15,6 +15,8 @@ import { unlockOf, unlockQty, unlockRows } from "./rank";
 import { canFixLine, fixRoute } from "./capabilities";
 import { processLabel } from "../part/model";
 import "./fix.css";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 export function blocksChip(p: Problem, total: number): { text: string; tone: string } {
   if (p.severity === "error") {
@@ -67,6 +69,8 @@ export function ProblemSheet() {
   const p = usePart();
   const fx = useFix();
   const up = useUploadFixed();
+  // Lengths follow the person's unit (mm or in); the engine's findings stay in mm.
+  const { unit } = useUnits();
   const P = fx.problem;
   if (!P) {
     return (
@@ -89,6 +93,7 @@ export function ProblemSheet() {
   const total = fx.set.processes.length || p.methods.length;
   const chip = blocksChip(P, total);
   const priced = p.methods.filter((x) => x.members.length === 1).length;
+  const ut = (t: string | null | undefined) => inText(t, unit);
   const figs = problemFigs(P, m, priced || total);
   const rule = ruleOf(P, m);
   const fix = fixText(P, m, alternativeOf(p.data.validation, P));
@@ -153,14 +158,14 @@ export function ProblemSheet() {
         </div>
         <h2 className="stitle">{P.title}</h2>
         <p className="smeta">
-          {P.where} · <span className="kcode">{P.codes.join(" · ")}</span>
+          {ut(P.where)} · <span className="kcode">{P.codes.join(" · ")}</span>
         </p>
         <div className="figs" aria-live="polite">
           {figs.map((g) => (
             <div className="fig" key={g.k}>
               <span>{g.k}</span>
-              <b className={cx("num", g.tone, !/^[$\d−+]/.test(g.v) && "t")}>{g.v}</b>
-              <small>{g.s}</small>
+              <b className={cx("num", g.tone, !/^[$\d−+]/.test(g.v) && "t")}>{ut(g.v)}</b>
+              <small>{ut(g.s)}</small>
             </div>
           ))}
         </div>
@@ -172,10 +177,10 @@ export function ProblemSheet() {
       </div>
       <div className="scroll">
         <div className="swap" key={`${P.id}:${m?.code ?? ""}`}>
-          <p className="kplain">{plainReason(P, m, total)}</p>
+          <p className="kplain">{ut(plainReason(P, m, total))}</p>
           <div className="krule">
             <span>Why</span>
-            <span>{rule.text}</span>
+            <span>{ut(rule.text)}</span>
             <span>Cited</span>
             <span>{rule.source}</span>
           </div>
@@ -185,8 +190,8 @@ export function ProblemSheet() {
           <span />
         </div>
         <p className="kfixt">
-          {fix.fix}
-          {fix.alt ? <small>{fix.alt}</small> : null}
+          {ut(fix.fix)}
+          {fix.alt ? <small>{ut(fix.alt)}</small> : null}
         </p>
         <div className="gh" style={{ marginTop: 6 }}>
           <span>What fixing it unlocks</span>
@@ -230,8 +235,8 @@ export function ProblemSheet() {
                     onKeyDown={roving(list, i, (j) => fx.setMethod(list[j].code))}
                   >
                     <span className="n">{x.name}</span>
-                    <span className="nd num">{need}</span>
-                    <span className={cx("q num", x.severity !== "error" && "w")}>{shortText(P, x)}</span>
+                    <span className="nd num">{ut(need)}</span>
+                    <span className={cx("q num", x.severity !== "error" && "w")}>{ut(shortText(P, x))}</span>
                   </button>
                 );
               })}

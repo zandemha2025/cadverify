@@ -4,6 +4,7 @@
 import * as React from "react";
 import { cx } from "../ui";
 import { useUnits } from "./use-units";
+import "./units.css";
 
 export function UnitSwitch({ className }: { className?: string }) {
   const { unit, setUnit } = useUnits();

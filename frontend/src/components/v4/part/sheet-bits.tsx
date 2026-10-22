@@ -8,6 +8,8 @@ import { useShell } from "../shell";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
 import { MATERIAL_CLASS_LABEL } from "./model";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 import { sureOf, type SureLens } from "./sure";
 import { CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../moments";
 import { isQuotaErrorMessage } from "@/lib/api-recovery";
@@ -21,16 +23,18 @@ export interface FigItem {
 }
 
 export function SheetTop({ title, meta, figs, sure }: { title: string; meta: string; figs: FigItem[]; sure?: SureLens }) {
+  // Lengths in the figures follow the person's unit (mm or in); the engine's numbers stay in mm.
+  const { unit } = useUnits();
   return (
     <div className="top">
       <h2 className="stitle">{title}</h2>
-      <p className="smeta">{meta}</p>
+      <p className="smeta">{inText(meta, unit)}</p>
       <div className="figs" aria-live="polite">
         {figs.map((g) => (
           <div className="fig" key={g.k}>
-            <span>{g.k}</span>
-            <b className={cx("num", g.tone, !/^[$\d≈]/.test(g.v) && "t")}>{g.v}</b>
-            {g.s ? <small>{g.s}</small> : null}
+            <span>{inText(g.k, unit)}</span>
+            <b className={cx("num", g.tone, !/^[$\d≈]/.test(g.v) && "t")}>{inText(g.v, unit)}</b>
+            {g.s ? <small>{inText(g.s, unit)}</small> : null}
           </div>
         ))}
       </div>

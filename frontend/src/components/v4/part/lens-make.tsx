@@ -31,6 +31,8 @@ import { notListedKind, problemForIssue } from "../fix/problems";
 import { pairAt, pickWhy, recordedChoice, enginePick } from "./choice";
 import { featureCells } from "../workbench/derive";
 import { useChoice } from "./choose";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -414,25 +416,27 @@ function Detail({ m, pricing, ch }: { m: Method; pricing: boolean; ch: ReturnTyp
   const problem = problemOfMethod(fx, m);
   // A setup, precision or paperwork note on a process that can make it isn't a design problem: one quiet line, the text a click away.
   const noteOnly = m.verdict === "ok" && !!m.finding && notListedKind(m.finding.issue) != null;
+  const { unit } = useUnits();
   const [noteOpen, setNoteOpen] = React.useState(false);
   const kind = m.finding?.kind ?? null;
   const lit = !!kind && (m.finding?.faces.length ?? 0) > 0;
   const price = !pricing && !p.costOff ? priceMeta(m, p.q) : null;
   const meta = [dfmMeta(m), price].filter(Boolean).join(" · ");
+  const why = inText(methodWhy(m, p.data.cost?.material_class ?? null), unit);
   return (
     <div className="det swap">
       <div className="f">
         <i className={`k-${lit ? kind : "none"}`} aria-hidden="true">
           {lit ? "1" : "i"}
         </i>
-        <span>{noteOnly ? "Nothing stops it as drawn." : methodWhy(m, p.data.cost?.material_class ?? null)}</span>
+        <span>{noteOnly ? "Nothing stops it as drawn." : why}</span>
       </div>
       {noteOnly ? (
         <span>
           <button className="btn sm ghost" type="button" aria-expanded={noteOpen} onClick={() => setNoteOpen((o) => !o)} style={{ height: 24, padding: "0 6px" }}>
             {noteOpen ? "Hide the note" : "1 note, not a design problem"}
           </button>
-          {noteOpen ? <span className="swap" style={{ display: "block", marginTop: 4, color: "var(--ink3)" }}>{methodWhy(m, p.data.cost?.material_class ?? null)}</span> : null}
+          {noteOpen ? <span className="swap" style={{ display: "block", marginTop: 4, color: "var(--ink3)" }}>{why}</span> : null}
         </span>
       ) : null}
       <span style={{ color: "var(--ink3)" }}>{meta}</span>

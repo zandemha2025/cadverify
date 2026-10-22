@@ -30,6 +30,8 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { computeLayeredHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import { shadeFaces, type Shade } from "../orient/orient";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 const TARGET = 2;
 const BASE = new THREE.Color("#c3c8cf");
@@ -408,6 +410,7 @@ function Pin({
   onHidden?: (hidden: boolean) => void;
 }) {
   const { camera } = useThree();
+  const { unit } = useUnits();
   const [hidden, setHidden] = React.useState(false);
   const [side, setSide] = React.useState<"r" | "l">("r");
   const sideRef = React.useRef<"r" | "l">("r");
@@ -435,11 +438,11 @@ function Pin({
       style={{ pointerEvents: "none" }}
     >
       <span className="v4-anchor" aria-hidden="true">
-        <span className={`v4-pin ${cls}${shown ? "" : " hid"}`}>{label}</span>
+        <span className={`v4-pin ${cls}${shown ? "" : " hid"}`}>{inText(label, unit)}</span>
         {callout ? (
           <span className={`kco ${side}${shown ? "" : " hid"}`}>
-            <b>{callout.main}</b>
-            {callout.sub ? <small>{callout.sub}</small> : null}
+            <b>{inText(callout.main, unit)}</b>
+            {callout.sub ? <small>{inText(callout.sub, unit)}</small> : null}
           </span>
         ) : null}
       </span>

@@ -15,7 +15,7 @@ import { R } from "../routes";
 import { cx } from "../ui";
 import { useRegisterPaletteItems, usePalette, type PaletteItem } from "../palette";
 import { LENSES, PartProvider, initialPick, useMethods, type Lens, type PartCtxValue, type PartData, type Toast } from "./ctx";
-import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId, trimNum } from "./model";
+import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId } from "./model";
 import type { ViewerController, ViewerHighlight, ViewerState } from "./viewer";
 import { followed, recordedChoice } from "./choice";
 import type { CheckSession } from "./store";
@@ -40,6 +40,9 @@ import { useOrientView } from "../orient/state";
 import { DeletePartButton } from "../datacontrol/delete-part";
 import { day } from "../datacontrol/words";
 import "./part.css";
+import { UnitSwitch } from "../units/unit-switch";
+import { dims as unitDims, volume as unitVolume } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
 
@@ -262,13 +265,14 @@ export function PartView({
   const v = data.validation;
   const g = v?.geometry;
   const bbox = g?.bounding_box_mm ?? data.cost?.geometry.bbox_mm ?? null;
-  const dims = dimsText(bbox);
+  const { unit } = useUnits();
+  const dims = bbox && bbox.length ? unitDims(bbox, unit) : dimsText(bbox);
   const faces = g?.faces ?? data.cost?.geometry.face_count ?? null;
   const volume = g ? g.volume_mm3 / 1000 : data.cost?.geometry.volume_cm3 ?? null;
   const watertight = g?.is_watertight ?? data.cost?.geometry.watertight ?? null;
   const hudMeta = interrupted
     ? "Not checked yet · 3D preview drawn from the file"
-    : [dims, volume != null ? `${trimNum(volume, 2)} cm³` : null, watertight == null ? null : watertight ? "watertight" : "not watertight", has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
+    : [dims, volume != null ? unitVolume(volume, unit) : null, watertight == null ? null : watertight ? "watertight" : "not watertight", has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
         .filter(Boolean)
         .join(" · ") || (checking ? "Measuring…" : "");
   const ctx = data.context;
@@ -333,7 +337,10 @@ export function PartView({
               </Link>
             )}
             <h1 title={data.fileName}>{data.fileName}</h1>
-            <span className="num">{hudMeta}</span>
+            <span className="num" style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {hudMeta}
+              {!interrupted && dims ? <UnitSwitch className="unit-switch" /> : null}
+            </span>
             <span>
               {hudCtx}
               {data.key ? (

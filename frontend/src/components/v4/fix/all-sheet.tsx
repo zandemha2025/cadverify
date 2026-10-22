@@ -18,6 +18,8 @@ import { fixRoute, whoFixes } from "./capabilities";
 import { useUploadFixed } from "./problem-sheet";
 import { METHODS, processLabel } from "../part/model";
 import "./fix.css";
+import { inText } from "../units/units";
+import { useUnits } from "../units/use-units";
 
 /** "Checked like any upload · uses 1 of your 12 checks left", from what the usage API reports. */
 export function newCheckLine(usage: { unlimited: boolean; remaining: number } | null, lead = "Checked like any upload"): string {
@@ -35,6 +37,8 @@ function processOrder(codes: string[]): string[] {
 export function AllProblemsSheet() {
   const p = usePart();
   const fx = useFix();
+  const { unit } = useUnits();
+  const ut = (t: string | null | undefined) => inText(t, unit);
   const shell = useShell();
   const up = useUploadFixed();
   const v = fx.view?.kind === "all" ? fx.view : null;
@@ -85,11 +89,11 @@ export function AllProblemsSheet() {
             <small>
               <span className="where">
                 <i>{place?.n ?? "·"}</i>
-                {P.where}
+                {ut(P.where)}
               </span>
             </small>
-            {why ? <small className="kfor">{why}</small> : null}
-            <small>{u.sub}</small>
+            {why ? <small className="kfor">{ut(why)}</small> : null}
+            <small>{ut(u.sub)}</small>
           </span>
           <span className="vv">
             <strong className={cx(u.tier <= 1 && "ok")}>{u.value}</strong>
