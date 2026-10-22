@@ -30,7 +30,15 @@ file one worker can check, and what it would take to check larger ones.
    saved records. The incoming copy is deleted.
 
 Files under 20 MB that aren't compressed keep the one-request check
-(`STORED_CHECK_FROM_MB` in `frontend/src/lib/upload-limit.ts`).
+(`STORED_CHECK_FROM_MB` in `frontend/src/lib/upload-limit.ts`), except a
+STEP or IGES file the web process can't hold in memory (below), which goes
+to the worker the same way.
+
+A part can also come from a share link (Google Drive, Dropbox, OneDrive or
+SharePoint, an S3 object URL): `POST /api/v1/uploads/from-link`, and the
+worker's first stage is `fetching` (the link's file to its disk under the
+outbound rules) instead of `verifying`; the rest is the same.
+`docs/IMPORT_FROM_LINK.md` has the rules.
 
 ## Limits
 
@@ -40,11 +48,39 @@ Files under 20 MB that aren't compressed keep the one-request check
 | A file unpacked from `.gz`/`.zip` | 2 GiB, at most 200x its compressed size, ZIP at most 64 entries, one part | `src/services/part_archive.py` |
 | Uploads at once, per organization | free 2 and 4 GiB; other plans 4 and 10 GiB | `active_upload_count_limit`, `active_upload_bytes_limit` |
 | A web request's own upload | 100 MB (`MAX_UPLOAD_MB`) | re-checks from a file in the tab, fixes, Fit |
+| What a web request checks | the same memory model against the web process's own budget; on a 2 GB machine about 3 MB of STEP or IGES, 22 MB of binary STL | `routes.refuse_over_memory_budget` |
 | What one worker can check | memory-bound, below | `stored_check_service.check_memory_budget_bytes` |
 
 Over the memory budget the check stops before parsing and says so, for example:
 "This file needs about 6.1 GB of memory to check; the largest STEP file
 ScaleCAD checks today is about 3 MB. Nothing was charged."
+
+## The web process's memory gate
+
+A web request that checks a file itself (`/validate` and its siblings:
+`/validate/cost`, `/validate/preview-mesh`, `/validate/quick`,
+`/validate/fit`, `/validate/assembly`, `/validate/demo`, `/validate/repair`,
+and the BOM assembly ingest) sizes an STL, STEP or IGES upload with the
+worker's model below (`estimate_memory_bytes_for_data`, from the same
+bytes) against what its own process gives one check
+(`CHECK_MEMORY_BUDGET_MB`, or `CHECK_MEMORY_FRACTION` of its machine). Over
+it, the request is refused before parsing: 413 `CHECK_TOO_LARGE`, the
+worker's own message, and the big-file endpoints
+(`big_file_check: {upload, check}`). `MAX_UPLOAD_MB` stays the outer cap.
+On a 2 GB web machine that is about 3 MB of STEP or IGES and 22 MB of binary
+STL, so the 20 MB rule alone would leave STEP and IGES files between about
+3 and 20 MB refused by the web path.
+
+The app therefore sends a STEP or IGES file to the worker path whenever its
+estimated memory is over the web budget, from its size alone
+(`overWebCheckMemory` in `frontend/src/lib/upload-limit.ts`: the backend's
+`STEP_MEMORY_POINTS` with its 10% headroom, against 0.6 of the 2 GB
+production web machine; a test pins both to the backend and `fly.toml`).
+When the web path still answers 413 (a web machine with less memory than
+that), the live check hands the same file to the worker path and the check
+page follows it. A file is then checked by the
+worker, or refused there with the same plain message when it is over the
+worker's own budget; never just refused by the web path.
 
 ## Measurements
 
@@ -194,4 +230,5 @@ app shows where the run was started. Deploy the worker with or before the
 API: an older worker would prepare such a run as a pilot batch.
 
 ## Not done here
-- Import from a link: design note in `docs/IMPORT_FROM_LINK.md`.
+- Import from a link is built (`docs/IMPORT_FROM_LINK.md`); the providers'
+  pickers for files that aren't shared publicly are not.
