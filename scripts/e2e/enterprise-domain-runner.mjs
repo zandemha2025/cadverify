@@ -546,10 +546,18 @@ class EnterpriseDomainQA {
       assert(draft.status === "draft", `expected draft rate card, got ${draft.status}`);
       assert(draft.validated === false, "draft governed rate card must not be measured/validated");
 
-      const published = await this.expectApiOk(`/rate-library/${draft.id}/publish`, {
+      // A rate card is published only by approving its change request; this
+      // organization's only admin approves it, and it reads self-approved.
+      const proposed = await this.expectApiOk("/governance/change-requests", {
+        method: "POST",
+        body: { asset_type: "rate_card", target_version_id: draft.id, title: "PetroVector 2026 governed defaults" },
+      });
+      const approved = await this.expectApiOk(`/governance/change-requests/${proposed.id}/approve`, {
         method: "POST",
         body: {},
       });
+      const published = approved.published_version;
+      assert(approved.change_request?.self_approved === true, "the only admin's own approval must read self-approved");
       assert(published.status === "published", `expected published, got ${published.status}`);
       assert(published.validated === false, "published governed rate card must remain DEFAULT assumptions");
 

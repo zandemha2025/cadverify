@@ -1092,18 +1092,27 @@ asyncio.run(main())
         throw new Error(`POST /rate-library returned ${draft.status}: ${responseDetail(draft.body)}`);
       }
 
-      const published = await this.proxyJson(
-        this.primary.context,
-        `/api/proxy/rate-library/${draft.body.id}/publish`,
-        { method: "POST", body: {} }
-      );
+      // A rate card is published only by approving its change request; the
+      // primary account is this organization's only admin, so it self-approves.
+      const proposed = await this.proxyJson(this.primary.context, "/api/proxy/governance/change-requests", {
+        method: "POST",
+        body: { asset_type: "rate_card", target_version_id: draft.body.id, title: `P7 stale trigger ${runId}` },
+      });
+      const approved = proposed.ok
+        ? await this.proxyJson(
+          this.primary.context,
+          `/api/proxy/governance/change-requests/${proposed.body.id}/approve`,
+          { method: "POST", body: {} }
+        )
+        : proposed;
+      const published = { ok: approved.ok, status: approved.status, body: approved.ok ? approved.body?.published_version : approved.body };
       if (!published.ok) {
-        this.skipUnavailable(published.status, `POST /rate-library/${draft.body.id}/publish`, published.body);
+        this.skipUnavailable(published.status, `POST /governance/change-requests (rate card ${draft.body.id})`, published.body);
         if ([400, 409, 422].includes(published.status)) {
           throw new SkipStep(`rate-library publish could not run: ${responseDetail(published.body)}`);
         }
         throw new Error(
-          `POST /rate-library/${draft.body.id}/publish returned ${published.status}: ${responseDetail(published.body)}`
+          `Publishing rate card ${draft.body.id} through review returned ${published.status}: ${responseDetail(published.body)}`
         );
       }
 
