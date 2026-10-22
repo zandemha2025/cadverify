@@ -181,3 +181,16 @@ test("the work bar and the run page say the same thing about a run, and it only 
   const b = runWork(runCounts(null, [{ item_id: "A", bucket: "in_house" }, { item_id: "B", bucket: "checking" }]));
   assert.deepEqual(b, { label: "Checking 2 parts", detail: "1 of 2 checked", progress: 0.5 });
 });
+
+test("Home's way back to a run says what the run page says: a run that checked parts and stopped is Stopped, never Didn't start (op-24)", async () => {
+  const { lastRunLine } = await import("./batch-model.ts");
+  const row = (o: Record<string, unknown>) => ({ batch_ulid: "B", status: "failed", total_items: 298, completed_items: 28, failed_items: 0, skipped_items: 270, created_at: null, ...o }) as never;
+  // Batch 23 after it stopped at 16:55: 28 answered, 270 skipped.
+  assert.equal(lastRunLine(row({})), "Stopped · 28 of 298 checked · 270 not checked");
+  // A run that never checked a part didn't start.
+  assert.equal(lastRunLine(row({ completed_items: 0, skipped_items: 298 })), "Didn’t start · 298 files");
+  assert.equal(lastRunLine(row({ status: "processing", completed_items: 31, skipped_items: 0 })), "Running · 31 of 298 checked · 267 to go");
+  assert.equal(lastRunLine(row({ status: "completed", total_items: 50, completed_items: 34, failed_items: 16, skipped_items: 0 })), "Finished · 34 of 50 checked · 16 not checked");
+  assert.equal(lastRunLine(row({ status: "completed", total_items: 1, completed_items: 1, skipped_items: 0 })), "Finished · 1 of 1 checked");
+  assert.equal(lastRunLine(row({ status: "cancelled", total_items: 50, completed_items: 10, skipped_items: 40 })), "Cancelled · 10 of 50 checked · 40 not checked");
+});

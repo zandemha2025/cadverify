@@ -169,6 +169,19 @@ export function runWork(c: RunCounts): { label: string; detail: string; progress
   };
 }
 
+/**
+ * Home's way back to the newest run, in the run page's own counts:
+ * "Stopped · 28 of 298 checked · 270 not checked". A run that checked parts and
+ * then stopped is "Stopped"; only one that never checked a part "Didn’t start".
+ */
+export function lastRunLine(b: Pick<BatchProgress, "status" | "total_items" | "completed_items" | "failed_items" | "skipped_items">): string {
+  const c = runCounts(b);
+  const state =
+    b.status === "completed" ? "Finished" : b.status === "cancelled" ? "Cancelled" : b.status === "failed" ? (c.checked ? "Stopped" : "Didn’t start") : "Running";
+  if (state === "Didn’t start" || !c.total) return `${state} · ${c.total.toLocaleString("en-US")} ${c.total === 1 ? "file" : "files"}`;
+  return `${state} · ${runCountsLine(c)}`;
+}
+
 /** "28 of 298 checked; 270 not checked: the run stopped at 16:55. Check them again." */
 export function stoppedLine(c: RunCounts, at: string | null): string {
   const n = (v: number) => v.toLocaleString("en-US");
