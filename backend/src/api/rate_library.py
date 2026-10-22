@@ -119,6 +119,40 @@ async def effective_rate_card(
     }
 
 
+@router.get("/spec-defaults")
+@limiter.limit("120/hour;1000/day")
+async def spec_defaults(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The typical prices and lead days for finishes, heat treatment and
+    inspection (each with where it comes from), and the org's own values from
+    the card in effect. A governed card's ``spec_ops`` overrides them per field."""
+    from src.costing.part_specs import FINISHES, HEAT_TREATMENTS, INSPECTIONS, OP_LABELS, SPEC_OPS_V0
+
+    org_id = await resolve_org(session, user.user_id)
+    payload = await svc.resolve_rate_table_for_org(session, org_id) if org_id and svc.rate_library_enabled() else None
+    in_effect = (payload or {}).get("spec_ops") or {}
+
+    def group(op: str) -> str:
+        return ("finish" if op in FINISHES else "heat" if op in HEAT_TREATMENTS
+                else "inspection" if op in INSPECTIONS else "finish")
+
+    return {
+        "ops": [
+            {"op": op, "label": OP_LABELS[op], "group": group(op), "kind": p["kind"],
+             "typical": {k: v for k, v in p.items() if k not in ("kind", "source")},
+             "source": p["source"],
+             "yours": {k: v for k, v in (in_effect.get(op) or {}).items()}}
+            for op, p in SPEC_OPS_V0.items()
+        ],
+        "using_governed": payload is not None,
+        "provenance": "default",
+    }
+
+
 @router.get("/{version_id}")
 @limiter.limit("120/hour;1000/day")
 async def get_rate_card(

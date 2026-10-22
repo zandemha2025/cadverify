@@ -289,3 +289,56 @@ def test_fit_machine_spec_failures_block_the_route():
     assert v.per_route["fdm"]["verdict"] == "not_makeable"
     assert v.gap[0].gate == "spec"
     assert fit_machine(preq, cap).failures == () or True  # the fit itself is about the machine
+
+
+# ── the rate card's spec table ────────────────────────────────────────────────
+
+
+def test_a_governed_card_may_carry_spec_prices_and_only_known_ones():
+    import copy
+
+    from src.costing.rates import RATE_CARD_V0
+    from src.services.rate_library_service import validate_rate_table
+
+    table = copy.deepcopy(RATE_CARD_V0)
+    table["spec_ops"] = {"anodize_ii": {"lot_usd": 90.0, "lead_days": 3}, "fai_as9102": {"hr_per_order": 4}}
+    validate_rate_table(table)
+    for bad, words in (({"chrome_paint": {"lot_usd": 1}}, "unknown op"),
+                       ({"anodize_ii": {"per_kg_usd": 1}}, "unknown field"),
+                       ({"anodize_ii": {"lot_usd": -1}}, "non-negative"),
+                       ({"anodize_ii": 5}, "must be an object")):
+        t = copy.deepcopy(RATE_CARD_V0)
+        t["spec_ops"] = bad
+        with pytest.raises(ValueError, match=words):
+            validate_rate_table(t)
+
+
+def test_spec_defaults_route_lists_every_op_with_its_source(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from unittest.mock import AsyncMock
+
+    from src.api import rate_library as rl
+    from src.auth.rate_limit import limiter
+    from src.auth.require_api_key import AuthedUser, require_api_key
+    from src.db.engine import get_db_session
+
+    async def _no_org(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(rl, "resolve_org", _no_org)
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.include_router(rl.router, prefix="/api/v1/rate-library")
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(user_id=1, api_key_id=0, key_prefix="t")
+
+    async def _session():
+        yield AsyncMock()
+
+    app.dependency_overrides[get_db_session] = _session
+    body = TestClient(app).get("/api/v1/rate-library/spec-defaults").json()
+    ops = {o["op"]: o for o in body["ops"]}
+    assert set(ops) == set(ps.SPEC_OPS_V0)
+    assert ops["anodize_ii"]["typical"]["lot_usd"] == 125.0 and "Alibaba.com" in ops["anodize_ii"]["source"]
+    assert ops["quench_temper"]["group"] == "heat" and ops["cmm_report"]["group"] == "inspection"
+    assert ops["anodize_ii"]["yours"] == {} and body["using_governed"] is False

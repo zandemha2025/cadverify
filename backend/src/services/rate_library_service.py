@@ -93,6 +93,22 @@ def validate_rate_table(payload: Any) -> None:
         raise ValueError(
             f"rate table 'global' is missing keys: {missing_global}"
         )
+    spec_ops = payload.get("spec_ops")
+    if spec_ops is not None:
+        # Optional: the org's own prices for finishes, heat treatment and
+        # inspection (src.costing.part_specs). Only known ops and fields.
+        from src.costing.part_specs import OVERRIDE_FIELDS, SPEC_OPS_V0
+
+        if not isinstance(spec_ops, dict):
+            raise ValueError("rate table 'spec_ops' must be an object")
+        for op, fields in spec_ops.items():
+            if op not in SPEC_OPS_V0:
+                raise ValueError(f"rate table 'spec_ops' has an unknown op '{op}'")
+            if not isinstance(fields, dict):
+                raise ValueError(f"rate table 'spec_ops.{op}' must be an object")
+            for k in fields:
+                if k not in OVERRIDE_FIELDS or (k not in SPEC_OPS_V0[op] and k != "lead_days"):
+                    raise ValueError(f"rate table 'spec_ops.{op}' has an unknown field '{k}'")
     try:
         build_rate_card(base_rate_table=payload)
     except Exception as exc:  # noqa: BLE001 — surface the engine's own message
