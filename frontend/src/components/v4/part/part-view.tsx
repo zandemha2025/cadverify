@@ -273,11 +273,16 @@ export function PartView({
   const { unit } = useUnits();
   const dims = bbox && bbox.length ? unitDims(bbox, unit) : dimsText(bbox);
   const faces = g?.faces ?? data.cost?.geometry.face_count ?? null;
-  const volume = g ? g.volume_mm3 / 1000 : data.cost?.geometry.volume_cm3 ?? null;
+  // Several closed bodies: their volume, and "4 closed bodies" rather than "not watertight".
+  const bodiesClosed = !!bodies && bodies.pt.all_closed === true && !bodies.pt.provisional;
+  const volume = bodiesClosed
+    ? bodies!.pt.bodies.reduce((n, x) => n + x.volume_mm3, 0) / 1000
+    : g ? g.volume_mm3 / 1000 : data.cost?.geometry.volume_cm3 ?? null;
   const watertight = g?.is_watertight ?? data.cost?.geometry.watertight ?? null;
+  const tightWord = bodiesClosed ? `${bodies!.pt.body_count} closed bodies` : watertight == null ? null : watertight ? "watertight" : "not watertight";
   const hudMeta = interrupted
     ? "Not checked yet · 3D preview drawn from the file"
-    : [dims, volume != null ? unitVolume(volume, unit) : null, watertight == null ? null : watertight ? "watertight" : "not watertight", has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
+    : [dims, volume != null ? unitVolume(volume, unit) : null, tightWord, has3d ? (faces ? `real shell, ${faces.toLocaleString("en-US")} faces` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
         .filter(Boolean)
         .join(" · ") || (checking ? "Measuring…" : "");
   const ctx = data.context;

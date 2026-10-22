@@ -2,17 +2,40 @@
 
 /** X10: the check's progress, stage by stage, from the real responses as they land. */
 import * as React from "react";
-import { progressSteps, type Step } from "./model";
-import type { CheckSession } from "./store";
+import { dimsText, plural, progressSteps, type Step } from "./model";
+import { readsAsBodies, type CheckSession } from "./store";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+/**
+ * A file of several bodies: measured as bodies, and checked body by body on the
+ * part page, not stopped as an open shell (closed bodies that share edges aren't
+ * one closed solid as a mesh).
+ */
+function bodySteps(s: CheckSession, steps: Step[]): Step[] {
+  const v = s.validation ?? s.result?.validation ?? null;
+  const pt = v?.part_type;
+  if (!v || !pt || !readsAsBodies(v, s.file.name)) return steps;
+  const n = pt.provisional ? "several solids" : plural(pt.body_count, "closed body", "closed bodies");
+  const measured: Step = { t: "Measured", d: [dimsText(v.geometry.bounding_box_mm), n].filter(Boolean).join(" · "), state: "done" };
+  if (v.geometry.is_watertight && !s.result?.costGeometryInvalid) {
+    return steps.map((x) => (x.t === "Measured" && x.state === "done" ? { ...x, d: `${x.d} · ${plural(pt.body_count, "body", "bodies")}` } : x));
+  }
+  const done = s.status !== "running";
+  return [
+    steps[0],
+    measured,
+    { t: "Bodies read", d: pt.summary, state: "done" },
+    { t: "Each body checked", d: done ? "On the part page, body by body · no check used" : "Waiting", state: done ? "done" : "wait" },
+  ];
+}
+
 export function progressModel(s: CheckSession) {
   const r = s.result;
-  const steps: Step[] = progressSteps({
+  const steps: Step[] = bodySteps(s, progressSteps({
     fileName: s.file.name,
     sample: s.sample,
     validation: s.validation ?? r?.validation ?? null,
@@ -20,7 +43,7 @@ export function progressModel(s: CheckSession) {
     costError: r ? r.costError : null,
     geometryInvalid: s.status === "stopped" ? r?.costGeometryInvalid?.message ?? "not a closed solid" : null,
     done: s.status !== "running",
-  });
+  }));
   const running = s.status === "running";
   const stopped = s.status === "stopped";
   const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;

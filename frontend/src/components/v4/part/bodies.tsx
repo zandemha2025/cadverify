@@ -176,7 +176,7 @@ export function BodiesSheet({ b, qs, aligned, has3d }: { b: BodiesState; qs: num
           </div>
         ) : null}
         {mnote ? <p className="pmeta" style={{ margin: "6px 12px 0" }}>{mnote}</p> : null}
-        {quantities.length > 1 && b.check ? (
+        {quantities.length > 1 && b.check && (!weldment || b.check.weldment?.cut_blanks) ? (
           <div className="gh">
             <span>Per file, at</span>
             <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
@@ -316,7 +316,7 @@ function BodyDetail({ b, body, q, weldment }: { b: BodiesState; body: BodyInfo; 
           {d.cut_blank?.[String(q)]
             ? `As a laser-cut blank on the sheet-metal route: ${price.value} each.`
             : `Cutting this member from ${(body.stock?.kind ?? "").includes("tube") ? "tube" : "stock"} isn’t priced yet.`}
-          {at?.unit_cost_usd != null ? ` Made on its own as a finished part, the engine’s cheapest route is ${methodName(at.process).toLowerCase()} at ${money(at.unit_cost_usd)} each; that isn’t how a weldment member is made.` : ""}
+          {at?.unit_cost_usd != null ? ` Made on its own as a finished part, the engine’s cheapest route is ${methodName(at.process)} at ${money(at.unit_cost_usd)} each; that isn’t how a weldment member is made.` : ""}
         </p>
       ) : null}
       {!weldment && at?.unit_cost_usd != null ? (
