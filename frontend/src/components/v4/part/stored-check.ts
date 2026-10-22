@@ -227,9 +227,10 @@ async function run(id: number) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ direct_upload_id: uploadId, material_class: checks.get(id)?.materialClass ?? c0.materialClass, orientation: c0.orientation ?? undefined }),
     });
-    const body = (await res.json().catch(() => null)) as ServerCheck & { detail?: { code?: string; message?: string } };
+    const body = (await res.json().catch(() => null)) as ServerCheck & { detail?: { code?: string; message?: string }; code?: string; message?: string };
     if (!res.ok || !body?.check_id) {
-      const d = body?.detail;
+      // The API answers {code, message} at the top level, or under detail.
+      const d = body?.detail ?? (body ? { code: body.code, message: body.message } : undefined);
       patch(id, { phase: "failed", finishedAt: Date.now(), failure: { title: "The check didn’t start", detail: d?.message ?? `The server answered ${res.status}.`, code: d?.code ?? null, retry: res.status >= 500 } });
       return;
     }

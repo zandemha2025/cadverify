@@ -101,13 +101,36 @@ export function pendingUploads(): ResumeRecord[] {
   return out;
 }
 
+/**
+ * Abort the uploads this browser started and left unfinished (a closed tab, a
+ * refused run), except ``keep``: each holds one of the organization's upload
+ * slots until it expires. Returns how many were aborted.
+ */
+export async function abandonOwnUploads(keep: string): Promise<number> {
+  let n = 0;
+  for (const r of pendingUploads()) {
+    if (r.key === keep || !r.uploadId) continue;
+    try {
+      const res = await fetch(`${API_BASE}/uploads/${encodeURIComponent(r.uploadId)}/abort`, { method: "POST" });
+      if (res.ok || res.status === 404 || res.status === 409) {
+        forgetResume(r.key);
+        if (res.ok) n += 1;
+      }
+    } catch {
+      /* leave it to expire */
+    }
+  }
+  return n;
+}
+
 /* ---------------------------------------------------------------- */
 /*  Requests                                                         */
 /* ---------------------------------------------------------------- */
 
 async function problem(res: Response, fallback: string): Promise<PartUploadError> {
-  const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
-  const d = body?.detail;
+  const body = (await res.json().catch(() => null)) as { detail?: unknown; code?: unknown; message?: unknown } | null;
+  // The API answers {code, message} at the top level, or under detail.
+  const d = body?.detail ?? (body && typeof body.message === "string" ? body : undefined);
   if (d && typeof d === "object") {
     const o = d as { message?: unknown; code?: unknown };
     return new PartUploadError(typeof o.message === "string" ? o.message : fallback, res.status, typeof o.code === "string" ? o.code : null, retryableStatus(res.status));
@@ -226,18 +249,24 @@ export async function uploadPart(
   }
   onProgress?.({ phase: "uploading", done: 0, total: file.size });
 
-  const init = await fetch(`${API_BASE}/uploads/multipart`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "Idempotency-Key": record.idem },
-    body: JSON.stringify({
-      purpose,
-      filename: file.name,
-      content_type: purpose === "batch_zip" ? "application/zip" : file.type || "",
-      size_bytes: file.size,
-      checksum_sha256: record.sha256,
-    }),
-    signal,
-  });
+  const initiate = () =>
+    fetch(`${API_BASE}/uploads/multipart`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "Idempotency-Key": record!.idem },
+      body: JSON.stringify({
+        purpose,
+        filename: file.name,
+        content_type: purpose === "batch_zip" ? "application/zip" : file.type || "",
+        size_bytes: file.size,
+        checksum_sha256: record!.sha256,
+      }),
+      signal,
+    });
+  let init = await initiate();
+  if (init.status === 429 && (await abandonOwnUploads(key)) > 0) {
+    // This browser's own unfinished uploads held the organization's slots: they're gone; try once more.
+    init = await initiate();
+  }
   if (!init.ok) {
     const err = await problem(init, "The upload didn't start.");
     // A reused key the server no longer recognises (expired, or other parameters): start clean next time.

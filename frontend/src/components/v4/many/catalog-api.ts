@@ -8,6 +8,7 @@
 import { API_BASE } from "@/lib/api-base";
 import { forgetResume, PartUploadError, uploadPart } from "@/lib/api/part-upload";
 import { STORED_CHECK_FROM_BYTES } from "@/lib/upload-limit";
+import { pausedUploadKey, removeWork } from "../work/work-bar";
 import type { Board, RunError } from "./catalog-model";
 
 export interface RunCreated {
@@ -72,6 +73,8 @@ export async function startCatalogRun(input: StartInput, onProgress?: (fraction:
     if (e instanceof PartUploadError) throw new CatalogRunError(e.message, e.status, e.code, null);
     throw new CatalogRunError("The upload didn’t reach ScaleCAD. Check your connection and try again; nothing was started.", 0, "network", null);
   }
+  // The upload finished: a "paused" note about it from before a reload goes.
+  removeWork(pausedUploadKey(uploaded.uploadId));
   const run = await postCatalogRun(input, uploaded.uploadId, onProgress);
   forgetResume(uploaded.resumeKey);
   return run;

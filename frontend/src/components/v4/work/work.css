@@ -20,5 +20,7 @@
 .ob .wk-more{pointer-events:auto;align-self:flex-end;font-size:12px;color:var(--ink3);padding:0 8px}
 @keyframes wk-pulse{0%,100%{opacity:.3}50%{opacity:1}}
 @media (max-width:900px){.ob .wk{left:16px;right:16px;bottom:12px;width:auto;max-width:none}}
+/* A phone has room for the name or the detail on one line, not both: stack them. */
+@media (max-width:600px){.ob .wk-t{flex-direction:column;align-items:flex-start;gap:1px}.ob .wk-t small{white-space:normal}}
 @media (prefers-reduced-motion:reduce){.ob .wk-m i{animation:none}}
 @media print{.ob .wk{display:none}}
