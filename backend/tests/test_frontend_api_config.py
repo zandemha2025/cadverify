@@ -69,14 +69,54 @@ def test_next_api_proxy_streams_large_uploads_and_blocks_redirects():
 
 def test_public_share_proxy_has_a_narrow_get_only_allowlist():
     public_route = read("frontend/src/app/api/public-share/[...path]/route.ts")
+    # The allowlist itself lives in its own module (unit-tested in
+    # public-share-paths.test.ts) since record and package links added CAD and
+    # ZIP downloads; the route forwards nothing it refuses.
+    paths = read("frontend/src/lib/public-share-paths.ts")
 
-    assert "const BASE62_ID = /^[A-Za-z0-9]{12}$/" in public_route
+    assert "const BASE62_ID = /^[A-Za-z0-9]{12}$/" in paths
+    assert 'if (path[0] !== "s") return false;' in paths
+    assert 'path[3] === "download.zip"' in paths
+    assert '/^[1-9]\\d{0,2}$/.test(path[4])' in paths
+    assert 'import { publicSharePath } from "@/lib/public-share-paths"' in public_route
+    assert 'if (!publicSharePath(path)) {\n    return Response.json({ detail: "Not found" }, { status: 404 });' in public_route
     assert "export async function GET" in public_route
     assert "export const POST" not in public_route
+    assert "export async function POST" not in public_route
     assert 'redirect: "error"' in public_route
     assert 'cache: "no-store"' in public_route
     assert 'headers.set("cache-control", "private, no-store")' in public_route
-    assert "Cookie" not in public_route
+    # Only a plain attachment name passes through; no visitor cookie goes upstream.
+    assert '/^attachment; filename="[A-Za-z0-9_.-]+"$/.test(disposition)' in public_route
+    assert "Cookie" not in public_route and "cookie" not in public_route
+
+
+def test_public_share_proxy_reaches_exactly_the_apis_public_share_routes():
+    """Each shape the proxy forwards under /s is a public share route the API
+    allowlists (and checks the link on), and none beyond them."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("gate", ROOT / "scripts/ci/check_route_auth.py")
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    public = {
+        (module, path)
+        for module in ("share.py", "cost_decisions.py", "rfq_packages.py")
+        for method, path in gate.PUBLIC_ALLOWLIST[module]
+        if method == "get"
+    }
+    assert public == {
+        ("share.py", "/{short_id}"),
+        ("cost_decisions.py", "/cost/{short_id}"),
+        ("cost_decisions.py", "/cost/{short_id}/cad"),
+        ("rfq_packages.py", "/pkg/{short_id}"),
+        ("rfq_packages.py", "/pkg/{short_id}/download.zip"),
+        ("rfq_packages.py", "/pkg/{short_id}/cad/{line}"),
+    }
+    doc = read("frontend/src/lib/public-share-paths.ts")
+    for shown in ("(/s/{id})", "(/s/cost/{id})", "(/s/cost/{id}/cad)", "(/s/pkg/{id})",
+                  "/s/pkg/{id}/download.zip", "/s/pkg/{id}/cad/{line}"):
+        assert shown in doc
 
 
 def test_deploy_configs_use_runtime_backend_origins():
@@ -263,7 +303,17 @@ def test_public_docs_use_live_urls_and_route_shims_exist():
     assert "https://github.com/zandemha2025/cadverify" not in developers
     assert "https://api.cadverify.com" not in developers
     assert "https://github.com/cadverify/cadverify" not in developers
-    assert 'backendUrl("/docs")' in scalar_route
+    # /scalar sends people to the API's own interactive docs at the deployment's
+    # public API address, only when the API says it serves them (off by default
+    # in a release); otherwise to the in-app API reference, never a dead link.
+    api_docs = read("frontend/src/lib/api-docs.ts")
+    assert 'backendUrl("/docs")' in api_docs and "res.status === 200" in api_docs
+    assert "const origin = publicApiOrigin();" in scalar_route
+    assert "if (origin && (await apiDocsServed())) redirect(`${origin}/docs`);" in scalar_route
+    assert 'redirect("/api-reference");' in scalar_route
+    assert (ROOT / "frontend/src/app/(site)/api-reference/page.tsx").exists()
+    for hardcoded in ("cadvrfy-api.fly.dev", "https://api.cadverify.com", "localhost"):
+        assert hardcoded not in scalar_route
 
     # Legacy URLs now resolve via next.config redirects (the physical shim pages
     # were removed when auth moved to the (auth)/(app) route groups and API keys

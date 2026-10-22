@@ -65,6 +65,32 @@ PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
     "cost_decisions.py": {
         # Sanitized public cost-share view (share-link only, no PII/provenance).
         ("get", "/cost/{short_id}"),
+        # The part's CAD through the same link: 12-char random short id, 404
+        # unknown / 410 expired or switched off, and only when its sharer ticked
+        # "include CAD" (tests/test_supplier_links_pg.py).
+        ("get", "/cost/{short_id}/cad"),
+    },
+    "rfq_packages.py": {
+        # A package's share link (/s/pkg): the supplier copy, its ZIP and each
+        # part's CAD. Unguessable short id; expiry and switch-off checked on every
+        # route; CAD only for lines the package was built with; our cost only when
+        # the buyer included it; no machines, rates, notes or review state
+        # (tests/test_supplier_links_pg.py, tests/test_outbound_copies_pg.py).
+        ("get", "/pkg/{short_id}"),
+        ("get", "/pkg/{short_id}/download.zip"),
+        ("get", "/pkg/{short_id}/cad/{line}"),
+    },
+    "deployment_facts.py": {
+        # Where data lives, for the public Security/Privacy pages: a store kind,
+        # region code and encryption flag plus operator-declared plain words; never
+        # a bucket, URL, hostname, IP, account id or credential.
+        ("get", "/deployment"),
+    },
+    "org_routes.py": {
+        # What an invite link is for, before sign-in: the link's 256-bit token is
+        # the secret (hash-compared), pending invites only, rate-limited; org name,
+        # role, inviter's name, invited address and expiry, no member's address.
+        ("post", "/invites/summary"),
     },
     "share.py": {
         # Sanitized public analysis-share view (share-link only; noindex/no-store).
@@ -110,6 +136,17 @@ PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
         ("post", "/logout"),
         # CRM geo webhook authenticated by its own bearer token.
         ("post", "/crm/location"),
+    },
+    "auth/two_step_routes.py": {
+        # Two-step sign-in after the first factor: each takes the HMAC-signed,
+        # 10-minute challenge that sign-in issued (never a session; purpose- and
+        # session-version-checked), behind the signed auth proxy in release and
+        # rate-limited per visitor; codes lock per account after 5 wrong in a
+        # row, however many arrive at once. Setup only while two-step is off.
+        ("post", "/two-step/challenge/state"),
+        ("post", "/two-step/challenge/verify"),
+        ("post", "/two-step/challenge/setup"),
+        ("post", "/two-step/challenge/setup/confirm"),
     },
     "auth/password_reset.py": {
         # Request a reset email; complete with the single-use emailed token.
