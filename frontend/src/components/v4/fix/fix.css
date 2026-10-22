@@ -131,6 +131,7 @@
 .ob .pv .ktt:focus-visible{outline:2px solid var(--file);outline-offset:-20px;border-radius:24px}
 .ob .pv .ktt .shade{position:absolute;left:18%;right:18%;bottom:16%;height:9%;border-radius:50%;background:radial-gradient(closest-side,rgba(20,24,31,.20),rgba(20,24,31,0));filter:blur(4px)}
 .ob .pv .ktt .none{position:absolute;inset:16%;border:2px dashed rgba(20,24,31,.16);border-radius:22px;display:grid;place-items:center;text-align:center;color:var(--ink3);font-size:13px;padding:12px}
+.ob .pv .ktt .none.wait{border-style:solid;border-color:transparent;pointer-events:none}
 .ob .pv .kside .tag{position:static;align-items:center;text-align:center;white-space:normal;max-width:100%}
 .ob .pv .kside .tag.warn{border-color:#E9C46A}
 .ob .pv .kside .tag.ok{border-color:#A9D5B9}

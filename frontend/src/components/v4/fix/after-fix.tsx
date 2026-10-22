@@ -43,6 +43,8 @@ interface Side {
   title: string;
   right: string;
   url: string | null;
+  /** Its 3D is still being fetched (a fixed copy's preview is built on the server). */
+  loading?: boolean;
   kind: "glb" | "stl";
   highlight: ViewerHighlight | null;
   tagHead: string;
@@ -64,7 +66,8 @@ function pinFor(p: Problem | null, label: string, aligned: boolean): ViewerHighl
 function Pair({ a, b }: { a: Side; b: Side }) {
   const c1 = React.useRef(null) as ViewerController;
   const c2 = React.useRef(null) as ViewerController;
-  const [, setV] = React.useState("");
+  // Each side's viewer, so a slow or failed picture says so instead of an empty box.
+  const [views, setViews] = React.useState<Record<string, string>>({});
   const keys = (e: React.KeyboardEvent) => {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
@@ -81,9 +84,16 @@ function Pair({ a, b }: { a: Side; b: Side }) {
       <button type="button" className="ktt" aria-label={s.aria} onKeyDown={keys}>
         <span className="shade" />
         {s.url ? (
-          <PartViewer url={s.url} kind={s.kind} highlight={s.highlight} xray={false} controllerRef={ctl} onState={setV} onTurn={(az, pol) => other.current?.setAngles(az, pol)} />
+          <>
+            <PartViewer url={s.url} kind={s.kind} highlight={s.highlight} xray={false} controllerRef={ctl} onState={(v) => setViews((cur) => (cur[s.url!] === v ? cur : { ...cur, [s.url!]: v }))} onTurn={(az, pol) => other.current?.setAngles(az, pol)} />
+            {views[s.url] === "failed" || views[s.url] === "nowebgl" ? (
+              <span className="none">{views[s.url] === "nowebgl" ? "No 3D view on this device" : "This one’s 3D view didn’t load"}</span>
+            ) : views[s.url] !== "ready" ? (
+              <span className="none wait" role="status">Loading its 3D view…</span>
+            ) : null}
+          </>
         ) : (
-          <span className="none">No 3D view of this one here</span>
+          <span className="none" role={s.loading ? "status" : undefined}>{s.loading ? "Loading its 3D view…" : "No 3D view of this one here"}</span>
         )}
       </button>
       <div className={cx("tag", s.tagCls)}>
@@ -736,7 +746,7 @@ function ServerAfter({ run, mesh, problem, shell }: { run: Extract<ServerRun, { 
   const body = (
     <Pair
       a={{ title: "Before", right: "your file", url: mesh.url, kind: mesh.kind, highlight: pinFor(pB, "1", alignedB), tagHead: "Your file", tagText: [r.original.faces != null ? `${r.original.faces.toLocaleString("en-US")} faces` : null, r.original.volume_mm3 != null ? `${Math.round(r.original.volume_mm3).toLocaleString("en-US")} mm³` : null, pB?.where].filter(Boolean).join(" · "), tagCls: "", aria: "Your file. Drag, or use the arrow keys, to turn both." }}
-      b={{ title: "After", right: "fixed copy", url: after?.url ?? null, kind: "glb", highlight: pA ? pinFor(pA, "1", !!after?.aligned) : null, tagHead: "Fixed copy", tagText: [fixed.faces != null ? `${fixed.faces.toLocaleString("en-US")} faces` : null, fixed.volume_mm3 != null ? `${Math.round(fixed.volume_mm3).toLocaleString("en-US")} mm³${pct != null ? `, ${sign(pct)}` : ""}` : null, o.chip.toLowerCase()].filter(Boolean).join(" · "), tagCls: r.outcome === "cleared" && !changed ? "ok" : "warn", aria: "The fixed copy. Drag, or use the arrow keys, to turn both." }}
+      b={{ title: "After", right: "fixed copy", url: after?.url ?? null, loading: after === null, kind: "glb", highlight: pA ? pinFor(pA, "1", !!after?.aligned) : null, tagHead: "Fixed copy", tagText: [fixed.faces != null ? `${fixed.faces.toLocaleString("en-US")} faces` : null, fixed.volume_mm3 != null ? `${Math.round(fixed.volume_mm3).toLocaleString("en-US")} mm³${pct != null ? `, ${sign(pct)}` : ""}` : null, o.chip.toLowerCase()].filter(Boolean).join(" · "), tagCls: r.outcome === "cleared" && !changed ? "ok" : "warn", aria: "The fixed copy. Drag, or use the arrow keys, to turn both." }}
     />
   );
   const sheet = (

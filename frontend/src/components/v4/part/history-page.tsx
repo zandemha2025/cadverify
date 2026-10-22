@@ -160,7 +160,7 @@ export function HistoryPage({ partKey }: { partKey: string }) {
   if (state === "error")
     return (
       <main className="world pv" aria-label="Part history">
-        <div className="pagehead" style={{ right: 24 }}>
+        <div className="pagehead wide">
           <h1 className="ptitle">Part history</h1>
         </div>
         <div className="content full">

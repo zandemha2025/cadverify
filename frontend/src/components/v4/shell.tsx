@@ -19,6 +19,7 @@ import { Palette, PaletteProvider, usePalette } from "./palette";
 import { cx } from "./ui";
 import { WorkBar } from "./work/work-bar";
 import { checkBlockedLine } from "./viewer-access";
+import { navOverflow } from "./nav-overflow";
 
 /** The Pilot tag on a nav section; Many parts says what a work-email account gets free instead. */
 function navTag(key: string, usage: Usage | null): string {
@@ -95,6 +96,23 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       .then((b) => b && setOrgs({ active: b.active_org_id ?? null, list: b.organizations ?? [] }))
       .catch(() => {});
   }, []);
+  // On a phone the tabs scroll sideways: fade the edge that has more, and bring the open tab into view.
+  const navRef = React.useRef<HTMLElement>(null);
+  const [navMore, setNavMore] = React.useState<{ left: boolean; right: boolean }>({ left: false, right: false });
+  const measureNav = React.useCallback(() => {
+    const n = navRef.current;
+    if (!n) return;
+    const next = navOverflow(n.scrollLeft, n.clientWidth, n.scrollWidth);
+    setNavMore((cur) => (cur.left === next.left && cur.right === next.right ? cur : next));
+  }, []);
+  React.useEffect(() => {
+    const n = navRef.current;
+    const on = n?.querySelector<HTMLElement>(".pl.on");
+    if (n && on && n.scrollWidth > n.clientWidth) n.scrollLeft = Math.max(0, on.offsetLeft - (n.clientWidth - on.offsetWidth) / 2);
+    measureNav();
+    window.addEventListener("resize", measureNav);
+    return () => window.removeEventListener("resize", measureNav);
+  }, [pathname, measureNav]);
   // An org viewer reads the org's parts but can't check new ones: Check a part
   // is off, and anything that would open the file picker lands on the check
   // page, which says why.
@@ -164,7 +182,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             </svg>
             ScaleCAD
           </Link>
-          <nav aria-label="Main" style={{ display: "flex", flexWrap: "wrap" }}>
+          <nav ref={navRef} aria-label="Main" className={cx(navMore.left && "more-l", navMore.right && "more-r")} style={{ display: "flex", flexWrap: "wrap" }} onScroll={measureNav}>
             {NAV.map((n) => (
               <Link key={n.key} className={cx("pl", section === n.key && "on")} href={n.href} aria-current={section === n.key ? "page" : undefined}>
                 {n.label}
@@ -173,7 +191,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <button className="find" type="button" onClick={() => palette.setOpen(true)} aria-keyshortcuts="Meta+K Control+K">
-            Search parts and tools, or ask<span aria-hidden="true">⌘K</span>
+            Search parts and tools, or ask<span className="kbd" aria-hidden="true">⌘K</span>
           </button>
           <span title={checkBlocked ?? undefined} style={{ marginLeft: 8, display: "inline-flex" }}>
             <button className="btn go sm" type="button" onClick={pickFile} disabled={!!checkBlocked} aria-describedby={checkBlocked ? "v4-check-blocked" : undefined}>

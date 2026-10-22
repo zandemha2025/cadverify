@@ -183,8 +183,10 @@ export interface PartMesh {
  * source tessellated on the server (the same analysis face space as a check), which
  * is then kept in this browser too. Opening it never uses a check.
  */
-export async function loadPartMesh(key: string, filename: string | null): Promise<{ mesh: PartMesh | null; kept: boolean | null; error: string | null }> {
+export async function loadPartMesh(key: string, filename: string | null, onKept?: (kept: boolean | null) => void): Promise<{ mesh: PartMesh | null; kept: boolean | null; error: string | null }> {
   const [cached, kept] = await Promise.all([getCachedMesh(key), fetchSourceKept(key)]);
+  // Whether the file is kept is known now; the 3D (possibly megabytes on a phone) can follow.
+  onKept?.(kept);
   if (cached) return { mesh: { blob: cached.blob, faceHash: cached.faceHash, faceSpace: cached.faceSpace, origin: "cache" }, kept, error: null };
   if (kept !== true) return { mesh: null, kept, error: null };
   try {

@@ -17,6 +17,8 @@
 .ob .pl small{font-size:11px;border:1px solid var(--rule2);border-radius:999px;padding:0 6px;color:var(--ink3)}
 .ob .find{flex:0 1 320px;margin-left:auto;display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--rule2);border-radius:999px;background:rgba(255,255,255,.7);color:var(--ink3);cursor:pointer;text-align:left}
 .ob .find span{margin-left:auto;font-size:12px}
+/* No keyboard shortcut hint where there's no keyboard (touch screens). */
+@media (hover:none) and (pointer:coarse){.ob .find .kbd{display:none}}
 .ob .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 15px;border:1px solid var(--rule2);border-radius:999px;background:var(--solid);font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--ink);transition:transform 160ms var(--ease),background-color 150ms ease}
 .ob .btn:active{transform:scale(.97)}
 .ob .btn.go{background:var(--accent);border-color:var(--accent);color:#140A04;font-weight:600}
@@ -197,12 +199,15 @@
 .ob .kv b{font-weight:600;text-align:right}
 .ob .bell{position:relative;width:36px;padding:0}
 .ob .bell .dot{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--accent);color:#140A04;font-size:10.5px;font-weight:700;display:grid;place-items:center;line-height:16px}
-@media (max-width:900px){.ob .pagehead,.ob .content{position:relative;left:auto;right:auto;top:auto;bottom:auto;margin:12px 16px}
+@media (max-width:900px){.ob .pagehead,.ob .content,.ob .content.full{position:relative;left:auto;right:auto;top:auto;bottom:auto;margin:12px 16px}
 .ob .content{overflow:visible}}
 @media (max-width:900px){.ob .bar{height:auto;padding:8px 12px;gap:6px;row-gap:8px}
 .ob .bar .brand{margin-right:auto}
 .ob .bar nav{order:3;flex:1 1 100%;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;margin:0 -4px}
 .ob .bar nav::-webkit-scrollbar{display:none}
+.ob .bar nav.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}
+.ob .bar nav.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to left,#000 calc(100% - 36px),transparent)}
+.ob .bar nav.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 .ob .bar .pl{flex:none}
 .ob .bar .find{order:4;flex:1 1 100%;margin-left:0}
 .ob .bar .btn.go{margin-left:0!important}

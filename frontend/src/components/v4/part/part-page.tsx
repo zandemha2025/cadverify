@@ -18,6 +18,7 @@ import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
 import { qtyWord, withQuantity } from "./model";
+import { urlSlot, type UrlSlot } from "./mesh-url";
 import { PartView, type MeshSource } from "./part-view";
 import { ProgressPanel } from "./progress";
 import { PartUrlSync } from "./url-sync";
@@ -93,23 +94,29 @@ export function PartPage({ partKey }: { partKey: string }) {
   }, [partKey, sessionDone, reload]);
 
   // 3D: this browser's copy, else the kept source file built on the server. Re-asked once a live check finishes.
+  // The URL on screen stays valid until a new one replaces it: a re-check starting must not pull it away.
+  const meshSlot = React.useRef<UrlSlot | null>(null);
   React.useEffect(() => {
     let live = true;
-    let url: string | null = null;
     setStoredError(null);
-    loadPartMesh(partKey, null).then((r) => {
+    loadPartMesh(partKey, null, (k) => live && setKept(k)).then((r) => {
       if (!live) return;
       setKept(r.kept);
       setStoredError(r.error);
-      if (!r.mesh) return setCache(null);
-      url = URL.createObjectURL(r.mesh.blob);
+      meshSlot.current ??= urlSlot();
+      if (!r.mesh) {
+        setCache(null);
+        meshSlot.current.clear();
+        return;
+      }
+      const url = meshSlot.current.set(r.mesh.blob);
       setCache({ url, faceHash: r.mesh.faceHash, faceSpace: r.mesh.faceSpace, origin: r.mesh.origin });
     });
     return () => {
       live = false;
-      if (url) URL.revokeObjectURL(url);
     };
   }, [partKey, sessionDone, meshTick]);
+  React.useEffect(() => () => meshSlot.current?.clear(), [partKey]);
 
   // A re-check that stopped before any answer (out of checks) leaves the saved answers in place.
   const stoppedEarly = !!session && session.status === "failed" && !session.validation && session.failure?.kind === "quota" && !!saved;
@@ -185,7 +192,7 @@ export function PartPage({ partKey }: { partKey: string }) {
     if (state === "error")
       return (
         <main className="world pv" aria-label="Part">
-          <div className="pagehead" style={{ right: 24 }}>
+          <div className="pagehead wide">
             <h1 className="ptitle">Part</h1>
           </div>
           <div className="content full">
@@ -195,7 +202,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       );
     return (
       <main className="world pv" aria-label="Part">
-        <div className="pagehead" style={{ right: 24 }}>
+        <div className="pagehead wide">
           <h1 className="ptitle">Part</h1>
         </div>
         <div className="content full">
@@ -209,7 +216,7 @@ export function PartPage({ partKey }: { partKey: string }) {
   if (!session && saved && !saved.latest && !saved.validation && !saved.decisions.length) {
     return (
       <main className="world pv" aria-label="Part">
-        <div className="pagehead" style={{ right: 24 }}>
+        <div className="pagehead wide">
           <Link href={R.parts} style={{ fontSize: 12.5, textDecoration: "none" }}>
             ‹ Parts
           </Link>

@@ -17,6 +17,7 @@ import { useRegisterPaletteItems, usePalette, type PaletteItem } from "../palett
 import { LENSES, PartProvider, initialPick, useMethods, type Lens, type PartCtxValue, type PartData, type Toast } from "./ctx";
 import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId } from "./model";
 import type { ViewerController, ViewerHighlight, ViewerState } from "./viewer";
+import { no3dTitle } from "./mesh-url";
 import { followed, recordedChoice } from "./choice";
 import type { CheckSession } from "./store";
 import { MakeSheet } from "./lens-make";
@@ -130,6 +131,8 @@ export function PartView({
   const [xray, setXray] = React.useState(false);
   const [hint, setHint] = React.useState(true);
   const [viewer, setViewer] = React.useState<ViewerState>("loading");
+  // Each new picture gets its own attempt: a load that failed doesn't hide the next one.
+  React.useEffect(() => setViewer("loading"), [mesh.url]);
   const shell = useShell();
   const router = useRouter();
   const retryPreview = mesh.url ? (
@@ -296,9 +299,11 @@ export function PartView({
     : g ? g.volume_mm3 / 1000 : data.cost?.geometry.volume_cm3 ?? null;
   const watertight = g?.is_watertight ?? data.cost?.geometry.watertight ?? null;
   const tightWord = bodiesClosed ? `${bodies!.pt.body_count} closed bodies` : watertight == null ? null : watertight ? "watertight" : "not watertight";
+  // While the picture is still on its way the header says so, not "unavailable".
+  const pictureComing = !has3d && (mesh.loading || (!!mesh.url && viewer === "loading"));
   const hudMeta = interrupted
     ? "Not checked yet · 3D preview drawn from the file"
-    : [dims, volume != null ? unitVolume(volume, unit) : null, tightWord, has3d ? (cadFaces ? `${cadFaces.toLocaleString("en-US")} faces, ${faces ? `${faces.toLocaleString("en-US")} mesh triangles` : "meshed"}` : faces ? `real shell, ${faces.toLocaleString("en-US")} mesh triangles` : "real shell") : dims ? "measured size, 3D view unavailable" : null]
+    : [dims, volume != null ? unitVolume(volume, unit) : null, tightWord, has3d ? (cadFaces ? `${cadFaces.toLocaleString("en-US")} faces, ${faces ? `${faces.toLocaleString("en-US")} mesh triangles` : "meshed"}` : faces ? `real shell, ${faces.toLocaleString("en-US")} mesh triangles` : "real shell") : pictureComing ? "3D view loading" : dims ? "measured size, 3D view unavailable" : null]
         .filter(Boolean)
         .join(" · ") || (checking ? "Measuring…" : "");
   const ctx = data.context;
@@ -350,7 +355,7 @@ export function PartView({
     <PartProvider value={value}>
       <FixProvider value={fx.value}>
       <main className="world pv" aria-label={data.fileName}>
-        <section className="stage" aria-label="The part">
+        <section className={cx("stage", showNo3d && "flat")} aria-label="The part">
           <div className="floor" />
           <div className="hud">
             {fixOn ? (
@@ -465,7 +470,7 @@ export function PartView({
               <svg width="150" height="110" viewBox="0 0 150 110" aria-hidden="true">
                 <path d="M20 40 L75 14 L130 40 L130 78 L75 104 L20 78 Z M20 40 L75 66 L130 40 M75 66 L75 104" fill="none" stroke="#9AA3AE" strokeWidth="1.5" strokeDasharray="4 4" strokeLinejoin="round" />
               </svg>
-              <b>{viewer === "nowebgl" ? "No 3D view on this device" : mesh.origin === null && !mesh.error ? "No 3D view of this part here" : "No 3D view on this device"}</b>
+              <b>{no3dTitle(viewer, mesh)}</b>
               <span>Every answer <span className="on-desk">on the right</span><span className="on-phone">below</span> still holds; they come from the file, not the picture.</span>
               {dims ? <span className="num">Measured size {dims}</span> : null}
               {mesh.error ? <span className="err" role="alert">{mesh.error}</span> : null}
