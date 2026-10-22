@@ -103,7 +103,7 @@ def shop_result():
     rep = json.loads(json.dumps(rep))
     # The record really carries everything the copies must leave out.
     raw = json.dumps(rep)
-    assert all(m in raw for m in MACHINES) and "OWNED-IN-HOUSE marginal" in raw
+    assert all(m in raw for m in MACHINES) and "on a machine you own" in raw
     assert "your_actuals" in raw and "01CALIBSHOP" in raw and "41.73" in raw
     assert rep["decision"]["options"] and rep["decision"]["recommendation"]["10"]["in_house"] is True
     return rep
@@ -497,7 +497,7 @@ def test_in_org_views_still_show_everything(shop_result, monkeypatch):
     assert body["result"]["verification"]["best_machine"] == MACHINES[0]
     assert body["result"]["decision"]["options"] and body["disposition_note"] == "Run it on Bay-7 overnight"
     exported = cl.get(f"/api/v1/cost-decisions/{d.ulid}/export.json").text
-    for private in (*MACHINES, "OWNED-IN-HOUSE marginal", "your_actuals", "01CALIBSHOP", "41.73",
+    for private in (*MACHINES, "on a machine you own", "your_actuals", "01CALIBSHOP", "41.73",
                     "Run it on Bay-7 overnight"):
         assert private in exported, private
     table = cl.get(f"/api/v1/cost-decisions/{d.ulid}/export.csv").text
