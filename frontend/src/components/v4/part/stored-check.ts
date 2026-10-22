@@ -94,6 +94,14 @@ const STAGE_WORD: Record<StoredPhase, string> = {
   failed: "Not checked",
 };
 
+/** "Importing bracket.step", or "Importing from Google Drive" while the link's file has no name yet. */
+export function importingLabel(c: Pick<StoredCheck, "name" | "partName" | "linkLabel">): string {
+  const name = c.partName ?? c.name;
+  return c.linkLabel && name === unnamedLink(c.linkLabel) ? `Importing from ${c.linkLabel}` : `Importing ${name}`;
+}
+
+export const unnamedLink = (label: string) => `File from ${label}`;
+
 export function stageWord(p: StoredPhase, linkLabel?: string | null): string {
   if (p === "fetching" && linkLabel) return `Fetching from ${linkLabel}`;
   return STAGE_WORD[p];
@@ -121,8 +129,8 @@ function workItem(c: StoredCheck) {
       // Until the server has the check it lives in this tab only; then it outlives the tab.
       persist: !!c.checkId,
       state: "running",
-      label: browser ? `Uploading ${name}` : fetching ? `Importing ${name}` : `Checking ${name}`,
-      detail: browser ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : fetching ? `Fetching from ${c.linkLabel}` : stageWord(c.phase, c.linkLabel),
+      label: browser ? `Uploading ${name}` : fetching ? importingLabel(c) : `Checking ${name}`,
+      detail: browser ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : fetching ? (name === unnamedLink(c.linkLabel!) ? "Fetching the file" : `Fetching from ${c.linkLabel}`) : stageWord(c.phase, c.linkLabel),
       progress: browser ? (c.size ? c.sent / c.size : null) : c.frac,
     });
   }
@@ -307,7 +315,7 @@ export function startLinkCheck(url: string, opts: { filename?: string | null; ma
   const id = nextId++;
   const read = readLink(url);
   const label = read.ok ? read.label : "the link";
-  const name = opts.filename?.trim() || (read.ok ? read.nameHint : null) || `File from ${label}`;
+  const name = opts.filename?.trim() || (read.ok ? read.nameHint : null) || unnamedLink(label);
   checks.set(id, {
     id,
     file: null,
@@ -405,7 +413,7 @@ export function followServerCheck(checkId: string): number {
   });
   byServer.set(checkId, id);
   void readCheck(checkId)
-    .then((s) => patch(id, { name: s.filename ?? (s.link ? `File from ${s.link.label}` : "Part"), size: s.size_bytes ?? 0, sent: s.size_bytes ?? 0, ...fromServer(s) }))
+    .then((s) => patch(id, { name: s.filename ?? (s.link ? unnamedLink(s.link.label) : "Part"), size: s.size_bytes ?? 0, sent: s.size_bytes ?? 0, ...fromServer(s) }))
     .catch(() => undefined)
     .finally(() => void follow(id));
   emit();

@@ -219,6 +219,8 @@ interface ServerCheckRow {
   action?: string;
   summary?: string | null;
   part_url?: string | null;
+  /** A part imported from a share link: where from (never the link). */
+  link?: { label: string } | null;
 }
 
 /** Same key as part/stored-check.ts, so the tab's own item and the server's are one. */
@@ -254,6 +256,7 @@ function useStoredChecks(pathname: string) {
         for (const c of body.checks ?? []) {
           const key = storedKey(c.check_id);
           if (seen.has(key)) continue;
+          const from = c.source === "link" ? c.link?.label ?? null : null;
           const name = c.part_filename ?? c.filename ?? "part";
           const known = items.get(key);
           if (c.source === "kept") {
@@ -265,7 +268,9 @@ function useStoredChecks(pathname: string) {
           }
           if (c.status === "queued" || c.status === "running") {
             next = 6_000;
-            registerWork({ key, href: `/app/check?job=${encodeURIComponent(c.check_id)}`, persist: true, state: "running", label: `Checking ${name}`, detail: STAGE_WORDS[c.stage] ?? "Checking", progress: c.progress });
+            // A link's file is still on its way: "Importing …, Fetching from Dropbox".
+            const fetching = !!from && (c.stage === "queued" || c.stage === "fetching");
+            registerWork({ key, href: `/app/check?job=${encodeURIComponent(c.check_id)}`, persist: true, state: "running", label: fetching ? (c.part_filename ?? c.filename ? `Importing ${name}` : `Importing from ${from}`) : `Checking ${name}`, detail: fetching ? (c.part_filename ?? c.filename ? `Fetching from ${from}` : "Fetching the file") : STAGE_WORDS[c.stage] ?? "Checking", progress: c.progress });
           } else if (known && known.state === "running") {
             const ok = c.status === "done";
             registerWork({

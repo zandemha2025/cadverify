@@ -15,7 +15,7 @@ import { sizeText } from "@/lib/upload-limit";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { MATERIALS } from "../onboard/first-run";
-import { markStoredOpened, retryStoredCheck, setStoredMaterial, stageWord, useStoredCheck } from "./stored-check";
+import { importingLabel, markStoredOpened, retryStoredCheck, setStoredMaterial, stageWord, useStoredCheck } from "./stored-check";
 import { overallFraction, storedSteps } from "./stored-check-model";
 import { linkNameProblem } from "@/lib/link-import";
 import "../onboard/onboard.css";
@@ -75,7 +75,7 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
   const failed = c.phase === "failed";
   const name = c.partName ?? c.name;
   const fetching = !!c.linkLabel && (c.phase === "starting" || c.phase === "queued" || c.phase === "fetching");
-  const title = failed ? "Not checked" : c.phase === "done" ? "Checked" : uploading ? `Uploading ${name}` : fetching ? `Importing ${name}` : `Checking ${name}`;
+  const title = failed ? "Not checked" : c.phase === "done" ? "Checked" : uploading ? `Uploading ${name}` : fetching ? importingLabel(c) : `Checking ${name}`;
   const manyParts = c.failure?.code === "ARCHIVE_MANY_PARTS";
   // The link's file wasn't named as a CAD file: name it here and fetch it again.
   const needsName = failed && !!c.link && c.failure?.code === "LINK_UNKNOWN_TYPE";
