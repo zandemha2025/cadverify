@@ -123,9 +123,15 @@ export function ratesNote(decision: { rates?: { priced: number; current: number;
   return r.text?.trim() || `Priced at rates v${r.priced}; your rates are v${r.current}.`;
 }
 
-/** The engine's overall DFM verdict in plain words. */
-export function overallWords(v: string | null | undefined): string {
-  return v === "pass" ? "no problems found" : v === "issues" ? "problems to check" : v === "fail" ? "problems that stop processes" : "not reported";
+/**
+ * The problem count in words, from the same list the page counts ("Problems 9 · 5 stop a process"), so
+ * "Why this verdict?" never says "no problems found" over a page that lists problems.
+ */
+export function problemWords(problems: { severity: string }[]): string {
+  const n = problems.length;
+  if (!n) return "no problems found on this part";
+  const stopping = problems.filter((x) => x.severity === "error").length;
+  return `${plural(n, "problem")} on this part, ${stopping ? `${stopping} ${stopping === 1 ? "stops" : "stop"} a process` : "none stops a process"}`;
 }
 
 /** The machine kind a process stands for, for machine rows ("3-axis mill"): shared with every screen. */
@@ -1061,7 +1067,7 @@ export function routesAnswer(methods: Method[], q: number): Answer | null {
   return { tag: "Computed", title: `Routes at ${qtyWord(q)}`, rows, text };
 }
 
-export function verdictAnswer(methods: Method[], validation: ValidationResult | null, cost: CostReport | null): Answer {
+export function verdictAnswer(methods: Method[], validation: ValidationResult | null, cost: CostReport | null, problems: { severity: string }[] = []): Answer {
   const singles = methods.filter((m) => m.members.length === 1);
   const can = singles.filter((m) => m.verdict === "ok" || m.verdict === "warn");
   const blocked = singles.filter((m) => m.verdict === "bad").map((m) => m.name);
@@ -1070,8 +1076,7 @@ export function verdictAnswer(methods: Method[], validation: ValidationResult | 
   if (gp) rows.push({ k: "Highest design score", v: `${gp.name}, DFM ${gp.score?.toFixed(1) ?? "—"}` });
   if (cost?.routing) rows.push({ k: "Typical for the shape", v: `${methodName(cost.routing.recommended_process)}, confidence ${cost.routing.confidence.toFixed(1)}` });
   if (blocked.length) rows.push({ k: "Blocked", v: joinWords([...new Set(blocked)].slice(0, 4)) });
-  const fixes = validation?.priority_fixes?.length ?? 0;
-  const text = [cost?.routing?.reasoning, `${plural(fixes, "suggested fix", "suggested fixes")} in total; overall, ${overallWords(validation?.overall_verdict)}.`].filter(Boolean).join(" ");
+  const text = [cost?.routing?.reasoning, `${problemWords(problems).replace(/^./, (c) => c.toUpperCase())}.`].filter(Boolean).join(" ");
   return { tag: "Computed", title: "Why this verdict", rows, text };
 }
 

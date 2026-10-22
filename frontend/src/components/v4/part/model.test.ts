@@ -22,6 +22,7 @@ import {
   routeAsk,
   biggestTypicalNote,
   ratesNote,
+  verdictAnswer,
 } from "./model.ts";
 import type { Method } from "./model.ts";
 import type { CostEstimate } from "@/lib/api";
@@ -446,4 +447,14 @@ test("a record priced at older rates says so near the price; current rates say n
   assert.equal(ratesNote({ rates: { priced: 1, current: 1, out_of_date: false, text: "Priced at your rates v1." } }), null);
   assert.equal(ratesNote({ rates: null }), null);
   assert.equal(ratesNote(null), null);
+});
+
+test("Why this verdict? counts the problems the page lists, never 'no problems found' over them (R3 hand-off)", () => {
+  const f = fixture();
+  f.validation.overall_verdict = "pass";
+  const methods = buildMethods(f);
+  const a = verdictAnswer(methods, f.validation, f.cost, [{ severity: "error" }, { severity: "warning" }, { severity: "warning" }]);
+  assert.match(a.text, /3 problems on this part, 1 stops a process\.$/);
+  assert.doesNotMatch(a.text, /no problems found/);
+  assert.match(verdictAnswer(methods, f.validation, f.cost, []).text, /No problems found on this part\.$/);
 });

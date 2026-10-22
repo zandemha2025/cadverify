@@ -7,6 +7,7 @@ import { compareCostDecisions, fetchCostDecisions } from "@/lib/api";
 import { R } from "../routes";
 import { cx } from "../ui";
 import { usePart } from "./ctx";
+import { useFix } from "../fix/ctx";
 import {
   REFUSAL,
   driversAnswer,
@@ -26,6 +27,8 @@ type Key = "routes" | "saved" | "why" | "refuse" | "typed";
 
 export function AskDock() {
   const p = usePart();
+  // The same problem list the page counts (R3: "Problems N · M stop a process").
+  const problems = useFix().set.problems;
   const [ans, setAns] = React.useState<{ key: Key; a: Answer | null; loading?: boolean } | null>(null);
   const atQ = p.qs.includes(1000) ? 1000 : p.qs[p.qs.length - 1] ?? p.q;
   const noCost = p.interrupted || p.costOff || p.checking || !p.data.cost;
@@ -64,7 +67,7 @@ export function AskDock() {
   const pick = (k: Key) => {
     if (ans?.key === k) return setAns(null);
     if (k === "routes") setAns({ key: k, a: routesAnswer(p.methods, atQ) });
-    else if (k === "why") setAns({ key: k, a: verdictAnswer(p.methods, p.data.validation, p.data.cost) });
+    else if (k === "why") setAns({ key: k, a: verdictAnswer(p.methods, p.data.validation, p.data.cost, problems) });
     else if (k === "refuse") setAns({ key: k, a: REFUSAL });
     else if (k === "saved") void saved();
   };
@@ -84,7 +87,7 @@ export function AskDock() {
     else if (r.kind === "routes") {
       a = routesAnswer(p.methods, qq);
       if (a && r.qty != null && r.qty !== qq) a = { ...a, text: `${qtyWord(r.qty)} isn't a computed quantity, so this is ${qtyWord(qq)}, the nearest. ${a.text}` };
-    } else if (r.kind === "why") a = verdictAnswer(p.methods, p.data.validation, p.data.cost);
+    } else if (r.kind === "why") a = verdictAnswer(p.methods, p.data.validation, p.data.cost, problems);
     else if (r.kind === "saved") return void saved();
     else a = REFUSAL;
     setAns({ key: "typed", a: a ?? { tag: "Not computable", title: "Not in this check", rows: [], text: "This check has no result for that yet." } });
