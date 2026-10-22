@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   IDENTITY,
+  bridgeWords,
   candidateFacts,
   candidateFor,
   candidateName,
@@ -107,6 +108,23 @@ test("the 3D shading uses the check's own overhang and draft rules", () => {
   assert.deepEqual(shadeFaces(pos, IDENTITY, { kind: "draft", deg: 1 }), [4, 5, 6, 7, 8, 9, 10, 11]);
   // Laid on its -Y side, the old top and bottom become walls without draft.
   assert.deepEqual(shadeFaces(pos, downTo([0, -1, 0])!, { kind: "draft", deg: 1 }).slice(0, 4), [0, 1, 2, 3]);
+});
+
+test("FDM shading leaves the engine's bridged spans uncoloured, also after a spin", () => {
+  const pos = scene();
+  // The hanging triangle's centre is at (1/3, 1/3, 5): fractions (0.33, 0.33, 1) of the 1 × 1 × 5 box.
+  const bridges = [{ r: IDENTITY, boxes: [[0.3, 0.3, 0.99, 0.4, 0.4, 1]] }];
+  assert.deepEqual(shadeFaces(pos, IDENTITY, { kind: "overhang", deg: 45, bridges }), []);
+  assert.deepEqual(shadeFaces(pos, turned(IDENTITY, "z"), { kind: "overhang", deg: 45, bridges }), []);
+  // A box elsewhere, or another face down, colours it as before.
+  assert.deepEqual(shadeFaces(pos, IDENTITY, { kind: "overhang", deg: 45, bridges: [{ r: IDENTITY, boxes: [[0.6, 0.6, 0.99, 0.9, 0.9, 1]] }] }), [12]);
+  assert.deepEqual(shadeFaces(pos, downTo([0, 0, 1])!, { kind: "overhang", deg: 45, bridges }), [2, 3]);
+  assert.equal(bridgeWords({ bridges: 1, longest_bridge_mm: 20 }), "; a flat span bridges 20 mm");
+  assert.equal(bridgeWords({ bridges: 3, longest_bridge_mm: 60.04 }), "; 3 flat spans bridge, up to 60 mm");
+  assert.equal(bridgeWords({ bridges: 0 }), "");
+  const c = cand("down-z", [0, 0, 1], 0, 35, 0, {});
+  c.support.fdm = { faces: 0, area_mm2: 0, bridges: 1, longest_bridge_mm: 20, bridge_boxes: [[0, 0, 0, 1, 1, 1]] };
+  assert.equal(candidateFacts(c, "fdm", rules).main, "No support needed; a flat span bridges 20 mm");
 });
 
 const rules = { fdm: { overhang_deg: 45 }, sla: { overhang_deg: 19 }, injection_molding: { draft_deg: 1 } };

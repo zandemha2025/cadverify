@@ -175,30 +175,76 @@ def overhang_faces(angles_from_up_deg: np.ndarray, centroids: np.ndarray, bbox_d
     return np.where(oh_mask)[0]
 
 
+def bridged_overhang_faces(ctx: GeometryContext, max_angle_deg: float, oh_faces: np.ndarray):
+    """Split marked faces into those needing support and flat spans printed as bridges.
+
+    ``src.analysis.support.support_regions`` on the context's own arrays (the
+    same marked faces), without its ray casts. Returns (needing, bridged
+    count, bridged faces, longest span in mm). If the bridge test fails on a
+    mesh, every marked face stays marked.
+    """
+    from src.analysis.support import support_regions
+
+    try:
+        est = support_regions(
+            ctx.mesh, max_angle_deg, keep_regions=True, columns=False,
+            measures={"angles": ctx.angles_from_up_deg, "centroids": ctx.centroids,
+                      "areas": ctx.face_areas, "normals": ctx.normals, "bbox_diag": ctx.bbox_diag},
+        )
+    except Exception:  # pragma: no cover - defensive: shapely/trimesh on a broken mesh
+        logger.warning("bridge test failed; every overhanging face stays marked", exc_info=True)
+        return oh_faces, 0, 0, 0.0
+    if not est.bridges:
+        return oh_faces, 0, 0, 0.0
+    bridged = [r.faces for r in est.regions if r.bridge]
+    need = [r.faces for r in est.regions if not r.bridge]
+    needing = np.sort(np.concatenate(need)) if need else np.empty(0, dtype=int)
+    return needing, est.bridges, int(sum(len(b) for b in bridged)), float(est.longest_bridge_mm)
+
+
 def check_overhangs(
     ctx: GeometryContext,
     max_angle_deg: float,
     process: ProcessType,
     *,
     cite: str = "",
+    bridges: bool = False,
 ) -> list[Issue]:
-    """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports."""
+    """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports.
+
+    ``bridges=True`` (FDM): a flat span whose two ends rest on the part below
+    it prints as a bridge, strand by strand, and isn't counted
+    (``src.analysis.support``; PrusaSlicer's default, no length limit).
+    """
     if max_angle_deg >= 90.0:
         return []  # self-supporting process
     oh_faces = overhang_faces(ctx.angles_from_up_deg, ctx.centroids, ctx.bbox_diag, max_angle_deg)
     if len(oh_faces) == 0:
         return []
+    spans, span_faces, longest = 0, 0, 0.0
+    if bridges:
+        oh_faces, spans, span_faces, longest = bridged_overhang_faces(ctx, max_angle_deg, oh_faces)
+        if len(oh_faces) == 0:
+            return []
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
     # Same quantity the threshold compares: degrees past vertical (90 = a flat ceiling).
     steepest = float(ctx.angles_from_up_deg[oh_faces].max()) - 90.0
+    if spans == 1:
+        bridged_note = (f" A flat span between walls ({span_faces} faces, {longest:.0f} mm across) "
+                        "prints as a bridge and isn't counted.")
+    elif spans:
+        bridged_note = (f" {spans} flat spans between walls ({span_faces} faces, up to {longest:.0f} mm "
+                        "across) print as bridges and aren't counted.")
+    else:
+        bridged_note = ""
     return [Issue(
         code="OVERHANG",
         measurement_unit="deg",
         severity=Severity.WARNING,
         message=(
             f"{len(oh_faces)} faces ({pct:.1f}%) exceed {max_angle_deg}° "
-            f"overhang threshold for {process.value}. Supports required."
+            f"overhang threshold for {process.value}. Supports required.{bridged_note}"
         ),
         process=process,
         affected_faces=oh_faces.tolist(),

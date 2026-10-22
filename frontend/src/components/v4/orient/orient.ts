@@ -167,7 +167,12 @@ export interface Rules {
   [process: string]: { overhang_deg?: number; draft_deg?: number };
 }
 
-export type Shade = { kind: "overhang" | "draft"; deg: number };
+/**
+ * bridges: for FDM, where flat spans between walls print as bridges in a way
+ * (candidate rotation, and boxes [x0, y0, z0, x1, y1, z1] as fractions of the
+ * placed part's box, from the engine); those faces aren't coloured.
+ */
+export type Shade = { kind: "overhang" | "draft"; deg: number; bridges?: { r: Mat; boxes: number[][] }[] };
 
 const POWDER = new Set(["sls", "mjf", "binder_jetting"]);
 const OWN_AXIS = new Set(["cnc_turning", "wire_edm", "sheet_metal", "investment_casting"]);
@@ -240,9 +245,36 @@ export function shadeFaces(pos: ArrayLike<number>, r: Mat, shade: Shade): number
     for (let f = 0; f < n; f++) if (z[f] < zmin) zmin = z[f];
     const diag = n ? Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) : 0;
     const tol = Math.max(0.1, diag * 1e-3);
+    // Bridged spans, from the engine's way with the same face down (a spin on the plate keeps them):
+    // face centres in that way's placed box, as fractions, inside one of its boxes.
+    const upR = upOf(r);
+    const way = shade.bridges?.find((b) => b.boxes.length && upOf(b.r).every((v, k) => Math.abs(v - upR[k]) < 1e-6)) ?? null;
+    const at = (m: Mat, o: number, k: number) => m[k * 3] * pos[o] + m[k * 3 + 1] * pos[o + 1] + m[k * 3 + 2] * pos[o + 2];
+    const wlo = [Infinity, Infinity, Infinity];
+    const whi = [-Infinity, -Infinity, -Infinity];
+    if (way) {
+      for (let o = 0; o + 2 < n * 9; o += 3) {
+        for (let k = 0; k < 3; k++) {
+          const v = at(way.r, o, k);
+          if (v < wlo[k]) wlo[k] = v;
+          if (v > whi[k]) whi[k] = v;
+        }
+      }
+    }
+    const bridged = (f: number) => {
+      if (!way) return false;
+      const o = f * 9;
+      const c = [0, 1, 2].map((k) => {
+        const v = (at(way.r, o, k) + at(way.r, o + 3, k) + at(way.r, o + 6, k)) / 3;
+        const span = whi[k] - wlo[k];
+        return span > 0 ? (v - wlo[k]) / span : 0;
+      });
+      const eps = 2e-3;
+      return way.boxes.some((b) => c.every((v, k) => v >= b[k] - eps && v <= b[k + 3] + eps));
+    };
     for (let f = 0; f < n; f++) {
       const onPlate = z[f] <= zmin + tol && angles[f] >= 175;
-      if (angles[f] > 90 + shade.deg && !onPlate) out.push(f);
+      if (angles[f] > 90 + shade.deg && !onPlate && !bridged(f)) out.push(f);
     }
   } else {
     for (let f = 0; f < n; f++) if (angles[f] > 80 && angles[f] < 100 && Math.abs(90 - angles[f]) < shade.deg) out.push(f);
@@ -264,8 +296,11 @@ export interface Candidate {
   height_mm: number;
   footprint_mm: [number, number];
   on_plate_area_mm2: number;
-  /** volume_cm3: the space under those faces down to the part or plate (an estimate). */
-  support: Record<string, { faces: number; area_mm2: number; volume_cm3?: number }>;
+  /**
+   * volume_cm3: the space under those faces down to the part or plate (an estimate).
+   * FDM only: flat spans between walls that print as bridges (not counted above).
+   */
+  support: Record<string, { faces: number; area_mm2: number; volume_cm3?: number; bridges?: number; bridged_area_mm2?: number; longest_bridge_mm?: number; bridge_boxes?: number[][] }>;
   draft: Record<string, { faces: number; area_mm2: number }>;
   downward_area_mm2: number;
   downward_share_pct: number | null;
@@ -365,13 +400,21 @@ export function candidateFacts(c: Candidate, process: string | null, rules: Rule
   if (r?.overhang_deg != null && process) {
     const s = c.support[process];
     const vol = s.volume_cm3 != null && s.faces ? `, about ${trimNum(s.volume_cm3, s.volume_cm3 >= 10 ? 0 : 1)} cm³ under it (estimate)` : "";
-    return { main: s.faces ? `Support on ${area(s.area_mm2)}${vol}` : "No support needed", sub: shape };
+    return { main: (s.faces ? `Support on ${area(s.area_mm2)}${vol}` : "No support needed") + bridgeWords(s), sub: shape };
   }
   if (r?.draft_deg != null && process) {
     const d = c.draft[process];
     return { main: d.faces ? `${area(d.area_mm2)} of wall without ${trimNum(r.draft_deg, 0)}° draft` : "Every wall has its draft", sub: `Tool opens along the file's ${axisWord(c.up_in_file)}` };
   }
   return { main: shape, sub: "" };
+}
+
+/** "; a flat span bridges 20 mm" / "; 3 flat spans bridge, up to 60 mm" (FDM), or "". */
+export function bridgeWords(s: { bridges?: number; longest_bridge_mm?: number } | undefined): string {
+  const n = s?.bridges ?? 0;
+  if (!n) return "";
+  const len = mm(s?.longest_bridge_mm ?? 0);
+  return n === 1 ? `; a flat span bridges ${len}` : `; ${n} flat spans bridge, up to ${len}`;
 }
 
 /** The file direction that points up: "+Z", "−Y", or the tilted direction. */

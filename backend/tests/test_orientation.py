@@ -28,6 +28,7 @@ from src.analysis.models import ProcessType
 from src.analysis.orientation import (
     DRAFT_MIN_DEG,
     OVERHANG_LIMIT_DEG,
+    PLACED_UP_KEY,
     Orientation,
     OrientationError,
     orientation_options,
@@ -89,7 +90,8 @@ def test_quarter_turns_are_exact_and_reach_all_24_orientations():
         assert placed.area == pytest.approx(mesh.area, rel=1e-12)
         # Turning back is the file's own coordinates, bit for bit.
         assert np.array_equal(o.unapply(placed).vertices, mesh.vertices)
-        assert mesh.metadata == placed.metadata
+        # The copy also remembers which file direction points up (findings name it).
+        assert placed.metadata == {**mesh.metadata, PLACED_UP_KEY: [float(c) for c in o.up]}
     assert len(seen) == 24
 
 

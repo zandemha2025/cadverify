@@ -25,8 +25,9 @@ class FDMAnalyzer:
         i: list[Issue] = []
         i.extend(check_wall_thickness(ctx, 0.8, self.process,
                  cite="2x nozzle diameter (0.4mm). Stratasys DFM §3."))
+        # Flat spans between walls print as bridges (PrusaSlicer's default).
         i.extend(check_overhangs(ctx, 45.0, self.process,
-                 cite="ISO/ASTM 52910:2018 §5.3."))
+                 cite="ISO/ASTM 52910:2018 §5.3.", bridges=True))
         i.extend(check_small_features(ctx, 0.4, self.process,
                  cite="Nozzle diameter. Stratasys DFM §3.2."))
         i.extend(check_build_volume(ctx, (300, 300, 350), self.process,

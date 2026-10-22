@@ -148,11 +148,16 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
   const rules = opts?.rules ?? null;
 
   // The 3D view colours what the check's rule marks for the selected method.
+  // FDM bridges flat spans between walls: the engine says where, per way, and those stay uncoloured.
   const shade = shadeFor(process, rules);
-  const shadeKey = shade ? `${shade.kind}${shade.deg}` : "";
+  const bridges = React.useMemo(
+    () => (process === "fdm" && opts ? opts.candidates.filter((c) => c.support.fdm?.bridge_boxes?.length).map((c) => ({ r: candidateMat(c), boxes: c.support.fdm.bridge_boxes! })) : []),
+    [process, opts],
+  );
+  const shadeKey = shade ? `${shade.kind}${shade.deg}|${bridges.map((b) => `${b.r.join(",")}:${b.boxes.length}`).join(";")}` : "";
   React.useEffect(() => {
     if (!st) return;
-    patchOrient({ shade: shade ? { ...shade, color: shade.kind === "overhang" ? KIND_COLOR.support : KIND_COLOR.draft } : null });
+    patchOrient({ shade: shade ? { ...shade, bridges, color: shade.kind === "overhang" ? KIND_COLOR.support : KIND_COLOR.draft } : null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!st, shadeKey]);
 
@@ -231,6 +236,7 @@ export function OrientPanel({ recheck, canRecheck }: { recheck: (orientation: st
             <>
               <i className="or-sw" style={{ background: shade.kind === "overhang" ? KIND_COLOR.support : KIND_COLOR.draft }} aria-hidden="true" />
               {shade.kind === "overhang" ? `Coloured: faces needing support (overhang past ${trimNum(shade.deg, 0)}°).` : `Coloured: walls with less than ${trimNum(shade.deg, 0)}° of draft.`}
+              {shade.kind === "overhang" && process && here?.support[process]?.bridges ? " Flat spans between walls bridge and aren't coloured." : ""}
             </>
           ) : null}
         </p>

@@ -437,9 +437,9 @@ def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = No
     down, or the plate (the mesh's lowest point). ``volume_mm3`` is that solid
     envelope, an estimate of the space support fills, not the material a
     slicer prints (sparse, branched or tilted supports use a fraction of it).
-    Like the overhang rule it doesn't know bridging: a short horizontal span
-    between two walls prints without support but is counted here (a frame of
-    horizontal rods can read several times its own volume). With Embree every
+    It doesn't know bridging: a flat span between two walls is counted here
+    (FDM's own figures come from ``src.analysis.support.support_regions``,
+    which leaves bridges out, as FDM's check does). With Embree every
     marked face gets a ray; without it at most ``SUPPORT_RAY_CAP`` faces are
     cast, by a fixed stride, and their area-weighted mean drop stands for the
     rest (``sampled``). Deterministic for a given mesh and ray backend.
@@ -514,9 +514,13 @@ def _facet_info(mesh: trimesh.Trimesh) -> tuple[list[np.ndarray], np.ndarray]:
     return groups, means
 
 
+_BRIDGE_BOXES = 64
+
+
 def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total_area: float,
                extra: dict | None = None, facets: tuple[list[np.ndarray], np.ndarray] | None = None) -> dict:
     from src.analysis.processes.checks import cup_faces, draft_sidewalls, overhang_faces
+    from src.analysis.support import support_regions
 
     o = Orientation.of(R)
     placed = o.apply(mesh)
@@ -533,6 +537,21 @@ def _candidate(cid: str, basis: str, R: np.ndarray, mesh: trimesh.Trimesh, total
         support[proc] = {"faces": int(len(faces)), "area_mm2": round(float(areas[faces].sum()), 2)}
     for proc, est in support_estimate(placed, OVERHANG_LIMIT_DEG).items():
         support[proc]["volume_cm3"] = round(est["volume_mm3"] / 1000.0, 3)
+    # FDM bridges flat spans between walls, as its check does (check_overhangs(bridges=True)).
+    fdm = support_regions(placed, OVERHANG_LIMIT_DEG["fdm"], measures=m, keep_regions=True)
+    span = np.where(ext > 0, ext, 1.0)
+    boxes = []
+    for reg in fdm.regions:
+        if reg.bridge and len(boxes) < _BRIDGE_BOXES:
+            c = centroids[reg.faces]
+            boxes.append([round(float(v), 5) for v in np.concatenate([(c.min(axis=0) - lo) / span, (c.max(axis=0) - lo) / span])])
+    support["fdm"] = {"faces": int(fdm.faces), "area_mm2": round(fdm.area_mm2, 2),
+                      "volume_cm3": round(fdm.column_mm3 / 1000.0, 3),
+                      "bridges": int(fdm.bridges), "bridged_area_mm2": round(fdm.bridge_area_mm2, 2),
+                      "longest_bridge_mm": round(fdm.longest_bridge_mm, 1),
+                      # Where the bridged faces' centres lie, as fractions of the placed box
+                      # [x0, y0, z0, x1, y1, z1]: the 3D view leaves them uncoloured.
+                      "bridge_boxes": boxes}
     sidewalls, draft = draft_sidewalls(angles)
     drafts = {}
     for proc, need in DRAFT_MIN_DEG.items():
@@ -693,8 +712,8 @@ def orientation_options(mesh: trimesh.Trimesh, *, down: list[float] | None = Non
         "limits": [
             "Prices don't yet include support material or print height, so they're the same in every orientation.",
             "Support volume is an estimate: the space under the faces needing support, down to the part or the "
-            "plate. Printed supports fill a fraction of it, and short spans that bridge without support are "
-            "still counted.",
+            "plate. Printed supports fill a fraction of it. For FDM, a flat span between walls prints as a "
+            "bridge and isn't counted; resin and metal printers support it.",
             "Layers are counted at a typical layer for each process, not your machine's setting. Undercuts "
             "depend on the opening direction too; a re-check in that orientation finds them.",
         ],
