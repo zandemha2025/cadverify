@@ -239,3 +239,17 @@ test("a stopped run says when and why it stopped, and a run stopped before reaso
   // An acronym keeps its case.
   assert.equal(stopWhy("09:10", "ZIP entries were unreadable"), "The run stopped at 09:10: ZIP entries were unreadable.");
 });
+
+
+test("no time left until the server has measured the run's pace, and a long one settles to the half hour (op-26)", async () => {
+  const { leftWords } = await import("./batch-model.ts");
+  const now = new Date("2026-10-22T19:11:55Z").getTime();
+  // 19:11:55: three parts had landed together. The server is still measuring: no guess from the start time.
+  const measuring = P({ total_items: 298, completed_items: 31, failed_items: 0, pending_items: 267, started_at: "2026-10-22T15:56:48Z", pace_per_hour: null, eta_seconds: null, pace_state: "measuring" });
+  assert.equal(etaText(measuring, now, ["part", "parts"]), "Time left after 10 parts or 10 minutes");
+  assert.equal(etaText(P({ pace_per_hour: null, eta_seconds: null, pace_state: "stalled" }), now, ["part", "parts"]), "No part finished in the last 30 minutes");
+  // A server that gives the pace fields says when there is none: never the old guess from the start time.
+  assert.equal(etaText(P({ pace_per_hour: null, eta_seconds: null }), now), "");
+  // Long runs read to the half hour, so a steady run's estimate doesn't flicker by ten minutes.
+  assert.deepEqual([leftWords(3 * 3600 + 14 * 60), leftWords(3 * 3600 + 16 * 60), leftWords(8.8 * 3600), leftWords(2 * 3600 + 14 * 60)], ["~3 h", "~3 h 30 min", "~9 h", "~2 h 10 min"]);
+});

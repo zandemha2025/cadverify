@@ -718,8 +718,9 @@ async def get_batch_progress(
     )
     pace_per_hour: float | None = None
     eta_seconds: int | None = None
+    pace_state: str | None = None
     if batch.status in ("pending", "processing") and pending_items > 0:
-        per_second = await measured_pace(session, batch.id)
+        per_second, pace_state = await measured_pace(session, batch)
         if per_second:
             pace_per_hour = round(per_second * 3600, 1)
             eta_seconds = int(round(pending_items / per_second))
@@ -742,45 +743,113 @@ async def get_batch_progress(
         # time left at that pace (None until a few parts have finished).
         "pace_per_hour": pace_per_hour,
         "eta_seconds": eta_seconds,
+        # "measuring" until 10 parts or 10 minutes have finished since the run
+        # (re)started, "stalled" with nothing done in the last 30 minutes (op-26).
+        "pace_state": pace_state,
         # A catalog run's files counted as its page counts them (op-28).
         "run_counts": (await catalog_run_counts(session, [batch])).get(batch.id),
     }
 
 
 PACE_WINDOW_SECONDS = 30 * 60
-PACE_MIN_PARTS = 3
+# No estimate until this many parts, or this long, have finished since the run (re)started (op-26).
+PACE_MIN_PARTS = 10
+PACE_MIN_SECONDS = 10 * 60
+
+
+def _aware(t: Optional[datetime]) -> Optional[datetime]:
+    if t is None:
+        return None
+    return t if t.tzinfo is not None else t.replace(tzinfo=timezone.utc)
+
+
+def run_started_at(batch: Batch) -> Optional[datetime]:
+    """When the run last (re)started: its start, a "Check again" that reopened it, or a resume after a stall."""
+    manifest = batch.manifest_json or {}
+    resumes = manifest.get("resumes") if isinstance(manifest.get("resumes"), dict) else {}
+    out = _aware(batch.started_at)
+    for raw in (manifest.get("restarted_at"), resumes.get("at")):
+        try:
+            t = _aware(datetime.fromisoformat(raw)) if raw else None
+        except (TypeError, ValueError):
+            t = None
+        if t is not None and (out is None or t > out):
+            out = t
+    return out
+
+
+def pace_from(
+    finished: list[tuple[Optional[datetime], datetime]],
+    in_flight: list[datetime],
+    *,
+    since: datetime,
+    now: datetime,
+) -> tuple[Optional[float], str]:
+    """Parts a second, smoothed over the run's last 30 minutes, and what it is (op-26).
+
+    ``finished``: (worker started it, it finished) for each part done since the
+    run (re)started at ``since``; ``in_flight``: when a worker started each part
+    it has now. ``"measuring"`` (None) until PACE_MIN_PARTS parts or
+    PACE_MIN_SECONDS have finished since ``since``: the first parts say little
+    about the rest (three landing together once read as 180 an hour).
+
+    Then the pace is the work done in the window (from ``since``, or 30 minutes
+    ago when that's later) over its length: each part that finished in it, the
+    share in it of a part that started before it, and for each part in flight
+    the share of the run's typical time per part it has had. A steady run's
+    pace holds between landings instead of jumping at each one, and a run that
+    stalls slows its own pace; with nothing done in the window, ``"stalled"``.
+    """
+    since, now = _aware(since), _aware(now)
+    done = [(_aware(s), _aware(e)) for s, e in finished if e is not None and _aware(e) >= since]
+    if not done or (len(done) < PACE_MIN_PARTS and (now - since).total_seconds() < PACE_MIN_SECONDS):
+        return None, "measuring"
+    window = max(since, now - timedelta(seconds=PACE_WINDOW_SECONDS))
+    # The run's typical time per part: the mean, which moves a little with each part (a median jumps
+    # between a run's fast and slow parts and moves the estimate with it).
+    took = [(e - s).total_seconds() for s, e in done if s is not None and e > s]
+    typical = sum(took) / len(took) if took else None
+    work = 0.0
+    for s, e in done:
+        if e < window:
+            continue
+        if s is None or s >= window:
+            work += 1.0
+        else:
+            work += (e - window).total_seconds() / max(1.0, (e - s).total_seconds())
+    if typical:
+        for s in in_flight:
+            s = _aware(s)
+            if s is not None and s < now:
+                work += min(1.0, (now - max(s, window)).total_seconds() / typical)
+    span = (now - window).total_seconds()
+    if work <= 0 or span <= 0:
+        return None, "stalled"
+    return work / span, "measured"
 
 
 async def measured_pace(
     session: AsyncSession,
-    batch_id: int,
+    batch: Batch,
     now: Optional[datetime] = None,
-) -> Optional[float]:
-    """Parts finished per second, measured over the run's last 30 minutes.
-
-    The parts that finished (checked or failed) in the window over the time
-    since the first of them, so a run that has stalled slows its own pace as
-    time passes. None until PACE_MIN_PARTS have finished in the window: the
-    first parts say little about the rest. A run checked again counts only
-    its parts' new finishes (older ones fall out of the window).
-    """
+) -> tuple[Optional[float], str]:
+    """The run's pace now (``pace_from``) from its own parts' start and finish times."""
     now = now or datetime.now(timezone.utc)
+    since = run_started_at(batch) or now
     rows = (
         await session.execute(
-            select(BatchItem.completed_at).where(
-                BatchItem.batch_id == batch_id,
-                BatchItem.status.in_(["completed", "failed"]),
-                BatchItem.completed_at >= now - timedelta(seconds=PACE_WINDOW_SECONDS),
+            select(BatchItem.status, BatchItem.started_at, BatchItem.completed_at).where(
+                BatchItem.batch_id == batch.id,
+                or_(
+                    and_(BatchItem.status.in_(["completed", "failed"]), BatchItem.completed_at >= since),
+                    BatchItem.status == "processing",
+                ),
             )
         )
-    ).scalars().all()
-    if len(rows) < PACE_MIN_PARTS:
-        return None
-    first = min(rows)
-    if first.tzinfo is None:
-        first = first.replace(tzinfo=timezone.utc)
-    span = max(60.0, (now - first).total_seconds())
-    return len(rows) / span
+    ).all()
+    finished = [(r.started_at, r.completed_at) for r in rows if r.status != "processing" and r.completed_at]
+    in_flight = [r.started_at for r in rows if r.status == "processing" and r.started_at]
+    return pace_from(finished, in_flight, since=since, now=now)
 
 
 async def catalog_run_counts(session: AsyncSession, batches: list[Batch]) -> dict[int, dict]:

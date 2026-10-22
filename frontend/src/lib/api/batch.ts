@@ -76,6 +76,8 @@ export interface BatchProgress {
   pace_per_hour?: number | null;
   /** Time left at that pace, in seconds. */
   eta_seconds?: number | null;
+  /** "measuring" until 10 parts or 10 minutes have finished since the run (re)started; "stalled" with none in 30 minutes. */
+  pace_state?: "measuring" | "stalled" | "measured" | null;
   /** A catalog run's files counted as its page counts them (op-28). */
   run_counts?: import("@/components/v4/many/batch-model").RunCountsWire | null;
 }

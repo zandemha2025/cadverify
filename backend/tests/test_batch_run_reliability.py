@@ -550,6 +550,9 @@ async def test_check_all_again_on_a_stopped_run_puts_its_parts_back_and_it_finis
     assert state["status"] == "processing"
     assert "failure" not in state["manifest_json"] and "failure_reason" not in state["manifest_json"]
     assert "resumes" not in state["manifest_json"]
+    # Its pace is measured again from the re-check, not from its first start (op-26).
+    restarted = datetime.fromisoformat(state["manifest_json"]["restarted_at"])
+    assert abs((datetime.now(timezone.utc) - restarted).total_seconds()) < 60
     assert [i["status"] for i in state["items"]] == ["completed", "completed", "pending", "pending", "pending"]
     assert all(i["error_message"] is None and i["attempt_count"] == 0 for i in state["items"][2:])
     assert [j[0] for j in api["pool"].queue] == ["run_batch_coordinator"]
@@ -732,10 +735,13 @@ async def test_progress_carries_the_measured_pace_and_the_time_left(run_world):
     from src.services import batch_service
 
     ulid = await run_world["make_run"](10)
-    # Four parts finished over the last 8 minutes (2 s, 2, 5 and 8 min ago): 4 in 8 min = 30 an hour.
+    # Started 12 minutes ago (past the 10 minutes before any estimate, op-26); four parts of 2 minutes
+    # each finished 8, 5, 2 and 0.03 minutes ago: 4 parts in 12 minutes = 20 an hour.
     async with eng.get_session_factory()() as s, s.begin():
+        await s.execute(text("UPDATE batches SET started_at = now() - interval '12 minutes' WHERE ulid = :u"), {"u": ulid})
         await s.execute(text(
-            "UPDATE batch_items SET status = 'completed', completed_at = now() - (interval '1 minute' * m.mins) "
+            "UPDATE batch_items SET status = 'completed', completed_at = now() - (interval '1 minute' * m.mins), "
+            "started_at = now() - (interval '1 minute' * (m.mins + 2)) "
             "FROM (SELECT bi.id, (ARRAY[8, 5, 2, 0.03])[row_number() OVER (ORDER BY bi.id)] AS mins "
             "      FROM batch_items bi JOIN batches b ON b.id = bi.batch_id WHERE b.ulid = :u ORDER BY bi.id LIMIT 4) m "
             "WHERE batch_items.id = m.id"), {"u": ulid})
@@ -743,8 +749,9 @@ async def test_progress_carries_the_measured_pace_and_the_time_left(run_world):
     async with eng.get_session_factory()() as s:
         p = await batch_service.get_batch_progress(s, ulid, run_world["uid"])
     assert p["completed_items"] == 4 and p["pending_items"] == 6
-    assert p["pace_per_hour"] == pytest.approx(30, rel=0.05)
-    assert p["eta_seconds"] == pytest.approx(6 / 30 * 3600, rel=0.05)
+    assert p["pace_state"] == "measured"
+    assert p["pace_per_hour"] == pytest.approx(20, rel=0.05)
+    assert p["eta_seconds"] == pytest.approx(6 / 20 * 3600, rel=0.05)
 
 
 @pytest.mark.asyncio
@@ -757,6 +764,7 @@ async def test_no_time_left_until_the_pace_is_measured(run_world):
     async with eng.get_session_factory()() as s:
         p = await batch_service.get_batch_progress(s, ulid, run_world["uid"])
     assert p["pace_per_hour"] is None and p["eta_seconds"] is None
+    assert p["pace_state"] == "measuring"
 
 
 # ---------------------------------------------------------------------------

@@ -65,21 +65,29 @@ export function doneFraction(p: BatchProgress): number {
 }
 
 /**
- * "~40 s left" / "~3 min left" from the rate so far, or "" when it can't be said.
+ * "~6 h 30 min left at 45 parts an hour" from the server's measured pace, or
+ * why there's no estimate yet, or "" when it can't be said.
  *
- * Said only when it can be trusted: after a few items and a tenth of the run,
- * and not for the last items in flight (the slowest parts finish last, so the
- * rate so far says nothing about them: "Last 3 items" instead). Minutes round up.
+ * The server measures the pace (op-26): nothing until 10 parts or 10 minutes
+ * have finished since the run (re)started ("Time left after 10 parts or 10
+ * minutes"), then the work done over the last 30 minutes. Not for the last
+ * items in flight (the slowest parts finish last: "Last 3 items" instead). An
+ * older server without the pace fields falls back to the rate since the start.
  */
 export function etaText(p: BatchProgress, now: number = Date.now(), noun: [string, string] = ["item", "items"]): string {
   if (TERMINAL.has(p.status)) return "";
   const done = p.completed_items + p.failed_items + p.skipped_items;
   const left = p.total_items - done;
-  if (!done || left <= 0) return "";
+  if (left <= 0) return "";
   const inFlight = Math.max(1, p.concurrency_limit || 1);
-  if (left <= inFlight && p.total_items > inFlight) return `Last ${left} ${left === 1 ? noun[0] : noun[1]}`;
-  // The server's pace: the run's own parts finished over its last half hour.
+  if (done && left <= inFlight && p.total_items > inFlight) return `Last ${left} ${left === 1 ? noun[0] : noun[1]}`;
+  // The server's pace: the work the run's own parts did over its last half hour.
   if (p.pace_per_hour && p.eta_seconds != null && p.eta_seconds > 0) return `${leftWords(p.eta_seconds)} left at ${paceWords(p.pace_per_hour, noun)}`;
+  if (p.pace_state === "measuring") return `Time left after 10 ${noun[1]} or 10 minutes`;
+  if (p.pace_state === "stalled") return `No ${noun[0]} finished in the last 30 minutes`;
+  // The server gives the pace and has none: never a guess from the start time (a re-check's start is hours old).
+  if (p.pace_per_hour !== undefined) return "";
+  if (!done) return "";
   const started = p.started_at ? new Date(p.started_at).getTime() : NaN;
   if (!Number.isFinite(started)) return "";
   if (done < 3 || done / Math.max(1, p.total_items) < 0.1) return "";
@@ -90,12 +98,13 @@ export function etaText(p: BatchProgress, now: number = Date.now(), noun: [strin
   return sec < 90 ? `~${sec} s left` : sec < 5400 ? `~${Math.ceil(sec / 60)} min left` : `~${Math.ceil(sec / 3600)} h left`;
 }
 
-/** "~40 s", "~43 min", "~6 h", "~6 h 30 min" (minutes round up; hours to the next 10 minutes). */
+/** "~40 s", "~43 min", "~2 h 10 min", "~6 h 30 min" (minutes round up; under 3 h to 10 minutes, then to the half hour). */
 export function leftWords(sec: number): string {
   if (sec < 90) return `~${Math.max(1, Math.round(sec))} s`;
   if (sec < 5400) return `~${Math.ceil(sec / 60)} min`;
+  const step = sec < 3 * 3600 ? 10 : 30;
   let h = Math.floor(sec / 3600);
-  let m = Math.round((sec - h * 3600) / 600) * 10;
+  let m = Math.round((sec - h * 3600) / (step * 60)) * step;
   if (m === 60) {
     h += 1;
     m = 0;

@@ -990,6 +990,8 @@ async def recheck_catalog_parts(
         batch.completed_at = None
         manifest = {k: v for k, v in (batch.manifest_json or {}).items()
                     if k not in ("failure", "failure_reason", "resumes")}
+        # The run's pace is measured again from here (op-26), not from its first start.
+        manifest["restarted_at"] = datetime.now(timezone.utc).isoformat()
         batch.manifest_json = manifest
         batch_service.touch_batch_heartbeat(batch)
     await session.flush()
