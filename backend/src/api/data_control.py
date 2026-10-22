@@ -181,6 +181,9 @@ async def delete_current_org(
     ``keep_plan``; other members' plans are theirs. Accounts and billing
     records stay.
     """
+    # Deleting an organization belongs to a signed-in admin, never to an API
+    # key (even an admin's read-and-write key), like deleting an account.
+    _browser_session(user, "an organization")
     org_id = _org_admin(ctx)
     if user.org_id is not None and user.org_id != org_id:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -193,13 +196,14 @@ async def delete_current_org(
     return await _fresh_receipt(session, receipt.ulid)
 
 
-def _browser_session(user: AuthedUser) -> None:
-    # Deleting an account belongs to the signed-in person, never to an API key.
+def _browser_session(user: AuthedUser, what: str = "your account") -> None:
+    # Deleting an account or an organization belongs to the signed-in person,
+    # never to an API key.
     if user.key_prefix != "session":
         raise HTTPException(
             status_code=403,
             detail={"code": "browser_session_required",
-                    "message": "Delete your account from the ScaleCAD web app, signed in."},
+                    "message": f"Delete {what} from the ScaleCAD web app, signed in."},
         )
 
 

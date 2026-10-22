@@ -24,7 +24,7 @@ from ulid import ULID
 
 from src.auth.org_context import org_is_personal
 from src.config.public_urls import error_doc_url
-from src.auth.sso_org import SSO_ORG_ENV, sso_org_id
+from src.auth.sso_org import sso_org_id
 from src.db.models import Membership, SamlGroupMapping, User
 from src.services.org_service import ORG_ROLE_RANK, VALID_ORG_ROLES
 
@@ -162,10 +162,12 @@ async def create_saml_group_mapping(
             status_code=403,
             detail={
                 "code": "sso_org_required",
+                # Plain words for the admin: no setting names. Single sign-on
+                # is set up per organization by ScaleCAD support.
                 "message": (
-                    "Group mappings can be set up only in the organization that "
-                    "owns this deployment's single sign-on identity provider "
-                    f"({SSO_ORG_ENV}), never in a personal organization."
+                    "Single sign-on isn't set up for this organization, so its "
+                    "groups can't be mapped to roles yet. ScaleCAD support sets "
+                    "it up for your organization: email nazeem@scalecad.ai."
                 ),
                 "doc_url": error_doc_url("sso_org_required"),
             },

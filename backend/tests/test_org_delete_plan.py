@@ -110,3 +110,25 @@ async def test_a_stripe_failure_deletes_nothing_and_keep_plan_skips_the_cancel(s
     finally:
         await _drop_billing(w)
         await _cleanup(w)
+
+
+async def test_an_api_key_cant_delete_the_organization(stores):
+    from httpx import ASGITransport, AsyncClient
+
+    from src.auth.require_api_key import AuthedUser, require_api_key
+
+    w = await _world(stores)
+    app = _app()
+    try:
+        # Even the admin's own read-and-write key: deleting needs the signed-in person.
+        app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+            user_id=w.users["admin"], api_key_id=7, key_prefix="AbCd1234", role="analyst", org_id=w.orgs["A"]
+        )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            r = await client.post("/api/v1/orgs/current/delete", json={"confirm_name": f"Acme A {w.tag}"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "browser_session_required"
+        assert r.json()["detail"]["message"] == "Delete an organization from the ScaleCAD web app, signed in."
+        assert await _count("SELECT count(*) FROM organizations WHERE id=:o", o=w.orgs["A"]) == 1
+    finally:
+        await _cleanup(w)

@@ -335,6 +335,10 @@ async def test_mapping_creation_is_limited_to_the_idp_owner(monkeypatch, _pg_eng
                 await _create(org_id)
             assert exc.value.status_code == 403
             assert exc.value.detail["code"] == "sso_org_required"
+            # it-02/it-03: plain words, no setting names, and who sets it up.
+            message = exc.value.detail["message"]
+            assert "SSO_ORG_ID" not in message and "(" not in message
+            assert "ScaleCAD support sets it up for your organization: email nazeem@scalecad.ai." in message
 
         # A personal org is refused even when named as the IdP owner.
         monkeypatch.setenv("SSO_ORG_ID", personal)

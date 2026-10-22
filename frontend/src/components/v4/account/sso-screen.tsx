@@ -3,8 +3,10 @@
 /**
  * Single sign-on (board A6): SAML group → org role mappings (add, delete with
  * confirm; admins only) and the read-only endpoints an admin hands their
- * identity provider, with live status and Copy on each. Base SAML/OIDC/SCIM
- * enablement is per deployment, not a setting here.
+ * identity provider, with live status and Copy on each. Single sign-on and
+ * directory sync are switched on for an organization by ScaleCAD support (not
+ * self-serve); the page says so and how to ask. Endpoints use the deployment's
+ * public API address, never an internal or loopback one.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -14,6 +16,11 @@ import { R } from "../routes";
 import { AccountFrame, AccountHead, AdminsOnly, Banner, Confirm, CopyButton } from "./frame";
 import * as api from "./api";
 import { roleName, signIn, type OrgRole } from "./derive";
+import { SUPPORT_MAILTO } from "../moments/landing";
+
+/** The support address the app already uses for sign-in help. */
+const SUPPORT_EMAIL = SUPPORT_MAILTO.replace(/^mailto:/, "").split("?")[0];
+const SSO_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("ScaleCAD single sign-on")}`;
 
 type State = SsoStatus["saml"]["state"];
 
@@ -109,7 +116,7 @@ export function SsoScreen({ sso, authMode, magicLink }: { sso: SsoStatus; authMo
     { k: "slog", label: "SAML login", url: sso.urls.samlLogin, group: "saml" },
     { k: "olog", label: "OIDC login", url: sso.urls.oidcLogin, group: "oidc", hint: sso.oidc.state === "reachable" ? undefined : "Works after OIDC is turned on." },
     { k: "ocb", label: "OIDC callback", url: sso.urls.oidcCallback, group: "oidc", hint: sso.oidc.state === "reachable" ? undefined : "Register it with your provider first." },
-    { k: "scim", label: "SCIM base URL", url: sso.urls.scimBase, group: "scim", hint: "Needs an org-scoped admin API key, issued at deploy time." },
+    { k: "scim", label: "SCIM base URL", url: sso.urls.scimBase, group: "scim", hint: "Once ScaleCAD support turns directory sync on for your organization, it authenticates with a read-and-write API key an org admin makes in API and keys." },
   ];
   const row = (u: (typeof urls)[number]) => (
     <div className="a-url" key={u.k}>
@@ -128,12 +135,23 @@ export function SsoScreen({ sso, authMode, magicLink }: { sso: SsoStatus; authMo
         meta={[
           <span key="s">SAML <b>{saml.label}</b></span>,
           <span key="o">OIDC <b>{oidc.label}</b></span>,
-          <span key="d">Directory sync <b>Admin key needed</b></span>,
+          <span key="d">Directory sync <b>Set up with ScaleCAD support</b></span>,
           ...(admin ? [<span key="g">Group mappings <b className="num">{n ?? "—"}</b></span>] : []),
           <span key="a">Admins only</span>,
         ]}
       />
       <Content>
+        <section className="panel" aria-label="Turning on single sign-on">
+          <div className="ph">
+            <h2>Turning on single sign-on</h2>
+            <span>Set up with ScaleCAD support</span>
+          </div>
+          <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 13.5, color: "var(--ink2)" }}>
+            Single sign-on (SAML or OIDC) and directory sync (SCIM) are set up with ScaleCAD support for your organization: email{" "}
+            <a href={SSO_MAILTO}>{SUPPORT_EMAIL}</a> with your identity provider&apos;s metadata URL (SAML) or issuer (OIDC), and the groups you want mapped to roles.
+            There is no self-serve setup. Until it&apos;s on, people sign in with {si.passwordOn && si.linkOn ? "a password or an email link" : si.passwordOn ? "a password" : si.linkOn ? "an email link" : "the sign-in this deployment allows"}, and removing someone is done in Organization.
+          </p>
+        </section>
         {orgErr ? (
           <Banner title="Couldn’t load your organization." actions={<button className="btn sm" type="button" onClick={() => void load()}>Try again</button>}>
             {orgErr}
@@ -241,16 +259,19 @@ export function SsoScreen({ sso, authMode, magicLink }: { sso: SsoStatus; authMo
         <section className="panel" aria-label="Endpoints for your identity provider">
           <div className="ph">
             <h2>Endpoints for your identity provider</h2>
-            <span>Set per deployment · read only</span>
+            <span>{sso.publicOrigin ? sso.publicOrigin : "No public address yet"} · read only</span>
           </div>
+          {sso.publicOrigin ? null : (
+            <p style={{ margin: 0, padding: "0 16px 10px", fontSize: 13.5, color: "var(--ink2)" }}>
+              This deployment has no public API address yet, so these are paths only. ScaleCAD support sends the full addresses when single sign-on is set up.
+            </p>
+          )}
           <div className="a-sth">
             SAML <Chip tone={saml.tone}>{saml.label}</Chip>
-            {sso.saml.httpStatus != null ? <span className="a-mono">HTTP {sso.saml.httpStatus}</span> : null}
           </div>
           {urls.filter((u) => u.group === "saml").map(row)}
           <div className="a-sth" style={{ borderTop: "1px solid var(--rule)", marginTop: 4 }}>
             OIDC <Chip tone={oidc.tone}>{oidc.label}</Chip>
-            {sso.oidc.httpStatus != null ? <span className="a-mono">HTTP {sso.oidc.httpStatus}</span> : null}
           </div>
           {urls.filter((u) => u.group === "oidc").map(row)}
           <div className="a-sth" style={{ borderTop: "1px solid var(--rule)", marginTop: 4 }}>
@@ -297,8 +318,10 @@ export function SsoScreen({ sso, authMode, magicLink }: { sso: SsoStatus; authMo
           <div className="a-step">
             <i>2</i>
             <span>
-              <b>Turned on for your deployment</b>
-              <span>Status reads Reachable.</span>
+              <b>Turned on by ScaleCAD support</b>
+              <span>
+                Email <a href={SSO_MAILTO}>{SUPPORT_EMAIL}</a>. Status then reads Reachable.
+              </span>
             </span>
           </div>
           <div className="a-step">
