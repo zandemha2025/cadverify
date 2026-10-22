@@ -14,7 +14,9 @@ there, or delete the organization, first). Otherwise, in one transaction:
   checks, records) belongs to that organization and stays, attributed to the
   deleted account;
 * sign-in ends everywhere: the account is deactivated and its session version
-  bumped (every cookie and key refused), its SSO and SCIM bindings removed;
+  bumped (every cookie and key refused), its SSO and SCIM bindings removed, and
+  its two-step sign-in deleted (the sealed authenticator secret and the
+  recovery-code hashes);
 * the person is redacted from the audit trail: rows they made lose their email,
   network address and browser; their email is replaced wherever a row names it;
 * the free-check and catalog ledgers are deleted after their counts are kept
@@ -342,6 +344,18 @@ def _merge_steps(groups: list[list[dict]]) -> list[dict]:
     return out + orphans
 
 
+async def _remove_two_step(session: AsyncSession, user_id: int) -> bool:
+    """Delete the person's two-step sign-in: the sealed authenticator secret and
+    the recovery-code hashes. True when they had set it up (or started to)."""
+    await session.execute(
+        text("DELETE FROM user_two_step_recovery_codes WHERE user_id = :u"), {"u": int(user_id)}
+    )
+    gone = await session.execute(
+        text("DELETE FROM user_two_step WHERE user_id = :u RETURNING user_id"), {"u": int(user_id)}
+    )
+    return gone.first() is not None
+
+
 async def delete_account(
     session: AsyncSession,
     *,
@@ -440,6 +454,7 @@ async def delete_account(
         ),
         "sign_in_links_removed": await run(delete(AuthIdentity).where(AuthIdentity.user_id == user_id))
         + await run(delete(ScimIdentity).where(ScimIdentity.user_id == user_id)),
+        "two_step_removed": await _remove_two_step(session, user_id),
         "notification_reads_removed": await run(delete(NotificationRead).where(NotificationRead.user_id == user_id)),
         "free_check_records_removed": await run(delete(TrialCheck).where(TrialCheck.user_id == user_id))
         + await run(delete(CatalogPart).where(CatalogPart.user_id == user_id)),

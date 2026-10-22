@@ -107,6 +107,12 @@ async def _world(root) -> World:
                      resource_type="pilot_request", resource_id=f"pr-{w.tag}", ip_address="192.0.2.8",
                      user_agent="Mozilla/5.0 form", detail_json={"company": "Mia Co", "what": "brackets"}),
         ])
+        # Two-step sign-in on: a sealed authenticator secret and recovery-code hashes.
+        await s.execute(text("INSERT INTO user_two_step (user_id, secret_sealed, enabled_at) "
+                             "VALUES (:u, 'fernet:v1:sealed-secret', now())"), {"u": me})
+        for n in range(3):
+            await s.execute(text("INSERT INTO user_two_step_recovery_codes (user_id, code_hash) VALUES (:u, :h)"),
+                            {"u": me, "h": f"hash-{w.tag}-{n}"})
         await s.commit()
     w.email = email
     w.mine, w.shop = mine, shop
@@ -205,8 +211,10 @@ async def test_deleting_an_account(stores, stripe):
         assert (row.full_name, row.phone, row.password_hash, row.google_sub, row.current_org_id) == (None,) * 5
         assert row.signup_metadata == {} and row.preferences == {}
         assert row.is_active is False and row.session_version == 1 and row.role == "viewer"
-        for table in ("memberships", "auth_identities", "scim_identities", "trial_checks", "catalog_parts"):
+        for table in ("memberships", "auth_identities", "scim_identities", "trial_checks", "catalog_parts",
+                      "user_two_step", "user_two_step_recovery_codes"):
             assert await _count(f"SELECT count(*) FROM {table} WHERE user_id=:u", u=me) == 0, table
+        assert receipt["removed"]["two_step_removed"] is True
         assert await _count("SELECT count(*) FROM api_keys WHERE user_id=:u AND revoked_at IS NULL", u=me) == 0
         assert await _count("SELECT count(*) FROM org_invites WHERE lower(email)=:e", e=w.email) == 0
         from src.auth.models import lookup_session_user
