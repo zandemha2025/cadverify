@@ -73,28 +73,63 @@ def _sample_surface(mesh: trimesh.Trimesh, count: int) -> tuple[np.ndarray, np.n
     return np.asarray(mesh.triangles_center[idx], dtype=float), idx
 
 
-def _proximity_target(mesh: trimesh.Trimesh, budget: int = 25_000) -> tuple[trimesh.Trimesh, np.ndarray]:
-    """Bound point-to-triangle memory while retaining a source-face locator map."""
-    if len(mesh.faces) <= budget:
-        return mesh, np.arange(len(mesh.faces), dtype=np.int64)
-    selected = np.linspace(0, len(mesh.faces) - 1, budget, dtype=np.int64)
-    triangles = np.asarray(mesh.triangles[selected], dtype=float)
-    proxy = trimesh.Trimesh(vertices=triangles.reshape(-1, 3), faces=np.arange(len(triangles) * 3).reshape(-1, 3), process=False)
-    return proxy, selected
+# Candidate triangles per sampled point in the first pass of ``_nearest_on``.
+_NEAREST_K = 8
+
+
+def _nearest_on(target: trimesh.Trimesh, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Exact closest point on ``target``'s triangles for each point: (closest, distance, face).
+
+    A k-d tree over triangle centres proposes the nearest few triangles; the
+    point-to-triangle distance to them is exact. A triangle left out has its
+    centre at least the k-th centre's distance away, so it can only be closer
+    when that distance minus its own radius (centre to farthest corner) is
+    under the best found: those points are checked again against every
+    triangle that close. Every face of the target counts (de-27: the 25,000
+    triangles sampled through trimesh's r-tree took 44 s a pass on a 247,114
+    triangle enclosure and could miss the tightest spot).
+    """
+    tri = np.asarray(target.triangles, dtype=np.float64)
+    n = len(tri)
+    centres = tri.mean(axis=1)
+    radius = np.sqrt(((tri - centres[:, None, :]) ** 2).sum(axis=2)).max(axis=1)
+    tree = cKDTree(centres)
+    k = min(_NEAREST_K, n)
+    centre_d, idx = tree.query(points, k=k)
+    if k == 1:
+        centre_d, idx = centre_d[:, None], idx[:, None]
+
+    def best_of(pts: np.ndarray, cand: np.ndarray):
+        flat = trimesh.triangles.closest_point(tri[cand.reshape(-1)], np.repeat(pts, cand.shape[1], axis=0))
+        dist = np.linalg.norm(flat - np.repeat(pts, cand.shape[1], axis=0), axis=1).reshape(cand.shape)
+        j = np.argmin(dist, axis=1)
+        rows = np.arange(len(pts))
+        return flat.reshape(cand.shape[0], cand.shape[1], 3)[rows, j], dist[rows, j], cand[rows, j]
+
+    closest, distance, faces = best_of(points, idx)
+    if n > k:
+        unsure = np.flatnonzero(distance > centre_d[:, -1] - radius.max())
+        for i in unsure:
+            near = np.asarray(tree.query_ball_point(points[i], float(distance[i] + radius.max())), dtype=np.int64)
+            near = near[np.linalg.norm(centres[near] - points[i], axis=1) - radius[near] < distance[i]]
+            if len(near):
+                c, d, f = best_of(points[i:i + 1], near[None, :])
+                if d[0] < distance[i]:
+                    closest[i], distance[i], faces[i] = c[0], d[0], f[0]
+    return closest, distance, faces
 
 
 def _closest(source: trimesh.Trimesh, target: trimesh.Trimesh, count: int):
     points, source_faces = _sample_surface(source, count)
-    proxy, target_map = _proximity_target(target)
     closest_chunks: list[np.ndarray] = []
     distance_chunks: list[np.ndarray] = []
     face_chunks: list[np.ndarray] = []
     try:
-        for start in range(0, len(points), 256):
-            near, distance, target_faces = trimesh.proximity.closest_point(proxy, points[start:start + 256])
+        for start in range(0, len(points), 4096):
+            near, distance, target_faces = _nearest_on(target, points[start:start + 4096])
             closest_chunks.append(np.asarray(near, dtype=float))
             distance_chunks.append(np.asarray(distance, dtype=float))
-            face_chunks.append(target_map[np.asarray(target_faces, dtype=np.int64)])
+            face_chunks.append(np.asarray(target_faces, dtype=np.int64))
     except MemoryError as exc:
         raise FitGeometryError("Surface clearance exceeded the bounded memory budget; reduce mesh tessellation and retry.") from exc
     closest = np.concatenate(closest_chunks)
@@ -106,9 +141,10 @@ def _closest(source: trimesh.Trimesh, target: trimesh.Trimesh, count: int):
     return points[valid], closest[valid], distance[valid], source_faces[valid], np.asarray(target_faces)[valid]
 
 
-def _tight_zone(a: trimesh.Trimesh, b: trimesh.Trimesh, minimum: float, count: int) -> dict[str, Any]:
-    a_points, b_near, a_dist, a_faces, b_faces = _closest(a, b, count)
-    b_points, a_near, b_dist, b_src_faces, a_dst_faces = _closest(b, a, count)
+def _tight_zone(a_side: tuple, b_side: tuple, minimum: float) -> dict[str, Any]:
+    """Where the pair is tightest, from the two sampled closest-point passes the gap came from."""
+    a_points, b_near, a_dist, a_faces, b_faces = a_side
+    b_points, a_near, b_dist, b_src_faces, a_dst_faces = b_side
     band = max(0.05, minimum * 0.10)
     a_mask = a_dist <= minimum + band
     b_mask = b_dist <= minimum + band
@@ -222,13 +258,15 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     collision_ms = (time.perf_counter() - collision_start) * 1000
     count = _sample_budget()
     clearance_start = time.perf_counter()
-    _, _, da, _, _ = _closest(mesh_a, mesh_b, count)
-    _, _, db, _, _ = _closest(mesh_b, mesh_a, count)
-    minimum = float(min(np.min(da), np.min(db)))
+    # One sampled closest-point pass each way serves the gap and the tight zone (de-27: the
+    # zone ran both passes again, the slowest part of a fit check, for the same answer).
+    a_side = _closest(mesh_a, mesh_b, count)
+    b_side = _closest(mesh_b, mesh_a, count)
+    minimum = float(min(np.min(a_side[2]), np.min(b_side[2])))
     # Interpenetrating solids have no positive clearance even though nearest
     # surface samples measure penetration-boundary separation.
     clearance = 0.0 if volume > 1e-9 else minimum
-    tight_zone = _tight_zone(mesh_a, mesh_b, minimum, count)
+    tight_zone = _tight_zone(a_side, b_side, minimum)
     clearance_ms = (time.perf_counter() - clearance_start) * 1000
     pair_ms = (time.perf_counter() - pair_start) * 1000
     limits = [
@@ -238,10 +276,10 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
         limits.append(
             "Collision uses the submitted shell with redundant triangles removed at the geometry kernel's native numerical tolerance; clearance and face locators retain the submitted meshes."
         )
-    if len(mesh_a.faces) > 25_000 or len(mesh_b.faces) > 25_000:
-        limits.append(
-            "The true tightest spot may be smaller than the closest measured gap; a 25,000-face proxy was sampled."
-        )
+    limits.append(
+        "The gap is measured from points sampled on each surface to the other's nearest triangle (every "
+        "triangle counts), so the true tightest spot may be a little smaller than the closest measured gap."
+    )
     return {
         "collision": {
             "intersects": bool(volume > 1e-9),
