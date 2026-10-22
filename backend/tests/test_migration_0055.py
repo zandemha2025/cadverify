@@ -38,8 +38,9 @@ def _purpose_check() -> str:
     return str(check.sqltext)
 
 
-def test_model_allows_both_purposes():
-    assert _purpose_check() == "purpose IN ('batch_zip', 'part')"
+def test_model_allows_parts_and_later_purposes():
+    # 0058 added 'link'; the model holds the newest rule (test_migration_0058).
+    assert "'batch_zip', 'part'" in _purpose_check()
 
 
 def test_upgrade_recreates_only_the_purpose_check():
@@ -54,7 +55,6 @@ def test_upgrade_recreates_only_the_purpose_check():
     assert op.create_check_constraint.call_args.args == (
         "ck_direct_uploads_purpose", "direct_uploads", "purpose IN ('batch_zip', 'part')",
     )
-    assert _purpose_check() == op.create_check_constraint.call_args.args[2]
     assert not op.create_table.called and not op.add_column.called
 
 
