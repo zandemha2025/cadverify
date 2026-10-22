@@ -440,3 +440,25 @@ def box_step_bytes() -> bytes:
             os.unlink(path)
         except FileNotFoundError:
             pass
+
+
+@pytest_asyncio.fixture
+async def _close_shared_db_pool():
+    """Close the app's shared database pool when an async test ends.
+
+    The pool belongs to the test's own event loop. A test that leaves it open
+    makes the next Postgres test reuse it from another loop and fail ("attached
+    to a different loop"), so every async test ends by disposing it, in its own
+    loop. A later test opens a fresh pool on demand.
+    """
+    yield
+    import src.db.engine as eng
+
+    if getattr(eng, "_ENGINE", None) is not None:
+        await eng.dispose_engine()
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        if item.get_closest_marker("asyncio") is not None and "_close_shared_db_pool" not in item.fixturenames:
+            item.fixturenames.append("_close_shared_db_pool")
