@@ -76,6 +76,10 @@ export type Mapping = {
   date_order: "mdy" | "dmy";
   process_map: Record<string, string>;
   test: boolean;
+  /** What the file's numbers are (op-18): what we paid a supplier, or what it cost us to make. A row's Kind wins. */
+  source?: "made" | "bought";
+  /** Why ScaleCAD guessed it ("it has a Vendor column"), until the person chooses. */
+  source_guess?: string | null;
 };
 
 export type PartPick = { key: string; file_name: string; label: string | null; record_id: string; checked_at: string | null; part_numbers: string[] };
@@ -120,7 +124,7 @@ export type Preview = {
   rows: PreviewRow[];
 };
 
-export type ImportResult = { imported: number; parts: number; test: number; rows: number; not_imported: { line: number | null; status?: string; reason: string }[] };
+export type ImportResult = { imported: number; parts: number; test: number; bought?: number; made?: number; rows: number; not_imported: { line: number | null; status?: string; reason: string }[] };
 
 function form(file: File, mapping: Mapping | null, choices: Record<string, string> | null): FormData {
   const f = new FormData();
@@ -183,6 +187,10 @@ export type Comparison = {
   /** true: cost not compared because the record predates the org's published rates */
   rates_excluded?: boolean;
   hour_lines?: HourLine[];
+  /** made: what it cost you to make; bought: what you paid a supplier (compared with ScaleCAD's outside price). */
+  kind?: "made" | "bought";
+  /** What the actual was compared with, in words ("ScaleCAD's outside price for 3-axis milling at a job shop, at 500"). */
+  compared_with?: string | null;
 };
 
 export type Stats = {
@@ -213,6 +221,10 @@ export type Summary = {
   rates_excluded?: number;
   /** The rate card versions the compared costs were priced at (0 = typical). */
   rates_priced?: number[];
+  /** What the figures above summarize: your own job costs against ScaleCAD's estimate. */
+  population?: string;
+  /** What you paid suppliers against ScaleCAD's outside price: never mixed into the figures above. */
+  bought?: { population: string; actuals: number; compared: number; not_compared: number; parts: number; enough: boolean; cost: Stats };
 };
 
 export type CalibrationEntry = {
@@ -247,7 +259,7 @@ export type FactorEntry = {
   after_hours?: boolean;
 };
 
-export type Proposal = { parts: number; min_parts: number; min_per_method: number; enough: boolean; processes: { process: string; hours: FactorEntry; cost: FactorEntry }[] };
+export type Proposal = { parts: number; min_parts: number; min_per_method: number; enough: boolean; processes: { process: string; hours: FactorEntry; cost: FactorEntry }[]; /** Supplier invoices, never fitted on. */ bought_excluded?: number };
 
 export type CalibrationState = { proposal: Proposal; history: CalibrationEntry[]; can_apply: boolean };
 

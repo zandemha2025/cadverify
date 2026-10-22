@@ -196,10 +196,21 @@
 
   <h2>Checked against your actuals</h2>
   {% set a = r.accuracy %}
+  {% set b = a.bought or {} %}
+  {% if b.actuals %}
+  <p><strong>What you paid suppliers</strong> against ScaleCAD's outside price at the same quantity:
+    {% if r.bought_shown and b.cost.n %}median difference {{ b.cost.median_abs_pct | round | int }}% on {{ b.parts }} parts, worst {{ b.cost.worst_pct | pct }}{% if b.cost.with_range %}; {{ b.cost.inside }} of {{ b.cost.with_range }} inside ScaleCAD's range{% endif %}.
+    {% else %}{{ b.actuals }} {{ 'invoice' if b.actuals == 1 else 'invoices' }} on {{ b.parts }} {{ 'part' if b.parts == 1 else 'parts' }} compared: not enough to say how close ScaleCAD's outside prices are ({{ a.min_parts }} parts or more give a fair picture).{% endif %}
+  </p>
+  {% endif %}
+  {% if not a.parts and b.actuals %}
+  <p><strong>What you made</strong>: no job of your own is logged yet, so how accurate ScaleCAD's in-house estimates are isn't known. Log a few made in-house to find out.</p>
+  {% endif %}
   {% if a.parts and not r.accuracy_shown %}
-  <p>{{ a.parts }} {{ 'part has' if a.parts == 1 else 'parts have' }} actuals: not enough to say how accurate ScaleCAD is for you ({{ a.min_parts }} or more give a fair picture), so no accuracy figure is given yet.</p>
+  <p><strong>What you made</strong>: {{ a.parts }} {{ 'part has' if a.parts == 1 else 'parts have' }} actuals: not enough to say how accurate ScaleCAD is for you ({{ a.min_parts }} or more give a fair picture), so no accuracy figure is given yet.</p>
   {% endif %}
   {% if a.parts and r.accuracy_shown %}
+  <p><strong>What you made</strong>: {{ a.population }}.</p>
   <p>
     {% if a.hours.n %}Machine hours: median error {{ a.hours.median_abs_pct | round | int }}% on {{ a.hours.parts }} {{ 'part' if a.hours.parts == 1 else 'parts' }}, worst {{ a.hours.worst_pct | pct }}{% if a.hours.with_range %}; {{ a.hours.inside }} of {{ a.hours.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}
     {% if a.cost.n %}Cost per part: median error {{ a.cost.median_abs_pct | round | int }}% on {{ a.cost.parts }} {{ 'part' if a.cost.parts == 1 else 'parts' }}, worst {{ a.cost.worst_pct | pct }}{% if a.cost.with_range %}; {{ a.cost.inside }} of {{ a.cost.with_range }} inside ScaleCAD's range{% endif %}.{% endif %}

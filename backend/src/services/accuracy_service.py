@@ -22,6 +22,17 @@ for that part, method and quantity on the part's newest record:
 * per method and overall: how many parts, the median error (by size) and the
   worst one, and how many actuals fell inside the range.
 
+Who made the part decides what an actual is compared with (op-18). What it
+cost the org to make (``source_type`` actual / pilot: a job's hours and cost)
+is compared with ScaleCAD's estimate for that method, as above (``kind:
+"made"``). What the org paid a supplier (invoice, a supplier quote: ``kind:
+"bought"``) is compared with ScaleCAD's buy price: the record's outside side
+at exactly that quantity (the cheapest outside route, your own process at a
+job shop included), never with the cost of making it on your machine, and its
+hours are never compared. Each row says what it was compared with
+(``compared_with``); the summary's figures cover made rows, and bought rows
+have their own block (``bought``). A calibration is fitted on made rows only.
+
 The comparison always uses ScaleCAD's own estimate. When a calibration was
 applied to a record, the estimate it is compared with is the one from before the
 calibration (kept on the record), so the figures never grade a calibration on
@@ -299,15 +310,20 @@ def compare(actual: dict, record: Optional[dict], rates: Optional[dict] = None) 
         "calibrated_record": False,
         "rates": rates,
         "hour_lines": [],
+        "kind": actual_kind(actual),
+        "compared_with": None,
     }
     if record is None:
         base["note"] = "The part this actual matched is no longer in ScaleCAD"
         return base
+    if base["kind"] == "bought":
+        return _compare_bought(actual, record, rates, base)
     est = estimate_at(record.get("result_json") or {}, actual.get("process"), int(actual.get("quantity") or 1))
     if est is None:
         base["note"] = "ScaleCAD didn't price this method for this part"
         return base
     base["calibrated_record"] = est.calibrated
+    base["compared_with"] = f"ScaleCAD's estimate for {_proc_words(actual.get('process'))}, at {int(actual.get('quantity') or 1):,}"
     base["hours"] = _metric(_num(actual.get("actual_machine_hours")), est.hours, est.hours_low, est.hours_high,
                             unit="hours")
     base["hour_lines"] = hour_lines(actual, est.hours_stated)
@@ -329,6 +345,79 @@ def compare(actual: dict, record: Optional[dict], rates: Optional[dict] = None) 
         notes.append(f"Cost not compared: {est.cost_note}")
     if _num(actual.get("actual_machine_hours")) and base["hours"] is None:
         notes.append("Hours not compared: ScaleCAD has no machine time for this method")
+    base["note"] = "; ".join(notes) or None
+    return base
+
+
+BOUGHT_SOURCES = frozenset({"invoice", "quote"})
+
+
+def actual_kind(actual: dict) -> str:
+    """``bought`` for what the org paid (or was quoted by) a supplier, else ``made``."""
+    return "bought" if str(actual.get("source_type") or "").lower() in BOUGHT_SOURCES else "made"
+
+
+def _proc_words(process: Optional[str]) -> str:
+    from src.services.catalog_service import process_label
+
+    return process_label(process).lower() if process else "this method"
+
+
+def buy_price_at(result_json: dict, quantity: int) -> Optional[dict]:
+    """ScaleCAD's buy price for the part at exactly ``quantity``: the record's outside side there
+    (``decision.options``: the cheapest outside route, your own process at a job shop included);
+    on a part no machine of yours makes, its cheapest estimate at that quantity. None when that
+    quantity wasn't priced (never drawn between two priced quantities)."""
+    q = max(1, int(quantity))
+    decision = (result_json or {}).get("decision") or {}
+    options = decision.get("options") or {}
+    opt = options.get(str(q)) if isinstance(options, dict) else None
+    side = (opt or {}).get("outside") if isinstance(opt, dict) else None
+    if isinstance(side, dict) and _num(side.get("unit_cost_usd")):
+        return {"cost": _num(side["unit_cost_usd"]), "low": _num(side.get("low_usd")), "high": _num(side.get("high_usd")),
+                "process": side.get("process"), "job_shop": bool(side.get("same_process")), "quantity": q}
+    if options:
+        return None  # a part one of your machines makes: only its outside side is a buy price
+    best = None
+    for e in (result_json or {}).get("estimates") or []:
+        if not isinstance(e, dict) or e.get("quantity") != q or e.get("dfm_ready") is False or e.get("spec_excluded"):
+            continue
+        if _driver(e, "owned_in_house") is not None:
+            continue
+        v = raw_view(e)
+        if v["cost"] and (best is None or v["cost"] < best["cost"]):
+            best = {"cost": v["cost"], "low": v["cost_low"], "high": v["cost_high"], "process": e.get("process"),
+                    "job_shop": False, "quantity": q}
+    return best
+
+
+def _buy_words(b: dict) -> str:
+    where = " at a job shop" if b.get("job_shop") else ""
+    return f"ScaleCAD's outside price for {_proc_words(b.get('process'))}{where}, at {b['quantity']:,}"
+
+
+def _compare_bought(actual: dict, record: dict, rates: Optional[dict], base: dict) -> dict:
+    """A supplier's invoice (or quote) against ScaleCAD's buy price at the same quantity."""
+    q = int(actual.get("quantity") or 1)
+    notes = []
+    if _num(actual.get("actual_machine_hours")):
+        notes.append("Hours not compared: a supplier's invoice says nothing about your machine time")
+    buy = buy_price_at(record.get("result_json") or {}, q)
+    stale_rates = bool(rates and rates.get("out_of_date"))
+    if buy is None:
+        base["compared_with"] = None
+        notes.append(f"Not compared: ScaleCAD's outside price for this part wasn't priced at {q:,}; "
+                     f"price {q:,} on the part to compare it")
+    elif stale_rates:
+        base["compared_with"] = _buy_words(buy)
+        base["rates_excluded"] = True
+        notes.append(f"Cost not compared: {rates['text']} Re-check the part to compare at v{rates['current']}")
+    else:
+        base["compared_with"] = _buy_words(buy)
+        cost = _metric(_num(actual.get("actual_unit_cost_usd")), buy["cost"], buy["low"], buy["high"])
+        if cost is not None:
+            cost["basis"] = "buy"
+        base["cost"] = cost
     base["note"] = "; ".join(notes) or None
     return base
 
@@ -357,8 +446,15 @@ def _stats(rows: list[dict], metric: str) -> dict:
 
 
 def summarize(rows: list[dict]) -> dict:
-    """Overall and per method, for hours and for cost. Test rows never count."""
-    real = [r for r in rows if not r.get("test")]
+    """Overall and per method, for hours and for cost. Test rows never count.
+
+    The figures cover what the org made itself against ScaleCAD's estimate
+    (``population``); supplier invoices against ScaleCAD's buy price are their
+    own block (``bought``), never mixed into the same median.
+    """
+    everything = [r for r in rows if not r.get("test")]
+    bought = [r for r in everything if r.get("kind") == "bought"]
+    real = [r for r in everything if r.get("kind") != "bought"]
     procs = sorted({r.get("process") for r in real if r.get("process")})
     per = []
     for p in procs:
@@ -370,12 +466,24 @@ def summarize(rows: list[dict]) -> dict:
     compared = [r for r in real if r.get("hours") or r.get("cost")]
     excluded = [r for r in real if r.get("rates_excluded")]
     cards = sorted({(r.get("rates") or {}).get("priced") for r in real if r.get("cost") and r.get("rates")} - {None})
+    bought_compared = [r for r in bought if r.get("cost")]
+    bought_parts = len({r.get("part_key") for r in bought_compared})
     return {
+        "population": "Your own job costs and hours against ScaleCAD's estimate for the same part, method and quantity",
         "parts": len({r.get("part_key") for r in compared}),
         "actuals": len(real),
         "compared": len(compared),
         "not_compared": len(real) - len(compared),
-        "test": len(rows) - len(real),
+        "test": len(rows) - len(everything),
+        "bought": {
+            "population": "What you paid suppliers against ScaleCAD's outside price at the same quantity",
+            "actuals": len(bought),
+            "compared": len(bought_compared),
+            "not_compared": len(bought) - len(bought_compared),
+            "parts": bought_parts,
+            "enough": bought_parts >= MIN_PARTS,
+            "cost": _stats(bought, "cost"),
+        },
         "min_parts": MIN_PARTS,
         "min_per_method": MIN_PER_METHOD,
         "enough": len({r.get("part_key") for r in compared}) >= MIN_PARTS,
@@ -451,8 +559,9 @@ def _factor_entry(items: list[tuple[str, float, float]], *, allowed: bool) -> di
 
 def proposal(rows: list[dict]) -> dict:
     """Per method: the hours and cost factors the org's actuals support, and what
-    each would do to the error, held out part by part. Real rows only."""
-    real = [r for r in rows if not r.get("test")]
+    each would do to the error, held out part by part. Real rows the org made
+    itself only: a supplier's invoice never calibrates your machines (op-18)."""
+    real = [r for r in rows if not r.get("test") and r.get("kind") != "bought"]
     total_parts = len({r.get("part_key") for r in real if r.get("hours") or r.get("cost")})
     allowed = total_parts >= MIN_PARTS
     out = []
@@ -474,8 +583,10 @@ def proposal(rows: list[dict]) -> dict:
         cost = _factor_entry(c_items, allowed=allowed)
         cost["after_hours"] = h is not None
         out.append({"process": p, "hours": hours, "cost": cost})
+    # Supplier invoices left out of the calibration, so the panel can say why they don't count.
+    bought = sum(1 for r in rows if not r.get("test") and r.get("kind") == "bought")
     return {"parts": total_parts, "min_parts": MIN_PARTS, "min_per_method": MIN_PER_METHOD,
-            "enough": allowed, "processes": out}
+            "enough": allowed, "processes": out, "bought_excluded": bought}
 
 
 # ---------------------------------------------------------------------------

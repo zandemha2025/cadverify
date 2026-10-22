@@ -242,6 +242,27 @@ export function ImportDialog({ file, onClose, onImported }: { file: File; onClos
               </table>
             </div>
             <div className="val-map">
+              <p className="val-grp">What these numbers are</p>
+              <div className="field">
+                <span className="seg" role="radiogroup" aria-label="What these numbers are">
+                  {(
+                    [
+                      ["bought", "What we paid a supplier"],
+                      ["made", "What it cost us to make"],
+                    ] as const
+                  ).map(([k, l]) => (
+                    <button key={k} type="button" role="radio" className={cx((m.source ?? "made") === k && "on")} aria-checked={(m.source ?? "made") === k} onClick={() => setMapping({ ...m, source: k, source_guess: null })}>
+                      {l}
+                    </button>
+                  ))}
+                </span>
+                <span className="fh">
+                  {(m.source ?? "made") === "bought"
+                    ? "Invoices or PO receipts: compared with ScaleCAD’s outside price at the same quantity, never with the cost of making it on your machines, and never used to calibrate them."
+                    : "Your own jobs: compared with ScaleCAD’s estimate for the method and quantity; these can calibrate future estimates."}
+                  {m.source_guess ? ` Chosen because ${m.source_guess}; change it if that’s wrong.` : ""} A Kind column, when you pick one, decides row by row.
+                </span>
+              </div>
               <p className="val-grp">Which part (one is enough; more narrow it down)</p>
               {IDENTITY.map((f) => colSelect(f.key, f.label))}
               <p className="val-grp">Numbers</p>

@@ -12,7 +12,7 @@ import { R } from "../routes";
 import { Fig, Loading, Panel, cx } from "../ui";
 import { getAccuracy, type Accuracy, type Comparison, type Metric, type Stats } from "./api";
 import { reportHref } from "./routes";
-import { absPct, contextLine, hourLineWord, leanWord, methodWord, metricValue, partsWord, pctWord, rangeWord, ratesWord, statsLine, summaryLine } from "./words";
+import { absPct, boughtLine, contextLine, hourLineWord, leanWord, methodWord, metricValue, partsWord, pctWord, rangeWord, ratesWord, statsLine, summaryLine } from "./words";
 import "./validation.css";
 
 export function useAccuracy(scope: { part?: string | null; run?: string | null }, tick = 0) {
@@ -141,6 +141,7 @@ export function ActualsTable({ rows, limit = 40 }: { rows: Comparison[]; limit?:
                   {c.part_key ? <Link href={R.part(c.part_key)}>{c.file_name ?? "Part"}</Link> : <b>{c.file_name}</b>}
                   {c.part_number ? <span className="muted"> · {c.part_number}</span> : null}
                   <small>{contextLine(c)}</small>
+                  {c.kind === "bought" ? <small><b style={{ fontWeight: 600 }}>Paid a supplier</b> · compared with {c.compared_with ?? "ScaleCAD’s outside price"}</small> : c.compared_with ? <small>Made by you · compared with {c.compared_with}</small> : null}
                   {c.rates && !c.rates_excluded ? <small>{c.rates.text}</small> : null}
                   {c.note ? <small>{c.note}</small> : null}
                 </td>
@@ -231,12 +232,19 @@ export function AccuracyPanel({
       ) : (
         <>
           <p className={cx("val-lead", s.parts > 0 && !s.enough && "warn")} aria-live="polite">
+            {s.parts > 0 && s.population ? <b style={{ fontWeight: 600 }}>What you made: </b> : null}
             {lead}
           </p>
+          {boughtLine(s) ? (
+            <p className="val-lead" aria-live="polite">
+              <b style={{ fontWeight: 600 }}>What you paid suppliers: </b>
+              {boughtLine(s)}
+            </p>
+          ) : null}
           {s.parts > 0 ? figsOf(data) : null}
           {s.parts > 0 ? <MethodTable d={data} /> : null}
           {!compact && data.rows.length ? <ActualsTable rows={data.rows} /> : null}
-          {s.parts === 0 && !compact && onImport ? (
+          {s.parts === 0 && !s.bought?.actuals && !compact && onImport ? (
             <p className="val-more">
               <button className="btn sm ink" type="button" onClick={onImport}>
                 Import actuals

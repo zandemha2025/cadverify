@@ -99,9 +99,11 @@ export function ActualsScreen() {
     }
   };
 
+  // The panels read the new actuals at once (op-19: calibration said "nothing to calibrate" until a reload);
+  // the list below follows when it has loaded.
   const changed = async () => {
-    await load();
     setTick((t) => t + 1);
+    await load();
   };
 
   return (
@@ -160,6 +162,7 @@ export function ActualsScreen() {
             <b>
               {banner.r.imported} {banner.r.imported === 1 ? "actual" : "actuals"} imported for {banner.r.parts} {banner.r.parts === 1 ? "part" : "parts"}
               {banner.r.test ? ` (${banner.r.test} test)` : ""}
+              {banner.r.bought ? ` · ${banner.r.bought === banner.r.imported ? "all" : banner.r.bought} paid to suppliers, compared with ScaleCAD’s outside price and never used to calibrate` : ""}
               {banner.r.not_imported.length ? ` · ${banner.r.not_imported.length} not imported` : ""}
             </b>
             {banner.r.not_imported.length ? (

@@ -72,9 +72,20 @@ export function partsWord(n: number): string {
 }
 
 /** The headline for a set of comparisons, honest about how many parts it rests on. */
+/** What you paid suppliers, against ScaleCAD's outside price: its own line, never mixed with what you made (op-18). */
+export function boughtLine(s: Summary | null): string | null {
+  const b = s?.bought;
+  if (!b || !b.actuals) return null;
+  const head = `${b.actuals} supplier ${b.actuals === 1 ? "invoice" : "invoices"} against ScaleCAD’s outside price at the same quantity`;
+  if (!b.parts) return `${head}: none comparable yet.`;
+  if (!b.enough) return `${head}: ${partsWord(b.parts)}, not enough to say how close it is; ${s!.min_parts} or more give a fair picture. They never calibrate your machines.`;
+  return `${head}: within ${absPct(b.cost.median_abs_pct)} (median) on ${partsWord(b.parts)}. They never calibrate your machines.`;
+}
+
 export function summaryLine(s: Summary | null): string {
   if (!s) return "";
   if (s.parts === 0) {
+    if (s.bought?.actuals && !s.actuals) return "No job you made in-house is logged yet, so how close ScaleCAD’s in-house estimates are isn’t known. Supplier invoices are compared below.";
     if (s.actuals > 0) return `${s.actuals} ${s.actuals === 1 ? "actual" : "actuals"} matched, none comparable with ScaleCAD’s estimates yet.`;
     return s.test ? "Only test rows so far. Real actuals are compared here." : "No actuals matched to your parts yet.";
   }
@@ -138,6 +149,8 @@ export function changeWord(process: string, kind: "hours" | "cost", factor: numb
  * matched but too few (with each method's count against what it needs), or what to change.
  */
 export function calibrationLead(p: Proposal, hasOffer: boolean): string {
+  if (!p.processes.length && p.bought_excluded)
+    return `Nothing to calibrate yet: your ${p.bought_excluded} supplier ${p.bought_excluded === 1 ? "invoice is" : "invoices are"} compared with ScaleCAD’s outside price and never change your machines’ estimates. Log what jobs you made in-house cost to calibrate them.`;
   if (!p.processes.length) return "Nothing to calibrate yet: no actual matches a checked part. Log a job against a part, or import actuals with a file name or part number.";
   if (!p.enough) {
     const counts = p.processes.map((x) => `${methodWord(x.process)} has ${Math.max(x.hours.n, x.cost.n)}`).join(", ");

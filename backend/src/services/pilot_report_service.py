@@ -359,7 +359,13 @@ def caveats(summary: dict, scope_kind: str, calibration: Optional[dict]) -> list
     if summary.get("test"):
         t = summary["test"]
         out.append(f"{t} test {'row is' if t == 1 else 'rows are'} shown in Actual costs but not counted here.")
-    out.append("Each actual is compared with ScaleCAD's estimate for the same part, method and quantity, before any calibration.")
+    out.append("What you made is compared with ScaleCAD's estimate for the same part, method and quantity, before any "
+               "calibration; what you paid a supplier with ScaleCAD's outside price at the same quantity, never with "
+               "the cost of making it.")
+    bought = summary.get("bought") or {}
+    if bought.get("actuals"):
+        out.append(f"{bought['actuals']} supplier {'invoice is' if bought['actuals'] == 1 else 'invoices are'} "
+                   "kept apart from the figures for what you made, and none of them calibrates your machines.")
     if calibration:
         out.append("A calibration from your actuals is applied to new estimates; figures here are from before it, "
                    "and its effect was measured with each part held out.")
@@ -472,6 +478,7 @@ async def build_report(session: AsyncSession, org_id: str, run_id: Optional[str]
         "accuracy": summary,
         # The figures only with enough actuals to say something (op-20); fewer are counted, not judged.
         "accuracy_shown": bool(summary.get("enough")),
+        "bought_shown": bool((summary.get("bought") or {}).get("enough")),
         "accuracy_rows": [r for r in comp if not r.get("test")][:200],
         "calibration": calibration,
         "caveats": caveats(summary, scope["kind"], calibration),

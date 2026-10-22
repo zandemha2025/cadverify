@@ -87,3 +87,15 @@ test("ce-11 / ce-12: rates the costs were compared at, hour lines and the calibr
   assert.match(lead, /^2 parts with actuals\. A calibration needs 8 parts or more, and 3 actuals for each method it changes \(.+ has 2, .+ has 1\)\.$/);
   assert.match(calibrationLead({ parts: 0, min_parts: 8, min_per_method: 3, enough: false, processes: [] }, false), /^Nothing to calibrate yet: no actual matches a checked part/);
 });
+
+test("what you paid suppliers is said apart, and never calibrates (op-18)", async () => {
+  const { boughtLine, calibrationLead, summaryLine } = await import("./words.ts");
+  const stats = { n: 25, parts: 25, median_abs_pct: 31.0, median_pct: 20.0, worst_pct: 80.0, worst: null, inside: 8, with_range: 25, enough: true };
+  const none = { n: 0, parts: 0, median_abs_pct: null, median_pct: null, worst_pct: null, worst: null, inside: 0, with_range: 0, enough: false };
+  const s = { parts: 0, actuals: 0, compared: 0, not_compared: 0, test: 0, min_parts: 8, min_per_method: 3, enough: false, hours: none, cost: none, per_process: [],
+    bought: { population: "What you paid suppliers against ScaleCAD's outside price at the same quantity", actuals: 38, compared: 38, not_compared: 0, parts: 25, enough: true, cost: stats } } as never;
+  assert.match(summaryLine(s), /No job you made in-house is logged yet/);
+  assert.equal(boughtLine(s), "38 supplier invoices against ScaleCAD’s outside price at the same quantity: within 31% (median) on 25 parts. They never calibrate your machines.");
+  const lead = calibrationLead({ parts: 0, min_parts: 8, min_per_method: 3, enough: false, processes: [], bought_excluded: 38 }, false);
+  assert.match(lead, /your 38 supplier invoices are compared with ScaleCAD’s outside price and never change your machines’ estimates/);
+});

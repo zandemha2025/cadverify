@@ -475,16 +475,47 @@ def date_order_of(values: Iterable[str]) -> str:
 
 _TEST_KINDS = {"test", "demo", "synthetic", "seed", "stand_in", "stand-in", "standin", "sample", "made up", "made-up", "fake"}
 _KIND_MAP = {"actual": "actual", "job": "actual", "invoice": "invoice", "quote": "quote", "pilot": "pilot"}
+# What a Kind cell says about who made the part (op-18): bought from a supplier, or made by us.
+_BOUGHT_WORDS = re.compile(r"\b(invoice|supplier|vendor|po|purchase[ds]?|purchase order|receipt|received|bought|buy)\b", re.I)
+_MADE_WORDS = re.compile(r"\b(job|work order|wo|in[\s-]*house|made|production|shop|internal|actual)\b", re.I)
+SOURCES = ("made", "bought")
+SOURCE_WORDS = {"made": "What it cost us to make", "bought": "What we paid a supplier"}
 
 
-def kind_of(raw: str) -> tuple[str, bool]:
-    """(source_type, is_test) for a 'kind' cell."""
+def kind_of(raw: str, default: str = "actual") -> tuple[str, bool]:
+    """(source_type, is_test) for a 'kind' cell; a blank cell takes ``default`` (the file's choice).
+
+    ``invoice`` / ``quote`` are what the org paid (or was quoted by) a supplier;
+    ``actual`` / ``pilot`` are what making it cost the org itself.
+    """
     v = (raw or "").strip().lower()
     if not v:
-        return "actual", False
+        return default, False
     if v in _TEST_KINDS or "test" in v or "made up" in v or "demo" in v:
         return "demo", True
-    return _KIND_MAP.get(v, "actual"), False
+    if v in _KIND_MAP:
+        return _KIND_MAP[v], False
+    if "quote" in v:
+        return "quote", False
+    if _BOUGHT_WORDS.search(v):
+        return "invoice", False
+    if _MADE_WORDS.search(v):
+        return "actual", False
+    return default, False
+
+
+def guess_source(headers: list[str]) -> tuple[Optional[str], Optional[str]]:
+    """Whether a file reads as supplier invoices or the shop's own job costs, from its headers:
+    ``("bought", "it has a Vendor column")``, ``("made", ...)`` or ``(None, None)``."""
+    for h in headers:
+        n = _norm_header(h)
+        if re.search(r"\b(vendor|supplier|po|po number|purchase order|receipt|receipt date|qty received|invoice)\b", n):
+            return "bought", f"it has a {h.strip()} column"
+    for h in headers:
+        n = _norm_header(h)
+        if re.search(r"\b(work order|job|machine hours|run time|cycle time|setup hours|operator)\b", n):
+            return "made", f"it has a {h.strip()} column"
+    return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -715,9 +746,18 @@ class Mapping:
     date_order: str = "mdy"                # mdy | dmy
     process_map: dict[str, str] = field(default_factory=dict)   # raw (lower) -> process | "pick"
     test: bool = False                     # every row is a test number (stand-in)
+    # What the file's numbers are (op-18): "bought" (what we paid a supplier: invoices, PO
+    # receipts) or "made" (what it cost us to make). A row's own Kind cell wins.
+    source: str = "made"
+    source_guess: Optional[str] = None     # why it was guessed, said in the dialog
+
+    @property
+    def default_kind(self) -> str:
+        return "invoice" if self.source == "bought" else "actual"
 
     @classmethod
     def from_json(cls, d: Optional[dict], table: Table) -> "Mapping":
+        guessed, why = guess_source(table.headers)
         if not d:
             cols = guess_mapping(table.headers)
             hcol = cols.get("machine_hours", cols.get("machine_hours_total"))
@@ -726,6 +766,8 @@ class Mapping:
                 columns=cols,
                 hours_unit=hours_unit_of(table.headers[hcol]) if hcol is not None else "h",
                 date_order=date_order_of(r[dcol] for r in table.rows) if dcol is not None else "mdy",
+                source=guessed or "made",
+                source_guess=why,
             )
         cols: dict[str, int] = {}
         for k, v in (d.get("columns") or {}).items():
@@ -744,13 +786,17 @@ class Mapping:
         for k, v in (d.get("process_map") or {}).items():
             if v in KNOWN_PROCESSES or v == "pick":
                 pm[str(k).strip().lower()] = v
+        source = d.get("source")
         return cls(columns=cols, hours_unit=unit if unit in ("h", "min") else "h",
                    date_order=order if order in ("mdy", "dmy") else "mdy",
-                   process_map=pm, test=bool(d.get("test")))
+                   process_map=pm, test=bool(d.get("test")),
+                   source=source if source in SOURCES else (guessed or "made"),
+                   source_guess=None if source in SOURCES else why)
 
     def public(self) -> dict:
         return {"columns": self.columns, "hours_unit": self.hours_unit, "date_order": self.date_order,
-                "process_map": self.process_map, "test": self.test}
+                "process_map": self.process_map, "test": self.test, "source": self.source,
+                "source_guess": self.source_guess}
 
 
 def _cell(row: list[str], m: Mapping, key: str) -> str:
@@ -901,7 +947,7 @@ def evaluate_rows(table: Table, m: Mapping, index: PartIndex, machines: list[dic
             except (ValueError, OverflowError):
                 warnings.append(f"Date '{raw_d}' couldn't be read; imported without a date")
 
-        source_type, is_test = kind_of(_cell(row, m, "kind"))
+        source_type, is_test = kind_of(_cell(row, m, "kind"), m.default_kind)
         if m.test:
             source_type, is_test = "demo", True
 
@@ -1044,6 +1090,10 @@ async def import_rows(session: AsyncSession, org_id: str, user_id: Optional[int]
         "imported": imported,
         "parts": len({r.part.key for r in ready}),
         "test": sum(1 for r in ready if r.values.get("test")),
+        # Supplier invoices are graded against ScaleCAD's buy price; only made-in-house rows calibrate.
+        "bought": sum(1 for r in ready if r.values.get("source_type") in ("invoice", "quote")),
+        "made": sum(1 for r in ready if r.values.get("source_type") not in ("invoice", "quote")
+                    and not r.values.get("test")),
         "not_imported": left + failed,
         "rows": len(results),
     }
