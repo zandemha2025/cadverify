@@ -53,7 +53,7 @@ from src.parsers import mesh_cache, parse_pool
 from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
-from src.services import analysis_service, repair_service
+from src.services import analysis_service, compute_budget, repair_service
 
 logger = logging.getLogger("cadverify.routes")
 
@@ -307,7 +307,8 @@ async def _parse_mesh_async(data: bytes, filename: str):
     # Disabled cache => no coordination: today's exact behavior (N concurrent =
     # N independent parses). Keeps the switch a full escape hatch.
     if mesh_cache.is_disabled():
-        return await _parse_mesh_async_uncoordinated(data, filename)
+        async with compute_budget.hold_for_data(data, filename, label="parse"):
+            return await _parse_mesh_async_uncoordinated(data, filename)
 
     loop = asyncio.get_event_loop()
 
@@ -319,6 +320,16 @@ async def _parse_mesh_async(data: bytes, filename: str):
     )
     if cached is not None:
         return cached, suffix
+    # A real parse holds room in the compute budget (joining the caller's hold,
+    # when it has one), so the mesh it builds is counted while it is built.
+    async with compute_budget.hold_for_data(data, filename, label="parse"):
+        return await _parse_mesh_async_shared(data, filename, loop, cache, cache_key)
+
+
+async def _parse_mesh_async_shared(data: bytes, filename: str, loop, cache, cache_key):
+    """The single-flight half of ``_parse_mesh_async`` (a cold cache)."""
+    import asyncio
+
     if cache is None or cache_key is None:  # defensive; disabled handled above
         return await _parse_mesh_async_uncoordinated(data, filename)
 
@@ -423,12 +434,12 @@ async def _parse_mesh_in_thread_async(data: bytes, filename: str):
     thread executor under the timeout. The process-pool kill-switch target."""
     import asyncio
 
-    loop = asyncio.get_event_loop()
     timeout = _analysis_timeout_sec()
     try:
-        return await asyncio.wait_for(
-            loop.run_in_executor(None, _parse_mesh, data, filename),
-            timeout=timeout,
+        # The thread keeps its room in the compute budget until it really ends.
+        return await compute_budget.run_within_budget(
+            _parse_mesh, data, filename, timeout=timeout, label="parse",
+            need_bytes=compute_budget.need_for_data(data, filename),
         )
     except asyncio.TimeoutError:
         raise HTTPException(
@@ -983,9 +994,10 @@ async def _parse_fit_mesh_async(data: bytes, filename: str):
         return await _parse_mesh_async(data, filename)
     timeout = _analysis_timeout_sec()
     try:
-        mesh = await asyncio.wait_for(asyncio.to_thread(
+        mesh = await compute_budget.run_within_budget(
             parse_supplementary_mesh, data, filename, max_expanded_bytes=_max_upload_bytes(),
-        ), timeout=timeout)
+            timeout=timeout, label="fit parse", need_bytes=compute_budget.need_for_data(data, filename),
+        )
     except FitGeometryError as exc:
         raise HTTPException(status_code=422, detail={"code": "FIT_GEOMETRY_UNAVAILABLE", "message": str(exc)}) from exc
     except asyncio.TimeoutError as exc:
@@ -1042,13 +1054,27 @@ async def validate_fit(
     On every plan and never a check; free accounts have a per-user ceiling
     (src.auth.free_tool_limits).
     """
-    from src.services.fit_service import FitGeometryError, analyze_fit, context_fit_enabled
+    from src.services.fit_service import context_fit_enabled
 
     if not context_fit_enabled():
         raise HTTPException(status_code=404, detail="Not found")
     data_a, data_b = await __import__("asyncio").gather(
         _read_capped(part_a), _read_capped(part_b)
     )
+    # Both parts are in memory at once: one hold for the pair.
+    need = (compute_budget.need_for_data(data_a, part_a.filename or "part-a")
+            + compute_budget.need_for_data(data_b, part_b.filename or "part-b"))
+    async with compute_budget.hold(need, label="fit"):
+        return await _validate_fit_pair(
+            data_a, data_b, part_a, part_b, part_a_units, part_b_units, seating, nudge_x_mm, nudge_y_mm, nudge_z_mm,
+        )
+
+
+async def _validate_fit_pair(data_a, data_b, part_a, part_b, part_a_units, part_b_units, seating,
+                             nudge_x_mm, nudge_y_mm, nudge_z_mm):
+    """The measurement half of POST /validate/fit, inside its compute hold."""
+    from src.services.fit_service import FitGeometryError, analyze_fit
+
     try:
         (mesh_a, _), (mesh_b, _) = await __import__("asyncio").gather(
             _parse_fit_mesh_async(data_a, part_a.filename or "part-a"),
@@ -1061,7 +1087,7 @@ async def validate_fit(
             raise HTTPException(status_code=400, detail="seating must be shared_frame or auto")
         from src.services.fit_seating import apply_seating, propose_auto_seating
         if seating == "auto":
-            seating_report = await __import__("asyncio").to_thread(propose_auto_seating, mesh_a, mesh_b)
+            seating_report = await compute_budget.run_within_budget(propose_auto_seating, mesh_a, mesh_b, label="fit seating")
         else:
             seating_report = {
                 "accepted": True,
@@ -1074,7 +1100,7 @@ async def validate_fit(
         nudge[:3, 3] = [nudge_x_mm, nudge_y_mm, nudge_z_mm]
         final_transform = nudge @ np.asarray(seating_report["transform"], dtype=float)
         seated_b = apply_seating(mesh_b, final_transform.tolist())
-        result = await __import__("asyncio").to_thread(analyze_fit, mesh_a, seated_b)
+        result = await compute_budget.run_within_budget(analyze_fit, mesh_a, seated_b, label="fit")
         result["coordinate_frame"] = "part_a_source_frame"
         if seating == "shared_frame":
             result["limits"].append("Shared-frame seating assumes both files were exported in the same assembly coordinate frame.")
@@ -1205,21 +1231,23 @@ async def validate_preview_mesh(
     # ``fit``: Fit in assembly's previews, which reserve no check (see
     # validation_caps); they take the same file kinds as Fit.
     parse = _parse_fit_mesh_async if purpose in {"preview", "fit"} else _parse_mesh_async
-    mesh, suffix = await parse(data, file.filename or "upload")
-    from src.costing.units import scale_mesh_to_mm
+    async with compute_budget.hold_for_data(data, file.filename or "upload", label="preview mesh"):
+        mesh, suffix = await parse(data, file.filename or "upload")
+        from src.costing.units import scale_mesh_to_mm
 
-    mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
-    try:
-        glb, original_faces, preview_faces, decimated, face_hash = _build_preview_glb(
-            mesh, file.filename or "upload", for_analysis=purpose == "analysis"
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Preview mesh export failed for %s", file.filename)
-        raise HTTPException(
-            status_code=400, detail="Could not build a preview mesh for this file."
-        )
+        mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
+        try:
+            glb, original_faces, preview_faces, decimated, face_hash = await compute_budget.run_within_budget(
+                _build_preview_glb, mesh, file.filename or "upload", for_analysis=purpose == "analysis",
+                label="preview mesh",
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Preview mesh export failed for %s", file.filename)
+            raise HTTPException(
+                status_code=400, detail="Could not build a preview mesh for this file."
+            )
 
     headers = {
         "X-Mesh-Original-Faces": str(original_faces),
@@ -1292,12 +1320,12 @@ async def _extract_assembly_async(data: bytes, filename: str):
             detail="STEP/IGES parsing is unavailable on this server (gmsh not installed).",
         )
 
-    loop = asyncio.get_event_loop()
     timeout = _analysis_timeout_sec()
     try:
-        return await asyncio.wait_for(
-            parse_pool.submit_assembly_async(data, suffix), timeout=timeout
-        )
+        async with compute_budget.hold_for_data(data, filename, label="assembly parse"):
+            return await asyncio.wait_for(
+                parse_pool.submit_assembly_async(data, suffix), timeout=timeout
+            )
     except asyncio.TimeoutError:
         parse_pool.recycle_pool(kill=True)
         raise HTTPException(
@@ -1342,20 +1370,17 @@ async def _run_assembly_analysis(
     timeout = _analysis_timeout_sec()
     # Internal budget slightly under the route budget so the honest degrade wins.
     internal_budget = max(1.0, timeout - 2.0)
-    loop = asyncio.get_event_loop()
     try:
-        analysis = await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                lambda: analyze_assembly_sync(
-                    model,
-                    material_class=material_class,
-                    region=region,
-                    assemblies_per_year=assemblies_per_year,
-                    time_budget_sec=internal_budget,
-                ),
+        analysis = await compute_budget.run_within_budget(
+            lambda: analyze_assembly_sync(
+                model,
+                material_class=material_class,
+                region=region,
+                assemblies_per_year=assemblies_per_year,
+                time_budget_sec=internal_budget,
             ),
             timeout=timeout,
+            label="assembly analysis",
         )
     except asyncio.TimeoutError:
         raise HTTPException(
@@ -1434,6 +1459,13 @@ async def validate_assembly(
             )
 
     data = await _read_capped(file)
+    async with compute_budget.hold_for_data(data, file.filename or "upload.step", label="assembly"):
+        return await _validate_assembly_model(request, data, file, fmt, format, material_class, region,
+                                              assemblies_per_year)
+
+
+async def _validate_assembly_model(request, data, file, fmt, format, material_class, region, assemblies_per_year):
+    """POST /validate/assembly after its upload is read, inside its compute hold."""
     model = await _extract_assembly_async(data, file.filename or "upload.step")
     if model.part_count > 1 and getattr(request.state, "trial_check", None):
         raise paid_access_required()
@@ -1450,7 +1482,8 @@ async def validate_assembly(
         from src.parsers.assembly_mesher import assembly_to_glb
 
         try:
-            glb = assembly_to_glb(model, target_faces=_assembly_glb_target_faces())
+            glb = await compute_budget.run_within_budget(
+                assembly_to_glb, model, target_faces=_assembly_glb_target_faces(), label="assembly glb")
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:
@@ -1540,58 +1573,55 @@ async def validate_demo(
             status_code=413,
             subject="Public demo STL",
         )
-    mesh, suffix = await _parse_mesh_async(data, filename)
-    enforce_triangle_cap(
-        mesh,
-        limit=demo_max_triangles(),
-        limit_name="DEMO_MAX_TRIANGLES",
-        status_code=413,
-        subject="Public demo mesh",
-    )
-    target_processes = _resolve_target_processes(processes)
+    async with compute_budget.hold_for_data(data, filename, label="demo"):
+        mesh, suffix = await _parse_mesh_async(data, filename)
+        enforce_triangle_cap(
+            mesh,
+            limit=demo_max_triangles(),
+            limit_name="DEMO_MAX_TRIANGLES",
+            status_code=413,
+            subject="Public demo mesh",
+        )
+        target_processes = _resolve_target_processes(processes)
 
-    start = time.time()
+        start = time.time()
 
-    def _run():
-        geometry = analyze_geometry(mesh)
-        ctx = GeometryContext.build(mesh, geometry)
-        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
-        # ctx.mesh so feature indices align with the context per-face arrays.
-        features = detect_features(ctx.mesh)
-        ctx.features = features
-        universal_issues = run_universal_checks(mesh)
-        # Honestly surface to the user when the mesh was decimated for analysis.
-        dec_issue = decimation_issue(ctx)
-        if dec_issue is not None:
-            universal_issues.append(dec_issue)
-        process_scores = []
-        for proc in target_processes:
-            analyzer = get_analyzer(proc)
-            if analyzer is None:
-                continue
-            try:
-                proc_issues = analyzer.analyze(ctx)
-            except Exception:
-                logger.exception("Demo analyzer failed for %s", proc.value)
-                continue
-            ps = score_process(proc_issues, geometry, proc)
-            process_scores.append(ps)
-        return geometry, ctx, features, universal_issues, process_scores
+        def _run():
+            geometry = analyze_geometry(mesh)
+            ctx = GeometryContext.build(mesh, geometry)
+            # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+            # ctx.mesh so feature indices align with the context per-face arrays.
+            features = detect_features(ctx.mesh)
+            ctx.features = features
+            universal_issues = run_universal_checks(mesh)
+            # Honestly surface to the user when the mesh was decimated for analysis.
+            dec_issue = decimation_issue(ctx)
+            if dec_issue is not None:
+                universal_issues.append(dec_issue)
+            process_scores = []
+            for proc in target_processes:
+                analyzer = get_analyzer(proc)
+                if analyzer is None:
+                    continue
+                try:
+                    proc_issues = analyzer.analyze(ctx)
+                except Exception:
+                    logger.exception("Demo analyzer failed for %s", proc.value)
+                    continue
+                ps = score_process(proc_issues, geometry, proc)
+                process_scores.append(ps)
+            return geometry, ctx, features, universal_issues, process_scores
 
-    timeout = _analysis_timeout_sec()
-    loop = asyncio.get_event_loop()
-    try:
-        geometry, ctx, features, universal_issues, process_scores = (
-            await asyncio.wait_for(
-                loop.run_in_executor(None, _run),
-                timeout=timeout,
+        timeout = _analysis_timeout_sec()
+        try:
+            geometry, ctx, features, universal_issues, process_scores = (
+                await compute_budget.run_within_budget(_run, timeout=timeout, label="demo analysis")
             )
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Analysis exceeded {timeout:.0f}s timeout.",
-        )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Analysis exceeded {timeout:.0f}s timeout.",
+            )
 
     duration_ms = round((time.time() - start) * 1000, 1)
 
@@ -1620,7 +1650,19 @@ async def validate_demo(
     return resp
 
 
-async def _run_cost_decision(
+async def _run_cost_decision(**kwargs) -> dict:
+    """The should-cost compute (``_cost_decision``), within the compute budget.
+
+    It holds room in the process's compute budget from the moment its upload is
+    read until it returns (``src.services.compute_budget``): a web request waits
+    at most ``COMPUTE_WAIT_SECONDS`` for it, then answers 429 ``server_busy``.
+    Inside a caller's hold (a catalog part, a big file's check) it joins that one.
+    """
+    async with compute_budget.deferred_hold(label="cost") as room:
+        return await _cost_decision(**kwargs, room=room)
+
+
+async def _cost_decision(
     *,
     file: UploadFile,
     qty: str,
@@ -1638,6 +1680,7 @@ async def _run_cost_decision(
     response: Optional[Response] = None,
     orientation: Optional[str] = None,
     material_name: Optional[str] = None,
+    room: "compute_budget.DeferredHold | None" = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
@@ -1750,6 +1793,9 @@ async def _run_cost_decision(
     # and rescale into mm. No-op context when tracing is off.
     with tracing.span("cost.parse_mesh") as _sp_parse:
         data = await _read_capped(file)  # 413 on size, 400 on empty
+        if room is not None:
+            # Room for the parse and the price; their time limits start after it.
+            await room.take_for_data(data, file.filename or "")
 
         # ── honest "material read from CAD" slice (no-kernel text scan) ──────
         # Only fill from the CAD file when the caller left material_class at its
@@ -2106,14 +2152,14 @@ async def _run_cost_decision(
         return ens.to_dict()
 
     timeout = _analysis_timeout_sec()
-    loop = asyncio.get_event_loop()
     # Parent span for the off-loop compute; capture the OTel context INSIDE it so
     # the executor-thread DFM / should-cost child spans nest here. No-op when off.
     with tracing.span("cost.compute"):
         _otel_ctx = tracing.capture_context()
         try:
-            report, uncertainty, identity_vec = await asyncio.wait_for(
-                loop.run_in_executor(None, _run), timeout=timeout
+            # On a timeout the thread runs on; it keeps its room until it ends.
+            report, uncertainty, identity_vec = await compute_budget.run_within_budget(
+                _run, timeout=timeout, label="cost", need_bytes=compute_budget.need_for_data(data, "part" + suffix),
             )
         except asyncio.TimeoutError:
             # Bounded compute that ran over budget — structured warning, then 504.
@@ -2215,7 +2261,8 @@ async def _run_cost_decision(
 
         if placed is None or not await costable_mesh_exists(
                 cal_org_id, source_hash, source_units=effective_units):
-            costable_stl = await asyncio.to_thread(_export_costable)
+            costable_stl = await compute_budget.run_within_budget(
+                _export_costable, label="costable stl", need_bytes=compute_budget.need_for_data(data, "part" + suffix))
             if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
                 raise HTTPException(
                     status_code=500,

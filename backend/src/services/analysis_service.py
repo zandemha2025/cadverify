@@ -37,6 +37,7 @@ from src.costing.units import mesh_source_units
 from src.db.models import Analysis, UsageEvent
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
+from src.services import compute_budget
 
 logger = logging.getLogger("cadverify.analysis_service")
 
@@ -164,7 +165,10 @@ async def _persist_source_evidence(
                 from src.costing.units import scale_mesh_to_mm
 
                 mesh = scale_mesh_to_mm(mesh, source_units)
-        payload = await asyncio.to_thread(mesh.export, file_type="stl")
+        payload = await compute_budget.run_within_budget(
+            mesh.export, file_type="stl", label="costable stl",
+            need_bytes=compute_budget.need_for_data(file_bytes, filename),
+        )
         if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
             raise RuntimeError("CAD parser did not produce a costable STL derivative")
         await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload), source_units=source_units)
@@ -391,6 +395,36 @@ async def run_analysis(
     return_persisted_id: bool = False,
     orientation=None,
 ) -> dict | AnalysisRun:
+    """Full analysis pipeline (see ``_run_analysis``), within the compute budget.
+
+    A fresh analysis holds room in the process's compute budget from its parse
+    until it returns (``src.services.compute_budget``; a web request waits at
+    most ``COMPUTE_WAIT_SECONDS`` for it, then answers 429 ``server_busy``). A
+    cached result takes none. Inside a caller's hold (a catalog part, a big
+    file's check) it joins that one.
+    """
+    async with compute_budget.deferred_hold(label="analysis") as room:
+        return await _run_analysis(
+            file_bytes, filename, processes, rule_pack, user, session,
+            include_thickness=include_thickness, org_id=org_id, source_units=source_units,
+            return_persisted_id=return_persisted_id, orientation=orientation, room=room,
+        )
+
+
+async def _run_analysis(
+    file_bytes: bytes,
+    filename: str,
+    processes: str | None,
+    rule_pack: str | None,
+    user: AuthedUser,
+    session: AsyncSession,
+    include_thickness: bool = False,
+    org_id: str | None = None,
+    source_units: str | None = None,
+    return_persisted_id: bool = False,
+    orientation=None,
+    room: "compute_budget.DeferredHold | None" = None,
+) -> dict | AnalysisRun:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
     On cache hit returns stored result_json without running analyzers.
@@ -548,7 +582,10 @@ async def run_analysis(
             stage_timings_ms,
         )
 
-    # 8. Cache MISS — run full pipeline.
+    # 8. Cache MISS — run full pipeline. Room in the compute budget first: the
+    # time limits below start once the work does, not while it waits.
+    if room is not None:
+        await room.take_for_data(file_bytes, filename)
     # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
     # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
     # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
@@ -667,15 +704,15 @@ async def run_analysis(
         )
 
     timeout_sec = analysis_timeout_sec_fn()
-    loop = asyncio.get_event_loop()
     try:
+        # On a timeout the thread runs on; it keeps its room until it ends.
         (
             geometry, ctx, features, universal_issues, process_scores,
             signature_vec, sync_timings, cost_entry, part_type,
         ) = (
-            await asyncio.wait_for(
-                loop.run_in_executor(None, _run_analysis_sync),
-                timeout=timeout_sec,
+            await compute_budget.run_within_budget(
+                _run_analysis_sync, timeout=timeout_sec, label="analysis",
+                need_bytes=compute_budget.need_for_data(file_bytes, filename),
             )
         )
     except asyncio.TimeoutError:
@@ -1072,9 +1109,14 @@ async def run_quick_analysis(
     # Cache miss — run quick analysis. Async pooled parse (off the event loop,
     # hard-capped) — same reason as run_analysis: a sync gmsh call here freezes
     # every tenant on a pathological part (gauntlet F1).
-    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
-    geometry = analyze_geometry(mesh)
-    issues = run_universal_checks(mesh)
+    async with compute_budget.hold_for_data(file_bytes, filename, label="quick check"):
+        mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
+
+        def _quick():
+            return analyze_geometry(mesh), run_universal_checks(mesh)
+
+        # Off the event loop, holding its room until the thread ends.
+        geometry, issues = await compute_budget.run_within_budget(_quick, label="quick check")
     has_errors = any(i.severity == Severity.ERROR for i in issues)
 
     duration_ms = round((time.time() - start) * 1000, 1)

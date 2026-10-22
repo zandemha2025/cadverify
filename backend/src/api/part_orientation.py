@@ -93,19 +93,22 @@ async def part_orientations(
         except (ObjectNotFoundError, FileNotFoundError, ValueError):
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
         from src.api.routes import _analysis_timeout_sec, _parse_mesh_async
+        from src.services import compute_budget
 
         filename = f"source{suffix}"
-        mesh, _ = await _parse_mesh_async(data, filename)
-        mesh = scale_mesh_to_mm(mesh, mesh_source_units(filename, units))
-        try:
-            options = await asyncio.wait_for(
-                asyncio.to_thread(orientation_options, mesh, down=picked),
-                timeout=_analysis_timeout_sec(),
-            )
-        except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail="Comparing orientations took too long for this part.")
-        except OrientationError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+        # The parse and the comparison hold room in the compute budget (429 when full).
+        async with compute_budget.hold_for_data(data, filename, label="orientation"):
+            mesh, _ = await _parse_mesh_async(data, filename)
+            mesh = scale_mesh_to_mm(mesh, mesh_source_units(filename, units))
+            try:
+                options = await compute_budget.run_within_budget(
+                    orientation_options, mesh, down=picked,
+                    timeout=_analysis_timeout_sec(), label="orientation",
+                )
+            except asyncio.TimeoutError:
+                raise HTTPException(status_code=504, detail="Comparing orientations took too long for this part.")
+            except OrientationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
         hit = {"mesh_hash": digest, "units": units, **options}
         _cache[key] = hit
         while len(_cache) > _CACHE_ENTRIES:

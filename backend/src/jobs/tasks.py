@@ -83,15 +83,24 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
         # 3. Try SAM-3D
         config = SAM3DConfig.from_env()
         start = time.time()
-        status = "done"
-        try:
-            segments = segment_sam3d(mesh, config)
-            if not segments:
-                raise RuntimeError("SAM-3D returned empty segments")
-        except Exception:
-            logger.warning("SAM-3D failed for job %s, falling back to heuristic", job_ulid)
-            segments = segment_heuristic(mesh)
-            status = "partial"
+
+        def _segment():
+            try:
+                found = segment_sam3d(mesh, config)
+                if not found:
+                    raise RuntimeError("SAM-3D returned empty segments")
+                return found, "done"
+            except Exception:
+                logger.warning("SAM-3D failed for job %s, falling back to heuristic", job_ulid)
+                return segment_heuristic(mesh), "partial"
+
+        from src.services import compute_budget
+
+        # Off the event loop, holding room in the worker's compute budget.
+        segments, status = await compute_budget.run_within_budget(
+            _segment, label="segmentation",
+            need_bytes=compute_budget.need_for_data(mesh_bytes, f"{mesh_hash}.stl"),
+        )
 
         duration_ms = (time.time() - start) * 1000
 

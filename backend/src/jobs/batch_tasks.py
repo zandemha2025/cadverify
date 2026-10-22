@@ -7,12 +7,14 @@ dispatch_webhook: Delivers webhook with retry scheduling.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import errno
 import json
 import logging
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from arq import Retry
@@ -27,10 +29,53 @@ from sqlalchemy.exc import (
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_session_factory
 from src.db.models import Batch, BatchItem, DirectUpload
+from src.services import compute_budget
 from src.services.batch_service import BATCH_ITEM_MAX_ATTEMPTS
 from src.storage.base import ObjectNotFoundError
 
 logger = logging.getLogger("cadverify.batch_tasks")
+
+# arq's per-job ceiling for the worker (WorkerSettings.job_timeout): it cancels
+# a job at this deadline, so nothing may be designed to outlive it.
+JOB_TIMEOUT_SECONDS = 600
+
+# When the current batch item's job started (time.monotonic()): how long it may
+# still wait for room in the compute budget is measured from here.
+_JOB_STARTED: contextvars.ContextVar[float | None] = contextvars.ContextVar("cadverify_batch_job_started", default=None)
+
+
+def _item_wait_seconds(work_seconds: float) -> float:
+    """How long this item may wait for compute room and still do ``work_seconds`` inside its job.
+
+    Past it the item goes back to the run (``_put_back_for_room``) rather than
+    being cancelled by arq mid-wait.
+    """
+    started = _JOB_STARTED.get() or time.monotonic()
+    return compute_budget.job_wait_seconds(started, work_seconds, JOB_TIMEOUT_SECONDS)
+
+
+async def _put_back_for_room(session, item_ulid: str) -> None:
+    """No compute room within the item's wait: back to pending, this delivery not counted as a try.
+
+    The coordinator publishes it again on a later tick, in its turn. Nothing
+    was computed or saved for it.
+    """
+    try:
+        await session.rollback()
+    except Exception:
+        pass
+    item = (await session.execute(
+        select(BatchItem).where(BatchItem.ulid == item_ulid).with_for_update()
+    )).scalars().first()
+    if item is None or item.status != "processing":
+        return
+    item.status = "pending"
+    item.attempt_count = max(0, int(item.attempt_count or 1) - 1)
+    item.started_at = None
+    item.lease_started_at = None
+    item.error_message = None
+    await session.commit()
+    logger.info("BatchItem %s found no compute room in its wait; back in the run", item_ulid)
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -1589,14 +1634,16 @@ async def _run_cost_item(session, batch, item) -> dict:
     rate_card = await _bind_org_rate_tables(session, cal_org_id, options)
 
     # ---- parse + cost, bounded by the same timeout the route uses -----------
+    # Room in the compute budget first (the wait is not part of the part's time
+    # or its limit); on a timeout the thread keeps that room until it ends.
     timeout = _cost_timeout_sec()
-    loop = asyncio.get_event_loop()
-    report, suffix = await asyncio.wait_for(
-        loop.run_in_executor(
-            None, _compute_cost_report, file_bytes, filename, options
-        ),
-        timeout=timeout,
-    )
+    waited = time.time()
+    async with compute_budget.hold(compute_budget.need_for_data(file_bytes, filename),
+                                   wait=_item_wait_seconds(timeout), label="batch cost item"):
+        start += time.time() - waited
+        report, suffix = await compute_budget.run_within_budget(
+            _compute_cost_report, file_bytes, filename, options, timeout=timeout, label="batch cost item",
+        )
     duration_ms = round((time.time() - start) * 1000, 1)
 
     # ---- broken geometry -> failed item with the structured reason ----------
@@ -1720,8 +1767,9 @@ def _catalog_slots() -> "asyncio.Semaphore":
     A part's analysis budget (ANALYSIS_TIMEOUT_SEC) includes any wait for a
     parse-ladder slot. Parts of several runs (or one run's 4 at a time) queued
     behind a slow STEP would time out while merely waiting; holding a slot here
-    first means the clock starts when the part is actually being read. The arq
-    job timeout still bounds the wait. Loop-local, like the parse pool's own.
+    first means the clock starts when the part is actually being read. The wait
+    is bounded (``_catalog_slot``): past it the part goes back to the run.
+    Loop-local, like the parse pool's own.
     """
     from src.parsers import parse_pool
 
@@ -1731,6 +1779,20 @@ def _catalog_slots() -> "asyncio.Semaphore":
         sem = asyncio.Semaphore(max(1, parse_pool.worker_count()))
         setattr(loop, "_cadverify_catalog_sem", sem)
     return sem
+
+
+@asynccontextmanager
+async def _catalog_slot(wait: float):
+    """A catalog slot (``_catalog_slots``), waited for at most ``wait`` seconds (then ComputeBusy)."""
+    sem = _catalog_slots()
+    try:
+        await asyncio.wait_for(sem.acquire(), max(0.0, wait))
+    except asyncio.TimeoutError:
+        raise compute_budget.ComputeBusy(wait) from None
+    try:
+        yield
+    finally:
+        sem.release()
 
 
 def _catalog_owned_processes(processes) -> str:
@@ -1800,16 +1862,24 @@ async def _run_catalog_item(session, batch, item) -> dict:
     # A catalog part runs with the worker's own budget for its size (as a big
     # file's check does), not the 60 s a web request gets.
     budget = _catalog_budget_sec(len(file_bytes), item_filename)
+    # A catalog slot, then room in the compute budget for the part's whole check
+    # (its analysis, bodies and price), sized by the memory model. Waiting for
+    # either isn't part of its time limit; past the wait its job allows, the part
+    # goes back to the run (run_batch_item). A part that ran out of time keeps its
+    # room until its thread really ends, so its retry never doubles it unseen.
+    wait_until = time.monotonic() + _item_wait_seconds(2 * budget)
     try:
         with larger_limits(budget_sec=budget, max_triangles=_catalog_max_triangles(),
                            max_bytes=max(len(file_bytes), 1)):
-            async with _catalog_slots():
-                return await _check_catalog_part(
-                    session, batch, item, file_bytes, user,
-                    batch_id=batch_id, batch_org_id=batch_org_id, batch_user_id=batch_user_id,
-                    free_run=free_run, item_id=item_id, item_ulid=item_ulid, item_filename=item_filename,
-                    item_quantities=item_quantities, item_material_class=item_material_class,
-                )
+            async with _catalog_slot(wait_until - time.monotonic()):
+                async with compute_budget.hold(compute_budget.need_for_data(file_bytes, item_filename),
+                                               wait=max(0.0, wait_until - time.monotonic()), label="catalog part"):
+                    return await _check_catalog_part(
+                        session, batch, item, file_bytes, user,
+                        batch_id=batch_id, batch_org_id=batch_org_id, batch_user_id=batch_user_id,
+                        free_run=free_run, item_id=item_id, item_ulid=item_ulid, item_filename=item_filename,
+                        item_quantities=item_quantities, item_material_class=item_material_class,
+                    )
     except CatalogPartTimedOut as exc:
         # Once more, after the rest of the run: a busy worker is the usual cause.
         if await _check_again_later(session, item_ulid, batch):
@@ -2179,6 +2249,8 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
     """
     from src.services import analysis_service, batch_service, webhook_service
 
+    # The compute-room waits below are measured from the job's own start.
+    _JOB_STARTED.set(time.monotonic())
     session_factory = get_session_factory()
 
     async with session_factory() as session:
@@ -2280,8 +2352,6 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 # the org's machines, exactly as a single-part check.
                 webhook_extra = await _run_catalog_item(session, batch, item) or None
             else:
-                import time
-
                 start = time.time()
 
                 # Read file bytes
@@ -2310,17 +2380,23 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     key_prefix="batch",
                 )
 
-                # Run analysis
-                analysis_run = await analysis_service.run_analysis(
-                    file_bytes=file_bytes,
-                    filename=item_filename,
-                    processes=item_process_types,
-                    rule_pack=item_rule_pack,
-                    user=user,
-                    session=session,
-                    org_id=batch_org_id,
-                    return_persisted_id=True,
-                )
+                # Run analysis, holding room in the compute budget for it (the
+                # wait isn't part of its time; past the job's wait it goes back).
+                async with compute_budget.hold(
+                    compute_budget.need_for_data(file_bytes, item_filename),
+                    wait=_item_wait_seconds(2 * _cost_timeout_sec()), label="batch analysis item",
+                ):
+                    start = time.time()
+                    analysis_run = await analysis_service.run_analysis(
+                        file_bytes=file_bytes,
+                        filename=item_filename,
+                        processes=item_process_types,
+                        rule_pack=item_rule_pack,
+                        user=user,
+                        session=session,
+                        org_id=batch_org_id,
+                        return_persisted_id=True,
+                    )
                 if not isinstance(analysis_run, analysis_service.AnalysisRun):
                     raise RuntimeError(
                         "Analysis did not return its durable persistence receipt"
@@ -2383,6 +2459,10 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     item_ulid,
                 )
             raise
+        except compute_budget.ComputeBusy:
+            # No room within the wait its job allows: back in the run, try not spent.
+            await _put_back_for_room(session, item_ulid)
+            return
         except Exception as exc:
             if is_transient_batch_item_error(exc):
                 logger.warning(

@@ -715,16 +715,25 @@ async def ingest_record(
         # NULL and the analogy k-NN skips this record; the ingest is never failed.
         # Bounded by a timeout so a pathological/slow mesh can never hang a worker
         # thread indefinitely (defense-in-depth alongside the part_path confinement).
+        from src.services import compute_budget
+
         try:
-            geom = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
-                    None, _extract_geometry_features, gt, parts_dir
-                ),
-                timeout=_GEOM_EXTRACT_TIMEOUT_S,
+            # Holds room in the compute budget until the thread really ends.
+            geom = await compute_budget.run_within_budget(
+                _extract_geometry_features, gt, parts_dir,
+                timeout=_GEOM_EXTRACT_TIMEOUT_S, label="ground truth geometry",
             )
         except asyncio.TimeoutError:
             logger.warning(
                 "ground-truth geometry extraction timed out for part_id=%.60s — "
+                "storing record with NULL geometry (analogy skips it)",
+                gt.part_id,
+            )
+            geom = None
+        except compute_budget.ComputeBusy:
+            # Best effort, like a timeout: the record is kept without geometry.
+            logger.warning(
+                "no compute room for ground-truth geometry of part_id=%.60s — "
                 "storing record with NULL geometry (analogy skips it)",
                 gt.part_id,
             )
@@ -919,8 +928,9 @@ async def recalibrate_org(
     """Load an org's records (async) then run the CPU-bound loop off the event
     loop, refreshing the served bundle. The manual/callable recalibration
     trigger (an async cron wrapper is a separate concern)."""
+    from src.services import compute_budget
+
     records = await load_org_ground_truth(session, org_id)
-    ev = asyncio.get_event_loop()
 
     # Historical actuals can bind to source CAD by ``evidence_sha256``. The
     # source bytes were durably captured by a successful Verify/Should-cost run
@@ -929,11 +939,12 @@ async def recalibrate_org(
     # no provider locator or cross-tenant key enters the record/API response.
     evidence_records = [r for r in records if r.evidence_sha256]
     if not evidence_records:
-        return await ev.run_in_executor(
-            None,
+        # Costs every record's part: CPU-heavy CAD work, within the compute budget.
+        return await compute_budget.run_within_budget(
             lambda: recalibrate_from_records(
                 org_id, records, parts_dir=parts_dir, store_dir=store_dir
             ),
+            label="recalibrate",
         )
 
     from src.costing.groundtruth import resolve_part_path
@@ -969,14 +980,14 @@ async def recalibrate_org(
                 replace(record, part_path=existing) if existing else record
             )
 
-        return await ev.run_in_executor(
-            None,
+        return await compute_budget.run_within_budget(
             lambda: recalibrate_from_records(
                 org_id,
                 resolved_records,
                 parts_dir=temp_root,
                 store_dir=store_dir,
             ),
+            label="recalibrate",
         )
 
 

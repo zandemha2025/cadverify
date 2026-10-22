@@ -91,10 +91,13 @@ async def check_file_bodies(
                                            timeout=max(10.0, budget_sec / 3))
         except Exception:
             tree_note = "Its product tree couldn't be read; bodies come from its geometry."
-    space, bodies, source = await asyncio.to_thread(resolve_bodies, mesh, model)
+    from src.services import compute_budget
+
+    # Inside the catalog part's hold in the compute budget (joined, not a second one).
+    space, bodies, source = await compute_budget.run_within_budget(resolve_bodies, mesh, model, label="bodies")
     product_tree = source if source.get("source") == "step_product_tree" else None
-    pt = await asyncio.to_thread(part_types.describe, space, bodies=bodies, product_tree=product_tree,
-                                 time_budget_sec=20.0)
+    pt = await compute_budget.run_within_budget(part_types.describe, space, bodies=bodies, product_tree=product_tree,
+                                                time_budget_sec=20.0, label="bodies")
     kind = pt.get("kind")
     if kind not in MULTI_KINDS:
         return None

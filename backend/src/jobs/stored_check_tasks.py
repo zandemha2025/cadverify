@@ -308,18 +308,48 @@ async def _admit(user, name: str, data: bytes) -> tuple[Optional[str], str]:
         raise _Failed(str(detail.get("code") or "check_refused"), str(detail.get("message") or "This check wasn't started.")) from exc
 
 
-async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
-    """Check one stored part, stage by stage (see the module docstring)."""
-    from fastapi import HTTPException
-    from starlette.datastructures import Headers, UploadFile
+# A check that found no room in the worker's compute budget within its wait
+# goes back to the queue and starts again this many seconds later.
+ROOM_REQUEUE_DEFER_SECONDS = 15
 
-    from src.auth.require_api_key import AuthedUser
-    from src.auth.validation_caps import finish_check, reserve_check
-    from src.config.check_limits import larger_limits
-    from src.services import analysis_service
-    from src.services import direct_upload_service as uploads
-    from src.services import stored_check_service as svc
-    from src.services.part_archive import PartArchiveError, compression_of, unpack_part
+
+async def requeue_for_room(ctx: dict, job_ulid: str) -> dict:
+    """No room in the compute budget within the wait: back in the queue, nothing charged or lost.
+
+    The job row returns to ``queued`` and a fresh arq job (its own id: the
+    first one's id stays taken while arq keeps its result) runs it again after
+    ``ROOM_REQUEUE_DEFER_SECONDS``. The upload stays stored; the next run
+    downloads and sizes it again.
+    """
+    async with get_session_factory()() as session:
+        job = (await session.execute(select(Job).where(Job.ulid == job_ulid).with_for_update())).scalars().first()
+        if job is None or job.status in ("done", "failed"):
+            return {"skipped": True}
+        times = int((job.result_json or {}).get("requeued_for_room") or 0) + 1
+        job.status = "queued"
+        job.result_json = {**(job.result_json or {}), "stage": "queued", "progress": None,
+                           "waiting_for_room": True, "requeued_for_room": times}
+        await session.commit()
+    pool = ctx.get("redis") or ctx.get("pool")
+    try:
+        if pool is None:
+            raise RuntimeError("no Redis pool in the worker context")
+        await pool.enqueue_job("run_stored_check", job_ulid, _job_id=f"{job_ulid}:room:{times}",
+                               _defer_by=ROOM_REQUEUE_DEFER_SECONDS)
+    except Exception:
+        # The queued row is the durable intent: the reconcile cron offers it again.
+        logger.exception("stored check %s could not be queued again; the reconcile cron will", job_ulid)
+    logger.info("stored check %s waited for compute room; queued again (%d)", job_ulid, times)
+    return {"requeued": True, "times": times}
+
+
+async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
+    """Check one stored part, stage by stage (see the module docstring).
+
+    From its sizing to its end the check holds room in the worker's compute
+    budget (``src.services.compute_budget``), sized by its memory need.
+    """
+    from src.services import compute_budget
 
     # A big kept part's re-price or repair runs as this task too (same ceiling, one try).
     from src.services.kept_part_jobs import is_kept_job
@@ -328,6 +358,22 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
         from src.jobs.kept_part_tasks import run_kept_part
 
         return await run_kept_part(ctx, job_ulid)
+
+    async with compute_budget.deferred_hold(label="big check") as room:
+        return await _check_stored_part(ctx, job_ulid, room)
+
+
+async def _check_stored_part(ctx: dict, job_ulid: str, room) -> dict:
+    from fastapi import HTTPException
+    from starlette.datastructures import Headers, UploadFile
+
+    from src.auth.require_api_key import AuthedUser
+    from src.auth.validation_caps import finish_check, reserve_check
+    from src.config.check_limits import larger_limits
+    from src.services import analysis_service, compute_budget
+    from src.services import direct_upload_service as uploads
+    from src.services import stored_check_service as svc
+    from src.services.part_archive import PartArchiveError, compression_of, unpack_part
 
     started = time.monotonic()
     claimed = await _claim(job_ulid)
@@ -380,6 +426,22 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
         if need > budget:
             raise _Failed("CHECK_TOO_LARGE", svc.too_heavy_message(need, basis, budget))
 
+        # Room in the compute budget for the whole check, waiting for the parts
+        # already being checked; its time limits start once it has room. The wait
+        # leaves the job time for its own work, then the check goes back to the
+        # queue. A link's file was fetched once and isn't kept, so a link check
+        # waits for as long as its job allows instead.
+        budget_sec = svc.time_budget_sec(part_bytes, name)
+        if params.get("source") == svc.SOURCE_LINK:
+            room.wait = compute_budget.job_wait_seconds(
+                started, 0.0, svc.STORED_CHECK_JOB_TIMEOUT_SECONDS, margin=60.0)
+        else:
+            room.wait = compute_budget.job_wait_seconds(
+                started, 2 * budget_sec, svc.STORED_CHECK_JOB_TIMEOUT_SECONDS)
+        await _patch(job_ulid, waiting_for_room=True)
+        await room.take(need)
+        await _patch(job_ulid, waiting_for_room=False)
+
         data = await asyncio.to_thread(lambda: open(path, "rb").read())
         mesh_hash = hashlib.sha256(data).hexdigest()
         result["mesh_hash"] = mesh_hash
@@ -388,7 +450,6 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
         # -- measuring ---------------------------------------------------
         await progress.stage("measuring", mesh_hash=mesh_hash, memory=result["memory"])
         op = "analysis"
-        budget_sec = svc.time_budget_sec(part_bytes, name)
         factory = get_session_factory()
         with larger_limits(budget_sec=budget_sec, max_triangles=_BIG_MAX_TRIANGLES, max_bytes=uploads.part_max_size_bytes()):
             async with factory() as session:
@@ -463,6 +524,16 @@ async def run_stored_check(ctx: dict, job_ulid: str) -> dict:
         await _finish(job_ulid, ok=False, result=result, error=exc)
         logger.info("stored check %s refused: %s", job_ulid, exc.code)
         return {"ok": False, "code": exc.code}
+    except compute_budget.ComputeBusy as exc:
+        # Before anything was reserved or measured (the room comes first).
+        await progress.stop()
+        if params.get("source") != svc.SOURCE_LINK:
+            return await requeue_for_room(ctx, job_ulid)
+        minutes = max(1, round(exc.waited_s / 60))
+        await _finish(job_ulid, ok=False, result=result, error=_Failed(
+            "CHECK_BUSY", f"The worker stayed busy with other checks for {minutes} minutes, so this one "
+            "didn't start. Nothing was charged; import the link again."))
+        return {"ok": False, "code": "CHECK_BUSY"}
     except asyncio.CancelledError:
         # arq cancels a task at its time limit, and every running task when the
         # worker stops (a release, a restart). Say which.
@@ -535,8 +606,10 @@ async def _keep_preview(org_id: str, mesh_hash: str, name: str, data: bytes, uni
         mesh, parsed_suffix = await _parse_mesh_async(data, filename)
         # The part's page asks for the mm interpretation (preview.glb?units=mm).
         mesh = scale_mesh_to_mm(mesh, mesh_source_units(filename, "mm"))
-        glb, original_faces, preview_faces, decimated, face_hash = await asyncio.to_thread(
-            _build_preview_glb, mesh, filename, for_analysis=True
+        from src.services import compute_budget
+
+        glb, original_faces, preview_faces, decimated, face_hash = await compute_budget.run_within_budget(
+            _build_preview_glb, mesh, filename, for_analysis=True, label="big check preview"
         )
         await save_preview_glb(org_id, mesh_hash, glb, {
             "X-Mesh-Original-Faces": str(original_faces),

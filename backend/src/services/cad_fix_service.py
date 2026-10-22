@@ -490,26 +490,27 @@ async def _price(data: bytes, filename: str, quantities: list[int], material_cla
     """
     from src.api.routes import _analysis_timeout_sec, _parse_mesh_async, _run_cost_engine_ctx
     from src.costing import EstimateOptions, estimate_decision, report_to_dict
+    from src.services import compute_budget
 
     from fastapi import HTTPException
 
-    try:
-        mesh, _suffix = await _parse_mesh_async(data, filename)
-    except HTTPException:
-        return None
+    async with compute_budget.hold_for_data(data, filename, label="fix price"):
+        try:
+            mesh, _suffix = await _parse_mesh_async(data, filename)
+        except HTTPException:
+            return None
 
-    def run():
-        result, m, ctx = _run_cost_engine_ctx(mesh, filename)
-        rep = estimate_decision(result, m, ctx.features, EstimateOptions(
-            quantities=quantities, material_class=material_class,
-            material_class_is_user=material_class != "polymer"))
-        return report_to_dict(rep)
+        def run():
+            result, m, ctx = _run_cost_engine_ctx(mesh, filename)
+            rep = estimate_decision(result, m, ctx.features, EstimateOptions(
+                quantities=quantities, material_class=material_class,
+                material_class_is_user=material_class != "polymer"))
+            return report_to_dict(rep)
 
-    try:
-        return await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(None, run),
-                                      timeout=_analysis_timeout_sec())
-    except asyncio.TimeoutError:
-        return None
+        try:
+            return await compute_budget.run_within_budget(run, timeout=_analysis_timeout_sec(), label="fix price")
+        except asyncio.TimeoutError:
+            return None
 
 
 async def _saved_cost_inputs(session, org_id: str, mesh_hash: str) -> tuple[list[int], str, str]:
@@ -617,7 +618,20 @@ def resolve_params(spec: FixSpec, given: float | None, result: dict, suffix: str
     return {**_params_for(spec, required), **extra}
 
 
-async def apply_fix(
+async def apply_fix(**kwargs) -> dict:
+    """Apply one fix to a copy of the part's kept source (``_apply_fix``), within the compute budget.
+
+    The whole fix holds room in the compute budget once its file is read: the
+    original's analysis, the fix itself (in its own process) and the re-check.
+    A web request waits at most ``COMPUTE_WAIT_SECONDS``, then answers 429.
+    """
+    from src.services import compute_budget
+
+    async with compute_budget.deferred_hold(label="fix") as room:
+        return await _apply_fix(**kwargs, room=room)
+
+
+async def _apply_fix(
     *,
     org_id: str,
     mesh_hash: str,
@@ -631,6 +645,7 @@ async def apply_fix(
     with_cost: bool,
     user,
     session,
+    room=None,
 ) -> dict:
     from src.services import analysis_service
     from src.services.source_artifact_service import read_source_artifact
@@ -651,6 +666,8 @@ async def apply_fix(
     if len(data) > fix_max_bytes():
         raise FixRequestError(413, f"The stored file is {len(data) / 1048576:.1f} MB, over the "
                                    f"{fix_max_bytes() / 1048576:.0f} MB limit for fixes.")
+    if room is not None:
+        await room.take_for_data(data, f"part{suffix}")
 
     saved = await latest_analysis(session, org_id, mesh_hash)
     original_name = (saved.filename if saved is not None else None) or f"part{suffix}"

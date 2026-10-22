@@ -473,8 +473,30 @@ async def _repair(
     session,
     org_id: str | None,
 ) -> tuple[dict, bytes | None]:
-    """The repair itself: ``(response dict, repaired STL bytes or None)``."""
+    """The repair itself: ``(response dict, repaired STL bytes or None)``.
+
+    One hold in the compute budget for the whole repair (the parse, both
+    analyses and the repair), joining the caller's when it has one (a kept
+    part's repair on the worker).
+    """
+    from src.services import compute_budget
+
+    async with compute_budget.hold_for_data(file_bytes, filename, label="repair"):
+        return await _repair_in_budget(file_bytes, filename, processes, rule_pack, user, session, org_id)
+
+
+async def _repair_in_budget(
+    file_bytes: bytes,
+    filename: str,
+    processes: str | None,
+    rule_pack: str | None,
+    user,
+    session,
+    org_id: str | None,
+) -> tuple[dict, bytes | None]:
     from fastapi import HTTPException
+
+    from src.services import compute_budget
 
     from src.api.routes import _parse_mesh_async
     from src.services import analysis_service
@@ -501,7 +523,6 @@ async def _repair(
     # assert the contract instead of silently misreading an AnalysisRun.
     assert isinstance(original_result, dict)
 
-    loop = asyncio.get_event_loop()
     original_faces = len(mesh.faces)
 
     def _prepare(m: trimesh.Trimesh):
@@ -517,7 +538,8 @@ async def _repair(
         return welded, capped, openings
 
     # CPU-bound, so off the event loop.
-    work_mesh, original_volume_mm3, openings = await loop.run_in_executor(None, _prepare, mesh)
+    work_mesh, original_volume_mm3, openings = await compute_budget.run_within_budget(
+        _prepare, mesh, label="repair prepare")
 
     def refused(details: dict) -> tuple[dict, None]:
         details = {"openings": openings, **details}
@@ -542,9 +564,9 @@ async def _repair(
     # Run repair with timeout (T-05A-01)
     repair_start = time.time()
     try:
-        repaired_mesh, tier, holes_filled = await asyncio.wait_for(
-            loop.run_in_executor(None, _do_repair, work_mesh),
-            timeout=_repair_timeout_sec(),
+        # On a timeout the thread runs on; it keeps its room until it ends.
+        repaired_mesh, tier, holes_filled = await compute_budget.run_within_budget(
+            _do_repair, work_mesh, timeout=_repair_timeout_sec(), label="repair",
         )
     except (asyncio.TimeoutError, Exception) as exc:
         logger.warning("Repair failed: %s", exc)

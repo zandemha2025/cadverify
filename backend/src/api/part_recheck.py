@@ -364,19 +364,22 @@ async def check_stored_bodies(
             basis["material_class"] = "saved_cost_check" if saved_basis == "saved_cost_check" else "default"
             material_is_user = material_class != "polymer"
     name = await _kept_name(session, org_id, digest, suffix)
-    budget = _analysis_timeout_sec()
-    started = asyncio.get_event_loop().time()
-    mesh, model, tree_note = await _bodies_inputs(data, name, suffix, units, budget)
-    remaining = max(5.0, budget - (asyncio.get_event_loop().time() - started))
-    loop = asyncio.get_event_loop()
-    try:
-        result = await asyncio.wait_for(loop.run_in_executor(None, lambda: check_bodies_sync(
-            mesh, filename=name, model=model, quantities=quantities, material_class=material_class,
-            material_class_is_user=material_is_user, region=region or "US", owned_processes=owned,
-            time_budget_sec=max(3.0, remaining - 3.0),
-        )), timeout=remaining)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail=f"Checking the bodies took longer than {budget:.0f} s.")
+    from src.services import compute_budget
+
+    # The parse, the product tree and every body's check hold room in the compute budget.
+    async with compute_budget.hold_for_data(data, name, label="bodies"):
+        budget = _analysis_timeout_sec()
+        started = asyncio.get_event_loop().time()
+        mesh, model, tree_note = await _bodies_inputs(data, name, suffix, units, budget)
+        remaining = max(5.0, budget - (asyncio.get_event_loop().time() - started))
+        try:
+            result = await compute_budget.run_within_budget(lambda: check_bodies_sync(
+                mesh, filename=name, model=model, quantities=quantities, material_class=material_class,
+                material_class_is_user=material_is_user, region=region or "US", owned_processes=owned,
+                time_budget_sec=max(3.0, remaining - 3.0),
+            ), timeout=remaining, label="bodies")
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail=f"Checking the bodies took longer than {budget:.0f} s.")
     result["source"] = {"mesh_hash": digest, "filename": name, "format": suffix.lstrip("."), "bytes": len(data),
                         "basis": basis, "product_tree_note": tree_note}
     response.headers["Cache-Control"] = "no-store"
@@ -406,7 +409,6 @@ async def body_as_own_part(
     uses no check. The response carries the copy's bytes (``file_b64``), its name
     and hash; the browser checks it like an upload. The original is never changed.
     """
-    import asyncio
     import base64
     import hashlib
     from datetime import datetime, timezone
@@ -415,15 +417,18 @@ async def body_as_own_part(
     from src.services import cad_fix_service
     from src.services.body_check_service import body_stl_bytes
 
+    from src.services import compute_budget
+
     org_id, digest, data, suffix = await _kept_source(ctx, mesh_hash)
     name = await _kept_name(session, org_id, digest, suffix)
-    mesh, model, _note = await _bodies_inputs(data, name, suffix, units, _analysis_timeout_sec())
-    try:
-        stl, meta = await asyncio.to_thread(body_stl_bytes, mesh, body_id, model)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    async with compute_budget.hold_for_data(data, name, label="body part"):
+        mesh, model, _note = await _bodies_inputs(data, name, suffix, units, _analysis_timeout_sec())
+        try:
+            stl, meta = await compute_budget.run_within_budget(body_stl_bytes, mesh, body_id, model, label="body part")
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     stem = Path(name).stem or "part"
     label = (meta.get("name") or f"body {meta['id']}").strip()
     filename = f"{stem} - {label}.stl" if meta.get("name") else f"{stem} - body {meta['id']}.stl"

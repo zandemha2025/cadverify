@@ -21,7 +21,6 @@ same 404 everywhere, whichever process deleted it).
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -134,18 +133,22 @@ async def stored_preview_glb(
         # Same parse + export as POST /validate/preview-mesh?purpose=analysis.
         from src.api.routes import _build_preview_glb, _parse_mesh_async
 
+        from src.services import compute_budget
+
         filename = f"source{suffix}"
-        mesh, parsed_suffix = await _parse_mesh_async(data, filename)
-        mesh = scale_mesh_to_mm(mesh, mesh_source_units(filename, units))
-        try:
-            glb, original_faces, preview_faces, decimated, face_hash = await asyncio.to_thread(
-                _build_preview_glb, mesh, filename, for_analysis=True
-            )
-        except HTTPException:
-            raise
-        except Exception:
-            logger.exception("Stored preview export failed for org=%s hash=%s", org_id, digest[:12])
-            raise HTTPException(status_code=500, detail="The 3D view couldn't be built from the stored file.")
+        # The parse and the export hold room in the compute budget (429 when full).
+        async with compute_budget.hold_for_data(data, filename, label="stored preview"):
+            mesh, parsed_suffix = await _parse_mesh_async(data, filename)
+            mesh = scale_mesh_to_mm(mesh, mesh_source_units(filename, units))
+            try:
+                glb, original_faces, preview_faces, decimated, face_hash = await compute_budget.run_within_budget(
+                    _build_preview_glb, mesh, filename, for_analysis=True, label="stored preview"
+                )
+            except HTTPException:
+                raise
+            except Exception:
+                logger.exception("Stored preview export failed for org=%s hash=%s", org_id, digest[:12])
+                raise HTTPException(status_code=500, detail="The 3D view couldn't be built from the stored file.")
         headers = {
             "X-Mesh-Original-Faces": str(original_faces),
             "X-Mesh-Preview-Faces": str(preview_faces),

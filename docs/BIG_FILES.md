@@ -82,6 +82,52 @@ page follows it. A file is then checked by the
 worker, or refused there with the same plain message when it is over the
 worker's own budget; never just refused by the web path.
 
+## The compute budget: what runs at once
+
+The gates above size one check. What a process holds at once is bounded by its
+compute budget (`src/services/compute_budget.py`), one per process (API and
+worker), in two dimensions:
+
+- **Memory.** Each piece of work reserves its need from the model below
+  (`estimate_memory_bytes_for_data`, with its headroom). The capacity is
+  `COMPUTE_MEMORY_BUDGET_MB` when set, otherwise `COMPUTE_MEMORY_FRACTION`
+  (default 0.7) of the machine's or container's memory: about 2.8 GB on a
+  4 GB web machine and 5.6 GB on an 8 GB worker.
+- **Compute slots.** One per piece of work, `COMPUTE_SLOTS` (default
+  `max(2, os.cpu_count())`): 2 on a 2-CPU web machine, 4 on a 4-CPU worker.
+
+A piece of work is a check, not a call: a catalog part's analysis, body
+split and price share one reservation; so do a request's parse and
+analysis, a repair's analyses and repair, a fit's two parts (their needs
+added). A cached analysis takes none.
+
+**Held until the work really ends.** `asyncio.wait_for` stops waiting for an
+executor thread at its timeout, but the thread computes on and keeps its
+arrays. The reservation is given back in the thread's own `finally`, when the
+computation returns or raises, never when an await is cancelled; the worker
+logs `abandoned_compute_finished` with its duration when such a thread ends.
+So a part that ran out of time keeps its room, and its retry waits for room
+beside it. Work bigger than the whole budget runs only when nothing else
+runs (the per-check refusal above comes first); waiters are served in order.
+
+**Waiting.** Waiting for room is not part of a check's time limit: the timer
+starts when the work does.
+
+- A web request (`/validate`, `/validate/cost` and their siblings, the stored
+  part's preview, bodies, orientation, repair and fixes) waits at most
+  `COMPUTE_WAIT_SECONDS` (default 15) and then answers the existing 429
+  `server_busy` with Retry-After. The count gate (`MAX_CONCURRENT_ANALYSES`)
+  stays as it was, in front of it: it protects the database pool.
+- The worker never fails for room. A batch or catalog item waits as long as
+  its arq job (600 s) leaves after its own work (`job_wait_seconds`: for a
+  catalog part, 600 s less twice its time limit, less 30 s), then goes back to
+  the run as pending, that delivery not counted as a try
+  (`batch_tasks._put_back_for_room`). A big file's check or a kept part's job
+  goes back to the queue the same way (`stored_check_tasks.requeue_for_room`);
+  a check from a share link, whose file was fetched once and isn't kept,
+  instead waits as long as its hour allows. A batch's `concurrency_limit`
+  (10) is unchanged: the items beyond the budget wait.
+
 ## Measurements
 
 Each file was checked by the real worker task (`run_stored_check`: download

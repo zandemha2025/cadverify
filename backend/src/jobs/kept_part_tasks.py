@@ -90,6 +90,8 @@ async def run_kept_part(ctx: dict, job_ulid: str) -> dict:
 
     from src.auth.require_api_key import AuthedUser
     from src.config.check_limits import larger_limits
+    from src.jobs.stored_check_tasks import requeue_for_room
+    from src.services import compute_budget
     from src.services import direct_upload_service as uploads
     from src.services import kept_part_jobs as kept
     from src.services import stored_check_service as svc
@@ -122,31 +124,36 @@ async def run_kept_part(ctx: dict, job_ulid: str) -> dict:
 
         budget_sec = svc.time_budget_sec(info.size, name)
         stage = "pricing" if action == kept.RECHECK else "repairing"
-        await progress.stage(stage, part_filename=name, part_bytes=info.size, memory=result["memory"])
-        with larger_limits(budget_sec=budget_sec, max_triangles=_BIG_MAX_TRIANGLES, max_bytes=uploads.part_max_size_bytes()):
-            async with get_session_factory()() as session:
-                try:
-                    if action == kept.RECHECK:
-                        from src.api.part_recheck import recheck_kept
+        # Room in the worker's compute budget for the whole job, waiting for the
+        # parts already being checked (its time limit starts once it has room);
+        # past the wait its job allows, it goes back to the queue.
+        wait = compute_budget.job_wait_seconds(started, 2 * budget_sec, svc.STORED_CHECK_JOB_TIMEOUT_SECONDS)
+        async with compute_budget.hold(need, wait=wait, label=f"kept part {action}"):
+            await progress.stage(stage, part_filename=name, part_bytes=info.size, memory=result["memory"])
+            with larger_limits(budget_sec=budget_sec, max_triangles=_BIG_MAX_TRIANGLES, max_bytes=uploads.part_max_size_bytes()):
+                async with get_session_factory()() as session:
+                    try:
+                        if action == kept.RECHECK:
+                            from src.api.part_recheck import recheck_kept
 
-                        report = await recheck_kept(session, org_id=org_id, digest=digest, user=user,
-                                                    response=Response(), **options)
-                    elif action == kept.REPAIR:
-                        from src.services import repair_service
+                            report = await recheck_kept(session, org_id=org_id, digest=digest, user=user,
+                                                        response=Response(), **options)
+                        elif action == kept.REPAIR:
+                            from src.services import repair_service
 
-                        report = await repair_service.repair_stored(
-                            org_id=org_id, mesh_hash=digest, processes=options.get("processes"),
-                            rule_pack=options.get("rule_pack"), quantities=options.get("quantities"),
-                            material_class=options.get("material_class"),
-                            with_cost=bool(options.get("with_cost", True)), user=user, session=session,
-                        )
-                        # The copy is served by its download URL, not inline on the job.
-                        report["repaired_file_b64"] = None
-                    else:
-                        raise _Failed("JOB_UNKNOWN", "This job asked for something the worker doesn't do. Nothing was charged.")
-                except HTTPException as exc:
-                    raise _http_failure(exc, str(action)) from exc
-                await session.commit()
+                            report = await repair_service.repair_stored(
+                                org_id=org_id, mesh_hash=digest, processes=options.get("processes"),
+                                rule_pack=options.get("rule_pack"), quantities=options.get("quantities"),
+                                material_class=options.get("material_class"),
+                                with_cost=bool(options.get("with_cost", True)), user=user, session=session,
+                            )
+                            # The copy is served by its download URL, not inline on the job.
+                            report["repaired_file_b64"] = None
+                        else:
+                            raise _Failed("JOB_UNKNOWN", "This job asked for something the worker doesn't do. Nothing was charged.")
+                    except HTTPException as exc:
+                        raise _http_failure(exc, str(action)) from exc
+                    await session.commit()
         summary, open_hash = _summary(str(action), report)
         result.update(result=jsonable_encoder(report), summary=summary, open_hash=open_hash or digest)
         await progress.stop()
@@ -160,6 +167,9 @@ async def run_kept_part(ctx: dict, job_ulid: str) -> dict:
         await _finish(job_ulid, ok=False, result=result, error=exc)
         logger.info("kept part %s %s refused: %s", digest[:12], action, exc.code)
         return {"ok": False, "code": exc.code}
+    except compute_budget.ComputeBusy:
+        await progress.stop()
+        return await requeue_for_room(ctx, job_ulid)
     except asyncio.CancelledError:
         await progress.stop()
         timed_out = time.monotonic() - started >= svc.STORED_CHECK_JOB_TIMEOUT_SECONDS - 5

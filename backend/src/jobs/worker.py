@@ -12,6 +12,7 @@ from src.jobs.batch_tasks import (
     BATCH_ITEM_MAX_ATTEMPTS,
     DIRECT_UPLOAD_PREP_MAX_TRIES,
     DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS,
+    JOB_TIMEOUT_SECONDS,
     direct_upload_prep_concurrency,
     dispatch_webhook,
     prepare_direct_upload_batch,
@@ -47,6 +48,12 @@ async def startup(ctx: dict) -> None:
     from src.jobs.executor import install_worker_executor
 
     install_worker_executor(asyncio.get_running_loop())
+    # CAD work waits for room in the compute budget; in the worker it never fails for it.
+    from src.services import compute_budget
+
+    compute_budget.worker_process()
+    _cb = compute_budget.budget().snapshot()
+    logger.info("compute budget: %d MB, %d slots", _cb["capacity_bytes"] // (1024 * 1024), _cb["slots"])
 
     from src.segmentation.sam3d.config import SAM3DConfig
     from src.segmentation.sam3d.pipeline import _get_backbone
@@ -230,7 +237,7 @@ class WorkerSettings:
     # loop -- each tick finishes in milliseconds, well inside this ceiling, and a
     # long batch is driven by the chain of ticks. A dead chain is reaped by the
     # heartbeat-based orphan sweeper.
-    job_timeout = 600
+    job_timeout = JOB_TIMEOUT_SECONDS
     health_check_interval = 30
     health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")
     retry_jobs = True
