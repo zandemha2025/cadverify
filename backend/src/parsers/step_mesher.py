@@ -591,7 +591,9 @@ def prewarm_step_from_bytes(
                 heal=False,
                 target_diag_segments=1,
             )
-        return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        mesh.metadata["source_format"] = "cad"  # ScaleCAD made these triangles
+        return mesh
     finally:
         try:
             os.unlink(tmp.name)
@@ -635,6 +637,9 @@ def _run_rung(path: str, idx: int) -> trimesh.Trimesh:
             mesh.fix_normals(multibody=True)
         except Exception:
             logger.warning("fix_normals failed on gmsh shell; leaving winding as-is")
+    # ScaleCAD tessellated this CAD file itself: advice about the file's own
+    # triangles (an STL's) doesn't apply (base_analyzer.decimation_issue).
+    mesh.metadata["source_format"] = "cad"
     return mesh
 
 

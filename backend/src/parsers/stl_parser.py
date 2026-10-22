@@ -55,4 +55,5 @@ def parse_stl_from_bytes(data: bytes, filename: str = "upload.stl") -> trimesh.T
         spacing_exponent = np.where(magnitude == 0, -149, np.maximum(exponent - 24, -149))
         half_ulp = np.ldexp(np.ones(3), spacing_exponent - 1)
         mesh.metadata["coordinate_error"] = float(np.linalg.norm(half_ulp))
+    mesh.metadata["source_format"] = "stl"
     return mesh

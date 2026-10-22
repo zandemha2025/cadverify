@@ -247,17 +247,29 @@ def decimation_issue(ctx) -> Issue | None:
     from src.analysis.context import _max_analysis_faces
 
     cap = _max_analysis_faces()
+    source = (getattr(ctx, "mesh", None) is not None
+              and ctx.mesh.metadata.get("source_format")) or None
+    cad_fix = ("ScaleCAD made the triangles from your CAD file itself, so there is no "
+               "triangle count to export. For exact values, remove detail the check "
+               "doesn't need (text, knurling, cosmetic threads, tiny fillets), or "
+               "check the part on its own rather than in an assembly.")
+    stl_fix = (f"Re-export the part with {cap:,} or fewer triangles (lower the "
+               "tessellation / mesh density) so DFM is computed on the exact geometry.")
+    if source == "cad":
+        fix = cad_fix
+    elif source == "stl":
+        fix = stl_fix
+    else:
+        fix = (f"For exact values: from a mesh file, export one with {cap:,} or fewer "
+               "triangles; from a STEP or IGES file, " + cad_fix[cad_fix.index("remove"):])
     return Issue(
         code="DECIMATED_MESH",
         severity=Severity.WARNING,
         message=(
-            f"Analyzed on a decimated mesh: {orig:,}→{ana:,} faces "
+            f"Analyzed on a simplified copy: {orig:,}→{ana:,} faces "
             f"({strat}). Wall-thickness, draft-angle and other DFM values are "
-            "approximate — computed on a reduced-resolution copy to bound memory."
+            "approximate, computed on the copy to bound memory."
         ),
         process=None,
-        fix_suggestion=(
-            f"Re-export the part with {cap:,} or fewer triangles (lower the "
-            "tessellation / mesh density) so DFM is computed on the exact geometry."
-        ),
+        fix_suggestion=fix,
     )
