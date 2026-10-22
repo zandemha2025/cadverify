@@ -271,3 +271,29 @@ export async function fetchAssemblyAnalysisV4(file: File): Promise<{ analysis: A
   }
   return { analysis: (body as { analysis?: AssemblyAnalysis } | null)?.analysis ?? null, gate: null, error: null };
 }
+
+/* ── revisions: a fixed file uploaded from a problem card ───────────────── */
+
+/** This part's revision links (GET /parts/{key}/revisions); null when unavailable. */
+export async function fetchRevisions(key: string): Promise<import("./revision-link").Revisions | null> {
+  try {
+    const res = await fetch(`${API_BASE}/parts/${encodeURIComponent(key)}/revisions`, { cache: "no-store" });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Record `key` as the next revision of `from` (PUT /parts/{key}/revision-of). */
+export async function linkRevision(key: string, from: { key: string; problem: string | null }): Promise<import("./revision-link").Revisions | null> {
+  try {
+    const res = await fetch(`${API_BASE}/parts/${encodeURIComponent(key)}/revision-of`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from_mesh_hash: from.key, problem: from.problem }),
+    });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}

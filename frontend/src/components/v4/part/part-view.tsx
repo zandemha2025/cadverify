@@ -18,6 +18,7 @@ import { LENSES, PartProvider, initialPick, useMethods, type Lens, type PartCtxV
 import { KIND_COLOR, cheapestAt, defaultQty, dimsText, machineViews, methodName, money, nearestComputed, priceAt, qtyWord, shortId } from "./model";
 import type { ViewerController, ViewerHighlight, ViewerState } from "./viewer";
 import { no3dTitle } from "./mesh-url";
+import { revisionLine, type Revisions } from "./revision-link";
 import { followed, recordedChoice } from "./choice";
 import type { CheckSession } from "./store";
 import { MakeSheet } from "./lens-make";
@@ -73,6 +74,7 @@ export function PartView({
   sourceKept = null,
   overlay,
   file = null,
+  revisions = null,
 }: {
   data: PartData;
   session: CheckSession | null;
@@ -92,6 +94,8 @@ export function PartView({
   overlay?: React.ReactNode;
   /** The part's file in this browser, when there is one (a fix such as mesh repair needs the file itself). */
   file?: File | null;
+  /** The part this one revises, or its next revision (a fixed file uploaded from a problem card). */
+  revisions?: Revisions | null;
 }) {
   const [data, setData] = React.useState<PartData>(initial);
   React.useEffect(() => setData(initial), [initial]);
@@ -308,6 +312,7 @@ export function PartView({
         .join(" · ") || (checking ? "Measuring…" : "");
   const ctx = data.context;
   const annual = ctx?.resolved_annual_volume ?? ctx?.annual_volume ?? null;
+  const revLine = revisionLine(revisions ?? null, data.decisionId ?? null);
   const hudCtx = [ctx?.program ? `Program ${ctx.program}` : "No program", ctx?.parent_assembly ? `in ${ctx.parent_assembly}` : "not in an assembly", annual ? `${qtyWord(annual)} a year` : "no yearly volume"].join(" · ");
 
   const share = async () => {
@@ -381,6 +386,17 @@ export function PartView({
                 </>
               ) : null}
             </span>
+            {revLine ? (
+              <span className="revline">
+                {revLine.lead} <Link href={revLine.partHref}>{revLine.name}</Link>
+                {revLine.compareHref ? (
+                  <>
+                    {" · "}
+                    <Link href={revLine.compareHref}>Compare before and after</Link>
+                  </>
+                ) : null}
+              </span>
+            ) : null}
             {bodies ? <BodiesChip b={bodies} /> : null}
             <span className="chips">
               {data.key ? (

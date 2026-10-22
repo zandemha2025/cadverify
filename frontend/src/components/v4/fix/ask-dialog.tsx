@@ -156,7 +156,7 @@ function Head({ who, whoTone, kind, title, text, close }: { who: string; whoTone
 function RepairBody({ P, file, close }: { P: Problem; file: File | null; close: () => void }) {
   const p = usePart();
   const fx = useFix();
-  const up = useUploadFixed();
+  const up = useUploadFixed(P.id);
   const key = p.data.key ?? "";
   const run = useFixRun(key);
   const rr = run?.kind === "repair" ? (run as RepairRun) : null;
@@ -858,7 +858,7 @@ function UploadBody({ P, close }: { P: Problem; close: () => void }) {
   const p = usePart();
   const fx = useFix();
   const shell = useShell();
-  const up = useUploadFixed();
+  const up = useUploadFixed(P.id);
   const [tool, setTool] = React.useState<CadToolId>(() => {
     try {
       const v = window.localStorage.getItem(TOOL_KEY);

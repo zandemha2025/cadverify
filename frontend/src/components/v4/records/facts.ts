@@ -81,6 +81,28 @@ export function cheapestAt(r: CostReport | null | undefined, q: number): Cheapes
   };
 }
 
+/**
+ * The cheapest way that works as drawn at a quantity, from the record's own
+ * estimates: not ruled out by conditions, no design problem that stops it.
+ * Compare's headline uses this, so it agrees with the table under it (a
+ * revision whose draft fix made molding workable is compared on molding),
+ * where the engine's recommendation may prefer a route without tooling.
+ */
+export function cheapestWorkableAt(r: CostReport | null | undefined, q: number): Cheapest | null {
+  if (!r) return null;
+  const ok = r.estimates.filter((e) => e.quantity === q && !e.environment_excluded && dfmOk(e) && Number.isFinite(e.unit_cost_usd));
+  if (!ok.length) return null;
+  const best = ok.reduce((a, b) => (b.unit_cost_usd < a.unit_cost_usd ? b : a));
+  return {
+    process: best.process,
+    material: best.material,
+    usd: best.unit_cost_usd,
+    leadLo: best.lead_time?.low_days ?? null,
+    leadHi: best.lead_time?.high_days ?? null,
+    est: best,
+  };
+}
+
 /** Your machines' way at a quantity: for each route your machines can make, its cheapest surviving estimate. */
 export interface MineRoute {
   process: string;
@@ -381,8 +403,8 @@ export function wayTable(A: CostReport | null | undefined, B: CostReport | null 
   const procs = new Set<string>();
   for (const e of A?.estimates ?? []) if (e.quantity === q) procs.add(e.process);
   for (const e of B?.estimates ?? []) if (e.quantity === q) procs.add(e.process);
-  const pa = cheapestAt(A, q)?.process ?? null;
-  const pb = cheapestAt(B, q)?.process ?? null;
+  const pa = cheapestWorkableAt(A, q)?.process ?? null;
+  const pb = cheapestWorkableAt(B, q)?.process ?? null;
   const rows = [...procs].map((p) => {
     const a = wayCell(A, p, q);
     const b = wayCell(B, p, q);

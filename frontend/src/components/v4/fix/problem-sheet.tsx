@@ -5,6 +5,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { cx } from "../ui";
 import { setPendingFile, CAD_ACCEPT } from "../pending-file";
+import { setPendingRevision } from "../part/revision-link";
 import { R } from "../routes";
 import { usePart } from "../part/ctx";
 import { classLabel } from "../part/sheet-bits";
@@ -41,9 +42,12 @@ export function roving<T>(list: T[], i: number, pick: (j: number) => void) {
   };
 }
 
-/** Upload a fixed file: it's checked like any upload and saved as a new part. */
-export function useUploadFixed() {
+/** Upload a fixed file: it's checked like any upload, saved, and becomes this part's next revision. */
+export function useUploadFixed(problemId: string | null = null) {
   const router = useRouter();
+  const part = usePart();
+  const fromKey = part.data.key;
+  const fromName = part.data.fileName;
   const input = React.useRef<HTMLInputElement>(null);
   const el = (
     <input
@@ -58,6 +62,7 @@ export function useUploadFixed() {
         e.target.value = "";
         if (!f) return;
         setPendingFile(f);
+        if (fromKey) setPendingRevision({ key: fromKey, name: fromName, problem: problemId });
         router.push(R.check);
       }}
     />
@@ -68,7 +73,7 @@ export function useUploadFixed() {
 export function ProblemSheet() {
   const p = usePart();
   const fx = useFix();
-  const up = useUploadFixed();
+  const up = useUploadFixed(fx.problem?.id ?? null);
   // Lengths follow the person's unit (mm or in); the engine's findings stay in mm.
   const { unit } = useUnits();
   const P = fx.problem;

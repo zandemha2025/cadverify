@@ -12,13 +12,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loadPartMesh, loadSavedPart, recheckStored, RecheckError, type SavedPart } from "./api";
+import { fetchRevisions, linkRevision, loadPartMesh, loadSavedPart, recheckStored, RecheckError, type SavedPart } from "./api";
 import { keptToastLine } from "./kept-job-model";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markCheckOpened, previewFromFile, retryPreview, retryPrices, setPanel, startCheck, useSessionForKey } from "./store";
 import { liveData, savedData } from "./data";
 import { qtyWord, withQuantity } from "./model";
 import { urlSlot, type UrlSlot } from "./mesh-url";
+import { revisionForSession, type Revisions } from "./revision-link";
 import { PartView, type MeshSource } from "./part-view";
 import { ProgressPanel } from "./progress";
 import { PartUrlSync } from "./url-sync";
@@ -92,6 +93,24 @@ export function PartPage({ partKey }: { partKey: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partKey, sessionDone, reload]);
+
+  // A fixed file uploaded from a problem card is that part's next revision: link them once the check is
+  // saved, and read this part's links (either way) for the header.
+  const [revisions, setRevisions] = React.useState<Revisions | null>(null);
+  const revisionFrom = revisionForSession(session?.id);
+  const linked = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!revisionFrom || !session || session.status !== "done" || !session.key || session.key === revisionFrom.key || linked.current === session.id) return;
+    linked.current = session.id;
+    void linkRevision(session.key, revisionFrom).then((r) => r && setRevisions(r));
+  }, [revisionFrom, session]);
+  React.useEffect(() => {
+    let live = true;
+    void fetchRevisions(partKey).then((r) => live && r && setRevisions(r));
+    return () => {
+      live = false;
+    };
+  }, [partKey, sessionDone]);
 
   // 3D: this browser's copy, else the kept source file built on the server. Re-asked once a live check finishes.
   // The URL on screen stays valid until a new one replaces it: a re-check starting must not pull it away.
@@ -289,6 +308,7 @@ export function PartPage({ partKey }: { partKey: string }) {
       mesh={mesh}
       initialLens={lens}
       initialQty={askedQty}
+      revisions={revisions}
       canRecheck={!!file || kept === true}
       onRecheck={recheck}
       onRetryPrices={() => session && void retryPrices(session.id)}

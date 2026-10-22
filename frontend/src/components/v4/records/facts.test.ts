@@ -10,6 +10,7 @@ import type { CostEstimate, CostReport, CostDecisionSummary } from "@/lib/api";
 import {
   answerLine,
   cheapestAt,
+  cheapestWorkableAt,
   chartPaths,
   costLines,
   defaultQty,
@@ -236,4 +237,26 @@ test("words: conditions, UTC stamps and row times", () => {
   assert.equal(stampUtc("2026-10-18T05:00:33Z"), "Oct 18, 2026, 05:00 UTC");
   assert.equal(rowTime("2026-10-18T05:00:33Z", new Date("2026-10-18T09:00:00Z")), "05:00");
   assert.equal(rowTime("2026-10-17T05:00:33Z", new Date("2026-10-18T09:00:00Z")), "Oct 17");
+});
+
+test("compare's cheapest is the cheapest way that works as drawn, the same one the table marks", () => {
+  // The engine recommends a route without tooling at 1,000; molding is cheaper and workable after the draft fix.
+  const revB = report({
+    quantities: [1000],
+    estimates: [
+      est({ process: "fdm", material: "PLA", quantity: 1000, unit_cost_usd: 18.34 }),
+      est({ process: "injection_molding", material: "ABS", quantity: 1000, unit_cost_usd: 17.03 }),
+      est({ process: "sls", material: "PA12", quantity: 1000, unit_cost_usd: 12, dfm_ready: false, dfm_verdict: "fail" }),
+      est({ process: "die_casting", material: "A380", quantity: 1000, unit_cost_usd: 5, environment_excluded: true }),
+    ],
+    decision: { ...report().decision!, recommendation: { "1000": { process: "fdm", material: "PLA", unit_cost_usd: 18.34, dfm_ready: true, dfm_verdict: "pass", lead_low_days: 5, lead_high_days: 9 } } },
+  });
+  assert.equal(cheapestAt(revB, 1000)?.process, "fdm");
+  const best = cheapestWorkableAt(revB, 1000);
+  assert.equal(best?.process, "injection_molding");
+  assert.equal(best?.usd, 17.03);
+  assert.equal(best?.leadLo, 7);
+  const rows = wayTable(revB, revB, 1000);
+  assert.deepEqual(rows.filter((r) => r.pick).map((r) => r.process), ["injection_molding"]);
+  assert.equal(cheapestWorkableAt(revB, 10), null);
 });

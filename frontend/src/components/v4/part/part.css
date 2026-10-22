@@ -209,3 +209,4 @@
 .ob .bp-form input{box-sizing:border-box;height:34px;padding:0 10px;border:1px solid rgba(20,24,31,.18);border-radius:9px;background:#fff;font-size:14px;color:var(--ink);width:100%}
 .ob .bp-acts{grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap}
 .ob .bp-err{grid-column:1 / -1;color:var(--bad);font-size:12.5px}
+.ob .pv .revline{font-size:12.5px;color:var(--ink2)}

@@ -15,9 +15,11 @@ import { R, TABS } from "../routes";
 import { Content, PageHead, cx } from "../ui";
 import { useRecordList, usePartContext, useRecords } from "./api";
 import { Glyph, LoadFailed, NoneYet, RecSheet, RecWorld, Skeleton } from "./common";
+import { KeptStill } from "./kept-still";
 import {
   chartPaths,
   cheapestAt,
+  cheapestWorkableAt,
   inHouseAt,
   rangeOf,
   recordFacts,
@@ -119,7 +121,9 @@ export function CompareScreen() {
 
   const sideOf = (d: CostDecisionDetail | null, f: RecordFacts, tag: string | null, k: "A" | "B") => {
     const r = d?.result ?? null;
-    const rec = r && qv != null ? cheapestAt(r, qv) : null;
+    // The cheapest way that works as drawn, the one the table marks; the engine's pick is said when it differs.
+    const rec = r && qv != null ? cheapestWorkableAt(r, qv) : null;
+    const pick = r && qv != null ? cheapestAt(r, qv) : null;
     const ih = r && qv != null ? inHouseAt(r, qv)[0] ?? null : null;
     const verdict = f.verdict && VERDICT[f.verdict] ? VERDICT[f.verdict][0].toLowerCase() : "not checked";
     return {
@@ -130,7 +134,7 @@ export function CompareScreen() {
       ih,
       cost: rec ? money(rec.usd) : "—",
       by: rec
-        ? `cheapest at ${qw}, ${wayLower(rec.process)}${rec.leadLo != null && rec.leadHi != null ? ` · ${Math.round(rec.leadLo)}–${Math.round(rec.leadHi)} days` : ""}`
+        ? `cheapest that works at ${qw}, ${wayLower(rec.process)}${rec.leadLo != null && rec.leadHi != null ? ` · ${Math.round(rec.leadLo)}–${Math.round(rec.leadHi)} days` : ""}${pick && pick.process !== rec.process ? ` · ScaleCAD’s pick: ${wayLower(pick.process)}, ${money(pick.usd)}` : ""}`
         : shared.length
           ? `no pick at ${qw}`
           : "no shared quantity",
@@ -230,11 +234,17 @@ export function CompareScreen() {
                   <i>{s.k}</i>
                   <b>{s.title}</b>
                 </span>
-                <span className="idl">Record {i === 0 ? a : b}</span>
-                <span className="still" role="img" aria-label={d ? `Part ${s.k}, ${d.filename}` : `Part ${s.k}`}>
-                  <span className="shade" />
-                  <Glyph size={84} />
+                <span className="idl nm" title={`Record ${i === 0 ? a : b}`}>
+                  {d ? `${d.label || d.filename} · checked ${rowTime(d.created_at)}` : `Record ${s.k}`}
                 </span>
+                {d ? (
+                  <KeptStill meshHash={d.mesh_hash} filename={d.filename} label={`Part ${s.k}, ${d.filename}. Drag to turn it.`} />
+                ) : (
+                  <span className="still" role="img" aria-label={`Part ${s.k}`}>
+                    <span className="shade" />
+                    <Glyph size={84} />
+                  </span>
+                )}
                 {d ? (
                   <>
                     <span className="price num">{s.cost}</span>

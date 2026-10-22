@@ -10,6 +10,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { sampleBracketFile } from "@/lib/verify/sample-cad";
 import { takePendingFile, takePendingLink } from "../pending-file";
+import { noteRevision, takePendingRevision } from "./revision-link";
 import { R } from "../routes";
 import { markCheckOpened, readsAsBodies, resumableSession, startCheck, useSession, retryPrices, retryPreview, setPanel, type CheckSession } from "./store";
 import { StartScreen } from "./start";
@@ -66,7 +67,10 @@ export function CheckPage() {
       return;
     }
     setStored(null);
+    // A fixed file uploaded from a problem card: the part it fixes rides along to the part page.
+    const revisionOf = opts.sample ? null : takePendingRevision();
     const id = startCheck(f, { ...opts, materialClass, quantity: c?.qty ?? null });
+    if (revisionOf) noteRevision(id, revisionOf);
     carriedFor.current = c ? id : null;
     setSid(id);
   }, []);
