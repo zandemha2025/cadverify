@@ -281,10 +281,14 @@ export function lastRunLine(b: Pick<BatchProgress, "total_items" | "completed_it
   return `${state} · ${runCountsLine(c)}`;
 }
 
-/** "28 of 296 checked; 268 not checked. Check them again." (when and why: stopWhy; files not on the list: apartLine) */
+/**
+ * "28 of 296 checked; 268 not checked." (when and why: stopWhy; files not on the list: apartLine).
+ * What to do is the stored reason's ("Check the parts again", or "Start a new run with them" when the
+ * files are gone) and the banner's button, never said here as well.
+ */
 export function stoppedLine(c: RunCounts): string {
   const left = c.notChecked + c.toGo;
-  return `${num(c.checked)} of ${num(c.total)} checked; ${num(left)} not checked. Check ${left === 1 ? "it" : "them"} again.`;
+  return `${num(c.checked)} of ${num(c.total)} checked; ${num(left)} not checked.`;
 }
 
 /**
