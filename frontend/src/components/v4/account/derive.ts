@@ -287,6 +287,7 @@ const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 /** Where a notification opens in v4. */
 export function notificationHref(row: Pick<NotificationRow, "dest" | "source_type" | "source_id">): string {
   if (row.source_type === "cost_decision" && ULID.test(row.source_id ?? "")) return R.record(row.source_id as string);
+  if (row.source_type === "catalog_run" && ULID.test(row.source_id ?? "")) return R.batch(row.source_id as string);
   if (row.source_type === "change_request" || row.dest === "calibration") return R.changes;
   if (row.dest === "records") return R.records;
   return R.parts;
@@ -294,6 +295,7 @@ export function notificationHref(row: Pick<NotificationRow, "dest" | "source_typ
 
 export function kindName(row: Pick<NotificationRow, "kind" | "title">): string {
   if (row.kind === "decision.created") return "Check recorded";
+  if (row.kind === "catalog.run_finished") return "Catalog run finished";
   if (row.kind === "governance.change_requested") return "Change needs review";
   const t = row.title.replace(/\s+-\s+.*$/, "").trim();
   return t || "Notification";

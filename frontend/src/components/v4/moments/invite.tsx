@@ -20,6 +20,7 @@ import { AuthCard } from "./auth-card";
 import { V4_HOME } from "./landing";
 import { R } from "../routes";
 import { switchTo, teamInfo, useTeamSetup } from "../onboard/teammate";
+import { inviteNext } from "./invite-next";
 import "./moments.css";
 
 type Preview = {
@@ -74,6 +75,8 @@ function failure(status: number, data: unknown, fallback: string): State {
 export function V4InviteAccept() {
   const params = useSearchParams();
   const token = params.get("token") || "";
+  const next = inviteNext(params.get("next"));
+  const nextLabel = next?.startsWith("/app/many/") ? "Open the make-or-buy result" : "Open what you were invited to";
   const [state, setState] = React.useState<State>(token ? { kind: "checking" } : { kind: "missing" });
   const [attempt, setAttempt] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
@@ -121,7 +124,7 @@ export function V4InviteAccept() {
     setState(failure(res.status, res.data, "This invitation could not be accepted."));
   }
 
-  const here = `/orgs/accept?token=${token}`;
+  const here = `/orgs/accept?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
   const loginHref = `/login?next=${encodeURIComponent(here)}`;
   const signupHref = `/signup?next=${encodeURIComponent(here)}`;
 
@@ -238,8 +241,8 @@ export function V4InviteAccept() {
           meta={[`Role: ${role(state.role)}`, state.switched ? "Now your active organization" : "Not switched yet"]}
           info={state.switched ? teamInfo(team, state.role) : undefined}
           actions={
-            <Link className="btn ink" href={state.switched ? `${R.parts}?joined=1` : V4_HOME}>
-              {state.switched ? `Open ${state.org ?? "the organization"}` : "Open ScaleCAD"}
+            <Link className="btn ink" href={state.switched ? next ?? `${R.parts}?joined=1` : V4_HOME}>
+              {state.switched ? (next ? nextLabel : `Open ${state.org ?? "the organization"}`) : "Open ScaleCAD"}
             </Link>
           }
           note={
@@ -255,8 +258,8 @@ export function V4InviteAccept() {
           title="Already a member"
           meta={[...(state.org ? [state.org] : []), `Role unchanged: ${role(state.role)}`]}
           actions={
-            <Link className="btn ink" href={V4_HOME}>
-              Open ScaleCAD
+            <Link className="btn ink" href={next ?? V4_HOME}>
+              {next ? nextLabel : "Open ScaleCAD"}
             </Link>
           }
         />

@@ -47,12 +47,14 @@ type Phase =
   | { k: "err"; title: string; message: string; code: string | null; batchId: string | null }
   | { k: "started"; run: RunCreated };
 
-// Spec columns are optional: finish, Ra (the header says µm or µin), heat treatment, inspection, certifications.
+// Quantity is how many you buy a year; current_price is what you pay today (US dollars) for "per" parts
+// (blank per = each). Spec columns are optional: finish, Ra (the header says µm or µin), heat treatment,
+// inspection, certifications.
 const TEMPLATE =
-  "file,part_number,quantity,material,finish,ra_um,heat_treatment,inspection,certifications\n" +
-  "bracket.step,BRK-100,25,6061-T6 aluminum,Type II anodize,1.6,,FAI,AS9100\n" +
-  "housing.stl,HSG-200,500,PETG,,,,,\n" +
-  'cover.iges,CVR-300,40,304 stainless,Passivation,0.8,Stress relief,CMM report,"AS9100, NADCAP (chemical processing)"\n';
+  "file,part_number,description,quantity,material,current_price,per,finish,ra_um,heat_treatment,inspection,certifications\n" +
+  "bracket.step,BRK-100,Motor bracket,120,6061-T6 aluminum,18.50,,Type II anodize,1.6,,FAI,AS9100\n" +
+  "housing.stl,HSG-200,Housing,500,PETG,\"1,240.00\",100,,,,,\n" +
+  'cover.iges,CVR-300,Cover,40,304 stainless,,,Passivation,0.8,Stress relief,CMM report,"AS9100, NADCAP (chemical processing)"\n';
 
 function picked(f: File, path?: string): Picked {
   const rel = path || (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
@@ -335,7 +337,7 @@ export function CatalogStartSheet({ access, onStarted }: { access: CatalogAccess
           ) : null}
 
           <label className="field">
-            Parts list <span className="fh">Optional. CSV or a BOM export: file or part number, quantity, material, and specs if you have them (finish, Ra, heat treatment, inspection, certifications).</span>
+            Parts list <span className="fh">Optional. CSV or a BOM export: file or part number, description, quantity a year, material, what you pay today (current price, per), and specs if you have them (finish, Ra, heat treatment, inspection, certifications). With prices, the answer says what making them saves.</span>
             <input
               ref={listRef}
               type="file"

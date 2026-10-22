@@ -141,6 +141,9 @@ test("notifications group by part, newest group first, with unread counts", () =
   assert.equal(g[2].isPart, false);
   assert.equal(partOf({ title: "Verification recorded - a.stl", kind: "decision.created", metadata: {} }), "a.stl");
   assert.equal(kindName({ kind: "decision.created", title: "x" }), "Check recorded");
+  // oo-22: one notification for a whole catalog run, opening the run.
+  assert.equal(kindName({ kind: "catalog.run_finished", title: "Catalog run finished - Ridgeline-bought-parts" }), "Catalog run finished");
+  assert.equal(notificationHref({ dest: "verify", source_type: "catalog_run", source_id: "01M5H5DZATJCQAN6SMMTGCCYD7" }), "/app/many/01M5H5DZATJCQAN6SMMTGCCYD7");
 });
 
 test("usage events and health rows", () => {

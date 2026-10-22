@@ -54,6 +54,11 @@
 .ob .cr-ans-rate ul{margin:0;padding-left:18px}
 .ob .cr-again{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .ob .cr-again-row{margin-top:4px}
+.ob .cr-inv{display:flex;flex-direction:column;gap:6px;padding:4px 12px 10px;font-size:12.5px;color:var(--ink2)}
+.ob .cr-inv label{font-weight:600;color:var(--ink2)}
+.ob .cr-inv span{display:flex;gap:6px}
+.ob .cr-inv input{flex:1;min-width:0;box-sizing:border-box;height:32px;padding:0 10px;border:1px solid rgba(20,24,31,.16);border-radius:9px;background:#fff;font-size:13.5px;color:var(--ink)}
+.ob .cr-inv small{font-size:12px;line-height:1.4;overflow-wrap:anywhere}
 .ob .cr-pt small.cr-cmp{color:var(--ink2);font-size:12px;line-height:1.35}
 .ob .cr-p0{margin:2px 12px 8px;color:var(--ink3);font-size:12.5px}
 .ob .cr-acts{display:flex;gap:8px;flex-wrap:wrap;padding:4px 12px 6px}

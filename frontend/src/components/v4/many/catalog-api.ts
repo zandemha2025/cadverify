@@ -202,3 +202,25 @@ export async function recheckParts(batchId: string, itemIds?: string[]): Promise
   if (!res.ok) throw problem(res.status, await res.json().catch(() => null), "The parts weren’t checked again.");
   return res.json();
 }
+
+/**
+ * Invite someone to the organization as a viewer, to look at this run: the email
+ * names who sent it, the organization and the run, and accepting opens the run.
+ */
+export async function inviteToRun(batchId: string, email: string): Promise<{ emailed: boolean; accept_link: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/orgs/invites`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, role: "viewer", next: `/app/many/${batchId}` }),
+    });
+  } catch {
+    throw new CatalogRunError("The server couldn’t be reached. Check your connection and try again.", 0, "network", null);
+  }
+  if (!res.ok) {
+    const fallback = res.status === 403 ? "Only an admin of your organization can invite people." : "The invitation wasn’t sent.";
+    throw problem(res.status, await res.json().catch(() => null), fallback);
+  }
+  return res.json();
+}

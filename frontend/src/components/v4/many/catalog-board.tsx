@@ -19,7 +19,7 @@ import { Content, Empty, Fig, Figs, Loading, PageHead, Panel, Sheet, cx } from "
 import { markWorkSeen, registerWork, runKey } from "../work/work-bar";
 import { ConfirmDialog, ManyWorld, Thumb, errorText, saveBlob, useManyTabs, useToast, whenLabel } from "./common";
 import { etaText } from "./batch-model";
-import { downloadBoardCsv, fetchBoard, recheckParts } from "./catalog-api";
+import { downloadBoardCsv, fetchBoard, inviteToRun, recheckParts } from "./catalog-api";
 import { runSummaryHref } from "./catalog-routes";
 import { AccuracyPanel } from "../validation/accuracy-panel";
 import { reportHref } from "../validation/routes";
@@ -739,6 +739,7 @@ function RunSheet({
               </button>
             </div>
             <p className="cr-p0">The link opens for people in your organization. Catalog runs have no public link: they name your machines and rates.</p>
+            <InviteToRun batchId={batchId} />
           </>
         ) : (
           <>
@@ -848,3 +849,55 @@ function reasonsOf(rows: BoardRow[]): [string, number][] {
   return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
 }
 
+/** Invite someone outside the organization to look at this run, as a viewer: the email names you, the organization and the run. */
+function InviteToRun({ batchId }: { batchId: string }) {
+  const [email, setEmail] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const id = React.useId();
+  const send = async () => {
+    const to = email.trim();
+    if (!to || busy) return;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+      setMsg({ tone: "bad", text: "Type an email address, like mark@yourcompany.com." });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await inviteToRun(batchId, to);
+      setEmail("");
+      setMsg(
+        r.emailed
+          ? { tone: "ok", text: `Invitation sent to ${to}. It names you, your organization and this run, and opens it once accepted.` }
+          : { tone: "ok", text: `Invitation made. Email isn’t set up here, so send ${to} this link: ${r.accept_link}` },
+      );
+    } catch (e) {
+      setMsg({ tone: "bad", text: errorText(e, "The invitation wasn’t sent.") });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="cr-inv"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send();
+      }}
+    >
+      <label htmlFor={id}>Invite someone to see this run</label>
+      <span>
+        <input id={id} type="email" autoComplete="off" placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <button className="btn sm" type="submit" disabled={busy || !email.trim()}>
+          {busy ? "Sending…" : "Invite as viewer"}
+        </button>
+      </span>
+      {msg ? (
+        <small role={msg.tone === "bad" ? "alert" : "status"} className={msg.tone === "bad" ? "cr-warn" : undefined}>
+          {msg.text}
+        </small>
+      ) : null}
+    </form>
+  );
+}

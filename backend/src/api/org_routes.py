@@ -23,6 +23,7 @@ from src.config.public_urls import dashboard_origin, error_doc_url
 import html
 import logging
 import os
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -51,6 +52,18 @@ class CreateOrgBody(BaseModel):
 class InviteBody(BaseModel):
     email: str
     role: str = "member"
+    # Optional: the page in this organization the invite is for (a catalog run),
+    # opened once the invite is accepted and named in the email.
+    next: Optional[str] = None
+
+
+# An in-app page an invite may open after it is accepted: a path, never a site.
+_NEXT_PATH = re.compile(r"^/app/[A-Za-z0-9/_-]{1,200}$")
+
+
+def _safe_next(path: Optional[str]) -> Optional[str]:
+    p = (path or "").strip()
+    return p if p and _NEXT_PATH.match(p) and "//" not in p else None
 
 
 class AcceptBody(BaseModel):
@@ -104,11 +117,15 @@ async def _emit(
     )
 
 
-def _invite_link(raw_token: str) -> str:
-    return f"{dashboard_origin()}/orgs/accept?token={raw_token}"
+def _invite_link(raw_token: str, next_path: Optional[str] = None) -> str:
+    from urllib.parse import quote
+
+    link = f"{dashboard_origin()}/orgs/accept?token={raw_token}"
+    return link + (f"&next={quote(next_path, safe='/')}" if next_path else "")
 
 
-def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
+def _send_invite_email(email: str, link: str, org_name: Optional[str], *, inviter: Optional[str] = None,
+                       role: Optional[str] = None, what: Optional[str] = None) -> bool:
     """Best-effort invite email via Resend. Returns True if a send was attempted.
 
     Graceful no-email fallback: when RESEND_API_KEY is unset (local/dev) we skip
@@ -121,17 +138,29 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         import resend
 
         resend.api_key = os.environ["RESEND_API_KEY"]
-        # Both values are escaped for HTML: an org name is user text.
+        # Every value is escaped for HTML: names are user text.
         who = f" to {html.escape(org_name)}" if org_name else ""
         href = html.escape(link, quote=True)
+        if inviter:
+            # Who sent it, to which organization, as what, and what they want you to see.
+            subject = f"{inviter} invited you to {org_name or 'their organization'} on ScaleCAD"
+            lead = (f"<p>{html.escape(inviter)} invited you{who} on ScaleCAD"
+                    + (f" as {html.escape(role)}" if role else "") + ".</p>")
+            if what:
+                lead += f"<p>{html.escape(what)}</p>"
+            action = "Accept and open it" if what else "Accept the invitation"
+        else:
+            subject = "You've been invited to a ScaleCAD organization"
+            lead = f"<p>You've been invited{who}.</p>"
+            action = "Accept the invitation"
         resend.Emails.send(
             {
                 "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a ScaleCAD organization",
+                "subject": subject,
                 "html": (
-                    f'<p>You\'ve been invited{who}.</p>'
-                    f'<p><a href="{href}">Accept the invitation</a> '
+                    lead
+                    + f'<p><a href="{href}">{action}</a> '
                     f"(expires in {svc._invite_ttl_days()} days).</p>"
                 ),
             }
@@ -142,6 +171,34 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         # the one-time link in the response.
         logger.warning("invite email send failed for %s", email, exc_info=True)
         return False
+
+
+_ROLE_WORDS = {"viewer": "a viewer", "member": "a member", "admin": "an admin"}
+
+
+async def _invite_words(session: AsyncSession, user_id: int, org_id: str,
+                        next_path: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """``(inviter, organization, what it's for)`` in the words the email uses."""
+    from sqlalchemy import select
+
+    from src.db.models import Batch, Organization, User
+
+    try:
+        name, email = (await session.execute(select(User.full_name, User.email).where(User.id == user_id))).one()
+        org_name = (await session.execute(select(Organization.name).where(Organization.id == org_id))).scalar_one_or_none()
+    except Exception:
+        return None, None, None
+    inviter = f"{name} ({email})" if name else email
+    what = None
+    m = re.match(r"^/app/many/([0-9A-HJKMNP-TV-Z]{26})$", next_path or "")
+    if m:
+        batch = (await session.execute(select(Batch).where(Batch.ulid == m.group(1), Batch.org_id == org_id,
+                                                           Batch.job_type == "catalog"))).scalars().first()
+        if batch is not None:
+            from src.services.catalog_run_service import run_title
+
+            what = f"It's to look at a make-or-buy result: {run_title(batch) or 'a catalog run'}."
+    return inviter, org_name, what
 
 
 # ── org create / list / switch ────────────────────────────────────────────────
@@ -332,8 +389,11 @@ async def create_invite(
         org_id=org_id,
     )
     await session.commit()
-    link = _invite_link(raw)
-    emailed = _send_invite_email(invite.email, link, None)
+    next_path = _safe_next(body.next)
+    link = _invite_link(raw, next_path)
+    inviter, org_name, what = await _invite_words(session, ctx.user_id, org_id, next_path)
+    emailed = _send_invite_email(invite.email, link, org_name, inviter=inviter,
+                                 role=_ROLE_WORDS.get(invite.role, invite.role), what=what)
     response.status_code = 201
     out = svc.serialize_invite(invite)
     # The raw token / accept link is returned exactly once, here, and never
