@@ -259,17 +259,20 @@ function LogJob({
   machines,
   onSaved,
 }: {
-  parts: { filename: string; make_now_process: string | null; label: string | null }[];
+  parts: { filename: string; make_now_process: string | null; label: string | null; mesh_hash?: string }[];
   machines: OwnedMachine[];
   onSaved: () => Promise<number>;
 }) {
   const [f, setF] = React.useState<JobForm>(BLANK);
+  // The checked part picked (its file hash), so the job is compared with that part's estimate.
+  const [partKey, setPartKey] = React.useState<string>("");
   const [errors, setErrors] = React.useState<JobErrors>({});
   const [busy, setBusy] = React.useState(false);
   const [saved, setSaved] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const ids = React.useId();
-  const names = Array.from(new Set(parts.map((p) => p.filename)));
+  const picks = parts.filter((p) => p.mesh_hash);
+  const twice = new Set(picks.map((p) => p.filename).filter((n, i, a) => a.indexOf(n) !== i));
   const owned = Array.from(new Set(machines.map((m) => m.process)));
   const set = (k: keyof JobForm, v: string) => {
     setF((x) => ({ ...x, [k]: v }));
@@ -282,9 +285,10 @@ function LogJob({
       return n;
     });
   };
-  const pickPart = (name: string) => {
-    const rec = parts.find((p) => p.filename === name);
-    setF((x) => ({ ...x, part: name, process: x.process || rec?.make_now_process || owned[0] || "" }));
+  const pickPart = (key: string) => {
+    const rec = picks.find((p) => p.mesh_hash === key);
+    setPartKey(key);
+    setF((x) => ({ ...x, part: rec?.filename ?? "", process: x.process || rec?.make_now_process || owned[0] || "" }));
     setSaved(null);
     setErrors((e) => ({ ...e, part: undefined }));
   };
@@ -297,7 +301,7 @@ function LogJob({
     setBusy(true);
     setSaveError(null);
     try {
-      await logJob(r.body);
+      await logJob(partKey ? { ...r.body, evidence_sha256: partKey, match_basis: "chosen" } : r.body);
       const n = await onSaved();
       setSaved(`Saved. ${n} ${n === 1 ? "actual" : "actuals"}.`);
       setF((x) => ({ ...BLANK, part: x.part, process: x.process, material: x.material, kind: x.kind }));
@@ -327,12 +331,13 @@ function LogJob({
       <div className="frow" style={{ gridTemplateColumns: "2fr 1.3fr 0.8fr 1fr 1fr" }}>
         <label className="field">
           Part
-          {names.length ? (
-            <select aria-label="Part" value={f.part} onChange={(e) => pickPart(e.target.value)} {...inv("part")}>
+          {picks.length ? (
+            <select aria-label="Part" value={partKey} onChange={(e) => pickPart(e.target.value)} {...inv("part")}>
               <option value="">Pick a part</option>
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
+              {picks.map((p) => (
+                <option key={p.mesh_hash} value={p.mesh_hash}>
+                  {p.filename}
+                  {p.label ? ` · ${p.label}` : twice.has(p.filename) ? ` · ${p.mesh_hash!.slice(0, 8)}` : ""}
                 </option>
               ))}
             </select>

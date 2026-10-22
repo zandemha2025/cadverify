@@ -22,6 +22,7 @@ def _build_app():
     from fastapi import FastAPI
 
     from src.api.actuals import router as actuals_router
+    from src.api.groundtruth import router as gt_router
     from src.api.routes import router as core_router
     from src.auth.rate_limit import limiter
 
@@ -29,6 +30,7 @@ def _build_app():
     app.state.limiter = limiter
     app.include_router(core_router, prefix="/api/v1")
     app.include_router(actuals_router, prefix="/api/v1/actuals")
+    app.include_router(gt_router, prefix="/api/v1/ground-truth")
     return app
 
 
@@ -255,6 +257,19 @@ async def test_import_compare_calibrate_undo_report_and_org_scoping(tmp_path, mo
             r = await ac.post("/api/v1/validate/cost", data={"qty": "1,100"},
                               files={"file": ("cube.stl", _cube_bytes(2), "application/octet-stream")})
             assert all("calibration" not in e for e in r.json()["estimates"])
+
+            # ---- one job logged by hand: machine hours only, tied to the part picked
+            r = await ac.post("/api/v1/ground-truth", json={
+                "part_id": "part-02.step", "process": "cnc_3axis", "quantity": 7, "actual_machine_hours": 3.0,
+                "evidence_sha256": hashes[2], "match_basis": "chosen", "source": "J-77"})
+            assert r.status_code == 200, r.text
+            assert r.json()["actual_unit_cost_usd"] is None and r.json()["match_basis"] == "chosen"
+            rows2 = (await ac.get(f"/api/v1/actuals/accuracy?part={hashes[2]}")).json()["rows"]
+            assert len(rows2) == 2
+            logged = next(x for x in rows2 if x["quantity"] == 7)
+            assert logged["hours"]["error_pct"] == pytest.approx(33.33, abs=0.01) and logged["cost"] is None
+            r = await ac.post("/api/v1/ground-truth", json={"part_id": "x.step", "process": "cnc_3axis", "quantity": 1})
+            assert r.status_code == 422
 
         async with eng.get_session_factory()() as s:
             acts = (await s.execute(select(AuditLog.action).where(AuditLog.org_id == org_a))).scalars().all()

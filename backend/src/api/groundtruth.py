@@ -172,6 +172,9 @@ class GroundTruthIn(BaseModel):
     machine: Optional[str] = Field(
         None, max_length=200, description="The machine the job ran on, as given."
     )
+    match_basis: Optional[Literal["file_hash", "part_number", "file_name", "chosen"]] = Field(
+        None, description="How the record was tied to a checked part (its file hash in evidence_sha256)."
+    )
 
     @model_validator(mode="after")
     def _cost_or_hours(self):

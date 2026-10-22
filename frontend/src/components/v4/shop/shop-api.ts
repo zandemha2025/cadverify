@@ -236,6 +236,9 @@ export type GroundTruthIn = {
   actual_setup_hours?: number | null;
   actual_labor_hours?: number | null;
   actual_inspection_hours?: number | null;
+  /** The checked part this job was for (its file hash), and that it was picked by hand. */
+  evidence_sha256?: string | null;
+  match_basis?: "chosen" | null;
 };
 
 export function logJob(body: GroundTruthIn): Promise<{ id: string }> {
