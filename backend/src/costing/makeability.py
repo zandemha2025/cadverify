@@ -258,6 +258,8 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
 
 
 _SIZE_CODES = frozenset({"EXCEEDS_BUILD_VOLUME", "BUILD_ENVELOPE_UNVERIFIED"})
+_OP_WORDS = {"stress_relief": "stress relief", "sinter": "sintering", "hip": "HIP (hot isostatic pressing)",
+             "grinding": "grinding"}
 _ENVELOPE_AXIS = {"swing_dia": "swing diameter", "between_centers": "length between centers",
                   "minimum_width_mm": "its narrowest width against the work area's smallest side",
                   "diameter_mm": "its widest extent against the work area's diagonal"}
@@ -770,8 +772,8 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             # nothing the shop declared says so either way.
             failures.append(FitFailure(
                 "secondary_op", op, op, None,
-                f"needs {op.replace('_', ' ')} afterwards; not declared whether "
-                f"you do it in-house"))
+                f"needs {_OP_WORDS.get(op, op.replace('_', ' '))} afterwards; not "
+                f"declared whether you do it in-house"))
         elif avail is False:
             # Declared unavailable: a concrete gap (have=False, a hard failure).
             # ``False`` must never read as present.
