@@ -223,3 +223,12 @@ test("one role per person: the org role; the account tier is staff-only (it-20)"
   assert.match(src, /\{superadmin \? <span role="columnheader">Account tier \(staff\)<\/span> : null\}/);
   assert.match(src, /View-only account \(set by ScaleCAD\)/);
 });
+
+test("the file storage line names the configured region and per-file encryption (it-11)", () => {
+  const base = { postgres: { ok: true, error: null }, redis: { ok: true, expected: true, configured: true, error: null }, worker: { state: "ok", heartbeat_age_seconds: 5, stale_threshold_seconds: 120, strict: false }, queue: { depth: 0, name: "arq:queue" } };
+  const s3 = healthRows({ ...base, object_store: { ok: true, expected: true, backend: "s3", error: null, region: "us-east-1", encryption: "sse-kms" } } as never);
+  const file = s3.find((r) => r.name === "File storage")!;
+  assert.equal(file.note, "Object store · us-east-1 · each file KMS-encrypted");
+  const local = healthRows({ ...base, object_store: { ok: false, expected: false, backend: "local", error: null } } as never);
+  assert.equal(local.find((r) => r.name === "File storage")!.note, "No object store on this deployment");
+});

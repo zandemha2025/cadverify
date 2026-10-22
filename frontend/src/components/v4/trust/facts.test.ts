@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DATA_PAGE, DELETING, SECTIONS, SERVICES, SHARE_LINKS, UPLOAD_LINE, WHO } from "./facts.ts";
+import { ACCESS, CHOICES, DATA_PAGE, DELETING, SECTIONS, SERVICES, SHARE_LINKS, UPLOAD_LINE, WHO, hostingSection } from "./facts.ts";
 
 const all = [UPLOAD_LINE, ...DATA_PAGE.meta, ...SECTIONS.flatMap((s) => [s.title, ...s.rows.flatMap((r) => [r.k, r.v])]), ...SERVICES.flatMap((s) => [s.name, s.gets, s.when])].join("\n");
 
@@ -73,5 +73,42 @@ test("every section has an id, a noun title and plain rows", () => {
 test("the CRM row says no files, file names or results go there", () => {
   const crm = SERVICES.find((s) => s.name.startsWith("Notion"))!;
   assert.match(crm.gets, /No files, file names or results/);
-  assert.match(crm.when, /Deleting your account moves the entry to Notion’s trash/);
+  assert.match(crm.when, /Deleting your account blanks the entry and moves it to Notion’s trash/);
+  // it-13: said plainly, it doesn't depend on the privacy choices.
+  assert.match(crm.when, /whatever your privacy choices/);
+});
+
+test("three separate privacy choices, each with its own vendor row (it-23)", () => {
+  const names = SERVICES.map((s) => s.name);
+  assert.ok(names.includes("PostHog (product analytics)") && names.includes("PostHog (session recordings)") && names.includes("RB2B (business visitors)"));
+  assert.match(SERVICES.find((s) => s.name === "RB2B (business visitors)")!.when, /Only with business visitor identification on/);
+  const text = CHOICES.rows.map((r) => r.v).join(" ");
+  assert.match(text, /Supplier share pages load none of these/);
+  assert.match(text, /Turning one off stops it at once/);
+});
+
+test("hosting facts come only from the deployment's configuration, never a guess (it-11)", () => {
+  const unknown = hostingSection(null).rows.map((r) => r.v).join(" ");
+  assert.doesNotMatch(unknown, /encrypted|KMS|S3|region [a-z]/i);
+  assert.match(unknown, /Not stated for this deployment/);
+  const local = hostingSection({ file_storage: { kind: "local", region: null, encryption: null, s3_compatible: false }, declared: { hosting: null, data_region: null, encryption_at_rest: null, backup_retention_days: null } });
+  assert.match(local.rows[0].v, /server’s own disk/);
+  assert.match(local.rows[1].v, /Not stated/);
+  const s3 = hostingSection({ file_storage: { kind: "s3", region: "us-east-1", encryption: "sse-kms", s3_compatible: false }, declared: { hosting: "Render", data_region: "Oregon, US", encryption_at_rest: null, backup_retention_days: 30 } });
+  assert.deepEqual(s3.rows.map((r) => r.v), [
+    "Amazon S3, region us-east-1.",
+    "Every stored file is written encrypted with an AWS KMS key.",
+    "Render, Oregon, US.",
+    "Kept 30 days by the hosting setup. Deleting in ScaleCAD doesn’t change backups already made.",
+  ]);
+  for (const r of [...local.rows, ...s3.rows]) assert.ok(r.v.endsWith("."), r.k);
+});
+
+test("sign-in and access state only what the code enforces", () => {
+  const text = ACCESS.rows.map((r) => r.v).join(" ");
+  assert.match(text, /authenticator app/);
+  assert.match(text, /An admin can require it for every member/);
+  assert.match(text, /30, 90 or 365 days/);
+  assert.match(text, /set up with ScaleCAD support for your organization/);
+  assert.doesNotMatch(text, /network address/);
 });

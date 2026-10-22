@@ -1,45 +1,25 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
+import { factSection, servicesSection } from "@/components/site/fact-sections";
+import { ACCESS, DELETING, SECTIONS, SHARE_LINKS, TRANSIT, USE, WHERE, WHO, hostingSection } from "@/components/v4/trust/facts";
+import { getDeploymentFacts } from "@/lib/deployment-facts";
 
-export const metadata: Metadata = {"title": "Security — ScaleCAD", "description": "Your geometry is valuable intellectual property. Review the deployment, access and data handling that apply to your work before uploading sensitive files.", "alternates": {"canonical": "/security"}};
+export const metadata: Metadata = {"title": "Security — ScaleCAD", "description": "Where your CAD files are kept, who can see them, how sign-in works, every outside service that receives data, and what this deployment states about hosting.", "alternates": {"canonical": "/security"}};
+export const revalidate = 300;
 
-export default function Page() {
-  return <DocumentPage label="Security" title="Understand the boundaries before sharing the CAD." intro="Your geometry is valuable intellectual property. Review the deployment, access and data handling that apply to your work before uploading sensitive files." sections={[
-  {
-    "id": "your-account",
-    "title": "Your own account, in plain words.",
-    "body": "Only people in your organization can open your files; on a personal account that is just you. ScaleCAD's administrators see account details, file names and check results, but can't open your files in ScaleCAD; people who run the servers can reach the storage, as with any hosted service. Your files aren't used to train any model and are never compared with another organization's parts. They're kept until you delete them: a part from the part's page, your whole account in Account, Security. The full list, with every outside service and what it receives, is on Your files and data once you sign in.",
-    "href": "/app/account/data",
-    "link": "Your files and data"
-  },
-  {
-    "id": "deployment",
-    "title": "Choose the deployment boundary.",
-    "body": "Hosted and self-hosted requirements are part of the pilot discussion. Confirm where files are processed, where records are retained and which external services are involved for your deployment."
-  },
-  {
-    "id": "access",
-    "title": "Review access and accountability.",
-    "body": "The application uses authenticated accounts and organization access. Review roles, API keys, audit requirements and your team’s onboarding process during the security review."
-  },
-  {
-    "id": "data",
-    "title": "Agree on retention and use.",
-    "body": "Retention, deletion and any permitted use of customer data belong in the agreement. The privacy summary and data-processing addendum describe the questions to resolve.",
-    "href": "/dpa",
-    "link": "Read about data processing"
-  },
-  {
-    "id": "assurance",
-    "title": "Ask for the evidence available today.",
-    "body": "A compliance plan is not a certification. Request the current status and supporting security materials from the team; evaluate the controls for the deployment you intend to use."
-  },
-  {
-    "id": "contact",
-    "title": "Bring your security team into the conversation.",
-    "body": "For security questionnaires, architecture notes, data-boundary questions or a security concern, contact nazeem@scalecad.ai.",
-    "href": "mailto:nazeem@scalecad.ai",
-    "link": "Email the security contact"
-  }
-]} />;
+export default async function Page() {
+  const hosting = hostingSection(await getDeploymentFacts());
+  const transit = factSection(TRANSIT);
+  return <DocumentPage label="Security" title="Where your CAD files go, and who can see them." intro="What ScaleCAD’s software does today, from the same facts as the Files and data page inside the app. Hosting facts come from this deployment’s configuration; anything it doesn’t state is marked as not stated." sections={[
+    { id: "in-short", title: "In short", body: "The answers a security review asks first.", bullets: SECTIONS.filter((s) => s.short).map((s) => s.short as string) },
+    factSection(WHERE),
+    factSection(WHO),
+    factSection(SHARE_LINKS),
+    factSection(USE),
+    factSection(ACCESS),
+    { ...transit, id: "hosting", title: "Connections and hosting", body: "From this deployment’s configuration.", bullets: [...(transit.bullets ?? []), ...hosting.rows.map((r) => `${r.k}: ${r.v}`)] },
+    factSection(DELETING, { href: "/privacy#retention", link: "Privacy requests" }),
+    servicesSection(),
+    { id: "contact", title: "Security contact", body: "For security questionnaires, architecture notes, single sign-on and directory sync (SCIM) setup, or a security concern, email nazeem@scalecad.ai. Nothing on this page is a certification.", href: "mailto:nazeem@scalecad.ai", link: "Email the security contact" },
+  ]} />;
 }

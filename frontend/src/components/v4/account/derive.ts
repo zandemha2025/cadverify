@@ -468,7 +468,7 @@ export type HealthChecks = {
   redis?: { ok: boolean; expected: boolean; configured: boolean; error: string | null };
   worker?: { state: string; heartbeat_age_seconds: number | null; stale_threshold_seconds: number; strict?: boolean };
   queue?: { depth: number | null; name: string };
-  object_store?: { ok: boolean; expected: boolean; backend?: string; error: string | null };
+  object_store?: { ok: boolean; expected: boolean; backend?: string; error: string | null; region?: string | null; encryption?: string | null };
 };
 export type Tone = "ok" | "warn" | "bad" | "unk";
 export type HealthRow = { name: string; chip?: { tone: Tone; label: string }; value?: string; note: string };
@@ -496,7 +496,14 @@ export function healthRows(c: HealthChecks): HealthRow[] {
     rows.push({
       name: "File storage",
       chip: os.ok ? { tone: "ok", label: "Healthy" } : os.expected ? { tone: "bad", label: "Unhealthy" } : { tone: "unk", label: os.backend === "local" ? "Local disk" : "Not set up" },
-      note: os.error ? os.error : os.ok ? "Object store" : os.expected ? "Object store unreachable" : "No object store on this deployment",
+      // From the deployment's configuration: what this server actually uses (it-11).
+      note: os.error
+        ? os.error
+        : os.ok
+          ? ["Object store", os.region ?? null, os.encryption === "sse-kms" ? "each file KMS-encrypted" : null].filter(Boolean).join(" · ")
+          : os.expected
+            ? "Object store unreachable"
+            : "No object store on this deployment",
     });
   }
   return rows;

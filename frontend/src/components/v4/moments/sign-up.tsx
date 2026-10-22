@@ -29,6 +29,7 @@ import { FORM_MAX_MB } from "@/lib/upload-limit";
 import { CAD_ACCEPT, takePendingFile } from "../pending-file";
 import { Chip } from "../ui";
 import { AuthCard, CardField } from "./auth-card";
+import { SignupDataNote } from "@/components/site/signup-data-note";
 import { adoptTyped } from "./early-typing";
 import { tierHint } from "./email-tier";
 import { V4_HOME, V4_SIGNUP_HOME, afterSignup, v4Landing } from "./landing";
@@ -186,7 +187,12 @@ export function V4SignUp({
       title="Create account"
       meta={meta}
       error={error ?? (inviteProblem ? `${inviteProblem} You can still create an account; ask your admin for a new invite.` : null)}
-      note={invite ? roleMeans(invite.role, org) : undefined}
+      note={
+        <>
+          {invite ? <>{roleMeans(invite.role, org)} </> : null}
+          <SignupDataNote />
+        </>
+      }
       busy={busy}
       actions={
         <button className="btn ink" type="submit" form="v4-signup" disabled={!hydrated || busy} aria-busy={busy}>
@@ -313,6 +319,7 @@ export function V4EmailLinkSignUp() {
       label="Create account"
       title="Create account"
       meta={["Starts with a single-use email link", "Add a password later in Security"]}
+      note={<SignupDataNote />}
       actions={
         <Link className="btn ink" href="/login#magic-link">
           Continue with email

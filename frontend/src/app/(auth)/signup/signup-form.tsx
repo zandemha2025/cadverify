@@ -4,6 +4,7 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { safeLocalPath } from "@/lib/safe-return-path";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
+import { SignupDataNote } from "@/components/site/signup-data-note";
 import { authErrorMessage } from "@/lib/api-recovery";
 import { identifyAccount, signupMetadata, track } from "@/lib/analytics";
 
@@ -49,7 +50,7 @@ export function SignupForm({ freeChecks }: { freeChecks?: { work: number; person
       eyebrow="Free account"
       title="Create your account"
       body={`Free to start: ${freeChecks?.work ?? 15} checks with a work email, ${freeChecks?.personal ?? 3} with a personal one. No credit card.`}
-      footer={<>Already have an account? <AuthTextLink href={`/login?next=${encodeURIComponent(next)}`}>Log in</AuthTextLink></>}
+      footer={<>Already have an account? <AuthTextLink href={`/login?next=${encodeURIComponent(next)}`}>Log in</AuthTextLink><span style={{ display: "block", marginTop: 10, fontSize: 12, lineHeight: 1.5 }}><SignupDataNote /></span></>}
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <AuthField id="name" name="name" label="Full name" type="text" autoComplete="name" required maxLength={160} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />

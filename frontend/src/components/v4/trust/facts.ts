@@ -10,6 +10,13 @@
  * share links that end (src/services/data_deletion_service.py,
  * src/services/share_links.py); the page and the tests read them from here.
  *
+ * The public Security, Privacy and Data processing pages render these same
+ * sections (it-10), so the pages a reviewer reads before signing up and the
+ * page behind sign-in can't drift apart. Facts the code can't see (hosting,
+ * region, encryption at rest, backup retention) come only from the deployment's
+ * configuration (GET /api/v1/deployment, see hostingSection); unset, they say
+ * so instead of guessing.
+ *
  * Pure: no React, no fetch (runs under node --test).
  */
 
@@ -83,7 +90,85 @@ export const TRANSIT: FactSection = {
   title: "Connections",
   rows: [
     { k: "In transit", v: "HTTPS only. The servers won’t start unless their database and cache connections are encrypted too." },
-    { k: "At rest", v: "Depends on the storage provider’s settings for your deployment. Ask for the details in a security review." },
+  ],
+};
+
+/** This deployment's own configuration, from GET /api/v1/deployment (null when it couldn't be read). */
+export type DeploymentFacts = {
+  file_storage: { kind: "local" | "s3"; region: string | null; encryption: "sse-kms" | null; s3_compatible: boolean };
+  declared: { hosting: string | null; data_region: string | null; encryption_at_rest: string | null; backup_retention_days: number | null };
+};
+
+const NOT_STATED = "Not stated for this deployment. Ask for it in a security review.";
+
+/** Where files and data live, as this deployment's configuration states it. */
+export function hostingSection(d: DeploymentFacts | null): FactSection {
+  const fs = d?.file_storage;
+  const declared = d?.declared;
+  const storage = !fs
+    ? NOT_STATED
+    : fs.kind === "local"
+      ? "On the server’s own disk. This deployment has no separate object store."
+      : fs.s3_compatible
+        ? `An S3-compatible object store${fs.region ? ` (${fs.region})` : ""}.`
+        : `Amazon S3${fs.region ? `, region ${fs.region}` : ""}.`;
+  const atRest = [
+    fs?.encryption === "sse-kms" ? "Every stored file is written encrypted with an AWS KMS key." : null,
+    declared?.encryption_at_rest ? `${declared.encryption_at_rest.replace(/[.\s]+$/, "")}.` : null,
+  ].filter(Boolean).join(" ");
+  const where = [declared?.hosting, declared?.data_region].filter(Boolean).join(", ");
+  const days = declared?.backup_retention_days;
+  return {
+    id: "hosting",
+    title: "Hosting",
+    rows: [
+      { k: "File storage", v: storage },
+      { k: "Encryption at rest", v: atRest || NOT_STATED },
+      { k: "Hosting and region", v: where ? `${where.replace(/[.\s]+$/, "")}.` : NOT_STATED },
+      { k: "Backups", v: days ? `Kept ${days} days by the hosting setup. Deleting in ScaleCAD doesn’t change backups already made.` : "How long backups are kept is set in the hosting setup. " + NOT_STATED },
+    ],
+  };
+}
+
+/** What signing up and signing in collect, and where it goes (it-13). */
+export const ACCOUNT: FactSection = {
+  id: "account",
+  title: "Your account details",
+  short: "Name, email and phone go to ScaleCAD’s customer list in Notion, whatever your privacy choices.",
+  rows: [
+    { k: "At sign-up", v: "Your name, email, password (kept only as a one-way hash), optional phone number and your browser’s timezone." },
+    { k: "Phone check", v: "Twilio sends and checks the code; ScaleCAD never stores codes. The verified number stays on your account so one number can’t unlock free checks twice." },
+    { k: "Customer list", v: "Your name, email, phone, timezone, sign-in method, sign-up date and last visit go to ScaleCAD’s customer list in Notion for support and follow-up, whatever your privacy choices. Campaign source and approximate location go too only with product analytics on." },
+    { k: "Deleting your account", v: "The customer-list entry is blanked, keeping only an account number, and moved to Notion’s trash. Notion’s API can’t delete a page outright; Notion empties its trash after 30 days." },
+  ],
+};
+
+/** The three separate privacy choices (it-23); each off until turned on. */
+export const CHOICES: FactSection = {
+  id: "choices",
+  title: "Privacy choices",
+  short: "Product analytics, session recordings and business visitor identification are three separate choices, all off until you turn one on.",
+  rows: [
+    { k: "Product analytics", v: "PostHog counts pages and button clicks with all text masked, browser and device type, and errors with their messages removed. It may infer approximate country, region and city from your connection." },
+    { k: "Session recordings", v: "PostHog records public website pages with all text and form fields masked. Never inside the app. Needs product analytics." },
+    { k: "Business visitor identification", v: "RB2B uses cookies and public website visits to tell ScaleCAD’s sales team which company visited. Never inside the app." },
+    { k: "Changing them", v: "Privacy choices at the foot of the website or in the account menu shows what is on and changes it in place. Turning one off stops it at once; RB2B stops with a page reload." },
+    { k: "Never asked", v: "Supplier share pages load none of these. Browsers that send Do Not Track get none of them." },
+  ],
+};
+
+/** Signing in and who may do what (it-05, it-18): what the code enforces today. */
+export const ACCESS: FactSection = {
+  id: "access",
+  title: "Sign-in and access",
+  short: "Two-step sign-in with an authenticator app, which an admin can require; roles per organization; scoped API keys.",
+  rows: [
+    { k: "Sign-in", v: "A password (8 to 128 characters, kept as an Argon2id hash) or a single-use email link. Single sign-on (SAML or OIDC) is set up with ScaleCAD support for your organization." },
+    { k: "Two-step sign-in", v: "A code from an authenticator app after a password, email-link or Google sign-in, with ten single-use recovery codes. Five wrong codes in a row pause code entry for 15 minutes. An admin can require it for every member; single sign-on uses the identity provider’s own checks." },
+    { k: "Sessions", v: "A signed cookie that lasts 30 days. Changing the password or turning on two-step signs out other browsers, and Security can sign out other browsers or every browser." },
+    { k: "Roles", v: "Admin, member or viewer in each organization. Viewers can open parts and records but change nothing." },
+    { k: "API keys", v: "Each key belongs to one person and one organization, is read only or read and write, can end after 30, 90 or 365 days, and is kept as a one-way hash. An admin sees every key in the organization and can revoke any of them." },
+    { k: "Activity log", v: "Sign-ins, two-step changes, API keys, invitations and role changes, with who and when. Admins read and export 7, 30 or 90 days as CSV." },
   ],
 };
 
@@ -115,10 +200,11 @@ export const SERVICES: Service[] = [
   { name: "Twilio (text messages)", gets: "Your phone number", when: "When a code is sent to it" },
   { name: "Stripe (payments)", gets: "Billing details; card numbers go to Stripe only", when: "If you buy Pro" },
   { name: "Cloudflare Turnstile", gets: "A browser check", when: "At sign-up and sign-in" },
-  { name: "Notion (ScaleCAD’s customer list)", gets: "Name, email, phone, timezone, campaign source and location if given. No files, file names or results", when: "After sign-up. Deleting your account moves the entry to Notion’s trash" },
+  { name: "Notion (ScaleCAD’s customer list)", gets: "Name, email, phone, timezone, sign-in method, sign-up date and last visit; campaign source and approximate location only with product analytics on. No files, file names or results", when: "After sign-up, then at most hourly while you use ScaleCAD, whatever your privacy choices. Deleting your account blanks the entry and moves it to Notion’s trash" },
   { name: "Sentry (error reports)", gets: "Error details, with sign-in secrets removed", when: "When something fails" },
-  { name: "PostHog (product analytics)", gets: "Page and button activity with text masked; nothing inside the app is recorded on screen", when: "Only if you allow analytics" },
-  { name: "RB2B (business visitors)", gets: "Visits to the public website, to identify business visitors", when: "Only if you allow analytics, on public pages" },
+  { name: "PostHog (product analytics)", gets: "Page and button activity with all text masked", when: "Only with product analytics on" },
+  { name: "PostHog (session recordings)", gets: "Recordings of public website pages, text and form fields masked; never inside the app", when: "Only with session recordings on" },
+  { name: "RB2B (business visitors)", gets: "Visits to the public website, to identify business visitors for sales follow-up", when: "Only with business visitor identification on, on public pages" },
 ];
 
-export const SECTIONS: FactSection[] = [WHERE, WHO, SHARE_LINKS, USE, TRANSIT, DELETING];
+export const SECTIONS: FactSection[] = [WHERE, WHO, SHARE_LINKS, USE, ACCOUNT, CHOICES, ACCESS, TRANSIT, DELETING];

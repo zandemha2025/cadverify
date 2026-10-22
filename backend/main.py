@@ -24,6 +24,7 @@ import structlog
 
 from src.api.errors import structured_http_error_handler, structured_validation_error_handler
 from src.api.health import router as health_router
+from src.api.deployment_facts import router as deployment_facts_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
 from src.api.metrics import MetricsMiddleware, router as metrics_router
@@ -646,6 +647,8 @@ if oidc_provider_enabled(AUTH_MODE):
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)
+# Where data lives, from this deployment's own configuration (public pages read it).
+app.include_router(deployment_facts_router, prefix="/api/v1")
 # Prometheus scrape target. Unauthenticated by design (scrapers carry no API
 # key) and gated by METRICS_ENABLED; scrape it over a private network / ingress
 # allowlist in production. Listed in scripts/ci/check_route_auth.py's public

@@ -4,11 +4,14 @@
  * Your files and data: where uploaded CAD files are kept, who can see them,
  * what share links show, how files are used, connections, keeping and
  * deleting, and every outside service that receives data. Read-only facts from
- * ./facts (what the code does today); nothing here is fetched or editable.
+ * ./facts (what the code does today); the Hosting section is filled from this
+ * deployment's configuration (GET /api/v1/deployment), never guessed. The
+ * public Security, Privacy and Data processing pages render the same facts.
  */
+import * as React from "react";
 import { Content, Panel, Sheet } from "../ui";
 import { AccountFrame, AccountHead } from "../account/frame";
-import { DATA_PAGE, SECTIONS, SERVICES, type FactSection } from "./facts";
+import { DATA_PAGE, SECTIONS, SERVICES, hostingSection, type DeploymentFacts, type FactSection } from "./facts";
 import "./trust.css";
 
 function Section({ s }: { s: FactSection }) {
@@ -27,13 +30,28 @@ function Section({ s }: { s: FactSection }) {
 }
 
 export function DataScreen() {
+  const [deployment, setDeployment] = React.useState<DeploymentFacts | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    fetch("/api/proxy/deployment", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: DeploymentFacts | null) => live && d && d.file_storage && setDeployment(d))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  const hosting = hostingSection(deployment);
   return (
     <AccountFrame label={DATA_PAGE.title}>
       <AccountHead title={DATA_PAGE.title} meta={DATA_PAGE.meta.map((m) => <span key={m}>{m}</span>)} />
       <Content>
         <div className="t-page">
           {SECTIONS.map((s) => (
-            <Section key={s.id} s={s} />
+            <React.Fragment key={s.id}>
+              <Section s={s} />
+              {s.id === "transit" ? <Section s={hosting} /> : null}
+            </React.Fragment>
           ))}
           <Panel title="Services that receive data" id="services">
             <table className="t-svc">
