@@ -222,7 +222,11 @@ const ACTION: Record<string, string> = {
   "auth.password_changed": "Password changed",
   "auth.password_set": "Password set",
   "analysis.created": "Part checked",
-  "decision.created": "Decision saved",
+  // A record the system saves after every check: not a person's decision.
+  "decision.created": "Check recorded (automatic)",
+  "decision.disposition_recorded": "Decision saved",
+  "decision.disposition_withdrawn": "Decision withdrawn",
+  "access.refused": "Refused",
   "decision.approved": "Decision approved",
   "decision.rejected": "Decision rejected",
   "machine.created": "Machine added",
@@ -250,6 +254,22 @@ const ACTION: Record<string, string> = {
   "change_request.approved": "Change approved",
   "change_request.rejected": "Change rejected",
 };
+
+const DISPOSITION: Record<string, string> = {
+  inhouse: "make in-house",
+  outside: "make outside",
+  acquire: "acquire capability",
+  redesign: "redesign",
+};
+
+/** The Event column: "Refused: share a part" for a refused write, else the action's name. */
+export function auditTitle(e: Pick<AuditLike, "action" | "detail">): string {
+  if (e.action === "access.refused") {
+    const attempted = str((e.detail ?? {}).attempted);
+    return attempted ? `Refused: ${attempted}` : "Refused";
+  }
+  return actionName(e.action);
+}
 
 export function actionName(action: string): string {
   const known = ACTION[action];
@@ -294,11 +314,21 @@ function str(v: unknown): string | null {
 /** The "What" column: the file, key or member it touched, then the outcome. */
 export function auditWhat(e: AuditLike): string {
   const d = e.detail ?? {};
+  if (e.action === "access.refused") {
+    // Who is in the Who column; here, their role and how they asked.
+    const role = str(d.org_role);
+    const via = str(d.via) === "api_key" ? `API key${str(d.key_prefix) ? ` cv_live_${str(d.key_prefix)}_…` : ""}` : "in the app";
+    const why = str(d.reason) === "api_key_read_only" ? "read-only key" : null;
+    return [role ? roleName(role) : "No role", via, why].filter(Boolean).join(" · ");
+  }
   const file = str(d.filename) ?? str(d.file_name);
   const parts: string[] = [];
   if (file) parts.push(file);
   const way = str(d.make_now_process);
-  if (way) parts.push(`make now: ${wayWord(way)}`);
+  if (way) parts.push(e.action === "decision.created" ? `suggested: ${wayWord(way)}` : `make now: ${wayWord(way)}`);
+  if (e.action === "decision.created") parts.push("saved after the check");
+  const decided = str(d.disposition);
+  if (decided && e.action === "decision.disposition_recorded") parts.push(DISPOSITION[decided] ?? decided.replace(/_/g, " "));
   const email = str(d.email);
   if (email) parts.push(email);
   const role = str(d.new_role) ?? str(d.role) ?? str(d.org_role);
@@ -308,6 +338,9 @@ export function auditWhat(e: AuditLike): string {
   const prefix = str(d.key_prefix);
   if (prefix) parts.push(`cv_live_${prefix}_…`);
   if (str(d.reason) === "rotation") parts.push("rotated");
+  if (str(d.reason) === "org_admin_revoked") parts.push("revoked by an org admin");
+  const scope = str(d.scope);
+  if (scope && e.action === "api_key.created") parts.push(scope === "read" ? "read only" : "read and write");
   const group = str(d.group_value);
   if (group) parts.push(group);
   if (e.result_summary && !parts.length) parts.push(e.result_summary);

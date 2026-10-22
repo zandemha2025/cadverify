@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   allowanceLine,
   actionName,
+  auditTitle,
   auditWhat,
   dateLabel,
   groupNotifications,
@@ -91,11 +92,30 @@ test("the Pro price comes from Stripe's amount, or nothing", () => {
 });
 
 test("audit lines read in plain words", () => {
-  assert.equal(actionName("decision.created"), "Decision saved");
+  // it-21: the record a plain check saves is not a person's decision.
+  assert.equal(actionName("decision.created"), "Check recorded (automatic)");
+  assert.equal(actionName("decision.disposition_recorded"), "Decision saved");
   assert.equal(actionName("something.new_thing"), "Something new thing");
   assert.equal(
     auditWhat({ action: "decision.created", resource_type: "cost_decision", resource_id: "01M", detail: { filename: "bored-block-mm.iges", make_now_process: "fdm" }, result_summary: null }),
-    "bored-block-mm.iges · make now: filament printing",
+    "bored-block-mm.iges · suggested: filament printing · saved after the check",
+  );
+  assert.equal(
+    auditWhat({ action: "decision.disposition_recorded", resource_type: "cost_decision", resource_id: "01M", detail: { disposition: "outside" }, result_summary: null }),
+    "make outside",
+  );
+  // A refused write: "Refused: <action>", with the role and how it was asked.
+  const refused = { action: "access.refused", resource_type: "request", resource_id: null, detail: { attempted: "share a part", org_role: "viewer", via: "session", reason: "insufficient_org_role" }, result_summary: "Refused: share a part" };
+  assert.equal(auditTitle(refused), "Refused: share a part");
+  assert.equal(auditWhat(refused), "Viewer · in the app");
+  assert.equal(
+    auditWhat({ ...refused, detail: { attempted: "change the shop's machines", org_role: "member", via: "api_key", key_prefix: "Ab12Cd34", reason: "api_key_read_only" } }),
+    "Member · API key cv_live_Ab12Cd34_… · read-only key",
+  );
+  assert.equal(auditTitle({ action: "api_key.created", detail: null }), "API key created");
+  assert.equal(
+    auditWhat({ action: "api_key.revoked", resource_type: "api_key", resource_id: "9", detail: { key_prefix: "Zz9yXx8w", reason: "org_admin_revoked", owner_user_id: 4 }, result_summary: null }),
+    "cv_live_Zz9yXx8w_… · revoked by an org admin",
   );
   assert.equal(auditWhat({ action: "machine.deleted", resource_type: "machine", resource_id: "01M56N5Q10FVVWS00Q6P7S1296", detail: { org_id: "x" }, result_summary: null }), "machine 01M56N5Q10");
   assert.equal(auditWhat({ action: "api_key.revoked", resource_type: "api_key", resource_id: "4", detail: { key_prefix: "ab12cd34", reason: "rotation" }, result_summary: null }), "cv_live_ab12cd34_… · rotated");
