@@ -895,13 +895,31 @@ async def create_package(
     return package
 
 
+PREVIEW_MAX = 100
+
+
+def price_at(result_json: Any, quantity: int | None) -> dict[str, Any] | None:
+    """The engine's pick and its price at the quantity asked for (the part page's
+    pick at that quantity); None when that quantity wasn't priced. For the buyer
+    in ScaleCAD only: never in a supplier's copy unless they include the cost."""
+    rec = (((result_json or {}).get("decision") or {}).get("recommendation")) or {}
+    if quantity is None:
+        return None
+    row = rec.get(str(quantity))
+    if not isinstance(row, dict) or row.get("unit_cost_usd") is None:
+        return None
+    return {"quantity": quantity, "unit_cost_usd": row.get("unit_cost_usd"), "process": row.get("process"),
+            "dfm_ready": row.get("dfm_ready")}
+
+
 async def preview_items(
-    session: AsyncSession, user: AuthedUser, decision_ids: list[str]
+    session: AsyncSession, user: AuthedUser, decision_ids: list[str], *, cad: bool = True
 ) -> list[dict[str, Any]]:
     """What the builder shows for each picked record before the package is built:
     the part as the supplier would be asked to quote it (quantity prefilled,
-    editable) and whether ScaleCAD has its CAD."""
-    ids = list(dict.fromkeys(d.strip() for d in decision_ids if d and d.strip()))[:MAX_ITEMS]
+    editable), our price and pick at that quantity (for the buyer only), and
+    whether ScaleCAD has its CAD (``cad=False`` skips that look at the store)."""
+    ids = list(dict.fromkeys(d.strip() for d in decision_ids if d and d.strip()))[:PREVIEW_MAX]
     if not ids:
         return []
     rows = (
@@ -923,7 +941,7 @@ async def preview_items(
         manifest = await _manifest_match(session, d)
         context = await _part_context(session, d)
         req = _request(d, requested, manifest, context, await _run_facts(session, d), None)
-        _n, _b, cad = await _raw_cad_payload(session, d, True, read=False)
+        kept = (await _raw_cad_payload(session, d, True, read=False))[2] if cad else {}
         specs = outbound.part_specs((context or {}).get("part_specs"))
         from src.costing.part_specs import spec_summary
 
@@ -931,10 +949,17 @@ async def preview_items(
             "id": d.ulid, **{k: req[k] for k in ("name", "part_number", "material", "quantity",
                                                   "quantity_source", "yearly_volume")},
             "specs": spec_summary(specs) if specs else [],
-            "cad_kept": bool(cad.get("included")),
-            "cad_too_large": cad.get("reason") == "too_large",
+            "price": price_at(d.result_json, req["quantity"]),
+            "cad_kept": bool(kept.get("included")) if cad else None,
+            "cad_too_large": kept.get("reason") == "too_large",
         })
     return out
+
+
+async def requester_defaults(session: AsyncSession, user: AuthedUser) -> dict[str, str | None]:
+    """The builder's "Requested by", prefilled: the account's name and email, the organization's name."""
+    org_id = await resolve_org(session, user.user_id)
+    return await _requester(session, user.user_id, org_id) if org_id else {"name": None, "company": None, "email": None}
 
 
 def serialize_package(package: RfqPackage, *, include_items: bool = False) -> dict[str, Any]:

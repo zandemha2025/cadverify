@@ -94,7 +94,7 @@ async def _seed():
         s.add(BatchItem(batch_id=batch.id, org_id=org, filename="plate-with-boss.step", status="completed",
                         cost_decision_id=in_run.id))
         await s.commit()
-        return {"org": org, "user": uid, "single": single.ulid, "rechecked": rechecked.ulid}
+        return {"org": org, "user": uid, "single": single.ulid, "rechecked": rechecked.ulid, "tag": tag}
 
 
 async def _cleanup(w):
@@ -149,6 +149,14 @@ async def test_a_package_carries_the_kept_cad_of_a_single_check_and_of_a_recheck
             assert (rows[w["rechecked"]]["quantity"], rows[w["rechecked"]]["quantity_source"]) == (250, "run")
             assert rows[w["single"]]["cad_kept"] is True and rows[w["rechecked"]]["cad_kept"] is True
             assert "Inspection: First article inspection, AS9102" in rows[w["single"]]["specs"]
+            # buyer-11: the picker's price is at that quantity, with the engine's pick there.
+            assert rows[w["rechecked"]]["price"] == {"quantity": 250, "unit_cost_usd": 193.18,
+                                                     "process": "cnc_3axis", "dfm_ready": None}
+            assert rows[w["single"]]["price"] is None  # 1,200 wasn't priced: no price, never another quantity's
+            assert preview.json()["requested_by"] == {"name": "Marcus Bell", "company": "Kestrel Contract Manufacturing",
+                                                      "email": f"buyer-{w['tag']}@example.com"}
+            light = await client.post("/api/v1/rfq-packages/preview", json={"decision_ids": ids, "cad": False})
+            assert [r["cad_kept"] for r in light.json()["items"]] == [None, None]
 
         lines = list(csv.DictReader(io.StringIO(files["line-items.csv"].decode())))
         assert [(r["part"], r["quantity"], r["yearly_volume"]) for r in lines] == [

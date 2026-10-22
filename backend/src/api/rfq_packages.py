@@ -53,6 +53,8 @@ class CreateRfqPackageBody(BaseModel):
 
 class PreviewBody(BaseModel):
     decision_ids: list[str] = Field(default_factory=list, max_length=100)
+    # False: skip the look at the kept-file store (the record picker's prices).
+    cad: bool = True
 
 
 def _safe_zip_name(title: str | None, package_id: str) -> str:
@@ -102,9 +104,11 @@ async def preview_rfq_package(
 ):
     """Each picked record as the supplier would be asked to quote it, before the
     package is built: name, part number, material, the quantity (prefilled from
-    the part, editable) and where it came from, yearly volume, specs, and
-    whether ScaleCAD holds its CAD. Nothing is saved."""
-    return {"items": await svc.preview_items(session, user, body.decision_ids)}
+    the part, editable) and where it came from, yearly volume, specs, our price
+    and pick at that quantity (for the buyer), and whether ScaleCAD holds its
+    CAD; plus the "Requested by" the builder prefills. Nothing is saved."""
+    return {"items": await svc.preview_items(session, user, body.decision_ids, cad=body.cad),
+            "requested_by": await svc.requester_defaults(session, user)}
 
 
 @router.get("")
