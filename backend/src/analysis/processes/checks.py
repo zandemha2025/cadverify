@@ -521,7 +521,10 @@ def check_aspect_ratio(
     of the part's footprint on the plate, not the longest over the shortest
     bounding-box side: a 100 x 60 x 3 mm plate lying flat is 3 mm tall.
     """
-    height, width = build_height_and_footprint_width(ctx.mesh)
+    measured = ctx.__dict__.get("_build_footprint")
+    if measured is None:  # shared by every printing process's check
+        measured = ctx.__dict__["_build_footprint"] = build_height_and_footprint_width(ctx.mesh)
+    height, width = measured
     if width < 0.1:
         return []
     ratio = height / width
