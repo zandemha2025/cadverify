@@ -89,17 +89,43 @@ compute budget (`src/services/compute_budget.py`), one per process (API and
 worker), in two dimensions:
 
 - **Memory.** Each piece of work reserves its need from the model below
-  (`estimate_memory_bytes_for_data`, with its headroom). The capacity is
+  (`estimate_memory_bytes_for_data`, with its headroom), and a web check of a
+  STEP or IGES file is re-sized from its mesh once it is tessellated (next
+  section). The capacity is
   `COMPUTE_MEMORY_BUDGET_MB` when set, otherwise `COMPUTE_MEMORY_FRACTION`
   (default 0.7) of the machine's or container's memory: about 2.8 GB on a
   4 GB web machine and 5.6 GB on an 8 GB worker.
 - **Compute slots.** One per piece of work, `COMPUTE_SLOTS` (default
-  `max(2, os.cpu_count())`): 2 on a 2-CPU web machine, 4 on a 4-CPU worker.
+  `max(2, available_cpus())`): 2 on a 2-CPU web machine, 4 on a 4-CPU worker.
+  `available_cpus()` is the container's CPU quota (cgroup v2 `cpu.max`, or
+  v1 `cpu.cfs_quota_us` over `cpu.cfs_period_us`, rounded up) and the CPUs
+  the process may run on (its affinity), never more than `os.cpu_count()`:
+  inside a container that reports the host's CPUs. The parse pool's
+  `PARSE_POOL_WORKERS` defaults to the same count less one. Both env values
+  still override.
 
 A piece of work is a check, not a call: a catalog part's analysis, body
 split and price share one reservation; so do a request's parse and
 analysis, a repair's analyses and repair, a fit's two parts (their needs
 added). A cached analysis takes none.
+
+**One check, one reservation, on the web.** The app checks a part with
+several calls on the same file at once: the assembly probe, then the preview
+mesh and `/validate` together, then `/validate/cost`. A kept part's page does
+the same with its preview, orientations and bodies. Admission
+(`src/api/admission.py`) names the check: the organization, the person and
+the file (its SHA-256, or the kept part's `mesh_hash`). The calls of one
+check share one reservation and one slot. Its size is the largest single
+need among them. Work that only reads the check's mesh (the preview, the
+probe's model) adds nothing to it. A second copy of the same heavy work at
+once (two analyses of the same bytes) adds its own need, so parallel calls
+can't hide work. The room comes back when the last of the calls ends.
+
+`MAX_CONCURRENT_ANALYSES` (8) and `MAX_CONCURRENT_ANALYSES_PER_ORG` (3) count
+checks the same way, not calls. A check stays counted for
+`ADMISSION_CHECK_GRACE_SECONDS` (5) after its last call ends, so its price a
+moment later isn't refused for room it has just given back. A second call
+of the same kind on the same file at once counts as another check.
 
 **Held until the work really ends.** `asyncio.wait_for` stops waiting for an
 executor thread at its timeout, but the thread computes on and keeps its
@@ -115,9 +141,21 @@ starts when the work does.
 
 - A web request (`/validate`, `/validate/cost` and their siblings, the stored
   part's preview, bodies, orientation, repair and fixes) waits at most
-  `COMPUTE_WAIT_SECONDS` (default 15) and then answers the existing 429
+  `COMPUTE_WAIT_SECONDS` (default 30) and then answers the existing 429
   `server_busy` with Retry-After. The count gate (`MAX_CONCURRENT_ANALYSES`)
-  stays as it was, in front of it: it protects the database pool.
+  stays in front of it. `/validate` and `/validate/cost` commit their
+  read-only transaction (the cached analysis, the shop and org reads) before
+  they wait and before the price computes, so a check doesn't hold a
+  database connection through the wait or the compute.
+- Waiters are served in order: first a check whose mesh needs more room
+  than it took, then interactive work (every web request; on the worker, a
+  design, a big file's check and a kept part's job), then batch and catalog
+  items. Within each, first come, first served.
+- A check that waited and was answered busy, or whose last call just ended,
+  keeps its place in line for 60 s (`TICKET_SECONDS`). The same person
+  retrying the same file goes back to that place, ahead of anyone who came
+  after it. Before this, a 20 MB STL retried six times was busy every time,
+  because each retry queued behind the newcomers.
 - The worker never fails for room. A batch or catalog item waits as long as
   its arq job (600 s) leaves after its own work (`job_wait_seconds`: for a
   catalog part, 600 s less twice its time limit, less 30 s), then goes back to
@@ -127,6 +165,16 @@ starts when the work does.
   a check from a share link, whose file was fetched once and isn't kept,
   instead waits as long as its hour allows. A batch's `concurrency_limit`
   (10) is unchanged: the items beyond the budget wait.
+- Interactive work on the worker isn't stuck behind a catalog. Batch work
+  never takes the last free compute slot. A worker runs at most arq's
+  `max_jobs` less 2 batch items at once (`BATCH_ITEM_JOB_SLOTS`); an item
+  past that goes back to the run, its try not spent. Designs and big-file or
+  kept-part checks are queued with an arq score an hour in the past, and arq
+  starts due jobs in score order, so they start ahead of every batch item
+  queued since. This is a priority on the one queue, not a second queue,
+  which would need a second worker process in every deployment. In the
+  capacity test a 2 s design waited 15-76 s for an arq job slot, then 67-99 s
+  behind catalog parts for compute room.
 
 **Under load.**
 
@@ -155,6 +203,54 @@ starts when the work does.
   0.9 of the machine's memory less the process tree's own resident memory,
   measured when it was last idle (the interpreter, the warm parse workers and
   whatever the heap kept).
+
+### The compute budget: sized to the mesh
+
+A small STEP or IGES file says nothing about its mesh, so the file model
+reserves 820 MB (902 MB with the headroom) for every STEP up to 1.52 MB: what a
+part needs at the mesher's 250,000-face budget. A web check
+(`/validate`, `/validate/cost`, the preview mesh, the assembly route) now holds
+that room in two steps:
+
+1. **The parse.** A STEP or IGES file up to 1.52 MB reserves 400 MB (440 MB
+   with the headroom, `compute_budget.PARSE_MEMORY_MB`). The parse runs in a
+   pool worker. For the catalog's small parts (28-330 KB, 1 to 30 bodies) the
+   worker grew 86-370 MB above its warm size; the most was IGES open shells
+   that try several meshing strategies. Larger files reserve the file model,
+   as before. The assembly probe (`format=json`) only reads the model, so it
+   keeps this size.
+2. **The mesh.** Once tessellated, the check is re-sized to
+   `need_for_mesh`: the STL curve at its triangle count, and for STEP and IGES
+   at least the measured repeated-bracket assemblies' curve for its file size
+   (`ASSEMBLY_MEMORY_POINTS`: their OpenCASCADE model and bodies cost more than
+   their triangles). At 250,000 faces the STL curve gives 813 MB, so the
+   820 MB floor is now the bound only for parts that reach the face budget.
+   Less room is given back at once. More waits up to `COMPUTE_WAIT_SECONDS`,
+   ahead of new work. It never grows past the capacity while other work holds
+   room; when it can't grow in time it answers 429 `server_busy`, and nothing
+   is charged. A catalog part's or big file's hold on the worker covers its
+   whole job and is never re-sized.
+
+Every part measured falls under the re-sized need. The whole catalog item
+path (analysis, bodies, price) was measured with M1's harness, the peak above
+the warmed worker, one part at a time, on the box at load average 1.5-4.4:
+
+| Part | KB | Faces | Bodies | Measured MB | Before: file model MB | Parse, then mesh MB |
+|---|---|---|---|---|---|---|
+| channels/RFS-21368.step | 29 | 149,486 | 1 | 330 | 902 | 440, then 663 |
+| supplier-iges/RFS-21985.iges (open shell) | 36 | 179,458 | 1 | 515 | 902 | 440, then 731 |
+| one.step (bracket) | 36 | 126,140 | 1 | 382 | 902 | 440, then 609 |
+| plates/RFS-21347.step | 69 | 129,164 | 1 | 374 (314 in M1's run) | 902 | 440, then 616 |
+| asm-30.step | 1,188 | 153,168 | 30 | 548 | 902 | 440, then 820 |
+| asm-125.step | 5,038 | 230,748 | 125 | 1,497 | 1,684 | 1,684, then 1,684 |
+
+The earlier catalog table's parts (45-190k faces, 189-515 MB) all fall under
+the STL curve at their face counts too.
+
+What it changes on a 4 GB API (2,867 MB budget, 4 slots): a small-STEP check
+took 902 MB for each of its probe, preview and `/validate`, about 1.8 GB at
+its peak. Now it takes one reservation of 440 MB, then about 610-730 MB, so
+about four checks fit at once and the slots, not memory, set the limit.
 
 ## Measurements
 
