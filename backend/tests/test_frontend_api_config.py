@@ -43,7 +43,11 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     assert "TurnstileWidget" in login_form
     assert "safeLocalPath(params.get(\"next\")" in login_form
     assert "parsed.origin !== base.origin" in safe_return_path
-    assert 'raw.startsWith("//")' in safe_return_path
+    # Both the raw value and the URL parser's result must be a plain local path,
+    # so a dot-segment like "/.//evil.example" can't become "//evil.example".
+    assert '!path.startsWith("//")' in safe_return_path
+    assert "!plainLocal(raw)" in safe_return_path
+    assert "!plainLocal(out)" in safe_return_path
     assert "next.startsWith" not in login_form
 
 
@@ -179,7 +183,7 @@ def test_first_party_auth_proxy_and_magic_exchange_are_production_gated():
     assert 'AUTH_PROXY_CLIENT_IP_SOURCE         = "cloudfront"' in aws_ecs
     assert 'items = ["CloudFront-Viewer-Address"]' in aws_edge
     assert 'header_behavior = "allViewerAndWhitelistCloudFront"' in aws_edge
-    assert 'new Set(["fly", "nginx", "cloudfront"])' in instrumentation
+    assert 'new Set(["fly", "nginx", "cloudfront", "render"])' in instrumentation
     assert 'digest("base64url")' in auth_proxy
     assert "AUTH_PROXY_SECRET" in auth_proxy
     assert 'decoded.toString("base64") !== raw' in auth_proxy
