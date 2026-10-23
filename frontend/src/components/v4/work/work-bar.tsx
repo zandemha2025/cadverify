@@ -226,6 +226,8 @@ interface ServerCheckRow {
   part_url?: string | null;
   /** A part imported from a share link: where from (never the link). */
   link?: { label: string } | null;
+  /** The worker is waiting for room in its compute budget (true only while queued or running). */
+  waiting_for_room?: boolean | null;
 }
 
 /** Same key as part/stored-check.ts, so the tab's own item and the server's are one. */
@@ -275,7 +277,7 @@ function useStoredChecks(pathname: string) {
             next = 6_000;
             // A link's file is still on its way: "Importing …, Fetching from Dropbox".
             const fetching = !!from && (c.stage === "queued" || c.stage === "fetching");
-            registerWork({ key, href: `/app/check?job=${encodeURIComponent(c.check_id)}`, persist: true, state: "running", label: fetching ? (c.part_filename ?? c.filename ? `Importing ${name}` : `Importing from ${from}`) : `Checking ${name}`, detail: fetching ? (c.part_filename ?? c.filename ? `Fetching from ${from}` : "Fetching the file") : STAGE_WORDS[c.stage] ?? "Checking", progress: c.progress });
+            registerWork({ key, href: `/app/check?job=${encodeURIComponent(c.check_id)}`, persist: true, state: "running", label: fetching ? (c.part_filename ?? c.filename ? `Importing ${name}` : `Importing from ${from}`) : `Checking ${name}`, detail: c.waiting_for_room ? "Waiting for room on the checker" : fetching ? (c.part_filename ?? c.filename ? `Fetching from ${from}` : "Fetching the file") : STAGE_WORDS[c.stage] ?? "Checking", progress: c.progress });
           } else if (known && known.state === "running") {
             const ok = c.status === "done";
             registerWork({

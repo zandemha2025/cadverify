@@ -6,6 +6,8 @@
 .ob .pv .sc-bar{width:100%;max-width:420px;height:8px;border-radius:999px;background:rgba(20,24,31,.08);overflow:hidden}
 .ob .pv .sc-bar i{display:block;height:100%;background:var(--file);border-radius:inherit;transform-origin:left center;transition:transform 400ms ease}
 .ob .pv .sc-line{font-size:14px;font-weight:600}
+/* Waiting for room on the worker: the calm busy notice, across the card. */
+.ob .pv .sc-card .sc-room{width:100%;max-width:440px}
 .ob .pv .sc-note{color:var(--ink3);font-size:13px;max-width:440px;line-height:1.45}
 .ob .pv .sc-fail{display:flex;flex-direction:column;gap:6px;max-width:460px}
 .ob .pv .sc-fail b{font-size:15px}

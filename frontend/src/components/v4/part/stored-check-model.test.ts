@@ -3,7 +3,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { failedStep, overallFraction, storedSteps, type StoredStateIn } from "./stored-check-model.ts";
+import { WAITING_FOR_ROOM_ON_CHECKER, failedStep, overallFraction, storedSteps, type StoredStateIn } from "./stored-check-model.ts";
 
 const GB = 1024 ** 3;
 const base: StoredStateIn = {
@@ -88,4 +88,29 @@ test("a link's failure lands on the fetch step with the server's words", () => {
   assert.equal(failedStep("LINK_NOT_SUPPORTED", false, true), "fetch");
   assert.equal(failedStep("CHECK_TOO_LARGE", true, true), "size");
   assert.equal(failedStep("CHECK_UNREADABLE", true, true), "measure");
+});
+
+test("waiting for room on the worker: said calmly at the room step, never 'sizing' or an error", () => {
+  assert.equal(WAITING_FOR_ROOM_ON_CHECKER, "Waiting for room on the checker; it starts shortly");
+  const waiting = { ...base, phase: "sizing" as const, checkId: "C", waitingForRoom: true };
+  assert.deepEqual(states(waiting), ["upload:done", "verify:done", "size:now", "measure:wait", "price:wait"]);
+  const room = storedSteps(waiting)[2];
+  assert.equal(room.t, "Room to check it");
+  assert.equal(room.d, WAITING_FOR_ROOM_ON_CHECKER);
+  // Sent back to the queue to wait for room (stage "queued"): still past the upload, still waiting for room.
+  const requeued = { ...waiting, phase: "queued" as const };
+  assert.deepEqual(states(requeued), ["upload:done", "verify:done", "size:now", "measure:wait", "price:wait"]);
+  assert.equal(storedSteps(requeued)[2].d, WAITING_FOR_ROOM_ON_CHECKER);
+  assert.equal(overallFraction(requeued), overallFraction(waiting));
+  for (const c of [waiting, requeued]) {
+    for (const st of storedSteps(c)) {
+      assert.notEqual(st.state, "bad");
+      assert.doesNotMatch(`${st.t} ${st.d}`, /sizing|didn.?t|error|failed|too large/i);
+    }
+  }
+  // Not waiting: the room step reads as before.
+  assert.equal(storedSteps({ ...waiting, waitingForRoom: false })[2].d, "Making sure the check has room before it starts");
+  // A link's check waiting for room is past its fetch too.
+  const link = { ...waiting, linkLabel: "Dropbox", phase: "queued" as const };
+  assert.deepEqual(states(link), ["fetch:done", "size:now", "measure:wait", "price:wait"]);
 });

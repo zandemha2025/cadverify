@@ -24,7 +24,7 @@ import { sizeText } from "@/lib/upload-limit";
 import { LINK_FAILURE_TITLE, readLink } from "@/lib/link-import";
 import { markWorkSeen, pausedUploadKey, registerWork, removeWork } from "../work/work-bar";
 import { R } from "../routes";
-import type { StoredPhaseName } from "./stored-check-model";
+import { WAITING_FOR_ROOM_ON_CHECKER, type StoredPhaseName } from "./stored-check-model";
 
 export type StoredPhase = StoredPhaseName;
 
@@ -64,6 +64,8 @@ export interface StoredCheck {
   link: { url: string; filename: string | null } | null;
   linkLabel: string | null;
   fetchedBytes: number | null;
+  /** The worker is waiting for room in its compute budget (the job's `waiting_for_room`). */
+  waitingForRoom?: boolean;
 }
 
 const checks = new Map<number, StoredCheck>();
@@ -102,7 +104,8 @@ export function importingLabel(c: Pick<StoredCheck, "name" | "partName" | "linkL
 
 export const unnamedLink = (label: string) => `File from ${label}`;
 
-export function stageWord(p: StoredPhase, linkLabel?: string | null): string {
+export function stageWord(p: StoredPhase, linkLabel?: string | null, waitingForRoom = false): string {
+  if (waitingForRoom && p !== "done" && p !== "failed") return WAITING_FOR_ROOM_ON_CHECKER;
   if (p === "fetching" && linkLabel) return `Fetching from ${linkLabel}`;
   return STAGE_WORD[p];
 }
@@ -130,7 +133,7 @@ function workItem(c: StoredCheck) {
       persist: !!c.checkId,
       state: "running",
       label: browser ? `Uploading ${name}` : fetching ? importingLabel(c) : `Checking ${name}`,
-      detail: browser ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : fetching ? (name === unnamedLink(c.linkLabel!) ? "Fetching the file" : `Fetching from ${c.linkLabel}`) : stageWord(c.phase, c.linkLabel),
+      detail: browser ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : fetching && !c.waitingForRoom ? (name === unnamedLink(c.linkLabel!) ? "Fetching the file" : `Fetching from ${c.linkLabel}`) : stageWord(c.phase, c.linkLabel, c.waitingForRoom),
       progress: browser ? (c.size ? c.sent / c.size : null) : c.frac,
     });
   }
@@ -188,6 +191,10 @@ interface ServerCheck {
   source?: string;
   link?: { provider: string; label: string; host: string } | null;
   fetched_bytes?: number | null;
+  /** The worker is waiting for room in its compute budget (or sent the check back to the queue to wait):
+   *  true only while queued or running; and how often it went back to wait (0 if never). */
+  waiting_for_room?: boolean | null;
+  requeued_for_room?: number | null;
 }
 
 /** A link's fetch that stopped for a passing reason: the same link again can work. */
@@ -206,6 +213,7 @@ function fromServer(s: ServerCheck): Partial<StoredCheck> {
     key: s.mesh_hash,
     memory: s.memory ? { need_bytes: s.memory.need_bytes, budget_bytes: s.memory.budget_bytes } : null,
     geometryInvalid: s.geometry_invalid ?? null,
+    waitingForRoom: !!s.waiting_for_room && s.status !== "done" && s.status !== "failed",
     failure: s.status === "failed" && s.error ? { title: SERVER_FAILURE[s.error.code] ?? "The check didn’t finish", detail: s.error.message, code: s.error.code, retry: s.error.code === "CHECK_FAILED" || s.error.code === "CHECK_INTERRUPTED" || LINK_RETRY.has(s.error.code) } : null,
     finishedAt: s.status === "done" || s.status === "failed" ? Date.now() : null,
   };

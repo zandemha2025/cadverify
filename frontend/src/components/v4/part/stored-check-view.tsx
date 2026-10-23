@@ -16,7 +16,8 @@ import { R } from "../routes";
 import { cx } from "../ui";
 import { MATERIALS } from "../onboard/first-run";
 import { importingLabel, markStoredOpened, retryStoredCheck, setStoredMaterial, stageWord, useStoredCheck } from "./stored-check";
-import { overallFraction, storedSteps } from "./stored-check-model";
+import { WAITING_FOR_ROOM_ON_CHECKER, overallFraction, storedSteps } from "./stored-check-model";
+import { Banner } from "../moments";
 import { linkNameProblem } from "@/lib/link-import";
 import "../onboard/onboard.css";
 import "./stored-check.css";
@@ -74,7 +75,7 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
   const frac = overallFraction(c);
   const failed = c.phase === "failed";
   const name = c.partName ?? c.name;
-  const fetching = !!c.linkLabel && (c.phase === "starting" || c.phase === "queued" || c.phase === "fetching");
+  const fetching = !c.waitingForRoom && !!c.linkLabel && (c.phase === "starting" || c.phase === "queued" || c.phase === "fetching");
   const title = failed ? "Not checked" : c.phase === "done" ? "Checked" : uploading ? `Uploading ${name}` : fetching ? importingLabel(c) : `Checking ${name}`;
   const manyParts = c.failure?.code === "ARCHIVE_MANY_PARTS";
   // The link's file wasn't named as a CAD file: name it here and fetch it again.
@@ -138,10 +139,15 @@ export function StoredCheckView({ id, onPick, onRetried }: { id: number; onPick:
               <div className="sc-bar" role="progressbar" aria-label={title} aria-valuemin={0} aria-valuemax={100} aria-valuenow={frac == null ? undefined : Math.round(frac * 100)}>
                 <i style={{ transform: `scaleX(${Math.max(0.02, frac ?? 0.02)})` }} />
               </div>
-              <span className="sc-line num">
-                {uploading ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : stageWord(c.phase, c.linkLabel)}
-                {c.phase === "done" && c.geometryInvalid ? " · not a closed solid" : null}
-              </span>
+              {c.waitingForRoom && !uploading ? (
+                // Waiting for room on the worker: the same calm notice as a busy check, not "sizing" or an error.
+                <Banner tone="info" spin name="busy" className="sc-room" title={WAITING_FOR_ROOM_ON_CHECKER} meta="The worker is checking other parts first. Your file is kept on the server; nothing to do here." />
+              ) : (
+                <span className="sc-line num">
+                  {uploading ? `${sizeText(c.sent)} of ${sizeText(c.size)}` : stageWord(c.phase, c.linkLabel)}
+                  {c.phase === "done" && c.geometryInvalid ? " · not a closed solid" : null}
+                </span>
+              )}
               <span className="sc-note">
                 {uploading
                   ? "Keep this tab open while it uploads. If the connection drops, it carries on; if the tab closes, pick the same file again and only the missing parts are sent."

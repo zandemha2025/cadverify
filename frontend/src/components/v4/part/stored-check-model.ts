@@ -37,6 +37,17 @@ export interface StoredStateIn {
   /** A part imported from a share link: where from ("Dropbox"), and the bytes fetched. */
   linkLabel?: string | null;
   fetchedBytes?: number | null;
+  /** The worker has the check and is waiting for room in its compute budget (the job's
+   *  `waiting_for_room`), at "sizing", or back in the queue to wait for room. */
+  waitingForRoom?: boolean;
+}
+
+/** The worker is waiting for room: said calmly, as busy is, never "sizing" or an error. */
+export const WAITING_FOR_ROOM_ON_CHECKER = "Waiting for room on the checker; it starts shortly";
+
+/** A check waiting for room is at the "Room to check it" step, even when the worker sent it back to the queue to wait. */
+function roomPhase(c: StoredStateIn): StoredPhaseName {
+  return c.waitingForRoom && (c.phase === "queued" || c.phase === "starting" || c.phase === "sizing") ? "sizing" : c.phase;
 }
 
 export type StepState = "done" | "now" | "wait" | "bad" | "skip";
@@ -87,7 +98,8 @@ function pct(f: number): string {
   return `${Math.max(0, Math.min(100, Math.round(f * 100)))}%`;
 }
 
-export function storedSteps(c: StoredStateIn): StoredStep[] {
+export function storedSteps(c0: StoredStateIn): StoredStep[] {
+  const c = { ...c0, phase: roomPhase(c0) };
   const link = c.linkLabel != null;
   const zipped = compressed(c.name);
   const failed = c.phase === "failed";
@@ -159,7 +171,9 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
       ? c.failure?.detail ?? "Too large to check."
       : s === "done"
         ? "It fits"
-        : "Making sure the check has room before it starts",
+        : s === "now" && c.waitingForRoom
+          ? WAITING_FOR_ROOM_ON_CHECKER
+          : "Making sure the check has room before it starts",
     s === "done" && c.memory ? `Memory: about ${sizeText(c.memory.need_bytes)} of the ${sizeText(c.memory.budget_bytes)} one check may use on this worker` : undefined,
   );
   const m = stateOf("measure");
@@ -178,7 +192,8 @@ export function storedSteps(c: StoredStateIn): StoredStep[] {
 }
 
 /** Overall fraction for a progress bar: the upload is most of the wait in a browser. */
-export function overallFraction(c: StoredStateIn): number | null {
+export function overallFraction(c0: StoredStateIn): number | null {
+  const c = { ...c0, phase: roomPhase(c0) };
   if (c.phase === "done") return 1;
   if (c.phase === "failed") return null;
   if (c.linkLabel != null && (c.phase === "starting" || c.phase === "queued")) return 0.03;
