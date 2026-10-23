@@ -278,8 +278,12 @@ async def org_rate_rows(session, org_id: Optional[str]) -> list:
     )).all())
 
 
-async def basis_for(session, org_id: Optional[str], decisions: Iterable[Any]) -> dict:
-    """``{decision ulid: basis}`` for saved records of one org (one read for all of them)."""
+async def basis_for(session, org_id: Optional[str], decisions: Iterable[Any],
+                    results: Optional[dict] = None) -> dict:
+    """``{decision ulid: basis}`` for saved records of one org (one read for all of them).
+
+    ``results``: ``{ulid: result inputs}`` for records loaded without their
+    ``result_json`` (the stamp and ``priced_at`` are all this reads)."""
     from src.services.rate_library_service import rate_library_enabled
 
     ds = list(decisions)
@@ -287,6 +291,9 @@ async def basis_for(session, org_id: Optional[str], decisions: Iterable[Any]) ->
     enabled = rate_library_enabled()
     out = {}
     for d in ds:
-        rj = d.__dict__.get("result_json") if hasattr(d, "__dict__") else None
+        if results is not None and d.ulid in results:
+            rj = results[d.ulid]
+        else:
+            rj = d.__dict__.get("result_json") if hasattr(d, "__dict__") else None
         out[d.ulid] = basis(rj, getattr(d, "created_at", None), rows, enabled=enabled)
     return out

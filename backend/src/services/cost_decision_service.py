@@ -458,8 +458,14 @@ async def record_persist_failure(
 # ---------------------------------------------------------------------------
 
 
-def _list_item(d: CostDecision) -> dict:
-    rj = d.__dict__.get("result_json")
+_LOADED = object()
+
+
+def _list_item(d: CostDecision, result_json: Any = _LOADED) -> dict:
+    """A record's list fields. ``result_json``: its slim inputs
+    (``catalog_inputs.cost_inputs``) when the list left the column unloaded;
+    by default the loaded column, if any."""
+    rj = d.__dict__.get("result_json") if result_json is _LOADED else result_json
     w = what_if_of(rj)
     return {
         # A what-if's label ("What if: overhead 15%"); None for a price at the part's own inputs.

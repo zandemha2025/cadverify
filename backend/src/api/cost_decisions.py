@@ -36,6 +36,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import caller_org_subquery
@@ -100,7 +101,10 @@ async def list_cost_decisions(
     W1 step 3: org-scoped (the tenant boundary) — in v1 the personal org makes
     this identical to the old per-user list; it never leaks another org's rows.
     """
-    stmt = select(CostDecision).where(
+    # Never the whole saved result (up to ~1 MB a record): the list shows only
+    # its what-if label and rate-card stamp, read below from each record's slim
+    # inputs (capacity report C6: 100 records cost 0.6-0.8 s a call).
+    stmt = select(CostDecision).options(defer(CostDecision.result_json)).where(
         CostDecision.org_id == caller_org_subquery(user.user_id)
     )
 
@@ -121,11 +125,17 @@ async def list_cost_decisions(
     has_more = len(rows) > limit
     items = rows[:limit]
 
+    from src.services import catalog_inputs
     from src.services.rate_card_basis import basis_for
 
-    rates = await basis_for(session, items[0].org_id, items) if items else {}
+    inputs = await catalog_inputs.cost_inputs(session, [(d.id, d.ulid) for d in items])
+    results = {d.ulid: inputs.get((d.id, d.ulid)) for d in items}
+    rates = await basis_for(session, items[0].org_id, items, results=results) if items else {}
     return {
-        "cost_decisions": [{**svc._list_item(d), "rates": rates.get(d.ulid)} for d in items],
+        "cost_decisions": [
+            {**svc._list_item(d, result_json=results[d.ulid]), "rates": rates.get(d.ulid)}
+            for d in items
+        ],
         "next_cursor": items[-1].ulid if has_more and items else None,
         "has_more": has_more,
     }

@@ -354,3 +354,78 @@ async def test_exact_part_pages_past_newer_what_ifs_and_deleted_records_are_gone
             await s.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
             await s.execute(text("DELETE FROM users WHERE id = :u"), {"u": uid})
             await s.commit()
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_records_list_reads_slim_inputs_and_answers_as_from_whole_records(monkeypatch):
+    """GET /cost-decisions shows each record's what-if label and rate-card basis
+    from its slim inputs, exactly as from the whole record, and reads no saved
+    result after the first call."""
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import event, select, text
+    from ulid import ULID
+
+    import src.db.engine as eng
+    from src.api.cost_decisions import router
+    from src.auth.rate_limit import limiter
+    from src.auth.require_api_key import AuthedUser, require_api_key
+    from src.db.models import CostDecision
+    from src.services import cost_decision_service as cds
+    from src.services.rate_card_basis import basis_for
+
+    monkeypatch.setenv("RATE_LIBRARY_ENABLED", "1")
+    tag = uuid.uuid4().hex[:10]
+    async with eng.get_session_factory()() as s:
+        org, uid = await _seed(s, tag)
+        await s.execute(text(
+            "INSERT INTO rate_card_versions (ulid, org_id, version, status, payload, effective_from, created_at) "
+            "VALUES (:i, :o, 2, 'published', '{}'::jsonb, now() - interval '30 days', now())"
+        ), {"i": str(ULID()), "o": org})
+        for rj in (
+            _cost(rate_card=None),
+            _cost(what_if={"label": "What if: overhead 15%", "overrides": {"overhead_pct": 15}}),
+            _cost(rate_card={"version": 1, "changed": {}}),
+            _cost(rate_card=None, priced_at="2020-01-01T00:00:00+00:00", adopted_what_if={"from": "x"}),
+        ):
+            await _add(s, "cost_decisions", org, uid, f"l-{uuid.uuid4().hex[:6]}", rj)
+        await s.commit()
+
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.include_router(router, prefix="/api/v1/cost-decisions")
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+        user_id=uid, api_key_id=0, key_prefix="session", role="analyst")
+    reads: list[str] = []
+
+    def _count(conn, cursor, statement, params, context, executemany):
+        if "result_json" in statement:
+            reads.append(statement)
+
+    engine = eng.get_engine()
+    event.listen(engine.sync_engine, "before_cursor_execute", _count)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            first = await c.get("/api/v1/cost-decisions", params={"limit": 100})
+            first_reads = len(reads)
+            reads.clear()
+            again = await c.get("/api/v1/cost-decisions", params={"limit": 100})
+        assert first.status_code == 200, first.text
+        assert first.json() == again.json() and reads == [] and first_reads == 1
+        async with eng.get_session_factory()() as s:  # the old way: whole records
+            whole = (await s.execute(select(CostDecision).where(CostDecision.org_id == org)
+                                     .order_by(CostDecision.ulid.desc()))).scalars().all()
+            rates = await basis_for(s, org, whole)
+            expected = [{**cds._list_item(d), "rates": rates.get(d.ulid)} for d in whole]
+        listed = first.json()["cost_decisions"]
+        assert listed == json.loads(json.dumps(expected))
+        assert [i["what_if"] for i in listed].count("What if: overhead 15%") == 1
+        # stamped v1 and v3 (the what-if), unstamped at the card in effect (v2), adopted at its 2020 price (v0)
+        assert sorted(i["rates"]["priced"] for i in listed) == [0, 1, 2, 3]
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", _count)
+        async with eng.get_session_factory()() as s:
+            await s.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
+            await s.execute(text("DELETE FROM users WHERE id = :u"), {"u": uid})
+            await s.commit()
