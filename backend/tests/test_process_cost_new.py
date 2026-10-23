@@ -359,7 +359,7 @@ def test_a_forging_is_priced_on_the_press_its_load_needs(dims, press_t, rate):
     est.assert_sums()
     assert est.line_items["machine"] == pytest.approx(_heat_hr(d) * 120 + 40 / 3600 * rate, abs=1e-4)
     mach = _driver(est, "machine_cost")
-    assert f"on the {press_t:,} t press at ${rate:g}/hr" in mach.source
+    assert f"(forging and trim 0.0111 hr × ${rate:g}/hr on the {press_t:,} t press + heating " in mach.source
     assert mach.provenance.value == "DEFAULT"
     cycle = _driver(est, "cycle_time").source
     assert f"the {press_t:,} t press, ${rate:g}/hr" in cycle
@@ -389,10 +389,16 @@ def test_a_forging_past_the_largest_press_scales_its_rate_with_the_load():
     rc, d = build_rate_card(), _forging_drivers((100.0, 700.0, 700.0))
     press = forging_press(PT.FORGING, d, "steel", rc)
     assert press is not None and press.capacity_t == 40000 and press.load_t > 40000
-    assert press.rate == pytest.approx(1300 * press.load_t / 40000)
+    assert (press.rate, press.scale) == (1300, pytest.approx(press.load_t / 40000))
     assert "more than the largest press class, 40,000 t" in press.words
     est = cost_breakdown(PT.FORGING, d, _steel(), "steel", 100, rc, "US")
-    assert "on a press past the 40,000 t class" in _driver(est, "machine_cost").source
+    assert est.line_items["machine"] == pytest.approx(
+        _heat_hr(d) * 120 + 40 / 3600 * 1300 * press.scale, abs=1e-4)
+    mach = _driver(est, "machine_cost").source
+    assert f"× $1300/hr × {press.scale:.2f} on a press past the 40,000 t class" in mach
+    # Every $/hr it quotes is on the card, so a copy sent outside the shop keeps it.
+    from src.services import outbound
+    assert outbound.text(mach) is not None
 
 
 def test_a_rate_table_published_before_the_press_keys_prices_as_it_did():
@@ -436,4 +442,4 @@ def test_a_shops_own_forging_rate_is_their_cell_as_given():
     user = build_rate_card({"press3_rate.FORGING": 260.0})
     mach = _driver(cost_breakdown(PT.FORGING, d, _steel(), "steel", 100, user, "US"), "machine_cost")
     assert mach.provenance.value == "USER"
-    assert "on the 2,500 t press at $260/hr" in mach.source
+    assert "× $260/hr on the 2,500 t press" in mach.source

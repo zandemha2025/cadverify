@@ -238,9 +238,12 @@ def test_forging_learns_like_milling_and_says_its_price_is_a_blank(block):
                                                                    rates, "US").line_items["machine"])
     assert f.finish_excluded["per_part_usd"] == pytest.approx(106.92 / 600 * 75, abs=0.01)
     assert "not in this price" in f.finish_excluded["source"]
-    # Finished, the forging at 10,000 is above milling's $27.84: no crossover like-for-like.
+    # Finished like-for-like (every face, an upper bound), the forging at 10,000 is $23.69,
+    # under milling's $27.84. It was above ($32.40) while every forging paid 288 s at
+    # $120/h; on the 500 t press its load needs, forging and trim are 40 s at $80/h.
     finished = f.unit_cost_usd + f.finish_excluded["per_part_usd"] + f.finish_excluded["once_usd"] / 10000
-    assert finished > block(10000).unit_cost_usd
+    assert finished == pytest.approx(23.69, abs=0.01)
+    assert finished < block(10000).unit_cost_usd == pytest.approx(27.84, abs=0.01)
 
 
 def test_the_decision_note_says_a_casting_price_is_a_blank():

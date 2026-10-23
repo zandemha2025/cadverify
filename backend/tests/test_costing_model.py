@@ -526,7 +526,7 @@ def test_a_forging_is_priced_on_the_press_it_needs():
                                  ([300.0, 300.0, 60.0], "16,000 t", 730)):
         e = _forging_at_10000(extents)
         mach = _driver(e, "machine_cost")
-        assert f"forging and trim 0.0111 hr on the {press} press at ${rate}/hr" in mach["source"]
+        assert f"(forging and trim 0.0111 hr × ${rate}/hr on the {press} press + heating " in mach["source"]
         assert f"the {press} press, ${rate}/hr" in _driver(e, "cycle_time")["source"]
         heat_hr = e["material_mass"]["used_kg"] * 2.5 / 60
         assert mach["value"] == pytest.approx(heat_hr * 120 + 40 / 3600 * rate, abs=1e-3)

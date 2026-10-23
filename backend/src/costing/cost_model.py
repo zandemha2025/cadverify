@@ -402,7 +402,8 @@ def _casting_cycle(process, drivers, material, rates: RateCard):
 class ForgingPress(NamedTuple):
     """The press class a forging needs (``forging_press``)."""
     capacity_t: float   # the class's rating, tonnes-force
-    rate: float         # its $/hr, scaled by load ÷ capacity past the largest class
+    rate: float         # its $/hr on the card
+    scale: float        # 1, or load ÷ capacity past the largest class (the rate grows with the load)
     key: str            # the rate's card key, e.g. "press2_rate"
     load_t: float       # the forging's estimated load, tonnes-force
     words: str
@@ -446,16 +447,15 @@ def forging_press(process, drivers, material_class, rates: RateCard) -> "Forging
                   f"× {shape:g} shape factor = {load_mn:.2f} MN ({load_t:,.0f} t)")
     for cap, rate, key in classes:
         if load_t <= cap:
-            return ForgingPress(cap, rate, key, load_t, (
+            return ForgingPress(cap, rate, 1.0, key, load_t, (
                 f"{load_words}: the {cap:,.0f} t press, ${rate:g}/hr (classes {classes[0][0]:,.0f}–"
-                f"{classes[-1][0]:,.0f} t; Boothroyd Dewhurst put a 3,000-ton press at $240/h) "
-                f"(typical value, not confirmed by a shop)"))
+                f"{classes[-1][0]:,.0f} t, scaled from the rate Boothroyd Dewhurst give a 3,000-ton "
+                f"press) (typical value, not confirmed by a shop)"))
     cap, rate, key = classes[-1]
-    scaled = rate * load_t / cap
-    return ForgingPress(cap, scaled, key, load_t, (
+    return ForgingPress(cap, rate, load_t / cap, key, load_t, (
         f"{load_words}: more than the largest press class, {cap:,.0f} t, so its ${rate:g}/hr × "
-        f"{load_t / cap:.2f} in proportion to the load = ${scaled:.4g}/hr; a forging this size "
-        f"needs a forge's own quote (typical value, not confirmed by a shop)"))
+        f"{load_t / cap:.2f} in proportion to the load; a forging this size needs a forge's quote "
+        f"(typical value, not confirmed by a shop)"))
 
 
 def _forging_cycle(process, drivers, material, material_class, rates: RateCard):
@@ -932,19 +932,22 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # A forging's forge and trim time runs on the press class its load needs, at that
     # press's rate; heating stays at the forging cell's rate. A shop's or user's own
     # machine rate is their cell, as given, for all of it; so is a declared machine's.
-    press_note, press_prov = "", None
+    # The line shows each part at its card rate (no blended $/hr, which no card carries).
+    press_note, press_expr, press_prov, press_rate = "", "", None, 0.0
     if forge_press is not None and machine_prov is None and machine_hr > 0:  # no declared machine
         forge_hr = machine_hr - forge_heat_hr
-        press = (f"the {forge_press.capacity_t:,.0f} t press" if forge_press.load_t <= forge_press.capacity_t
+        press = (f"the {forge_press.capacity_t:,.0f} t press" if forge_press.scale == 1.0
                  else f"a press past the {forge_press.capacity_t:,.0f} t class")
         if rates.prov_tag(f"machine_rate.{process.name}") != Provenance.DEFAULT:
             press_note = f" (your forging cell's rate, as given, for all of it; the part needs {press})"
         else:
             cell_rate = base_machine_rate
-            base_machine_rate = (forge_heat_hr * cell_rate + forge_hr * forge_press.rate) / machine_hr
-            press_note = (f" (heating {forge_heat_hr:.4f} hr at the forging cell's ${cell_rate:g}/hr + "
-                          f"forging and trim {forge_hr:.4f} hr on {press} at ${forge_press.rate:.4g}/hr)")
-            press_prov = rates.prov_tag(f"{forge_press.key}.{process.name}")
+            base_machine_rate = (forge_heat_hr * cell_rate
+                                 + forge_hr * forge_press.rate * forge_press.scale) / machine_hr
+            scaled = f" × {forge_press.scale:.2f}" if forge_press.scale != 1.0 else ""
+            press_expr = (f"(forging and trim {forge_hr:.4f} hr × ${forge_press.rate:g}/hr{scaled} on {press} "
+                          f"+ heating {forge_heat_hr:.4f} hr × ${cell_rate:g}/hr at the forging cell)")
+            press_prov, press_rate = rates.prov_tag(f"{forge_press.key}.{process.name}"), forge_press.rate
     eff_machine_rate = base_machine_rate * (1.0 - cap_frac) if owned_here else base_machine_rate
     machine_cost = machine_hr * eff_machine_rate / cav_div / util
     # ce-03: the machine's cycle is paced by its program and doesn't learn; only touch
@@ -975,13 +978,13 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         machine_name_note = f" (machine '{machine_name}', at its declared rate)"
     else:
         machine_prov_tag = press_prov or rates.prov_tag(f"machine_rate.{process.name}")
-        # a forging's heating and press time blended into one $/hr, shown to the cent
-        machine_rate_shown = round(base_machine_rate, 2) if press_prov is not None else rates.p(process, "machine_rate")
+        machine_rate_shown = press_rate if press_prov is not None else rates.p(process, "machine_rate")
         machine_name_note = press_note
+    rate_expr = press_expr or f"{machine_hr:.4f} hr × ${machine_rate_shown:g}/hr{machine_name_note}"
     drivers_out.append(Driver(
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
         provenance=machine_prov_tag,
-        source=(f"{machine_hr:.4f} hr × ${machine_rate_shown:g}/hr{machine_name_note}"
+        source=(f"{rate_expr}"
                 f"{owned_note}{cav_note}{util_note}{region_mach_note}{conversion_note}"
                 f"; time: {cycle_src}"),
         error_band_pct=band,
