@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -1220,7 +1221,9 @@ def build_cost_inputs_csv(
             inp = _line_inputs(key, e, labor_rate)
             writer.writerow([spreadsheet_safe_cell(v) for v in [
                 *record, *head,
-                line_name(key), f"{usd:.2f}",
+                # A number, not text: a negative Rounding line written as "-0.01" text
+                # would be escaped to "'-0.01" and the column would no longer add up.
+                line_name(key), Decimal(f"{usd:.2f}"),
                 inp.get("hours", ""), inp.get("hours_for", ""), inp.get("rate_usd_per_h", ""),
                 inp.get("kg", ""), inp.get("usd_per_kg", ""), inp.get("scrap", ""), inp.get("learning_factor", ""),
                 _SOURCE_WORDS.get(str(d.get("provenance") or ""), "") if d else "",

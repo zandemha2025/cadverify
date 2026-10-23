@@ -107,6 +107,22 @@ def test_csv_holds_the_inputs_one_column_each_with_the_screen_line_names(record)
     assert "post-process 0.5 hr" in r["formula"]
 
 
+def test_a_negative_rounding_line_is_a_number_so_the_column_still_adds_up():
+    # Two lines of $0.006 show as $0.01 each against a $0.01 price: Rounding is
+    # -$0.01. Written as text it was escaped against formulas ("'-0.01") and the
+    # column no longer added up in a spreadsheet (MJF/FDM/SLA records, training guide).
+    est = {"process": "fdm", "material": "PLA", "quantity": 100, "unit_cost_usd": 0.01,
+           "line_items": {"labor": 0.006, "machine": 0.006}, "drivers": []}
+    record = SimpleNamespace(ulid="01M5J0000000000000000ROUND1", filename="clip.stl", created_at=CHECKED,
+                             result_json={"estimates": [est]})
+    text = svc.build_cost_inputs_csv(record, governance={}, rates={}, exported_at=EXPORTED)
+    rows = {r["line"]: r for r in _rows(text)}
+    assert rows["Rounding"]["line_usd"] == "-0.01"
+    assert (rows["Labor"]["line_usd"], rows["Machine"]["line_usd"]) == ("0.01", "0.01")
+    assert round(sum(float(r["line_usd"]) for r in rows.values()), 2) == 0.01
+    assert "'-" not in text
+
+
 def test_pdf_of_an_out_of_date_record_says_so_and_names_its_rates(record):
     from src.services.rate_card_basis import basis
 
