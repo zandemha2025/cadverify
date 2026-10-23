@@ -443,7 +443,7 @@ class EnterpriseDomainQA {
       await this.step("enterprise engineer logs in and receives an org", async () => {
         await this.goto("/login?next=/verify", "login", 500);
         await this.page.getByLabel("Email").fill(loginEmail);
-        await this.page.getByLabel("Password").fill(loginPassword);
+        await this.page.getByLabel("Password", { exact: true }).fill(loginPassword);
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
         await this.expectText(/ScaleCad|Home|Verify/i, "verify shell after login");
@@ -466,7 +466,7 @@ class EnterpriseDomainQA {
       await this.goto("/signup", "signup", 500);
       await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
-      await this.page.getByLabel("Password").fill(password);
+      await this.page.getByLabel("Password", { exact: true }).fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
       await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");

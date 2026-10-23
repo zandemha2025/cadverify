@@ -362,7 +362,7 @@ class HumanE2E {
       await this.goto("/signup", "signup");
       await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
-      await this.page.getByLabel("Password").fill("short");
+      await this.page.getByLabel("Password", { exact: true }).fill("short");
       const consoleStart = this.consoleErrors.length;
       const responsePromise = this.page.waitForResponse(
         (response) => isPostResponse(response, "/api/auth/signup"),
@@ -390,7 +390,7 @@ class HumanE2E {
       await this.step("login reuses existing synthetic account and lands in app", async () => {
         await this.goto("/login?next=/verify", "login");
         await this.page.getByLabel("Email").fill(loginEmail);
-        await this.page.getByLabel("Password").fill(loginPassword);
+        await this.page.getByLabel("Password", { exact: true }).fill(loginPassword);
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
         await this.expectText(/ScaleCad|Home|Verify/i, "verify shell after login");
@@ -405,7 +405,7 @@ class HumanE2E {
     const password = "Passw0rd123";
     await this.step("signup creates real account and lands in app", async () => {
       await this.page.getByLabel("Email").fill(email);
-      await this.page.getByLabel("Password").fill(password);
+      await this.page.getByLabel("Password", { exact: true }).fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
       await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
@@ -573,7 +573,7 @@ class HumanE2E {
       await this.page.goto("/verify", { waitUntil: "domcontentloaded" });
       await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 12_000 });
       await this.page.getByLabel("Email").fill(this.account.email);
-      await this.page.getByLabel("Password").fill(this.account.password);
+      await this.page.getByLabel("Password", { exact: true }).fill(this.account.password);
       await this.page.getByRole("button", { name: /^Log in$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
       await this.expectText(/ScaleCad|Home|Verify/i, "restored workspace");

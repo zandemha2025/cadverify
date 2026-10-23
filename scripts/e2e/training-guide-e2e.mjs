@@ -531,7 +531,7 @@ async function main() {
       await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await page.getByLabel("Email").fill(email);
-      await page.getByLabel("Password").fill(password);
+      await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: /^Create account$/ }).click();
       await page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
       await page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 12_000 });

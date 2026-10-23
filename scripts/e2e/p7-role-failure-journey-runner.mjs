@@ -508,7 +508,7 @@ class P7RoleFailureQA {
   async loginWithCredentials(page, email, password, label = "login") {
     await this.goto("/login", `${label}-login`, { page });
     await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: /^Log in$/i }).click();
     await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => {});
     await page.waitForURL((url) => !isLoginUrl(String(url)), { timeout: 20_000 }).catch(() => {});
@@ -568,7 +568,7 @@ class P7RoleFailureQA {
     await this.goto("/signup", `${label}-signup`, { page });
     await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
     await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: /^Create account$/i }).click();
     await page.waitForURL((url) => !String(url).includes("/signup"), { timeout: 25_000 }).catch(() => {});
     await page.waitForTimeout(1000);
@@ -769,7 +769,7 @@ asyncio.run(main())
       await this.context.clearCookies();
       await this.goto("/login", "invalid-login");
       await this.page.getByLabel("Email").fill(uniqueEmail("bad-login"));
-      await this.page.getByLabel("Password").fill("WrongPass123");
+      await this.page.getByLabel("Password", { exact: true }).fill("WrongPass123");
       await this.page.getByRole("button", { name: /^Log in$/i }).click();
       await this.page.waitForTimeout(1400);
       const text = await this.scanVisibleText("invalid-login-result");
@@ -788,7 +788,7 @@ asyncio.run(main())
       try {
         await this.goto("/login", "login-network-failure");
         await this.page.getByLabel("Email").fill(uniqueEmail("network"));
-        await this.page.getByLabel("Password").fill("Passw0rd123");
+        await this.page.getByLabel("Password", { exact: true }).fill("Passw0rd123");
         await this.page.getByRole("button", { name: /^Log in$/i }).click();
         await this.page.getByText(/Could not reach the server/i).waitFor({ timeout: 8_000 });
         await this.scanVisibleText("login-network-failure-result");
@@ -822,7 +822,7 @@ asyncio.run(main())
       await this.goto("/signup", "primary-signup");
       await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
-      await this.page.getByLabel("Password").fill(password);
+      await this.page.getByLabel("Password", { exact: true }).fill(password);
       await this.page.getByRole("button", { name: /^Create account$/i }).click();
       await this.page.waitForURL((url) => !String(url).includes("/signup"), { timeout: 25_000 }).catch(() => {});
       await this.page.waitForTimeout(1000);
