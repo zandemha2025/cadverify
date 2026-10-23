@@ -5,6 +5,7 @@ import * as React from "react";
 import { dimsText, plural, progressSteps, type Step } from "./model";
 import { chosenLine } from "./pick-words";
 import { readsAsBodies, retryPrices, type CheckSession } from "./store";
+import { contactsNoteToShow } from "@/lib/verify/bodies";
 import { busyReopenBar, busyReopenLabel, busyView, serverStepText, viewStep, type BusyView } from "./busy-state";
 import { BusyNotice, useNow } from "./busy-notice";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
@@ -66,7 +67,7 @@ function bodySteps(s: CheckSession, steps: Step[]): Step[] {
   return [
     steps[0],
     measured,
-    { t: "Bodies read", d: pt.summary, state: "done" },
+    { t: "Bodies read", d: [pt.summary, contactsNoteToShow(pt)].filter(Boolean).join(" "), state: "done" },
     { t: "Each body checked", d: done ? "On the part page, body by body · no check used" : "Waiting", state: done ? "done" : "wait" },
   ];
 }

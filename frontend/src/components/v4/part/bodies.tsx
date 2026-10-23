@@ -10,7 +10,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { bodyAsPart, checkBodies, expandFaces, isMultiBody, type BodiesCheck, type BodyInfo, type PartType } from "@/lib/verify/bodies";
+import { bodyAsPart, checkBodies, contactsNoteToShow, expandFaces, isMultiBody, type BodiesCheck, type BodyInfo, type PartType } from "@/lib/verify/bodies";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { R } from "../routes";
 import { cx } from "../ui";
@@ -135,7 +135,12 @@ export function BodiesSheet({ b, qs, aligned, has3d }: { b: BodiesState; qs: num
       : { k: "Bodies", v: String(pt.body_count), s: pt.designs && pt.designs < pt.body_count ? plural(pt.designs, "shape") : "all different" },
     weldment
       ? { k: "Joints", v: String(pt.joints?.count ?? 0), s: pt.joints ? `≈ ${Math.round(pt.joints.weld_length_mm_estimate).toLocaleString("en-US")} mm of weld, estimated` : "" }
-      : { k: "Touching", v: String(pt.contacts?.length ?? 0), s: pt.contacts?.length ? "pairs of bodies" : "none" },
+      : {
+          k: "Touching",
+          v: String(pt.contacts?.length ?? 0),
+          // Close pairs whose contact wasn't checked: "none found", not "none", and how many weren't checked.
+          s: `${pt.contacts?.length ? "pairs of bodies" : pt.contacts_unchecked ? "none found" : "none"}${pt.contacts_unchecked?.pairs ? ` · ${pt.contacts_unchecked.pairs} not checked` : ""}`,
+        },
     { k: weldment ? "Members’ material" : `Total at ${qtyWord(q)}`, v: total.value, s: total.note, tone: b.check ? undefined : "warn" },
   ];
   const mnote = materialNote(b.check);
@@ -145,6 +150,7 @@ export function BodiesSheet({ b, qs, aligned, has3d }: { b: BodiesState; qs: num
       <div className="scroll">
         <div className="note" style={{ marginTop: 8 }}>
           <b>{pt.summary}</b>
+          {contactsNoteToShow(pt) ? <span>{contactsNoteToShow(pt)}</span> : null}
           <span>
             {weldment
               ? "Each member is read as cut stock from its cross-section and length. The route is cut, prep, weld, finish."

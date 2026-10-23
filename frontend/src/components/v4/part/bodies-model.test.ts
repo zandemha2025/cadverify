@@ -160,3 +160,26 @@ test("body chips follow the engine's verdicts and states", () => {
   assert.deepEqual(chipOf(bolt, false, true), { cls: "c-unk", label: "Buy" });
   assert.deepEqual(priceOf(bolt, 1, false), { value: "$0.75", note: "catalog estimate, each" });
 });
+
+test("close pairs whose contact wasn't checked: the API's note, shown once beside the summary", async () => {
+  const { contactsNoteToShow } = await import("../../../lib/verify/bodies.ts");
+  const note = "2 of 5 close pairs weren't checked for contact: too many facets to compare in time.";
+  // Contacts found: the API already appended the note to the summary; not shown twice.
+  const withContacts = { summary: `This file holds 4 bodies that touch: likely an assembly. ${note}`, contacts_note: note };
+  assert.equal(contactsNoteToShow(withContacts), null);
+  // None found: the summary doesn't carry it, so the page shows it beside the summary.
+  const noneFound = { summary: "This file holds 4 separate bodies that don't touch: 4 plates.", contacts_note: note };
+  assert.equal(contactsNoteToShow(noneFound), note);
+  // No note (every close pair checked), or an older API without the field: nothing extra.
+  assert.equal(contactsNoteToShow({ summary: "This file holds 2 bodies that touch." }), null);
+  assert.equal(contactsNoteToShow({ summary: "x", contacts_note: "  " }), null);
+  assert.equal(contactsNoteToShow(null), null);
+  // The fields read as the API sends them.
+  const pt: PartType = {
+    version: 1, kind: "separate_bodies", body_count: 4, summary: noneFound.summary, contacts: [], contacts_complete: false,
+    contacts_unchecked: { pairs: 2, of: 5, reasons: ["work_cap"] }, contacts_note: note,
+  };
+  assert.equal(pt.contacts_unchecked?.pairs, 2);
+  const contact: NonNullable<PartType["contacts"]>[number] = { a: 1, b: 2, type: "touching", gap_mm: 0, overlap_mm: null, area_mm2: 40, patch_mm: [8, 5], outline_mm: 26, ring: false, weld_like: false, coarse: true };
+  assert.equal(contact.coarse, true);
+});

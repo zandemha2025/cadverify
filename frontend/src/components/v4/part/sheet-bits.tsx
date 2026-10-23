@@ -15,7 +15,7 @@ import { sureOf, type SureLens } from "./sure";
 import { Banner, CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../moments";
 import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
-import { isMultiBody } from "@/lib/verify/bodies";
+import { contactsNoteToShow, isMultiBody } from "@/lib/verify/bodies";
 import { shopChangeText, shopChangedSince, type ShopChange } from "./shop-change";
 import { ReadOnlyLine, useReadOnly } from "../read-only";
 import { busyView, sheetRunNotice, viewStep } from "./busy-state";
@@ -109,6 +109,7 @@ function BodiesNotice() {
   return (
     <div className="note swap" role="note" style={{ marginTop: 8 }}>
       <b>{pt.summary}</b>
+      {contactsNoteToShow(pt) ? <span>{contactsNoteToShow(pt)}</span> : null}
       <span>These figures treat the file as one block, which is not how it would be made. Each body’s own answer is under Body by body.</span>
       <span>
         <button className="btn sm" type="button" onClick={p.openBodies}>

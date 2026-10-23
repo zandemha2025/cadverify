@@ -72,6 +72,16 @@ export interface BodyContact {
   outline_mm: number;
   ring: boolean;
   weld_like: boolean;
+  /** The pair hit its work cap: a smaller sample than usual (or an overlap depth that is at least
+   *  this), so its area and outline are rougher. */
+  coarse?: boolean;
+}
+
+/** Close pairs of bodies whose contact wasn't checked (`of`: the close pairs in all), and why. */
+export interface ContactsUnchecked {
+  pairs: number;
+  of: number;
+  reasons: string[];
 }
 
 export interface PartType {
@@ -86,6 +96,10 @@ export interface PartType {
   designs?: number;
   contacts?: BodyContact[];
   contacts_complete?: boolean;
+  /** Set when some close pairs weren't checked for contact; `contacts_note` says so in a sentence.
+   *  The API adds the note to `summary` only when it found contacts (contactsNoteToShow). */
+  contacts_unchecked?: ContactsUnchecked;
+  contacts_note?: string;
   joints?: { count: number; weld_length_mm_estimate: number; words: string };
   route?: string[];
   source?: "mesh" | "step_product_tree";
@@ -155,6 +169,16 @@ export interface BodiesCheck {
 export const MULTI_KINDS: ReadonlySet<PartKind> = new Set(["separate_bodies", "weldment", "assembly", "bodies"]);
 
 /** A file of two or more bodies the check can read one by one. */
+/**
+ * The unchecked-contacts note to show beside the summary, or null: none to show, or
+ * the summary already carries it (the API appends it when it found some contacts).
+ */
+export function contactsNoteToShow(pt: Pick<PartType, "summary" | "contacts_note"> | null | undefined): string | null {
+  const note = pt?.contacts_note?.trim();
+  if (!note) return null;
+  return pt?.summary?.includes(note) ? null : note;
+}
+
 export function isMultiBody(pt: PartType | null | undefined): pt is PartType & { bodies: BodyInfo[] } {
   return !!pt && MULTI_KINDS.has(pt.kind) && (pt.bodies?.length ?? 0) > 1;
 }
