@@ -21,7 +21,8 @@ Contract:
   * ``slim_cost`` / ``slim_analysis`` keep exactly the keys
     ``catalog_service``'s derivation reads (``derive_row``, ``make_now_estimate``,
     ``derive_savings``, the quantity-matched annualization) plus the record
-    list's ``what_if`` / ``rate_card`` / ``priced_at``, with the same presence,
+    list's ``what_if`` / ``rate_card`` / ``priced_at`` and the makeability
+    drill-down's ``verification.resource``, with the same presence,
     absence and values. Anything that isn't a dict or list where one is
     expected is passed through untouched, so a malformed record fails the same
     way it did. ``tests/test_catalog_inputs.py`` holds every derived figure
@@ -46,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Pure slimming
 # ---------------------------------------------------------------------------
 
-_COST_KEYS = ("decision", "quantities", "rate_card", "estimates", "what_if", "priced_at")
+_COST_KEYS = ("decision", "quantities", "rate_card", "estimates", "what_if", "priced_at", "verification")
 _ESTIMATE_KEYS = (
     "process", "material", "quantity", "dfm_ready", "dfm_blockers",
     "confidence", "drivers", "unit_cost_usd", "environment_excluded",
@@ -100,7 +101,28 @@ def slim_cost(result_json: Any) -> Any:
         out["estimates"] = [_slim_estimate(e) for e in out["estimates"]]
     if isinstance(out.get("rate_card"), dict):
         out["rate_card"] = _pick(out["rate_card"], ("version",))
+    if isinstance(out.get("verification"), dict):
+        out["verification"] = _pick(out["verification"], ("resource",))
     return out
+
+
+def _arrow(value: Any, key: str) -> Any:
+    """Postgres ``value -> key``: the member, or None when it is absent or ``value`` isn't an object."""
+    return value.get(key) if isinstance(value, dict) else None
+
+
+def route_slice(slim: Any) -> dict:
+    """The decision slice the makeability drill-down prices each part at its own
+    quantity from (``catalog_service.route_at_quantity``), built from slim
+    inputs exactly as its SQL ``jsonb_build_object`` built it from the column."""
+    decision = _arrow(slim, "decision")
+    return {
+        "decision": {
+            "recommendation": _arrow(decision, "recommendation"),
+            "options": _arrow(decision, "options"),
+        },
+        "verification": {"resource": _arrow(_arrow(slim, "verification"), "resource")},
+    }
 
 
 def _slim_issue(i: Any) -> Any:

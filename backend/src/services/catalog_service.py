@@ -1841,23 +1841,24 @@ def route_at_quantity(result_json: dict, annual_volume: Optional[int],
 
 
 async def _routes_at_quantity(session: AsyncSession, org_id: str, page) -> dict:
-    """``{mesh_hash: route_at_quantity}`` for a page of makeability rows (two small reads)."""
-    from sqlalchemy import literal_column
-    from sqlalchemy.dialects.postgresql import JSONB
+    """``{mesh_hash: route_at_quantity}`` for a page of makeability rows.
+
+    Each priced part's decision slice comes from its record's cached slim
+    inputs (``catalog_inputs``): listing the page's records reads no saved
+    result, where the slice taken in SQL unpacked every record's whole result
+    once per key on every request (0.3 s for a 90-part page, capacity report C6)."""
+    from src.services import catalog_inputs
 
     ids = {r.mesh_hash: ((r.row_json or {}).get("cost_decision") or {}).get("id") for r in page}
     ulids = [u for u in ids.values() if u]
     if not ulids:
         return {}
-    slice_sql = ("jsonb_build_object('decision', jsonb_build_object("
-                 "'recommendation', cost_decisions.result_json -> 'decision' -> 'recommendation', "
-                 "'options', cost_decisions.result_json -> 'decision' -> 'options'), "
-                 "'verification', jsonb_build_object('resource', "
-                 "cost_decisions.result_json -> 'verification' -> 'resource'))")
     try:
-        decisions = {u: j for u, j in (await session.execute(
-            select(CostDecision.ulid, literal_column(slice_sql, type_=JSONB))
-            .where(CostDecision.org_id == org_id, CostDecision.ulid.in_(ulids)))).all()}
+        keys = (await session.execute(
+            select(CostDecision.id, CostDecision.ulid)
+            .where(CostDecision.org_id == org_id, CostDecision.ulid.in_(ulids)))).all()
+        inputs = await catalog_inputs.cost_inputs(session, [(i, u) for i, u in keys])
+        decisions = {u: catalog_inputs.route_slice(inputs[(i, u)]) for i, u in keys if (i, u) in inputs}
         contexts = {h: (v, p) for h, v, p in (await session.execute(
             select(PartContext.mesh_hash, PartContext.annual_volume, PartContext.buy_price)
             .where(PartContext.org_id == org_id, PartContext.mesh_hash.in_(list(ids))))).all()}

@@ -429,3 +429,46 @@ async def test_records_list_reads_slim_inputs_and_answers_as_from_whole_records(
             await s.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
             await s.execute(text("DELETE FROM users WHERE id = :u"), {"u": uid})
             await s.commit()
+
+
+ROUTE_SHAPES = {
+    "typical": _cost(),
+    "options_and_verification": _cost(
+        decision={**_cost()["decision"], "options": {
+            "10": {"in_house": {"process": "cnc_3axis", "machine": "Haas VF-2", "material": "aluminum_6061",
+                                "unit_cost_usd": 28.0, "low_usd": 25.0}},
+            "500": {"in_house": {}}}},
+        verification={"resource": {"process": "cnc_3axis", "machine": "Haas VF-2"}, "fits": [HEAVY] * 5}),
+    "verification_only": _cost(verification={"resource": {"process": "laser_cutting", "machine": "Trumpf"}}),
+    "verification_not_dict": _cost(verification=["x"]),
+    "resource_missing": _cost(verification={"fits": []}),
+    "decision_not_dict": _cost(decision=["x"]),
+    "no_decision": _cost(decision=None),
+    "empty": {},
+    "a_list": [1, 2],
+}
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_route_slice_matches_the_slice_postgres_took():
+    """The makeability drill-down's per-part slice, built from slim inputs, equals
+    the jsonb_build_object it used to take from the column, and prices alike."""
+    from sqlalchemy import text
+
+    import src.db.engine as eng
+
+    slice_sql = text(
+        "SELECT jsonb_build_object('decision', jsonb_build_object("
+        "'recommendation', j -> 'decision' -> 'recommendation', 'options', j -> 'decision' -> 'options'), "
+        "'verification', jsonb_build_object('resource', j -> 'verification' -> 'resource')) "
+        "FROM (SELECT CAST(:rj AS jsonb) AS j) s"
+    )
+    async with eng.get_session_factory()() as s:
+        for name, rj in ROUTE_SHAPES.items():
+            took = (await s.execute(slice_sql, {"rj": json.dumps(rj)})).scalar_one()
+            built = ci.route_slice(ci.slim_cost(rj))
+            assert built == took, name
+            for volume in (None, 1, 10, 500, 7):
+                for buy in (None, {"usd_each": 26.0, "source": "PO"}):
+                    assert cs.route_at_quantity(built, volume, buy) == cs.route_at_quantity(took, volume, buy), name
