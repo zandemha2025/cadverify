@@ -163,6 +163,8 @@ def _side(est, lt, rng) -> dict:
     if lo is None:
         band = float(est.est_error_band_pct or 0) / 100.0
         lo, hi = est.unit_cost_usd * (1 - band), est.unit_cost_usd * (1 + band)
+    if hi is None:
+        raise TypeError(f"{est.process}: served price range has a low and no high")
     return {
         "process": est.process,
         "material": est.material,
@@ -303,7 +305,10 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
                 o_side["same_process"] = True
         pick, basis = prefer_in_house(i_side, o_side)
         entry = {"in_house": i_side, "outside": o_side, "pick": pick, "basis": basis}
-        return (i_est if pick == "in_house" else o_est), cheapest, entry
+        chosen = i_est if pick == "in_house" else o_est
+        if chosen is None:  # prefer_in_house picks "outside" only when one is priced
+            raise RuntimeError(f"outside picked at {q} with no outside route priced")
+        return chosen, cheapest, entry
 
     make_now = pick_at(q_lo)[0]
 
@@ -338,7 +343,7 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         lead = (lt.low_days if lt else None, lt.high_days if lt else None)
         twin = (entry is not None and entry["pick"] == "outside"
                 and (entry.get("outside") or {}).get("same_process"))
-        if twin:
+        if twin and entry is not None:  # twin holds only with an entry
             # Your machine's process, bought from a shop: its lead time, not yours.
             lead = (entry["outside"]["lead_low_days"], entry["outside"]["lead_high_days"])
         recommendation[q] = {
@@ -393,7 +398,7 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     # AISI 4130 in sour service): the note says why its grade is that one.
     if env_note and env_regraded and make_now.process in env_regraded:
         env_moved = True
-    if env_moved:
+    if env_moved and env_note:  # env_moved is set only when env_note is
         note = note + " " + env_note
 
     # Last, so a public share can cut it off whole (it names the sharer's machines).
@@ -471,7 +476,7 @@ def _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
     # ce-07: like-for-like. A casting or forging is priced as a blank: say so, and
     # show it finished, so the crossover can be read against a machined part.
     fin = getattr(tool_champion, "finish_excluded", None) if tool_champion is not None else None
-    if fin and tool_unit_hi is not None:
+    if fin and tool_champion is not None and tool_unit_hi is not None:
         tool = process_label(tool_champion.process)
         finished = float(tool_unit_hi) + fin["per_part_usd"] + fin["once_usd"] / q_hi
         crossover_clause += (

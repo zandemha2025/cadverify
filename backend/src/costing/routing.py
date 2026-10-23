@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, is_dataclass
 from math import prod
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from src.analysis.models import ProcessType
 from src.analysis.features.base import turning_dimensions
@@ -23,6 +23,9 @@ from src.costing.rates import (
     build_rate_card,
     process_family,
 )
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 PT = ProcessType
 
@@ -105,6 +108,8 @@ def is_rotational(geometry, mesh=None, features=None):
         cross_dia = 0.5 * (c1 + c2)
         if best is None or roundness > best[0]:
             best = (roundness, axis_len, cross_dia)
+    if best is None:  # three candidates: the first always sets it
+        raise RuntimeError("no turning axis candidate")
     roundness, axis_len, cross_dia = best
     measured = turning_dimensions(mesh, features) if mesh is not None else None
     if measured is not None:
@@ -148,7 +153,7 @@ _DED_FEEDSTOCK_PROCS = (PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET)
 
 def _material_props(material) -> dict:
     if is_dataclass(material):
-        return asdict(material)
+        return asdict(cast("DataclassInstance", material))
     return {
         "name": getattr(material, "name", str(material)),
         "density": getattr(material, "density", None),

@@ -43,6 +43,7 @@ import threading
 import weakref
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 
@@ -219,7 +220,8 @@ class SampledShadow:
         from scipy.ndimage import distance_transform_edt
 
         border = int(math.ceil(margin_mm / self.pitch)) + 2
-        dist = distance_transform_edt(~np.pad(self.covered(), border)) * self.pitch
+        # distances only (no indices requested): an array, whatever the stub's union says
+        dist = cast(np.ndarray, distance_transform_edt(~np.pad(self.covered(), border))) * self.pitch
         return float(np.count_nonzero(dist <= margin_mm + 0.5 * self.pitch)) * self.pitch * self.pitch
 
 
@@ -335,7 +337,8 @@ def _run_loops(mesh, runs: list, vertices_2d: np.ndarray):
     good = np.flatnonzero(~bad)
     rings_at = walk[:, good].T[inside[:, good].T]
     ring_id = np.repeat(np.arange(len(good)), loop_len[good])
-    polygons = shapely.polygons(shapely.linearrings(vertices_2d[starts[rings_at]], indices=ring_id))
+    # one polygon per ring index: an object array, not the scalar Polygon the stub names
+    polygons = cast(np.ndarray, shapely.polygons(shapely.linearrings(vertices_2d[starts[rings_at]], indices=ring_id)))
     valid = shapely.is_valid(polygons)
     left.extend(small[np.flatnonzero(bad)])
     left.extend(small[good[~valid]])

@@ -33,6 +33,7 @@ caller — the fit engine never invents a dollar.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import TypeGuard
 
 from src.analysis.models import ProcessType
 from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions, envelope_nonfit_bound
@@ -219,7 +220,7 @@ def _pt_value(process) -> str:
     return pt.value if pt is not None else str(process)
 
 
-def _is_number(v) -> bool:
+def _is_number(v) -> TypeGuard[int | float]:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
@@ -506,7 +507,7 @@ def _sorted_env(cap: dict, keys) -> "list | None":
     vals = [cap.get(k) for k in keys]
     if any(not _is_number(v) for v in vals):
         return None
-    return sorted(float(v) for v in vals)
+    return sorted(float(v) for v in vals if _is_number(v))
 
 
 def _machine_envelope(cap: dict):
@@ -1223,6 +1224,20 @@ def _unknown(failures) -> list:
     return [f for f in failures if f.have is None]
 
 
+def _pass_hint(fit: FitResult) -> dict:
+    """A passing fit's ``resource_hint``: ``fit_machine`` sets one on every pass."""
+    hint = fit.resource_hint
+    if hint is None:
+        raise RuntimeError(f"passing fit on {fit.machine} carries no resource hint")
+    return hint
+
+
+def _pass_rate(fit: FitResult) -> float:
+    """A passing fit's declared hourly rate; undeclared sorts last (infinity)."""
+    rate = _pass_hint(fit).get("hourly_rate_usd")
+    return rate if _is_number(rate) else float("inf")
+
+
 def _blank_hint(hint: dict, preq: PartReq, owned, shop_caps) -> dict:
     """A press brake bends a blank someone has to cut (me-02). On a cutter of yours
     that fits the flat blank, the hint names it; with none, the blank is bought
@@ -1234,8 +1249,7 @@ def _blank_hint(hint: dict, preq: PartReq, owned, shop_caps) -> dict:
     ok = [f for f in fits if f.passes]
     notes = list(hint.get("notes", ()))
     if ok:
-        best = min(ok, key=lambda f: f.resource_hint.get("hourly_rate_usd")
-                   if _is_number(f.resource_hint.get("hourly_rate_usd")) else float("inf"))
+        best = min(ok, key=_pass_rate)
         notes.append(f"blank cut on your {best.machine}")
         return {**hint, "blank_on": best.machine, "notes": tuple(notes)}
     if not cutters:
@@ -1308,7 +1322,7 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     for r in valid_routes:
         preq = route_req[r]
         owned = [m for m in inventory if _pt_value(m.process) == r]
-        dfm = tuple(getattr(preq, "dfm_failures", ()) or ())
+        dfm: tuple[FitFailure, ...] = tuple(getattr(preq, "dfm_failures", ()) or ())
         if dfm and owned and all(f.axis in _SIZE_CODES for f in dfm):
             # Only too big for every machine ScaleCAD knows: against the shop's
             # own work areas the envelope gate gives the real answer ("too big
@@ -1348,17 +1362,17 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
             best = min(
                 route_passes,
                 key=lambda f: (
-                    len(f.resource_hint.get("secondary_ops", ())),
-                    f.resource_hint.get("hourly_rate_usd")
-                    if _is_number(f.resource_hint.get("hourly_rate_usd"))
+                    len(_pass_hint(f).get("secondary_ops", ())),
+                    _pass_hint(f).get("hourly_rate_usd")
+                    if _is_number(_pass_hint(f).get("hourly_rate_usd"))
                     else float("inf")))
             best_cap = owned[fits.index(best)]
             if (r == ProcessType.SHEET_METAL.value and preq.bend_count > 0
                     and sheet_kind(best_cap.capabilities) == PRESS_BRAKE):
-                best = replace(best, resource_hint=_blank_hint(best.resource_hint, preq, owned, shop_caps))
-            sec = len(best.resource_hint.get("secondary_ops", ()))
-            cost = (best.resource_hint.get("hourly_rate_usd")
-                    if _is_number(best.resource_hint.get("hourly_rate_usd"))
+                best = replace(best, resource_hint=_blank_hint(_pass_hint(best), preq, owned, shop_caps))
+            sec = len(_pass_hint(best).get("secondary_ops", ()))
+            cost = (_pass_hint(best).get("hourly_rate_usd")
+                    if _is_number(_pass_hint(best).get("hourly_rate_usd"))
                     else float("inf"))
             passes.append((sec, cost, best, r))
             per_route[r] = {

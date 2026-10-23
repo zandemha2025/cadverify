@@ -31,7 +31,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field, replace
-from typing import Any, Optional
+from typing import Any, Optional, TypeGuard
 
 from src.costing.provenance import TYPICAL, Driver, Provenance
 
@@ -260,7 +260,7 @@ MOLD_POLISH_NOTE_BELOW_UM = 0.4
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_number(v) -> bool:
+def _is_number(v) -> TypeGuard[int | float]:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
@@ -555,7 +555,7 @@ class RouteSpecs:
 def _finding(code: str, process: str, message: str, fix: str, *,
              measured: float | None = None, required: float | None = None,
              unit: str | None = None) -> dict:
-    d = {"code": code, "severity": "error", "message": message, "fix_suggestion": fix,
+    d: dict[str, str | float] = {"code": code, "severity": "error", "message": message, "fix_suggestion": fix,
          "process": process, "scope": "whole_part", "source": "part_specs"}
     if measured is not None:
         d["measured_value"] = float(measured)

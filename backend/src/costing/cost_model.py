@@ -538,7 +538,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                    rates: RateCard, region: str, n_cavities: int = 1,
                    complexity: str = "moderate", process_score=None,
                    owned: bool = False, tolerance_class: str = "standard",
-                   machine_override: dict = None) -> CostEstimate:
+                   machine_override: "dict | None" = None) -> CostEstimate:
     family = process_family(process)
     labor_rate = rates.g("labor_rate")
     margin = rates.g("margin")
@@ -726,6 +726,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # ---- MACHINE ---------------------------------------------------------
     finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
     blank_outside_hr = 0.0   # me-02: sheet blank cut outside when the shop has no cutter
+    edm_cut_hr = 0.0    # wire-EDM cut time (set by _edm_cycle); 0 for other families
     if family == "additive" and print_plan is not None:
         est, placement = print_plan
         machine_hr, n = est.hours_per_part, est.parts_per_plate
@@ -878,7 +879,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # machine-specific override: name the fitted machine, show its OWN rate, and
     # carry its provenance. No override => the card default rate + prov_tag,
     # byte-identical.
-    if machine_name is not None:
+    if machine_name is not None and machine_prov is not None:  # both set by an override
         machine_prov_tag = machine_prov
         machine_rate_shown = base_machine_rate
         machine_name_note = f" (machine '{machine_name}', at its declared rate)"
@@ -903,6 +904,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         _owned_subject = (f"machine '{machine_name}' you own"
                           if machine_name is not None else "a machine you own")
         _frac_prov = ("declared on the machine" if (machine_name is not None
+                      and machine_override is not None
                       and isinstance(machine_override.get("capital_frac"), (int, float))
                       and not isinstance(machine_override.get("capital_frac"), bool))
                       else "a typical value, not confirmed by a shop")
@@ -1355,6 +1357,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         tool_band = 55.0
     else:
         tooling_cost = 0.0
+        tool_src, tool_band = "", 0.0   # no tool: its drivers below are skipped
 
     tooling_amort_scaled = (tooling_cost / qty) * rt * mgn
     # ce-07: a casting or forging is priced as a near-net blank. What finishing it on a

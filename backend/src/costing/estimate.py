@@ -9,7 +9,7 @@ It NEVER mutates `result`, the engine, or the registry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from src.analysis.models import Severity
 from src.costing.confidence import confidence_interval
@@ -22,6 +22,9 @@ from src.costing.rates import COSTED_PROCESSES, RateCard, build_rate_card
 from src.analysis.process_names import join_labels, process_phrase
 from src.costing.routing import eligible_processes, recommend_routing, sheet_stock_gap
 from src.costing.shop_profile import resolve_shop
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 
 @dataclass
@@ -318,7 +321,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     shop_overrides = shop.to_shop_overrides() if shop is not None else None
     shop_region = shop.region if shop is not None else None
     # a bound shop selects its own region unless the caller explicitly chose one
-    region = (shop_region if (shop is not None and not options.region_is_user)
+    region = (shop.region if (shop is not None and not options.region_is_user)
               else options.region)
     rates = build_rate_card(options.rate_overrides, shop_overrides=shop_overrides,
                             shop_name=(shop.name if shop is not None else None),
@@ -605,8 +608,10 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             "Decision: no environment-valid make-as-is option — "
             + env_excluded["note"] + ".")
     elif decision is None and spec_excluded:
-        notes.append("Decision: no route meets the declared specs; "
-                     + specs.note(spec_excluded) + ".")
+        spec_note = specs.note(spec_excluded) if specs is not None else None
+        if spec_note is None:  # spec_excluded is non-empty only under a spec session
+            raise RuntimeError("declared specs ruled out routes with no spec session to name them")
+        notes.append("Decision: no route meets the declared specs; " + spec_note + ".")
 
     geo = _geo_summary(g)
     return DecisionReport(
@@ -673,7 +678,8 @@ def _prefer_owned_materials(elig: list, options) -> list:
                  and any(material_declared(m.name, cls, mc.materials) for mc in machines)]
         if options.service_environment and cands:
             cands = _env_preferred_materials(process, cands, options.service_environment)
-        out.append({**item, "material": min(cands, key=lambda m: m.cost_per_kg)} if cands else item)
+        # cands keep only grades with a cost_per_kg
+        out.append({**item, "material": min(cands, key=lambda m: cast(float, m.cost_per_kg))} if cands else item)
     return out
 _CLASS_WORD = {"polymer": "plastic", "stainless": "stainless steel", "nickel": "nickel alloy",
                "cobalt": "cobalt-chrome"}
@@ -921,7 +927,7 @@ def _build_verification(elig, drivers, options, rates, specs=None):
         # reads (nace_mr0175/sour_service under 'compliance', max_temperature at
         # top level). asdict is the loader-faithful shape the real-profile
         # integration test pins.
-        props = asdict(mat) if is_dataclass(mat) else {
+        props = asdict(cast("DataclassInstance", mat)) if is_dataclass(mat) else {
             "name": getattr(mat, "name", str(mat)),
             "density": getattr(mat, "density", None),
         }
@@ -966,7 +972,8 @@ def _build_verification(elig, drivers, options, rates, specs=None):
     # the route into a grade it allows): still cited, with the same words.
     replaced = {item["env_replaced"].name: item["env_replaced"] for item in elig if item.get("env_replaced")}
     if replaced:
-        rprops = {n: (asdict(m) if is_dataclass(m) else {"name": n}) for n, m in replaced.items()}
+        rprops = {n: (asdict(cast("DataclassInstance", m)) if is_dataclass(m) else {"name": n})
+                  for n, m in replaced.items()}
         _g2, extra = environment_gate([], list(replaced), env, rprops)
         have = {f.axis for f in env_exclusions}
         env_exclusions = tuple(env_exclusions) + tuple(f for f in extra if f.axis not in have)
