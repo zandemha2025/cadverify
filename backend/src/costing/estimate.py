@@ -963,8 +963,9 @@ def _build_verification(elig, drivers, options, rates, specs=None):
     # exclusions directly. When inventory IS present, verify_part already ran the
     # SAME gate, so verdict.env_exclusions is authoritative and used as-is.
     routes = list(part_req_by_route.keys())
-    materials = list({p.material_name for p in part_req_by_route.values()
-                      if p.material_name})
+    # Sorted, as verify_part orders them (and the note names them), never by hash seed.
+    materials = sorted({p.material_name for p in part_req_by_route.values()
+                        if p.material_name})
     _gate, direct_exclusions = environment_gate(routes, materials, env,
                                                 material_props)
     env_exclusions = verdict.env_exclusions or direct_exclusions

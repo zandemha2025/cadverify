@@ -1296,7 +1296,9 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
         route_material[rv] = getattr(preq, "material_name", "")
 
     routes = list(route_req.keys())
-    materials = list({route_material[r] for r in routes if route_material[r]})
+    # Sorted, as the decision note names them: env_exclusions follow this order and
+    # the first is the headline reason, so it must not change with the hash seed.
+    materials = sorted({route_material[r] for r in routes if route_material[r]})
 
     gate, exclusions = environment_gate(routes, materials, env, material_props)
     excluded_materials = gate["excluded_materials"]
