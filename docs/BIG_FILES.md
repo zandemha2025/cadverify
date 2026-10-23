@@ -282,7 +282,9 @@ time in one process (parsed in pool workers, as a web process does;
 `malloc_trim(0)` gives back about 1 GB; two arenas lower the peak by 15-30%
 and leave less behind (the wall times, 343-567 s, moved with the box's load,
 not with the setting). The budget trims after heavy work (at most every 2 s),
-and its capacity counts the resident memory that no reservation explains.
+and its capacity counts the resident memory that no reservation explains. The
+backend image sets `MALLOC_ARENA_MAX=2` for the API and the worker
+(`backend/Dockerfile`); a deployment can override it per service.
 
 ### A 60-part catalog run on the budget
 

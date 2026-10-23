@@ -157,6 +157,11 @@ RUN useradd --create-home --shell /bin/bash cadverify
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONDONTWRITEBYTECODE=1
+# Two glibc malloc arenas instead of eight per CPU: the parse and price threads
+# otherwise each keep their own heap, and the API and worker hold memory long
+# after a check ends. Measured on the catalog path: peak 15-30% lower on top of
+# compute_budget's malloc_trim (docs/BIG_FILES.md). Override per service if needed.
+ENV MALLOC_ARENA_MAX=2
 
 # Copy pre-baked SAM-2 model weights from builder
 COPY --from=builder /build/models /app/models
