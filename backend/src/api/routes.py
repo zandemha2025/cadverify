@@ -1329,6 +1329,13 @@ async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_par
             detail="STEP/IGES parsing is unavailable on this server (gmsh not installed).",
         )
 
+    # The check's calls (json, then glb and analysis) extract the model once.
+    from src.parsers import assembly_model_cache
+
+    check = compute_budget.check_key()
+    model = await asyncio.to_thread(assembly_model_cache.get, check, suffix, meshed=mesh_single_part)
+    if model is not None:
+        return model
     timeout = _analysis_timeout_sec()
     try:
         # Room in the compute budget, then a pool slot, then the timer: the
@@ -1355,6 +1362,10 @@ async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_par
     except Exception:
         logger.exception("Assembly extraction failed for %s", filename)
         raise HTTPException(status_code=400, detail="Failed to parse assembly file")
+    try:
+        await asyncio.to_thread(assembly_model_cache.put, check, suffix, model, mesh_single_part=mesh_single_part)
+    except Exception:
+        logger.warning("Assembly model not kept for %s", filename, exc_info=True)
     return model
 
 

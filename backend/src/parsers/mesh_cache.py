@@ -173,5 +173,10 @@ def get_cache() -> MeshParseCache:
 
 
 def forget_hashes(hashes) -> int:
-    """Drop the process-wide cache's parsed meshes of these file SHA-256s."""
+    """Drop the process-wide cache's parsed meshes of these file SHA-256s, and the
+    assembly models kept for checks of them (``assembly_model_cache``)."""
+    from src.parsers import assembly_model_cache
+
+    hashes = list(hashes)
+    assembly_model_cache.forget_hashes(hashes)
     return _CACHE.forget_hashes(hashes)
