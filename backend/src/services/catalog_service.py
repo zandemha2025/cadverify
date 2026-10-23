@@ -260,6 +260,10 @@ class SourceRef:
     """A hydrated source artifact (analysis or cost decision) for one part.
 
     DB-free by construction so ``derive_row`` unit-tests with plain values.
+    From the catalog folds, ``result_json`` holds the record's slim inputs
+    (``catalog_inputs``): the keys this module's derivation reads, shared
+    between requests, so never mutate it. A new reader of another key adds it
+    to ``catalog_inputs``.
     """
 
     id: str                      # the ulid (also the /api link key)
@@ -488,6 +492,44 @@ def _fold_latest_by_mesh(rows: list) -> dict[str, Any]:
     return latest
 
 
+async def _current_cost_rows(
+    session: AsyncSession, org_id: str, *, part_key: Optional[str], limit: int
+) -> list:
+    """The org's newest cost decisions that can be a part's price, newest first,
+    at most ``limit``: exactly the rows ``WHERE current_price_clause() ORDER BY
+    ulid DESC LIMIT limit`` returns, without reading every record's
+    ``result_json`` per request to apply that test. The rows are listed without
+    it (ulid-desc pages), and whether each one is a what-if comes from
+    ``catalog_inputs.current_flags``: the same SQL test, run once per record."""
+    from src.services import catalog_inputs
+
+    page = max(limit, 50)
+    out: list = []
+    before: Optional[str] = None
+    while len(out) < limit:
+        rows = (
+            await session.execute(
+                select(
+                    CostDecision.id, CostDecision.ulid, CostDecision.mesh_hash,
+                    CostDecision.filename, CostDecision.file_type, CostDecision.created_at,
+                )
+                .where(CostDecision.org_id == org_id)
+                .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
+                .where(CostDecision.ulid < before if before is not None else true())
+                .order_by(CostDecision.ulid.desc())
+                .limit(page)
+            )
+        ).all()
+        if not rows:
+            break
+        current = await catalog_inputs.current_flags(session, [(r.id, r.ulid) for r in rows])
+        out.extend(r for r in rows if current.get((r.id, r.ulid)))
+        if len(rows) < page:
+            break
+        before = rows[-1].ulid
+    return out[:limit]
+
+
 async def _fold_org_parts(
     session: AsyncSession, org_id: str, *, part_key: Optional[str] = None
 ) -> tuple[list[tuple[str, Optional[SourceRef], Optional[SourceRef]]], bool]:
@@ -496,57 +538,66 @@ async def _fold_org_parts(
     truncated)`` — one entry per distinct part (mesh_hash) in the org, each
     hydrated into DB-free ``SourceRef``s. A single bounded, ulid-desc scan per
     source table (cap+1 so truncation is honest without a second COUNT). An
-    exact part key instead selects only its newest artifact from each table."""
-    from src.services.cost_decision_service import current_price_clause
+    exact part key instead selects only its newest artifact from each table.
+
+    The scans list rows without ``result_json`` and the fold keeps the newest per
+    part; only the kept rows' result inputs are then read, slimmed to what the
+    derivation uses (``catalog_inputs``: once per record per process, then from
+    memory). Page cost no longer grows with the size of every saved result, nor
+    with re-checks of the same part (capacity report C6)."""
+    from src.services import catalog_inputs
 
     # One bounded, ulid-desc query per source table (newest first). Fetch cap+1
     # so we can honestly report truncation without a second COUNT round-trip.
+    limit = 1 if part_key is not None else CATALOG_SCAN_CAP + 1
     an_rows = (
-        (
-            await session.execute(
-                select(Analysis)
-                .where(Analysis.org_id == org_id)
-                .where(Analysis.mesh_hash == part_key if part_key is not None else true())
-                .order_by(Analysis.ulid.desc())
-                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
+        await session.execute(
+            select(
+                Analysis.id, Analysis.ulid, Analysis.mesh_hash,
+                Analysis.filename, Analysis.file_type, Analysis.created_at,
             )
+            .where(Analysis.org_id == org_id)
+            .where(Analysis.mesh_hash == part_key if part_key is not None else true())
+            .order_by(Analysis.ulid.desc())
+            .limit(limit)
         )
-        .scalars()
-        .all()
-    )
-    cost_rows = (
-        (
-            await session.execute(
-                select(CostDecision)
-                .where(CostDecision.org_id == org_id)
-                .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
-                # A what-if re-cost never becomes the part's price on the parts list (ce-17).
-                .where(current_price_clause())
-                .order_by(CostDecision.ulid.desc())
-                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    ).all()
+    # A what-if re-cost never becomes the part's price on the parts list (ce-17).
+    cost_rows = await _current_cost_rows(session, org_id, part_key=part_key, limit=limit)
     truncated = len(an_rows) > CATALOG_SCAN_CAP or len(cost_rows) > CATALOG_SCAN_CAP
     an_rows = an_rows[:CATALOG_SCAN_CAP]
     cost_rows = cost_rows[:CATALOG_SCAN_CAP]
 
     an_by_mesh = _fold_latest_by_mesh(an_rows)
     cost_by_mesh = _fold_latest_by_mesh(cost_rows)
+    an_inputs = await catalog_inputs.analysis_inputs(
+        session, [(a.id, a.ulid) for a in an_by_mesh.values()]
+    )
+    cost_inputs = await catalog_inputs.cost_inputs(
+        session, [(c.id, c.ulid) for c in cost_by_mesh.values()]
+    )
 
     parts: list[tuple[str, Optional[SourceRef], Optional[SourceRef]]] = []
-    for mesh in set(an_by_mesh) | set(cost_by_mesh):
+    # Sorted, so parts that tie on every later sort key (records saved in one
+    # transaction share created_at) keep one order in every process: a page
+    # boundary falls in the same place whichever API instance answers.
+    for mesh in sorted(set(an_by_mesh) | set(cost_by_mesh)):
         a = an_by_mesh.get(mesh)
         c = cost_by_mesh.get(mesh)
+        # A record deleted between the two reads is treated as gone.
+        if a is not None and (a.id, a.ulid) not in an_inputs:
+            a = None
+        if c is not None and (c.id, c.ulid) not in cost_inputs:
+            c = None
+        if a is None and c is None:
+            continue
         analysis_ref = (
             SourceRef(
                 id=a.ulid,
                 filename=a.filename,
                 file_type=a.file_type,
                 created_at=a.created_at,
-                result_json=a.result_json or {},
+                result_json=an_inputs[(a.id, a.ulid)] or {},
             )
             if a is not None
             else None
@@ -557,7 +608,7 @@ async def _fold_org_parts(
                 filename=c.filename,
                 file_type=c.file_type,
                 created_at=c.created_at,
-                result_json=c.result_json or {},
+                result_json=cost_inputs[(c.id, c.ulid)] or {},
             )
             if c is not None
             else None

@@ -57,6 +57,16 @@ def _fresh_compute_budget():
     compute_budget.reset_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_catalog_inputs():
+    """The catalog's per-record input cache is process-wide; tests reuse made-up ids."""
+    from src.services import catalog_inputs
+
+    catalog_inputs.reset_for_tests()
+    yield
+    catalog_inputs.reset_for_tests()
+
+
 # ──────────────────────────────────────────────────────────────
 # DB test fixtures — mocked async sessions for Phase 3 tests
 # ──────────────────────────────────────────────────────────────

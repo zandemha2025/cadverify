@@ -17,6 +17,7 @@ against live Postgres and asserts cross-tenant isolation.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import uuid
@@ -264,8 +265,23 @@ def test_rollup_program_grouping_is_additive_and_honest():
 # ---------------------------------------------------------------------------
 
 
+_ROW_IDS = itertools.count(1)
+
+
+def _table_read(stmt_text: str, rows: list):
+    """Answer the fold's three reads of a table: its rows (no result_json), the
+    slim result inputs of the kept ids, and for costs whether each is a what-if
+    (``current_price_clause``: no ``what_if`` key in the result)."""
+    if "result_json" not in stmt_text:
+        return rows
+    if "is null" in stmt_text:
+        return [(r.id, r.ulid, not (isinstance(r.result_json, dict) and "what_if" in r.result_json)) for r in rows]
+    return [(r.id, r.ulid, r.result_json) for r in rows]
+
+
 class _Row:
     def __init__(self, mesh, result_json, *, ulid=None, ts=None):
+        self.id = next(_ROW_IDS)
         self.mesh_hash = mesh
         self.ulid = ulid or f"ul-{mesh}"
         self.filename = f"{mesh}.stl"
@@ -298,8 +314,8 @@ class _FakeSession:
         if "part_contexts" in s:
             return _FakeResult([])
         if "cost_decisions" in s:
-            return _FakeResult(self._cost)
-        return _FakeResult(self._an)
+            return _FakeResult(_table_read(s, self._cost))
+        return _FakeResult(_table_read(s, self._an))
 
 
 @pytest.mark.asyncio
