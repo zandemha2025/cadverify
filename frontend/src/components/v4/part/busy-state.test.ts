@@ -10,6 +10,9 @@ import {
   busyReopenLabel,
   busyTitle,
   busyView,
+  serverMeta,
+  serverStepText,
+  serverTitle,
   sheetRunNotice,
   shownWait,
   stillBusyMeta,
@@ -141,4 +144,47 @@ test("progress while busy says 'Waiting for room', never a red 'Didn't finish' (
   // Without busy, a cost that didn't finish still says so (unchanged).
   const failed = progressSteps({ ...base, validation: V, costError: "The should-cost service returned an unreadable response.", done: true });
   assert.deepEqual([failed[2].d, failed[2].state], ["Didn’t finish", "bad"]);
+});
+
+test("a gateway timeout or other 5xx is ScaleCAD's side: plain words, one Try again, never a file problem", () => {
+  // From the check (probe or /validate), and from prices.
+  assert.deepEqual(busyView({ busy: {}, failure: { kind: "server", step: "probe", status: 504 } }), { phase: "server", step: "probe", status: 504 });
+  assert.deepEqual(busyView({ busy: {}, failure: { kind: "server", step: "validate", status: 502 } }), { phase: "server", step: "validate", status: 502 });
+  assert.deepEqual(busyView({ busy: {}, result: { cost: null, costError: "Gateway Timeout", costStatus: 504 } }), { phase: "server", step: "cost", status: 504 });
+  assert.deepEqual(busyView({ busy: {}, result: { cost: null, costError: "no answer", costStatus: 0 } }), { phase: "server", step: "cost", status: 0 });
+  // A refusal of the file (4xx) keeps its own words; pricing again or priced: not this.
+  assert.equal(busyView({ busy: {}, result: { cost: null, costError: "Geometry invalid", costStatus: 400 } }), null);
+  assert.equal(busyView({ busy: {}, costRetrying: true, result: { cost: null, costError: "x", costStatus: 504 } }), null);
+  assert.equal(busyView({ busy: {}, result: { cost: { ok: 1 }, costError: null, costStatus: null } }), null);
+  // The brief's words for a timeout; a crash and no answer are said as what they are.
+  assert.equal(serverTitle(504), "That took too long on our side. Your file is kept.");
+  assert.equal(serverTitle(502), "That took too long on our side. Your file is kept.");
+  assert.equal(serverTitle(503), "That took too long on our side. Your file is kept.");
+  assert.equal(serverTitle(500), "That didn't finish on our side. Your file is kept.");
+  assert.equal(serverTitle(0), "ScaleCAD didn't answer. Your file is kept.");
+  assert.equal(serverMeta("validate", 504), "ScaleCAD stopped before answering (504). Nothing was checked. Try again runs the check once more.");
+  assert.equal(serverMeta("cost", 502), "ScaleCAD stopped before answering (502). The process checks are ready; prices haven't run. Try again prices it once more.");
+  const FILE = /can.?t read|couldn.?t read|no surfaces|fix in cad|re-?export|corrupt|invalid|unsupported|tessellat|interrupted|error|failed|usage and plans|allowance|file problem/i;
+  for (const status of [500, 502, 503, 504, 0]) {
+    const lines = [serverTitle(status), serverStepText(status), busyReopenLabel({ phase: "server", step: "validate", status }, T), busyReopenBar({ phase: "server", step: "validate", status }, T)];
+    for (const step of ["probe", "validate", "cost", "preview"] as BusyStep[]) lines.push(serverMeta(step, status));
+    for (const line of lines) assert.doesNotMatch(line, FILE, line);
+  }
+  // The sheet shows it (or the panel does), never "Check interrupted" or "Cost didn't finish".
+  for (const panelOpen of [true, false]) assert.equal(sheetRunNotice({ busy: { phase: "server", step: "cost", status: 504 }, panelOpen, checking: false, interrupted: false, costOff: true, costRetrying: false }), panelOpen ? "panel" : "busy");
+});
+
+test("progress stopped on ScaleCAD's side says so, calmly: no red cross, no 'Didn't finish'", () => {
+  const measured = progressSteps({ ...base, done: true, busy: { step: "measure", live: false, text: serverStepText(504) } });
+  assert.deepEqual([measured[1].d, measured[1].state], ["Took too long on our side", "wait"]);
+  const priced = progressSteps({ ...base, validation: V, costError: "Gateway Timeout", done: true, busy: { step: "price", live: false, text: serverStepText(502) } });
+  assert.deepEqual(priced.map((s) => s.state), ["done", "done", "wait", "wait", "wait"]);
+  assert.equal(priced[2].d, "Took too long on our side");
+  // Pricing again after Try again: running, not failed.
+  const again = progressSteps({ ...base, validation: V, costError: "Gateway Timeout", busy: { step: "price", live: true, text: "Pricing again…" } });
+  assert.deepEqual([again[2].d, again[2].state], ["Pricing again…", "now"]);
+  for (const s of [...measured, ...priced, ...again]) {
+    assert.notEqual(s.state, "bad", s.t);
+    assert.doesNotMatch(s.d, /didn.?t finish|not computed/i, s.t);
+  }
 });

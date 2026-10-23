@@ -32,7 +32,7 @@ import { familyOf } from "../fix/problems";
 import "./part.css";
 
 export function liveMesh(s: CheckSession): MeshSource {
-  return { url: s.preview.url, faceHash: s.preview.faceHash, faceSpace: s.preview.faceSpace, kind: "glb", origin: s.preview.url ? "live" : null, loading: s.preview.status === "loading", error: s.preview.error, busy: !!s.preview.busy };
+  return { url: s.preview.url, faceHash: s.preview.faceHash, faceSpace: s.preview.faceSpace, kind: "glb", origin: s.preview.url ? "live" : null, loading: s.preview.status === "loading", error: s.preview.error, busy: !!s.preview.busy, server: s.preview.server ?? null };
 }
 
 export function CheckPage() {
@@ -217,9 +217,9 @@ export function CheckPage() {
       />
     );
   }
-  // Running before the first answer, or interrupted. Still busy after asking again: the progress panel
-  // stays, with "Still busy. Your file is kept; try again in a minute." and Try again (same file).
-  const stillBusy = f?.kind === "busy";
+  // Running before the first answer, or interrupted. Still busy after asking again, or stopped on
+  // ScaleCAD's side: the progress panel stays, with its calm notice and Try again (same file).
+  const stillBusy = f?.kind === "busy" || f?.kind === "server";
   return (
     <PartView
       data={data!}

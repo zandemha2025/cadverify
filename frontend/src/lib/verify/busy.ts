@@ -101,6 +101,16 @@ export function busySignal(status: number, body: unknown, retryAfter?: string | 
 }
 
 /**
+ * A refusal that's about ScaleCAD's side, not the file, and isn't busy: any 5xx the
+ * server didn't call busy (a gateway timeout, an analysis timeout, a crash), or no
+ * answer at all (status 0). Never retried by itself; the page offers one Try again.
+ * A 4xx (a file the engine refused, an allowance, a permission) is not this.
+ */
+export function serverTrouble(status: number | null | undefined, busy: boolean | null | undefined = false): boolean {
+  return !busy && status != null && (status === 0 || status >= 500);
+}
+
+/**
  * The wait before the next try after `attempt` busy answers: what the server asked
  * (bounded to 1–30 s), growing ×1.5 a try after the third up to 15 s (never below
  * what was asked), plus up to 25% jitter.

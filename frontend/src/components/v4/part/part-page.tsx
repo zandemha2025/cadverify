@@ -173,7 +173,7 @@ export function PartPage({ partKey }: { partKey: string }) {
     if (session && session.preview.status === "loading" && !cache) return liveMesh(session);
     if (drop) return { url: drop.url, faceHash: drop.faceHash, faceSpace: drop.faceSpace, kind: "glb", origin: drop.url ? "drop" : null, loading: drop.loading, error: drop.error };
     if (cache) return { url: cache.url, faceHash: cache.faceHash, faceSpace: cache.faceSpace, kind: "glb", origin: cache.origin, loading: false, error: null };
-    return { url: null, faceHash: null, faceSpace: "preview", kind: "glb", origin: null, loading: cache === undefined, error: session?.preview.error ?? storedError, busy: !!session?.preview.busy };
+    return { url: null, faceHash: null, faceSpace: "preview", kind: "glb", origin: null, loading: cache === undefined, error: session?.preview.error ?? storedError, busy: !!session?.preview.busy, server: session?.preview.server ?? null };
   }, [session, drop, cache, storedError]);
 
   const onDropFile = React.useCallback(

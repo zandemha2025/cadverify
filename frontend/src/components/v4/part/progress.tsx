@@ -5,7 +5,7 @@ import * as React from "react";
 import { dimsText, plural, progressSteps, type Step } from "./model";
 import { chosenLine } from "./pick-words";
 import { readsAsBodies, retryPrices, type CheckSession } from "./store";
-import { busyReopenBar, busyReopenLabel, busyView, type BusyView } from "./busy-state";
+import { busyReopenBar, busyReopenLabel, busyView, serverStepText, viewStep, type BusyView } from "./busy-state";
 import { BusyNotice, useNow } from "./busy-notice";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 import { inText } from "../units/units";
@@ -81,16 +81,18 @@ function onePick(s: CheckSession, steps: Step[]): Step[] {
 }
 
 /** Which step a busy server holds up, for the steps' "Waiting for room". */
-function busyStep(bv: BusyView | null): { step: "measure" | "price"; live: boolean } | null {
+function busyStep(bv: BusyView | null): { step: "measure" | "price"; live: boolean; text?: string } | null {
   if (!bv) return null;
-  const step = bv.phase === "waiting" ? bv.step : bv.still.step;
+  const step = viewStep(bv);
   if (step === "preview") return null;
-  return { step: step === "cost" ? "price" : "measure", live: bv.phase === "waiting" };
+  return { step: step === "cost" ? "price" : "measure", live: bv.phase === "waiting", text: bv.phase === "server" ? serverStepText(bv.status) : undefined };
 }
 
 export function progressModel(s: CheckSession) {
   const r = s.result;
   const bv = busyView(s);
+  // Pricing again after Try again: the step is running, not "Didn't finish".
+  const repricing = s.costRetrying && !r?.cost && !bv ? ({ step: "price", live: true, text: "Pricing again…" } as const) : null;
   const steps: Step[] = onePick(s, bodySteps(s, progressSteps({
     fileName: s.file.name,
     sample: s.sample,
@@ -99,12 +101,12 @@ export function progressModel(s: CheckSession) {
     costError: r ? r.costError : null,
     geometryInvalid: s.status === "stopped" ? r?.costGeometryInvalid?.message ?? "not a closed solid" : null,
     done: s.status !== "running",
-    busy: busyStep(bv),
+    busy: repricing ?? busyStep(bv),
   })));
   const running = s.status === "running";
   const stopped = s.status === "stopped";
   // Still busy before anything was measured: nothing checked, the file kept (the notice offers Try again).
-  const unchecked = s.failure?.kind === "busy";
+  const unchecked = s.failure?.kind === "busy" || s.failure?.kind === "server";
   const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;
   const title = running ? (s.sample ? "Checking the sample" : "Checking") : stopped ? "Stopped at Measured" : unchecked ? "Not checked yet" : "Checked";
   // The expected time comes from how long checks take here (ProgressPanel fills it); never a fixed promise.
@@ -169,7 +171,8 @@ export function ProgressPanel({
       </button>
     );
   const bv = m.busy;
-  const retry = bv?.phase === "still" ? (bv.still.step === "cost" ? () => void retryPrices(session.id) : onRetryCheck) : undefined;
+  // Still busy, or stopped on ScaleCAD's side: one Try again (prices only, or the check).
+  const retry = bv && bv.phase !== "waiting" ? (viewStep(bv) === "cost" ? () => void retryPrices(session.id) : onRetryCheck) : undefined;
   return (
     <section className="prog" role="status" aria-live="polite" aria-labelledby="pg-title">
       <div className="hd">

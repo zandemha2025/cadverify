@@ -28,7 +28,7 @@ test("a check that waits by itself gets busy back as busy: status, code, Retry-A
       return reply();
     });
     try {
-      const err = await api.validateFile(file, undefined, undefined, undefined, undefined, "check-1", { quietBusy: true }).then(
+      const err = await api.validateFile(file, undefined, undefined, undefined, undefined, "check-1", { quiet: true }).then(
         () => null,
         (e: unknown) => e as Error & { status?: number; code?: string | null; retryAfter?: string | null },
       );
@@ -46,7 +46,7 @@ test("a check that waits by itself gets busy back as busy: status, code, Retry-A
 
 test("without the opt-in, and for refusals that aren't busy, nothing changes", async () => {
   const file = new File(["solid x"], "part.stl");
-  const run = async (reply: () => Response, opts?: { quietBusy?: boolean }) => {
+  const run = async (reply: () => Response, opts?: { quiet?: boolean }) => {
     toasts.length = 0;
     const fetchMock = mock.method(globalThis, "fetch", async () => reply());
     try {
@@ -60,10 +60,50 @@ test("without the opt-in, and for refusals that aren't busy, nothing changes", a
   assert.equal(plain!.status, undefined);
   assert.equal(toasts.length, 1);
   // An allowance used up is not busy: it keeps its words and its toast even when the caller waits out busy.
-  const quota = await run(() => Response.json({ detail: { code: "user_validation_cap_exceeded", message: "You've used your 3 free checks." } }, { status: 429 }), { quietBusy: true });
+  const quota = await run(() => Response.json({ detail: { code: "user_validation_cap_exceeded", message: "You've used your 3 free checks." } }, { status: 429 }), { quiet: true });
   assert.match(quota!.message, /^Verification allowance used up/);
   assert.equal(toasts.length, 1);
-  const rate = await run(() => Response.json({ detail: "Rate limit exceeded" }, { status: 429, headers: { "retry-after": "60" } }), { quietBusy: true });
+  const rate = await run(() => Response.json({ detail: "Rate limit exceeded" }, { status: 429, headers: { "retry-after": "60" } }), { quiet: true });
   assert.match(rate!.message, /Too many verification requests/);
   assert.equal(toasts.length, 1);
+});
+
+test("a gateway timeout, another 5xx, or no answer comes back with its status and no red toast, to be said as ScaleCAD's side", async () => {
+  const file = new File(["solid x"], "part.stl");
+  const cases: [() => Response | Promise<Response>, number][] = [
+    [() => new Response("<html>Gateway Timeout</html>", { status: 504 }), 504],
+    [() => new Response("Bad Gateway", { status: 502 }), 502],
+    [() => Response.json({ detail: "Service Unavailable" }, { status: 503 }), 503],
+    [() => Response.json({ detail: "Analysis exceeded 60s timeout." }, { status: 504 }), 504],
+    [() => { throw new TypeError("network down"); }, 0],
+  ];
+  for (const [reply, status] of cases) {
+    toasts.length = 0;
+    let calls = 0;
+    const fetchMock = mock.method(globalThis, "fetch", async () => {
+      calls += 1;
+      return reply();
+    });
+    try {
+      const err = await api.validateFile(file, undefined, undefined, undefined, undefined, "check-1", { quiet: true }).then(
+        () => null,
+        (e: unknown) => e as Error & { status?: number },
+      );
+      assert.ok(err);
+      assert.equal(err.status, status);
+      assert.deepEqual(toasts, [], `no red toast for ${status}`);
+      assert.equal(calls, 1, "an upload is never sent again by itself");
+    } finally {
+      fetchMock.mock.restore();
+    }
+  }
+  // Without the opt-in a 504 keeps its toast, as before.
+  toasts.length = 0;
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response("Gateway Timeout", { status: 504 }));
+  try {
+    await assert.rejects(api.validateFile(file, undefined, undefined, undefined, undefined, "check-1"));
+    assert.equal(toasts.length, 1);
+  } finally {
+    fetchMock.mock.restore();
+  }
 });

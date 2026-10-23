@@ -305,7 +305,7 @@ function paidGate(body: unknown): boolean {
 /** Is this STEP/IGES file several bodies? Keeps the product tree even when the 3D view is gated. */
 export async function probeAssemblyV4(file: File): Promise<AssemblyProbeV4> {
   const json = await post(file, "json");
-  if (!json) return { kind: "refused", title: "Couldn't reach the server", detail: "Check the connection and try again. Nothing was checked.", retry: true, status: null };
+  if (!json) return { kind: "refused", title: "Couldn't reach the server", detail: "Check the connection and try again. Nothing was checked.", retry: true, status: 0 };
   const body = await json.json().catch(() => null);
   // The assembly view is a pilot tool: on other plans the file is checked as one
   // file, and its bodies are read one by one on the part page.

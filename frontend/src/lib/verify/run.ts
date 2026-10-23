@@ -121,6 +121,9 @@ export interface VerifyResult {
    *  busy after the waiting: the page offers "try again", never a file problem. */
   validationBusy?: StillBusy | null;
   costBusy?: StillBusy | null;
+  /** The HTTP status of a cost request that failed (0: no answer came back), so the
+   *  page can tell ScaleCAD's side (a 5xx) from a refusal of the file (a 4xx). */
+  costStatus?: number | null;
   machines: OwnedMachine[];
   machinesError: string | null;
   /** the makeability lattice block IF the engine surfaced one (else null →
@@ -174,7 +177,7 @@ async function postCost(
   try {
     res = await fetch(`${API_BASE}/validate/cost`, { method: "POST", body: form, headers: partCheckHeaders(input.file) });
   } catch (e) {
-    return { cost: null, invalid: null, error: e instanceof Error ? e.message : "Network error" };
+    return { cost: null, invalid: null, error: e instanceof Error ? e.message : "Network error", status: 0 };
   }
 
   if (res.ok) {
@@ -209,10 +212,10 @@ async function postCost(
       resource: "verification",
       retryAfter: res.headers.get("retry-after"),
     });
-  return { cost: null, invalid: null, error: detail, busy };
+  return { cost: null, invalid: null, error: detail, busy, status: res.status };
 }
 
-type CostOut = { cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null; busy?: BusySignal | null };
+type CostOut = { cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null; busy?: BusySignal | null; status?: number | null };
 
 /** postCost, waiting out a busy server when `onWait` is given (else one try). The
  *  input is read on each try, so a material picked while it waited is the one priced. */
@@ -238,6 +241,7 @@ export interface CostRetryResult {
   costGeometryInvalid: CostGeometryInvalid | null;
   costError: string | null;
   costBusy?: StillBusy | null;
+  costStatus?: number | null;
   verification: VerificationBlock | null;
   quantities: number[];
 }
@@ -259,6 +263,7 @@ export async function retryVerificationCost(
     costGeometryInvalid: costOut.invalid,
     costError: costOut.error,
     costBusy: costOut.stillBusy,
+    costStatus: costOut.cost ? null : costOut.status ?? null,
     verification: readVerification(costOut.cost) ?? null,
     quantities: costOut.cost?.quantities ?? quantities,
   };
@@ -277,7 +282,7 @@ async function validateOriented(file: File, orientation: string, partCheckId?: s
       headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined,
     });
   } catch {
-    throw new Error("The check couldn't reach the server. Check the connection and try again.");
+    throw withHttpStatus(new Error("The check couldn't reach the server. Check the connection and try again."), 0, null);
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
@@ -311,7 +316,7 @@ export async function runVerification(
   const validateOnce = (): Promise<BusyAttempt<ValidationOut>> =>
     (input.orientation
       ? validateOriented(input.file, input.orientation, checkId)
-      : validateFile(input.file, undefined, undefined, undefined, undefined, checkId, { quietBusy: waiting })).then(
+      : validateFile(input.file, undefined, undefined, undefined, undefined, checkId, { quiet: waiting })).then(
       (v) => ({ value: { v, err: null, status: null, code: null } }),
       (e) => {
         const he = e as HttpError;
@@ -451,6 +456,7 @@ export async function runVerification(
     costGeometryInvalid: costOut.invalid,
     costError: costOut.error,
     costBusy: costOut.stillBusy,
+    costStatus: costOut.cost ? null : costOut.status ?? null,
     machines: floor.machines,
     machinesError: floor.error,
     verification,

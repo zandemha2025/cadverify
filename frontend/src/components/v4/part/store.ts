@@ -15,7 +15,7 @@ import { isPhoneVerificationMessage, isQuotaErrorMessage } from "@/lib/api-recov
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { computeMeshHash } from "@/lib/verify/part-context";
 import { fetchPreviewMesh, fetchPreviewMeshOrBusy, type PreviewMesh } from "@/lib/verify/preview-mesh";
-import { retryWhileBusy, type BusyKind, type BusyStep, type BusyWait } from "@/lib/verify/busy";
+import { retryWhileBusy, serverTrouble, type BusyKind, type BusyStep, type BusyWait } from "@/lib/verify/busy";
 import { isAssemblyCandidate } from "@/lib/verify/assembly";
 import { closedBodies, isMultiBody } from "@/lib/verify/bodies";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
@@ -39,7 +39,9 @@ export type Failure =
   | { kind: "worker"; message: string; storedId: number }
   | { kind: "unreadable"; title: string; detail: string; problem: "open" | "unreadable" | "unsupported" | "geometry" | "refused"; retry: boolean }
   /** Still busy after ScaleCAD asked again for about three minutes: nothing checked, the file kept, "try again". */
-  | { kind: "busy"; step: Extract<BusyStep, "probe" | "validate">; busy: BusyKind; waitedMs: number };
+  | { kind: "busy"; step: Extract<BusyStep, "probe" | "validate">; busy: BusyKind; waitedMs: number }
+  /** Stopped on ScaleCAD's side (a 5xx that isn't busy; 0: no answer): nothing checked, the file kept, one "Try again". */
+  | { kind: "server"; step: Extract<BusyStep, "probe" | "validate">; status: number };
 
 export interface PreviewState {
   status: "loading" | "ready" | "failed";
@@ -49,6 +51,8 @@ export interface PreviewState {
   error: string | null;
   /** Failed only because the server stayed busy: no error to show, "Retry preview" later. */
   busy?: boolean;
+  /** Failed on ScaleCAD's side (its status; 0: no answer), not because of the file. */
+  server?: number | null;
 }
 
 export interface AssemblyState {
@@ -147,7 +151,7 @@ function syncWork(s: CheckSession) {
       ? { label: `Checked ${name}`, detail: "Ready", state: "done" as const }
       : s.status === "stopped"
         ? { label: `${name}: not a closed solid`, detail: "Nothing priced · repair it or upload a fixed file", state: "stopped" as const }
-        : { label: `${name}: not checked`, detail: s.failure?.kind === "busy" ? "Still busy · the file is kept" : s.failure && "title" in s.failure ? s.failure.title : "The check didn’t finish", state: "stopped" as const };
+        : { label: `${name}: not checked`, detail: s.failure?.kind === "busy" ? "Still busy · the file is kept" : s.failure?.kind === "server" ? "Stopped on our side · the file is kept" : s.failure && "title" in s.failure ? s.failure.title : "The check didn’t finish", state: "stopped" as const };
   registerWork({ key: workKey(s.id), href, persist: false, progress: null, ...item });
 }
 
@@ -220,7 +224,7 @@ async function loadPreview(id: number) {
   patch(id, { preview: { status: "loading", url: null, faceHash: null, faceSpace: "preview", error: null } });
   try {
     // A busy server is asked again (same file, same check id); the stage keeps showing the part loading meanwhile.
-    const out = await retryWhileBusy<PreviewMesh | null>(
+    const out = await retryWhileBusy<PreviewMesh | { server: number } | null>(
       async () => {
         const r = await fetchPreviewMeshOrBusy(s.file, { forAnalysis: true, units: "mm" });
         return r && "busy" in r ? { busy: r.busy } : { value: r };
@@ -233,6 +237,11 @@ async function loadPreview(id: number) {
       return;
     }
     const pm = out.value;
+    // Stopped on ScaleCAD's side: not the file. The stage offers one Try again.
+    if (pm && "server" in pm) {
+      patch(id, { preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: null, server: pm.server } });
+      return;
+    }
     if (!pm) throw new Error("The 3D preview couldn't be built from this file.");
     patch(id, { preview: { status: "ready", url: pm.url, faceHash: pm.faceHash, faceSpace: pm.faceSpace, error: null } });
     const key = sessions.get(id)?.key ?? (await computeMeshHash(s.file).catch(() => null));
@@ -321,6 +330,16 @@ async function run(id: number) {
       return;
     }
     const probe = probed.value;
+    // Stopped on ScaleCAD's side (a gateway timeout, a 5xx, no answer): not the file, never "can't read".
+    if (probe.kind === "refused" && serverTrouble(probe.status, !!probe.busy)) {
+      patch(id, {
+        status: "failed",
+        finishedAt: Date.now(),
+        failure: { kind: "server", step: "probe", status: probe.status! },
+        preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: null },
+      });
+      return;
+    }
     // The assembly reader only takes solids. A file it can't read as solids (an open
     // shell, surfaces) still goes through the single-part check, which measures it
     // and says exactly what's wrong instead of refusing it unread.
@@ -373,6 +392,10 @@ async function run(id: number) {
   }
   window.dispatchEvent(new Event("proofshape:usage-changed"));
   if (!result.validation && result.validationStatus === 413) return handToWorker(id, result.validationError ?? "Too large for a web check.");
+  if (!result.validation && serverTrouble(result.validationStatus, !!result.validationBusy)) {
+    patch(id, { result, status: "failed", finishedAt: Date.now(), failure: { kind: "server", step: "validate", status: result.validationStatus! } });
+    return;
+  }
   if (!result.validation && result.validationBusy) {
     patch(id, { result, status: "failed", finishedAt: Date.now(), failure: { kind: "busy", step: "validate", busy: result.validationBusy.kind, waitedMs: result.validationBusy.waitedMs } });
     return;

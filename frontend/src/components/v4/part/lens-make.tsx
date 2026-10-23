@@ -37,7 +37,7 @@ import { useUnits } from "../units/use-units";
 import { AtMachine } from "./at-machine-section";
 import { useMachineViews } from "./lens-shop";
 import { shortWhy } from "./machine-rank";
-import { WAITING_FOR_ROOM, busyView } from "./busy-state";
+import { WAITING_FOR_ROOM, busyView, serverStepText, viewStep } from "./busy-state";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -233,8 +233,10 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
   const cls = p.data.cost?.material_class ?? p.session?.materialClass ?? null;
   // Busy is the server's, not the file's: "waiting for room", never a warning (capacity D1–D3).
   const bv = busyView(p.session);
-  const busyCheck = bv && (bv.phase === "waiting" ? bv.step : bv.still.step) !== "cost" && (bv.phase === "waiting" ? bv.step : bv.still.step) !== "preview";
+  const busyCheck = bv?.phase === "waiting" && viewStep(bv) !== "cost" && viewStep(bv) !== "preview";
   if (p.interrupted && bv?.phase === "still") return { title: "Not checked yet", meta: "ScaleCAD was busy · the file is kept", figs: [{ k: "Processes", v: WAITING_FOR_ROOM }, { k: "File", v: "Kept", s: "no re-export needed" }] };
+  // Stopped on ScaleCAD's side: not the file's doing, said plainly (no warning tone).
+  if (p.interrupted && bv?.phase === "server") return { title: "Not checked yet", meta: "Stopped on our side · the file is kept", figs: [{ k: "Processes", v: "Not checked", s: serverStepText(bv.status).toLowerCase() }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   if (p.interrupted) return { title: "Check interrupted", meta: "Nothing computed · the file is kept", figs: [{ k: "Processes", v: "Not checked", tone: "warn" }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   const singles = p.methods;
   if (p.checking) {
@@ -285,7 +287,8 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
     }
     return { title: "Ways to make it", meta, figs };
   }
-  if (p.costOff && bv) figs.push({ k: "Prices", v: WAITING_FOR_ROOM, s: "processes are ready" });
+  if (p.costOff && bv?.phase === "server") figs.push({ k: "Prices", v: "Not priced", s: `${serverStepText(bv.status).toLowerCase()} · processes are ready` });
+  else if (p.costOff && bv) figs.push({ k: "Prices", v: WAITING_FOR_ROOM, s: "processes are ready" });
   else if (p.costOff) figs.push({ k: "Prices", v: "Didn’t finish", s: "processes are ready", tone: "warn" });
   else if (c) figs.push({ k: `Cheapest at ${qtyWord(p.q)}`, v: money(priceAt(c, p.q)), s: `${c.name} · ${c.short}` });
   else if (!p.data.cost) figs.push({ k: "Prices", v: "Not priced yet", s: "this part has an analysis only" });

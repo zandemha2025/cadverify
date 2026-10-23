@@ -3,12 +3,14 @@
 /**
  * The one busy state (capacity D1–D3): "ScaleCAD is busy. Checking again in 8 s…"
  * counting down while the check asks again by itself, then "Still busy. Your file is
- * kept; try again in a minute." with a button. A calm notice (the X11 info banner),
- * never a red alert, and nothing in it is about the file.
+ * kept; try again in a minute." with a button. A request that stopped on ScaleCAD's
+ * side reads the same way: "That took too long on our side. Your file is kept." with
+ * Try again. A calm notice (the X11 info banner), never a red alert, and nothing in
+ * it is about the file.
  */
 import * as React from "react";
 import { Banner } from "../moments";
-import { STILL_BUSY_TITLE, busyMeta, busyTitle, stillBusyMeta, type BusyView } from "./busy-state";
+import { STILL_BUSY_TITLE, busyMeta, busyTitle, serverMeta, serverTitle, stillBusyMeta, type BusyView } from "./busy-state";
 
 /** The clock, once a second while `on` (the countdown). */
 export function useNow(on: boolean): number {
@@ -48,14 +50,15 @@ export function BusyNotice({ view, onRetry, className, style }: { view: BusyView
       />
     );
   }
+  const still = view.phase === "still";
   return (
     <Banner
       tone="info"
-      name="busy"
+      name={still ? "busy" : "server"}
       className={className}
       style={style}
-      title={STILL_BUSY_TITLE}
-      meta={stillBusyMeta(view.still)}
+      title={still ? STILL_BUSY_TITLE : serverTitle(view.status)}
+      meta={still ? stillBusyMeta(view.still) : serverMeta(view.step, view.status)}
       actions={
         onRetry ? (
           <button className="btn ink sm" type="button" onClick={onRetry}>

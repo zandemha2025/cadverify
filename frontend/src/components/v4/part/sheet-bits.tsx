@@ -12,13 +12,13 @@ import { plainError } from "./plain-errors";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
 import { sureOf, type SureLens } from "./sure";
-import { CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../moments";
+import { Banner, CheckInterruptedBanner, CostBlockedBanner, CostFailedBanner } from "../moments";
 import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { isMultiBody } from "@/lib/verify/bodies";
 import { shopChangeText, shopChangedSince, type ShopChange } from "./shop-change";
 import { ReadOnlyLine, useReadOnly } from "../read-only";
-import { busyView, sheetRunNotice } from "./busy-state";
+import { busyView, sheetRunNotice, viewStep } from "./busy-state";
 import { BusyNotice } from "./busy-notice";
 
 export interface FigItem {
@@ -208,7 +208,7 @@ function RunState() {
   const which = sheetRunNotice({ busy: bv, panelOpen: !!s?.panel, checking: p.checking, interrupted: p.interrupted, costOff: p.costOff, costRetrying: !!s?.costRetrying });
   if (which === "panel") return null;
   if (bv && which === "busy") {
-    const retry = bv.phase === "still" ? (bv.still.step === "cost" ? p.retryPrices : () => p.recheck()) : undefined;
+    const retry = bv.phase !== "waiting" ? (viewStep(bv) === "cost" ? p.retryPrices : () => p.recheck()) : undefined;
     return (
       <div className="swap run-busy" style={{ marginTop: 8 }}>
         <BusyNotice view={bv} onRetry={retry} />
@@ -220,6 +220,14 @@ function RunState() {
       <div className="swap" style={{ marginTop: 8 }}>
         <CheckInterruptedBanner onRetry={() => p.recheck()} detail="No result. The process checks and cost didn’t start. Wait a moment and retry; the file doesn’t need re-exporting. Saved results are unchanged." />
         {usage}
+      </div>
+    );
+  }
+  // Try again was pressed on prices: pricing again, calmly, not "Cost didn't finish" while it runs.
+  if (p.costOff && s?.costRetrying) {
+    return (
+      <div className="swap" style={{ marginTop: 8 }}>
+        <Banner tone="info" spin name="pricing" title="Pricing again…" meta="The process checks are ready; this prices the same file once more." />
       </div>
     );
   }

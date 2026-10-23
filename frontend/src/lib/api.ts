@@ -430,14 +430,15 @@ const apiClient = {
     {
       retries = 0,
       retryDelayMs = 1000,
-      quietBusy = false,
+      quiet = false,
     }: {
       retries?: number;
       retryDelayMs?: number;
-      /** The caller waits and asks again by itself when the server is busy (busy.ts): a
-       *  busy refusal (429 or 503 server_busy) is thrown with its status, code and
-       *  Retry-After, and no error toast. Other refusals are unchanged. */
-      quietBusy?: boolean;
+      /** The caller shows busy and ScaleCAD-side failures itself (busy.ts): a busy refusal
+       *  (429 or 503 server_busy), any other 5xx, and no answer at all are thrown with
+       *  their status (0: no answer), code and Retry-After, and no error toast. A 5xx is
+       *  still reported to Sentry. Other refusals are unchanged. */
+      quiet?: boolean;
     } = {}
   ): Promise<Response> {
     // Same-origin → the httpOnly session cookie is sent automatically and the
@@ -472,6 +473,7 @@ const apiClient = {
         // Network error / timeout
         lastError = new Error(networkRecoveryMessage(resource), { cause: err });
         if (attempt === retries) {
+          if (quiet) throw withHttpStatus(lastError, 0, null);
           toast.error(lastError.message);
           throw lastError;
         }
@@ -487,7 +489,7 @@ const apiClient = {
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
         const message = apiRecoveryMessage({ status: 429, payload: err, resource,
           retryAfter: res.headers.get("Retry-After") });
-        if (quietBusy && busySignal(429, err)) throw withHttpStatus(new Error(message), 429, err, res.headers.get("Retry-After"));
+        if (quiet && busySignal(429, err)) throw withHttpStatus(new Error(message), 429, err, res.headers.get("Retry-After"));
         toast.error(message);
         throw new Error(message);
       }
@@ -503,10 +505,11 @@ const apiClient = {
             retryAfter: res.headers.get("retry-after"),
           }),
         );
-        if (quietBusy && busySignal(res.status, problem)) throw withHttpStatus(lastError, res.status, problem, res.headers.get("retry-after"));
+        if (quiet && busySignal(res.status, problem)) throw withHttpStatus(lastError, res.status, problem, res.headers.get("retry-after"));
         if (attempt === retries) {
-          toast.error(lastError.message);
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
+          if (quiet) throw withHttpStatus(lastError, res.status, problem, res.headers.get("retry-after"));
+          toast.error(lastError.message);
           throw lastError;
         }
         continue;
@@ -530,7 +533,7 @@ const apiClient = {
     throw lastError || new Error("Request failed");
   },
 
-  async fetchJson<T>(url: string, options: RequestInit = {}, extra: { quietBusy?: boolean } = {}): Promise<T> {
+  async fetchJson<T>(url: string, options: RequestInit = {}, extra: { quiet?: boolean } = {}): Promise<T> {
     const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000, ...extra });
     try {
       return await res.json();
@@ -555,8 +558,8 @@ export async function validateFile(
   includeThickness?: boolean,
   sourceUnits?: "mm" | "inch",
   partCheckId?: string,
-  /** quietBusy: the caller waits out a busy server itself (apiClient.fetch). */
-  opts: { quietBusy?: boolean } = {}
+  /** quiet: the caller shows busy and ScaleCAD-side failures itself (apiClient.fetch). */
+  opts: { quiet?: boolean } = {}
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);

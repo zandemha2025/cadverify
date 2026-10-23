@@ -1070,7 +1070,7 @@ export interface ProgressInput {
   done: boolean;
   /** A step waiting on a busy server (busy-state.ts): "measure" (the probe or /validate) or "price"
    *  (/validate/cost); `live` while ScaleCAD is still asking. It reads "Waiting for room", never "Didn't finish". */
-  busy?: { step: "measure" | "price"; live: boolean } | null;
+  busy?: { step: "measure" | "price"; live: boolean; text?: string } | null;
 }
 
 const WAITING_FOR_ROOM = "Waiting for room";
@@ -1098,9 +1098,10 @@ export function progressSteps(p: ProgressInput): Step[] {
   const v = p.validation;
   const measuredBad = !!v && !v.geometry.is_watertight;
   // Busy is about the server, not the file: the waiting step says so, calmly, and nothing after it failed.
-  const room = (live: boolean): Pick<Step, "d" | "state"> => ({ d: WAITING_FOR_ROOM, state: live ? "now" : "wait" });
-  const measureBusy = !v && p.busy?.step === "measure" ? room(p.busy.live) : null;
-  const priceBusy = !p.cost && p.busy?.step === "price" ? room(p.busy.live) : null;
+  // A request stopped on ScaleCAD's side says so in `text` ("Took too long on our side"), calmly too.
+  const room = (live: boolean, text?: string): Pick<Step, "d" | "state"> => ({ d: text ?? WAITING_FOR_ROOM, state: live ? "now" : "wait" });
+  const measureBusy = !v && p.busy?.step === "measure" ? room(p.busy.live, p.busy.text) : null;
+  const priceBusy = !p.cost && p.busy?.step === "price" ? room(p.busy.live, p.busy.text) : null;
   if (p.sample) {
     return [
       { t: "Read and measure the shape", ...(measureBusy ?? { d: v ? measuredLine(v) : "Reading the shape now…", state: v ? "done" : "now" }) },

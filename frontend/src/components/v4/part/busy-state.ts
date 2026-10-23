@@ -3,9 +3,13 @@
  * "ScaleCAD is busy. Checking again in 8 s…", while it asks again by itself, then
  * "Still busy. Your file is kept; try again in a minute." with a button. Busy is
  * about the server, so none of it reads as a file problem or an error.
+ *
+ * The same calm state covers a request that stopped on ScaleCAD's side (a gateway
+ * timeout, an analysis timeout, any 5xx that isn't busy, or no answer): "That took
+ * too long on our side. Your file is kept." with one Try again, never retried by itself.
  * Pure (types and words), for node --test.
  */
-import { secondsUntil, type BusyKind, type BusyStep, type BusyWait } from "../../../lib/verify/busy.ts";
+import { secondsUntil, serverTrouble, type BusyKind, type BusyStep, type BusyWait } from "../../../lib/verify/busy.ts";
 
 /** The waits a check has open now, by request (a session's `busy`). */
 export type BusyWaits = Partial<Record<BusyStep, BusyWait>>;
@@ -19,14 +23,21 @@ export interface StillBusyState {
 
 export type BusyView =
   | { phase: "waiting"; step: BusyStep; wait: BusyWait }
-  | { phase: "still"; still: StillBusyState };
+  | { phase: "still"; still: StillBusyState }
+  /** Stopped on ScaleCAD's side: `status` is the HTTP status (0: no answer came back). */
+  | { phase: "server"; step: BusyStep; status: number };
 
 /** The parts of a check session this reads (store.ts `CheckSession`). */
 export interface BusySessionLike {
   busy?: BusyWaits | null;
-  failure?: { kind: string; step?: BusyStep; busy?: BusyKind; waitedMs?: number } | null;
-  result?: { cost?: unknown; costBusy?: { kind: BusyKind; waitedMs: number } | null } | null;
+  failure?: { kind: string; step?: BusyStep; busy?: BusyKind; waitedMs?: number; status?: number } | null;
+  result?: { cost?: unknown; costError?: string | null; costStatus?: number | null; costBusy?: { kind: BusyKind; waitedMs: number } | null } | null;
   costRetrying?: boolean;
+}
+
+/** The request a view is about. */
+export function viewStep(view: BusyView): BusyStep {
+  return view.phase === "still" ? view.still.step : view.step;
 }
 
 /** The check's own requests come before its 3D view; of those, the one that tries next. */
@@ -49,11 +60,15 @@ export function busyView(s: BusySessionLike | null | undefined): BusyView | null
   const w = shownWait(s.busy);
   const f = s.failure;
   const still = f?.kind === "busy" && f.step && f.busy ? ({ phase: "still", still: { step: f.step, kind: f.busy, waitedMs: f.waitedMs ?? 0 } } as const) : null;
-  // The check itself gave up: that is the state, even while its 3D view is still finishing its last wait.
-  if (w && !(still && w.step === "preview")) return { phase: "waiting", step: w.step, wait: w };
-  if (still) return still;
-  const cb = s.result?.costBusy;
-  if (cb && !s.result?.cost && !s.costRetrying) return { phase: "still", still: { step: "cost", kind: cb.kind, waitedMs: cb.waitedMs } };
+  const server = f?.kind === "server" && f.step && f.status != null ? ({ phase: "server", step: f.step, status: f.status } as const) : null;
+  const stopped = still ?? server;
+  // The check itself stopped: that is the state, even while its 3D view is still finishing its last wait.
+  if (w && !(stopped && w.step === "preview")) return { phase: "waiting", step: w.step, wait: w };
+  if (stopped) return stopped;
+  const r = s.result;
+  const cb = r?.costBusy;
+  if (cb && !r?.cost && !s.costRetrying) return { phase: "still", still: { step: "cost", kind: cb.kind, waitedMs: cb.waitedMs } };
+  if (r && !r.cost && r.costError && !s.costRetrying && serverTrouble(r.costStatus, !!cb)) return { phase: "server", step: "cost", status: r.costStatus! };
   return null;
 }
 
@@ -103,8 +118,29 @@ export function stillBusyMeta(still: StillBusyState): string {
   return `${asked} Nothing was checked.`;
 }
 
+/** "That took too long on our side. Your file is kept.": a request that stopped on ScaleCAD's side. */
+export function serverTitle(status: number): string {
+  if (status === 0) return "ScaleCAD didn't answer. Your file is kept.";
+  if (status === 500) return "That didn't finish on our side. Your file is kept.";
+  return "That took too long on our side. Your file is kept.";
+}
+
+/** Under it: what stopped (with the status, a fact), what didn't run, and that one press runs it again. */
+export function serverMeta(step: BusyStep, status: number): string {
+  const what = status === 0 ? "No answer came back; check the connection." : `ScaleCAD stopped before answering (${status}).`;
+  if (step === "cost") return `${what} The process checks are ready; prices haven't run. Try again prices it once more.`;
+  if (step === "preview") return `${what} The 3D view wasn't drawn. Try again asks for it once more.`;
+  return `${what} Nothing was checked. Try again runs the check once more.`;
+}
+
+/** A progress step stopped on ScaleCAD's side, in a few words. */
+export function serverStepText(status: number): string {
+  return status === 0 ? "No answer from ScaleCAD" : status === 500 ? "Didn’t finish on our side" : "Took too long on our side";
+}
+
 /** The progress sheet's button while it's hidden (desktop: short, at the stage's corner). */
 export function busyReopenLabel(view: BusyView, now: number): string {
+  if (view.phase === "server") return "Stopped on our side · Show";
   if (view.phase === "still") return "Still busy · Show";
   const s = secondsUntil(view.wait.until, now);
   return s > 0 ? `Busy · checking again in ${s} s` : "Busy · checking again now";
@@ -112,6 +148,7 @@ export function busyReopenLabel(view: BusyView, now: number): string {
 
 /** The same button on a phone, a bar across the screen above the tab bar: the busy state itself. */
 export function busyReopenBar(view: BusyView, now: number): string {
+  if (view.phase === "server") return `${serverStepText(view.status)} · your file is kept · Show`;
   if (view.phase === "still") return view.still.step === "cost" ? "Still busy · prices didn't run · Show" : "Still busy · your file is kept · Show";
   const s = secondsUntil(view.wait.until, now);
   return `ScaleCAD is busy · checking again ${s > 0 ? `in ${s} s` : "now"}`;

@@ -8,6 +8,7 @@ import {
   parseRetryAfter,
   retryWhileBusy,
   secondsUntil,
+  serverTrouble,
   type BusyAttempt,
   type BusySignal,
   type BusyWait,
@@ -39,6 +40,16 @@ test("an allowance, a rate limit, a refused file or a timeout is never retried a
   assert.equal(busySignal(504, { detail: "Assembly parsing exceeded 60s timeout" }, null), null);
   assert.equal(busySignal(503, { detail: "Connector credential storage is not configured." }, null), null);
   assert.equal(busySignal(200, SERVER_BUSY, "5"), null);
+});
+
+test("ScaleCAD's side: any 5xx that isn't busy, or no answer; never a 4xx file refusal", () => {
+  for (const status of [500, 502, 503, 504, 0]) assert.equal(serverTrouble(status), true, String(status));
+  // Busy is waited out, not this.
+  assert.equal(serverTrouble(503, true), false);
+  assert.equal(serverTrouble(429, true), false);
+  for (const status of [400, 401, 403, 404, 409, 413, 415, 422, 429]) assert.equal(serverTrouble(status), false, String(status));
+  assert.equal(serverTrouble(null), false);
+  assert.equal(serverTrouble(undefined), false);
 });
 
 test("Retry-After is read as seconds or as an HTTP date", () => {

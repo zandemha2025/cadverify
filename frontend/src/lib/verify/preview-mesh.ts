@@ -18,7 +18,7 @@ import { partCheckHeaders } from "./check-id.ts";
  */
 import { API_BASE } from "@/lib/api-base";
 import { apiQuotaMessage } from "../api-recovery.ts";
-import { busySignal, type BusySignal } from "./busy.ts";
+import { busySignal, serverTrouble, type BusySignal } from "./busy.ts";
 
 export interface PreviewMesh {
   /** object URL for the GLB blob (caller revokes via `revoke`). */
@@ -47,9 +47,11 @@ function readNum(res: Response, header: string): number | null {
 type PreviewData = Omit<PreviewMesh, "url" | "revoke"> & { blob: Blob };
 /** The server had no room for the preview (429/503 server_busy): ask again later. */
 export type PreviewBusy = { busy: BusySignal };
+/** The preview stopped on ScaleCAD's side (a 5xx that isn't busy), or no answer came (0): not the file. */
+export type PreviewServer = { server: number };
 // Keep completed previews and join concurrent viewers. A remount must not spend
 // another operation; each consumer owns its URL, while File lifetime bounds memory.
-const previews = new WeakMap<File, Map<string, Promise<PreviewData | PreviewBusy | null>>>();
+const previews = new WeakMap<File, Map<string, Promise<PreviewData | PreviewBusy | PreviewServer | null>>>();
 
 export type PreviewOptions = { forAnalysis?: boolean; forFit?: boolean; units?: "mm" | "inch" };
 
@@ -65,26 +67,27 @@ export function previewQuery(options?: PreviewOptions): string {
 
 export async function fetchPreviewMesh(file: File, options?: PreviewOptions): Promise<PreviewMesh | null> {
   const out = await fetchPreviewMeshOrBusy(file, options);
-  return out && "busy" in out ? null : out;
+  return out && ("busy" in out || "server" in out) ? null : out;
 }
 
-/** fetchPreviewMesh, telling a busy server (ask again later) from a preview that can't be built (null). */
-export async function fetchPreviewMeshOrBusy(file: File, options?: PreviewOptions): Promise<PreviewMesh | PreviewBusy | null> {
+/** fetchPreviewMesh, telling a busy server (ask again later) and a failure on ScaleCAD's side
+ *  (`server`: its status, 0 for no answer) from a preview that can't be built (null). */
+export async function fetchPreviewMeshOrBusy(file: File, options?: PreviewOptions): Promise<PreviewMesh | PreviewBusy | PreviewServer | null> {
   const query = previewQuery(options);
   let byQuery = previews.get(file);
   if (!byQuery) { byQuery = new Map(); previews.set(file, byQuery); }
   let pending = byQuery.get(query);
   if (!pending) { pending = fetchPreviewData(file, query); byQuery.set(query, pending); }
-  let data: PreviewData | PreviewBusy | null;
+  let data: PreviewData | PreviewBusy | PreviewServer | null;
   try { data = await pending; }
   catch (error) { byQuery.delete(query); throw error; }
-  if (!data || "busy" in data) { byQuery.delete(query); return data; }
+  if (!data || "busy" in data || "server" in data) { byQuery.delete(query); return data; }
   const { blob, ...metadata } = data;
   const url = URL.createObjectURL(blob);
   return { ...metadata, url, revoke: () => URL.revokeObjectURL(url) };
 }
 
-async function fetchPreviewData(file: File, query: string): Promise<PreviewData | PreviewBusy | null> {
+async function fetchPreviewData(file: File, query: string): Promise<PreviewData | PreviewBusy | PreviewServer | null> {
   const form = new FormData();
   form.append("file", file);
 
@@ -96,7 +99,7 @@ async function fetchPreviewData(file: File, query: string): Promise<PreviewData 
       body: form,
     });
   } catch {
-    return null;
+    return { server: 0 };
   }
   if (!res.ok) {
     if (res.status === 403 || res.status === 429 || res.status === 503) {
@@ -106,6 +109,7 @@ async function fetchPreviewData(file: File, query: string): Promise<PreviewData 
       const busy = busySignal(res.status, body, res.headers.get("retry-after"));
       if (busy) return { busy };
     }
+    if (serverTrouble(res.status)) return { server: res.status };
     return null;
   }
 
