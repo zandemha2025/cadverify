@@ -33,7 +33,7 @@ import io
 import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, overload
 
 from sqlalchemy import and_, literal_column, select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -469,7 +469,7 @@ def quantity_ladder(quantity: Optional[int]) -> list[int]:
     The same rule as the single-part check's ``quantityLadderForAnnual``: the
     closest interior point of the ladder gives way to the declared quantity.
     """
-    ladder = list(QTY_LADDER)
+    ladder: list[int] = list(QTY_LADDER)
     if quantity is None or quantity <= 0 or quantity in ladder:
         return ladder
     import math
@@ -553,6 +553,10 @@ def _density(material: Optional[str]) -> Optional[float]:
 _RAW_MM = re.compile(r"(?<![\d.])(\d+\.\d{3,})(?=\s?mm\b)")
 
 
+@overload
+def _tidy_mm(s: str) -> str: ...
+@overload
+def _tidy_mm(s: Optional[str]) -> Optional[str]: ...
 def _tidy_mm(s: Optional[str]) -> Optional[str]:
     if not isinstance(s, str):
         return s
@@ -673,7 +677,9 @@ def derive_part_row(
     status = item.get("status")
     error = item.get("error_message")
     result = (decision or {}).get("result_json") or {}
-    verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
+    verification = result.get("verification")
+    if not isinstance(verification, dict):
+        verification = {}
     verdict = verification.get("verdict") if verification else None
     part_key = (decision or {}).get("mesh_hash") or (analysis or {}).get("mesh_hash")
 
@@ -830,7 +836,7 @@ def derive_part_row(
         mat = (est or {}).get("material")
         row["reason"] = f"On your {row['route']['machine'] or process_words(process)}" + (f" · {mat}" if mat else "")
     elif bucket == "outside":
-        names = ", ".join(sorted({m.get('process') for m in machines if m.get('process')}))
+        names = ", ".join(sorted({m['process'] for m in machines if m.get('process')}))
         row["reason"] = (f"No machine of yours does {_lower(process_words(process))}" if process
                          else "No route on your machines")
         if not names:
@@ -886,9 +892,10 @@ def derive_part_row(
         if used is not None:
             row["material"]["used_kg_each"] = _kg_round(used)
             row["used_kg_total"] = _kg_round(used * qty)
-        if est.get("dfm_ready", True) and _num(est.get("unit_cost_usd")) is not None:
-            row["unit_cost_usd"] = _num(est.get("unit_cost_usd"))
-            row["total_cost_usd"] = round(row["unit_cost_usd"] * qty, 2)
+        unit_cost = _num(est.get("unit_cost_usd"))
+        if est.get("dfm_ready", True) and unit_cost is not None:
+            row["unit_cost_usd"] = unit_cost
+            row["total_cost_usd"] = round(unit_cost * qty, 2)
         else:
             blockers = est.get("dfm_blockers") or []
             row["price_withheld"] = _first_sentence(blockers[0]) if blockers else "Not makeable as drawn on this route"
@@ -1418,7 +1425,7 @@ def run_counts(meta: Optional[dict], pairs: Iterable[tuple[str, Optional[str]]])
     meta = meta or {}
     has_list = bool(meta.get("parts_list"))
     per_file = meta.get("items") or {}
-    out = dict.fromkeys(RUN_COUNT_KEYS, 0)
+    out: dict[str, int] = dict.fromkeys(RUN_COUNT_KEYS, 0)
     for filename, status in pairs:
         state = "checked" if status == "completed" else "not_checked" if status in ("failed", "skipped") else "to_go"
         if not has_list or (per_file.get(filename) or {}).get("row") is not None:
@@ -1910,7 +1917,9 @@ CSV_HEADER = (
     "specs,supplier_must_hold,outcome,signed_off_by,signed_off_at,signoff_out_of_date\n"
 )
 
-_PRICE_FROM = {"you": "your price on the part", "parts_list": "the parts list", "model": "model price"}
+_PRICE_FROM: dict[Optional[str], str] = {  # looked up by a source that may be missing
+    "you": "your price on the part", "parts_list": "the parts list", "model": "model price",
+}
 
 
 def _buy_from(buy: Optional[dict]) -> Optional[str]:

@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import Text, and_, case, cast, delete, func, or_, select, text, update
+from sqlalchemy import Delete, Text, Update, and_, case, cast, delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
@@ -254,10 +254,11 @@ async def cancel_live_plan(
     Raises (503) when Stripe can't cancel, before anything is deleted.
     """
     billing = await _billing(session, user_id)
-    if not _live_subscription(billing):
+    subscription_id = billing.stripe_subscription_id if billing is not None else None
+    if not subscription_id or not _live_subscription(billing):  # a live one has both
         return False
     cancel = cancel_subscription or cancel_subscription_at_stripe
-    await cancel(billing.stripe_subscription_id, idempotency_key)
+    await cancel(subscription_id, idempotency_key)
     await session.execute(
         update(BillingAccount)
         .where(BillingAccount.user_id == user_id)
@@ -436,7 +437,7 @@ async def delete_account(
         for key, value in removal.counts.items():
             org_totals[key] = org_totals.get(key, 0) + int(value or 0)
 
-    async def run(stmt) -> int:
+    async def run(stmt: Delete | Update) -> int:
         return int((await session.execute(stmt.execution_options(synchronize_session=False))).rowcount or 0)
 
     removed: dict[str, Any] = {

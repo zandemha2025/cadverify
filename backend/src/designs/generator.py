@@ -241,6 +241,8 @@ def _orient_outward(gmsh: Any, solids: list[tuple[int, int]]) -> None:
                     best = (area2, [(a[k] + b[k] + c[k]) / 3.0 for k in range(3)], normal)
                 if i >= 300:  # the largest of the first hundred triangles is plenty
                     break
+            if best is None:  # tri is non-empty, so the loop above always sets it
+                raise RuntimeError(f"surface {surface} has no triangle to orient by")
             area2, centre, normal = best
             if area2 <= 0:
                 continue

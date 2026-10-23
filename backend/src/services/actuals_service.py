@@ -1058,6 +1058,8 @@ def to_payload(r: RowResult) -> dict:
     """A matched row as a ground-truth create payload (see groundtruth_service.ingest_record)."""
     v = r.values
     p = r.part
+    if p is None:  # only matched rows, which carry their part, become payloads
+        raise RuntimeError(f"line {r.line} has no matched part")
     from src.services.groundtruth_service import KNOWN_MATERIAL_CLASSES
 
     material = p.material_class if p and p.material_class in KNOWN_MATERIAL_CLASSES else "polymer"
@@ -1108,7 +1110,7 @@ async def import_rows(session: AsyncSession, org_id: str, user_id: Optional[int]
     ]
     return {
         "imported": imported,
-        "parts": len({r.part.key for r in ready}),
+        "parts": len({r.part.key for r in ready if r.part is not None}),  # every ready row has one
         "test": sum(1 for r in ready if r.values.get("test")),
         # Supplier invoices are graded against ScaleCAD's buy price; only made-in-house rows calibrate.
         "bought": sum(1 for r in ready if r.values.get("source_type") in ("invoice", "quote")),

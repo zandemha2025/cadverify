@@ -28,7 +28,7 @@ from __future__ import annotations
 import copy
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,7 +59,7 @@ async def history(session: AsyncSession, org_id: str, limit: int = 20) -> list[O
     )).scalars().all())
 
 
-async def _emails(session: AsyncSession, ids: set[int]) -> dict[int, str]:
+async def _emails(session: AsyncSession, ids: Iterable[Optional[int]]) -> dict[Optional[int], str]:
     from src.db.models import User
 
     ids = {i for i in ids if i}
@@ -159,7 +159,7 @@ def same_factors(a: Optional[dict], b: Optional[dict], tol: float = 5e-4) -> boo
         x, y = a.get(k), b.get(k)
         if (x is None) != (y is None):
             return False
-        if x is not None and abs(float(x) - float(y)) > tol:
+        if x is not None and y is not None and abs(float(x) - float(y)) > tol:  # both set or neither
             return False
     return True
 

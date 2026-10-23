@@ -14,7 +14,7 @@ import math
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -247,7 +247,7 @@ def _nullable_api_key_id(user: AuthedUser) -> int | None:
     return user.api_key_id or None
 
 
-def _sanitize_nonfinite(value):
+def _sanitize_nonfinite(value: Any) -> Any:
     """Recursively replace non-finite floats (NaN / ±Inf) with ``None``.
 
     A degenerate / zero-volume mesh makes trimesh emit NaN for stats like
@@ -942,7 +942,7 @@ async def _run_analysis(
                 cached.face_count,
                 org_id=org_id,
             )
-            if cost_entry is not None:
+            if cost_entry is not None and cost_cache_key is not None:  # an entry is made only under a key
                 part_geometry_cache.put(cost_cache_key, cost_entry)
             stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
             stage_timings_ms["total"] = _elapsed_ms(request_started)
@@ -957,7 +957,7 @@ async def _run_analysis(
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
     # Persistence is done with the mesh: keep the analysed part for pricing.
-    if cost_entry is not None:
+    if cost_entry is not None and cost_cache_key is not None:  # an entry is made only under a key
         part_geometry_cache.put(cost_cache_key, cost_entry)
     stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
     stage_timings_ms["total"] = _elapsed_ms(request_started)

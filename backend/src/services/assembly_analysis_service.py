@@ -543,7 +543,7 @@ def analyze_one_part(
                 from src.analysis.fastener_standards import identify_standard_fastener
 
                 identity = identify_standard_fastener(
-                    part, cots.get("kind"), features=features
+                    part, cots["kind"], features=features  # classify_cots_fastener always sets kind
                 )
                 if identity is not None:
                     cots["identity"] = identity
@@ -619,7 +619,7 @@ def _nearest_vertex_gap(mesh_a, mesh_b) -> Optional[float]:
     closest distance, which at ~6 s/pair would blow the budget); at assembly-scale
     tessellation density it reliably separates 'touching' from 'clears'."""
     try:
-        from scipy.spatial import cKDTree
+        from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]  # scipy's stubs omit its compiled cKDTree export
 
         tree = cKDTree(np.asarray(mesh_b.vertices, dtype=float))
         d, _ = tree.query(np.asarray(mesh_a.vertices, dtype=float), k=1)

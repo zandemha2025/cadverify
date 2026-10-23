@@ -285,7 +285,7 @@ def fix_options(result: dict | None, suffix: str, attempts: dict[str, dict] | No
         g.update(
             can_fix=ok and not failed_before,
             params=params,
-            why_not=why if not ok else (attempt.get("summary") if failed_before else None),
+            why_not=why if not ok else (attempt.get("summary") if failed_before and attempt else None),
             attempt=attempt,
         )
         if ok:
@@ -699,6 +699,7 @@ async def _apply_fix(
     cap = fix_timeout_sec()
     started = time.perf_counter()
     outcome = None
+    duration_ms: float | None = None  # set together with outcome; read only once outcome is set
     # Like the engine's tessellation ladder: when gmsh's primary 2D mesher
     # crashes the worker (periodic surfaces), retry once with MeshAdapt.
     for attempt_params in (params, {**params, "_uniform_mesh": True}):

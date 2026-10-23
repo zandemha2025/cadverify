@@ -188,7 +188,7 @@ class EstimateAt:
     hours_stated: dict = field(default_factory=dict)   # stated_hours of the estimate used
 
 
-def estimate_at(result_json: dict, process: str, quantity: int) -> Optional[EstimateAt]:
+def estimate_at(result_json: dict, process: Optional[str], quantity: int) -> Optional[EstimateAt]:
     """ScaleCAD's estimate for ``process`` at ``quantity`` on one record, or None if not priced.
 
     Hours per part come from the estimate at that quantity, else the nearest
@@ -337,7 +337,7 @@ def compare(actual: dict, record: Optional[dict], rates: Optional[dict] = None) 
     base["cost"] = cost
     base["machine_cost_each"] = est.machine_cost
     notes = []
-    if _num(actual.get("actual_unit_cost_usd")) and stale_rates:
+    if _num(actual.get("actual_unit_cost_usd")) and stale_rates and rates is not None:  # stale implies rates
         base["rates_excluded"] = True
         notes.append(f"Cost not compared: {rates['text']} Re-check the part to compare at "
                      f"v{rates['current']}")
@@ -408,7 +408,7 @@ def _compare_bought(actual: dict, record: dict, rates: Optional[dict], base: dic
         base["compared_with"] = None
         notes.append(f"Not compared: ScaleCAD's outside price for this part wasn't priced at {q:,}; "
                      f"price {q:,} on the part to compare it")
-    elif stale_rates:
+    elif stale_rates and rates is not None:  # stale implies rates
         base["compared_with"] = _buy_words(buy)
         base["rates_excluded"] = True
         notes.append(f"Cost not compared: {rates['text']} Re-check the part to compare at v{rates['current']}")
@@ -455,7 +455,7 @@ def summarize(rows: list[dict]) -> dict:
     everything = [r for r in rows if not r.get("test")]
     bought = [r for r in everything if r.get("kind") == "bought"]
     real = [r for r in everything if r.get("kind") != "bought"]
-    procs = sorted({r.get("process") for r in real if r.get("process")})
+    procs = sorted({r["process"] for r in real if r.get("process")})
     per = []
     for p in procs:
         sel = [r for r in real if r.get("process") == p]
@@ -465,7 +465,7 @@ def summarize(rows: list[dict]) -> dict:
         per.append({"process": p, "hours": h, "cost": c})
     compared = [r for r in real if r.get("hours") or r.get("cost")]
     excluded = [r for r in real if r.get("rates_excluded")]
-    cards = sorted({(r.get("rates") or {}).get("priced") for r in real if r.get("cost") and r.get("rates")} - {None})
+    cards = sorted({r["rates"].get("priced") for r in real if r.get("cost") and r.get("rates")} - {None})
     bought_compared = [r for r in bought if r.get("cost")]
     bought_parts = len({r.get("part_key") for r in bought_compared})
     return {
@@ -565,7 +565,7 @@ def proposal(rows: list[dict]) -> dict:
     total_parts = len({r.get("part_key") for r in real if r.get("hours") or r.get("cost")})
     allowed = total_parts >= MIN_PARTS
     out = []
-    for p in sorted({r.get("process") for r in real if r.get("process")}):
+    for p in sorted({r["process"] for r in real if r.get("process")}):
         sel = [r for r in real if r.get("process") == p]
         h_items = [(r["part_key"], r["hours"]["estimate"], r["hours"]["actual"]) for r in sel if r.get("hours")]
         hours = _factor_entry(h_items, allowed=allowed)

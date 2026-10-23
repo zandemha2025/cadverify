@@ -36,9 +36,9 @@ import base64
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
-from sqlalchemy import and_, func, select, true, tuple_
+from sqlalchemy import and_, func, literal, select, true, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.process_names import PROCESS_NAME, process_label as shared_process_label
@@ -372,6 +372,8 @@ def derive_row(
 
     # --- identity / links / recency ----------------------------------------
     primary = cost or analysis  # the "decision" is the headline artifact
+    if primary is None:  # one of them is set: checked at the top
+        raise ValueError("derive_row needs at least one of analysis/cost")
     updated = max(
         [r.created_at for r in (analysis, cost) if r is not None]
     )
@@ -446,7 +448,7 @@ def compute_facets(rows: list[dict]) -> dict:
     """Available facet values with real counts over the given rows (unfiltered),
     so the UI can render filter chips that reflect what is actually in the org's
     catalog — every count derived, none invented."""
-    by_state: dict[str, int] = {}
+    by_state: dict[Optional[str], int] = {}  # a row's lifecycle_state, as its dict carries it
     by_route: dict[str, int] = {}
     with_findings = 0
     without_findings = 0
@@ -481,7 +483,7 @@ def compute_facets(rows: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _fold_latest_by_mesh(rows: list) -> dict[str, Any]:
+def _fold_latest_by_mesh(rows: Sequence[Any]) -> dict[str, Any]:
     """Keep the latest artifact per ``mesh_hash``. ``rows`` MUST already be
     ordered ulid-desc (newest first), so the first seen per mesh is the latest.
     ULIDs are monotonic + unique, so this is a stable "latest wins"."""
@@ -1261,7 +1263,8 @@ def triage_rollup(
             by_process[proc] = by_process.get(proc, 0) + 1
 
         if programs:
-            program = programs.get(r.get("part_key"))
+            part_key = r.get("part_key")
+            program = programs.get(part_key) if part_key is not None else None
             if program:
                 g = prog_groups.setdefault(
                     program,
@@ -1496,7 +1499,7 @@ async def build_catalog_page(
         cur_ts, cur_mesh = _decode_page_cursor(cursor)
         q = q.where(
             tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
-            < tuple_(cur_ts, cur_mesh)
+            < tuple_(literal(cur_ts), literal(cur_mesh))
         )
     # Fetch limit+1 so we know whether a further page exists without a COUNT.
     q = q.order_by(
@@ -1762,7 +1765,7 @@ async def build_makeability_bucket_page(
         cur_ts, cur_mesh = _decode_page_cursor(cursor)
         q = q.where(
             tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
-            < tuple_(cur_ts, cur_mesh)
+            < tuple_(literal(cur_ts), literal(cur_mesh))
         )
     q = q.order_by(
         PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
@@ -1836,7 +1839,7 @@ def route_at_quantity(result_json: dict, annual_volume: Optional[int],
         # A tie with what you pay today stays bought: either way, no saving (op-07).
         out["in_house"] = pick == "in_house" and _basis != "tie"
         out["tie"] = _basis == "tie"
-        out["buy_price"] = {"usd_each": float(each), "source": buy_price.get("source")}
+        out["buy_price"] = {"usd_each": float(each), "source": (buy_price or {}).get("source")}
     return out
 
 
@@ -1986,7 +1989,7 @@ async def build_capability_investment_page(
         cur_ts, cur_mesh = _decode_page_cursor(cursor)
         q = q.where(
             tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
-            < tuple_(cur_ts, cur_mesh)
+            < tuple_(literal(cur_ts), literal(cur_mesh))
         )
     q = q.order_by(
         PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()

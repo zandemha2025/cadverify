@@ -13,7 +13,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, overload
 
 from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -757,6 +757,10 @@ PACE_MIN_PARTS = 10
 PACE_MIN_SECONDS = 10 * 60
 
 
+@overload
+def _aware(t: datetime) -> datetime: ...
+@overload
+def _aware(t: Optional[datetime]) -> Optional[datetime]: ...
 def _aware(t: Optional[datetime]) -> Optional[datetime]:
     if t is None:
         return None
@@ -766,7 +770,9 @@ def _aware(t: Optional[datetime]) -> Optional[datetime]:
 def run_started_at(batch: Batch) -> Optional[datetime]:
     """When the run last (re)started: its start, a "Check again" that reopened it, or a resume after a stall."""
     manifest = batch.manifest_json or {}
-    resumes = manifest.get("resumes") if isinstance(manifest.get("resumes"), dict) else {}
+    resumes = manifest.get("resumes")
+    if not isinstance(resumes, dict):
+        resumes = {}
     out = _aware(batch.started_at)
     for raw in (manifest.get("restarted_at"), resumes.get("at")):
         try:
@@ -1456,7 +1462,9 @@ async def _resume_stale_batch(
 
     done = int(batch.completed_items or 0) + int(batch.failed_items or 0)
     manifest = dict(batch.manifest_json or {})
-    prior = manifest.get("resumes") if isinstance(manifest.get("resumes"), dict) else {}
+    prior = manifest.get("resumes")
+    if not isinstance(prior, dict):
+        prior = {}
     try:
         prior_count, prior_done = int(prior.get("count") or 0), int(prior.get("done") or 0)
     except (TypeError, ValueError):

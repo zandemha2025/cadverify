@@ -35,17 +35,19 @@ COMMON_ENVELOPE_MM: dict[PT, tuple[float, float, float]] = {
 
 
 def common_envelope(process: PT) -> tuple[float, float, float]:
-    return tuple(COMMON_ENVELOPE_MM[process])
+    return COMMON_ENVELOPE_MM[process]  # already a tuple (tuple() of it was the same object)
 
 
 def known_envelopes(process: PT) -> list[tuple[str, tuple[float, float, float]]]:
     """``(name, work area)`` for the common size and every catalog machine of the process."""
     from src.profiles.database import MACHINES
 
-    out = [("common", tuple(float(d) for d in COMMON_ENVELOPE_MM[process]))]
+    cx, cy, cz = COMMON_ENVELOPE_MM[process]
+    out: list[tuple[str, tuple[float, float, float]]] = [("common", (float(cx), float(cy), float(cz)))]
     for m in MACHINES:
         if m.process_type == process and m.build_volume and len(m.build_volume) == 3:
-            env = tuple(float(d) for d in m.build_volume)
+            bx, by, bz = m.build_volume
+            env = (float(bx), float(by), float(bz))
             if all(env != e for _, e in out):
                 out.append((m.name, env))
     return out
