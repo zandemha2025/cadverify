@@ -1932,6 +1932,13 @@ def _bent_along(mesh: trimesh.Trimesh, face: int) -> "BentSheet | None":
 
 
 _STRIP_SECTIONS = 24
+# Where the sections sit, as fractions of the height: (k + 0.618…) / 25. A part's
+# features (a hole's axis, its top and bottom) sit at round fractions of it, and a
+# section exactly there runs along a row of the tessellated hole's vertices, where
+# a billionth of a millimetre decides whether the cut end comes back clean: one
+# CPU then read a holed bracket as bent and another did not. No round fraction is
+# an irrational one.
+_STRIP_SECTION_HEIGHTS = (np.arange(_STRIP_SECTIONS) + (np.sqrt(5.0) - 1.0) / 2.0) / (_STRIP_SECTIONS + 1)
 
 
 def _cut_through_strip(mesh, normal, rotation, low, high, profile, gauge, tol) -> bool:
@@ -1952,7 +1959,7 @@ def _cut_through_strip(mesh, normal, rotation, low, high, profile, gauge, tol) -
     if not np.all(contains_xy(profile.buffer(tol + 1e-3 * gauge), flat_all[:, 0], flat_all[:, 1])):
         return False
     full = False
-    for t in np.linspace(0.0, 1.0, _STRIP_SECTIONS + 2)[1:-1]:
+    for t in _STRIP_SECTION_HEIGHTS:
         origin = center + normal * (low + t * (high - low))
         try:
             lines = trimesh.intersections.mesh_plane(mesh, normal, origin)

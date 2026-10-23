@@ -65,8 +65,7 @@ def test_the_holed_bracket_gets_a_sheet_metal_price():
     assert report.routing["drivers"]["sheet_like"] is True
 
 
-@pytest.mark.skipif(importlib.util.find_spec("gmsh") is None, reason="gmsh is not installed")
-def test_a_step_of_the_holed_bracket_reads_the_same(tmp_path: Path):
+def _holed_bracket_step_mesh(tmp_path: Path):
     import gmsh
 
     from src.api.routes import _parse_mesh
@@ -88,6 +87,28 @@ def test_a_step_of_the_holed_bracket_reads_the_same(tmp_path: Path):
     finally:
         gmsh.finalize()
     mesh, _ = _parse_mesh(path.read_bytes(), path.name)
-    bent = bent_sheet_geometry(mesh)
+    return mesh
+
+
+@pytest.mark.skipif(importlib.util.find_spec("gmsh") is None, reason="gmsh is not installed")
+def test_a_step_of_the_holed_bracket_reads_the_same(tmp_path: Path):
+    bent = bent_sheet_geometry(_holed_bracket_step_mesh(tmp_path))
+    assert bent is not None
+    assert (bent.gauge_mm, bent.width_mm, bent.bends) == pytest.approx((3.0, 30.0, 1), abs=1e-3)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("gmsh") is None, reason="gmsh is not installed")
+@pytest.mark.parametrize("nudge_mm", [1e-9, -1e-9, 1e-7])
+def test_the_holed_bracket_reads_the_same_a_billionth_of_a_mm_away(tmp_path: Path, nudge_mm: float):
+    # The holes' tops and bottoms sit at round fractions of the part's height.
+    # A section exactly there runs along a row of the tessellated hole's
+    # vertices, and whether it came back clean turned on rounding: CI's runner
+    # read this bracket as not bent while a 4-vCPU box read it as bent.
+    mesh = _holed_bracket_step_mesh(tmp_path)
+    vertices = np.asarray(mesh.vertices).copy()
+    vertices[:, 2] += nudge_mm * np.sin(np.arange(len(vertices)))
+    nudged = trimesh.Trimesh(vertices, mesh.faces, process=False)
+    nudged.metadata.update(mesh.metadata)
+    bent = bent_sheet_geometry(nudged)
     assert bent is not None
     assert (bent.gauge_mm, bent.width_mm, bent.bends) == pytest.approx((3.0, 30.0, 1), abs=1e-3)
