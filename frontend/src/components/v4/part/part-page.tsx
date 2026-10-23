@@ -24,6 +24,7 @@ import { urlSlot, type UrlSlot } from "./mesh-url";
 import { revisionForSession, type Revisions } from "./revision-link";
 import { PartView, type MeshSource } from "./part-view";
 import { ProgressPanel } from "./progress";
+import { busyView } from "./busy-state";
 import { PartUrlSync } from "./url-sync";
 import { OutOfChecks } from "./blocked";
 import { liveMesh } from "./check-page";
@@ -316,7 +317,8 @@ export function PartPage({ partKey }: { partKey: string }) {
   const overlay = (
     <>
       {session?.sample && !running ? <SampleFlow status={session.status} result={session.result} onRetry={() => router.push(`${R.check}?sample=1`)} /> : null}
-      {session && (running || (session.panel && !session.sample)) && session.status !== "failed" ? (
+      {/* Busy prices keep the panel (or, hidden, its button above the tab bar) on screen: the one busy state. */}
+      {session && (running || (session.panel && !session.sample) || busyView(session)) && session.status !== "failed" ? (
         <ProgressPanel
           session={session}
           open={session.panel}

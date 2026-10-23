@@ -202,10 +202,10 @@ function RunState() {
   // A busy server: the one calm state, counting down to the next try, then "Still busy" with Try again.
   // Not an interruption, not about usage or the file.
   const bv = busyView(p.session);
-  // The progress panel, when it's showing, carries the same notice (over this sheet); one is enough.
+  // While busy the progress panel is on screen whenever it's open (check and part pages), with the same
+  // notice over this sheet; one is enough. Hidden, its button above the tab bar counts down instead.
   const s = p.session;
-  const panelShows = !!s?.panel && (s.status === "running" || s.failure?.kind === "busy" || !s.sample);
-  if (bv && !panelShows && (p.checking || p.interrupted || p.costOff || s?.costRetrying)) {
+  if (bv && !s?.panel && (p.checking || p.interrupted || p.costOff || s?.costRetrying)) {
     const retry = bv.phase === "still" ? (bv.still.step === "cost" ? p.retryPrices : () => p.recheck()) : undefined;
     return (
       <div className="swap" style={{ marginTop: 8 }}>
