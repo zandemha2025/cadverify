@@ -519,11 +519,15 @@ def _solid_mesh(dim: int, tag: int, node_coords: dict) -> trimesh.Trimesh:
     return trimesh.Trimesh(vertices=verts, faces=faces, process=True)
 
 
-def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> AssemblyModel:
+def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool,
+                  mesh_single_part: bool = True) -> AssemblyModel:
     """One full gmsh cycle: import -> enumerate solids -> per-solid metadata ->
     (mesh + partition, unless over the part cap) -> build tree. MUST hold
     ``_GMSH_LOCK``. Raises ``_StepReadError`` (unreadable, non-retryable) or a
-    generic exception (mesh failure, caller advances the ladder)."""
+    generic exception (mesh failure, caller advances the ladder).
+
+    ``mesh_single_part=False`` reads a file of one solid without meshing it (its
+    position and tree come from the B-rep; its mesh fields stay empty)."""
     gmsh.initialize(interruptible=False)
     try:
         _configure_cad_import(path)
@@ -555,7 +559,13 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> Ass
         truncated = False
         skipped: list[dict] = []
         do_mesh = num_solids <= part_cap
-        if not do_mesh:
+        # One solid is a single part, which /validate meshes (with its own capped
+        # retry ladder). A reader that only asks "how many bodies?" stops here: a
+        # periodic part's first strategy grinds 220 s before failing (nist_ctc05).
+        if num_solids == 1 and not mesh_single_part:
+            do_mesh = False
+            notes.append("Its position is read from the file; the part is not meshed here.")
+        elif not do_mesh:
             truncated = True
             notes.append(
                 f"{num_solids} solids exceeds MAX_ASSEMBLY_PARTS={part_cap}; "
@@ -661,7 +671,7 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> Ass
         gmsh.finalize()
 
 
-def _extract_with_ladder(path: str) -> AssemblyModel:
+def _extract_with_ladder(path: str, mesh_single_part: bool = True) -> AssemblyModel:
     """Assembly extraction with the SAME retry ladder as step_mesher._mesh_step_
     file: rung 0 (primary, byte-identical option set) first, then MeshAdapt-uniform,
     then +OCC-heal. Serialized on ``_GMSH_LOCK``."""
@@ -669,7 +679,7 @@ def _extract_with_ladder(path: str) -> AssemblyModel:
     for idx, (name, algo, curv, heal) in enumerate(_MESH_RUNGS):
         try:
             with _GMSH_LOCK:
-                model = _extract_once(path, algo, curv, heal)
+                model = _extract_once(path, algo, curv, heal, mesh_single_part)
         except _StepReadError as exc:
             raise ValueError(
                 "Could not read STEP/IGES geometry (not a valid/supported file)."
@@ -695,11 +705,13 @@ def _extract_with_ladder(path: str) -> AssemblyModel:
     )
 
 
-def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step") -> AssemblyModel:
+def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step", *,
+                                mesh_single_part: bool = True) -> AssemblyModel:
     """Parse STEP/IGES bytes -> ``AssemblyModel``. The public entry (picklable for
     the process pool). Mirrors step_mesher's temp-file discipline (0o600, guaranteed
     unlink). Raises ``ValueError`` (route -> 400) on any read/mesh failure; never
-    leaks gmsh internals."""
+    leaks gmsh internals. ``mesh_single_part=False``: a file of one solid is read
+    without meshing it (see ``_extract_once``)."""
     if not _HAS_GMSH:
         raise RuntimeError("gmsh not installed")
     suffix = Path(filename).suffix.lower()
@@ -718,7 +730,7 @@ def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step") -> A
         tmp.write(data)
         tmp.flush()
         tmp.close()
-        return _extract_with_ladder(tmp.name)
+        return _extract_with_ladder(tmp.name, mesh_single_part)
     finally:
         try:
             os.unlink(tmp.name)

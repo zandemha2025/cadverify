@@ -1294,10 +1294,11 @@ def _assembly_glb_target_faces() -> int:
         return 300000
 
 
-async def _extract_assembly_async(data: bytes, filename: str):
+async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_part: bool = True):
     """Extract an AssemblyModel off the loop, bounded by ANALYSIS_TIMEOUT_SEC ->
     504. MAIN process keeps the untrusted-bytes gate (magic) + suffix policy; the
-    CPU-bound multi-solid gmsh extraction runs in the shared spawn pool."""
+    CPU-bound multi-solid gmsh extraction runs in the shared spawn pool.
+    ``mesh_single_part=False`` reads a file of one solid without meshing it."""
     import asyncio
 
     from src.parsers.assembly_mesher import (
@@ -1335,7 +1336,8 @@ async def _extract_assembly_async(data: bytes, filename: str):
         async with compute_budget.hold_for_data(data, filename, label="assembly parse"):
             async with parse_pool.pool_slot():
                 return await asyncio.wait_for(
-                    parse_pool.submit_assembly_async(data, suffix), timeout=timeout
+                    parse_pool.submit_assembly_async(data, suffix, mesh_single_part=mesh_single_part),
+                    timeout=timeout,
                 )
     except asyncio.TimeoutError:
         # The extraction retired its pool (its worker dies once the others' are done).
@@ -1478,7 +1480,10 @@ async def validate_assembly(
 
 async def _validate_assembly_model(request, data, file, fmt, format, material_class, region, assemblies_per_year):
     """POST /validate/assembly after its upload is read, inside its compute hold."""
-    model = await _extract_assembly_async(data, file.filename or "upload.step")
+    # The probe (json) asks how many bodies there are: a single part is not meshed
+    # here, /validate meshes it with its own capped ladder. An assembly's bodies are.
+    model = await _extract_assembly_async(data, file.filename or "upload.step",
+                                          mesh_single_part=fmt != "json")
     if model.part_count > 1 and getattr(request.state, "trial_check", None):
         raise paid_access_required()
     if fmt in ("glb", "analysis"):

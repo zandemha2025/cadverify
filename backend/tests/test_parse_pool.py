@@ -310,7 +310,7 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
     recycled = {"kill": False}
     calls = []
 
-    async def _isolated_retry(data, suffix):
+    async def _isolated_retry(data, suffix, mesh_single_part=True):
         calls.append((data, suffix))
         return expected
 

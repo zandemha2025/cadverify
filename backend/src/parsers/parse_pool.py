@@ -701,7 +701,7 @@ def _run_tessellate_killable_sync(
         ex.shutdown(wait=False, cancel_futures=True)
 
 
-async def _run_assembly_killable(data: bytes, suffix: str):
+async def _run_assembly_killable(data: bytes, suffix: str, mesh_single_part: bool = True):
     """Retry one assembly extraction in a dedicated killable subprocess.
 
     The route's outer ``wait_for`` owns the total wall-clock budget. If that
@@ -711,7 +711,7 @@ async def _run_assembly_killable(data: bytes, suffix: str):
     ctx = multiprocessing.get_context("spawn")
     ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
     try:
-        future = ex.submit(_extract_assembly_worker, data, suffix)
+        future = ex.submit(_extract_assembly_worker, data, suffix, mesh_single_part)
         try:
             return await asyncio.wrap_future(future)
         except asyncio.CancelledError:
@@ -884,11 +884,12 @@ def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
 
 
 # ── Assembly ingestion (multi-solid STEP/IGES) ──────────────────────────────
-def _extract_assembly_worker(data: bytes, suffix: str):
+def _extract_assembly_worker(data: bytes, suffix: str, mesh_single_part: bool = True):
     """PURE, picklable worker entry: extract the full AssemblyModel (per-part
     meshes + world positions + product tree) IN THIS PROCESS. Module-level so
     ``ProcessPoolExecutor`` can pickle it by qualified name. Raises plain
-    ``ValueError`` (route -> 400) for a bad/native/unmeshable file."""
+    ``ValueError`` (route -> 400) for a bad/native/unmeshable file.
+    ``mesh_single_part=False``: a file of one solid comes back unmeshed."""
     from src.parsers.ap242_tessellated_parser import is_ap242_tessellated
     from src.parsers.assembly_mesher import (
         extract_assembly_from_bytes,
@@ -907,10 +908,10 @@ def _extract_assembly_worker(data: bytes, suffix: str):
             name="embedded-tessellated-part",
         )
 
-    return extract_assembly_from_bytes(data, f"upload{suffix}")
+    return extract_assembly_from_bytes(data, f"upload{suffix}", mesh_single_part=mesh_single_part)
 
 
-async def submit_assembly_async(data: bytes, suffix: str):
+async def submit_assembly_async(data: bytes, suffix: str, *, mesh_single_part: bool = True):
     """Extract an ``AssemblyModel`` off the event loop, bounded by the route
     budget. Runs the CPU-bound multi-solid gmsh extraction in the shared spawn
     pool (so N assemblies don't serialize on the GIL/gmsh lock and the loop stays
@@ -921,19 +922,20 @@ async def submit_assembly_async(data: bytes, suffix: str):
 
     The per-assembly retry ladder (primary -> MeshAdapt-uniform -> +OCC-heal) runs
     WITHIN the worker call (``assembly_mesher._extract_with_ladder``); the caller's
-    outer ``wait_for`` provides the wall-clock bound.
+    outer ``wait_for`` provides the wall-clock bound. ``mesh_single_part=False``
+    (the probe's question: how many bodies?) reads a one-solid file unmeshed.
     """
     import asyncio
 
     loop = asyncio.get_event_loop()
     if is_disabled():
         return await loop.run_in_executor(
-            None, _extract_assembly_worker, data, suffix
+            None, _extract_assembly_worker, data, suffix, mesh_single_part
         )
     async with pool_slot(warm=False):
         pool = _get_pool()
         try:
-            cfut = _submit_tracked(pool, _extract_assembly_worker, data, suffix)
+            cfut = _submit_tracked(pool, _extract_assembly_worker, data, suffix, mesh_single_part)
             try:
                 return await asyncio.wrap_future(cfut)
             except asyncio.CancelledError:
@@ -949,4 +951,4 @@ async def submit_assembly_async(data: bytes, suffix: str):
                 "isolated retry"
             )
             recycle_pool(kill=True)
-            return await _run_assembly_killable(data, suffix)
+            return await _run_assembly_killable(data, suffix, mesh_single_part)
