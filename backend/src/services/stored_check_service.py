@@ -396,6 +396,11 @@ def _status_fields(job: Job, params: dict, result: dict, key: Optional[str]) -> 
         "analysis_id": result.get("analysis_id"),
         "cost_decision_id": result.get("cost_decision_id"),
         "memory": result.get("memory"),
+        # Waiting for the worker's compute budget (stored_check_tasks sets it
+        # around room.take, and on a requeue for room): the app says so rather
+        # than showing a stage. Only while the check can still start.
+        "waiting_for_room": bool(result.get("waiting_for_room")) and job.status in ("queued", "running"),
+        "requeued_for_room": int(result.get("requeued_for_room") or 0),
         "geometry_invalid": result.get("geometry_invalid"),
         "cost_error": result.get("cost_error"),
         "timings_ms": result.get("timings_ms"),

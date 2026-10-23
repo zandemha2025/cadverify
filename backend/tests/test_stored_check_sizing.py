@@ -73,3 +73,27 @@ def test_the_time_budget_follows_the_format():
     assert svc.time_budget_sec(10 * MB, "asm.step") == pytest.approx(120 + 90 * 10)
     assert svc.time_budget_sec(65 * MB, "mesh.stl") == pytest.approx(120 + 5 * 65)
     assert svc.time_budget_sec(5 * 1024**3, "huge.step") == svc.STORED_CHECK_JOB_TIMEOUT_SECONDS - 300
+
+
+def test_a_check_waiting_for_room_says_so_only_while_it_can_still_start():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    def job(status, result):
+        now = datetime.now(timezone.utc)
+        return SimpleNamespace(
+            ulid="01JCHECK", status=status, params_json={"filename": "big.step"},
+            result_json={"heartbeat_at": now.isoformat(), **result},
+            created_at=now, started_at=now, completed_at=None,
+        )
+
+    waiting = svc.public_status(job("running", {"stage": "sizing", "waiting_for_room": True}))
+    assert waiting["waiting_for_room"] is True and waiting["requeued_for_room"] == 0
+    requeued = svc.public_status(job("queued", {"stage": "queued", "waiting_for_room": True, "requeued_for_room": 2}))
+    assert requeued["waiting_for_room"] is True and requeued["requeued_for_room"] == 2
+    started = svc.public_status(job("running", {"stage": "analysis", "waiting_for_room": False}))
+    assert started["waiting_for_room"] is False
+    ended = svc.public_status(job("failed", {"stage": "failed", "waiting_for_room": True,
+                                            "error": {"code": "X", "message": "m"}}))
+    assert ended["waiting_for_room"] is False
+    assert svc.public_status(job("queued", {}))["waiting_for_room"] is False
