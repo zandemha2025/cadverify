@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 import { makeGoldenPathEvidence, validateGoldenPathMap } from "./golden-path-evidence.mjs";
 import { configuredClientIp } from "./run-scoped-client-ip.mjs";
+import { checkPartContextRead } from "./part-context-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -71,6 +72,7 @@ class DesignStudioE2E {
     this.steps = [];
     this.issues = [];
     this.consoleErrors = [];
+    this.expectedConsoleErrors = [];
     this.requestFailures = [];
     this.successfulResponses = new Set();
     this.designMutationResponses = [];
@@ -138,9 +140,9 @@ class DesignStudioE2E {
     });
     this.page = await this.context.newPage();
     this.page.on("console", (message) => {
-      if (message.type() === "error") this.consoleErrors.push(message.text());
+      if (message.type() === "error") this.consoleErrors.push({ text: message.text(), sourceUrl: message.location().url });
     });
-    this.page.on("pageerror", (error) => this.consoleErrors.push(error.message));
+    this.page.on("pageerror", (error) => this.consoleErrors.push({ text: error.message }));
     this.page.on("response", (response) => {
       this.successfulResponses.add(`${response.request().method()} ${response.url()}`);
       const pathname = new URL(response.url()).pathname;
@@ -435,6 +437,12 @@ class DesignStudioE2E {
       (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/proxy/validate/cost",
       { timeout: 150_000 },
     );
+    // The run reads the imported part's stored context before costing (c485111a).
+    const contextResponsePromise = this.page.waitForResponse(
+      (response) => response.request().method() === "GET" && /^\/api\/proxy\/part-context\/[0-9a-f]{64}$/.test(new URL(response.url()).pathname),
+      { timeout: 150_000 },
+    );
+    const consoleStart = this.consoleErrors.length;
     await link.click();
     await this.page.waitForURL((url) => url.pathname === "/verify" && url.searchParams.get("revision") === String(revision));
     // The completion toast was deliberately retired by the front-loaded
@@ -471,6 +479,16 @@ class DesignStudioE2E {
     if (artifactSha256) {
       assert(importedArtifactSha256 === artifactSha256, `Verify R${revision} imported a different artifact than Design Studio exposed`);
     }
+    const contextResponse = await contextResponsePromise;
+    assert(
+      new URL(contextResponse.url()).pathname === `/api/proxy/part-context/${importedArtifactSha256}`,
+      `Verify R${revision} read the stored context of a different part`,
+    );
+    await checkPartContextRead(contextResponse, {
+      consoleErrors: this.consoleErrors,
+      expectedConsoleErrors: this.expectedConsoleErrors,
+      consoleStart,
+    });
     const cost = await costResponse.json();
     const turning = (cost.engine_feasibility || []).find((item) => item.process === "cnc_turning") || null;
     const shortlist = new Set([
@@ -1205,6 +1223,7 @@ class DesignStudioE2E {
       steps: this.steps,
       issues: this.issues,
       consoleErrors: this.consoleErrors,
+      expectedConsoleErrors: this.expectedConsoleErrors,
       requestFailures,
       error: runError instanceof Error ? runError.message : runError ? String(runError) : null,
       buildIdentity: captureBuildIdentity(repoRoot),

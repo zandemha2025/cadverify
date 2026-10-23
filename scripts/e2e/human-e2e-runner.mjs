@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 import { assertWeakPasswordRejection, isExpectedSignupConsoleError } from "./signup-rejection-validation.mjs";
+import { checkPartContextRead, isPartContextRead } from "./part-context-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -510,6 +511,12 @@ class HumanE2E {
         (response) => isPostResponse(response, "/api/proxy/validate/cost"),
         { timeout: cadUploadTimeoutMs },
       );
+      const fixtureSha256 = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+      const contextResponsePromise = this.page.waitForResponse(
+        (response) => isPartContextRead(response, fixtureSha256),
+        { timeout: cadUploadTimeoutMs },
+      );
+      const consoleStart = this.consoleErrors.length;
       await input.setInputFiles(fixturePath);
       await this.page.waitForTimeout(3000);
       await this.shot("verify-upload-after-3s");
@@ -537,7 +544,14 @@ class HumanE2E {
       assert(costResponse.ok(), `POST /validate/cost returned ${costResponse.status()}`);
       const validation = await validationResponse.json();
       const cost = await costResponse.json();
-      const fixtureSha256 = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+      // The run reads the part's stored context. A part with nothing declared is a
+      // verified 404 "no declared context for part"; set aside only that one
+      // resource error and keep every other endpoint, status and runtime error.
+      await checkPartContextRead(await contextResponsePromise, {
+        consoleErrors: this.consoleErrors,
+        expectedConsoleErrors: this.expectedConsoleErrors,
+        consoleStart,
+      });
       const geometry = validation?.geometry || {};
       assert(Array.isArray(geometry.bounding_box_mm), "Verify validation omitted bounding_box_mm");
       assert(typeof geometry.volume_mm3 === "number", "Verify validation omitted volume_mm3");
