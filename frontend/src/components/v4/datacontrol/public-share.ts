@@ -7,9 +7,16 @@
  * client could use it up for everyone (security review R4, F3). This read signs
  * the incoming visitor's IP for the exact backend path, as /api/public-share
  * does for browser reads. Server only: it reads the incoming request headers.
+ *
+ * One read per page view: generateMetadata and the page both ask for the share,
+ * and each signed read carries its own timestamp, so Next's fetch memoization
+ * can't merge them and one view counted twice against the visitor's 120-an-hour
+ * bucket. React's `cache` keeps the first answer for the rest of that request
+ * (and only that request).
  */
 import "server-only";
 
+import { cache } from "react";
 import { headers } from "next/headers";
 import { backendUrl } from "../../../lib/api-base.ts";
 import { signedAuthProxyHeaders } from "../../../lib/auth-proxy.ts";
@@ -18,8 +25,13 @@ export type PublicShare<T> =
   | { ok: true; data: T }
   | { ok: false; reason: "expired" | "off" | "missing" | "error"; endedAt: string | null };
 
-/** A shared link's payload, or why it can't be shown (410 ended / switched off, 404 unknown). */
-export async function readPublicShare<T>(path: `/s/${string}`): Promise<PublicShare<T>> {
+/** A shared link's payload, or why it can't be shown (410 ended / switched off, 404 unknown).
+ *  Read once per request, however many times a render asks (generateMetadata and the page). */
+export function readPublicShare<T>(path: `/s/${string}`): Promise<PublicShare<T>> {
+  return readOncePerRequest(path) as Promise<PublicShare<T>>;
+}
+
+const readOncePerRequest = cache(async (path: `/s/${string}`): Promise<PublicShare<unknown>> => {
   let res: Response;
   try {
     const visitor = { method: "GET", headers: await headers() };
@@ -31,7 +43,7 @@ export async function readPublicShare<T>(path: `/s/${string}`): Promise<PublicSh
   } catch {
     return { ok: false, reason: "error", endedAt: null };
   }
-  if (res.ok) return { ok: true, data: (await res.json()) as T };
+  if (res.ok) return { ok: true, data: (await res.json()) as unknown };
   type Ended = { code?: string; ended_at?: string | null };
   const body = (await res.json().catch(() => null)) as (Ended & { detail?: Ended }) | null;
   const code = body?.code ?? body?.detail?.code;
@@ -40,4 +52,4 @@ export async function readPublicShare<T>(path: `/s/${string}`): Promise<PublicSh
   if (res.status === 410) return { ok: false, reason: "off", endedAt };
   if (res.status === 404) return { ok: false, reason: "missing", endedAt: null };
   return { ok: false, reason: "error", endedAt: null };
-}
+});
