@@ -58,6 +58,17 @@ def _fresh_compute_budget():
 
 
 @pytest.fixture(autouse=True)
+def _sigpipe_stays_ignored():
+    """Some tests start gmsh themselves, and its first initialize resets SIGPIPE
+    to terminate the process (src/parsers/sigpipe.py): a background write to a
+    closed pipe then killed the whole suite (exit 141). Restore it after each test."""
+    yield
+    from src.parsers.sigpipe import ignore_sigpipe
+
+    ignore_sigpipe()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_catalog_inputs():
     """The catalog's per-record input cache is process-wide; tests reuse made-up ids."""
     from src.services import catalog_inputs

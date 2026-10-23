@@ -39,6 +39,8 @@ from typing import Any, cast
 
 import numpy as np
 
+from src.parsers.sigpipe import ignore_sigpipe
+
 # Engine definition of a sharp inside edge (context.inside_corners and
 # check_fillet_requirements start from it): a concave mesh edge whose face
 # normals turn by more than 30 degrees.
@@ -94,6 +96,7 @@ class _Session:
         with os.fdopen(fd, "wb") as fh:
             fh.write(self.data)
         gmsh.initialize(interruptible=False)
+        ignore_sigpipe()  # gmsh just reset it to terminate the process
         gmsh.option.setNumber("General.Terminal", 0)
         _configure_cad_import(path)
         gmsh.model.add("fix")
@@ -143,6 +146,7 @@ def _reads_back_as(path: str, expected_mm3: float) -> bool:
 
     gmsh = _gmsh()
     gmsh.initialize(interruptible=False)
+    ignore_sigpipe()  # gmsh just reset it to terminate the process
     try:
         gmsh.option.setNumber("General.Terminal", 0)
         _configure_cad_import(path)

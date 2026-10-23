@@ -51,6 +51,7 @@ from typing import Any, Optional, cast
 import numpy as np
 import trimesh
 
+from src.parsers.sigpipe import ignore_sigpipe
 from src.parsers.step_mesher import (
     _CURVATURE_PTS,
     _GMSH_LOCK,
@@ -532,6 +533,7 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool,
     ``mesh_single_part=False`` reads a file of one solid without meshing it (its
     position and tree come from the B-rep; its mesh fields stay empty)."""
     gmsh.initialize(interruptible=False)
+    ignore_sigpipe()  # gmsh just reset it to terminate the process
     try:
         _configure_cad_import(path)
         _configure_mesh(curvature_pts, heal)

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from src.designs.schema import draft_run, validate_design_plan
+from src.parsers.sigpipe import ignore_sigpipe
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
 MIN_ARTIFACT_BYTES = 128
@@ -259,6 +260,7 @@ def _child_generate(plan_data: dict[str, Any], step_path: str, stl_path: str, re
 
         plan = validate_design_plan(plan_data)
         gmsh.initialize(["proofshape-design-generator", "-nopopup"], interruptible=False)
+        ignore_sigpipe()  # gmsh just reset it to terminate the process
         try:
             gmsh.option.setNumber("General.Terminal", 0)
             gmsh.model.add("scalecad_design")

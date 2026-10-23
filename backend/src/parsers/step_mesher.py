@@ -31,6 +31,8 @@ from typing import Any
 import numpy as np
 import trimesh
 
+from src.parsers.sigpipe import ignore_sigpipe
+
 logger = logging.getLogger("cadverify.step_mesher")
 
 _HAS_GMSH = False
@@ -625,6 +627,7 @@ def _tessellate_once(
     # ThreadPoolExecutor (A.5), so the default would raise "signal only works in
     # main thread of the main interpreter".
     gmsh.initialize(interruptible=False)
+    ignore_sigpipe()  # gmsh just reset it to terminate the process
     try:
         gmsh.option.setNumber("General.Terminal", 0)          # no stdout spew
         _configure_cad_import(path)
