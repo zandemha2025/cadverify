@@ -596,10 +596,23 @@ async def test_a_busy_growth_inside_a_hold_releases_the_room(small_budget):
     other = await small_budget.reserve(700 * MB, wait=None, label="other")
     data = _step(30)
     with pytest.raises(cb.ComputeBusy):
-        async with cb.hold(250 * MB, label="analysis"):
+        async with cb.hold(250 * MB, label="analysis", provisional=True):
             await cb.size_to_mesh(_Mesh(149_486), data, "p.step", wait=0.1)
     assert small_budget.snapshot()["used_bytes"] == 700 * MB
     other.leave()
+
+
+@pytest.mark.asyncio
+async def test_a_job_sized_by_its_file_keeps_its_size(small_budget):
+    # A catalog part's or a big file's hold covers its whole job: an analysis
+    # inside it re-sizes nothing (only provisional holds are sized to the mesh).
+    data = _step(30)
+    async with cb.hold(902 * MB, label="catalog part") as job:
+        async with cb.deferred_hold(label="analysis") as room:
+            await room.take_for_data(data, "p.step", provisional=True)
+            await cb.size_to_mesh(_Mesh(20_000), data, "p.step")
+        assert job.need_bytes == 902 * MB
+        assert small_budget.snapshot()["used_bytes"] == 902 * MB
 
 
 # ---------------------------------------------------------------------------

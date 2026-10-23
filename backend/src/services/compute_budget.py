@@ -406,13 +406,15 @@ class Hold:
     given back when no other hold shares it).
     """
 
-    __slots__ = ("reservation", "need_bytes", "label", "heavy", "_refs", "released")
+    __slots__ = ("reservation", "need_bytes", "label", "heavy", "provisional", "_refs", "released")
 
     def __init__(self, reservation: Reservation, need_bytes: int, label: str):
         self.reservation = reservation
         self.need_bytes = need_bytes
         self.label = label
         self.heavy = label not in LIGHT_WORK
+        # Sized before its mesh was known: ``size_to_mesh`` re-sizes it (only it).
+        self.provisional = False
         self._refs = 1
         self.released = False
 
@@ -925,12 +927,13 @@ def current() -> Optional[Hold]:
 
 
 @asynccontextmanager
-async def hold(need_bytes: int, *, wait=DEFAULT, label: str = "cad") -> AsyncIterator[Hold]:
+async def hold(need_bytes: int, *, wait=DEFAULT, label: str = "cad", provisional: bool = False) -> AsyncIterator[Hold]:
     """Hold room for a piece of work made of several steps.
 
     Inside another hold this joins it (no second reservation). Within a check
     (``check_scope``) it shares the check's room. The room comes back when the
     block ends and every executor thread started in it has ended.
+    ``provisional``: sized before the mesh is known; ``size_to_mesh`` re-sizes it.
     """
     outer = current()
     if outer is not None and outer.join():
@@ -940,6 +943,7 @@ async def hold(need_bytes: int, *, wait=DEFAULT, label: str = "cad") -> AsyncIte
             outer.leave()
         return
     res = await budget().reserve(need_bytes, wait=_resolve_wait(wait), label=label)
+    res.provisional = provisional
     token = _CURRENT.set(res)
     try:
         yield res
@@ -961,7 +965,7 @@ def hold_for_data(data: bytes, filename: str, *, wait=DEFAULT, label: str = "cad
         need = 0
     else:
         need = parse_need_for_data(data, filename) if provisional else need_for_data(data, filename)
-    return hold(need, wait=wait, label=label)
+    return hold(need, wait=wait, label=label, provisional=provisional)
 
 
 async def size_to_mesh(mesh: Any, data: Any, filename: str, *, wait=DEFAULT) -> None:
@@ -972,10 +976,11 @@ async def size_to_mesh(mesh: Any, data: Any, filename: str, *, wait=DEFAULT) -> 
     (up to the web's ``COMPUTE_WAIT_SECONDS``), ahead of new work, and never past
     the capacity while other work holds room: when it can't grow in time this
     raises :class:`ComputeBusy` (429 ``server_busy``; nothing was charged).
-    No-op outside a hold.
+    No-op outside a hold, and for a hold sized by its file (``provisional``
+    not set: a catalog part's or a big file's whole job keeps its own size).
     """
     h = current()
-    if h is None:
+    if h is None or not h.provisional:
         return
     if isinstance(mesh, int):
         faces = mesh
@@ -1003,7 +1008,7 @@ class DeferredHold:
         self.reservation: Optional[Hold] = None
         self._token: Optional[contextvars.Token] = None
 
-    async def take(self, need_bytes: int) -> Hold:
+    async def take(self, need_bytes: int, *, provisional: bool = False) -> Hold:
         if self.reservation is not None:
             return self.reservation
         outer = current()
@@ -1011,6 +1016,7 @@ class DeferredHold:
             self.reservation = outer
             return outer
         res = await budget().reserve(need_bytes, wait=_resolve_wait(self.wait), label=self.label)
+        res.provisional = provisional
         self.reservation = res
         # Set in the caller's task, so every step after this point joins it.
         self._token = _CURRENT.set(res)
@@ -1021,7 +1027,7 @@ class DeferredHold:
             need = 0
         else:
             need = parse_need_for_data(data, filename) if provisional else need_for_data(data, filename)
-        return await self.take(need)
+        return await self.take(need, provisional=provisional)
 
 
 @asynccontextmanager

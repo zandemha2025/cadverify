@@ -1235,8 +1235,12 @@ async def validate_preview_mesh(
     # ``fit``: Fit in assembly's previews, which reserve no check (see
     # validation_caps); they take the same file kinds as Fit.
     parse = _parse_fit_mesh_async if purpose in {"preview", "fit"} else _parse_mesh_async
-    async with compute_budget.hold_for_data(data, file.filename or "upload", label="preview mesh"):
+    # Shared with the check's other calls on this file; a STEP or IGES takes
+    # room for its parse, then what its mesh needs.
+    async with compute_budget.hold_for_data(data, file.filename or "upload", label="preview mesh",
+                                            provisional=True):
         mesh, suffix = await parse(data, file.filename or "upload")
+        await compute_budget.size_to_mesh(mesh, data, file.filename or "upload")
         from src.costing.units import scale_mesh_to_mm
 
         mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
@@ -1463,7 +1467,11 @@ async def validate_assembly(
             )
 
     data = await _read_capped(file)
-    async with compute_budget.hold_for_data(data, file.filename or "upload.step", label="assembly"):
+    # The probe (json) is the check's first call: room for its parse, shared with
+    # the check's next calls on this file. glb and analysis are then sized from
+    # the parts' meshes.
+    label = f"assembly {fmt}" if fmt in ("json", "glb") else "assembly"
+    async with compute_budget.hold_for_data(data, file.filename or "upload.step", label=label, provisional=True):
         return await _validate_assembly_model(request, data, file, fmt, format, material_class, region,
                                               assemblies_per_year)
 
@@ -1473,6 +1481,10 @@ async def _validate_assembly_model(request, data, file, fmt, format, material_cl
     model = await _extract_assembly_async(data, file.filename or "upload.step")
     if model.part_count > 1 and getattr(request.state, "trial_check", None):
         raise paid_access_required()
+    if fmt in ("glb", "analysis"):
+        # Work on the parts' meshes: sized by their triangles (the probe only reads the model).
+        faces = sum(len(p.mesh.faces) for p in model.parts if getattr(p, "mesh", None) is not None)
+        await compute_budget.size_to_mesh(faces, data, file.filename or "upload.step")
 
     if fmt == "analysis":
         return await _run_assembly_analysis(
@@ -1807,7 +1819,10 @@ async def _cost_decision(
         data = await _read_capped(file)  # 413 on size, 400 on empty
         if room is not None:
             # Room for the parse and the price; their time limits start after it.
-            await room.take_for_data(data, file.filename or "")
+            # The shop lookup's connection goes back to the pool before the wait;
+            # a STEP or IGES takes room for its parse, then what its mesh needs.
+            await analysis_service.release_read_connection(session)
+            await room.take_for_data(data, file.filename or "", provisional=True)
 
         # ── honest "material read from CAD" slice (no-kernel text scan) ──────
         # Only fill from the CAD file when the caller left material_class at its
@@ -1865,6 +1880,8 @@ async def _cost_decision(
             if placed is not None:
                 # Price the part as placed (a cached entry for this key is already turned).
                 mesh = placed.apply(mesh)
+        # Sized from the mesh (reused or parsed); a busy 429 when it can't grow in time.
+        await compute_budget.size_to_mesh(mesh, data, file.filename or "")
         tracing.set_attr(_sp_parse, "cadverify.file.suffix", suffix)
         tracing.set_attr(_sp_parse, "cadverify.file.bytes", len(data))
         tracing.set_attr(_sp_parse, "cadverify.units", effective_units)
@@ -2164,6 +2181,8 @@ async def _cost_decision(
         return ens.to_dict()
 
     timeout = _analysis_timeout_sec()
+    # The org reads above are done: their connection goes back to the pool for the compute.
+    await analysis_service.release_read_connection(session)
     # Parent span for the off-loop compute; capture the OTel context INSIDE it so
     # the executor-thread DFM / should-cost child spans nest here. No-op when off.
     with tracing.span("cost.compute"):

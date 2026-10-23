@@ -120,6 +120,27 @@ def _force_gc_after_analysis() -> bool:
 # ---------------------------------------------------------------------------
 
 
+async def release_read_connection(session) -> None:
+    """End a web request's read-only transaction before it waits for compute room.
+
+    A session holds its pooled connection from its first query until it
+    commits. ``/validate`` and ``/validate/cost`` read (the cached analysis, the
+    shop) and then wait up to ``COMPUTE_WAIT_SECONDS`` for room and compute for
+    up to a minute; that connection would stay out of the pool all along. When
+    the session has only read, commit it now: the next query takes a
+    connection again. Only in a web process (a worker's session may carry its
+    job's writes), and never with pending changes.
+    """
+    if not isinstance(session, AsyncSession) or compute_budget.default_wait() is None:
+        return
+    try:
+        if not session.in_transaction() or session.new or session.dirty or session.deleted:
+            return
+        await session.commit()
+    except Exception:
+        logger.debug("could not end the read transaction before the compute wait", exc_info=True)
+
+
 def compute_mesh_hash(file_bytes: bytes) -> str:
     """SHA-256 hex digest of raw uploaded file bytes (D-09)."""
     return hashlib.sha256(file_bytes).hexdigest()
@@ -583,9 +604,12 @@ async def _run_analysis(
         )
 
     # 8. Cache MISS — run full pipeline. Room in the compute budget first: the
-    # time limits below start once the work does, not while it waits.
+    # time limits below start once the work does, not while it waits. The
+    # cache lookup's connection goes back to the pool before the wait. A STEP or
+    # IGES takes room for its parse, then what its mesh needs (size_to_mesh).
     if room is not None:
-        await room.take_for_data(file_bytes, filename)
+        await release_read_connection(session)
+        await room.take_for_data(file_bytes, filename, provisional=True)
     # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
     # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
     # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
@@ -595,6 +619,8 @@ async def _run_analysis(
     stage_started = time.perf_counter()
     mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
     stage_timings_ms["parse"] = _elapsed_ms(stage_started)
+    # Sized from the mesh now it is known (a busy 429 when it can't grow in time).
+    await compute_budget.size_to_mesh(mesh, file_bytes, filename)
     if effective_units != "mm":
         # STL has no units. Convert the parsed mesh at the single geometry seam,
         # before geometry, features, universal checks, process DFM, and persisted
