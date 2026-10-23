@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import structlog
 import numpy as np
@@ -54,6 +54,9 @@ from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_byte
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
 from src.services import analysis_service, compute_budget, repair_service
+
+if TYPE_CHECKING:
+    import trimesh
 
 logger = logging.getLogger("cadverify.routes")
 
@@ -160,7 +163,9 @@ def refuse_over_memory_budget(data: bytes, filename: str) -> None:
     )
 
 
-def _parse_setup(data: bytes, filename: str):
+def _parse_setup(
+    data: bytes, filename: str
+) -> tuple[str, Optional[mesh_cache.MeshParseCache], Optional[tuple[str, str]]]:
     """MAIN-process prelude: suffix gate, magic validation, cache handles.
 
     Runs in EVERY path (in-thread and pooled). ``validate_magic`` is the
@@ -192,7 +197,9 @@ def _parse_setup(data: bytes, filename: str):
     return suffix, cache, cache_key
 
 
-def _cache_hit(cache, cache_key):
+def _cache_hit(
+    cache: Optional[mesh_cache.MeshParseCache], cache_key: Optional[tuple[str, str]]
+) -> Optional[trimesh.Trimesh]:
     """Return a deep copy of the cached mesh on a HIT (cap re-enforced), else None.
 
     The cache stores only the PARSE. The triangle cap is a per-REQUEST policy
@@ -201,7 +208,7 @@ def _cache_hit(cache, cache_key):
     parse would. ``enforce_triangle_cap`` only ever raises HTTPException(400),
     which propagates unchanged.
     """
-    if cache is None:
+    if cache is None or cache_key is None:  # set together by _parse_setup
         return None
     cached = cache.get(cache_key)
     if cached is None:
@@ -210,7 +217,7 @@ def _cache_hit(cache, cache_key):
     return cached
 
 
-def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str):
+def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str) -> trimesh.Trimesh:
     """In-thread raw parse of already-validated bytes -> mesh, with the exact
     HTTPException mapping the route has always used. NO cache, NO post-parse cap
     (the caller applies ``enforce_triangle_cap``). This is (a) the kill-switch /
@@ -236,7 +243,7 @@ def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str):
         raise HTTPException(status_code=400, detail="Failed to parse mesh file")
 
 
-def _parse_mesh(data: bytes, filename: str):
+def _parse_mesh(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
     """Fully synchronous parse (today's behavior, in-thread tessellation).
 
     Used directly by tests, by the process-pool kill switch, and as the pool's
@@ -248,7 +255,7 @@ def _parse_mesh(data: bytes, filename: str):
         return cached, suffix
     mesh = _raw_tessellate_in_thread(data, suffix, filename)
     enforce_triangle_cap(mesh)  # 400 if tessellation exceeded MAX_TRIANGLES
-    if cache is not None:
+    if cache is not None and cache_key is not None:  # set together by _parse_setup
         cache.put(cache_key, mesh)
     return mesh, suffix
 
@@ -279,7 +286,7 @@ def _inflight_parses():
     return reg
 
 
-async def _parse_mesh_async(data: bytes, filename: str):
+async def _parse_mesh_async(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
     """SINGLE-FLIGHT front door: dedupe concurrent parses of the SAME upload.
 
     All async callers (``/validate``, ``/validate/cost``, ``/validate/preview-
@@ -326,7 +333,9 @@ async def _parse_mesh_async(data: bytes, filename: str):
         return await _parse_mesh_async_shared(data, filename, loop, cache, cache_key)
 
 
-async def _parse_mesh_async_shared(data: bytes, filename: str, loop, cache, cache_key):
+async def _parse_mesh_async_shared(
+    data: bytes, filename: str, loop, cache, cache_key
+) -> tuple[trimesh.Trimesh, str]:
     """The single-flight half of ``_parse_mesh_async`` (a cold cache)."""
     import asyncio
 
@@ -381,7 +390,7 @@ async def _parse_mesh_async_shared(data: bytes, filename: str, loop, cache, cach
                     pass
 
 
-async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
+async def _parse_mesh_async_uncoordinated(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
     """Parse off the event loop, bounded by ANALYSIS_TIMEOUT_SEC -> 504.
 
     Default: STEP/IGES raw tessellation is dispatched to a spawn ProcessPool so
@@ -426,7 +435,7 @@ async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
             )
 
 
-async def _parse_mesh_in_thread_async(data: bytes, filename: str):
+async def _parse_mesh_in_thread_async(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
     """Today's exact path: run the fully-synchronous _parse_mesh in the default
     thread executor under the timeout. The process-pool kill-switch target."""
     import asyncio
@@ -445,7 +454,7 @@ async def _parse_mesh_in_thread_async(data: bytes, filename: str):
         )
 
 
-async def _parse_mesh_pooled(data: bytes, filename: str, loop):
+async def _parse_mesh_pooled(data: bytes, filename: str, loop) -> tuple[trimesh.Trimesh, str]:
     """Process-pool path for STEP/IGES only (STL is filtered out upstream).
 
     MAIN process: magic + cache + cap. WORKER: raw tessellation only. Composes
@@ -467,20 +476,22 @@ async def _parse_mesh_pooled(data: bytes, filename: str, loop):
     mesh = await _tessellate_step_via_pool(data, suffix, filename)
 
     enforce_triangle_cap(mesh)  # per-request policy, MAIN process
-    if cache is not None:
+    if cache is not None and cache_key is not None:  # set together by _parse_setup
         # cache.put deep-copies (a few ms for a 185k-face mesh) — off the loop.
         await loop.run_in_executor(None, cache.put, cache_key, mesh)
     return mesh, suffix
 
 
-def _pooled_prelude(data: bytes, filename: str):
+def _pooled_prelude(data: bytes, filename: str) -> tuple[
+    str, Optional[mesh_cache.MeshParseCache], Optional[tuple[str, str]], Optional[trimesh.Trimesh]
+]:
     """_parse_setup + cache lookup, packaged for a single executor hop."""
     suffix, cache, cache_key = _parse_setup(data, filename)
     cached = _cache_hit(cache, cache_key)
     return suffix, cache, cache_key, cached
 
 
-async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str):
+async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str) -> trimesh.Trimesh:
     """Dispatch STEP/IGES raw tessellation to the process pool, mapping worker
     exceptions to the route's usual codes. parse_pool.submit_async already
     handles BrokenProcessPool internally (recycle + in-thread fallback), so a

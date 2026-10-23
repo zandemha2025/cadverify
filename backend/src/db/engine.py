@@ -7,9 +7,10 @@ engine/session singletons.
 from __future__ import annotations
 
 import os
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, ClassVar, Optional
 
 from fastapi import Depends
+from sqlalchemy import Table
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -21,7 +22,10 @@ from sqlalchemy.orm import DeclarativeBase
 class Base(DeclarativeBase):
     """ORM declarative base for all mapped classes."""
 
-    pass
+    if TYPE_CHECKING:
+        # Every class mapped here is declared on a real Table (never a select),
+        # so ``Model.__table__.update()`` type-checks as it runs.
+        __table__: ClassVar[Table]  # pyright: ignore[reportIncompatibleVariableOverride]  # FromClause narrowed to the Table each model really has
 
 
 _ENGINE = None
