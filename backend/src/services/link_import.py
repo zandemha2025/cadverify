@@ -387,7 +387,7 @@ def seal_url(url: str) -> str:
     return SEALED_PREFIX + _fernet().encrypt(url.encode("utf-8")).decode("ascii")
 
 
-def open_sealed_url(sealed: str) -> str:
+def open_sealed_url(sealed: object) -> str:
     from cryptography.fernet import InvalidToken
 
     from src.services.connector_credentials_service import _fernet

@@ -20,7 +20,10 @@ import copy
 import threading
 import time
 from collections import OrderedDict
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from src.parsers.assembly_mesher import AssemblyModel
 
 TTL_SEC = 60.0
 MAX_ENTRIES = 4
@@ -28,7 +31,7 @@ MAX_FACES = 300_000
 
 _LOCK = threading.Lock()
 # (check key, suffix) -> (expires at, model, triangles, every body meshed)
-_STORE: "OrderedDict[tuple[str, str], tuple[float, object, int, bool]]" = OrderedDict()
+_STORE: "OrderedDict[tuple[str, str], tuple[float, AssemblyModel, int, bool]]" = OrderedDict()
 
 
 def _faces(model) -> int:
@@ -40,7 +43,7 @@ def _expire(now: float) -> None:
         del _STORE[key]
 
 
-def get(check: Optional[str], suffix: str, *, meshed: bool):
+def get(check: Optional[str], suffix: str, *, meshed: bool) -> Optional[AssemblyModel]:
     """A copy of this check's model, or None. ``meshed``: the caller needs every
     body's mesh (a one-solid model read unmeshed for the probe doesn't serve it)."""
     if not check:
@@ -55,7 +58,7 @@ def get(check: Optional[str], suffix: str, *, meshed: bool):
     return copy.deepcopy(model)
 
 
-def put(check: Optional[str], suffix: str, model, *, mesh_single_part: bool) -> None:
+def put(check: Optional[str], suffix: str, model: AssemblyModel, *, mesh_single_part: bool) -> None:
     """Keep a copy of ``model`` for this check (nothing without a check)."""
     if not check:
         return
