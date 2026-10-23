@@ -28,7 +28,7 @@ from __future__ import annotations
 import io
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +71,22 @@ async def _kept_name(session: AsyncSession, org_id: str, mesh_hash: str, suffix:
     if Path(name).suffix.lower() != suffix:
         name = f"{Path(name).stem or 'part'}{suffix}"
     return name
+
+
+class _RecheckOptions(TypedDict):
+    """The re-price's options, as ``recheck_kept`` takes them (and the worker's job keeps)."""
+
+    qty: Optional[str]
+    material_class: Optional[str]
+    region: Optional[str]
+    cavities: int
+    complexity: str
+    shop: Optional[str]
+    overrides: Optional[str]
+    owned_processes: Optional[str]
+    tolerance_class: Optional[str]
+    units: Optional[str]
+    orientation: Optional[str]
 
 
 @router.post("/{mesh_hash}/recheck", dependencies=[Depends(require_kill_switch_open)])
@@ -120,9 +136,10 @@ async def recheck_stored_part(
     digest = str(mesh_hash or "").lower()
     if not ctx.org_id or not _SHA256.fullmatch(digest):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    options = dict(qty=qty, material_class=material_class, region=region, cavities=cavities,
-                   complexity=complexity, shop=shop, overrides=overrides, owned_processes=owned_processes,
-                   tolerance_class=tolerance_class, units=units, orientation=orientation)
+    options = _RecheckOptions(qty=qty, material_class=material_class, region=region, cavities=cavities,
+                              complexity=complexity, shop=shop, overrides=overrides,
+                              owned_processes=owned_processes, tolerance_class=tolerance_class, units=units,
+                              orientation=orientation)
     info = await kept.kept_source_info(ctx.org_id, digest)
     if info is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)

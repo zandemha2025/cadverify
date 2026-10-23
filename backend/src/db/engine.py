@@ -7,16 +7,20 @@ engine/session singletons.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, ClassVar, Optional, cast
 
 from fastapi import Depends
 from sqlalchemy import Table
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+
+if TYPE_CHECKING:
+    from sqlalchemy.pool import QueuePool
 
 
 class Base(DeclarativeBase):
@@ -28,7 +32,7 @@ class Base(DeclarativeBase):
         __table__: ClassVar[Table]  # pyright: ignore[reportIncompatibleVariableOverride]  # FromClause narrowed to the Table each model really has
 
 
-_ENGINE = None
+_ENGINE: Optional[AsyncEngine] = None
 _SESSION_FACTORY: Optional[async_sessionmaker[AsyncSession]] = None
 
 
@@ -109,7 +113,7 @@ def _async_url(url: str) -> str:
     return url
 
 
-def get_engine():
+def get_engine() -> AsyncEngine:
     """Return (and lazily create) the async engine singleton."""
     global _ENGINE
     if _ENGINE is None:
@@ -117,7 +121,7 @@ def get_engine():
         # concurrency can hold several sessions at once, so operators must be
         # able to size the pool to their deployment instead of a hardcoded 5.
         url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
-        kwargs = {"pool_pre_ping": True}
+        kwargs: dict[str, Any] = {"pool_pre_ping": True}
         if os.getenv("DB_POOL", "").strip().lower() == "null":
             # Tests (tests/conftest.py) run every async test on its own event
             # loop; a pooled asyncpg connection is bound to the loop that opened
@@ -146,7 +150,8 @@ def pool_status() -> str:
     """One log-friendly line on the pool (size, checked out, overflow), or "pool=none"."""
     if _ENGINE is None:
         return "pool=none"
-    pool = _ENGINE.pool
+    # The default pool is a QueuePool; any other raises AttributeError below.
+    pool = cast("QueuePool", _ENGINE.pool)
     try:
         return (
             f"pool_size={pool.size()} checked_out={pool.checkedout()} "

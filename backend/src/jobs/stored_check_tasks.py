@@ -27,8 +27,8 @@ import io
 import logging
 import os
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import Any, Optional
 
 from sqlalchemy import select, text
@@ -127,16 +127,29 @@ class _Progress:
                 pass
 
 
-def _snapshot(upload: DirectUpload) -> SimpleNamespace:
+@dataclass(frozen=True)
+class _UploadSnapshot:
     """The fields the download reads, detached from the session."""
-    return SimpleNamespace(
+
+    ulid: str
+    org_id: str
+    purpose: str
+    filename: str
+    object_key: str
+    expected_size_bytes: int
+    expected_checksum_sha256: str
+
+
+def _snapshot(upload: DirectUpload) -> _UploadSnapshot:
+    """The fields the download reads, detached from the session."""
+    return _UploadSnapshot(
         ulid=upload.ulid, org_id=upload.org_id, purpose=upload.purpose, filename=upload.filename,
         object_key=upload.object_key, expected_size_bytes=upload.expected_size_bytes,
         expected_checksum_sha256=upload.expected_checksum_sha256,
     )
 
 
-async def _claim(job_ulid: str) -> Optional[tuple[dict, SimpleNamespace]]:
+async def _claim(job_ulid: str) -> Optional[tuple[dict, _UploadSnapshot]]:
     from src.services.stored_check_service import JOB_TYPE
 
     async with get_session_factory()() as session:
@@ -218,7 +231,7 @@ async def _forget_sealed_link(job_ulid: str) -> None:
         await session.commit()
 
 
-async def _fetch_link(job_ulid: str, params: dict, upload: SimpleNamespace, progress: "_Progress", result: dict) -> tuple[str, str]:
+async def _fetch_link(job_ulid: str, params: dict, upload: _UploadSnapshot, progress: "_Progress", result: dict) -> tuple[str, str]:
     """The ``fetching`` stage: the linked file to local disk, then its upload row and job updated."""
     from src.services import direct_upload_service as uploads
     from src.services import link_import

@@ -15,6 +15,7 @@ import re
 import secrets
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import redis.asyncio as aioredis
@@ -153,7 +154,7 @@ async def _build_request_data_with_post(request: Request) -> dict:
     return data
 
 
-def _expand_env(value):
+def _expand_env(value: Any) -> Any:
     """Recursively apply os.path.expandvars to every string in a JSON tree.
 
     Lets the documented ${SAML_SP_ENTITY_ID} / ${SAML_IDP_X509_CERT} style

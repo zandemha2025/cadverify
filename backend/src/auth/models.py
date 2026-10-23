@@ -9,11 +9,15 @@ from src.config.public_urls import error_doc_url
 
 from dataclasses import dataclass
 import json
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db.engine import get_engine as _engine, get_session_factory
+
+if TYPE_CHECKING:
+    from fastapi import HTTPException
 
 
 def _session() -> async_sessionmaker[AsyncSession]:
@@ -450,6 +454,9 @@ async def create_api_key(
         # org by now (signup provisions one; the 0009 backfill covers existing
         # users), so resolve_org returns it.
         org_id = await resolve_org(s, user_id)
+        if org_id is None:
+            # The NOT NULL column would refuse the insert; say why instead.
+            raise RuntimeError(f"user {user_id} has no organization to hold a sign-in key")
         key_id = await insert_login_key(
             s,
             user_id=user_id,

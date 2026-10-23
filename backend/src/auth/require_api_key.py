@@ -6,6 +6,8 @@ from src.config.public_urls import error_doc_url
 import asyncio
 import logging
 import time
+from datetime import date
+from typing import cast
 
 from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel
@@ -58,7 +60,8 @@ def _date_words(value: object) -> str | None:
     strftime = getattr(value, "strftime", None)
     if strftime is None:
         return None
-    return f"{strftime('%b')} {value.day}, {value.year}"
+    when = cast(date, value)  # a key's expires_at: a datetime when it has strftime
+    return f"{strftime('%b')} {when.day}, {when.year}"
 
 
 def _401_expired(expires_at: object) -> HTTPException:

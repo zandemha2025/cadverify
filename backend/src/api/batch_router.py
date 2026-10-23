@@ -21,7 +21,7 @@ import os
 import re
 import zipfile
 from datetime import datetime, timezone
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 from fastapi import (
     APIRouter,
@@ -543,7 +543,7 @@ async def create_batch(
             or batch.status in {"completed", "failed", "cancelled"}
         )
     ):
-        recovered = {
+        recovered: dict[str, Any] = {
             "batch_id": batch.ulid,
             "status": batch.status,
             "status_url": f"/api/v1/batch/{batch.ulid}",
@@ -639,7 +639,7 @@ async def create_batch(
         )
 
     # Never return webhook_secret (T-09-03)
-    response = {
+    response: dict[str, Any] = {
         "batch_id": batch.ulid,
         "status": batch.status,
         "status_url": f"/api/v1/batch/{batch.ulid}",

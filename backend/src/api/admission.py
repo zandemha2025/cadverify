@@ -162,7 +162,7 @@ class _AdmissionState:
         self.per_org: dict[str, int] = {}
         # How long recent analyses took on this process, by kind (validate,
         # cost): (org_id, seconds). Read by the check card's expected time (me-21).
-        self.durations: dict[str, deque] = {}
+        self.durations: dict[str, deque[tuple[str, float]]] = {}
         self.checks: dict[str, _Check] = {}
 
 
@@ -367,14 +367,15 @@ def recent_timing(org_id: str | None, samples: int = 10) -> dict:
     state = _state()
     out: dict = {"basis": None}
     for kind in ("validate", "cost"):
-        rows = list(state.durations.get(kind, ()))
+        rows: list[tuple[str, float]] = list(state.durations.get(kind, ()))
         mine = [sec for org, sec in rows if org == org_id][-samples:]
         use = mine or [sec for _org, sec in rows][-samples:]
         if mine:
             out["basis"] = "org"
         elif use and out["basis"] is None:
             out["basis"] = "server"
-        out[f"{kind}_s"] = round(_median(use), 1) if use else None
+        med = _median(use)  # None exactly when ``use`` is empty
+        out[f"{kind}_s"] = round(med, 1) if med is not None else None
         out[f"{kind}_samples"] = len(use)
     return out
 

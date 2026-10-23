@@ -70,8 +70,10 @@ async def _remove_files(deletion_ulid: str) -> None:
     done, _ = await asyncio.wait({task}, timeout=INLINE_SECONDS)
     if done:
         exc = task.exception()
-        if exc is None and (task.result() is None or task.result().status != "removing_files"):
-            return
+        if exc is None:
+            result = task.result()
+            if result is None or result.status != "removing_files":
+                return
         if exc is not None:
             logger.warning("inline file removal for %s raised: %r", deletion_ulid, exc)
     await _enqueue_retry(deletion_ulid)

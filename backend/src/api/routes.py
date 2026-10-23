@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 import structlog
 import numpy as np
@@ -57,6 +57,8 @@ from src.services import analysis_service, compute_budget, repair_service
 
 if TYPE_CHECKING:
     import trimesh
+
+    from src.parsers.assembly_mesher import AssemblyModel
 
 logger = logging.getLogger("cadverify.routes")
 
@@ -564,9 +566,9 @@ def _run_cost_engine_ctx(mesh, filename: str, orientation=None):
     if dec_issue is not None:
         universal.append(dec_issue)
     scores = [
-        score_process(get_analyzer(p).analyze(ctx), geometry, p)
+        score_process(analyzer.analyze(ctx), geometry, p)
         for p in pbase._REGISTRY
-        if get_analyzer(p)
+        if (analyzer := get_analyzer(p))
     ]
     if orientation is not None:
         # ``mesh`` is the turned part; report region centres in file coordinates.
@@ -1218,7 +1220,7 @@ def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tu
         if reduced is not None and 0 < len(reduced.faces) < original:
             out = reduced
             decimated = True
-    glb = _without_cad_arrays(out).export(file_type="glb")
+    glb = cast(bytes, _without_cad_arrays(out).export(file_type="glb"))  # GLB export is binary
     return bytes(glb), original, int(len(out.faces)), decimated, analysis_mesh_hash(out)
 
 
@@ -1305,7 +1307,7 @@ def _assembly_glb_target_faces() -> int:
         return 300000
 
 
-async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_part: bool = True):
+async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_part: bool = True) -> AssemblyModel:
     """Extract an AssemblyModel off the loop, bounded by ANALYSIS_TIMEOUT_SEC ->
     504. MAIN process keeps the untrusted-bytes gate (magic) + suffix policy; the
     CPU-bound multi-solid gmsh extraction runs in the shared spawn pool.
@@ -1514,7 +1516,7 @@ async def _validate_assembly_model(request, data, file, fmt, format, material_cl
         raise paid_access_required()
     if fmt in ("glb", "analysis"):
         # Work on the parts' meshes: sized by their triangles (the probe only reads the model).
-        faces = sum(len(p.mesh.faces) for p in model.parts if getattr(p, "mesh", None) is not None)
+        faces = sum(len(p.mesh.faces) for p in model.parts if p.mesh is not None)
         await compute_budget.size_to_mesh(faces, data, file.filename or "upload.step")
 
     if fmt == "analysis":
@@ -2477,7 +2479,7 @@ async def _cost_decision(
     result_dict["identity"] = identity_payload
 
     # Keep this request's analysed part for the next price of the same file.
-    if analysed.get("entry") is not None:
+    if analysed.get("entry") is not None and geometry_key is not None:  # an entry is only made with a key
         part_geometry_cache.put(geometry_key, analysed["entry"])
     return result_dict
 
