@@ -26,9 +26,13 @@ volume; a calibration against sliced parts turns them into support material.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import trimesh
+
+if TYPE_CHECKING:
+    from src.analysis.orientation import PlacedMeasures
 
 COVERED = 0.9          # share of a region on anchored lines for it to count as a bridge
 FLAT_NZ = -0.95        # a bridge region's mean normal: within ~18° of straight down
@@ -163,7 +167,7 @@ def _outline(mesh: trimesh.Trimesh, faces: np.ndarray):
     from shapely.geometry import Polygon
     from shapely.ops import unary_union
 
-    sub = mesh.submesh([faces], append=True, repair=False)
+    sub = cast(trimesh.Trimesh, mesh.submesh([faces], append=True, repair=False))  # append=True: one mesh
     try:
         loops = sub.outline()
         flat = trimesh.path.Path2D(entities=loops.entities, vertices=np.asarray(loops.vertices)[:, :2])
@@ -219,7 +223,7 @@ def _bridge(mesh: trimesh.Trimesh, faces: np.ndarray, centroids, tol: float) -> 
 
 
 def support_regions(mesh: trimesh.Trimesh, limit_deg: float, *, bridge_limit_mm: float | None = FDM_BRIDGE_MAX_MM,
-                    keep_regions: bool = False, measures: dict | None = None,
+                    keep_regions: bool = False, measures: PlacedMeasures | None = None,
                     columns: bool = True, bridging: bool = True) -> SupportEstimate:
     """Support for one process limit on a placed mesh (+Z up), bridging-aware.
 

@@ -27,9 +27,12 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 from src.analysis.models import Citation, Issue
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 # Documented cap on how many affected-face indices ride in a single serialized
 # issue. Chosen well above the old 20/100 clips so a defect region is
@@ -156,7 +159,7 @@ def serialize_issue(
 
 
 def serialize_wall_thickness(
-    wall_thickness: Sequence[float],
+    wall_thickness: Sequence[float] | NDArray[Any],
     *,
     decimation: Optional[dict] = None,
 ) -> dict:

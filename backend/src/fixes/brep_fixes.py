@@ -35,7 +35,7 @@ import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -319,7 +319,7 @@ def sharp_concave_curves(threshold_deg: float = SHARP_CONCAVE_DEG, uniform: bool
             corner[_cutter_corner_rows(mesh)] = True
     finally:
         gmsh.model.mesh.clear()
-    stats: dict[int, list[int]] = {}
+    stats: dict[int, list[float]] = {}  # [segments, sharp segments, worst turn]
     for row, ((a, b), ang, cvx) in enumerate(zip(edges, angles, convex)):
         curve = line_edges.get((min(a, b), max(a, b)))
         if curve is None:
@@ -640,7 +640,9 @@ def drain_holes(data: bytes, suffix: str, diameter_mm: float, per_cavity: int = 
             s = np.array(p["start"])
             d = np.array(p["direction"], dtype=float)
             length = p["length_mm"] + r
-            tools.append((3, gmsh.model.occ.addCylinder(*s, *(d * length), r)))
+            x, y, z = s
+            dx, dy, dz = d * length
+            tools.append((3, gmsh.model.occ.addCylinder(x, y, z, dx, dy, dz, r)))
         try:
             out, _map = gmsh.model.occ.cut([(3, vol)], tools, removeObject=True, removeTool=True)
             gmsh.model.occ.synchronize()
@@ -715,7 +717,7 @@ def _drain_holes_stl(data: bytes, diameter_mm: float, per_cavity: int) -> FixOut
             continue
         out = solid.to_mesh()
         fixed = trimesh.Trimesh(np.asarray(out.vert_properties)[:, :3], np.asarray(out.tri_verts), process=False)
-        payload = fixed.export(file_type="stl")
+        payload = cast(bytes, fixed.export(file_type="stl"))  # STL export: bytes
         back = parse_stl_from_bytes(payload, "fixed.stl")
         if not back.is_watertight or len(back.split(only_watertight=False)) != 1:
             last = "The cut mesh does not stay closed when written as STL."

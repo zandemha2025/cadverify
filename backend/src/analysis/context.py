@@ -23,7 +23,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import permutations, product
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import logging
 
@@ -96,7 +96,7 @@ def _wall_thickness_ray_budget() -> int:
 _NEAREST_PAIRS_PER_CALL = 200_000
 
 
-def _closest_points_bounded(mesh: trimesh.Trimesh, points: np.ndarray):
+def _closest_points_bounded(mesh: trimesh.Trimesh, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """``mesh.nearest.on_surface(points)``: (closest points, distances, triangle ids), bounded.
 
     trimesh's own query (``closest_point``), called on groups of points whose candidate
@@ -130,7 +130,8 @@ def _closest_points_bounded(mesh: trimesh.Trimesh, points: np.ndarray):
         end = max(start + 1, int(np.searchsorted(total, done + _NEAREST_PAIRS_PER_CALL, side="right")))
         pieces.append(mesh.nearest.on_surface(points[start:end]))
         start = end
-    return tuple(np.concatenate([piece[k] for piece in pieces]) for k in range(3))
+    joined = tuple(np.concatenate([piece[k] for piece in pieces]) for k in range(3))
+    return cast("tuple[np.ndarray, np.ndarray, np.ndarray]", joined)
 
 
 def _max_analysis_faces() -> int:
@@ -149,6 +150,9 @@ def _max_analysis_faces() -> int:
 
 
 if TYPE_CHECKING:  # avoid circular import at runtime
+    from shapely.geometry.base import BaseGeometry
+    from trimesh.path import Path2D
+
     from src.analysis.features.base import Feature
 
 
@@ -1122,7 +1126,8 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
             u, v = frame(info[owner][0])
             pts = vertices[info[index][2]] - center
             segments = np.stack([pts @ u, pts @ v], axis=-1)
-            polygons[key] = shapely.build_area(shapely.multilinestrings(segments)).buffer(0)
+            # One (n, 2, 2) array of segments: one MultiLineString in, one geometry out.
+            polygons[key] = cast("BaseGeometry", shapely.build_area(shapely.multilinestrings(segments))).buffer(0)
         return polygons[key]
 
     def extent(index, owner):
@@ -1176,7 +1181,8 @@ def detect_ribs(mesh: trimesh.Trimesh, facet_groups: list[np.ndarray], face_area
         measured.append((i, j, thickness, shared, u, v))
 
     for i, j, thickness, shared, u, v in measured:
-        roots, free = [], 0
+        roots: list[list[int]] = []  # boundary edges as vertex pairs
+        free = 0
         rooted = set()
         neighbours = set()
         for k in (i, j):
@@ -1550,7 +1556,7 @@ def rounded_inside_corners(mesh: trimesh.Trimesh, features, normals: np.ndarray,
     candidates: list[tuple[np.ndarray, float, float]] = []   # (faces, radius, length)
     ids = cad_face_ids(mesh)
     shapes = (mesh.metadata or {}).get(CAD_FACE_SHAPES_KEY) if ids is not None else None
-    if shapes:
+    if shapes and ids is not None:  # shapes is only read when ids is not None
         # STEP/IGES: the B-rep names its cylinders, their radius, arc and length. A
         # corner rounds less than a half turn; a bore (or its half) doesn't count.
         concave = ~np.asarray(mesh.face_adjacency_convex, dtype=bool)
@@ -1570,7 +1576,9 @@ def rounded_inside_corners(mesh: trimesh.Trimesh, features, normals: np.ndarray,
                     and meta.get("axial_length_mm")):
                 candidates.append((np.asarray(f.face_indices, dtype=np.int64), float(f.radius),
                                    float(meta["axial_length_mm"])))
-    origins, rays, owner = [], [], []
+    origins: list[np.ndarray] = []
+    rays: list[np.ndarray] = []
+    owner: list[int] = []
     for index, (faces, _radius, _length) in enumerate(candidates):
         own = normals[faces]
         axis = np.linalg.svd(own, full_matrices=False)[2][-1]  # a cylinder's normals are square to its axis
@@ -1954,7 +1962,7 @@ def _cut_through_strip(mesh, normal, rotation, low, high, profile, gauge, tol) -
             return False
         segments = ((np.asarray(lines) - center) @ rotation.T)[:, :, :2]
         try:
-            polygons = trimesh.load_path(segments).polygons_full
+            polygons = cast("Path2D", trimesh.load_path(segments)).polygons_full
         except Exception:
             return False
         section = unary_union([p for p in polygons if p is not None and p.area > 0])

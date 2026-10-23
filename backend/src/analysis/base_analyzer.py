@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import trimesh
 
@@ -52,9 +54,9 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
     if is_watertight and np.isfinite(volume) and abs(volume) > 1e-12:
         with np.errstate(all="ignore"):
             com = mesh.center_mass
-        center_of_mass = tuple(
-            float(c) if np.isfinite(c) else None for c in com
-        )
+        center_of_mass = cast("tuple[float | None, float | None, float | None]", tuple(
+            float(c) if np.isfinite(c) else None for c in com  # center_mass: three coordinates
+        ))
     else:
         center_of_mass = (None, None, None)
     return GeometryInfo(

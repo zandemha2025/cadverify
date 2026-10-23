@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 
@@ -715,7 +715,7 @@ def check_trapped_volumes(
                         f"in {process_phrase(process)}. Needs >= {min_drain_mm}mm drain holes."
                     ),
                     process=process,
-                    region_center=tuple(float(v) for v in center),
+                    region_center=cast("tuple[float, float, float]", tuple(float(v) for v in center)),
                     required_value=min_drain_mm,
                     fix_suggestion=(
                         f"Add drain holes >= {min_drain_mm}mm diameter. {cite}"
@@ -1129,7 +1129,7 @@ def draft_sidewalls(angles_from_up_deg: np.ndarray) -> tuple[np.ndarray, np.ndar
     return sidewall_faces, np.abs(90.0 - angles_from_up_deg[sidewall_faces])
 
 
-def meets_draft(draft: np.ndarray, need: float | np.ndarray) -> np.ndarray:
+def meets_draft(draft: float | np.ndarray, need: float | np.ndarray) -> np.ndarray:
     """A reading meets a draft rule within the file's float noise (3.000° drawn reads 2.999999999°)."""
     return np.asarray(draft) + DRAFT_TOL_DEG >= need
 
@@ -1189,8 +1189,8 @@ def check_draft_angles(
         below = f"below {min_draft_deg}° draft"
     pull = _pull_direction(ctx)
     turned = _drafted_file_axis(ctx, min_draft_deg)
-    extra = {"breakdown": [{k: g[k] for k in ("walls", "need_deg", "measured_deg", "faces", "cad_faces")}
-                           for g in groups if g["walls_present"]]} if split else {}
+    extra: dict[str, Any] = {"breakdown": [{k: g[k] for k in ("walls", "need_deg", "measured_deg", "faces", "cad_faces")}
+                                           for g in groups if g["walls_present"]]} if split else {}
     if turned is not None:
         # Drafted along another file axis: the part is drawn turned, not undrafted.
         axis, least = turned
@@ -2146,7 +2146,7 @@ def check_core_feasibility(
                             f"— may break during {process_phrase(process)}."
                         ),
                         process=process,
-                        region_center=tuple(float(v) for v in center),
+                        region_center=cast("tuple[float, float, float]", tuple(float(v) for v in center)),
                         fix_suggestion="Reduce core aspect ratio below 4:1.",
                     ))
     except Exception:

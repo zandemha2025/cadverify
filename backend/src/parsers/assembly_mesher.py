@@ -46,7 +46,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 import trimesh
@@ -69,10 +69,13 @@ from src.parsers.step_mesher import (
 logger = logging.getLogger("cadverify.assembly_mesher")
 
 _HAS_GMSH = is_step_supported()
+gmsh: Any = None  # the gmsh module, or None without it (as step_mesher holds it)
 try:  # pragma: no cover - import guard mirrors step_mesher
-    import gmsh  # noqa: F401
+    import gmsh as _gmsh
+
+    gmsh = _gmsh
 except (ImportError, OSError):  # pragma: no cover
-    gmsh = None  # type: ignore
+    pass
 
 
 # ── Bounds (env-overridable, always finite) ─────────────────────────────────
@@ -774,13 +777,12 @@ def assembly_to_glb(model: AssemblyModel, target_faces: int = 0) -> bytes:
     heavy assembly still fits a WebGL budget."""
     from src.analysis.context import _decimate_to
 
-    meshed = [p for p in model.parts if p.mesh is not None and len(p.mesh.faces) > 0]
+    meshed = [(p, p.mesh) for p in model.parts if p.mesh is not None and len(p.mesh.faces) > 0]
     if not meshed:
         raise ValueError("No per-part meshes to export (metadata-only assembly).")
-    total = sum(len(p.mesh.faces) for p in meshed)
+    total = sum(len(mesh.faces) for _p, mesh in meshed)
     scene = trimesh.Scene()
-    for p in meshed:
-        m = p.mesh
+    for p, m in meshed:
         if target_faces and total > target_faces:
             share = max(500, int(target_faces * len(m.faces) / total))
             if len(m.faces) > share:
@@ -788,4 +790,4 @@ def assembly_to_glb(model: AssemblyModel, target_faces: int = 0) -> bytes:
                 if reduced is not None and 0 < len(reduced.faces) < len(m.faces):
                     m = reduced
         scene.add_geometry(m, geom_name=p.id, node_name=p.id)
-    return bytes(scene.export(file_type="glb"))
+    return bytes(cast(bytes, scene.export(file_type="glb")))  # GLB export: bytes

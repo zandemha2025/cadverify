@@ -44,7 +44,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Sequence, TypedDict, cast, overload
 
 import numpy as np
 import trimesh
@@ -65,7 +65,8 @@ DRAFT_MIN_DEG: dict[str, float] = {
 _PRINTING = ("fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting", "ded", "waam")
 # The printing processes' work areas: the one envelope the check and the price share.
 BUILD_VOLUME_MM: dict[str, tuple[float, float, float]] = {
-    p.value: tuple(float(d) for d in env) for p, env in COMMON_ENVELOPE_MM.items() if p.value in _PRINTING
+    p.value: cast("tuple[float, float, float]", tuple(float(d) for d in env))
+    for p, env in COMMON_ENVELOPE_MM.items() if p.value in _PRINTING
 }
 # A typical layer, only to count layers for the height (not a check rule).
 LAYER_MM: dict[str, float] = {
@@ -126,7 +127,7 @@ def rotation_from_turns(turns: Iterable[str]) -> np.ndarray:
         try:
             deg = float(token[1:])
         except ValueError:
-            axis = None
+            axis, deg = None, math.nan  # refused just below; deg is not read
         if axis is None or not math.isfinite(deg) or abs(deg) > 3600:
             raise OrientationError(f"Unknown turn '{raw}'. Use x90, y-90, z180 and so on.")
         out = _rot_axis(axis, deg) @ out
@@ -209,8 +210,9 @@ class Orientation:
 
     @classmethod
     def of(cls, m) -> "Orientation":
-        r = _clean(np.asarray(m, dtype=float))
-        return cls(tuple(tuple(float(x) for x in row) for row in r))
+        r = _clean(np.asarray(m, dtype=float))  # a checked 3x3 rotation
+        rows = tuple(tuple(float(x) for x in row) for row in r)
+        return cls(cast("tuple[tuple[float, float, float], ...]", rows))
 
     @property
     def R(self) -> np.ndarray:
@@ -257,8 +259,14 @@ class Orientation:
     def unapply(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         return _turn(mesh, self.R.T)
 
+    @overload
+    def to_file(self, point: None) -> None: ...
+
+    @overload
+    def to_file(self, point: Sequence[float] | np.ndarray) -> list[float]: ...
+
     def to_file(self, point) -> list[float] | None:
-        """A placed point back in the file's coordinates."""
+        """A placed point back in the file's coordinates (None only for None)."""
         if point is None:
             return None
         p = np.asarray(point, dtype=float)
@@ -418,7 +426,18 @@ _SIDES: tuple[tuple[str, tuple[float, float, float]], ...] = (
 )
 
 
-def placed_measures(placed: trimesh.Trimesh) -> dict[str, np.ndarray | float]:
+class PlacedMeasures(TypedDict):
+    """The per-face arrays of a placed mesh (``placed_measures``; a check passes its context's own)."""
+
+    normals: np.ndarray
+    angles: np.ndarray
+    centroids: np.ndarray
+    areas: np.ndarray
+    bbox_diag: float
+    angle_error_deg: np.ndarray | None
+
+
+def placed_measures(placed: trimesh.Trimesh) -> PlacedMeasures:
     """The per-face arrays the check builds (``GeometryContext.build``), for a placed mesh."""
     normals = np.asarray(placed.face_normals, dtype=np.float64)
     with np.errstate(all="ignore"):
@@ -443,7 +462,7 @@ SUPPORT_RAY_CAP = 4000
 
 
 def support_estimate(mesh: trimesh.Trimesh, limits: dict[str, float] | None = None, *,
-                     measures: dict | None = None) -> dict[str, dict[str, float]]:
+                     measures: PlacedMeasures | None = None) -> dict[str, dict[str, float]]:
     """The space under the faces the check's overhang rule marks, per process.
 
     For each marked face (``check_overhangs``' rule, the mesh as placed: +Z up)

@@ -24,7 +24,10 @@ import hashlib
 import os
 import threading
 from collections import OrderedDict
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    import trimesh
 
 _Key = Tuple[str, str]
 
@@ -86,7 +89,7 @@ class MeshParseCache:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._store: "OrderedDict[_Key, object]" = OrderedDict()
+        self._store: "OrderedDict[_Key, trimesh.Trimesh]" = OrderedDict()
         self._bytes: Dict[_Key, int] = {}
         self._total_bytes = 0
         # process-local observability counters (not authoritative metrics)
