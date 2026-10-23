@@ -310,8 +310,8 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
     recycled = {"kill": False}
     calls = []
 
-    async def _isolated_retry(data, suffix, mesh_single_part=True):
-        calls.append((data, suffix))
+    async def _isolated_retry(data, suffix, idx, cap, *, worker=None, extra=()):
+        calls.append((data, suffix, idx, worker, extra))
         return expected
 
     monkeypatch.setattr(parse_pool, "_get_pool", lambda: _FakeBrokenPool())
@@ -320,7 +320,7 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
         "recycle_pool",
         lambda *, kill=False: recycled.update(kill=kill),
     )
-    monkeypatch.setattr(parse_pool, "_run_assembly_killable", _isolated_retry)
+    monkeypatch.setattr(parse_pool, "_run_rung_killable", _isolated_retry)
     monkeypatch.setattr(
         parse_pool,
         "_extract_assembly_worker",
@@ -333,7 +333,8 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
 
     assert model is expected
     assert recycled["kill"] is True
-    assert calls == [(b"untrusted-step", ".step")]
+    # The crashed rung 0 runs again in its own subprocess, as an assembly rung.
+    assert calls == [(b"untrusted-step", ".step", 0, parse_pool._assembly_rung_worker, (True,))]
 
 
 # ──────────────────────────────────────────────────────────────

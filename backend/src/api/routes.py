@@ -1335,7 +1335,7 @@ async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_par
         # probe's 60 s are its own extraction's, not its wait behind others.
         async with compute_budget.hold_for_data(data, filename, label="assembly parse"):
             async with parse_pool.pool_slot():
-                return await asyncio.wait_for(
+                model = await asyncio.wait_for(
                     parse_pool.submit_assembly_async(data, suffix, mesh_single_part=mesh_single_part),
                     timeout=timeout,
                 )
@@ -1347,11 +1347,15 @@ async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_par
         )
     except HTTPException:
         raise
+    except parse_pool.ParseBusy as e:
+        # A rung ran out of wall time on a saturated box: busy, not a bad file.
+        raise compute_budget.MeshBusy() from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("Assembly extraction failed for %s", filename)
         raise HTTPException(status_code=400, detail="Failed to parse assembly file")
+    return model
 
 
 async def _run_assembly_analysis(

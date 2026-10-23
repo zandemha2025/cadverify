@@ -705,16 +705,8 @@ def _extract_with_ladder(path: str, mesh_single_part: bool = True) -> AssemblyMo
     )
 
 
-def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step", *,
-                                mesh_single_part: bool = True) -> AssemblyModel:
-    """Parse STEP/IGES bytes -> ``AssemblyModel``. The public entry (picklable for
-    the process pool). Mirrors step_mesher's temp-file discipline (0o600, guaranteed
-    unlink). Raises ``ValueError`` (route -> 400) on any read/mesh failure; never
-    leaks gmsh internals. ``mesh_single_part=False``: a file of one solid is read
-    without meshing it (see ``_extract_once``)."""
-    if not _HAS_GMSH:
-        raise RuntimeError("gmsh not installed")
-    suffix = Path(filename).suffix.lower()
+def check_assembly_suffix(suffix: str) -> None:
+    """The file kinds the assembly reader takes: ``ValueError`` (route -> 400) for others."""
     if is_native_cad_suffix(suffix):
         raise native_cad_error(suffix)
     if suffix not in ASSEMBLY_SUFFIXES:
@@ -722,6 +714,15 @@ def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step", *,
             f"Assembly ingestion needs a STEP/IGES file (got {suffix or 'no suffix'}). "
             f"STL carries no assembly structure — upload .step/.stp/.iges/.igs."
         )
+
+
+def _on_temp_file(data: bytes, filename: str, read):
+    """``read(path)`` on the bytes written to a private temp file (0o600, always unlinked),
+    after the suffix check: step_mesher's temp-file discipline."""
+    if not _HAS_GMSH:
+        raise RuntimeError("gmsh not installed")
+    suffix = Path(filename).suffix.lower()
+    check_assembly_suffix(suffix)
     import tempfile
 
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w+b")
@@ -730,12 +731,38 @@ def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step", *,
         tmp.write(data)
         tmp.flush()
         tmp.close()
-        return _extract_with_ladder(tmp.name, mesh_single_part)
+        return read(tmp.name)
     finally:
         try:
             os.unlink(tmp.name)
         except FileNotFoundError:
             pass
+
+
+def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step", *,
+                                mesh_single_part: bool = True) -> AssemblyModel:
+    """Parse STEP/IGES bytes -> ``AssemblyModel``. The public entry (picklable for
+    the process pool). Mirrors step_mesher's temp-file discipline (0o600, guaranteed
+    unlink). Raises ``ValueError`` (route -> 400) on any read/mesh failure; never
+    leaks gmsh internals. ``mesh_single_part=False``: a file of one solid is read
+    without meshing it (see ``_extract_once``)."""
+    return _on_temp_file(data, filename, lambda path: _extract_with_ladder(path, mesh_single_part))
+
+
+def extract_assembly_rung_from_bytes(data: bytes, filename: str, idx: int, *,
+                                     mesh_single_part: bool = True) -> AssemblyModel:
+    """ONE rung of the ladder (``_MESH_RUNGS[idx]``) in this process: the parse pool
+    runs each rung in a worker whose CPU time it measures, and kills it at the rung's
+    cap (``parse_pool.submit_assembly_async``). Raises ``_StepReadError`` when OCC
+    can't read the file (no strategy will) and any other exception when this
+    strategy failed to mesh it (the next one runs), as ``_extract_with_ladder`` reads them."""
+    _name, algorithm, curvature_pts, heal = _MESH_RUNGS[idx]
+
+    def read(path: str) -> AssemblyModel:
+        with _GMSH_LOCK:
+            return _extract_once(path, algorithm, curvature_pts, heal, mesh_single_part)
+
+    return _on_temp_file(data, filename, read)
 
 
 # ── GLB export (P2 render) ──────────────────────────────────────────────────

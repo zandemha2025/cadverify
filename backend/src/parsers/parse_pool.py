@@ -647,19 +647,21 @@ def _hard_kill(ex: ProcessPoolExecutor) -> None:
             pass
 
 
-async def _run_rung_killable(data: bytes, suffix: str, idx: int, cap: float):
+async def _run_rung_killable(data: bytes, suffix: str, idx: int, cap: float, *, worker=None, extra=()):
     """Run ONE ladder rung in a dedicated single-worker spawn subprocess, bounded
     by ``cap`` seconds of its CPU (and the ladder's deadline). On either, HARD-KILL
     the worker (gmsh's mesh.generate is an uninterruptible C call — only SIGKILL
     reclaims it) and raise ``_RungTimeout`` (CPU) or ``_RungStarved`` (deadline).
     Worker exceptions (``_StepReadError`` / ``_EmptyMeshError`` / other) propagate
     for the orchestrator to map. A crashed worker surfaces as ``BrokenProcessPool``.
+    ``worker(data, suffix, idx, report, *extra)`` runs the rung (default: one rung
+    of a single part's ladder, ``_rung_worker``).
     """
     ctx = multiprocessing.get_context("spawn")
     ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
     report = _new_report()
     try:
-        cfut = ex.submit(_rung_worker, data, suffix, idx, report)
+        cfut = ex.submit(worker or _rung_worker, data, suffix, idx, report, *extra)
         try:
             return await _await_rung(cfut, report, idx, cap)
         except (_RungTimeout, _RungStarved):
@@ -697,26 +699,6 @@ def _run_tessellate_killable_sync(
             raise TimeoutError(
                 f"isolated tessellation retry exceeded {cap:.0f}s cap"
             )
-    finally:
-        ex.shutdown(wait=False, cancel_futures=True)
-
-
-async def _run_assembly_killable(data: bytes, suffix: str, mesh_single_part: bool = True):
-    """Retry one assembly extraction in a dedicated killable subprocess.
-
-    The route's outer ``wait_for`` owns the total wall-clock budget. If that
-    budget expires or the client disconnects, cancellation reaches this helper
-    and hard-kills its single worker.
-    """
-    ctx = multiprocessing.get_context("spawn")
-    ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
-    try:
-        future = ex.submit(_extract_assembly_worker, data, suffix, mesh_single_part)
-        try:
-            return await asyncio.wrap_future(future)
-        except asyncio.CancelledError:
-            _hard_kill(ex)
-            raise
     finally:
         ex.shutdown(wait=False, cancel_futures=True)
 
@@ -841,16 +823,16 @@ async def _ladder(data, suffix, sm, n, caps, loop):
     raise sm.ladder_failure_error(last_msg)
 
 
-async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop):
+async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop, *, worker=None, extra=()):
     """Run rung 0 on the shared warm pool with a CPU-time cap. Success is
     byte-identical to the historical primary path. On cap (a periodic grind) raise
     ``_RungTimeout``; on the ladder's deadline ``_RungStarved``. Either way the
     pool is retired (its stuck worker killed once the other requests' parses on
     it have finished; see retire_pool). ``BrokenProcessPool`` propagates for the
-    caller's fallback."""
+    caller's fallback. ``worker``/``extra`` as for ``_run_rung_killable``."""
     pool = _get_pool()
     report = _new_report()
-    cfut = _submit_tracked(pool, _rung_worker, data, suffix, 0, report)
+    cfut = _submit_tracked(pool, worker or _rung_worker, data, suffix, 0, report, *extra)
     try:
         return await _await_rung(cfut, report, 0, cap)
     except _RungTimeout:
@@ -884,71 +866,141 @@ def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
 
 
 # ── Assembly ingestion (multi-solid STEP/IGES) ──────────────────────────────
-def _extract_assembly_worker(data: bytes, suffix: str, mesh_single_part: bool = True):
-    """PURE, picklable worker entry: extract the full AssemblyModel (per-part
-    meshes + world positions + product tree) IN THIS PROCESS. Module-level so
-    ``ProcessPoolExecutor`` can pickle it by qualified name. Raises plain
-    ``ValueError`` (route -> 400) for a bad/native/unmeshable file.
-    ``mesh_single_part=False``: a file of one solid comes back unmeshed."""
-    from src.parsers.ap242_tessellated_parser import is_ap242_tessellated
-    from src.parsers.assembly_mesher import (
-        extract_assembly_from_bytes,
-        single_part_model_from_mesh,
-    )
+def _ap242_model(data: bytes, suffix: str):
+    """A file of embedded AP242 tessellation as its single-part model, else None.
 
-    # The AP242 embedded-tessellation branch is a supported single part but is
-    # not a B-rep that gmsh/OCC's assembly importer can read. Reuse the canonical
-    # mesh parser and return a truthful single-part classification instead of
-    # crashing a parser worker and emitting a misleading assembly 400.
+    That branch is a supported single part but not a B-rep gmsh/OCC's assembly
+    importer can read: the canonical mesh parser reads it, and the model says what
+    it is instead of the worker crashing into a misleading assembly 400."""
+    from src.parsers.ap242_tessellated_parser import is_ap242_tessellated
+    from src.parsers.assembly_mesher import single_part_model_from_mesh
+
     if suffix.lower() in {".step", ".stp"} and is_ap242_tessellated(data):
-        mesh = tessellate(data, suffix)
         return single_part_model_from_mesh(
-            mesh,
+            tessellate(data, suffix),
             source_suffix=suffix,
             name="embedded-tessellated-part",
         )
+    return None
 
+
+def _extract_assembly_worker(data: bytes, suffix: str, mesh_single_part: bool = True):
+    """PURE, picklable worker entry: extract the full AssemblyModel (per-part
+    meshes + world positions + product tree), the whole ladder IN THIS PROCESS
+    (the kill switch's in-thread path). Raises plain ``ValueError`` (route -> 400)
+    for a bad/native/unmeshable file. ``mesh_single_part=False``: a file of one
+    solid comes back unmeshed."""
+    from src.parsers.assembly_mesher import extract_assembly_from_bytes
+
+    model = _ap242_model(data, suffix)
+    if model is not None:
+        return model
     return extract_assembly_from_bytes(data, f"upload{suffix}", mesh_single_part=mesh_single_part)
 
 
+class _FinalRungError(Exception):
+    """A rung's failure no other strategy changes (the file's embedded AP242
+    tessellation is unreadable): the ladder re-raises the original as it was."""
+
+    def __init__(self, error: BaseException):
+        super().__init__(error)
+        self.error = error
+
+
+def _assembly_rung_worker(data: bytes, suffix: str, idx: int, report: str | None = None,
+                          mesh_single_part: bool = True):
+    """PURE, picklable worker entry for ONE rung of the assembly ladder."""
+    if report:
+        _report_start(report)
+    from src.parsers.assembly_mesher import extract_assembly_rung_from_bytes
+
+    if idx == 0:
+        try:
+            model = _ap242_model(data, suffix)
+        except Exception as exc:
+            raise _FinalRungError(exc) from None
+        if model is not None:
+            return model
+    return extract_assembly_rung_from_bytes(data, f"upload{suffix}", idx, mesh_single_part=mesh_single_part)
+
+
 async def submit_assembly_async(data: bytes, suffix: str, *, mesh_single_part: bool = True):
-    """Extract an ``AssemblyModel`` off the event loop, bounded by the route
-    budget. Runs the CPU-bound multi-solid gmsh extraction in the shared spawn
-    pool (so N assemblies don't serialize on the GIL/gmsh lock and the loop stays
-    responsive), hard-bounded by ``ANALYSIS_TIMEOUT_SEC`` at the caller. On
-    ``BrokenProcessPool`` (a worker died on adversarial gmsh input) we hard-
-    recycle the pool and retry THIS request in a dedicated killable subprocess.
-    Untrusted assembly bytes are never parsed in the API process after a crash.
+    """Extract an ``AssemblyModel`` off the event loop with the same per-rung CPU
+    caps as a single part's ladder (``submit_async``).
 
-    The per-assembly retry ladder (primary -> MeshAdapt-uniform -> +OCC-heal) runs
-    WITHIN the worker call (``assembly_mesher._extract_with_ladder``); the caller's
-    outer ``wait_for`` provides the wall-clock bound. ``mesh_single_part=False``
-    (the probe's question: how many bodies?) reads a one-solid file unmeshed.
+    An assembly's bodies are meshed in one gmsh call, so one body that grinds
+    (nist_ctc05's periodic surface 103: 220 s on rung 0 before failing) held the
+    whole file until the route's 504, every retry. Now rung 0 runs on the shared
+    warm pool and the recovery rungs each in their own killable subprocess, each
+    bounded by its CPU cap (``_rung_caps``); a rung that uses it up is killed and
+    the next strategy runs. A file that meshes on rung 0 within its cap gets the
+    same model as before. Running out of the ladder's wall time (the route's
+    budget, less a margin) is busy (``ParseBusy``), never a reason to advance.
+    ``BrokenProcessPool`` on rung 0 hard-recycles the shared pool and retries that
+    rung in its own subprocess: untrusted bytes are never parsed in the API
+    process. ``mesh_single_part=False`` (the probe's question: how many bodies?)
+    reads a one-solid file unmeshed.
     """
-    import asyncio
+    from src.parsers.assembly_mesher import check_assembly_suffix
 
+    check_assembly_suffix(suffix.lower())
     loop = asyncio.get_event_loop()
     if is_disabled():
         return await loop.run_in_executor(
             None, _extract_assembly_worker, data, suffix, mesh_single_part
         )
-    async with pool_slot(warm=False):
-        pool = _get_pool()
+    from src.parsers import step_mesher as sm
+
+    budget = _budget_sec()
+    caps = _rung_caps(budget, len(sm._MESH_RUNGS))
+    token = ladder_clock(max(1.0, budget - min(2.0, 0.05 * budget)))
+    try:
+        async with pool_slot(warm=False):
+            return await _assembly_ladder(data, suffix, mesh_single_part, sm, caps, loop)
+    finally:
+        _LADDER_CLOCK.reset(token)
+
+
+async def _assembly_ladder(data, suffix, mesh_single_part, sm, caps, loop):
+    """The assembly's rungs in order (see submit_assembly_async); errors read as
+    ``assembly_mesher._extract_with_ladder`` words them."""
+    run = {"worker": _assembly_rung_worker, "extra": (mesh_single_part,)}
+    names = [rung[0] for rung in sm._MESH_RUNGS]
+    last_msg = ""
+    for idx, cap in enumerate(caps):
         try:
-            cfut = _submit_tracked(pool, _extract_assembly_worker, data, suffix, mesh_single_part)
-            try:
-                return await asyncio.wrap_future(cfut)
-            except asyncio.CancelledError:
-                # The caller's time limit or its request went away. A queued
-                # extraction is simply dropped; a running one is gmsh in C: its
-                # pool is retired, its siblings left to finish.
-                if not cfut.cancel() and not cfut.done():
-                    retire_pool(pool, stuck=cfut)
-                raise
+            if idx == 0:
+                try:
+                    model = await _rung0_via_pool(data, suffix, cap, loop, **run)
+                except BrokenProcessPool:
+                    logger.warning("parse pool worker died on assembly rung 0; hard-recycling + isolated retry")
+                    recycle_pool(kill=True)
+                    model = await _run_rung_killable(data, suffix, idx, cap, **run)
+            else:
+                model = await _run_rung_killable(data, suffix, idx, cap, **run)
+        except _FinalRungError as exc:
+            raise exc.error from None
+        except sm._StepReadError as exc:
+            raise ValueError("Could not read STEP/IGES geometry (not a valid/supported file).") from exc
+        except _RungTimeout as exc:
+            last_msg = str(exc)
+            logger.info("assembly ladder rung %d hit its CPU cap; advancing (%s)", idx, exc)
+            continue
+        except _RungStarved as exc:
+            logger.warning("assembly ladder stopped busy at rung %d (%s)", idx, exc)
+            raise ParseBusy(exc.plain()) from None
         except BrokenProcessPool:
-            logger.warning(
-                "parse pool worker died during assembly extraction; hard-recycling + "
-                "isolated retry"
-            )
-            recycle_pool(kill=True)
-            return await _run_assembly_killable(data, suffix, mesh_single_part)
+            last_msg = f"rung {idx} worker crashed"
+            logger.warning("assembly ladder rung %d worker crashed; advancing", idx)
+            continue
+        except Exception as exc:  # this rung failed to MESH a readable assembly
+            last_msg = str(exc)
+            logger.info("assembly mesher rung '%s' failed (%s); advancing", names[idx], last_msg[:120])
+            continue
+        if idx > 0:
+            logger.info("assembly mesher recovered on retry rung '%s' (parts=%d)", names[idx], model.part_count)
+        return model
+    raise ValueError(
+        f"Could not tessellate this assembly [{last_msg[:160]}] "
+        f"(all {len(caps)} mesh strategies failed)."
+    )
