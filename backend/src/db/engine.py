@@ -138,6 +138,20 @@ def get_engine():
     return _ENGINE
 
 
+def pool_status() -> str:
+    """One log-friendly line on the pool (size, checked out, overflow), or "pool=none"."""
+    if _ENGINE is None:
+        return "pool=none"
+    pool = _ENGINE.pool
+    try:
+        return (
+            f"pool_size={pool.size()} checked_out={pool.checkedout()} "
+            f"overflow={pool.overflow()} idle={pool.checkedin()}"
+        )
+    except Exception:  # NullPool / StaticPool have no counters
+        return f"pool={type(pool).__name__}"
+
+
 async def init_engine() -> None:
     """Initialize the async engine and session factory.
 

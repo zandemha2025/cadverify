@@ -9,6 +9,7 @@ import time
 
 from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.exc import TimeoutError as DBPoolTimeout
 
 from src.auth import verified_keys
 from src.auth.dashboard_session import COOKIE_NAME, unsign_payload
@@ -144,6 +145,10 @@ async def _session_owner_state(user_id: int):
     """
     try:
         return await lookup_session_user(user_id), False
+    except DBPoolTimeout:
+        # Every DB connection was taken: the server is busy (main.py answers 503
+        # server_busy with Retry-After), not a missing database.
+        raise
     except Exception as exc:
         if is_production():
             raise HTTPException(

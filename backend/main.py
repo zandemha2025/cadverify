@@ -22,7 +22,13 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import structlog
 
-from src.api.errors import structured_http_error_handler, structured_validation_error_handler
+from sqlalchemy.exc import TimeoutError as DBPoolTimeout
+
+from src.api.errors import (
+    db_pool_busy_handler,
+    structured_http_error_handler,
+    structured_validation_error_handler,
+)
 from src.api.health import router as health_router
 from src.api.deployment_facts import router as deployment_facts_router
 from src.api.history import router as history_router
@@ -452,6 +458,9 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_exception_handler(HTTPException, structured_http_error_handler)
 app.add_exception_handler(StarletteHTTPException, structured_http_error_handler)
 app.add_exception_handler(RequestValidationError, structured_validation_error_handler)
+# Every DB connection taken for the pool's whole wait: 503 server_busy with
+# Retry-After, never a 500 (capacity report C7).
+app.add_exception_handler(DBPoolTimeout, db_pool_busy_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # CORS: exact deployment-owned origin by default; no wildcard preview domains.
