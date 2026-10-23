@@ -738,8 +738,13 @@ class GeometryContext:
                 for f in facets if self.face_areas[f].sum() > 0
             ])
             extra = []
+            # The nearest surface of every facet point in one bounded query: each
+            # point's answer is its own, and trimesh rebuilds a tree of every vertex
+            # on each call (a 202,754-face tube: 599 calls of 8 points took 21 s).
+            # The rays below still go in groups of ``batch``.
+            nearest = _closest_points_bounded(self.mesh, facet_points) if len(facet_points) else ()
             for start in range(0, len(facet_points), batch):
-                p, distance, face = _closest_points_bounded(self.mesh, facet_points[start:start + batch])
+                p, distance, face = (a[start:start + batch] for a in nearest)
                 valid = distance <= tol
                 p, face = p[valid], face[valid]
                 directions = -self.normals[face]
