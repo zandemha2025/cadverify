@@ -126,8 +126,8 @@ function completeReports() {
           },
           "ENT-04": {
             quantity: 12000,
-            unitCostUsd: 3.44,
-            annualExposureUsd: 41280,
+            unitCostUsd: 7.16,
+            annualExposureUsd: 85920,
             basis: "decision.recommendation",
             withheldBeforeExactQuantity: true,
           },
