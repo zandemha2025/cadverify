@@ -82,6 +82,7 @@
 .ob .pv .reopen{position:absolute;right:20px;top:20px;z-index:7}
 /* Busy (capacity D1–D3): the one calm notice, under the panel's title, above the steps. */
 .ob .pv .prog .prog-busy{margin:0 22px 8px}
+.ob .pv .mo-bn .tx b .busy-count{color:inherit;font-size:inherit;white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* X3: out of checks */
 .ob .pv.v4-over{position:fixed;inset:0;z-index:45;display:grid;place-items:center;padding:24px}

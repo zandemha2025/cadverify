@@ -38,7 +38,9 @@ export function BusyNotice({ view, onRetry, className, style }: { view: BusyView
         title={
           <>
             {lead}
-            <span aria-hidden="true">{count}</span>
+            <span className="busy-count" aria-hidden="true">
+              {count}
+            </span>
             <span className="sr"> shortly.</span>
           </>
         }
