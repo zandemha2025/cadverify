@@ -210,12 +210,10 @@ class ArqJobQueue(JobQueue):
             job.result_json = {"error": "cancelled"}
             await session.commit()
 
-        # Best-effort abort in arq
-        try:
-            await self._pool.abort_job(job_id)
-        except Exception:
-            logger.debug("arq abort_job failed for %s (may already be dequeued)", job_id)
-
+        # The cancel is the row marked failed. There is no arq call to make here:
+        # ArqRedis has no abort_job (the call that stood here always raised and was
+        # swallowed), and arq aborts only through Job.abort on a worker started
+        # with allow_abort_jobs, which ours is not.
         logger.info("Cancelled job %s", job_id)
         return True
 
