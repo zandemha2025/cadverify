@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 
-export type AuthProxyClientIpSource = "auto" | "fly" | "nginx" | "cloudfront";
+export type AuthProxyClientIpSource = "auto" | "fly" | "nginx" | "cloudfront" | "render";
 
 /** What these helpers read from a request: its headers (a Request, or next/headers in a server page). */
 export type IncomingHeaders = { headers: { get(name: string): string | null } };
@@ -54,6 +54,12 @@ export function requestClientIp(
       return validIp(req.headers.get("x-real-ip"));
     case "cloudfront":
       return cloudFrontViewerIp(req.headers.get("cloudfront-viewer-address"));
+    // Render's public web services sit behind Cloudflare, which writes
+    // CF-Connecting-IP on every request and overwrites whatever the caller sent
+    // (render.com/articles/host-pocketbase-on-render). Its X-Forwarded-For is
+    // only appended to, so the leftmost entry is the caller's to choose.
+    case "render":
+      return validIp(req.headers.get("cf-connecting-ip"));
     case "auto":
       return (
         validIp(req.headers.get("fly-client-ip")) ||
