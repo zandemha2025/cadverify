@@ -517,7 +517,11 @@ class DesignStudioE2E {
     }
     if (turningMustFail) {
       assert(!/CNC Turning\s+pass/i.test(text), `Non-rotational template incorrectly passes CNC turning`);
-      assert(!/route hint aluminum/i.test(text), `Non-rotational polymer template still exposes the old aluminum turning hint`);
+      assert(cost.routing?.archetype !== "rotational", `Non-rotational template routed as a turned part`);
+      // A sheet route names a sheet metal: aluminum for a polymer part (e96dbf0f).
+      if (cost.routing?.archetype !== "sheet_panel") {
+        assert(!/route hint aluminum/i.test(text), `Non-rotational polymer template still exposes the old aluminum turning hint`);
+      }
       assert(rotational === false, `Non-rotational template reported rotational=${rotational}`);
       assert(turning?.verdict === "fail", `CNC turning verdict was ${turning?.verdict || "missing"}, expected fail`);
       assert(!shortlist.has("cnc_turning"), "CNC turning appeared in the cost shortlist for a non-rotational design");
@@ -977,7 +981,9 @@ class DesignStudioE2E {
         artifactSha256: bracketR1.hash,
         criticalPathId: "DES-07",
         turningMustFail: true,
-        expectedRouteHint: "polymer",
+        // A 6 mm L bracket bent once reads as bent sheet, routed to sheet metal in aluminum (e96dbf0f).
+        expectedRouteHint: "aluminum",
+        expectedArchetype: "sheet_panel",
       });
       const evidence = result.evidence;
       this.check("DES-07", "selected bracket revision", 1, evidence.revision);
@@ -988,6 +994,7 @@ class DesignStudioE2E {
       this.check("DES-07", "UI measured volume", 40.2, evidence.uiVolumeCm3);
       this.check("DES-07", "validation HTTP status", 200, evidence.validationStatus);
       this.check("DES-07", "cost HTTP status", 200, evidence.costStatus);
+      this.check("DES-07", "routing archetype", "sheet_panel", evidence.routingArchetype);
       this.check("DES-07", "routing rotational driver", false, evidence.rotational);
       this.check("DES-07", "CNC turning verdict", "fail", evidence.turningVerdict);
       this.check("DES-07", "CNC turning excluded from shortlist", false, evidence.turningShortlisted);
