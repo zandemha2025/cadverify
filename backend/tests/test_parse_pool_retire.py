@@ -84,12 +84,14 @@ async def test_a_stopped_rung_zero_retires_its_pool_and_spares_the_sibling(monke
     monkeypatch.setattr(parse_pool, "retire_pool", lambda p, stuck=None, **k: retired.append((p, stuck)))
     monkeypatch.setattr(parse_pool, "recycle_pool", lambda **k: pytest.fail("the shared pool must not be killed"))
     loop = asyncio.get_event_loop()
-    token = parse_pool._LADDER_DEADLINE.set(loop.time() + 0.3)
+    monkeypatch.setattr(parse_pool, "STARTUP_LIMIT_SEC", 0.3)  # its worker never begins
+    token = parse_pool.ladder_clock(0.3)
     try:
-        with pytest.raises(parse_pool._RungStarved):
+        with pytest.raises(parse_pool._RungStarved) as ei:
             await parse_pool._rung0_via_pool(b"step", ".step", 0.1, loop)
     finally:
-        parse_pool._LADDER_DEADLINE.reset(token)
+        parse_pool._LADDER_CLOCK.reset(token)
+    assert not ei.value.started
     assert len(retired) == 1 and retired[0][0] is pool and retired[0][1] is not None
 
 
@@ -144,7 +146,7 @@ async def test_a_rung_out_of_wall_time_answers_busy_and_never_tries_the_next(mon
 
     async def _starved0(data, suffix, cap, loop):
         tried.append(0)
-        raise parse_pool._RungStarved("rung 0 ran out of time with 3s of its 24s of CPU")
+        raise parse_pool._RungStarved(0, 3.0, 24.0)
 
     async def _recovery(data, suffix, idx, cap):
         tried.append(idx)
@@ -155,7 +157,7 @@ async def test_a_rung_out_of_wall_time_answers_busy_and_never_tries_the_next(mon
     with pytest.raises(parse_pool.ParseBusy) as ei:
         await parse_pool.submit_async(b"part", ".step")
     assert tried == [0]
-    assert "busy" in str(ei.value)
+    assert str(ei.value) == "ScaleCAD is busy; this part ran out of time before its meshing finished. Try again."
     # The route answers the API's busy 429, not a 400 "can't be meshed".
     monkeypatch.setattr(routes, "is_step_supported", lambda: True)
     with pytest.raises(HTTPException) as http:
@@ -224,19 +226,24 @@ def _nap(report: str, seconds: float) -> str:
     return "napped"
 
 
+def _slow_start(report: str, seconds: float, delay: float = 3.0) -> str:
+    """A rung's worker that takes ``delay`` s to start (a starved spawn), then computes ``seconds``."""
+    time.sleep(delay)
+    return _burn(report, seconds)
+
+
 async def _await_in_own_process(fn, seconds: float, cpu_cap: float, deadline_s: float):
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
 
     ex = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
     report = parse_pool._new_report()
-    loop = asyncio.get_event_loop()
-    token = parse_pool._LADDER_DEADLINE.set(loop.time() + deadline_s)
+    token = parse_pool.ladder_clock(deadline_s)
     try:
         cfut = ex.submit(fn, report, seconds)
         return await parse_pool._await_rung(cfut, report, 0, cpu_cap)
     finally:
-        parse_pool._LADDER_DEADLINE.reset(token)
+        parse_pool._LADDER_CLOCK.reset(token)
         parse_pool._hard_kill(ex)
         ex.shutdown(wait=False, cancel_futures=True)
         parse_pool._drop_report(report)
@@ -254,6 +261,43 @@ async def test_the_rung_cap_is_the_workers_cpu_time_not_wall_time():
     assert time.monotonic() - t0 < 20
     # Within both: the result.
     assert await _await_in_own_process(_nap, 0.2, cpu_cap=0.5, deadline_s=60) == "napped"
+
+
+@pytest.mark.asyncio
+async def test_a_slow_to_start_worker_does_not_spend_the_ladders_time():
+    """A spawn and its imports on a starved box are not the part's time: a 3 s start
+    against a 2 s ladder, then 0.3 s of work, still meshes (the clock starts at the rung)."""
+    assert await _await_in_own_process(_slow_start, 0.3, cpu_cap=5.0, deadline_s=2.0) == "burned"
+
+
+@pytest.mark.asyncio
+async def test_a_rung_that_never_starts_is_busy_in_plain_words(monkeypatch):
+    monkeypatch.setattr(parse_pool, "STARTUP_LIMIT_SEC", 1.0)
+    with pytest.raises(parse_pool._RungStarved) as ei:
+        await _await_in_own_process(_slow_start, 0.3, cpu_cap=5.0, deadline_s=60.0)
+    assert not ei.value.started
+    assert ei.value.plain() == "ScaleCAD is busy; this part didn't get started. Try again."
+
+
+@pytest.mark.asyncio
+async def test_the_ladder_says_it_never_started_when_its_rung_got_no_cpu(monkeypatch):
+    async def _never0(data, suffix, cap, loop):
+        raise parse_pool._RungStarved(0, cap=cap, started=False)
+
+    monkeypatch.setattr(parse_pool, "_rung0_via_pool", _never0)
+    monkeypatch.setattr(parse_pool, "_run_rung_killable", lambda *a: pytest.fail("never advances because of time"))
+    with pytest.raises(parse_pool.ParseBusy) as ei:
+        await parse_pool.submit_async(b"part", ".step")
+    assert str(ei.value) == "ScaleCAD is busy; this part didn't get started. Try again."
+
+
+@pytest.mark.asyncio
+async def test_taking_a_pool_slot_warms_a_fresh_pool_first(fresh_pool, monkeypatch):
+    """The slot is taken before the caller's timer: a cold pool's spawn is paid there."""
+    async with parse_pool.pool_slot():
+        pool = parse_pool._get_pool()
+        warm = parse_pool._WARMING.get(id(pool))
+        assert warm and all(f.done() for f in warm)
 
 
 def test_a_busy_mesh_is_a_catalog_timeout_checked_again_later():

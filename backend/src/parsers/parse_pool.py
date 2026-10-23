@@ -97,6 +97,18 @@ class _RungTimeout(Exception):
 class _RungStarved(Exception):
     """A rung ran out of wall time before it used its CPU budget: the box was busy."""
 
+    def __init__(self, idx: int, used: float = 0.0, cap: float = 0.0, *, started: bool = True):
+        self.idx, self.used, self.cap, self.started = idx, used, cap, started
+        super().__init__(f"rung {idx} " + (
+            f"ran out of time with {used:.0f}s of its {cap:.0f}s of CPU" if started and used >= 0.5
+            else "never got started"))
+
+    def plain(self) -> str:
+        """What the person is told (the route answers busy; this is the job's and the log's text)."""
+        if not self.started or self.used < 0.5:
+            return "ScaleCAD is busy; this part didn't get started. Try again."
+        return "ScaleCAD is busy; this part ran out of time before its meshing finished. Try again."
+
 
 class ParseBusy(ValueError):
     """The ladder ran out of wall time before a rung had used its CPU budget.
@@ -111,10 +123,26 @@ class ParseBusy(ValueError):
     """
 
 
-# The ladder's wall-clock deadline (``loop.time()``), set by submit_async.
-_LADDER_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
-    "cadverify_ladder_deadline", default=None
-)
+class _Clock:
+    """The ladder's wall-clock deadline (``loop.time()``); each rung's worker start-up is added to it."""
+
+    __slots__ = ("deadline",)
+
+    def __init__(self, deadline: float):
+        self.deadline = deadline
+
+
+_LADDER_CLOCK: contextvars.ContextVar[_Clock | None] = contextvars.ContextVar("cadverify_ladder_clock", default=None)
+# A rung whose worker hasn't begun it this long after it was handed over (a spawn
+# and the mesher's imports on a starved box) never got started: busy.
+STARTUP_LIMIT_SEC = 60.0
+# How long taking a pool slot waits for a fresh pool's workers to warm up.
+WARM_WAIT_SEC = 60.0
+
+
+def ladder_clock(seconds: float):
+    """Set the ladder's wall-clock budget for the current task (returns the token to reset)."""
+    return _LADDER_CLOCK.set(_Clock(asyncio.get_event_loop().time() + seconds))
 # What a rung's worker reports when it starts: its pid and CPU seconds so far.
 _REPORT_DIR = os.path.join(tempfile.gettempdir(), f"cadverify-rungs-{os.getpid()}")
 _CLK_TCK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
@@ -170,26 +198,35 @@ async def _await_rung(cfut, report: str, idx: int, cpu_cap: float):
     loop = asyncio.get_event_loop()
     afut = asyncio.wrap_future(cfut)
     afut.add_done_callback(lambda f: f.cancelled() or f.exception())  # retrieved: no "never retrieved"
-    deadline = _LADDER_DEADLINE.get()
-    if deadline is None:
-        deadline = loop.time() + max(cpu_cap * 3, cpu_cap + 30.0)
+    clock = _LADDER_CLOCK.get() or _Clock(loop.time() + max(cpu_cap * 3, cpu_cap + 30.0))
+    handed_over = loop.time()
     started = None
     used = 0.0
     while True:
-        left = deadline - loop.time()
+        if started is None:
+            left = STARTUP_LIMIT_SEC - (loop.time() - handed_over)
+        else:
+            left = clock.deadline - loop.time()
         done, _ = await asyncio.wait({afut}, timeout=max(0.0, min(0.25, left)))
         if done:
             return afut.result()
         if started is None:
             started = _read_report(report)  # the worker's pid and CPU when it began this rung
-        if started is not None:
-            now_cpu = _cpu_seconds(started[0])
-            if now_cpu is not None:
-                used = now_cpu - started[1]
-            if used >= cpu_cap:
-                raise _RungTimeout(f"rung {idx} used its {cpu_cap:.0f}s of CPU")
-        if loop.time() >= deadline:
-            raise _RungStarved(f"rung {idx} ran out of time with {used:.0f}s of its {cpu_cap:.0f}s of CPU")
+            if started is None:
+                if loop.time() - handed_over >= STARTUP_LIMIT_SEC:
+                    raise _RungStarved(idx, cap=cpu_cap, started=False)
+                continue
+            # The ladder's wall clock runs only while a rung's worker is on it:
+            # its start-up (a spawn and the mesher's imports, slow on a busy
+            # box) isn't the part's time.
+            clock.deadline += loop.time() - handed_over
+        now_cpu = _cpu_seconds(started[0])
+        if now_cpu is not None:
+            used = now_cpu - started[1]
+        if used >= cpu_cap:
+            raise _RungTimeout(f"rung {idx} used its {cpu_cap:.0f}s of CPU")
+        if loop.time() >= clock.deadline:
+            raise _RungStarved(idx, used, cpu_cap)
 
 
 def _budget_sec() -> float:
@@ -367,6 +404,8 @@ def prewarm(block: bool = False, timeout: float | None = 45.0) -> int:
         pool = _get_pool()
         n = worker_count()
         futures = [pool.submit(_prewarm_worker) for _ in range(n)]
+        with _POOL_LOCK:
+            _WARMING.setdefault(id(pool), futures)
         logger.info("parse pool pre-warm dispatched (workers=%d)", n)
     except Exception:  # pool build failed — leave lazy warmup intact
         logger.warning("parse pool pre-warm skipped (pool build error)", exc_info=True)
@@ -417,6 +456,7 @@ def retire_pool(pool: ProcessPoolExecutor, stuck=None, *, grace: float | None = 
     with _POOL_LOCK:
         if _POOL is pool:
             _POOL = None
+        _WARMING.pop(id(pool), None)
         others = [f for f in _INFLIGHT.get(id(pool), ()) if f is not stuck and not f.done()]
     logger.info("parse pool retired (%d other parses finish first)", len(others))
 
@@ -430,6 +470,7 @@ def retire_pool(pool: ProcessPoolExecutor, stuck=None, *, grace: float | None = 
             logger.exception("retired parse pool shutdown failed")
         with _POOL_LOCK:
             _INFLIGHT.pop(id(pool), None)
+            _WARMING.pop(id(pool), None)
 
     if others:
         threading.Thread(target=_reap, name="parse-pool-reaper", daemon=True).start()
@@ -462,6 +503,8 @@ def recycle_pool(kill: bool = False) -> None:
     global _POOL
     with _POOL_LOCK:
         pool, _POOL = _POOL, None
+        if pool is not None:
+            _WARMING.pop(id(pool), None)  # an id can be reused by the next pool
     if pool is None:
         return
     if kill:
@@ -494,6 +537,8 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
     with _POOL_LOCK:
         _STOPPING = final
         pool, _POOL = _POOL, None
+        if pool is not None:
+            _WARMING.pop(id(pool), None)
     if pool is not None:
         if kill:
             _hard_kill(pool)
@@ -526,12 +571,13 @@ _SLOT_HOLDER: contextvars.ContextVar[object] = contextvars.ContextVar("cadverify
 
 
 @asynccontextmanager
-async def pool_slot():
+async def pool_slot(*, warm: bool = True):
     """One of the pool's ``worker_count()`` slots for this task (re-entrant in the task).
 
     A caller with a time limit takes it before starting its timer, so the time
     spent waiting for a free pool worker behind other parts isn't counted as its
-    own (the ladder and the assembly extraction take it again harmlessly).
+    own (the ladder and the assembly extraction take it again harmlessly), and
+    so is a fresh pool's warm-up (``warm``; the ladder's own slot doesn't warm).
     """
     me = asyncio.current_task()
     if me is not None and _SLOT_HOLDER.get() is me:
@@ -540,9 +586,44 @@ async def pool_slot():
     async with _ladder_semaphore():
         token = _SLOT_HOLDER.set(me)
         try:
+            # A fresh pool (the first use, or after a retire) warms up here,
+            # before the caller's timer starts, so no part pays its spawn.
+            if warm:
+                await _warm_shared_pool()
             yield
         finally:
             _SLOT_HOLDER.reset(token)
+
+
+# The warm-up tasks given to each shared pool (by id), so it is warmed once.
+_WARMING: dict[int, list] = {}
+
+
+def _warm_futures(pool: ProcessPoolExecutor) -> list:
+    with _POOL_LOCK:
+        futs = _WARMING.get(id(pool))
+        if futs is None:
+            futs = [pool.submit(_prewarm_worker) for _ in range(worker_count())]
+            _WARMING[id(pool)] = futs
+    return futs
+
+
+async def _warm_shared_pool() -> None:
+    """Wait (bounded) until the shared pool's workers are warm; best effort."""
+    if is_disabled():
+        return
+    try:
+        pool = _get_pool()
+        if not isinstance(pool, ProcessPoolExecutor):
+            return
+        pending = [f for f in _warm_futures(pool) if not f.done()]
+    except Exception:
+        return
+    if pending:
+        waits = [asyncio.wrap_future(f) for f in pending]
+        for w in waits:
+            w.add_done_callback(lambda f: f.cancelled() or f.exception())  # a failed warm-up is only slower
+        await asyncio.wait(waits, timeout=WARM_WAIT_SEC)
 
 
 def _hard_kill(ex: ProcessPoolExecutor) -> None:
@@ -667,13 +748,13 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
     caps = _rung_caps(budget, n)
     # The whole ladder's wall clock: the route's budget, less a margin so the
     # honest answer beats the route's own 504.
-    token = _LADDER_DEADLINE.set(loop.time() + max(1.0, budget - min(2.0, 0.05 * budget)))
+    token = ladder_clock(max(1.0, budget - min(2.0, 0.05 * budget)))
 
     try:
-        async with pool_slot():
+        async with pool_slot(warm=False):
             return await _ladder(data, suffix, sm, n, caps, loop)
     finally:
-        _LADDER_DEADLINE.reset(token)
+        _LADDER_CLOCK.reset(token)
 
 
 async def _ladder(data, suffix, sm, n, caps, loop):
@@ -710,9 +791,7 @@ async def _ladder(data, suffix, sm, n, caps, loop):
             # Out of wall time before its CPU budget: the box is busy. Never
             # advance because of time (the next strategy meshes differently).
             logger.warning("step ladder stopped busy at rung %d (%s)", idx, exc)
-            raise ParseBusy(
-                f"Could not tessellate this part in time: the server was busy ({exc})."
-            ) from None
+            raise ParseBusy(exc.plain()) from None
         except sm._EmptyMeshError as exc:
             last_msg = str(exc)
             continue
@@ -848,7 +927,7 @@ async def submit_assembly_async(data: bytes, suffix: str):
         return await loop.run_in_executor(
             None, _extract_assembly_worker, data, suffix
         )
-    async with pool_slot():
+    async with pool_slot(warm=False):
         pool = _get_pool()
         try:
             cfut = _submit_tracked(pool, _extract_assembly_worker, data, suffix)
