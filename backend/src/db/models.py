@@ -90,15 +90,19 @@ class Organization(Base):
         Boolean, server_default="false", nullable=False, default=False
     )
 
-    # relationships
+    # relationships. Never loaded with the row: an organization's members, teams
+    # and group mappings grow with it, and no reader walks them from here (each is
+    # queried by org_id where it is needed). Touching one unloaded raises rather
+    # than running a hidden query; load it explicitly with selectinload() if a
+    # caller ever needs it.
     teams: Mapped[List[Team]] = relationship(
-        back_populates="organization", lazy="selectin"
+        back_populates="organization", lazy="raise_on_sql"
     )
     memberships: Mapped[List[Membership]] = relationship(
-        back_populates="organization", lazy="selectin"
+        back_populates="organization", lazy="raise_on_sql"
     )
     saml_group_mappings: Mapped[List[SamlGroupMapping]] = relationship(
-        back_populates="organization", lazy="selectin"
+        back_populates="organization", lazy="raise_on_sql"
     )
 
 
@@ -336,15 +340,21 @@ class User(Base):
         Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )
 
-    # relationships
-    api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
+    # relationships. Never loaded with the user: a person's checks, runs, priced
+    # records and keys grow with their history, and the user row is read on every
+    # page (preferences, length unit, admin and SCIM). Loading them eagerly made
+    # GET /account/preferences cost 0.6-0.9 s for someone with 100 checks and 90
+    # priced records (capacity report C6). Every reader queries these tables by
+    # user_id or org_id instead; touching one unloaded raises rather than running
+    # a hidden query.
+    api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="raise_on_sql")
     analyses: Mapped[List[Analysis]] = relationship(
-        back_populates="user", lazy="selectin", foreign_keys="Analysis.user_id"
+        back_populates="user", lazy="raise_on_sql", foreign_keys="Analysis.user_id"
     )
-    batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="selectin")
+    batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="raise_on_sql")
     cost_decisions: Mapped[List[CostDecision]] = relationship(
         back_populates="user",
-        lazy="selectin",
+        lazy="raise_on_sql",
         foreign_keys="CostDecision.user_id",
     )
 
@@ -617,7 +627,9 @@ class Analysis(Base):
 
     # relationships
     user: Mapped[User] = relationship(back_populates="analyses", foreign_keys=[user_id])
-    jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="selectin")
+    # Not loaded with the analysis (a list of checks would otherwise query jobs for
+    # every row); read jobs by analysis_id where needed.
+    jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="raise_on_sql")
 
 
 class CostDecision(Base):
@@ -939,12 +951,14 @@ class Batch(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
 
-    # relationships
+    # relationships. Not loaded with the run: a catalog run holds hundreds or
+    # thousands of items, and a list of runs reads only the run's own counters.
+    # Items and deliveries are queried by batch_id where needed.
     items: Mapped[List[BatchItem]] = relationship(
-        back_populates="batch", lazy="selectin"
+        back_populates="batch", lazy="raise_on_sql"
     )
     webhook_deliveries: Mapped[List[WebhookDelivery]] = relationship(
-        back_populates="batch", lazy="selectin"
+        back_populates="batch", lazy="raise_on_sql"
     )
     user: Mapped[User] = relationship(back_populates="batches")
 
