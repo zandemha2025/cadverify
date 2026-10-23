@@ -146,6 +146,64 @@ test("multipart upload slices parts, bounds concurrency, and completes in part o
   });
 });
 
+test("relay parts go through the same-origin proxy with the session and take the body's ETag", async () => {
+  // The local backend relays parts through the API: /api/v1 part paths, an
+  // ETag header the proxy doesn't pass on, and the same ETag in the JSON body.
+  const file = new File(["abcd"], "relay.zip", { type: "application/zip" });
+  const puts: Array<{ url: string; init: RequestInit; body: string }> = [];
+  let completionBody: { parts: Array<{ part_number: number; etag: string }> } | null = null;
+  const fetcher: typeof fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+    if (url === "/api/proxy/uploads/multipart" && method === "POST") {
+      return Response.json({
+        upload_id: "upload_123",
+        part_size_bytes: 2,
+        parts: [1, 2].map((n) => ({ part_number: n, url: `/api/v1/uploads/upload_123/parts/${n}` })),
+        expires_at: "2099-07-13T18:00:00Z",
+      });
+    }
+    const relayed = /^\/api\/proxy\/uploads\/upload_123\/parts\/(\d)$/.exec(url);
+    if (relayed && method === "PUT") {
+      puts.push({ url, init, body: await (init.body as Blob).text() });
+      return Response.json({ part_number: Number(relayed[1]), etag: `"relay-${relayed[1]}"` });
+    }
+    if (url === "/api/proxy/uploads/upload_123/complete" && method === "POST") {
+      completionBody = JSON.parse(String(init.body));
+      return Response.json({ status: "complete" });
+    }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  };
+
+  assert.equal(await uploadBatchZipDirect(file, { fetcher }), "upload_123");
+  assert.deepEqual(puts.map((p) => [p.url, p.body]).sort(), [
+    ["/api/proxy/uploads/upload_123/parts/1", "ab"],
+    ["/api/proxy/uploads/upload_123/parts/2", "cd"],
+  ]);
+  assert.ok(puts.every((p) => p.init.credentials === "same-origin"));
+  assert.deepEqual(completionBody, {
+    parts: [1, 2].map((n) => ({ part_number: n, etag: `"relay-${n}"` })),
+  });
+});
+
+for (const url of ["/uploads/upload_123/parts/1", "//storage.example.test/part-1", "/api/v2/uploads/upload_123/parts/1"]) {
+  test(`a part destination outside /api/v1 that isn't an http(s) URL is refused: ${url}`, async () => {
+    const file = new File(["zip"], "bad-destination.zip", { type: "application/zip" });
+    const fetcher: typeof fetch = async (input, init = {}) => {
+      const target = String(input);
+      const method = init.method ?? "GET";
+      if (target === "/api/proxy/uploads/multipart" && method === "POST") {
+        return Response.json({ upload_id: "upload_123", part_size_bytes: 3, parts: [{ part_number: 1, url }], expires_at: "2099-07-13T18:00:00Z" });
+      }
+      if (target === "/api/proxy/uploads/upload_123/abort" && method === "POST") {
+        return Response.json({ status: "aborted" });
+      }
+      throw new Error(`Unexpected request: ${method} ${target}`);
+    };
+    await assert.rejects(uploadBatchZipDirect(file, { fetcher, sleep: async () => undefined }), /invalid part destination/i);
+  });
+}
+
 test("multipart upload retries transient failures with exponential backoff", async () => {
   const file = new File(["zip"], "retry.zip", { type: "application/zip" });
   const retryDelays: number[] = [];
