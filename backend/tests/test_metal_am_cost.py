@@ -304,8 +304,12 @@ GOLDEN = {
     PT.SHEET_METAL: (_ALU, "aluminum", 5.7466,
                      {"amortized_fixed": 0.14, "material": 0.6804, "machine": 1.4262,
                       "labor": 3.5}),
-    PT.FORGING: (_ALU, "aluminum", 139.0068,
-                 {"amortized_fixed": 1.05, "material": 0.8505, "machine": 10.1063, "labor": 7.0,
+    # Forging updated: forging and trim are 40 s a piece (Boothroyd Dewhurst:
+    # 20-120 s), on the press class the load needs (89 t for this aluminum part: the
+    # 500 t press at $80/h, was 288 s at $120/h on one press for every forging).
+    # Heating is unchanged.
+    PT.FORGING: (_ALU, "aluminum", 130.2956,
+                 {"amortized_fixed": 1.05, "material": 0.8505, "machine": 1.3951, "labor": 7.0,
                   "tooling": 120.0}),
     # Castings updated (round 14): a mould or tree is shared by the castings it holds
     # (42 of this part a sand mould, 8 a tree) and fettling follows the casting's size.

@@ -311,3 +311,129 @@ def test_a_rate_table_published_before_the_mould_keys_prices_as_it_did():
     est = cost_breakdown(PT.SAND_CASTING, _drivers(), _alu(), "aluminum", 100, rc, "US")
     assert est.line_items["labor"] == pytest.approx(21.0)
     assert est.line_items["machine"] == pytest.approx(3.2972, abs=1e-4)
+
+
+# ── Forging: the press a forging needs follows its load ──────────────────────
+def _steel() -> MaterialProfile:
+    return MaterialProfile(name="AISI 4140", process_types=[], min_wall_thickness=1.0,
+                           max_temperature=None, tensile_strength=None, elongation=None,
+                           density=7.85, cost_per_kg=2.2)
+
+
+def _forging_drivers(dims) -> GeoDrivers:
+    """A solid box forging, its enclosing box ``dims`` (ascending, mm)."""
+    vol = dims[0] * dims[1] * dims[2] / 1000.0
+    return GeoDrivers(volume_cm3=vol, surface_area_cm2=2 * (dims[0] * dims[1] + dims[0] * dims[2]
+                                                             + dims[1] * dims[2]) / 100.0,
+                      bbox_mm=dims, bbox_volume_cm3=vol, hull_volume_cm3=vol, nominal_wall_mm=dims[0] / 2,
+                      face_count=12, max_bbox_mm=dims[2], is_valid=True, rotational=False,
+                      rot_axis_len_mm=dims[2], rot_cross_dia_mm=dims[1],
+                      billet_bbox_mm=dims, billet_basis="oriented candidate")
+
+
+# The keys a rate table published before press classes doesn't have.
+_PRESS_KEYS = r"press\d+_(t|rate)|flow_mpa_\w+|flash_land_mm|press_shape_factor"
+
+
+def _heat_hr(d, density=7.85):
+    return d.mass_kg(density) * 1.25 * 2.5 / 60.0     # billet × 2.5 min/kg
+
+
+@pytest.mark.parametrize("dims, press_t, rate", [
+    ((25.0, 30.0, 40.0), 500, 80.0),        # small: 52 × 42 mm with the flash land, 214 t
+    ((40.0, 100.0, 100.0), 2500, 220.0),    # medium: 112 × 112 mm, 1,228 t
+    ((60.0, 300.0, 300.0), 16000, 730.0),   # large: 312 × 312 mm, 9,529 t
+])
+def test_a_forging_is_priced_on_the_press_its_load_needs(dims, press_t, rate):
+    """Load = plan area (two longest sides + 6 mm flash land each side) × 120 MPa
+    steel flow stress × shape factor 8; the smallest press class rated for it prices
+    the 40 s of forging and trim, heating stays at the forging cell's $120/h."""
+    from src.costing.cost_model import forging_press
+
+    rc, d = build_rate_card(), _forging_drivers(dims)
+    press = forging_press(PT.FORGING, d, "steel", rc)
+    assert press is not None
+    assert press.load_t == pytest.approx((dims[2] + 12) * (dims[1] + 12) * 120 * 8 / 9806.65)
+    assert (press.capacity_t, press.rate) == (press_t, rate)
+    est = cost_breakdown(PT.FORGING, d, _steel(), "steel", 10000, rc, "US")
+    est.assert_sums()
+    assert est.line_items["machine"] == pytest.approx(_heat_hr(d) * 120 + 40 / 3600 * rate, abs=1e-4)
+    mach = _driver(est, "machine_cost")
+    assert f"on the {press_t:,} t press at ${rate:g}/hr" in mach.source
+    assert mach.provenance.value == "DEFAULT"
+    cycle = _driver(est, "cycle_time").source
+    assert f"the {press_t:,} t press, ${rate:g}/hr" in cycle
+    assert "forging and trim 40s a piece (Boothroyd Dewhurst: 20–120 s" in cycle
+    assert "typical value, not confirmed by a shop" in cycle
+
+
+def test_the_same_metal_spread_wider_needs_a_bigger_press():
+    """240 cm³ of steel as a 40 × 60 × 100 mm block (789 t: 1,000 t press) or a 16 ×
+    100 × 150 mm plate (1,776 t: 2,500 t press): the same billet and heating, and the
+    plate's forging and trim cost the bigger press's rate."""
+    rc = build_rate_card()
+    block, plate = _forging_drivers((40.0, 60.0, 100.0)), _forging_drivers((16.0, 100.0, 150.0))
+    assert block.volume_cm3 == plate.volume_cm3
+    est = {k: cost_breakdown(PT.FORGING, d, _steel(), "steel", 10000, rc, "US")
+           for k, d in (("block", block), ("plate", plate))}
+    assert est["block"].line_items["material"] == est["plate"].line_items["material"]
+    assert (est["plate"].line_items["machine"] - est["block"].line_items["machine"]
+            == pytest.approx((220 - 120) * 40 / 3600, abs=2e-4))
+    assert "on the 1,000 t press" in _driver(est["block"], "machine_cost").source
+    assert "on the 2,500 t press" in _driver(est["plate"], "machine_cost").source
+
+
+def test_a_forging_past_the_largest_press_scales_its_rate_with_the_load():
+    from src.costing.cost_model import forging_press
+
+    rc, d = build_rate_card(), _forging_drivers((100.0, 700.0, 700.0))
+    press = forging_press(PT.FORGING, d, "steel", rc)
+    assert press is not None and press.capacity_t == 40000 and press.load_t > 40000
+    assert press.rate == pytest.approx(1300 * press.load_t / 40000)
+    assert "more than the largest press class, 40,000 t" in press.words
+    est = cost_breakdown(PT.FORGING, d, _steel(), "steel", 100, rc, "US")
+    assert "on a press past the 40,000 t class" in _driver(est, "machine_cost").source
+
+
+def test_a_rate_table_published_before_the_press_keys_prices_as_it_did():
+    """An org's governed card copied from the earlier table has no press classes and
+    its own 0.05 h press + 0.03 h trim: every forging on the one $120/h press, small or
+    large, as when it was published."""
+    import copy
+    import json
+    import re
+
+    from src.costing.rates import RATE_CARD_V0
+
+    table = copy.deepcopy(RATE_CARD_V0)
+    forging = table["process"][PT.FORGING]
+    for key in [k for k in forging if re.fullmatch(_PRESS_KEYS, k)]:
+        forging.pop(key)
+    forging.update(press_hr=0.05, trim_hr=0.03)
+    rc = build_rate_card(base_rate_table=json.loads(json.dumps(table)))   # as stored
+    est = cost_breakdown(PT.FORGING, _drivers(), _alu(), "aluminum", 100, rc, "US")
+    assert est.unit_cost_usd == 139.0068                    # the golden before press classes
+    assert est.line_items["machine"] == 10.1063
+    assert "press 0.05hr + trim 0.03hr" in _driver(est, "cycle_time").source
+    for dims in ((25.0, 30.0, 40.0), (60.0, 300.0, 300.0)):
+        d = _forging_drivers(dims)
+        est = cost_breakdown(PT.FORGING, d, _steel(), "steel", 10000, rc, "US")
+        assert est.line_items["machine"] == pytest.approx((_heat_hr(d) + 0.08) * 120, abs=1e-4)
+        assert " t press" not in _driver(est, "machine_cost").source
+
+
+def test_a_shops_own_forging_rate_is_their_cell_as_given():
+    """A shop's (or user's) machine rate is their forging cell, for all of its time;
+    the source still names the press the part needs. A press class's rate set for the
+    quote is the user's."""
+    d = _forging_drivers((40.0, 100.0, 100.0))
+    shop = build_rate_card(shop_overrides={"machine_rate.FORGING": 150.0}, shop_name="Forge Co")
+    est = cost_breakdown(PT.FORGING, d, _steel(), "steel", 100, shop, "US")
+    mach = _driver(est, "machine_cost")
+    assert est.line_items["machine"] == pytest.approx((_heat_hr(d) + 40 / 3600) * 150, abs=1e-4)
+    assert mach.provenance.value == "SHOP"
+    assert "your forging cell's rate, as given, for all of it; the part needs the 2,500 t press" in mach.source
+    user = build_rate_card({"press3_rate.FORGING": 260.0})
+    mach = _driver(cost_breakdown(PT.FORGING, d, _steel(), "steel", 100, user, "US"), "machine_cost")
+    assert mach.provenance.value == "USER"
+    assert "on the 2,500 t press at $260/hr" in mach.source

@@ -324,9 +324,20 @@ RATE_CARD_V0: dict = {
         # per-lot setup; hardened DIE set (most expensive tooled family here). NOTE:
         # a forging is a NEAR-NET blank — it USUALLY needs downstream finish
         # machining that this model does NOT bundle (caveat, not a hidden CNC pass).
+        # The press a forging needs follows its load: plan area (the two longest
+        # sides of its enclosing box + flash_land_mm each side) × the material's
+        # flow stress at forging heat (flow_mpa_<class>) × press_shape_factor; the
+        # smallest press class (press<i>_t, press<i>_rate) rated for it prices the
+        # forging and trim time. Published structure (Boothroyd Dewhurst, "Forging
+        # Cost Estimating", dfma.com, 2026): tonnage follows size, geometry,
+        # material and complexity; presses run 500–50,000 tons, a 3,000-ton
+        # (≈2,700 t) press $240/h with operator and overhead; the cycle is 20–120 s,
+        # simple to complex. A card without the press keys (published before them)
+        # prices every forging on the one press at machine_rate, as it did.
         # All constants DEFAULT, un-validated. ────────────────────────────────
         PT.FORGING: dict(
-            machine_rate=120.0,         # $/hr loaded forging press/hammer + furnace cell (DEFAULT)
+            machine_rate=120.0,         # $/hr forging cell while a billet heats (DEFAULT); all its
+                                        # time on a card without press classes
             setup_hr=3.00,              # die install + heat-up + trial strokes per lot (DEFAULT)
             post_hr=0.0, scrap=0.05,    # lap/underfill scrap fraction (DEFAULT)
             deposition=None, vert=None, finish=None, queue_days=12, post_days=3,
@@ -335,8 +346,20 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=16,
             flash_loss=0.25,            # flash + scale: billet = net × 1.25 (DEFAULT)
             heat_min_per_kg=2.50,       # furnace heat-to-forging-temp minutes per kg billet (DEFAULT)
-            press_hr=0.05,              # press/hammer strokes + manipulation per part (DEFAULT)
-            trim_hr=0.03),              # flash-trim press hit per part (DEFAULT)
+            press_hr=30 / 3600,         # forging blows + handling, 30 s a piece (DEFAULT)
+            trim_hr=10 / 3600,          # flash-trim press hit, 10 s a piece (DEFAULT)
+            flash_land_mm=6.0,          # flash land around the forging, each side, carrying load (DEFAULT)
+            press_shape_factor=8.0,     # closed die with flash: 5–8 simple, 8–12 complex (Kalpakjian) (DEFAULT)
+            # flow stress at forging heat and press speed, MPa (DEFAULT)
+            flow_mpa_aluminum=50.0, flow_mpa_steel=120.0, flow_mpa_stainless=170.0,
+            flow_mpa_titanium=180.0, flow_mpa_nickel=300.0,
+            # press classes: capacity (tonnes-force), $/hr loaded with operator and overhead (DEFAULT)
+            press1_t=500.0, press1_rate=80.0,
+            press2_t=1000.0, press2_rate=120.0,
+            press3_t=2500.0, press3_rate=220.0,
+            press4_t=6300.0, press4_rate=400.0,
+            press5_t=16000.0, press5_rate=730.0,
+            press6_t=40000.0, press6_rate=1300.0),
         # ── WIRE-EDM (spark-erode a conductive blank along a cut path) — tool-less
         # and SLOW. Material = the billet plate you buy (bbox billet, like milling).
         # Machine cycle = swept cut AREA (cut-path length × stock thickness) ÷ a very
@@ -838,6 +861,9 @@ _NUMERIC_FIELDS = {
     # CASTING / FORGING / WIRE-EDM physics constants (all DEFAULT, overridable)
     "yield_loss", "pour_hr", "cool_min_per_kg", "fettle_hr_kg", "mould_w_mm", "mould_l_mm", "mould_gap_mm",
     "flash_loss", "heat_min_per_kg", "press_hr", "trim_hr",
+    "flash_land_mm", "press_shape_factor",
+    "flow_mpa_aluminum", "flow_mpa_steel", "flow_mpa_stainless", "flow_mpa_titanium", "flow_mpa_nickel",
+    *(f"press{i}_{k}" for i in range(1, 7) for k in ("t", "rate")),
     "n_threads", "thread_min", "wire_cost_per_hr",
     # METAL-AM physics constants (powder-bed / binder-jet / DED — all DEFAULT, overridable)
     "plate_removal_hr", "support_removal_hr", "stress_relief_hr_build",

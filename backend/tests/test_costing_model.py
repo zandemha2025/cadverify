@@ -505,6 +505,57 @@ def test_a_forging_twice_the_size_pays_8x_the_metal_and_the_same_per_piece_time(
     labor = [_driver(est[k], "labor_cost") for k in ("small", "big")]
     assert labor[0]["value"] == labor[1]["value"]
     assert "per piece, the same time at any size" in labor[0]["source"]
+    assert est["big"]["unit_cost_usd"] > 1.05 * est["small"]["unit_cost_usd"]
+
+
+def _forging_at_10000(extents, options=None):
+    report = estimate_decision(*_analyze(trimesh.creation.box(extents=extents)),
+                               options or EstimateOptions(quantities=[10000], material_class="steel"))
+    e = _est(report, "forging", 10000)
+    assert e is not None
+    return e
+
+
+def test_a_forging_is_priced_on_the_press_it_needs():
+    # Press tonnage follows the forging's size, geometry, material and complexity, and
+    # the press it needs sets the hourly cost (Boothroyd Dewhurst, Forging Cost
+    # Estimating). Steel: a small block needs 214 t, a 100 mm square 1,228 t, a 300 mm
+    # square 9,529 t (plan with the flash land × 120 MPa × shape factor 8).
+    prices, press_cost = [], []
+    for extents, press, rate in (([40.0, 30.0, 20.0], "500 t", 80), ([100.0, 100.0, 40.0], "2,500 t", 220),
+                                 ([300.0, 300.0, 60.0], "16,000 t", 730)):
+        e = _forging_at_10000(extents)
+        mach = _driver(e, "machine_cost")
+        assert f"forging and trim 0.0111 hr on the {press} press at ${rate}/hr" in mach["source"]
+        assert f"the {press} press, ${rate}/hr" in _driver(e, "cycle_time")["source"]
+        heat_hr = e["material_mass"]["used_kg"] * 2.5 / 60
+        assert mach["value"] == pytest.approx(heat_hr * 120 + 40 / 3600 * rate, abs=1e-3)
+        prices.append(e["unit_cost_usd"])
+        press_cost.append(mach["value"] - heat_hr * 120)
+    assert prices[0] < prices[1] < prices[2]
+    assert press_cost[0] < press_cost[1] < press_cost[2]
+
+
+def test_a_rate_table_published_before_the_press_keys_prices_every_forging_on_one_press():
+    import copy
+    import re
+
+    from src.costing.rates import RATE_CARD_V0
+    from src.analysis.models import ProcessType as PT
+
+    table = copy.deepcopy(RATE_CARD_V0)
+    forging = table["process"][PT.FORGING]
+    new_keys = r"press\d+_(t|rate)|flow_mpa_\w+|flash_land_mm|press_shape_factor"
+    for key in [k for k in forging if re.fullmatch(new_keys, k)]:
+        forging.pop(key)
+    forging.update(press_hr=0.05, trim_hr=0.03)
+    for extents in ([40.0, 30.0, 20.0], [300.0, 300.0, 60.0]):
+        e = _forging_at_10000(extents, EstimateOptions(quantities=[10000], material_class="steel",
+                                                       base_rate_table=table))
+        mach = _driver(e, "machine_cost")
+        heat_hr = e["material_mass"]["used_kg"] * 2.5 / 60
+        assert mach["value"] == pytest.approx((heat_hr + 0.08) * 120, abs=1e-3)
+        assert " × $120/hr" in mach["source"] and " t press" not in mach["source"]
 
 
 def _t_overhang():
