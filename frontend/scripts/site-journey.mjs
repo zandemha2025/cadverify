@@ -37,7 +37,8 @@ try {
   await page.getByRole('link', { name: 'Explore a sample part', exact: true }).first().click();
   await page.waitForURL('**/sample');
   await page.getByRole('button', { name: 'Design review', exact: true }).click();
-  await page.getByText('1 sidewall < 1.0° draft', { exact: true }).waitFor();
+  // The injection-molding row names its blocking finding: "Blocked: <finding>" (a5bc6367).
+  await page.locator('.cv-evidence-rows > div', { has: page.getByText('Injection molding', { exact: true }) }).getByText('Blocked: 1 sidewall < 1.0° draft', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Resource estimate', exact: true }).click();
   await page.getByText('$14.14', { exact: true }).waitFor();
   assert.match(await page.locator('.cv-sample-note').innerText(), /No measured outcomes/);
@@ -73,7 +74,9 @@ try {
   await page.getByRole('heading', { name: 'Nazeem Ahmed · Founder' }).waitFor();
   await visit('/pricing');
   await page.getByRole('heading', { name: '$7,500 pilot · 4–6 weeks · up to 500 parts' }).waitFor();
-  await page.getByRole('heading', { name: 'Not sure yet? Free 25-part review' }).waitFor();
+  // Pricing offers the self-serve 50-part catalog run and points to the team-assisted 25-part qualification (a81c11ff).
+  await page.getByRole('heading', { name: 'Not sure yet? Run 50 parts free', exact: true }).waitFor();
+  assert.match(await page.locator('#qualification').innerText(), /free, team-assisted 25-part qualification/);
   await page.getByRole('heading', { name: /^Pro · / }).waitFor();
   await page.getByRole('heading', { name: 'Free · $0' }).waitFor();
   assert.match(await page.locator('main').innerText(), /Counts toward your first year if you continue/);
