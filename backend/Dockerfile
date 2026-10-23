@@ -48,16 +48,11 @@ RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.s
     && apt-get update \
     && apt-get install -y --no-install-recommends build-essential dpkg-dev fakeroot \
     && apt-get build-dep -y --no-install-recommends \
-       expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1 brotli=1.1.0-2
+       expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1
 ADD --checksum=sha256:dd9ecf20d2ca40c7ec3d8cdf3727c729f9fae3b6cc010e9436f152ae7cd6da31 \
     https://gitlab.freedesktop.org/xorg/lib/libx11/-/merge_requests/309.patch /patches/x11.patch
 ADD --checksum=sha256:565e816e88ca223cebc6f833cfcfa63d20aaa22c8293d878bdd059910c4a66fc \
     https://gitlab.freedesktop.org/xorg/lib/libxrender/-/merge_requests/19.patch /patches/xrender.patch
-# CVE-2026-111497: upstream's v1.1 fix, da9806362874b9bd4b552a3af360b5d6347beb12,
-# exported with `git format-patch` (github.com's own .patch URL is not reachable
-# from every build host). Debian has no fixed brotli in any release yet.
-COPY security/brotli-CVE-2026-111497.patch /patches/brotli.patch
-RUN echo "dcfe8f7e35352a1a24842923051b10cad38873af9231baf08ff01bbba9a1d9fb  /patches/brotli.patch" | sha256sum -c -
 COPY security/build-patched-debs.sh /build-patched-debs.sh
 RUN sh /build-patched-debs.sh
 
@@ -106,6 +101,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # from trixie-security at build time. Rootfs-equivalent proof attached to the PR.
 # Require the 2026-09-29 OpenSSL fixes (CVE-2026-75804, CVE-2026-84782);
 # invalidate the old cached layer and reject mirrors missing the fixed packages.
+# Round 4 (2026-10-23): libbrotli1 -> 1.1.0-2+deb13u1 (CVE-2026-111497, critical
+# brotli decoder buffer overflow). Debian published the trixie-security update
+# carrying upstream fix da980636, so the base image's 1.1.0-2+b7 is simply
+# upgraded here -- no source rebuild (the native-security stage builds only the
+# packages Debian still leaves unfixed). The guard rejects a mirror still serving
+# the vulnerable build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     libssl3t64 \
@@ -122,9 +123,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcre2-8-0 \
     libsqlite3-0 \
     openssl-provider-legacy \
+    libbrotli1 \
     && for package in openssl libssl3t64 openssl-provider-legacy; do \
          dpkg --compare-versions "$(dpkg-query -W -f='${Version}' "$package")" ge '3.5.7-1~deb13u3' || exit 1; \
        done \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.1.0-2+deb13u1' || exit 1 \
     && rm -rf /var/lib/apt/lists/*
 
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded

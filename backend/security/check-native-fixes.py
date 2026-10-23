@@ -8,7 +8,6 @@ VERSIONS = {
     "libx11-data": "2:1.8.12-1+cadverify1",
     "libx11-xcb1": "2:1.8.12-1+cadverify1",
     "libxrender1": "1:0.9.12-1+cadverify1",
-    "libbrotli1": "1.1.0-2+cadverify1",
 }
 
 for package, expected in VERSIONS.items():
