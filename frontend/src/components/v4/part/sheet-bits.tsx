@@ -18,7 +18,7 @@ import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { isMultiBody } from "@/lib/verify/bodies";
 import { shopChangeText, shopChangedSince, type ShopChange } from "./shop-change";
 import { ReadOnlyLine, useReadOnly } from "../read-only";
-import { busyView } from "./busy-state";
+import { busyView, sheetRunNotice } from "./busy-state";
 import { BusyNotice } from "./busy-notice";
 
 export interface FigItem {
@@ -205,7 +205,9 @@ function RunState() {
   // While busy the progress panel is on screen whenever it's open (check and part pages), with the same
   // notice over this sheet; one is enough. Hidden, its button above the tab bar counts down instead.
   const s = p.session;
-  if (bv && !s?.panel && (p.checking || p.interrupted || p.costOff || s?.costRetrying)) {
+  const which = sheetRunNotice({ busy: bv, panelOpen: !!s?.panel, checking: p.checking, interrupted: p.interrupted, costOff: p.costOff, costRetrying: !!s?.costRetrying });
+  if (which === "panel") return null;
+  if (bv && which === "busy") {
     const retry = bv.phase === "still" ? (bv.still.step === "cost" ? p.retryPrices : () => p.recheck()) : undefined;
     return (
       <div className="swap" style={{ marginTop: 8 }}>

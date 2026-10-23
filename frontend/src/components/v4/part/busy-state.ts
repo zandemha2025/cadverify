@@ -57,6 +57,17 @@ export function busyView(s: BusySessionLike | null | undefined): BusyView | null
   return null;
 }
 
+/**
+ * Which run notice the part's sheet shows: "busy" (the one busy state), "panel" (nothing:
+ * the progress panel over the sheet shows it), or "other" (the sheet's own: an
+ * interruption, prices that didn't finish). While busy it is never "other": a busy
+ * server never reads as "Check interrupted" or "Cost didn't finish", seen or under the panel.
+ */
+export function sheetRunNotice(o: { busy: BusyView | null; panelOpen: boolean; checking: boolean; interrupted: boolean; costOff: boolean; costRetrying: boolean }): "busy" | "panel" | "other" {
+  if (o.busy && (o.checking || o.interrupted || o.costOff || o.costRetrying)) return o.panelOpen ? "panel" : "busy";
+  return "other";
+}
+
 /** A progress step that is waiting on a busy server says this, never "Didn't finish". */
 export const WAITING_FOR_ROOM = "Waiting for room";
 

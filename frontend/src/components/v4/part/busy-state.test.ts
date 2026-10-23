@@ -9,6 +9,7 @@ import {
   busyReopenLabel,
   busyTitle,
   busyView,
+  sheetRunNotice,
   shownWait,
   stillBusyMeta,
   type BusyWaits,
@@ -83,6 +84,23 @@ test("busy never reads as a file problem or an error (D1, D2)", () => {
   assert.match(busyMeta({ step: "validate", wait: wait(5, "server") }), /^ScaleCAD's servers are full right now\. This isn't about your file/);
   assert.match(busyMeta({ step: "validate", wait: wait(5, "org") }), /^Your organization already has as many checks running/);
   assert.match(busyMeta({ step: "cost", wait: wait(5) }), /The process checks are ready; prices start once there's room/);
+});
+
+test("while busy the sheet never falls back to 'Check interrupted' or 'Cost didn't finish'", () => {
+  const views = [{ phase: "waiting", step: "validate", wait: wait(5) }, { phase: "still", still: { step: "validate", kind: "server", waitedMs: 180_000 } }, { phase: "still", still: { step: "cost", kind: "server", waitedMs: 180_000 } }] as const;
+  const flags = [true, false];
+  for (const busy of views)
+    for (const panelOpen of flags)
+      for (const checking of flags)
+        for (const interrupted of flags)
+          for (const costOff of flags)
+            for (const costRetrying of flags) {
+              if (!(checking || interrupted || costOff || costRetrying)) continue;
+              const which = sheetRunNotice({ busy, panelOpen, checking, interrupted, costOff, costRetrying });
+              assert.equal(which, panelOpen ? "panel" : "busy");
+            }
+  // Not busy: the sheet's own notices, as before.
+  assert.equal(sheetRunNotice({ busy: null, panelOpen: true, checking: false, interrupted: true, costOff: false, costRetrying: false }), "other");
 });
 
 const V = {
