@@ -31,6 +31,19 @@ _JOB_TYPE_TO_TASK: dict[str, str] = {
 }
 
 
+# Jobs a person waits for: a design, a big file's check, a kept part's job (both
+# run as run_stored_check). arq starts the queued jobs that are due in score
+# order (their enqueue time), so these are queued with a score an hour in the
+# past: ahead of every batch or catalog item queued since, behind none of them.
+INTERACTIVE_JOB_TYPES = frozenset({"design_generation", "stored_check"})
+INTERACTIVE_LEAD = timedelta(hours=1)
+
+
+def interactive_enqueue_kwargs() -> dict[str, Any]:
+    """``enqueue_job`` keywords that put a job a person waits for ahead of queued batch items."""
+    return {"_defer_until": datetime.now(timezone.utc) - INTERACTIVE_LEAD}
+
+
 def job_serializer(payload: Any) -> bytes:
     """Encode an arq job or result record as JSON.
 
@@ -143,6 +156,7 @@ class ArqJobQueue(JobQueue):
             task_name,
             idempotency_key,
             _job_id=arq_job_id,
+            **(interactive_enqueue_kwargs() if job_type in INTERACTIVE_JOB_TYPES else {}),
         )
         logger.info(
             "%s job type=%s task=%s key=%s arq_id=%s",

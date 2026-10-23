@@ -366,13 +366,15 @@ def _clean_note(value: str | None) -> str | None:
 
 
 async def _enqueue(job: Job) -> None:
-    from src.jobs.arq_backend import get_arq_pool
+    from src.jobs.arq_backend import get_arq_pool, interactive_enqueue_kwargs
 
     pool = await get_arq_pool()
+    # Ahead of queued batch and catalog items (a person is waiting for it).
     await pool.enqueue_job(
         "run_design_generation_job",
         job.ulid,
         _job_id=f"design_{job.ulid}",
+        **interactive_enqueue_kwargs(),
     )
 
 

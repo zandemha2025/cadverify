@@ -2260,7 +2260,46 @@ async def _resolve_transient_batch_item_failure(
         return "retry", attempts
 
 
+# arq job slots the worker keeps from batch items for interactive jobs (a design,
+# a big file's check, a kept part's job): with all of max_jobs taken by catalog
+# parts waiting for compute room, a design waited 15-76 s just to start.
+INTERACTIVE_JOB_SLOTS = 2
+_ITEMS_IN_FLIGHT = 0
+
+
+def batch_item_job_slots() -> int:
+    """How many batch items this worker runs at once (``BATCH_ITEM_JOB_SLOTS``).
+
+    Default: arq's ``max_jobs`` less ``INTERACTIVE_JOB_SLOTS``, at least one.
+    """
+    raw = os.getenv("BATCH_ITEM_JOB_SLOTS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    from src.jobs.worker import WorkerSettings
+
+    return max(1, int(WorkerSettings.max_jobs) - INTERACTIVE_JOB_SLOTS)
+
+
 async def run_batch_item(ctx: dict, item_ulid: str) -> None:
+    """Process a single batch item (``_run_batch_item``) as batch work.
+
+    Its compute holds wait behind interactive work (``compute_budget.batch_work``),
+    and past ``batch_item_job_slots()`` items in flight it goes back to the run,
+    its try not spent, so interactive jobs always find an arq job slot.
+    """
+    global _ITEMS_IN_FLIGHT
+    _ITEMS_IN_FLIGHT += 1
+    try:
+        with compute_budget.batch_work():
+            await _run_batch_item(ctx, item_ulid)
+    finally:
+        _ITEMS_IN_FLIGHT -= 1
+
+
+async def _run_batch_item(ctx: dict, item_ulid: str) -> None:
     """Process a single batch item.
 
     DFM batches (``job_type='dfm'``) run ``analysis_service.run_analysis``; cost
@@ -2363,6 +2402,10 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
 
         try:
             await session.commit()
+            if _ITEMS_IN_FLIGHT > batch_item_job_slots():
+                # The worker's job slots left for interactive jobs: back in the
+                # run, try not spent (the ComputeBusy path below).
+                raise compute_budget.ComputeBusy(0.0)
             if batch_release_fault == "batch_delay":
                 # Bounded, record-scoped delay for proving refresh/cancellation
                 # behavior against a real worker. The API can persist this marker

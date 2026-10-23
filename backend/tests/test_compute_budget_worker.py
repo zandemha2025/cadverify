@@ -160,3 +160,98 @@ async def test_a_part_with_no_room_in_its_wait_goes_back_without_spending_a_try(
     # Two deliveries found no room and went back; only the one that ran is a try.
     assert item["attempt_count"] == 1
     assert tries == {"part-000.stl": 1}
+
+
+@pytest.mark.asyncio
+async def test_catalog_parts_are_batch_work_in_the_budget(run_world, monkeypatch):
+    from src.jobs import batch_tasks
+
+    seen = []
+    log, tries = _install_compute(monkeypatch)
+    real = batch_tasks._check_catalog_part
+
+    async def recording(*a, **kw):
+        seen.append(compute_budget._PRIORITY.get())
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(batch_tasks, "_check_catalog_part", recording)
+    pool = FakeArq()
+    ulid = await run_world["make_run"](2)
+    await pool.enqueue_job("run_batch_coordinator", ulid)
+    await _drive(pool)
+    assert (await _batch(ulid))["status"] == "completed"
+    assert seen and set(seen) == {compute_budget.BATCH}
+    # The job's priority stays with its own task: the worker's other work is interactive.
+    assert compute_budget._PRIORITY.get() == compute_budget.INTERACTIVE
+
+
+@pytest.mark.asyncio
+async def test_batch_items_leave_job_slots_for_interactive_jobs(run_world, monkeypatch):
+    from src.jobs import batch_tasks
+
+    monkeypatch.setenv("BATCH_ITEM_JOB_SLOTS", "1")
+    log, tries = _install_compute(monkeypatch)
+    deliveries = {"n": 0}
+
+    def before(name, _args, _kwargs):
+        # Another batch item holds the worker's one batch slot for the first two deliveries.
+        if name == "run_batch_item":
+            deliveries["n"] += 1
+            batch_tasks._ITEMS_IN_FLIGHT = 1 if deliveries["n"] <= 2 else 0
+
+    pool = FakeArq()
+    ulid = await run_world["make_run"](1)
+    await pool.enqueue_job("run_batch_coordinator", ulid)
+    try:
+        await _drive(pool, before_job=before)
+    finally:
+        batch_tasks._ITEMS_IN_FLIGHT = 0
+    state = await _batch(ulid)
+    item = state["items"][0]
+    assert state["status"] == "completed", state
+    assert deliveries["n"] == 3
+    # Two deliveries found every batch slot taken and went back; only the one that ran is a try.
+    assert item["attempt_count"] == 1
+    assert tries == {"part-000.stl": 1}
+
+
+def test_batch_item_slots_default_to_max_jobs_less_the_interactive_ones(monkeypatch):
+    from src.jobs import batch_tasks
+    from src.jobs.worker import WorkerSettings
+
+    monkeypatch.delenv("BATCH_ITEM_JOB_SLOTS", raising=False)
+    assert batch_tasks.batch_item_job_slots() == WorkerSettings.max_jobs - batch_tasks.INTERACTIVE_JOB_SLOTS
+    monkeypatch.setenv("BATCH_ITEM_JOB_SLOTS", "0")
+    assert batch_tasks.batch_item_job_slots() == 1
+
+
+@pytest.mark.asyncio
+async def test_jobs_a_person_waits_for_are_queued_ahead_of_batch_items(monkeypatch):
+    """arq starts due jobs in score order; a design or a big file's check is queued an hour early."""
+    from datetime import timedelta
+
+    from src.jobs import arq_backend
+    from src.services import design_service
+
+    calls = []
+
+    class _Pool:
+        async def enqueue_job(self, name, *args, **kw):
+            calls.append((name, kw))
+            return object()
+
+    async def _pool():
+        return _Pool()
+
+    monkeypatch.setattr(arq_backend, "get_arq_pool", _pool)
+
+    class _Job:
+        ulid = "01DESIGNJOBULID0000000000A"
+
+    before = datetime.now(timezone.utc)
+    await design_service._enqueue(_Job())
+    name, kw = calls[-1]
+    assert name == "run_design_generation_job"
+    assert kw["_defer_until"] <= before - timedelta(minutes=59)
+    assert arq_backend.INTERACTIVE_JOB_TYPES >= {"design_generation", "stored_check"}
+    assert "sam3d" not in arq_backend.INTERACTIVE_JOB_TYPES
