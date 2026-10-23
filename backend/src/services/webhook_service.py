@@ -260,7 +260,7 @@ async def deliver_webhook(
         await session.commit()
         logger.warning("Webhook delivery %d: the signing secret cannot be opened", delivery_id)
         return False
-    if plaintext_row and secret.strip():
+    if plaintext_row and secret and secret.strip():
         # A row stored before sealing: keep it sealed from now on (saved with
         # this delivery's own commit). Without the key it stays as it was.
         try:

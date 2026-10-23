@@ -8,6 +8,7 @@ mark, ...); a byte search for "<!DOCTYPE" doesn't.
 """
 from __future__ import annotations
 
+from typing import NoReturn
 from xml.parsers import expat
 
 
@@ -15,7 +16,7 @@ class _DeclarationFound(Exception):
     pass
 
 
-def _stop(*_args) -> None:
+def _stop(*_args: object) -> NoReturn:
     raise _DeclarationFound()
 
 

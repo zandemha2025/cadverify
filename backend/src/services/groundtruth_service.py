@@ -466,6 +466,9 @@ def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
     can activate the analogy-to-quote k-NN member (``geometry_features`` property);
     a row with NULL geometry stays skippable by the analogy exactly as before.
     """
+    if r.actual_unit_cost_usd is None:
+        # An hours-only row is not a cost record (load_org_ground_truth skips it).
+        raise TypeError("a ground-truth row without an actual unit cost is not a cost record")
     return GroundTruthRecord(
         part_id=r.part_id,
         process=r.process,

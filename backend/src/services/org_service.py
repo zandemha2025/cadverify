@@ -857,13 +857,14 @@ async def set_user_active(
     user.is_active = active
     user.deactivated_at = None if active else _now()
     await session.flush()
+    deactivated_at = user.deactivated_at
     return {
         "user_id": user.id,
         "email": user.email,
         "is_active": user.is_active,
         "session_version": user.session_version,
         "deactivated_at": (
-            user.deactivated_at.isoformat() if user.deactivated_at else None
+            deactivated_at.isoformat() if deactivated_at else None
         ),
     }
 

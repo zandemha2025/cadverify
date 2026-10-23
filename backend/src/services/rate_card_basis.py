@@ -215,13 +215,13 @@ def _aware(dt: Optional[datetime]) -> Optional[datetime]:
 def in_effect(rows: Iterable[Any], at: datetime) -> int:
     """The version in effect at ``at`` over the org's card timeline (published and
     since-archived cards, which were in effect for their window); 0 = the typical table."""
-    at = _aware(at)
+    when = _aware(at)
     best = 0
     for r in rows:
         if getattr(r, "status", None) not in ("published", "archived"):
             continue
         ef, et = _aware(getattr(r, "effective_from", None)), _aware(getattr(r, "effective_to", None))
-        if ef is None or at is None or ef > at or (et is not None and et <= at):
+        if ef is None or when is None or ef > when or (et is not None and et <= when):
             continue
         best = max(best, int(getattr(r, "version", 0) or 0))
     return best

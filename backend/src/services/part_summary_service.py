@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, tuple_, union, update
+from sqlalchemy import literal, select, tuple_, union, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -520,7 +520,7 @@ async def backfill_part_summaries(
     while True:
         q = select(org_col, mesh_col).order_by(org_col, mesh_col).limit(batch_size)
         if last is not None:
-            q = q.where(tuple_(org_col, mesh_col) > tuple_(last[0], last[1]))
+            q = q.where(tuple_(org_col, mesh_col) > tuple_(literal(last[0]), literal(last[1])))
         rows = (await session.execute(q)).all()
         if not rows:
             break

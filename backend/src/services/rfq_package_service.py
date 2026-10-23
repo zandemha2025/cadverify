@@ -47,7 +47,7 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -263,6 +263,8 @@ async def _run_facts(session: AsyncSession, decision: CostDecision) -> dict[str,
             ).first()
     except Exception:  # noqa: BLE001 - best effort; the record's own facts remain
         return {}
+    if row is None:  # in no run
+        return {}
     try:
         filename, batch = row[0], row[1]
     except (TypeError, IndexError, KeyError):
@@ -440,6 +442,8 @@ async def _supplier_unit(session: AsyncSession, package: RfqPackage) -> str:
     unit = (package.metadata_json or {}).get("length_unit")
     if unit in ("mm", "in"):
         return unit
+    if package.user_id is None:  # the requester's account is gone: the default unit
+        return "mm"
     return await lu.length_unit_for(session, package.user_id)
 
 
@@ -506,14 +510,14 @@ def supplier_view(package: Any, items: list[dict[str, Any]] | None = None, unit:
                 est["process"] = process_label(est["process"])
             part["estimate"] = est
         parts.append(part)
-    requester = meta.get("requested_by") if isinstance(meta.get("requested_by"), dict) else {}
+    requester = by if isinstance(by := meta.get("requested_by"), dict) else {}
+    created_at = getattr(package, "created_at", None)
     return {
         "title": getattr(package, "title", None),
         "supplier": getattr(package, "supplier_name", None),
         "requested_by": {k: requester.get(k) for k in ("name", "company", "email")},
         "reply_by": meta.get("reply_by"),
-        "sent_on": getattr(package, "created_at", None).date().isoformat()
-        if isinstance(getattr(package, "created_at", None), datetime) else None,
+        "sent_on": created_at.date().isoformat() if isinstance(created_at, datetime) else None,
         "note": meta.get("note"),
         "includes_cost_estimate": with_cost,
         "must_hold": sorted({c for p in parts for c in p["must_hold"]}),
@@ -614,7 +618,7 @@ def _supplier_brief_html(package: Any, items: list[dict[str, Any]] | None = None
     file names are typed by people."""
     view = supplier_view(package, items, unit)
     e = lambda v: html.escape(str(v))  # noqa: E731
-    head = [("Requested by", _requester_line(view) or "not given")]
+    head: list[tuple[str, str | None]] = [("Requested by", _requester_line(view) or "not given")]
     if view.get("supplier"):
         head.append(("Supplier", view["supplier"]))
     head.append(("Reply by", _day(view.get("reply_by")) or "not given"))
@@ -669,7 +673,8 @@ def _supplier_brief_html(package: Any, items: list[dict[str, Any]] | None = None
 def _render_supplier_brief_pdf_sync(package: Any, items: list[dict[str, Any]] | None = None, unit: str = "mm") -> bytes:
     from weasyprint import HTML
 
-    return HTML(string=_supplier_brief_html(package, items, unit)).write_pdf()
+    # write_pdf() with no target returns the PDF's bytes (WeasyPrint is untyped).
+    return cast(bytes, HTML(string=_supplier_brief_html(package, items, unit)).write_pdf())
 
 
 async def _supplier_brief_pdf(package: Any, items: list[dict[str, Any]] | None = None, unit: str = "mm") -> bytes:
@@ -1010,14 +1015,14 @@ async def list_packages(
     session: AsyncSession, user_id: int, *, limit: int = 50
 ) -> list[RfqPackage]:
     limit = max(1, min(limit, 100))
-    return (
+    return list((
         await session.execute(
             select(RfqPackage)
             .where(RfqPackage.org_id == caller_org_subquery(user_id))
             .order_by(RfqPackage.created_at.desc(), RfqPackage.id.desc())
             .limit(limit)
         )
-    ).scalars().all()
+    ).scalars().all())
 
 
 async def get_package(

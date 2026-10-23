@@ -7,10 +7,10 @@ records remain the domain tables.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, or_, select
+from sqlalchemy import Row, and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -161,7 +161,7 @@ async def list_notifications(
     limit: int = 50,
     cursor: Optional[int] = None,
 ) -> tuple[
-    list[tuple[Notification, Optional[datetime], Optional[datetime]]],
+    list[Row[tuple[Notification, Optional[datetime], Optional[datetime]]]],
     bool,
 ]:
     """Return active or dismissed notifications plus per-user state."""
@@ -193,7 +193,12 @@ async def list_notifications(
     if cursor is not None:
         stmt = stmt.where(Notification.id < cursor)
     stmt = stmt.order_by(Notification.id.desc()).limit(limit + 1)
-    rows = list((await session.execute(stmt)).all())
+    # The outer join reads read_at as None for a notification this person hasn't
+    # read; the select's row type can't say so.
+    rows = cast(
+        list[Row[tuple[Notification, Optional[datetime], Optional[datetime]]]],
+        list((await session.execute(stmt)).all()),
+    )
     return rows[:limit], len(rows) > limit
 
 

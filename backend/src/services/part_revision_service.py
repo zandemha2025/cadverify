@@ -53,11 +53,15 @@ async def _part(session: AsyncSession, org_id: str, mesh_hash: str) -> dict | No
         .where(Analysis.org_id == org_id, Analysis.mesh_hash == mesh_hash)
         .order_by(desc(Analysis.created_at)).limit(1)
     )).first()
-    if decision is None and analysis is None:
+    if decision is not None:
+        filename = decision.label or decision.filename
+    elif analysis is not None:
+        filename = analysis.filename
+    else:
         return None
     return {
         "mesh_hash": mesh_hash,
-        "filename": (decision.label or decision.filename) if decision is not None else analysis.filename,
+        "filename": filename,
         "record_id": decision.ulid if decision is not None else None,
     }
 
@@ -95,7 +99,7 @@ async def revisions(session: AsyncSession, org_id: str, mesh_hash: str) -> dict:
     for field, name in (("revision_of", REVISION_OF), ("next", NEXT_REVISION)):
         record = await _get_json(_record_key(org_id, digest, name))
         other = str((record or {}).get("mesh_hash") or "")
-        if not _SHA256.fullmatch(other):
+        if record is None or not _SHA256.fullmatch(other):
             continue
         part = await _part(session, org_id, other)
         if part is None:

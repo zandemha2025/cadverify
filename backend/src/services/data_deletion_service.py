@@ -71,11 +71,12 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy import Delete, Update, delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -502,7 +503,7 @@ async def _delete_part_rows(session: AsyncSession, rows: PartRows, deletion_ulid
     hashes = rows.hashes
     removed: dict[str, int] = {}
 
-    async def run(name: str, stmt) -> None:
+    async def run(name: str, stmt: Delete | Update) -> None:
         result = await session.execute(stmt.execution_options(synchronize_session=False))
         removed[name] = removed.get(name, 0) + int(result.rowcount or 0)
 
@@ -1038,16 +1039,18 @@ async def _sweep_orphans(store_name: str) -> int:
     """Remove cached PDFs / SAM-3D blobs whose record no longer exists anywhere."""
     from src.db.engine import get_session_factory
 
+    # (the record's id, what removes its file)
+    found: list[tuple[str, Callable[[], object]]]
     if store_name == "dfm-pdf":
         root = _dfm_pdf_dir()
         paths = await asyncio.to_thread(lambda: [p for p in root.glob("*.pdf")] if root.exists() else [])
-        found = [(m.group(1), p) for p in paths if (m := _DFM_PDF.match(p.name))]
-        column, pattern = Analysis.ulid, None
+        found = [(m.group(1), partial(p.unlink, True)) for p in paths if (m := _DFM_PDF.match(p.name))]
+        column = Analysis.ulid
     else:
         store = _store(store_name)
         keys = await asyncio.to_thread(store.list_keys, "")
         pattern = _PDF_KEY if store_name == "cost-pdf" else _MESH_KEY
-        found = [(m.group(1), k) for k in keys if (m := pattern.match(k))]
+        found = [(m.group(1), partial(store.delete, k)) for k in keys if (m := pattern.match(k))]
         column = CostDecision.ulid if store_name == "cost-pdf" else Analysis.mesh_hash
     removed = 0
     async with get_session_factory()() as session:
@@ -1057,13 +1060,10 @@ async def _sweep_orphans(store_name: str) -> int:
             alive = set(
                 (await session.execute(select(column).where(column.in_(ids)).distinct())).scalars().all()
             )
-            for ident, where in chunk:
+            for ident, remove in chunk:
                 if ident in alive:
                     continue
-                if store_name == "dfm-pdf":
-                    await asyncio.to_thread(where.unlink, True)
-                else:
-                    await asyncio.to_thread(store.delete, where)
+                await asyncio.to_thread(remove)
                 removed += 1
     return removed
 

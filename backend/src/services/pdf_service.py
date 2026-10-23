@@ -15,6 +15,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import cast
 
 from fastapi import HTTPException
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -142,10 +143,11 @@ def _render_pdf_sync(context: dict) -> bytes:
 
     template = _jinja_env.get_template("analysis_report.html")
     html_str = template.render(**context)
-    pdf_bytes = HTML(
+    # write_pdf() with no target returns the PDF's bytes (WeasyPrint is untyped).
+    pdf_bytes = cast(bytes, HTML(
         string=html_str,
         base_url=str(_TEMPLATE_DIR),
-    ).write_pdf()
+    ).write_pdf())
     return pdf_bytes
 
 

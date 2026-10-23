@@ -60,6 +60,11 @@ DEFAULT_SCHEDULE = {"shifts": 2, "hours_per_shift": 8.0, "days_per_year": 240}
 SCHEDULE_LIMITS = {"shifts": (1, 4), "hours_per_shift": (0.5, 24.0), "days_per_year": (1, 366)}
 
 
+def _obj(value: Any) -> dict:
+    """``value`` when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
 def _num(v: Any) -> Optional[float]:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
@@ -242,9 +247,9 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
     quantity. ``buy_price``: what the org pays for it today (``{usd_each, ...}``).
     """
     result = result if isinstance(result, dict) else {}
-    v = result.get("verification") if isinstance(result.get("verification"), dict) else {}
-    per_route = v.get("per_route") if isinstance(v.get("per_route"), dict) else {}
-    resource = v.get("resource") if isinstance(v.get("resource"), dict) else {}
+    v = _obj(result.get("verification"))
+    per_route = _obj(v.get("per_route"))
+    resource = _obj(v.get("resource"))
     if disposition in OTHER_OUTCOMES:
         return {"basis": "other", "disposition": disposition}
     qty, qty_basis = load_quantity(result, yearly, default_quantity)
@@ -256,7 +261,7 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
             decided_at = None
         if qty_basis in ("opening", "default") and decided_at:
             qty, qty_basis = decided_at, "decided"  # no yearly or checked quantity: the one it was decided at
-        route = per_route.get(process) if isinstance(per_route.get(process), dict) else {}
+        route = _obj(per_route.get(process))
         machine = route.get("best_machine") if route.get("verdict") in IN_HOUSE else None
         if machine is None and v.get("verdict") in IN_HOUSE and resource.get("process") == process:
             machine = resource.get("machine") or v.get("best_machine")
@@ -275,12 +280,12 @@ def part_load(result: Optional[dict], disposition: Optional[str], basis: Optiona
             process, machine = inside["process"], inside.get("machine") or machine
         price = _num((buy_price or {}).get("usd_each")) if isinstance(buy_price, dict) else None
         make = _num((inside or {}).get("unit_cost_usd")) if isinstance(inside, dict) else None
-        if price is not None and price > 0 and make is not None:
+        if price is not None and price > 0 and make is not None and isinstance(inside, dict):
             from src.services.catalog_run_service import make_or_buy_pick
 
-            pick, basis = make_or_buy_pick({"unit_cost_usd": make, "low_usd": _num(inside.get("low_usd"))}, price)
+            pick, pick_basis = make_or_buy_pick({"unit_cost_usd": make, "low_usd": _num(inside.get("low_usd"))}, price)
             # A tie with what you pay today stays bought, as the run sorts it (op-07).
-            if pick != "in_house" or basis == "tie":
+            if pick != "in_house" or pick_basis == "tie":
                 return {"basis": "bought", "machine": machine, "process": process, "quantity": qty,
                         "make_each": make, "buy_each": price}
         hours_each = _hours_each(result, process, qty) if process else None

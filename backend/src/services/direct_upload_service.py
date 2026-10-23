@@ -36,7 +36,7 @@ import re
 import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, Protocol
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +55,28 @@ from src.storage import (
 )
 
 logger = logging.getLogger("cadverify.direct_upload_service")
+
+
+class OwnedUpload(Protocol):
+    """What the download and its ownership check read of a direct upload, as the
+    worker's detached snapshot of a ``DirectUpload`` row carries it
+    (``stored_check_tasks._snapshot``). Both functions take the row too."""
+
+    @property
+    def ulid(self) -> str: ...
+    @property
+    def org_id(self) -> str: ...
+    @property
+    def purpose(self) -> str: ...
+    @property
+    def filename(self) -> str: ...
+    @property
+    def object_key(self) -> str: ...
+    @property
+    def expected_size_bytes(self) -> int: ...
+    @property
+    def expected_checksum_sha256(self) -> str: ...
+
 
 PURPOSE_BATCH_ZIP = "batch_zip"
 PURPOSE_PART = "part"
@@ -503,7 +525,7 @@ def _object_key(org_id: str, upload_ulid: str, purpose: str = PURPOSE_BATCH_ZIP,
     return f"incoming/{org_id}/{upload_ulid}/batch.zip"
 
 
-def validate_owned_object_key(upload: DirectUpload) -> None:
+def validate_owned_object_key(upload: DirectUpload | OwnedUpload) -> None:
     """Reject a corrupted/tampered row before any provider object is touched."""
     try:
         expected = _object_key(upload.org_id, upload.ulid, upload.purpose or PURPOSE_BATCH_ZIP, upload.filename)
@@ -614,7 +636,7 @@ async def _presign_parts(
     expires_in = min(part_url_ttl_seconds(), remaining)
     expires_at = now + timedelta(seconds=expires_in)
 
-    if getattr(store, "transport", "s3") == "relay":
+    if getattr(store, "transport", "s3") == "relay" or isinstance(store, LocalMultipartStore):
         # The relay path is authenticated and org-scoped like every other
         # upload call; it needs no signature and lives as long as the upload.
         parts = [{"part_number": n, "url": relay_part_url(upload.ulid, n)} for n in part_numbers]
@@ -1586,7 +1608,7 @@ async def mark_attachment_enqueue_failed(
     )
 
 
-def download_to_bounded_tempfile(upload: DirectUpload, progress=None) -> str:
+def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=None) -> str:
     """Stream the incoming object into a bounded local tempfile, verifying it.
 
     Size and SHA-256 must match what was declared at initiation. The caller

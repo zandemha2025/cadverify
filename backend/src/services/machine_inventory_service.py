@@ -36,7 +36,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, TypeGuard, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,7 +47,7 @@ from src.analysis.models import ProcessType
 from src.costing.rates import ADDITIVE, BINDER_JET_FAMILY, METAL_POWDER_BED
 from src.db.models import MachineInstance, ShopCapabilities
 from src.profiles.database import MACHINES, MATERIALS, get_material_by_name, get_materials_for_process
-from src.profiles.models import MAKER_DESCRIBED, MAKER_SPEC
+from src.profiles.models import MAKER_DESCRIBED, MAKER_SPEC, MachineProfile
 # Reuse the EXACT material-class vocabulary the ground-truth / manifest importers
 # validate against — a machine can never smuggle in a material the cost engine
 # would later reject.
@@ -149,7 +149,7 @@ _PRINTER_KEY_PROCESSES: dict[str, frozenset] = {
 }
 
 
-def _is_number(v: Any) -> bool:
+def _is_number(v: Any) -> TypeGuard[int | float]:
     try:
         return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
     except OverflowError:
@@ -309,7 +309,8 @@ def _cheapest_steel(process: Optional[str]) -> Optional[str]:
         pt = None
     steels = [m for m in get_materials_for_process(pt) if MATERIAL_FAMILY.get(m.name) == "steel"
               and m.cost_per_kg] if pt is not None else []
-    return min(steels, key=lambda m: m.cost_per_kg).name if steels else None
+    # Each steel kept has a cost_per_kg (the filter above).
+    return min(steels, key=lambda m: cast(float, m.cost_per_kg)).name if steels else None
 
 
 def _metal_reading(name: str, process: Optional[str]) -> Optional[tuple[Optional[str], Optional[str]]]:
@@ -1262,7 +1263,7 @@ MAKER_SPEC_KEY = "maker_spec"
 MAKER_SPEC_FIELDS = ("max_workpiece_kg", "materials")
 
 
-def _catalog_profile(name: Any):
+def _catalog_profile(name: Any) -> Optional[MachineProfile]:
     if not isinstance(name, str):
         return None
     low = name.strip().lower()
@@ -1316,6 +1317,9 @@ def field_provenance(values: dict) -> dict:
     if not marker:
         return {}
     prof = _catalog_profile(marker["catalog"])
+    if prof is None or prof.spec is None:
+        # maker_marker names only a catalog machine that has a maker spec.
+        raise RuntimeError(f"maker marker names {marker['catalog']!r}, which has no maker spec")
     spec = prof.spec
     out: dict = {}
     if "max_workpiece_kg" in marker["fields"]:

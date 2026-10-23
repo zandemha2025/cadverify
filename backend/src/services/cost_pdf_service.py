@@ -14,6 +14,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import cast
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
@@ -142,7 +143,8 @@ def stale_lines(governance: dict, rates: dict | None) -> list[str]:
     the rate card it was priced at against the one in effect, and any other change
     (machines, material prices, calibration) since it was checked."""
     out = []
-    rates_stale = bool(rates and rates.get("out_of_date"))
+    rates = rates or {}
+    rates_stale = bool(rates.get("out_of_date"))
     if rates_stale:
         out.append(f"{rates.get('text')} Re-cost before quoting.")
     if governance.get("is_stale"):
@@ -219,7 +221,8 @@ def _render_cost_pdf_sync(decision: CostDecision, html_str: str | None = None) -
 
     if html_str is None:
         html_str = render_cost_html(decision)
-    return HTML(string=html_str, base_url=str(_TEMPLATE_DIR)).write_pdf()
+    # write_pdf() with no target returns the PDF's bytes (WeasyPrint is untyped).
+    return cast(bytes, HTML(string=html_str, base_url=str(_TEMPLATE_DIR)).write_pdf())
 
 
 def _fingerprint(html_str: str) -> str:

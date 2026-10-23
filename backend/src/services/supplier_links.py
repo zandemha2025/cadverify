@@ -109,7 +109,7 @@ async def record_cad(session: AsyncSession, short_id: str) -> tuple[str, bytes]:
 
     d = (await session.execute(select(CostDecision).where(CostDecision.share_short_id == short_id))
          ).scalar_one_or_none()
-    share_links.public_or_raise(d, "Shared part not found")
+    d = share_links.public_or_raise(d, "Shared part not found")
     if not shows(d)["include_cad"]:
         raise HTTPException(status_code=404, detail="This link doesn't include the CAD file.")
     info = await _cad_info(d)

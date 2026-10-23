@@ -24,7 +24,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
@@ -71,7 +71,7 @@ def wins(rows: list[dict], records: dict[str, dict]) -> list[dict]:
         if r.get("bucket") != "in_house" or is_decided_buy(r):
             continue
         qty = int(r.get("quantity") or 1)
-        make = r.get("make") if isinstance(r.get("make"), dict) else {}
+        make = m if isinstance(m := r.get("make"), dict) else {}
         saving = r.get("saving") if isinstance(r.get("saving"), dict) else None
         price = r.get("current_price") if isinstance(r.get("current_price"), dict) else None
         if saving is not None and price is not None and _num(make.get("unit_cost_usd")) is not None:
@@ -142,12 +142,12 @@ async def _rows_for_all_parts(session: AsyncSession, org_id: str) -> tuple[list[
     facts = {k: (v, p) for k, v, p in (await session.execute(
         select(PartContext.mesh_hash, PartContext.annual_volume, PartContext.buy_price)
         .where(PartContext.org_id == org_id))).all()}
-    outcomes = dict((await session.execute(
+    outcomes = {k: v for k, v in (await session.execute(
         select(CostDecision.mesh_hash, CostDecision.user_disposition)
         .where(CostDecision.org_id == org_id, CostDecision.user_disposition.isnot(None))
         .distinct(CostDecision.mesh_hash)
         .order_by(CostDecision.mesh_hash, CostDecision.disposition_updated_at.desc().nulls_last(),
-                  CostDecision.created_at.desc()))).all())
+                  CostDecision.created_at.desc()))).all()}
     rows = []
     for key, rec in records.items():
         yearly, price = facts.get(key, (None, None))
@@ -609,7 +609,8 @@ def render_html(report: dict) -> str:
 def _pdf_sync(html: str) -> bytes:
     from weasyprint import HTML
 
-    return HTML(string=html, base_url=str(_TEMPLATE_DIR)).write_pdf()
+    # write_pdf() with no target returns the PDF's bytes (WeasyPrint is untyped).
+    return cast(bytes, HTML(string=html, base_url=str(_TEMPLATE_DIR)).write_pdf())
 
 
 async def render_pdf(report: dict) -> bytes:

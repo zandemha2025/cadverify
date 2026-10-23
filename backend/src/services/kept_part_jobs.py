@@ -29,13 +29,16 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.db.models import Job
+
+if TYPE_CHECKING:
+    from src.storage.base import ObjectMetadata
 
 JOB_TYPE = "stored_check"
 SOURCE = "kept"
@@ -57,10 +60,10 @@ class KeptSource:
 
 
 def _size(store, key: str) -> int:
-    stat = getattr(store, "stat", None)
+    stat: Optional[Callable[[str], ObjectMetadata]] = getattr(store, "stat", None)
     if callable(stat):
         return int(stat(key).size_bytes)
-    local_path = getattr(store, "local_path", None)
+    local_path: Optional[Callable[[str], str]] = getattr(store, "local_path", None)
     if callable(local_path):
         return int(os.path.getsize(local_path(key)))
     total = 0

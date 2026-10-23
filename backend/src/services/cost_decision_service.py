@@ -559,12 +559,12 @@ async def latest_per_part(
         newest.append(row_id)
     total = len(newest)
     page = newest[:limit]
-    rows = (await session.execute(
+    rows = list((await session.execute(
         select(CostDecision)
         .options(defer(CostDecision.result_json))
         .where(CostDecision.id.in_(page))
         .order_by(CostDecision.ulid.desc())
-    )).scalars().all() if page else []
+    )).scalars().all()) if page else []
     shown = rows[:detail_limit]
     from src.services.rate_card_basis import basis_for
 

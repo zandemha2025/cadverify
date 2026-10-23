@@ -165,9 +165,9 @@ def normalize_buy_price(value, *, source: str, run_id: Optional[str] = None) -> 
         if v is not None and (not isinstance(v, (int, float)) or isinstance(v, bool)
                               or not (0 < float(v) <= MAX_BUY_PRICE_USD)):
             raise ValueError(f"buy_price.{name} must be more than $0 and at most ${MAX_BUY_PRICE_USD:,}")
-    if price is None and each is None:
-        raise ValueError("buy_price needs usd_each or price_usd")
     if price is None:
+        if each is None:
+            raise ValueError("buy_price needs usd_each or price_usd")
         price = float(each) * per
     usd_each = round(float(price) / per, 6)
     if source not in BUY_PRICE_SOURCES:
@@ -330,8 +330,9 @@ def engine_inputs(row: Any) -> dict:
     if row is None:
         return {k: None for k, _ in ENGINE_INPUT_FIELDS}
     out = {k: (getattr(row, k, None) or None) for k, _ in ENGINE_INPUT_FIELDS}
-    if isinstance(out.get("part_specs"), dict):
-        out["part_specs"] = {k: v for k, v in out["part_specs"].items() if k not in NOT_PRICED_FIELDS} or None
+    specs = out.get("part_specs")
+    if isinstance(specs, dict):
+        out["part_specs"] = {k: v for k, v in specs.items() if k not in NOT_PRICED_FIELDS} or None
     return out
 
 

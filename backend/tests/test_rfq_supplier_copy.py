@@ -317,3 +317,16 @@ def test_with_no_quantity_asked_the_picker_prices_where_the_part_page_opens():
     assert svc.price_at(rj, None, fallback=True) == {"quantity": 100, "unit_cost_usd": 30.76, "process": "fdm",
                                                      "dfm_ready": None, "basis": "part_page"}
     assert svc.price_at(rj, 250, fallback=True) is None  # asked for 250, not priced there: no other quantity's price
+
+
+@pytest.mark.asyncio
+async def test_a_package_whose_requester_is_gone_reads_mm_without_looking_up_a_person():
+    """A package saved without its unit, whose requester's account is gone (user_id
+    NULL), is in mm; nobody is looked up by a NULL id (SQLAlchemy only warns on
+    that today). A unit saved on the package still wins."""
+    session = MagicMock()
+    session.get = AsyncMock(return_value=None)
+    assert await svc._supplier_unit(session, SimpleNamespace(metadata_json={}, user_id=None)) == "mm"
+    assert await svc._supplier_unit(session, SimpleNamespace(metadata_json=None, user_id=None)) == "mm"
+    session.get.assert_not_called()
+    assert await svc._supplier_unit(session, SimpleNamespace(metadata_json={"length_unit": "in"}, user_id=None)) == "in"

@@ -230,19 +230,24 @@ class _Terms:
         return any(n in low for n in self._lower)
 
 
+def _obj(value: Any) -> dict:
+    """``value`` when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
 def private_names(result_json: Any) -> set[str]:
     """Machine names a saved record carries (verification, options, picks, lead
     times), so a copy can keep them out of every text."""
-    out: set[str] = set()
-    r = result_json if isinstance(result_json, dict) else {}
-    v = r.get("verification") if isinstance(r.get("verification"), dict) else {}
+    out: set[Any] = set()  # whatever the record holds; only the names are kept
+    r = _obj(result_json)
+    v = _obj(r.get("verification"))
     out.add(v.get("best_machine"))
-    res = v.get("resource") if isinstance(v.get("resource"), dict) else {}
+    res = _obj(v.get("resource"))
     out.add(res.get("machine"))
     for info in (v.get("per_route") or {}).values():
         if isinstance(info, dict):
             out.add(info.get("best_machine"))
-    dec = r.get("decision") if isinstance(r.get("decision"), dict) else {}
+    dec = _obj(r.get("decision"))
     for opt in (dec.get("options") or {}).values():
         if isinstance(opt, dict) and isinstance(opt.get("in_house"), dict):
             out.add(opt["in_house"].get("machine"))
@@ -405,11 +410,11 @@ def _in_house_routes(r: dict) -> set:
     """Routes the shop makes on a machine of its own, by every mark the engine
     leaves: the §0 verdict, the decision's options and picks, the estimate flags."""
     out: set = set()
-    v = r.get("verification") if isinstance(r.get("verification"), dict) else {}
+    v = _obj(r.get("verification"))
     for pv, info in (v.get("per_route") or {}).items():
         if isinstance(info, dict) and info.get("verdict") in _IN_HOUSE_VERDICTS:
             out.add(pv)
-    dec = r.get("decision") if isinstance(r.get("decision"), dict) else {}
+    dec = _obj(r.get("decision"))
     for opt in (dec.get("options") or {}).values():
         if isinstance(opt, dict) and isinstance(opt.get("in_house"), dict):
             out.add(opt["in_house"].get("process"))
@@ -430,7 +435,7 @@ def _uncalibrate(est: dict) -> Optional[dict]:
         return est
     before = cal.get("before") if isinstance(cal, dict) else None
     unit = _num((before or {}).get("unit_cost_usd"))
-    if unit is None:
+    if unit is None or before is None:  # (a None ``before`` has no unit either)
         return None
     out = copy.deepcopy(est)
     out.pop("calibration", None)
@@ -563,9 +568,10 @@ def _off_card(a: dict) -> bool:
 
     generic = (RATE_CARD_V0.get("global") or {}).get(a.get("name"))
     value = _num(a.get("value"))
-    if value is None or _num(generic) is None:
+    generic_value = _num(generic)
+    if value is None or generic_value is None:
         return False
-    return round(value, 6) != round(float(generic), 6)
+    return round(value, 6) != round(generic_value, 6)
 
 
 def _family(pv: Any) -> Optional[str]:
@@ -619,8 +625,8 @@ def _decision(dec: Any, kept: list, dropped: set, calibrated: set, terms: _Terms
     """
     if not isinstance(dec, dict):
         return None
-    rec_in = dec.get("recommendation") if isinstance(dec.get("recommendation"), dict) else {}
-    redes_in = dec.get("if_redesigned") if isinstance(dec.get("if_redesigned"), dict) else {}
+    rec_in = _obj(dec.get("recommendation"))
+    redes_in = _obj(dec.get("if_redesigned"))
     rec_out: dict = {}
     redes_out: dict = {}
     repicked = False

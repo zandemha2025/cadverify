@@ -28,7 +28,7 @@ then simply unknown (404).
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional, TypeVar, Union
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -44,6 +44,7 @@ DIALOG_CHOICES = (1, 7, 30, 90)
 MAX_DAYS_AHEAD = 366
 
 ShareRow = Union[Analysis, CostDecision, RfqPackage]
+_Row = TypeVar("_Row", Analysis, CostDecision, RfqPackage)
 Status = Literal["active", "expired", "off"]
 
 
@@ -176,7 +177,7 @@ def open_link(row: ShareRow, user_id: int, days: Optional[int], short_id: str, *
     row.share_expires_at = ends_at if ends_at is not None else (
         now + timedelta(days=days) if days is not None else None)
     row.share_revoked_at = None
-    if hasattr(row, "share_options"):
+    if not isinstance(row, Analysis) and hasattr(row, "share_options"):  # a check's link has no options
         row.share_options = shows
 
 
@@ -218,7 +219,7 @@ async def require_can_switch_off(session: AsyncSession, row: ShareRow, user_id: 
         )
 
 
-def public_or_raise(row: Optional[ShareRow], not_found: str) -> ShareRow:
+def public_or_raise(row: Optional[_Row], not_found: str) -> _Row:
     """The row behind a public link, or 404 (unknown) / 410 (ended or switched off).
 
     The 410 bodies carry no record data: only which way the link ended and when.
