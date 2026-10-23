@@ -7,6 +7,8 @@ cups, the pull direction a check assumed, and moving or mirroring a part.
 """
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 import trimesh
@@ -16,6 +18,7 @@ from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all
 from src.analysis.models import ProcessType, Severity
 from src.analysis.processes import get_analyzer
+from src.analysis.processes.checks import check_wire_reach
 from src.matcher.profile_matcher import score_process
 from src.parsers.stl_parser import parse_stl_from_bytes
 
@@ -123,6 +126,35 @@ def test_through_profiles_stay_wire_cuttable(part):
     ctx = _ctx(_stl(mesh))
     assert "WIRE_CANNOT_REACH" not in _codes(ctx, "wire_edm")
     assert _verdict(ctx, "wire_edm") != "fail"
+
+
+def _with_sliver_facet(mesh):
+    """The same solid with one edge split twice and closed by two zero-area faces,
+    a sliver facet like the one a fine STEP tessellation left in NIST STC-06.
+    Still watertight; trimesh gives the slivers a [0, 0, 0] normal."""
+    v = np.asarray(mesh.vertices, float)
+    a, b, c = (int(i) for i in mesh.faces[0])
+    m1, m2 = len(v), len(v) + 1
+    v = np.vstack([v, v[a] + (v[b] - v[a]) / 3.0, v[a] + 2.0 * (v[b] - v[a]) / 3.0])
+    split = [[a, m1, c], [m1, m2, c], [m2, b, c], [a, b, m2], [a, m2, m1]]
+    return trimesh.Trimesh(v, np.vstack([split, np.asarray(mesh.faces)[1:]]), process=False)
+
+
+@pytest.mark.parametrize("part,wire_reaches", [("pocket", False), ("through_pocket", True)])
+def test_a_sliver_facet_leaves_the_wire_answer_alone(part, wire_reaches):
+    if part == "pocket":
+        mesh = _diff(_box((80, 60, 30)), _box((60, 40, 25), at=(10, 10, 10)))
+    else:
+        mesh = _diff(_box((80, 60, 20)), _box((40, 20, 22), at=(20, 20, -1)))
+    ctx = _ctx(_with_sliver_facet(mesh))
+    assert ctx.mesh.is_watertight
+    assert any(np.all(np.linalg.norm(ctx.normals[g], axis=1) < 0.5) for g in ctx.facet_groups)
+    # The sliver has no plane to test: no in-plane direction divided by zero (it
+    # was a RuntimeWarning, 0/0) and the same answer as the part without it.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        codes = {i.code for i in check_wire_reach(ctx, ProcessType.WIRE_EDM)}
+    assert ("WIRE_CANNOT_REACH" in codes) is not wire_reaches
 
 
 # ── W7: sheet metal says can't for plate, bar, block and tube ────────────────

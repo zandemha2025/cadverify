@@ -891,6 +891,11 @@ def check_wire_reach(
         # was 95,739 passes over its 101,377 vertices (107 s). Same faces, same order.
         faces = np.fromiter((facet[np.argmax(ctx.face_areas[facet])] for facet in ctx.facet_groups),
                             dtype=np.int64, count=len(ctx.facet_groups))
+        # A facet of slivers (zero-area faces, which trimesh gives a [0, 0, 0] normal)
+        # has no plane to cut along; stock-first skipped it as a stock face. It is
+        # left out here too, so no in-plane direction is divided by a zero length.
+        tested = np.flatnonzero(np.linalg.norm(ctx.normals[faces], axis=1) > 0.5)
+        faces = faces[tested]
         normals = ctx.normals[faces]
         points = ctx.centroids[faces]
         # In-plane directions, each row exactly as one face's own np.cross and np.linalg.norm give it.
@@ -908,7 +913,7 @@ def check_wire_reach(
         closed_in = hit.reshape(-1, 4).all(axis=1)
         candidates = []
         for index in np.flatnonzero(closed_in):
-            facet, face = ctx.facet_groups[index], int(faces[index])
+            facet, face = ctx.facet_groups[int(tested[index])], int(faces[index])
             normal = ctx.normals[face]
             point = ctx.centroids[face]
             # A stock face bounds the whole part; nothing needed to cut it.
