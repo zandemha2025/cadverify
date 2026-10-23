@@ -69,13 +69,15 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, AsyncIterator, Callable, Iterator, Optional
+from typing import Any, AsyncIterator, Callable, Iterator, Optional, TypeVar, cast
 
 import structlog
 from fastapi import HTTPException
 
 logger = logging.getLogger("cadverify.compute_budget")
 slog = structlog.get_logger("cadverify.compute_budget")
+
+_T = TypeVar("_T")
 
 MB = 1024 * 1024
 DEFAULT_MEMORY_FRACTION = 0.7
@@ -718,7 +720,10 @@ class ComputeBudget:
         if waited >= 1.0:
             slog.info("compute_waited", label=label, need_mb=round(need / MB), waited_s=round(waited, 1),
                       grow=w.grow_hold is not None, **self._state_fields())
-        return party.hold
+        hold = party.hold
+        if hold is None:  # _grant sets the hold before _wake resolves the future
+            raise RuntimeError("compute budget: a granted wait has no hold")
+        return hold
 
     async def reserve(self, need_bytes: int, *, wait: Optional[float], label: str = "cad",
                       key: Any = DEFAULT, priority: Optional[int] = None) -> Hold:
@@ -733,6 +738,9 @@ class ComputeBudget:
         cls = _PRIORITY.get() if priority is None else priority
         loop = asyncio.get_running_loop()
         tree_rss = _tree_rss_bytes()  # a few /proc reads, outside the lock
+        party: Optional[_Party] = None
+        w: Optional[_Waiter] = None
+        granted: list[_Waiter] = []
         with self._lock:
             self._refresh(tree_rss)
             shared = self._shared.get(key) if key is not None else None
@@ -759,6 +767,8 @@ class ComputeBudget:
                 joined.leave()
                 raise
             return joined
+        if party is None or w is None:  # not joined: the branch above put this call in line
+            raise RuntimeError("compute budget: reserve() put no call in line")
         self._wake(granted)
         if party.hold is not None:
             return party.hold
@@ -785,13 +795,14 @@ class ComputeBudget:
                 self._apply_target(res)
                 granted = self._admit_waiting()  # the room it gave back may let others in
                 party = None
+                w = None
             else:
                 party = _Party(loop, need, hold.label)
                 w = _Waiter(GROW, res.seq, res.key, [party], grow_hold=hold, grow_to=need)
                 self._enqueue(w)
                 granted = self._admit_waiting()
         self._wake(granted)
-        if party is None or party.hold is not None:
+        if party is None or w is None or party.hold is not None:  # party and w are set together
             return
         await self._wait_for(w, party, wait, hold.label, need, time.monotonic())
 
@@ -1098,14 +1109,14 @@ class _Thread:
 
 
 async def run_within_budget(
-    fn: Callable,
+    fn: Callable[..., _T],
     *args,
     need_bytes: Optional[int] = None,
     timeout: Optional[float] = None,
     wait=DEFAULT,
     label: Optional[str] = None,
     **kwargs,
-):
+) -> _T:
     """reserve -> ``run_in_executor`` -> ``wait_for(shield(fut), timeout)``.
 
     Joins the current hold, or reserves ``need_bytes`` (default: the model's
@@ -1115,7 +1126,7 @@ async def run_within_budget(
     ``abandoned_compute_finished`` is logged then. The thread runs in a copy of
     the caller's context, as ``asyncio.to_thread`` does.
     """
-    label = label or getattr(fn, "__name__", "cad")
+    label = label or cast(str, getattr(fn, "__name__", "cad"))
     loop = asyncio.get_running_loop()
     res = current()
     if res is None or not res.join():
@@ -1124,7 +1135,9 @@ async def run_within_budget(
     call = _Thread(res, label)
     ctx = contextvars.copy_context()
     try:
-        fut = loop.run_in_executor(None, call.run, ctx, fn, args, kwargs)
+        # call.run gives None only when the future was cancelled before it started,
+        # so a result that is awaited here is always fn's.
+        fut = cast("asyncio.Future[_T]", loop.run_in_executor(None, call.run, ctx, fn, args, kwargs))
     except BaseException:
         if call._claim():
             res.leave()
