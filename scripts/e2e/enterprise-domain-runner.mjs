@@ -10,6 +10,7 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { configuredClientIp } from "./run-scoped-client-ip.mjs";
+import { assertNoDeclaredPartContext, isPartContextRead } from "./part-context-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -207,6 +208,8 @@ function isNetworkStatusConsoleMessage(text) {
 }
 
 function isExpectedHttpErrorResponse(entry) {
+  // A run's context read of a part with nothing declared, verified where it happened.
+  if (entry.verified === "no declared context for part") return true;
   if (entry.status === 422 && entry.path === "/api/proxy/ground-truth/recalibrate") return true;
   return [501, 503].includes(entry.status) && entry.path === "/api/proxy/reconstruct";
 }
@@ -825,6 +828,12 @@ class EnterpriseDomainQA {
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === "/api/proxy/validate"
       , { timeout: cadUploadTimeoutMs });
+      // The run reads the part's stored context before costing (c485111a).
+      const cubeMeshHash = await meshHashFor(cubePath);
+      const contextReadPromise = this.page.waitForResponse(
+        (response) => isPartContextRead(response, cubeMeshHash),
+        { timeout: cadUploadTimeoutMs },
+      );
       const input = this.page.locator('input[type="file"][accept*=".stl"]').first();
       await input.setInputFiles(cubePath);
       await this.page.waitForTimeout(3000);
@@ -837,6 +846,19 @@ class EnterpriseDomainQA {
         excludedCostResponse.json(),
         excludedValidationResponse.json(),
       ]);
+      // Before anything is declared about cube.step the read is the documented 404
+      // "no declared context for part"; only that verified response is expected.
+      const contextRead = await contextReadPromise;
+      if (contextRead.status() === 404) {
+        assertNoDeclaredPartContext(contextRead.status(), await contextRead.json());
+        const contextReadEntry = this.httpErrorResponses.find((entry) =>
+          !entry.verified && entry.method === "GET" && entry.status === 404 && entry.path === responsePath(contextRead),
+        );
+        assert(contextReadEntry, "the verified context read was not recorded");
+        contextReadEntry.verified = "no declared context for part";
+      } else {
+        assert(contextRead.ok(), `GET /part-context returned ${contextRead.status()}`);
+      }
       await this.page
         .waitForFunction(() => {
           const text = document.body.innerText;
