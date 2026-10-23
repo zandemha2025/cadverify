@@ -278,9 +278,12 @@ def worker_count() -> int:
     """min(cpu_count - 1, cap), env-overridable via PARSE_POOL_WORKERS, >= 1.
 
     cpu_count-1 leaves a core for the event loop / main process so the box stays
-    responsive under a parse burst.
+    responsive under a parse burst. The CPUs are the container's (its cgroup CPU
+    quota, ``compute_budget.available_cpus``), not the host's.
     """
-    cpu = os.cpu_count() or 2
+    from src.services.compute_budget import available_cpus
+
+    cpu = available_cpus()
     default = max(1, min(cpu - 1, _WORKER_CAP))
     raw = os.getenv("PARSE_POOL_WORKERS")
     if raw is None:
