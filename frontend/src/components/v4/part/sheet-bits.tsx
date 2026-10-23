@@ -210,7 +210,7 @@ function RunState() {
   if (bv && which === "busy") {
     const retry = bv.phase === "still" ? (bv.still.step === "cost" ? p.retryPrices : () => p.recheck()) : undefined;
     return (
-      <div className="swap" style={{ marginTop: 8 }}>
+      <div className="swap run-busy" style={{ marginTop: 8 }}>
         <BusyNotice view={bv} onRetry={retry} />
       </div>
     );

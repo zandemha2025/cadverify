@@ -103,9 +103,16 @@ export function stillBusyMeta(still: StillBusyState): string {
   return `${asked} Nothing was checked.`;
 }
 
-/** The progress sheet's button while it's hidden. */
+/** The progress sheet's button while it's hidden (desktop: short, at the stage's corner). */
 export function busyReopenLabel(view: BusyView, now: number): string {
   if (view.phase === "still") return "Still busy · Show";
   const s = secondsUntil(view.wait.until, now);
   return s > 0 ? `Busy · checking again in ${s} s` : "Busy · checking again now";
+}
+
+/** The same button on a phone, a bar across the screen above the tab bar: the busy state itself. */
+export function busyReopenBar(view: BusyView, now: number): string {
+  if (view.phase === "still") return view.still.step === "cost" ? "Still busy · prices didn't run · Show" : "Still busy · your file is kept · Show";
+  const s = secondsUntil(view.wait.until, now);
+  return `ScaleCAD is busy · checking again ${s > 0 ? `in ${s} s` : "now"}`;
 }

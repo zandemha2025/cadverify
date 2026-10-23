@@ -168,6 +168,10 @@
 /* The sheet's answer button ("Open result") stays in view above the lens bar; the steps scroll under it. */
 .ob .pv .prog .ft{position:sticky;bottom:0;z-index:1;background:#fff;border-radius:0 0 22px 22px}
 .ob .pv .reopen{position:fixed;right:12px;top:auto;bottom:76px}
+/* Busy with the panel hidden: its button is a bar across the screen above the tab bar, carrying the
+   state; the sheet's own copy would sit under the tab bar here, so the bar replaces it (capacity D2). */
+.ob .pv .reopen.busy{left:12px;justify-content:center;text-align:center;font-variant-numeric:tabular-nums}
+.ob .pv .sheet .run-busy{display:none}
 .ob .pv .legend,.ob .pv .nothing{position:relative;left:auto;top:auto;margin:12px 16px;width:auto}
 .ob .pv .ptoast{position:fixed;left:12px;right:12px;width:auto;bottom:76px}
 .ob .pv .ticket{display:none}

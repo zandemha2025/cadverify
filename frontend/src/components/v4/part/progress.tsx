@@ -5,7 +5,7 @@ import * as React from "react";
 import { dimsText, plural, progressSteps, type Step } from "./model";
 import { chosenLine } from "./pick-words";
 import { readsAsBodies, retryPrices, type CheckSession } from "./store";
-import { busyReopenLabel, busyView, type BusyView } from "./busy-state";
+import { busyReopenBar, busyReopenLabel, busyView, type BusyView } from "./busy-state";
 import { BusyNotice, useNow } from "./busy-notice";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 import { inText } from "../units/units";
@@ -155,8 +155,17 @@ export function ProgressPanel({
   const hideLabel = m.running ? "Hide progress" : "Close";
   if (!open)
     return (
-      <button ref={reopenRef} className="btn sm reopen" type="button" onClick={() => onOpenChange(true)}>
-        {m.busy ? busyReopenLabel(m.busy, now) : m.running ? "Checking · Show progress" : "Show progress"}
+      <button ref={reopenRef} className={m.busy ? "btn sm reopen busy" : "btn sm reopen"} type="button" onClick={() => onOpenChange(true)}>
+        {m.busy ? (
+          <>
+            <span className="on-desk">{busyReopenLabel(m.busy, now)}</span>
+            <span className="on-phone">{busyReopenBar(m.busy, now)}</span>
+          </>
+        ) : m.running ? (
+          "Checking · Show progress"
+        ) : (
+          "Show progress"
+        )}
       </button>
     );
   const bv = m.busy;

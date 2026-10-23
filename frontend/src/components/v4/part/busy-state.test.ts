@@ -6,6 +6,7 @@ import {
   STILL_BUSY_TITLE,
   WAITING_FOR_ROOM,
   busyMeta,
+  busyReopenBar,
   busyReopenLabel,
   busyTitle,
   busyView,
@@ -68,6 +69,9 @@ test("still busy: the brief's words, how long it asked, what didn't run", () => 
   assert.equal(stillBusyMeta({ step: "cost", kind: "server", waitedMs: 179_000 }), "ScaleCAD asked again for 3 minutes and had no room. The process checks are ready; prices haven't run.");
   assert.equal(stillBusyMeta({ step: "probe", kind: "org", waitedMs: 20_000 }), "ScaleCAD asked again for 1 minute and had no room. Nothing was checked.");
   assert.equal(busyReopenLabel({ phase: "still", still: { step: "probe", kind: "server", waitedMs: 1 } }, T), "Still busy · Show");
+  // At 390 the hidden panel's button is a bar above the tab bar that carries the state itself.
+  assert.equal(busyReopenBar({ phase: "still", still: { step: "validate", kind: "server", waitedMs: 1 } }, T), "Still busy · your file is kept · Show");
+  assert.equal(busyReopenBar({ phase: "waiting", step: "validate", wait: wait(9) }, T), "ScaleCAD is busy · checking again in 9 s");
 });
 
 test("busy never reads as a file problem or an error (D1, D2)", () => {
