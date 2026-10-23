@@ -274,14 +274,111 @@ def shadow_grid(mesh, cells: int = SHADOW_CELLS) -> SampledShadow | None:
     return SampledShadow(row[run], np.maximum(c0[run], 0), c1[run], nx, ny, pitch)
 
 
+# trimesh's projection outlines each connected run of faces facing one way (its boundary,
+# traced with a graph search per run), then unions the outlines two at a time. A finely meshed
+# round wall alternates faces tipped a hair up and a hair down, each its own run: a 9 KB tube
+# (1 mm wall, 202,754 faces) has 96,884 runs and took 117 s each way; a filleted 30 mm cube
+# 12,079 runs and 17 s. Past this many runs, each run of up to _OUTLINE_RUN_FACES faces whose
+# boundary is one simple loop is traced for all of them at once (the same loop, so the same
+# polygon), other runs as trimesh does, and the outlines are unioned at once by GEOS
+# (shapely.union_all): the tube in 9 s, its outline's area the same to 1e-13. Fewer runs keep
+# trimesh's own path, so those parts' outlines are unchanged to the bit.
+_OUTLINE_RUNS_AT_ONCE = 256
+_OUTLINE_RUN_FACES = 64
+
+
+def _run_loops(mesh, runs: list, vertices_2d: np.ndarray):
+    """Polygons for the runs whose boundary is one simple loop, traced for all runs at once,
+    and the indexes of the runs left to trimesh's own tracing (bigger, several loops, a vertex
+    the boundary passes twice, or a loop that isn't a valid polygon)."""
+    import shapely
+
+    sizes = np.fromiter(map(len, runs), dtype=np.int64, count=len(runs))
+    small = np.flatnonzero(sizes <= _OUTLINE_RUN_FACES)
+    left = list(np.flatnonzero(sizes > _OUTLINE_RUN_FACES))
+    if not len(small):
+        return [], left
+    tri = mesh.faces[np.concatenate([runs[i] for i in small])]
+    owner = np.repeat(np.repeat(np.arange(len(small)), sizes[small]), 3)
+    starts, ends = tri.reshape(-1), np.roll(tri, -1, axis=1).reshape(-1)
+    # A boundary edge is one a run's faces use once (trimesh: group_rows(require_count=1)).
+    edge = np.column_stack((owner, np.minimum(starts, ends), np.maximum(starts, ends)))
+    _, inverse, counts = np.unique(edge, axis=0, return_inverse=True, return_counts=True)
+    keep = counts[inverse.reshape(-1)] == 1
+    starts, ends, owner = starts[keep], ends[keep], owner[keep]
+    if not len(owner):
+        return [], left + list(small)
+    count_v = np.int64(len(mesh.vertices))
+    bad = np.zeros(len(small), dtype=bool)
+    # The boundary edge leaving each edge's end, in the same run; a vertex left twice is a pinch.
+    start_key = owner * count_v + starts
+    order = np.argsort(start_key, kind="stable")
+    sorted_key = start_key[order]
+    pinched = sorted_key[1:] == sorted_key[:-1]
+    bad[owner[order[1:][pinched]]] = True
+    where = np.minimum(np.searchsorted(sorted_key, owner * count_v + ends), len(sorted_key) - 1)
+    found = sorted_key[where] == owner * count_v + ends
+    bad[owner[~found]] = True
+    following = order[where]
+    # Walk each run's loop from its first boundary edge: it must close after all of them.
+    loop_len = np.bincount(owner, minlength=len(small))
+    bad |= loop_len < 3
+    first = np.minimum(np.searchsorted(owner, np.arange(len(small))), len(owner) - 1)
+    walk = [first]
+    for _ in range(int(loop_len.max()) - 1):
+        walk.append(following[walk[-1]])
+    walk = np.asarray(walk)  # (steps, runs)
+    step = np.arange(len(walk))[:, None]
+    inside = step < loop_len[None, :]
+    bad |= np.any((walk == first[None, :]) & inside & (step > 0), axis=0)
+    bad |= following[walk[np.maximum(loop_len - 1, 0), np.arange(len(small))]] != first
+    good = np.flatnonzero(~bad)
+    rings_at = walk[:, good].T[inside[:, good].T]
+    ring_id = np.repeat(np.arange(len(good)), loop_len[good])
+    polygons = shapely.polygons(shapely.linearrings(vertices_2d[starts[rings_at]], indices=ring_id))
+    valid = shapely.is_valid(polygons)
+    left.extend(small[np.flatnonzero(bad)])
+    left.extend(small[good[~valid]])
+    return list(polygons[valid]), left
+
+
+def _projected(mesh, up: float):
+    """``trimesh.path.polygons.projected(mesh, normal=[0, 0, up])`` (its defaults), its runs
+    traced and unioned at once when there are more than ``_OUTLINE_RUNS_AT_ONCE``."""
+    import shapely
+    from trimesh import geometry, graph, grouping
+    from trimesh.path.polygons import edges_to_polygons, projected
+    from trimesh.transformations import transform_points
+
+    normal = np.array([0.0, 0.0, up])
+    # The faces and runs trimesh picks (ignore_sign=True, tol_dot=1e-10).
+    dot_face = np.dot(normal, mesh.face_normals.T)
+    front, back = dot_face > 1e-10, dot_face < -1e-10
+    count = np.array([front.sum(), back.sum()])
+    side = [front, back][count.argmax() if count.min() == 0 else count.argmin()]
+    adjacency = mesh.face_adjacency[side[mesh.face_adjacency].all(axis=1)]
+    runs = graph.connected_components(adjacency, nodes=np.nonzero(side)[0])
+    if len(runs) <= _OUTLINE_RUNS_AT_ONCE:
+        return projected(mesh, normal=normal)
+    vertices_2d = transform_points(mesh.vertices, geometry.plane_transform(origin=None, normal=normal))[:, :2]
+    polygons, left = _run_loops(mesh, runs, vertices_2d)
+    edges = mesh.edges_sorted.reshape((-1, 6))
+    for index in left:
+        edge = edges[runs[index]].reshape((-1, 2))
+        polygons.extend(edges_to_polygons(edges=edge[grouping.group_rows(edge, require_count=1)],
+                                          vertices=vertices_2d))
+    if not polygons:
+        return None
+    padding = 1e-5 * float(np.ptp(vertices_2d, axis=0).max())
+    return shapely.union_all(polygons).buffer(padding).buffer(-padding)
+
+
 def _checked_outline(mesh, up: float, sampled):
     """trimesh's exact top-down outline of ``mesh`` (seen from above, ``up`` = 1, or from below,
     -1: the same shadow mirrored), or None when it is empty or disagrees with the sampled shadow
     by more than the grid's own resolution (one cell along the outline)."""
     try:
-        from trimesh.path.polygons import projected
-
-        outline = projected(mesh, normal=[0.0, 0.0, up])
+        outline = _projected(mesh, up)
     except Exception:
         return None
     if outline is None or outline.is_empty or not outline.area > 0:

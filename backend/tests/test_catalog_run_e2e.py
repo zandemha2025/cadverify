@@ -545,3 +545,28 @@ async def test_a_stored_zip_over_the_free_allowance_is_refused_on_the_worker(wor
         async with eng.get_session_factory()() as s:
             await s.execute(text("DELETE FROM direct_uploads WHERE user_id = :u"), {"u": uid})
             await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_thin_walled_bushing_is_checked_and_priced_within_the_part_limit(world):
+    """A 9 KB bushing (20 mm across, 1 mm wall) meshes to 202,754 faces. Its analysis
+    took 154 s and its price 271 s, so it failed a catalog run twice at the 180 s part
+    limit (capacity report C1c). The run's work is bounded in CPU seconds, not wall time."""
+    import time
+    from pathlib import Path
+
+    app, uid = world["app"], world["users"]["pilot"]
+    _as(app, uid)
+    data = (Path(__file__).parent / "assets" / "bushing-1mm-wall.step").read_bytes()
+    r = await _post(app, {"bushing-1mm-wall.step": data}, quantity=100)
+    assert r.status_code == 202, r.text
+    batch_id = r.json()["batch_id"]
+    start = time.process_time()
+    await _run_all(batch_id)
+    used = time.process_time() - start
+    board = (await _get(app, f"/api/v1/batch/{batch_id}/catalog")).json()
+    row = {row["filename"]: row for row in board["rows"]}["bushing-1mm-wall.step"]
+    assert row["status"] != "failed" and row["bucket"] != "not_checked", row
+    assert row["analysis_id"] and row["cost_decision_id"], row
+    # About 60 s of CPU for the check and the price together; over 400 s before.
+    assert used < 150.0, used
