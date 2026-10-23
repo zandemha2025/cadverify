@@ -254,8 +254,9 @@ async function main() {
       "Supplier network and RFQ package",
       "Simulate supplier-network handoff without pretending a live supplier was contacted.",
       async () => {
-        // The supplier's copy is now a plain request for quote; the buyer's warnings
-        // stay in ScaleCAD and the package is never sent by ScaleCAD (dbd669b0).
+        // dbd669b0 made the supplier's copy a plain request for quote (no "Live supplier
+        // send" / "Raw CAD included" lines); the service's guards stay, and the buyer's
+        // pages say it (enterprise-prehuman-readiness RFQ-PROCUREMENT-001).
         assert(
           contains(
             rfqService,
