@@ -82,13 +82,18 @@ MEMORY_HEADROOM = 1.10
 STL_MEMORY_POINTS: tuple[tuple[int, float], ...] = (
     (0, 150.0), (10_240, 158.0), (81_920, 461.0), (327_680, 975.0), (1_310_720, 2016.0),
 )
-# (file MB, MB added) for STEP (assemblies of repeated bracket bodies, ~58k faces per MB)
+# (file MB, MB added) for STEP. A small file can tessellate to anything up to the
+# mesher's face budget (250,000 faces): the catalog's dense 28-90 KB manifolds and
+# IGES blocks made 160-190k faces and needed 377-515 MB (up to 3.15 KB a face),
+# which is about 820 MB at the cap, so no STEP is sized under that. Above about
+# 1.5 MB the measured assemblies of repeated bracket bodies (~58k faces per MB)
+# take over. docs/BIG_FILES.md has both tables.
 STEP_MEMORY_POINTS: tuple[tuple[float, float], ...] = (
-    (0.0, 270.0), (0.036, 275.0), (1.16, 745.0), (4.92, 1531.0), (10.07, 2396.0),
+    (0.0, 820.0), (1.52, 820.0), (4.92, 1531.0), (10.07, 2396.0),
 )
-# IGES is sized like STEP. The IGES files measured (1.4 MB: 414 MB added; 5.7
-# MB: 660 MB) tessellated as open shells, so they skipped pricing and needed
-# less than a closed solid would; STEP's curve is the safe one for a solid.
+# IGES is sized like STEP: the catalog's IGES parts measured like its STEP ones
+# (459-515 MB at about 185k faces). The larger IGES files measured (1.4 MB: 414 MB
+# added; 5.7 MB: 660 MB) tessellated as open shells and needed less than a solid.
 IGES_MEMORY_POINTS = STEP_MEMORY_POINTS
 ASCII_STL_BYTES_PER_TRIANGLE = 290
 MEMORY_MODEL = {"stl": STL_MEMORY_POINTS, "step": STEP_MEMORY_POINTS, "iges": IGES_MEMORY_POINTS}

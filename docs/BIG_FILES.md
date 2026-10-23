@@ -204,6 +204,101 @@ What the numbers say:
 - Today's web limit, 100 MB, is beyond what a 2 GB machine holds: a 100 MB
   STL is 2 M triangles (about 3 GB); a 10 MB STEP assembly needed 2.4 GB.
 
+### Catalog parts (2026-10-22)
+
+The heaviest parts of the tester's 298-part catalog
+(`Ridgeline_bought_parts_2026Q3`), each through the real catalog item task
+(`batch_tasks.run_batch_item`: the analysis, the body split, the price with
+the org's machines) in a fresh process, the parse pool warmed with one
+worker, one part at a time, the process tree sampled every 50 ms, niced, on
+the shared 4-core box at load average 6-14 (times are slow). "Added" is the
+peak above the warmed process's own 336-341 MB. Model before and after are
+the reservation (`estimate_memory_bytes_for_data`, with its 1.1 headroom).
+Harness: `m1/measure_catalog_part.py` in the session scratchpad.
+
+| Part | KB | Faces | Outcome | Added MB | Model before | Model after |
+|---|---|---|---|---|---|---|
+| machined/manifolds/RFS-21513.step | 89 | 161,754 | priced | 509 | 326 | 902 |
+| machined/manifolds/RFS-21527.step | 89 | 161,640 | priced | 395 | 326 | 902 |
+| machined/manifolds/RFS-21404.step | 36 | 179,408 | priced | 377 | 302 | 902 |
+| machined/manifolds/RFS-21437.step | 28 | 189,526 | priced | 414 | 301 | 902 |
+| machined/plates/RFS-21347.step | 69 | 129,164 | priced | 314 | 317 | 902 |
+| machined/misc/nist_periodic_ctc05.stp | 319 | 112,428 | priced (recovered on a later rung) | 189 | 429 | 902 |
+| supplier-iges/RFS-21996.iges | 37 | 179,428 | open shell, not priced | 515 | 302 | 902 |
+| supplier-iges/RFS-21998.iges | 18 | 185,386 | priced | 459 | 300 | 902 |
+| supplier-iges/bored-block-inch.iges | 18 | 185,296 | priced | 515 | 300 | 902 |
+| broken/missing-face-box.step | 24 | 106,768 | GEOMETRY_INVALID | 449 | 301 | 902 |
+| broken/open-plane-mm.iges | 2 | 44,570 | GEOMETRY_INVALID | 297 | 297 | 902 |
+| broken/wire_only_unmeshable.step | 2 | none | can't be meshed (400) | 185 | 297 | 902 |
+| broken/RFS-29071.step | 15 | none | unreadable (400) | 8 | 299 | 902 |
+| broken/trap-nonmanifold-missing-face.stl | 1 | 11 | GEOMETRY_INVALID | 12 | 165 | 165 |
+| printed/trap-trapped-hollow-sphere.stl | 500 | 10,240 | priced | 50 | 174 | 174 |
+| assemblies/bracket-assembly.step | 37 | 129,928 | priced body by body | 1,687 | 303 | 902 |
+| broken/unsewn-box.step | 29 | 146,780 (open) | stopped at 6.1 GB | over 5,856 | 299 | 902 |
+
+What the numbers say:
+
+- Memory follows the triangle count, and a small STEP or IGES file says
+  nothing about it: the 28-90 KB manifolds and IGES blocks tessellate to
+  160-190k faces and need 377-515 MB, up to 3.15 KB a face, where the old
+  curve gave a 30 KB file 301 MB. A small file can tessellate up to the
+  mesher's face budget (250,000 faces, `step_mesher`), about 790 MB at that
+  rate. So the STEP and IGES curve now starts at **820 MB** (902 MB with the
+  headroom) and stays there until the bracket assemblies' curve passes it at
+  1.52 MB; the 0.036 MB, 275 MB point of a sparse one-body bracket is gone. The
+  frontend's copy (`upload-limit.ts`) moved with it.
+- The change doesn't move what one check may hold: the largest STEP or IGES
+  file is still 2.94 MB at a 1,229 MB budget, 9.10 MB at 2,457 MB (a 4 GB web
+  machine) and 22.41 MB at 4,915 MB (an 8 GB worker); above 1.52 MB the curve
+  is the same.
+- Some parts are over-reserved, and that is kept: nist's periodic part needs
+  189 MB (its faces come from a coarse recovery rung), STL is sized by its exact
+  triangle count and the small STLs need far less than the model's 150 MB base.
+- **Multi-body files are outside the model.** A file that splits into bodies
+  is checked body by body (`catalog_bodies.check_file_bodies`), and
+  `part_types.describe` measures contact between every pair of bodies:
+  `contact_between` calls `trimesh.proximity.closest_point` with up to 3,000
+  sample points against the other body's faces in the shared box, and on big
+  open sheets every point's candidates are most of the sheet. bracket-assembly
+  needed 1.7 GB; unsewn-box's main process grew about 100 MB a second until the
+  harness stopped it at 6.1 GB (its parse worker stayed at 230 MB). No
+  file-size model can size that; its fix (bounding that call's memory) is
+  separate work. Until then a run with such a file can use more than its
+  reservation.
+
+### What a long-running process keeps
+
+The proof run's worker held about 3.1 GB in its main process with three
+catalog parts (about 0.9 GB reserved) in flight: memory the allocator kept
+from earlier parts, not live arrays. Eleven catalog parts priced four at a
+time in one process (parsed in pool workers, as a web process does;
+`m1/retained_probe.py`), main process RssAnon in MB, two runs each:
+
+| | Peak | Idle after | After gc | After `malloc_trim(0)` |
+|---|---|---|---|---|
+| default glibc arenas | 1,664 / 1,623 | 1,516 / 1,542 | 1,324 / 1,409 | 318 / 423 |
+| `MALLOC_ARENA_MAX=2` | 1,196 / 1,365 | 1,196 / 1,266 | 1,064 / 1,087 | 202 / 178 |
+
+`malloc_trim(0)` gives back about 1 GB; two arenas lower the peak by 15-30%
+and leave less behind (the wall times, 343-567 s, moved with the box's load,
+not with the setting). The budget trims after heavy work (at most every 2 s),
+and its capacity counts the resident memory that no reservation explains.
+
+### A 60-part catalog run on the budget
+
+60 parts of the same catalog, the heavy ones above included, one run on a
+private API and worker (`COMPUTE_MEMORY_BUDGET_MB=5734`, `CHECK_MEMORY_BUDGET_MB=4915`,
+as an 8 GB worker), run concurrency 10, on the shared box at load average
+11-14:
+
+| | Before (staging, 298 parts, 10 in flight) | With the budget (60 parts) |
+|---|---|---|
+| Peak resident (worker) | killed by the kernel at 6.1 GB, then 8.8 GB; main 6.0 GB | 3.8 GB tree, main 3.1 GB; mean 2.1 GB |
+| Threads | 22 -> 43-54 | at most 79 (the 64-thread pool) |
+| Finished | OOM-killed twice | 57 checked (3 GEOMETRY_INVALID), 3 refused as broken files, none lost |
+| Time | - | 32 min 23 s in all; a part's own time median 87 s, p90 206 s, max 304 s |
+| Ran out of time | `cost_timeout` at 180 s, retried beside its running thread | one part's analysis (RFS-21722), its thread ended 6.8 s later, its room held until then; checked again after the run, done in 76 s |
+
 ## Proposed caps
 
 The worker gives one big check `CHECK_MEMORY_FRACTION` (0.6) of its machine's

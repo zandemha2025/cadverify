@@ -96,7 +96,8 @@ def memory_capacity_bytes() -> int:
 # The process may use at most this share of the machine's memory in all: its own
 # baseline (the interpreter, the parse pool's warm workers, memory its heap kept
 # from earlier work) plus the work in flight. The budget gives no more than what
-# that leaves above the baseline measured when the process was last idle.
+# that leaves above the baseline: the resident memory not held by reservations,
+# read at every reservation (at least what was resident when last idle).
 MACHINE_SHARE = 0.9
 # Freed heap goes back to the OS (glibc malloc_trim) after heavy work, at most this often.
 TRIM_EVERY_SECONDS = 2.0
@@ -315,17 +316,26 @@ class ComputeBudget:
         self._last_trim = 0.0
         self.capacity_bytes = self._capacity()
 
-    def _capacity(self) -> int:
-        """The configured capacity, but no more than the machine's share left above the idle baseline."""
+    def _capacity(self, tree_rss: Optional[int] = None) -> int:
+        """The configured capacity, but no more than the machine's share left above the baseline.
+
+        The baseline is what the process holds that no reservation explains:
+        its resident memory now less the room reserved (a lower bound, as work
+        in flight hasn't reached its peak yet), and at least what was resident
+        when it was last idle.
+        """
         configured = memory_capacity_bytes()
         machine = _machine_memory_bytes()
-        if machine and self.idle_baseline_bytes:
-            return max(0, min(configured, int(machine * MACHINE_SHARE) - self.idle_baseline_bytes))
+        baseline = self.idle_baseline_bytes or 0
+        if tree_rss:
+            baseline = max(baseline, tree_rss - self.used_bytes)
+        if machine and baseline:
+            return max(0, min(configured, int(machine * MACHINE_SHARE) - baseline))
         return configured
 
     # -- all of these run under self._lock ---------------------------------
-    def _refresh(self) -> None:
-        self.capacity_bytes = self._capacity()
+    def _refresh(self, tree_rss: Optional[int] = None) -> None:
+        self.capacity_bytes = self._capacity(tree_rss)
         self.slots = compute_slots()
 
     def _fits(self, need: int) -> bool:
@@ -407,8 +417,9 @@ class ComputeBudget:
         """
         need = max(0, int(need_bytes))
         loop = asyncio.get_running_loop()
+        tree_rss = _tree_rss_bytes()  # a few /proc reads, outside the lock
         with self._lock:
-            self._refresh()
+            self._refresh(tree_rss)
             if not self._queue and self._fits(need):
                 return self._grant(need, label)
             waiter = _Waiter(need, label, loop)

@@ -63,10 +63,12 @@ export function overCadLimitText(sizeBytes: number): string {
  * The memory one STEP or IGES check needs, by file size: the backend's measured
  * model (`stored_check_service.STEP_MEMORY_POINTS`, MB of file -> MB added to a
  * warmed process; IGES is sized like STEP), interpolated, extended at the last
- * slope, with its 10% headroom. upload-limit.test.ts pins the points to the backend.
+ * slope, with its 10% headroom. No STEP is sized under the 820 MB a small file
+ * needs at the mesher's 250,000-face budget. upload-limit.test.ts pins the points
+ * to the backend.
  */
 export const STEP_MEMORY_POINTS: readonly (readonly [number, number])[] = [
-  [0.0, 270.0], [0.036, 275.0], [1.16, 745.0], [4.92, 1531.0], [10.07, 2396.0],
+  [0.0, 820.0], [1.52, 820.0], [4.92, 1531.0], [10.07, 2396.0],
 ];
 export const MEMORY_HEADROOM = 1.1;
 

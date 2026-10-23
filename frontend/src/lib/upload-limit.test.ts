@@ -92,8 +92,12 @@ test("a STEP or IGES file over the web process's memory goes to the worker (the 
 
   // The same numbers the backend's _interp gives (MB of file -> MB, times 1.1).
   const MB = 1024 * 1024;
-  assert.equal(estimateStepMemoryBytes(0), Math.floor(270 * 1.1 * MB));
-  assert.equal(estimateStepMemoryBytes(1.16 * MB), Math.floor(745 * 1.1 * MB));
+  // A small STEP or IGES can tessellate to the mesher's 250,000-face budget: 820 MB at least.
+  assert.equal(estimateStepMemoryBytes(0), Math.floor(820 * 1.1 * MB));
+  assert.equal(estimateStepMemoryBytes(0.09 * MB), Math.floor(820 * 1.1 * MB));
+  assert.equal(estimateStepMemoryBytes(1.52 * MB), Math.floor(820 * 1.1 * MB));
+  const three = 820 + ((1531 - 820) * (3 - 1.52)) / (4.92 - 1.52);
+  assert.equal(estimateStepMemoryBytes(3 * MB), Math.floor(three * 1.1 * MB));
   const five = 1531 + ((2396 - 1531) * (5 - 4.92)) / (10.07 - 4.92);
   assert.equal(estimateStepMemoryBytes(5 * MB), Math.floor(five * 1.1 * MB));
   const twenty = 2396 + ((2396 - 1531) * (20 - 10.07)) / (10.07 - 4.92);

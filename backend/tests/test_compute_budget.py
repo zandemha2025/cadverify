@@ -336,3 +336,16 @@ async def test_finished_work_gives_memory_back_and_measures_the_idle_baseline(sm
         await asyncio.sleep(0.01)
     assert trims
     assert small_budget.snapshot()["idle_baseline_bytes"] == 777 * MB
+
+
+def test_capacity_counts_resident_memory_no_reservation_explains(monkeypatch):
+    monkeypatch.delenv("COMPUTE_MEMORY_BUDGET_MB", raising=False)
+    monkeypatch.delenv("COMPUTE_MEMORY_FRACTION", raising=False)
+    monkeypatch.setattr(cb, "_machine_memory_bytes", lambda: 8 * 1024**3)
+    monkeypatch.setattr(cb, "_tree_rss_bytes", lambda: 500 * MB)
+    b = cb.ComputeBudget()
+    assert b.capacity_bytes == int(8 * 1024**3 * 0.7)  # lean: the configured share
+    # Busy: 3.8 GB resident with 0.9 GB reserved leaves 2.9 GB nobody reserved
+    # (the heap kept from earlier parts): the room shrinks to what's really left.
+    b.used_bytes = 900 * MB
+    assert b._capacity(3800 * MB) == int(8 * 1024**3 * cb.MACHINE_SHARE) - 2900 * MB
