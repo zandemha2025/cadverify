@@ -882,33 +882,41 @@ def check_wire_reach(
         error = float(mesh.metadata.get("coordinate_error", 0.0))
         tol = wall_thickness_tolerance(mesh, ctx.scale_eps) + 2.0 * error
         probe = max(_WIRE_PROBE_MM, 4.0 * tol)
+        # A face is reported when it is closed in on all four sides in the plane
+        # just off it, and is not a stock face. The two tests don't depend on each
+        # other, and a ray's hit doesn't depend on the others cast with it, so the
+        # in-plane rays go first, for every facet in one batch, and only the
+        # closed-in facets are tested against every vertex. Stock-first tested all
+        # of them: a 9 KB tube meshed to 202,754 faces has 95,739 facets, which
+        # was 95,739 passes over its 101,377 vertices (107 s). Same faces, same order.
+        faces = np.fromiter((facet[np.argmax(ctx.face_areas[facet])] for facet in ctx.facet_groups),
+                            dtype=np.int64, count=len(ctx.facet_groups))
+        normals = ctx.normals[faces]
+        points = ctx.centroids[faces]
+        # In-plane directions, each row exactly as one face's own np.cross and np.linalg.norm give it.
+        u = np.cross(normals, [1.0, 0.0, 0.0])
+        length = np.array([np.linalg.norm(row) for row in u])
+        flat = length < 0.5
+        if np.any(flat):
+            u[flat] = np.cross(normals[flat], [0.0, 1.0, 0.0])
+            length[flat] = [np.linalg.norm(row) for row in u[flat]]
+        u /= length[:, None]
+        v = np.cross(normals, u)
+        origins = np.repeat(points + normals * probe, 4, axis=0)
+        directions = np.stack((u, -u, v, -v), axis=1).reshape(-1, 3)
+        hit = np.asarray(mesh.ray.intersects_any(origins, directions), dtype=bool)
+        closed_in = hit.reshape(-1, 4).all(axis=1)
         candidates = []
-        for facet in ctx.facet_groups:
-            face = int(facet[np.argmax(ctx.face_areas[facet])])
+        for index in np.flatnonzero(closed_in):
+            facet, face = ctx.facet_groups[index], int(faces[index])
             normal = ctx.normals[face]
             point = ctx.centroids[face]
             # A stock face bounds the whole part; nothing needed to cut it.
             if float(np.max((vertices - point) @ normal)) <= probe:
                 continue
             candidates.append((float(ctx.face_areas[facet].sum()), face, point, normal))
-        if not candidates:
-            return []
         candidates.sort(key=lambda c: -c[0])
-        origins, directions, owners = [], [], []
-        for index, (_area, face, point, normal) in enumerate(candidates):
-            u = np.cross(normal, [1.0, 0.0, 0.0])
-            if np.linalg.norm(u) < 0.5:
-                u = np.cross(normal, [0.0, 1.0, 0.0])
-            u /= np.linalg.norm(u)
-            v = np.cross(normal, u)
-            for d in (u, -u, v, -v):
-                origins.append(point + normal * probe)
-                directions.append(d)
-                owners.append(index)
-        hit = np.asarray(mesh.ray.intersects_any(np.asarray(origins), np.asarray(directions)), dtype=bool)
-        owners = np.asarray(owners)
-        boxed = [candidates[i] for i in range(len(candidates)) if np.all(hit[owners == i])]
-        for _area, face, point, normal in boxed[:_WIRE_MAX_SECTIONS]:
+        for _area, face, point, normal in candidates[:_WIRE_MAX_SECTIONS]:
             if _closed_in_plane(mesh, point + normal * probe, normal):
                 return [Issue(
                     code="WIRE_CANNOT_REACH",
