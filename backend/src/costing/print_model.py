@@ -181,21 +181,155 @@ def layer_profile(mesh, layer_mm: float = 0.2, cap: int = LAYER_SAMPLES) -> tupl
     return perimeter, np.maximum(area, 0.0)
 
 
-def pad_area_cm2(mesh, margin_mm: float | None = None) -> float:
-    """Area (cm²) of the resin pad under ``mesh`` as placed: its outline seen from above (the
-    union of every face's shadow), grown by the pad margin with square corners. A mesh whose
-    outline can't be read gets its box footprint grown by the same margin."""
-    w = RESIN["pad_margin_mm"] if margin_mm is None else float(margin_mm)
+SHADOW_CELLS = 1024  # grid cells along the longer side of the part's box, for the sampled shadow
+
+
+@dataclass(frozen=True)
+class SampledShadow:
+    """The part's shadow from above on a square grid of ``pitch`` mm cells, as runs of covered
+    cells: in grid row ``row[i]``, the cells ``first[i]``..``last[i]`` (runs may overlap)."""
+
+    row: np.ndarray
+    first: np.ndarray
+    last: np.ndarray
+    nx: int
+    ny: int
+    pitch: float
+
+    def area_mm2(self) -> float:
+        """The covered cells' area: the runs' union, row by row (no grid is built)."""
+        order = np.lexsort((self.first, self.row))
+        offset = self.row[order] * (self.nx + 2)  # rows apart, so one running maximum serves all
+        a, b = self.first[order] + offset, self.last[order] + offset
+        reach = np.concatenate(([-1], np.maximum.accumulate(b)[:-1]))
+        cells = int(np.maximum(0, b - np.maximum(reach, a - 1)).sum())
+        return cells * self.pitch * self.pitch
+
+    def covered(self) -> np.ndarray:
+        width = self.nx + 1
+        size = self.ny * width
+        edges = (np.bincount(self.row * width + self.first, minlength=size)
+                 - np.bincount(self.row * width + self.last + 1, minlength=size))
+        return np.cumsum(edges.reshape(self.ny, width), axis=1)[:, :self.nx] > 0
+
+    def grown_area_mm2(self, margin_mm: float) -> float:
+        """Area of the shadow grown by ``margin_mm``: the cells whose centre lies within the margin
+        of a covered cell's centre, plus half a cell (the shadow's edge lies on average half a cell
+        past its outermost covered centres)."""
+        from scipy.ndimage import distance_transform_edt
+
+        border = int(math.ceil(margin_mm / self.pitch)) + 2
+        dist = distance_transform_edt(~np.pad(self.covered(), border)) * self.pitch
+        return float(np.count_nonzero(dist <= margin_mm + 0.5 * self.pitch)) * self.pitch * self.pitch
+
+
+def shadow_grid(mesh, cells: int = SHADOW_CELLS) -> SampledShadow | None:
+    """The part's shadow from above sampled on a square grid, ``cells`` along its box's longer side.
+
+    A cell is covered when its centre lies in the top-down projection of some face, edges
+    included. Every face counts, whichever way it points, so the part upside down or turned
+    end for end casts the same shadow. Each face is read row by row, so the work is the rows
+    each face spans, not its area. None for a mesh with no face that casts a shadow, or one too
+    thin to cover a cell's centre.
+    """
+    v = np.asarray(mesh.vertices, dtype=np.float64)[:, :2]
+    fa = np.asarray(mesh.faces, dtype=np.int64)
+    if not len(fa):
+        return None
+    tri = v[fa]
+    e1, e2 = tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]
+    lo, hi = tri.reshape(-1, 2).min(0), tri.reshape(-1, 2).max(0)
+    span = float((hi - lo).max())
+    if not span > 0:
+        return None
+    tri = tri[np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) > 1e-12 * span * span]  # edge-on faces cast none
+    if not len(tri):
+        return None
+    pitch = span / cells
+    nx, ny = (int(math.floor(float(d) / pitch)) + 1 for d in (hi - lo))
+    # Each face's corners from lowest to highest y: the long edge 0-2 spans every row the face
+    # does; below corner 1 the other side is edge 0-1, from it edge 1-2.
+    tri = np.take_along_axis(tri, np.argsort(tri[:, :, 1], axis=1)[:, :, None], axis=1)
+    (x0, y0), (x1, y1), (x2, y2) = (tri[:, k].T for k in range(3))
+
+    def slope(xa, ya, xb, yb):
+        dy = yb - ya
+        return np.where(dy > 0, (xb - xa) / np.where(dy > 0, dy, 1.0), 0.0)
+
+    s02, s01, s12 = slope(x0, y0, x2, y2), slope(x0, y0, x1, y1), slope(x1, y1, x2, y2)
+    r0 = np.ceil((y0 - lo[1]) / pitch - 0.5).astype(np.int64)
+    r1 = np.minimum(np.floor((y2 - lo[1]) / pitch - 0.5).astype(np.int64), ny - 1)
+    cnt = np.maximum(r1 - r0 + 1, 0)
+    face = np.repeat(np.arange(len(tri)), cnt)
+    row = np.repeat(r0, cnt) + (np.arange(int(cnt.sum())) - np.repeat(np.cumsum(cnt) - cnt, cnt))
+    yc = lo[1] + (row + 0.5) * pitch
+    xa = x0[face] + (yc - y0[face]) * s02[face]
+    low = yc < y1[face]
+    xb = np.where(low, x0[face] + (yc - y0[face]) * s01[face], x1[face] + (yc - y1[face]) * s12[face])
+    c0 = np.ceil((np.minimum(xa, xb) - lo[0]) / pitch - 0.5).astype(np.int64)
+    c1 = np.minimum(np.floor((np.maximum(xa, xb) - lo[0]) / pitch - 0.5).astype(np.int64), nx - 1)
+    run = c1 >= c0
+    if not run.any():  # thinner than a cell everywhere: nothing to check the outline against
+        return None
+    return SampledShadow(row[run], np.maximum(c0[run], 0), c1[run], nx, ny, pitch)
+
+
+def _checked_outline(mesh, up: float, sampled):
+    """trimesh's exact top-down outline of ``mesh`` (seen from above, ``up`` = 1, or from below,
+    -1: the same shadow mirrored), or None when it is empty or disagrees with the sampled shadow
+    by more than the grid's own resolution (one cell along the outline)."""
     try:
         from trimesh.path.polygons import projected
 
-        shadow = projected(mesh, normal=[0.0, 0.0, 1.0])
+        outline = projected(mesh, normal=[0.0, 0.0, up])
     except Exception:
-        shadow = None
-    if shadow is None or shadow.is_empty or not shadow.area > 0:
+        return None
+    if outline is None or outline.is_empty or not outline.area > 0:
+        return None
+    if sampled is not None and abs(float(outline.area) - sampled.area_mm2()) > float(outline.length) * sampled.pitch:
+        return None
+    return outline
+
+
+def pad_area_cm2(mesh, margin_mm: float | None = None) -> float:
+    """Area (cm²) of the resin pad under ``mesh`` as placed: its outline seen from above (the
+    union of every face's shadow), grown by the pad margin with square corners. A mesh whose
+    outline can't be read gets its box footprint grown by the same margin.
+
+    The outline is trimesh's exact projection, checked against the shadow sampled on a grid
+    (``shadow_grid``), so it reads the same whichever way up the part lies:
+    * The projection traces each connected run of faces facing one way, and on a folded or
+      decimated surface it can drop runs: the same solid read 14.3 cm² with one end down and
+      51.7 cm² with the other. Where it disagrees with the grid by more than one cell along the
+      outline, the sampled shadow is grown by the margin instead (round corners, within about a
+      cell along the pad's edge of the exact pad).
+    * Its outline can carry a sliver too thin to see in the area, which square corners turn into
+      a spike of up to 5x the margin (+10% on one corpus part, one way up only). Where square
+      corners add more than a rectangle's four would, the outline seen from below (the same
+      shadow, traced from the other faces) is grown too, and a pad smaller by over 0.1% kept.
+      When that outline fails its own check, corners sharper than square are bevelled.
+    """
+    w = RESIN["pad_margin_mm"] if margin_mm is None else float(margin_mm)
+    try:
+        sampled = shadow_grid(mesh)
+    except Exception:
+        sampled = None
+    outline = _checked_outline(mesh, 1.0, sampled)
+    if outline is None:
+        if sampled is not None:
+            return sampled.grown_area_mm2(w) / 100.0
         ext = mesh.extents
         return float((ext[0] + 2 * w) * (ext[1] + 2 * w)) / 100.0
-    return float(shadow.buffer(w, join_style="mitre").area) / 100.0
+    pad = float(outline.buffer(w, join_style="mitre").area)
+    if pad - float(outline.buffer(w).area) > (4.0 - math.pi) * w * w + 1e-9:
+        below = _checked_outline(mesh, -1.0, sampled)
+        if below is not None:
+            other = float(below.buffer(w, join_style="mitre").area)
+            if other < pad * (1.0 - 1e-3):
+                pad = other
+        else:
+            pad = float(outline.buffer(w, join_style="mitre", mitre_limit=math.sqrt(2.0) + 1e-6).area)
+    return pad / 100.0
 
 
 _cache: "OrderedDict[str, PrintFeatures]" = OrderedDict()

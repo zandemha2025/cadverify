@@ -293,3 +293,96 @@ def test_a_400k_triangle_stl_is_decimated_once_per_price(tmp_path, monkeypatch):
     # cylinder lying down is its lower half, the same along its length.
     lying = ways[0][1]
     assert lying.fdm_need_cm2 > 0 and lying.layer_area_mm2
+
+
+# ── The resin pad reads the same whichever way up the part lies ─────────────────────────────
+_DOWN = {"-Z": (0, 0, -1), "+Z": (0, 0, 1), "+X": (1, 0, 0), "-X": (-1, 0, 0), "+Y": (0, 1, 0), "-Y": (0, -1, 0)}
+_PAIRS = (("-Z", "+Z"), ("+X", "-X"), ("+Y", "-Y"))  # each the other upside down: the same shadow
+
+
+def _laid(mesh, side):
+    from src.analysis.orientation import Orientation, rotation_down
+
+    return Orientation.of(rotation_down(_DOWN[side])).apply(mesh)
+
+
+def _exact_pad_cm2(mesh, margin=2.0):
+    """The union of every face's top-down triangle, grown with square corners (slow, exact)."""
+    import shapely
+
+    tri = np.asarray(mesh.vertices)[mesh.faces][:, :, :2]
+    polys = shapely.polygons(np.concatenate([tri, tri[:, :1]], axis=1))
+    shadow = shapely.union_all(polys[shapely.area(polys) > 0])
+    return float(shapely.buffer(shadow, margin, join_style="mitre").area) / 100.0
+
+
+def _corpus(name):
+    from pathlib import Path as _P
+
+    here = _P(__file__).resolve().parent
+    if name.startswith("cv_cal_"):
+        from src.costing.calibration_fixtures import ensure_calibration_fixtures
+
+        path = ensure_calibration_fixtures(here.parents[1] / ".pytest_cache") / name
+    else:
+        path = here / "trap-corpus" / name
+    m = trimesh.load(path, force="mesh")
+    m.apply_translation(-m.bounds[0])
+    return m
+
+
+@pytest.mark.parametrize("name, sides", [
+    # trimesh's projection dropped part of the shadow: -28.9% and -28.8% of the exact pad.
+    ("trap-nonmanifold-missing-face.stl", ("-Z", "+Z")),
+    ("cv_cal_invalid_open_shell.stl", ("+X", "-X")),
+    # ... or square corners turned a sliver in its outline into a spike, one way up: +10.3%.
+    ("trap-assembly-adjacent-dumbbell-0.6neck.stl", ("-Z", "+Z")),
+])
+def test_the_pad_of_a_corpus_part_is_the_same_upside_down(name, sides):
+    mesh = _corpus(name)
+    pads = [print_model.pad_area_cm2(_laid(mesh, s)) for s in sides]
+    exact = _exact_pad_cm2(_laid(mesh, sides[0]))
+    assert pads[0] == pytest.approx(pads[1], rel=0.005)
+    assert pads == pytest.approx([exact, exact], rel=0.02)
+
+
+@pytest.mark.parametrize("name", ["control-cube-10mm.stl", "control-organic-goblet.stl", "trap-small-rib-0.39mm.stl",
+                                  "cv_cal_medium_rotational_bracket.stl", "cv_cal_tiny_rotational_ring.stl"])
+def test_a_part_whose_outline_reads_cleanly_keeps_its_pad(name):
+    """Where trimesh's outline agrees with the sampled shadow, the pad is that outline grown, as before."""
+    from trimesh.path.polygons import projected
+
+    mesh = _corpus(name)
+    for side in _DOWN:
+        placed = _laid(mesh, side)
+        before = projected(placed, normal=[0.0, 0.0, 1.0]).buffer(2.0, join_style="mitre").area / 100.0
+        assert print_model.pad_area_cm2(placed) == before
+
+
+def test_the_pad_of_a_400k_triangle_part_is_the_same_every_way_down(monkeypatch):
+    """A 420k-triangle torus, decimated for analysis as pricing reads it. Its shadow is known:
+    flat, a ring; on its side, a stadium. trimesh's projection read one side 7% low."""
+    from src.analysis.context import _maybe_decimate
+
+    R, r, w = 40.0, 12.0, 2.0
+    torus = trimesh.creation.torus(major_radius=R, minor_radius=r, major_sections=1000, minor_sections=210)
+    assert len(torus.faces) == 420_000
+    bounded, info = _maybe_decimate(torus)
+    assert info and info["succeeded"]
+    flat = math.pi * ((R + r + w) ** 2 - (R - r - w) ** 2) / 100.0
+    side = (4 * R * (r + w) + math.pi * (r + w) ** 2) / 100.0
+    pads = {s: print_model.pad_area_cm2(_laid(bounded, s)) for s in _DOWN}
+    for a, b in _PAIRS:
+        assert pads[a] == pytest.approx(pads[b], rel=0.005), (a, b, pads)
+    assert [pads["-Z"], pads["+Z"]] == pytest.approx([flat, flat], rel=0.005)
+    assert [pads[s] for s in ("+X", "-X", "+Y", "-Y")] == pytest.approx([side] * 4, rel=0.005)
+
+
+def test_the_sampled_shadow_is_the_same_upside_down_and_matches_the_outline():
+    mesh = _corpus("control-organic-goblet.stl")
+    a, b = (print_model.shadow_grid(_laid(mesh, s)) for s in ("+X", "-X"))
+    assert a.area_mm2() == pytest.approx(b.area_mm2(), rel=1e-3)
+    assert a.area_mm2() == pytest.approx(np.count_nonzero(a.covered()) * a.pitch ** 2)
+    box = print_model.shadow_grid(_box((20, 15, 10), (10, 7.5, 5)))
+    assert box.area_mm2() == pytest.approx(300.0, rel=0.002)
+    assert box.grown_area_mm2(2.0) == pytest.approx(24 * 19 - (4 - math.pi) * 4, rel=0.005)  # round corners
