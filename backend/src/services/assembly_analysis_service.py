@@ -80,16 +80,19 @@ def _max_interference_pairs() -> int:
 
 
 def _analyze_workers() -> int:
-    """Bounded thread-pool width for the per-part cost loop. The cost engine is
-    numpy-heavy (releases the GIL), so a small pool genuinely overlaps the parts;
-    cost is per-part CPU, so we cap independently of core count."""
+    """Thread-pool width for the per-design analyses (ASSEMBLY_ANALYZE_WORKERS,
+    default 1). The engine is mostly Python between short numpy calls, so threads
+    contend for the GIL instead of overlapping: the 30-body asm-30 took 24.5 s on
+    one thread, 31 s on two and 45 s on four (59 s of CPU); the 18-part AS1 11 s
+    and 15 s. One thread is also what the compute budget counts: an assembly
+    analysis holds one compute slot."""
     try:
         env = os.getenv("ASSEMBLY_ANALYZE_WORKERS")
         if env:
             return max(1, int(env))
     except ValueError:
         pass
-    return max(1, min(4, (os.cpu_count() or 2)))
+    return 1
 
 
 # Surfaced verbatim in every analysis response so a hardcore engineer sees the
