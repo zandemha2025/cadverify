@@ -121,9 +121,10 @@ def test_a_step_check_holds_its_parse_then_what_its_mesh_needs(app_client, monke
 
 @pytest.mark.asyncio
 async def test_a_web_request_gives_its_read_connection_back_before_it_waits():
-    url = os.environ.get("TEST_DATABASE_URL", "")
+    # The same database the suite uses (conftest): CI sets only DATABASE_URL.
+    url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
     if not url.startswith("postgresql"):
-        pytest.skip("needs PostgreSQL (TEST_DATABASE_URL)")
+        pytest.skip("needs PostgreSQL (TEST_DATABASE_URL or DATABASE_URL)")
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
