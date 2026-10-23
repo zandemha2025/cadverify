@@ -52,6 +52,25 @@ _SAMPLE_POINTS = 3000    # points per sampling round on the contact region
 _SAMPLE_ROUNDS = 3
 _MIN_REGION_POINTS = 400
 
+# Bounded work. A contact is measured as the distance from points sampled on one
+# body to the other body's triangles. trimesh's closest_point measures every
+# point against every triangle out to its nearest vertex, all at once; on a big
+# open sheet (a STEP file whose faces never sewed: 150k open faces from 29 KB)
+# that is most of the sheet for every point, and gigabytes. Here a point looks no
+# further than a contact can be (NEAR_TOL_MM, or its nearest vertex when that is
+# closer), distances are computed in batches, and each pair and file has a cap.
+_CONTACT_CHUNK_POINTS = 200          # points whose nearby triangles are looked up together
+_CONTACT_BATCH = 100_000             # point-to-triangle distances computed at once (about 35 MB)
+_CONTACT_WORK_PER_PAIR = 2_000_000   # distances one pair of bodies may take; past it the sample is cut
+_CONTACT_WORK_PER_FILE = 12_000_000  # distances all of one file's contacts may take
+# trimesh's oriented box projects each candidate direction's silhouette edges
+# against its silhouette vertices at once: an 8,288-sided round pin in a STEP
+# assembly needs 1.4 GB and 13 s for that. Hulls whose silhouettes fit
+# _OBB_MAX_CELLS keep trimesh's answer exactly; past it each direction's outline
+# is measured by rotating calipers (linear memory).
+_OBB_MAX_CELLS = 4_000_000           # silhouette edges x vertices trimesh projects at once (about 100 MB)
+_OBB_MAX_POINTS = 8_000_000          # candidate directions x hull vertices past that, per body
+
 STOCK_KINDS = frozenset({
     "plate", "sheet", "rect_tube", "round_tube", "round_bar", "flat_bar", "bar",
     "angle", "channel", "tee", "beam",
@@ -382,6 +401,95 @@ def _rect_dims(poly) -> tuple[float, float]:
     return (max(a, b), min(a, b))
 
 
+def _min_rectangle(points: np.ndarray) -> tuple[float, np.ndarray]:
+    """Smallest-area rectangle around 2D points: (area, the direction of one of its sides).
+
+    The rectangle lies along one edge of the points' convex hull (as in
+    ``trimesh.bounds.oriented_bounds_2D``); each edge's extents come from the
+    hull vertices furthest along and across it, found by the direction of the
+    hull's edges (rotating calipers): linear memory, where trimesh projects
+    every edge against every vertex.
+    """
+    from scipy.spatial import ConvexHull
+
+    hull = ConvexHull(points, qhull_options="QbB")
+    corners = hull.points[hull.vertices]  # counter-clockwise
+    vec = np.roll(corners, -1, axis=0) - corners
+    norm = np.sqrt(np.dot(vec ** 2, [1, 1]))
+    keep = norm > 1e-10
+    vec = vec[keep] / norm[keep].reshape((-1, 1))
+    # edge directions turn counter-clockwise: their angles, unwrapped, only grow
+    turn = np.arctan2(vec[:, 1], vec[:, 0])
+    turn = np.maximum.accumulate(turn[0] + np.mod(turn - turn[0], 2 * np.pi))
+    starts = np.nonzero(keep)[0]  # each kept edge's first vertex
+
+    def furthest(d: np.ndarray) -> np.ndarray:
+        """max over the hull of p . d, for each unit direction d: the vertex where the
+        edges turn past d's normal (with its neighbours, against rounding)."""
+        aim = np.arctan2(d[:, 1], d[:, 0]) + np.pi / 2
+        k = np.searchsorted(turn, turn[0] + np.mod(aim - turn[0], 2 * np.pi), side="left")
+        at = starts[k % len(starts)]
+        best = np.full(len(d), -np.inf)
+        for step in (-1, 0, 1):
+            j = (at + step) % len(corners)
+            best = np.maximum(best, np.einsum("ij,ij->i", corners[j], d))
+        return best
+
+    perp = np.fliplr(vec) * [-1.0, 1.0]
+    area = (furthest(vec) + furthest(-vec)) * (furthest(perp) + furthest(-perp))
+    k = int(area.argmin())
+    return float(area[k]), vec[k]
+
+
+def _oriented_box(mesh: trimesh.Trimesh) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """(to_origin, extents) of the mesh's smallest oriented box, as ``trimesh.bounds.oriented_bounds``.
+
+    The same candidate directions (the hull's face normals). When every
+    direction's silhouette fits ``_OBB_MAX_CELLS``, trimesh's own answer; past it
+    each direction's outline is measured by rotating calipers, and a hull too
+    detailed even for that (past ``_OBB_MAX_POINTS``) gives None: no box, so no
+    stock reading.
+    """
+    from trimesh import grouping, transformations, util
+
+    hull = mesh.convex_hull
+    normals = np.asarray(hull.face_normals)
+    spherical = util.vector_to_spherical(util.vector_hemisphere(normals))
+    spherical = spherical[grouping.unique_rows(spherical, digits=1)[0]]
+    directions = util.spherical_to_vector(spherical)
+    adjacency = np.asarray(hull.face_adjacency)
+    widest = 0
+    for d in directions:
+        side = normals @ d > -1e-10
+        widest = max(widest, int(np.count_nonzero(side[adjacency[:, 0]] ^ side[adjacency[:, 1]])))
+    if widest * widest <= _OBB_MAX_CELLS:
+        return trimesh.bounds.oriented_bounds(mesh)
+    verts = np.asarray(hull.vertices, dtype=np.float64)
+    if len(directions) * len(verts) > _OBB_MAX_POINTS:
+        logger.info("oriented box skipped: %d directions x %d hull vertices", len(directions), len(verts))
+        return None
+    best: Optional[tuple[float, np.ndarray, np.ndarray]] = None
+    for s in spherical:
+        rot = np.asarray(transformations.spherical_matrix(*s).T)[:3, :3]
+        projected = verts @ rot.T
+        area, direction = _min_rectangle(projected[:, :2])
+        volume = area * float(np.ptp(projected[:, 2]))
+        if best is None or volume < best[0]:
+            best = (volume, rot, direction)
+    if best is None:
+        return None
+    _, rot, (c, s_) = best
+    axes = np.array([[c, s_, 0.0], [-s_, c, 0.0], [0.0, 0.0, 1.0]]) @ rot  # rows, in file coordinates
+    local = verts @ axes.T
+    lo, hi = local.min(axis=0), local.max(axis=0)
+    extents = hi - lo
+    order = np.argsort(extents)
+    to_origin = np.eye(4)
+    to_origin[:3, :3] = axes[order]
+    to_origin[:3, 3] = -((lo + hi) / 2)[order]
+    return to_origin, extents[order]
+
+
 def stock_of(body_mesh: trimesh.Trimesh, volume: float) -> Optional[dict]:
     """Read a body as cut stock: plate, sheet, tube, bar, angle, channel, tee, beam or block.
 
@@ -391,9 +499,12 @@ def stock_of(body_mesh: trimesh.Trimesh, volume: float) -> Optional[dict]:
     if volume <= 0 or len(body_mesh.faces) < 4:
         return None
     try:
-        to_origin, extents = trimesh.bounds.oriented_bounds(body_mesh)
+        box = _oriented_box(body_mesh)
     except Exception:
         return None
+    if box is None:
+        return None
+    to_origin, extents = box
     extents = np.asarray(extents, dtype=np.float64)
     order = np.argsort(extents)
     t, w, length = (float(extents[i]) for i in order)
@@ -567,22 +678,127 @@ def _patch_shape(points: np.ndarray) -> tuple[float, float, float, float]:
     return a, b, float(hull.length), float(hull.area)
 
 
-def contact_between(a: Body, b: Body, *, seed: int = 0) -> Optional[dict]:
-    """Where two bodies touch, nearly touch or overlap; None when they are apart.
+class _NearSurface:
+    """One body's triangles in a contact box, for point-to-surface distances in bounded batches.
 
-    Points are sampled on whichever body has less surface in the box the two
-    share; each point's distance to the other body (its faces in that box) says
-    touching (within 0.05 mm) or a gap (within 0.5 mm). Points further away are
-    tested for being inside the other body: an overlap.
+    Each point is measured against the triangles whose boxes reach into the cube
+    of its own radius around it, ``_CONTACT_BATCH`` distances at a time, and the
+    work stops at a budget. A triangle within r of a point has its box within r
+    of it, so each distance is exact wherever it is no more than the point's
+    radius; with the radius at the point's nearest vertex (as trimesh's
+    closest_point takes it) the distance is always exact.
     """
+
+    def __init__(self, mesh: trimesh.Trimesh, faces: np.ndarray):
+        from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]
+
+        faces = np.asarray(faces, dtype=np.int64)
+        self.triangles = np.asarray(mesh.triangles, dtype=np.float64)[faces]
+        self.tree = trimesh.triangles.bounds_tree(self.triangles)
+        corners = np.unique(np.asarray(mesh.faces, dtype=np.int64)[faces])
+        self.kd = cKDTree(np.asarray(mesh.vertices, dtype=np.float64)[corners])
+
+    def vertex_reach(self, points: np.ndarray) -> np.ndarray:
+        """How far each point must look to be sure of its nearest triangle (its nearest vertex)."""
+        return np.asarray(self.kd.query(points)[0], dtype=np.float64) + trimesh.tol.merge
+
+    def _candidates(self, lo: np.ndarray, hi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        try:
+            ids, counts = self.tree.intersection_v(lo, hi)
+            return np.asarray(ids, dtype=np.int64), np.asarray(counts, dtype=np.int64)
+        except Exception:  # an rtree without the batch call
+            hits = [np.fromiter(self.tree.intersection(np.concatenate([a, b])), dtype=np.int64)
+                    for a, b in zip(lo, hi)]
+            ids = np.concatenate(hits) if hits else np.zeros(0, dtype=np.int64)
+            return ids, np.array([len(h) for h in hits], dtype=np.int64)
+
+    def _measure(self, points: np.ndarray, owners: list, faces: list, best2: np.ndarray) -> None:
+        p = np.concatenate(owners)
+        q = points[p]
+        vec = q - trimesh.triangles.closest_point(self.triangles[np.concatenate(faces)], q)
+        d2 = trimesh.util.diagonal_dot(vec, vec)
+        starts = np.flatnonzero(np.concatenate([[True], p[1:] != p[:-1]]))
+        who = p[starts]
+        best2[who] = np.minimum(best2[who], np.minimum.reduceat(d2, starts))
+
+    def nearest(self, points: np.ndarray, radius: np.ndarray, budget: int) -> tuple[np.ndarray, int, int]:
+        """Each point's distance to the surface, inf where nothing is within its radius.
+
+        Returns (distances, distances computed, points measured): the points are
+        taken in order, and the work stops before the first chunk that would pass
+        ``budget``, leaving the rest unmeasured (inf).
+        """
+        n = len(points)
+        best2 = np.full(n, np.inf)
+        used = done = 0
+        step = max(1, min(_CONTACT_CHUNK_POINTS, _CONTACT_BATCH // max(len(self.triangles), 1)))
+        owners: list[np.ndarray] = []
+        faces: list[np.ndarray] = []
+        pending = 0
+        for s in range(0, n, step):
+            e = min(n, s + step)
+            r = radius[s:e, None]
+            ids, counts = self._candidates(np.ascontiguousarray(points[s:e] - r),
+                                           np.ascontiguousarray(points[s:e] + r))
+            if used + len(ids) > budget:
+                break
+            used += len(ids)
+            owner = np.repeat(np.arange(s, e, dtype=np.int64), counts)
+            for k in range(0, len(ids), _CONTACT_BATCH):
+                piece = slice(k, k + _CONTACT_BATCH)
+                if pending and pending + len(ids[piece]) > _CONTACT_BATCH:
+                    self._measure(points, owners, faces, best2)
+                    owners, faces, pending = [], [], 0
+                owners.append(owner[piece])
+                faces.append(ids[piece])
+                pending += len(ids[piece])
+            done = e
+        if pending:
+            self._measure(points, owners, faces, best2)
+        dist = np.sqrt(best2)
+        dist[dist > radius] = np.inf  # farther than it looked: only a bound, not the distance
+        return dist, used, done
+
+    def exact(self, points: np.ndarray, beyond: float, budget: int) -> tuple[np.ndarray, int, bool]:
+        """Distances of points known to be farther than ``beyond``, looking 4x further each round.
+
+        Returns (distances, distances computed, complete). A point the budget
+        stops short gets the farthest it was looked for: at least that far.
+        """
+        n = len(points)
+        reach = self.vertex_reach(points)
+        known = np.full(n, float(beyond))
+        dist = np.full(n, np.inf)
+        radius = np.minimum(known * 4, reach)
+        todo = np.arange(n)
+        used = 0
+        while len(todo):
+            d, u, done = self.nearest(points[todo], radius[todo], budget - used)
+            used += u
+            measured = todo[:done]
+            found = np.isfinite(d[:done])
+            dist[measured[found]] = d[:done][found]
+            missed = measured[~found]
+            known[missed] = radius[missed]
+            if done < len(todo):
+                break
+            todo = missed
+            radius[todo] = np.minimum(radius[todo] * 4, reach[todo])
+        open_ = ~np.isfinite(dist)
+        dist[open_] = known[open_]
+        return dist, used, not bool(np.any(open_))
+
+
+def _contact(a: Body, b: Body, *, seed: int, budget: int) -> tuple[Optional[dict], int, bool]:
+    """``contact_between`` with its cost: (contact or None, distances computed, measured in full)."""
     box = _box_overlap(a, b, NEAR_TOL_MM)
     if box is None or a.mesh is None or b.mesh is None:
-        return None
+        return None, 0, True
     lo, hi = box
     hit_a, area_a = _region_faces(a, lo, hi)
     hit_b, area_b = _region_faces(b, lo, hi)
     if area_a == 0 or area_b == 0:
-        return None
+        return None, 0, True
     if area_a <= area_b:
         src, hit, area, target, t_hit = a, hit_a, area_a, b, hit_b
     else:
@@ -590,14 +806,24 @@ def contact_between(a: Body, b: Body, *, seed: int = 0) -> Optional[dict]:
     pts, drawn = _region_points(src, hit, area, lo, hi, seed)
     target_mesh = target.mesh
     if len(pts) == 0 or target_mesh is None:
-        return None
+        return None, 0, True
+    # Exact to NEAR_TOL_MM (the farthest a contact can be); beyond it a point is
+    # simply apart, unless the overlap test below needs its distance.
+    reach = NEAR_TOL_MM + trimesh.tol.merge
+    used = 0
     try:
-        near_faces = _submesh(target_mesh, t_hit)
-        _closest, dist, _tri = trimesh.proximity.closest_point(near_faces, pts)
+        surface = _NearSurface(target_mesh, t_hit)
+        dist, used, measured = surface.nearest(pts, np.minimum(surface.vertex_reach(pts), reach), budget)
     except Exception:
         logger.warning("contact distance failed between bodies %s and %s", a.index, b.index, exc_info=True)
-        return None
-    dist = np.asarray(dist, dtype=np.float64)
+        return None, used, True
+    complete = measured == len(pts)
+    if not complete:
+        # The budget cut the sample: the points measured are a smaller random sample.
+        drawn = max(1, int(round(drawn * measured / len(pts))))
+        pts, dist = pts[:measured], dist[:measured]
+        if not len(pts):
+            return None, used, False
     touch = dist <= TOUCH_TOL_MM
     near = (dist > TOUCH_TOL_MM) & (dist <= NEAR_TOL_MM)
     over = np.zeros(len(pts), dtype=bool)
@@ -610,12 +836,20 @@ def contact_between(a: Body, b: Body, *, seed: int = 0) -> Optional[dict]:
             inside = np.zeros(len(probe), dtype=bool)
         # scale the probed share back to all the far points
         if np.any(inside):
+            try:
+                far_dist, more, whole = surface.exact(pts[far], reach, max(0, budget - used))
+            except Exception:
+                logger.warning("overlap depth failed between bodies %s and %s", a.index, b.index, exc_info=True)
+                far_dist, more, whole = np.full(len(far), reach), 0, False
+            used += more
+            complete = complete and whole
+            dist[far] = far_dist
             share = float(np.mean(inside))
             pick = far[np.argsort(-dist[far])][: int(round(share * len(far)))]
             over[pick] = True
     joined = touch | near | over
     if not np.any(joined):
-        return None
+        return None, used, complete
     patch = pts[touch | near] if np.any(touch | near) else pts[joined]
     length, width, perim, hull_area = _patch_shape(patch)
     est_area = float(np.sum(touch | near)) / max(drawn, 1) * area
@@ -629,7 +863,7 @@ def contact_between(a: Body, b: Body, *, seed: int = 0) -> Optional[dict]:
         kind = "near"
         depth = None
     gap = float(dist[near].min()) if kind == "near" else (0.0 if kind == "touching" else None)
-    return {
+    out = {
         "a": a.index, "b": b.index, "type": kind,
         "gap_mm": round(gap, 3) if gap is not None else None,
         "overlap_mm": round(depth, 3) if depth is not None else None,
@@ -638,6 +872,24 @@ def contact_between(a: Body, b: Body, *, seed: int = 0) -> Optional[dict]:
         "outline_mm": round(perim, 1),
         "ring": bool(hull_area > 0 and est_area < 0.6 * hull_area),
     }
+    if not complete:
+        # The pair's work cap: a smaller sample than usual (or an overlap depth
+        # that is at least this), so the area and outline are rougher.
+        out["coarse"] = True
+    return out, used, complete
+
+
+def contact_between(a: Body, b: Body, *, seed: int = 0, budget: int = _CONTACT_WORK_PER_PAIR) -> Optional[dict]:
+    """Where two bodies touch, nearly touch or overlap; None when they are apart.
+
+    Points are sampled on whichever body has less surface in the box the two
+    share; each point's distance to the other body (its faces in that box) says
+    touching (within 0.05 mm) or a gap (within 0.5 mm). Points further away are
+    tested for being inside the other body: an overlap. At most ``budget``
+    point-to-triangle distances are computed, in batches (bounded memory for any
+    input); past it the sample is cut and the contact is marked ``coarse``.
+    """
+    return _contact(a, b, seed=seed, budget=budget)[0]
 
 
 def _thinnest(body: Body) -> float:
@@ -711,6 +963,26 @@ def _body_record(b: Body, design_counts: dict[int, int], design_first: dict[int,
     }
     rec.update(b.extra)
     return rec
+
+
+_UNCHECKED_WHY = {
+    "work": "too much surface to measure within this check's limits",
+    "pairs": "only the first {pairs:,} pairs are measured",
+    "time": "the time for this check ran out",
+}
+
+
+def _why_unchecked(unchecked: dict[str, int]) -> str:
+    return "; ".join(text.format(pairs=_MAX_CONTACT_PAIRS) for key, text in _UNCHECKED_WHY.items()
+                     if key in unchecked)
+
+
+def _unchecked_words(unchecked: dict[str, int], close_pairs: int) -> str:
+    """'contacts weren't checked between 3 of the 40 pairs of bodies that sit close (why)'."""
+    skipped = sum(unchecked.values())
+    pairs = "pair" if close_pairs == 1 else "pairs"
+    return (f"contacts weren't checked between {skipped:,} of the {close_pairs:,} {pairs} of bodies "
+            f"that sit close ({_why_unchecked(unchecked)})")
 
 
 def _non_manifold_edges(mesh: trimesh.Trimesh) -> int:
@@ -804,25 +1076,40 @@ def describe(mesh: trimesh.Trimesh, *, names: Optional[dict[int, str]] = None,
         design_counts[b.design] = design_counts.get(b.design, 0) + 1
         design_first.setdefault(b.design, b.index)
 
+    # Pairs of bodies are quadratic in their count: each pair whose boxes come
+    # within NEAR_TOL_MM is measured, up to _MAX_CONTACT_PAIRS pairs, the time
+    # budget and _CONTACT_WORK_PER_FILE distances in all; the rest are counted
+    # and said, never guessed.
     contacts: list[dict] = []
     pairs_checked = 0
-    contacts_complete = True
+    close_pairs = 0
+    unchecked: dict[str, int] = {}
+    work_left = _CONTACT_WORK_PER_FILE
     for i, a in enumerate(bodies):
         for b in bodies[i + 1:]:
             if _box_overlap(a, b, NEAR_TOL_MM) is None:
                 continue
-            if pairs_checked >= _MAX_CONTACT_PAIRS or time.monotonic() > deadline:
-                contacts_complete = False
+            close_pairs += 1
+            why = ("pairs" if pairs_checked >= _MAX_CONTACT_PAIRS else "time" if time.monotonic() > deadline
+                   else "work" if work_left <= 0 else None)
+            if why:
+                unchecked[why] = unchecked.get(why, 0) + 1
                 continue
             pairs_checked += 1
             try:
-                c = contact_between(a, b, seed=a.index * 1009 + b.index)
+                c, used, whole = _contact(a, b, seed=a.index * 1009 + b.index,
+                                          budget=min(_CONTACT_WORK_PER_PAIR, work_left))
             except Exception:
                 logger.warning("contact check failed", exc_info=True)
-                c = None
+                c, used, whole = None, 0, True
+            work_left -= used
+            if c is None and not whole:
+                # measured in part (the work cap) and no contact among the points measured
+                unchecked["work"] = unchecked.get("work", 0) + 1
             if c is not None:
                 c["weld_like"] = _weld_like(c, a, b)
                 contacts.append(c)
+    contacts_complete = not unchecked
 
     # contact groups
     parent = {b.index: b.index for b in bodies}
@@ -880,11 +1167,13 @@ def describe(mesh: trimesh.Trimesh, *, names: Optional[dict[int, str]] = None,
             route=["cut", "prep", "weld", "finish"],
         )
     elif not contacts and not contacts_complete:
-        out.update(
-            kind="bodies",
-            summary=(f"This file holds {n} separate bodies ({what}); whether they touch wasn't "
-                     "measured in the time this check has."),
-        )
+        if sum(unchecked.values()) < close_pairs:
+            words = f"none of the pairs measured touch, but {_unchecked_words(unchecked, close_pairs)}"
+        elif set(unchecked) == {"time"}:
+            words = "whether they touch wasn't measured in the time this check has"
+        else:
+            words = f"whether they touch wasn't measured ({_why_unchecked(unchecked)})"
+        out.update(kind="bodies", summary=f"This file holds {n} separate bodies ({what}); {words}.")
     elif not contacts and contacts_complete:
         same = len({b.design for b in bodies}) == 1
         out.update(
@@ -909,6 +1198,13 @@ def describe(mesh: trimesh.Trimesh, *, names: Optional[dict[int, str]] = None,
             kind="assembly",
             summary=f"This file holds {n} bodies that touch: {lead} ({what}){tail}.",
         )
+    if unchecked:
+        note = _unchecked_words(unchecked, close_pairs)
+        out["contacts_unchecked"] = {"pairs": sum(unchecked.values()), "of": close_pairs,
+                                     "reasons": [r for r in _UNCHECKED_WHY if r in unchecked]}
+        out["contacts_note"] = note[0].upper() + note[1:] + "."
+        if contacts:
+            out["summary"] = f"{out['summary']} {out['contacts_note']}"
     out["bodies"] = [_body_record(b, design_counts, design_first) for b in bodies]
     out["designs"] = len(design_counts)
     out["contacts"] = contacts
