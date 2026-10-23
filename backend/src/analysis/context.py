@@ -88,6 +88,51 @@ def _wall_thickness_ray_budget() -> int:
         return 1_200_000
 
 
+# trimesh's closest_point measures every point against every triangle out to the
+# point's nearest vertex, all at once (about 350 bytes a pair). From inside a
+# finely meshed round pin that is the whole pin for every point: 48 interior
+# points of an 8,288-sided pin took 193 MB. Points are grouped so that one call
+# measures at most this many pairs (about 70 MB).
+_NEAREST_PAIRS_PER_CALL = 200_000
+
+
+def _closest_points_bounded(mesh: trimesh.Trimesh, points: np.ndarray):
+    """``mesh.nearest.on_surface(points)``: (closest points, distances, triangle ids), bounded.
+
+    trimesh's own query (``closest_point``), called on groups of points whose candidate
+    triangles (the faces whose boxes reach the box around each point out to its
+    nearest vertex, as trimesh finds them) total at most
+    ``_NEAREST_PAIRS_PER_CALL``. Each point's answer depends only on its own
+    candidates, so every answer is exactly trimesh's.
+    """
+    points = np.asarray(points, dtype=np.float64)
+    n, faces = len(points), len(mesh.faces)
+    if n == 0 or n * faces <= _NEAREST_PAIRS_PER_CALL:
+        return mesh.nearest.on_surface(points)
+    # The counts only group the points (any grouping gives the same answers), so
+    # the mesh's cached vertex tree serves, unreferenced vertices and all.
+    reach = mesh.kdtree.query(points)[0] + trimesh.tol.merge
+    step = max(1, _NEAREST_PAIRS_PER_CALL // faces)  # at most this many pairs of ids at once
+    counts = np.empty(n, dtype=np.int64)
+    try:
+        for s in range(0, n, step):
+            r = reach[s:s + step, None]
+            _ids, c = mesh.triangles_tree.intersection_v(np.ascontiguousarray(points[s:s + step] - r),
+                                                         np.ascontiguousarray(points[s:s + step] + r))
+            counts[s:s + step] = c
+    except Exception:  # an rtree without the batch call: assume every face is a candidate
+        counts[:] = faces
+    total = np.cumsum(counts)
+    pieces = []
+    start = 0
+    while start < n:
+        done = int(total[start - 1]) if start else 0
+        end = max(start + 1, int(np.searchsorted(total, done + _NEAREST_PAIRS_PER_CALL, side="right")))
+        pieces.append(mesh.nearest.on_surface(points[start:end]))
+        start = end
+    return tuple(np.concatenate([piece[k] for piece in pieces]) for k in range(3))
+
+
 def _max_analysis_faces() -> int:
     """Face cap above which the mesh is decimated before analysis.
 
@@ -694,7 +739,7 @@ class GeometryContext:
             ])
             extra = []
             for start in range(0, len(facet_points), batch):
-                p, distance, face = self.mesh.nearest.on_surface(facet_points[start:start + batch])
+                p, distance, face = _closest_points_bounded(self.mesh, facet_points[start:start + batch])
                 valid = distance <= tol
                 p, face = p[valid], face[valid]
                 directions = -self.normals[face]
@@ -744,7 +789,7 @@ class GeometryContext:
                 # exterior clearance into material thickness.
                 candidates = candidates[self.mesh.contains(candidates)]
                 if len(candidates):
-                    _, distance, _ = self.mesh.nearest.on_surface(candidates)
+                    _, distance, _ = _closest_points_bounded(self.mesh, candidates)
                     best = max(best, float(distance.max()) * 2)
             return best if np.isfinite(best) and best > tol else None
         except Exception:
