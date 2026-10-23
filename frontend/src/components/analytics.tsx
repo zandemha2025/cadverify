@@ -19,6 +19,7 @@ import {
   type PrivacyChoices,
 } from "@/lib/privacy-choices";
 import { RB2B_SCRIPT, rb2bAllowed } from "@/lib/rb2b";
+import { isAppPath } from "@/lib/app-routes";
 
 /**
  * Three separate choices (see lib/privacy-choices): product analytics and
@@ -149,8 +150,9 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
   }
 
   if (!ready || free) return null;
-  // Inside the app nothing floats over the work unless asked (account menu, Privacy choices).
-  const inApp = !!path && (path === "/app" || path.startsWith("/app/"));
+  // Inside the app nothing floats over the work unless asked (account menu, Privacy choices):
+  // every signed-in route, the v4 app under /app and the Verify app's pages alike.
+  const inApp = isAppPath(path);
   const show = asked || (choices === null && !inApp);
   return <>
     {visitorTracking && <Script id="scalecad-rb2b" nonce={nonce} strategy="afterInteractive">{RB2B_SCRIPT}</Script>}
