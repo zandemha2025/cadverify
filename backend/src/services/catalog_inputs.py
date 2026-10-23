@@ -156,8 +156,10 @@ def slim_analysis(result_json: Any) -> Any:
 
 
 def _budget_bytes() -> int:
-    """``CATALOG_INPUT_CACHE_MB`` (default 64): the slim records' size as JSON.
-    0 turns the cache off (every read loads its records)."""
+    """``CATALOG_INPUT_CACHE_MB`` (default 64): all the caches below together,
+    counted as their entries' size as JSON. Cost inputs get half, analysis
+    inputs and the latest-per-part details a quarter each. 0 turns them off
+    (every read loads its records)."""
     try:
         mb = float(os.getenv("CATALOG_INPUT_CACHE_MB", "64"))
     except ValueError:
@@ -209,6 +211,9 @@ class _Cache:
 
 _COST = _Cache()
 _ANALYSIS = _Cache()
+# A record's Rates / Real costs fields (``cost_decision_service.slim_result``).
+_DETAIL = _Cache()
+_SHARE = {id(_COST): 0.5, id(_ANALYSIS): 0.25, id(_DETAIL): 0.25}
 # (id, ulid) -> is not a what-if. ~150 bytes an entry; bounded by count.
 _CURRENT = _Cache(max_entries=200_000)
 
@@ -216,6 +221,7 @@ _CURRENT = _Cache(max_entries=200_000)
 def reset_for_tests() -> None:
     _COST.clear()
     _ANALYSIS.clear()
+    _DETAIL.clear()
     _CURRENT.clear()
 
 
@@ -223,6 +229,7 @@ def stats() -> dict:
     return {
         "cost_records": len(_COST), "cost_bytes": _COST.bytes,
         "analysis_records": len(_ANALYSIS), "analysis_bytes": _ANALYSIS.bytes,
+        "detail_records": len(_DETAIL), "detail_bytes": _DETAIL.bytes,
         "currentness_records": len(_CURRENT),
     }
 
@@ -235,6 +242,8 @@ def _size(value: Any) -> int:
 
 
 async def _inputs(session: AsyncSession, model, cache: _Cache, slim, keys: list[tuple]) -> dict:
+    """``{key: slim(result_json, key)}`` from the cache, reading the misses' whole
+    results in one statement (only theirs)."""
     out: dict = {}
     missing: list[tuple] = []
     for key in keys:
@@ -244,7 +253,7 @@ async def _inputs(session: AsyncSession, model, cache: _Cache, slim, keys: list[
         else:
             missing.append(key)
     if missing:
-        budget = _budget_bytes()
+        budget = int(_budget_bytes() * _SHARE[id(cache)])
         ids = [k[0] for k in missing]
         rows = (await session.execute(
             select(model.id, model.ulid, model.result_json).where(model.id.in_(ids))
@@ -254,7 +263,7 @@ async def _inputs(session: AsyncSession, model, cache: _Cache, slim, keys: list[
             key = (row_id, ulid)
             if key not in wanted:
                 continue
-            value = slim(rj)
+            value = slim(rj, key)
             out[key] = value
             cache.put(key, value, _size(value), budget)
     return out
@@ -264,14 +273,31 @@ async def cost_inputs(session: AsyncSession, keys: list[tuple]) -> dict:
     """``{(id, ulid): slim result_json}`` for these cost decisions (a deleted one is absent)."""
     from src.db.models import CostDecision
 
-    return await _inputs(session, CostDecision, _COST, slim_cost, keys)
+    return await _inputs(session, CostDecision, _COST, lambda rj, _key: slim_cost(rj), keys)
 
 
 async def analysis_inputs(session: AsyncSession, keys: list[tuple]) -> dict:
     """``{(id, ulid): slim result_json}`` for these analyses (a deleted one is absent)."""
     from src.db.models import Analysis
 
-    return await _inputs(session, Analysis, _ANALYSIS, slim_analysis, keys)
+    return await _inputs(session, Analysis, _ANALYSIS, lambda rj, _key: slim_analysis(rj), keys)
+
+
+async def latest_details(session: AsyncSession, records: list) -> dict:
+    """``{(id, ulid): slim_result(result_json, quantities)}`` for cost decisions
+    loaded without their result (``id``, ``ulid`` and ``quantities`` read).
+
+    The Rates and Real costs screens' fields of a record: a pure function of
+    its saved result and its ``quantities`` column, both written once, so it is
+    computed once per record per process. A deleted record is absent."""
+    from src.db.models import CostDecision
+    from src.services.cost_decision_service import slim_result
+
+    quantities = {(d.id, d.ulid): d.quantities for d in records}
+    return await _inputs(
+        session, CostDecision, _DETAIL,
+        lambda rj, key: slim_result(rj, quantities[key]), list(quantities),
+    )
 
 
 async def current_flags(session: AsyncSession, keys: list[tuple]) -> dict:

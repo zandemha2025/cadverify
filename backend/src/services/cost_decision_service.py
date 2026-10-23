@@ -530,46 +530,46 @@ async def latest_per_part(
     org, newest first, plus the screens' fields for the newest ``detail_limit``
     parts. Org-scoped exactly like the list and detail reads.
 
-    Two queries whatever the number of parts: the summaries (no result JSON),
-    then the slim results for the parts shown with details.
+    No saved result is read per request. The org's records are listed without
+    them; whether each is a what-if, and a shown record's screen fields, come
+    from ``catalog_inputs`` (each computed once per record per process). Ranking
+    with ``current_price_clause`` in SQL made Postgres unpack every stored
+    result in the table twice a call, and the details loaded whole results:
+    0.27 s for any org and 0.46 s for one with 90 priced parts.
     """
-    from sqlalchemy import func
     from sqlalchemy.orm import defer
+
+    from src.services import catalog_inputs
 
     limit = max(1, min(int(limit), LATEST_PARTS_MAX))
     detail_limit = max(0, min(int(detail_limit), LATEST_DETAILS_MAX))
-    ranked = (
-        select(
-            CostDecision.id.label("id"),
-            func.row_number().over(
-                partition_by=CostDecision.mesh_hash,
-                order_by=CostDecision.ulid.desc(),
-            ).label("rn"),
-        )
-        # The part's current price: its newest record that isn't a what-if.
-        .where(CostDecision.org_id == caller_org_subquery(user_id), current_price_clause())
-        .subquery()
-    )
-    newest = select(ranked.c.id).where(ranked.c.rn == 1)
-    total = (await session.execute(select(func.count()).select_from(newest.subquery()))).scalar_one()
+    listed = (await session.execute(
+        select(CostDecision.id, CostDecision.ulid, CostDecision.mesh_hash)
+        .where(CostDecision.org_id == caller_org_subquery(user_id))
+        .order_by(CostDecision.ulid.desc())
+    )).all()
+    current = await catalog_inputs.current_flags(session, [(i, u) for i, u, _ in listed])
+    # The part's current price: its newest record that isn't a what-if.
+    newest: list[int] = []
+    seen: set[str] = set()
+    for row_id, ulid, mesh in listed:
+        if mesh in seen or not current.get((row_id, ulid)):
+            continue
+        seen.add(mesh)
+        newest.append(row_id)
+    total = len(newest)
+    page = newest[:limit]
     rows = (await session.execute(
         select(CostDecision)
         .options(defer(CostDecision.result_json))
-        .where(CostDecision.id.in_(newest))
+        .where(CostDecision.id.in_(page))
         .order_by(CostDecision.ulid.desc())
-        .limit(limit)
-    )).scalars().all()
+    )).scalars().all() if page else []
     shown = rows[:detail_limit]
     from src.services.rate_card_basis import basis_for
 
     rates = await basis_for(session, rows[0].org_id, rows) if rows else {}
-    results: dict = {}
-    if shown:
-        found = (await session.execute(
-            select(CostDecision.id, CostDecision.result_json)
-            .where(CostDecision.id.in_([d.id for d in shown]))
-        )).all()
-        results = {row_id: rj for row_id, rj in found}
+    details = await catalog_inputs.latest_details(session, shown) if shown else {}
     return {
         "parts": [{**_list_item(d), "rates": rates.get(d.ulid)} for d in rows],
         "total_parts": int(total or 0),
@@ -579,7 +579,8 @@ async def latest_per_part(
                 **_list_item(d),
                 "rates": rates.get(d.ulid),
                 "headline_qty": headline_qty(d.quantities),
-                "result": slim_result(results.get(d.id), d.quantities),
+                "result": (details[(d.id, d.ulid)] if (d.id, d.ulid) in details
+                           else slim_result(None, d.quantities)),
             }
             for d in shown
         ],

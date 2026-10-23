@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import defer
@@ -164,9 +165,14 @@ async def latest_cost_decisions_per_part(
     browsing stays well inside the per-route limits. Org-scoped like every
     cost-decision read; the full record stays at GET /{id}.
     """
-    return await svc.latest_per_part(
+    body = await svc.latest_per_part(
         session, user.user_id, limit=limit, detail_limit=detail_limit
     )
+    # Already JSON-native (strings, numbers, lists, dicts, None), and large
+    # (about 1 MB for 12 detailed parts): rendered as FastAPI renders a returned
+    # dict, without first walking every value through jsonable_encoder, which
+    # took most of the call. Same bytes, same headers.
+    return JSONResponse(body)
 
 
 @router.get("/compare")
