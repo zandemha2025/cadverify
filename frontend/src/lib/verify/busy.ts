@@ -6,7 +6,10 @@
  * - `busySignal` tells a busy refusal from every other one (an allowance used up,
  *   a rate limit, a file the engine can't read): only busy is retried.
  * - `busyDelayMs` waits what the server asked, plus a little jitter so the people
- *   who were refused together don't all come back in the same second.
+ *   who were refused together don't all come back in the same second. After three
+ *   busy answers in a row the wait grows gently (to 15 s at most, never below what
+ *   the server asked): each try uploads the file again, and a 20 MB part asked
+ *   every 5 s for three minutes would send over a gigabyte.
  * - `retryWhileBusy` asks again until the answer isn't busy, for up to about three
  *   minutes in all, and reports each wait so the page can count it down.
  *
@@ -44,6 +47,10 @@ export const BUSY_MIN_WAIT_S = 1;
 export const BUSY_MAX_WAIT_S = 30;
 /** Up to this share is added to each wait, never taken off it: never sooner than asked. */
 export const BUSY_JITTER = 0.25;
+/** Tries answered busy before the wait starts to grow, by how much each time, and to what. */
+export const BUSY_GROW_AFTER = 3;
+export const BUSY_GROWTH = 1.5;
+export const BUSY_GROWN_MAX_S = 15;
 
 function codeOf(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
@@ -93,10 +100,15 @@ export function busySignal(status: number, body: unknown, retryAfter?: string | 
   return kind ? { kind, retryAfterS: parseRetryAfter(retryAfter, now) } : null;
 }
 
-/** The wait before the next try: what the server asked (bounded), plus up to 25% jitter. */
-export function busyDelayMs(signal: BusySignal, random: () => number = Math.random): number {
-  const asked = signal.retryAfterS ?? BUSY_DEFAULT_WAIT_S;
-  const base = Math.min(Math.max(asked, BUSY_MIN_WAIT_S), BUSY_MAX_WAIT_S);
+/**
+ * The wait before the next try after `attempt` busy answers: what the server asked
+ * (bounded to 1–30 s), growing ×1.5 a try after the third up to 15 s (never below
+ * what was asked), plus up to 25% jitter.
+ */
+export function busyDelayMs(signal: BusySignal, random: () => number = Math.random, attempt = 1): number {
+  const asked = Math.min(Math.max(signal.retryAfterS ?? BUSY_DEFAULT_WAIT_S, BUSY_MIN_WAIT_S), BUSY_MAX_WAIT_S);
+  const grown = attempt > BUSY_GROW_AFTER ? Math.min(asked * BUSY_GROWTH ** (attempt - BUSY_GROW_AFTER), BUSY_GROWN_MAX_S) : asked;
+  const base = Math.max(asked, grown);
   const r = Math.min(Math.max(random(), 0), 1);
   return Math.round(base * 1000 * (1 + BUSY_JITTER * r));
 }
@@ -145,7 +157,7 @@ export async function retryWhileBusy<T>(attempt: () => Promise<BusyAttempt<T>>, 
       if (!r.busy) return { ok: true, value: r.value as T, attempts };
       const t = now();
       since = first;
-      const delay = busyDelayMs(r.busy, opts.random);
+      const delay = busyDelayMs(r.busy, opts.random, attempts);
       if (t + delay - since > bound) return { ok: false, busy: r.busy, value: r.value, since, attempts };
       opts.onWait?.({ kind: r.busy.kind, attempt: attempts, since, until: t + delay });
       await sleep(delay);

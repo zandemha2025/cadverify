@@ -67,6 +67,14 @@ test("each wait honours Retry-After, with jitter that only ever adds", () => {
   assert.equal(busyDelayMs({ kind: "org", retryAfterS: 12 }, () => 0.5), 13500);
 });
 
+test("after three busy answers the wait grows gently, to 15 s, never below what was asked", () => {
+  const five: BusySignal = { kind: "server", retryAfterS: 5 };
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 12].map((n) => busyDelayMs(five, () => 0, n)), [5000, 5000, 5000, 7500, 11250, 15000, 15000, 15000]);
+  // A server that asks for longer is never asked sooner.
+  assert.equal(busyDelayMs({ kind: "server", retryAfterS: 25 }, () => 0, 9), 25000);
+  assert.equal(busyDelayMs({ kind: "server", retryAfterS: 25 }, () => 1, 9), 31250);
+});
+
 /** A fake clock: sleeping moves it; each try takes `tryMs`. */
 function clock(tryMs = 0) {
   let t = 1_000_000;
@@ -98,6 +106,7 @@ test("busy, busy, answer: asks again after each Retry-After and counts it down",
     { now: c.now, sleep: c.sleep, random: () => 0, onWait: (w) => waits.push(w) },
   );
   assert.deepEqual(out, { ok: true, value: "result", attempts: 3 });
+  // Each wait is the Retry-After of the answer before it.
   assert.deepEqual(c.slept, [7000, 3000]);
   assert.deepEqual(starts.map((s) => s - starts[0]), [0, 7000, 10000]);
   // Each wait names the next try, so the page shows "Checking again in 7 s…" then "in 3 s…".
@@ -132,11 +141,12 @@ test("it stops asking after about three minutes, and no try starts after the bou
   );
   assert.equal(out.ok, false);
   if (out.ok) return;
-  // Tries at 0, 5, …, 180 s: 37 of them, the last at the bound itself.
-  assert.equal(out.attempts, 37);
-  assert.equal(starts.at(-1)! - starts[0], BUSY_BOUND_MS);
+  // Tries at 0, 5, 10, 15, 22.5, 33.75, then every 15 s to 168.75 s; the next would start past 180 s.
+  assert.deepEqual(c.slept.slice(0, 6), [5000, 5000, 5000, 7500, 11250, 15000]);
+  assert.equal(out.attempts, 15);
+  assert.equal(starts.at(-1)! - starts[0], 168_750);
   assert.ok(starts.every((s) => s - starts[0] <= BUSY_BOUND_MS));
-  assert.equal(c.at() - out.since, BUSY_BOUND_MS);
+  assert.equal(c.at() - out.since, 168_750);
   assert.equal(out.value, "refused");
   assert.equal(out.busy.kind, "server");
   assert.equal(last, null);
@@ -155,9 +165,9 @@ test("a slow busy answer (the server waited for room first) counts toward the bo
     { now: c.now, sleep: c.sleep, random: () => 0 },
   );
   assert.equal(out.ok, false);
-  // 35 s a round: tries start at 0, 35, …, 175 s; the sixth answers at 205 s, so a seventh would start past 180 s.
-  assert.equal(tries, 6);
-  assert.equal(c.at() - out.since, 205_000);
+  // Tries start at 0, 35, 70, 105 and 142.5 s; the fifth answers at 172.5 s and a sixth would start past 180 s.
+  assert.equal(tries, 5);
+  assert.equal(c.at() - out.since, 172_500);
 });
 
 test("a longer Retry-After means fewer tries in the same three minutes", async () => {
