@@ -49,6 +49,7 @@ import "./part.css";
 import { UnitSwitch } from "../units/unit-switch";
 import { dims as unitDims, volume as unitVolume } from "../units/units";
 import { useUnits } from "../units/use-units";
+import { busyView } from "./busy-state";
 
 const PartViewer = dynamic(() => import("./viewer"), { ssr: false });
 
@@ -61,6 +62,8 @@ export interface MeshSource {
   origin: "live" | "cache" | "stored" | "drop" | null;
   loading: boolean;
   error: string | null;
+  /** The 3D view didn't come because the server stayed busy (not because of the file). */
+  busy?: boolean;
 }
 
 export function PartView({
@@ -167,7 +170,9 @@ export function PartView({
     methods.find((m) => m.code === initialPick(methods, q)) ??
     null;
   const checking = session?.status === "running";
-  const interrupted = !checking && !data.validation && !data.cost && session?.failure?.kind === "interrupted";
+  // Stopped before any result: interrupted, or still busy after asking again (busy-state.ts).
+  const interrupted = !checking && !data.validation && !data.cost && (session?.failure?.kind === "interrupted" || session?.failure?.kind === "busy");
+  const stillBusy = interrupted && busyView(session)?.phase === "still";
   const costOff = !checking && !!data.validation && !data.cost && !!data.costError;
   const has3d = !!mesh.url && viewer === "ready";
   const faceAligned = mesh.faceSpace === "analysis" && !!mesh.faceHash && mesh.faceHash === data.validation?.analysis_mesh_hash;
@@ -311,7 +316,7 @@ export function PartView({
   // While the picture is still on its way the header says so, not "unavailable".
   const pictureComing = !has3d && (mesh.loading || (!!mesh.url && viewer === "loading"));
   const hudMeta = interrupted
-    ? "Not checked yet · 3D preview drawn from the file"
+    ? ["Not checked yet", stillBusy ? "ScaleCAD was busy" : null, mesh.url ? "3D preview drawn from the file" : null].filter(Boolean).join(" · ")
     : [dims, volume != null ? unitVolume(volume, unit) : null, tightWord, has3d ? (cadFaces ? `${cadFaces.toLocaleString("en-US")} faces, ${faces ? `${faces.toLocaleString("en-US")} mesh triangles` : "meshed"}` : faces ? `real shell, ${faces.toLocaleString("en-US")} mesh triangles` : "real shell") : pictureComing ? "3D view loading" : dims ? "measured size, 3D view unavailable" : null]
         .filter(Boolean)
         .join(" · ") || (checking ? "Measuring…" : "");
@@ -341,7 +346,9 @@ export function PartView({
   const noModel = !mesh.url && !mesh.loading;
   // This check's own preview failed (the check still runs on the file): the shared X11 notice.
   const failedLive = !!mesh.error && !!onRetryPreview && !mesh.url && !mesh.loading && !onDropFile;
-  const showNo3d = !interrupted && (noModel || viewer === "failed" || viewer === "nowebgl");
+  // No picture because the server had no room: a calm placeholder, not "can't draw this part" (capacity D2).
+  const busy3d = !mesh.url && !mesh.loading && (!!mesh.busy || stillBusy);
+  const showNo3d = busy3d || (!interrupted && (noModel || viewer === "failed" || viewer === "nowebgl"));
   const drop = (f: File | undefined | null) => {
     setOver(false);
     if (f && onDropFile) onDropFile(f);
@@ -500,11 +507,21 @@ export function PartView({
               <svg width="150" height="110" viewBox="0 0 150 110" aria-hidden="true">
                 <path d="M20 40 L75 14 L130 40 L130 78 L75 104 L20 78 Z M20 40 L75 66 L130 40 M75 66 L75 104" fill="none" stroke="#9AA3AE" strokeWidth="1.5" strokeDasharray="4 4" strokeLinejoin="round" />
               </svg>
-              <b>{no3dTitle(viewer, mesh)}</b>
-              <span>Every answer <span className="on-desk">on the right</span><span className="on-phone">below</span> still holds; they come from the file, not the picture.</span>
+              <b>{busy3d ? "3D view waiting for room" : no3dTitle(viewer, mesh)}</b>
+              {busy3d ? (
+                <span>It&apos;s drawn from your file once ScaleCAD has room.</span>
+              ) : (
+                <span>Every answer <span className="on-desk">on the right</span><span className="on-phone">below</span> still holds; they come from the file, not the picture.</span>
+              )}
               {dims ? <span className="num">Measured size {dims}</span> : null}
-              {mesh.error ? <span className="err" role="alert">{mesh.error}</span> : null}
-              {failedLive && onRetryPreview ? (
+              {mesh.error && !busy3d ? <span className="err" role="alert">{mesh.error}</span> : null}
+              {busy3d ? (
+                mesh.busy && onRetryPreview && !stillBusy ? (
+                  <button className="btn sm" type="button" onClick={onRetryPreview}>
+                    Retry preview
+                  </button>
+                ) : null
+              ) : failedLive && onRetryPreview ? (
                 <PreviewFailed onRetry={onRetryPreview} onChooseFile={shell.pickFile} />
               ) : onDropFile ? (
                 <>

@@ -1068,7 +1068,12 @@ export interface ProgressInput {
   costError: string | null;
   geometryInvalid: string | null;
   done: boolean;
+  /** A step waiting on a busy server (busy-state.ts): "measure" (the probe or /validate) or "price"
+   *  (/validate/cost); `live` while ScaleCAD is still asking. It reads "Waiting for room", never "Didn't finish". */
+  busy?: { step: "measure" | "price"; live: boolean } | null;
 }
+
+const WAITING_FOR_ROOM = "Waiting for room";
 
 function ext(name: string): string {
   return (name.split(".").pop() ?? "").toUpperCase();
@@ -1092,11 +1097,15 @@ export function measuredLine(v: ValidationResult): string {
 export function progressSteps(p: ProgressInput): Step[] {
   const v = p.validation;
   const measuredBad = !!v && !v.geometry.is_watertight;
+  // Busy is about the server, not the file: the waiting step says so, calmly, and nothing after it failed.
+  const room = (live: boolean): Pick<Step, "d" | "state"> => ({ d: WAITING_FOR_ROOM, state: live ? "now" : "wait" });
+  const measureBusy = !v && p.busy?.step === "measure" ? room(p.busy.live) : null;
+  const priceBusy = !p.cost && p.busy?.step === "price" ? room(p.busy.live) : null;
   if (p.sample) {
     return [
-      { t: "Read and measure the shape", d: v ? measuredLine(v) : "Reading the shape now…", state: v ? "done" : "now" },
+      { t: "Read and measure the shape", ...(measureBusy ?? { d: v ? measuredLine(v) : "Reading the shape now…", state: v ? "done" : "now" }) },
       { t: `Compare ${v ? v.process_scores.length : 21} ways to make it`, d: v ? `${methodName(v.best_process)} has the highest design score` : "Waiting", state: v ? "done" : "wait" },
-      { t: "Price it and list what’s uncertain", d: p.cost ? `${p.cost.estimates.length} prices · ${p.cost.saved ? `record ${shortId(p.cost.saved.id)}` : "not saved"}` : p.costError ? "Didn’t finish" : v ? "Pricing now…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" },
+      { t: "Price it and list what’s uncertain", ...(priceBusy ?? { d: p.cost ? `${p.cost.estimates.length} prices · ${p.cost.saved ? `record ${shortId(p.cost.saved.id)}` : "not saved"}` : p.costError ? "Didn’t finish" : v ? "Pricing now…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" }) },
     ];
   }
   const verification = readVerification(p.cost);
@@ -1118,12 +1127,13 @@ export function progressSteps(p: ProgressInput): Step[] {
     if (verification.best_machine) machines = `${verification.best_machine} clears every check`;
     else if (verification.inventory_declared) machines = "None of your machines clears every check";
   }
+  const costFailed = !!p.costError && !priceBusy;
   return [
     received,
-    { t: "Measured", d: v ? measuredLine(v) : "Measuring the shape…", state: v ? "done" : "now" },
-    { t: "Process chosen", d: p.cost ? routed : p.costError ? "Didn’t finish" : v ? "Choosing the process and pricing…" : "Waiting", state: p.cost ? "done" : p.costError ? "bad" : v ? "now" : "wait" },
-    { t: "Machines checked", d: p.cost ? machines : p.costError ? "Not computed" : "Waiting", state: p.cost ? "done" : p.costError ? "skip" : "wait" },
-    { t: "Record saved", d: p.cost ? p.cost.saved ? `Record ${shortId(p.cost.saved.id)}` : "Not saved: record keeping is off" : p.costError ? "Not computed" : "Waiting", state: p.cost ? (p.cost.saved ? "done" : "skip") : p.costError ? "skip" : "wait" },
+    { t: "Measured", ...(measureBusy ?? { d: v ? measuredLine(v) : "Measuring the shape…", state: v ? "done" : "now" }) },
+    { t: "Process chosen", ...(priceBusy ?? { d: p.cost ? routed : costFailed ? "Didn’t finish" : v ? "Choosing the process and pricing…" : "Waiting", state: p.cost ? "done" : costFailed ? "bad" : v ? "now" : "wait" }) },
+    { t: "Machines checked", d: p.cost ? machines : costFailed ? "Not computed" : "Waiting", state: p.cost ? "done" : costFailed ? "skip" : "wait" },
+    { t: "Record saved", d: p.cost ? p.cost.saved ? `Record ${shortId(p.cost.saved.id)}` : "Not saved: record keeping is off" : costFailed ? "Not computed" : "Waiting", state: p.cost ? (p.cost.saved ? "done" : "skip") : costFailed ? "skip" : "wait" },
   ];
 }
 

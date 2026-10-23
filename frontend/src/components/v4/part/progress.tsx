@@ -4,7 +4,9 @@
 import * as React from "react";
 import { dimsText, plural, progressSteps, type Step } from "./model";
 import { chosenLine } from "./pick-words";
-import { readsAsBodies, type CheckSession } from "./store";
+import { readsAsBodies, retryPrices, type CheckSession } from "./store";
+import { busyReopenLabel, busyView, type BusyView } from "./busy-state";
+import { BusyNotice, useNow } from "./busy-notice";
 import { HeldNote, MaterialAsk } from "../onboard/material-ask";
 import { inText } from "../units/units";
 import { useUnits } from "../units/use-units";
@@ -78,8 +80,17 @@ function onePick(s: CheckSession, steps: Step[]): Step[] {
   });
 }
 
+/** Which step a busy server holds up, for the steps' "Waiting for room". */
+function busyStep(bv: BusyView | null): { step: "measure" | "price"; live: boolean } | null {
+  if (!bv) return null;
+  const step = bv.phase === "waiting" ? bv.step : bv.still.step;
+  if (step === "preview") return null;
+  return { step: step === "cost" ? "price" : "measure", live: bv.phase === "waiting" };
+}
+
 export function progressModel(s: CheckSession) {
   const r = s.result;
+  const bv = busyView(s);
   const steps: Step[] = onePick(s, bodySteps(s, progressSteps({
     fileName: s.file.name,
     sample: s.sample,
@@ -88,15 +99,18 @@ export function progressModel(s: CheckSession) {
     costError: r ? r.costError : null,
     geometryInvalid: s.status === "stopped" ? r?.costGeometryInvalid?.message ?? "not a closed solid" : null,
     done: s.status !== "running",
+    busy: busyStep(bv),
   })));
   const running = s.status === "running";
   const stopped = s.status === "stopped";
+  // Still busy before anything was measured: nothing checked, the file kept (the notice offers Try again).
+  const unchecked = s.failure?.kind === "busy";
   const elapsed = (s.finishedAt ?? Date.now()) - s.startedAt;
-  const title = running ? (s.sample ? "Checking the sample" : "Checking") : stopped ? "Stopped at Measured" : "Checked";
+  const title = running ? (s.sample ? "Checking the sample" : "Checking") : stopped ? "Stopped at Measured" : unchecked ? "Not checked yet" : "Checked";
   // The expected time comes from how long checks take here (ProgressPanel fills it); never a fixed promise.
-  const meta = running ? [s.file.name, s.sample ? "No check used" : null] : stopped ? [s.file.name, "Not watertight"] : [s.file.name, seconds(elapsed)];
-  const foot = running ? "Hiding this doesn’t stop the check." : stopped ? "Nothing after this step ran." : "Same file, same result, every time.";
-  return { steps, running, stopped, title, meta, foot };
+  const meta = running ? [s.file.name, s.sample ? "No check used" : null] : stopped ? [s.file.name, "Not watertight"] : unchecked ? [s.file.name, "The file is kept"] : [s.file.name, seconds(elapsed)];
+  const foot = running ? "Hiding this doesn’t stop the check." : stopped ? "Nothing after this step ran." : unchecked ? "Nothing after Received ran." : "Same file, same result, every time.";
+  return { steps, running, stopped, title, meta, foot, busy: bv };
 }
 
 export function ProgressPanel({
@@ -104,14 +118,18 @@ export function ProgressPanel({
   open,
   onOpenChange,
   action,
+  onRetryCheck,
 }: {
   session: CheckSession;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** "See what's wrong" (stopped) or "Open result" (done). */
   action?: React.ReactNode;
+  /** "Try again" after the check stayed busy: the same file, checked again. */
+  onRetryCheck?: () => void;
 }) {
   const m = progressModel(session);
+  const now = useNow(!open && m.busy?.phase === "waiting");
   const timing = useCheckTiming(m.running && !session.sample, session.id);
   useTick(m.running);
   const meta = m.meta.map((x) => x ?? expectedLine(timing, Date.now() - session.startedAt, true));
@@ -138,9 +156,11 @@ export function ProgressPanel({
   if (!open)
     return (
       <button ref={reopenRef} className="btn sm reopen" type="button" onClick={() => onOpenChange(true)}>
-        {m.running ? "Checking · Show progress" : "Show progress"}
+        {m.busy ? busyReopenLabel(m.busy, now) : m.running ? "Checking · Show progress" : "Show progress"}
       </button>
     );
+  const bv = m.busy;
+  const retry = bv?.phase === "still" ? (bv.still.step === "cost" ? () => void retryPrices(session.id) : onRetryCheck) : undefined;
   return (
     <section className="prog" role="status" aria-live="polite" aria-labelledby="pg-title">
       <div className="hd">
@@ -163,6 +183,7 @@ export function ProgressPanel({
           </svg>
         </button>
       </div>
+      {bv ? <BusyNotice view={bv} onRetry={retry} className="prog-busy" /> : null}
       <ol className="steps">
         {m.steps.map((s) => (
           <li key={s.t} className={`st ${s.state}`}>

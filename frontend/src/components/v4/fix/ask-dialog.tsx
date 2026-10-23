@@ -29,6 +29,7 @@ import type { Failure } from "../part/store";
 
 export function failureText(f: Failure | null | undefined): string {
   if (!f) return "The check didn’t finish.";
+  if (f.kind === "busy") return "ScaleCAD was busy, so the check didn’t run. The file is kept; try again in a minute.";
   return "message" in f ? f.message : `${f.title}. ${f.detail}`;
 }
 import { useUploadFixed } from "./problem-sheet";

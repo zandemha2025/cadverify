@@ -14,7 +14,8 @@ import { clientStlIntegrityError } from "@/lib/stl-validation";
 import { isPhoneVerificationMessage, isQuotaErrorMessage } from "@/lib/api-recovery";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { computeMeshHash } from "@/lib/verify/part-context";
-import { fetchPreviewMesh } from "@/lib/verify/preview-mesh";
+import { fetchPreviewMesh, fetchPreviewMeshOrBusy, type PreviewMesh } from "@/lib/verify/preview-mesh";
+import { retryWhileBusy, type BusyKind, type BusyStep, type BusyWait } from "@/lib/verify/busy";
 import { isAssemblyCandidate } from "@/lib/verify/assembly";
 import { closedBodies, isMultiBody } from "@/lib/verify/bodies";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
@@ -28,6 +29,7 @@ import { markWorkSeen, registerWork } from "../work/work-bar";
 import { startStoredCheck } from "./stored-check";
 import { R } from "../routes";
 import { plainError, ranOutOfTime } from "./plain-errors";
+import type { BusyWaits } from "./busy-state";
 
 export type Failure =
   | { kind: "quota"; message: string }
@@ -35,7 +37,9 @@ export type Failure =
   | { kind: "interrupted"; message: string }
   /** Too heavy for the web process (413): handed to the worker's check, ``storedId`` (stored-check.ts). */
   | { kind: "worker"; message: string; storedId: number }
-  | { kind: "unreadable"; title: string; detail: string; problem: "open" | "unreadable" | "unsupported" | "geometry" | "refused"; retry: boolean };
+  | { kind: "unreadable"; title: string; detail: string; problem: "open" | "unreadable" | "unsupported" | "geometry" | "refused"; retry: boolean }
+  /** Still busy after ScaleCAD asked again for about three minutes: nothing checked, the file kept, "try again". */
+  | { kind: "busy"; step: Extract<BusyStep, "probe" | "validate">; busy: BusyKind; waitedMs: number };
 
 export interface PreviewState {
   status: "loading" | "ready" | "failed";
@@ -43,6 +47,8 @@ export interface PreviewState {
   faceHash: string | null;
   faceSpace: "analysis" | "preview";
   error: string | null;
+  /** Failed only because the server stayed busy: no error to show, "Retry preview" later. */
+  busy?: boolean;
 }
 
 export interface AssemblyState {
@@ -79,6 +85,8 @@ export interface CheckSession {
   result: VerifyResult | null;
   failure: Failure | null;
   costRetrying: boolean;
+  /** The requests waiting on a busy server now, each with its next try (busy-state.ts). */
+  busy: BusyWaits;
   preview: PreviewState;
   assembly: AssemblyState | null;
   /** Whether the progress panel is showing; it survives the hand-over to the part page. */
@@ -139,7 +147,7 @@ function syncWork(s: CheckSession) {
       ? { label: `Checked ${name}`, detail: "Ready", state: "done" as const }
       : s.status === "stopped"
         ? { label: `${name}: not a closed solid`, detail: "Nothing priced · repair it or upload a fixed file", state: "stopped" as const }
-        : { label: `${name}: not checked`, detail: s.failure && "title" in s.failure ? s.failure.title : "The check didn’t finish", state: "stopped" as const };
+        : { label: `${name}: not checked`, detail: s.failure?.kind === "busy" ? "Still busy · the file is kept" : s.failure && "title" in s.failure ? s.failure.title : "The check didn’t finish", state: "stopped" as const };
   registerWork({ key: workKey(s.id), href, persist: false, progress: null, ...item });
 }
 
@@ -196,12 +204,34 @@ function classify(message: string | null): Failure {
   return { kind: "unreadable", title: copy.title.replace(/\.$/, ""), detail: copy.action, problem: copy.kind === "geometry" ? "geometry" : copy.kind === "unsupported" ? "unsupported" : "unreadable", retry: false };
 }
 
+/** A request of this check is waiting on a busy server (`wait`), or no longer is (null). */
+function setWait(id: number, step: BusyStep, wait: BusyWait | null) {
+  patch(id, (x) => {
+    const busy = { ...x.busy };
+    if (wait) busy[step] = wait;
+    else delete busy[step];
+    return { busy };
+  });
+}
+
 async function loadPreview(id: number) {
   const s = sessions.get(id);
   if (!s) return;
   patch(id, { preview: { status: "loading", url: null, faceHash: null, faceSpace: "preview", error: null } });
   try {
-    const pm = await fetchPreviewMesh(s.file, { forAnalysis: true, units: "mm" });
+    // A busy server is asked again (same file, same check id); the stage keeps showing the part loading meanwhile.
+    const out = await retryWhileBusy<PreviewMesh | null>(
+      async () => {
+        const r = await fetchPreviewMeshOrBusy(s.file, { forAnalysis: true, units: "mm" });
+        return r && "busy" in r ? { busy: r.busy } : { value: r };
+      },
+      { onWait: (w) => setWait(id, "preview", w) },
+    );
+    if (!out.ok) {
+      patch(id, { preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: null, busy: true } });
+      return;
+    }
+    const pm = out.value;
     if (!pm) throw new Error("The 3D preview couldn't be built from this file.");
     patch(id, { preview: { status: "ready", url: pm.url, faceHash: pm.faceHash, faceSpace: pm.faceSpace, error: null } });
     const key = sessions.get(id)?.key ?? (await computeMeshHash(s.file).catch(() => null));
@@ -271,7 +301,25 @@ async function run(id: number) {
   patch(id, { key });
 
   if (isAssemblyCandidate(file.name)) {
-    const probe = await probeAssemblyV4(file);
+    // A busy server is asked again by itself (Retry-After), for about three minutes, then "Still busy".
+    const probed = await retryWhileBusy<Awaited<ReturnType<typeof probeAssemblyV4>>>(
+      async () => {
+        const p = await probeAssemblyV4(file);
+        return p.kind === "refused" && p.busy ? { busy: p.busy } : { value: p };
+      },
+      { onWait: (w) => setWait(id, "probe", w) },
+    );
+    if (!probed.ok) {
+      // The 3D view never started: nothing to draw yet, and nothing wrong with the file.
+      patch(id, {
+        status: "failed",
+        finishedAt: Date.now(),
+        failure: { kind: "busy", step: "probe", busy: probed.busy.kind, waitedMs: Date.now() - probed.since },
+        preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: null },
+      });
+      return;
+    }
+    const probe = probed.value;
     // The assembly reader only takes solids. A file it can't read as solids (an open
     // shell, surfaces) still goes through the single-part check, which measures it
     // and says exactly what's wrong instead of refusing it unread.
@@ -312,6 +360,7 @@ async function run(id: number) {
           patch(id, { pricedWith: m });
           return m;
         },
+        onBusy: (step, w) => setWait(id, step, w),
       },
     );
   } catch (e) {
@@ -323,6 +372,10 @@ async function run(id: number) {
   }
   window.dispatchEvent(new Event("proofshape:usage-changed"));
   if (!result.validation && result.validationStatus === 413) return handToWorker(id, result.validationError ?? "Too large for a web check.");
+  if (!result.validation && result.validationBusy) {
+    patch(id, { result, status: "failed", finishedAt: Date.now(), failure: { kind: "busy", step: "validate", busy: result.validationBusy.kind, waitedMs: result.validationBusy.waitedMs } });
+    return;
+  }
   if (!result.validation) {
     patch(id, { result, status: "failed", finishedAt: Date.now(), failure: classify(result.validationError) });
     return;
@@ -358,6 +411,7 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
     result: null,
     failure: null,
     costRetrying: false,
+    busy: {},
     preview: { status: "loading", url: null, faceHash: null, faceSpace: "preview", error: null },
     assembly: null,
     panel: true,
@@ -384,7 +438,7 @@ export async function retryPrices(id: number) {
       const retried = { cost: r.cost, costGeometryInvalid: null, costError: null, verification: readVerification(r.cost) ?? null, quantities: r.cost.quantities ?? quantities };
       patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
     } else {
-      const retried = await retryVerificationCost({ file: s.file, materialClass, orientation: s.orientation, quantity: s.quantity }, s.result.machines, resolvedAnnualVolume(s.result.partContext));
+      const retried = await retryVerificationCost({ file: s.file, materialClass, orientation: s.orientation, quantity: s.quantity }, s.result.machines, resolvedAnnualVolume(s.result.partContext), (w) => setWait(id, "cost", w));
       patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, ...retried } : x.result }));
     }
   } catch (e) {

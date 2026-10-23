@@ -32,7 +32,7 @@ import { familyOf } from "../fix/problems";
 import "./part.css";
 
 export function liveMesh(s: CheckSession): MeshSource {
-  return { url: s.preview.url, faceHash: s.preview.faceHash, faceSpace: s.preview.faceSpace, kind: "glb", origin: s.preview.url ? "live" : null, loading: s.preview.status === "loading", error: s.preview.error };
+  return { url: s.preview.url, faceHash: s.preview.faceHash, faceSpace: s.preview.faceSpace, kind: "glb", origin: s.preview.url ? "live" : null, loading: s.preview.status === "loading", error: s.preview.error, busy: !!s.preview.busy };
 }
 
 export function CheckPage() {
@@ -217,7 +217,9 @@ export function CheckPage() {
       />
     );
   }
-  // Running before the first answer, or interrupted.
+  // Running before the first answer, or interrupted. Still busy after asking again: the progress panel
+  // stays, with "Still busy. Your file is kept; try again in a minute." and Try again (same file).
+  const stillBusy = f?.kind === "busy";
   return (
     <PartView
       data={data!}
@@ -228,10 +230,10 @@ export function CheckPage() {
       onRetryPrices={() => void retryPrices(session.id)}
       onRetryPreview={() => retryPreview(session.id)}
       overlay={
-        session.status === "running" ? (
+        session.status === "running" || stillBusy ? (
           <>
             {design?.state === "done" ? <div className="design-note">{designBanner}</div> : null}
-            <ProgressPanel session={session} open={session.panel} onOpenChange={(o) => setPanel(session.id, o)} />
+            <ProgressPanel session={session} open={session.panel} onOpenChange={(o) => setPanel(session.id, o)} onRetryCheck={() => begin(session.file, { sample: session.sample })} />
           </>
         ) : session.sample ? (
           <SampleFlow status={session.status} result={session.result} onRetry={beginSample} />

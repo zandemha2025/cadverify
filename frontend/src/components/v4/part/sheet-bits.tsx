@@ -18,6 +18,8 @@ import type { ServiceEnvironment } from "@/lib/verify/part-context";
 import { isMultiBody } from "@/lib/verify/bodies";
 import { shopChangeText, shopChangedSince, type ShopChange } from "./shop-change";
 import { ReadOnlyLine, useReadOnly } from "../read-only";
+import { busyView } from "./busy-state";
+import { BusyNotice } from "./busy-notice";
 
 export interface FigItem {
   k: string;
@@ -197,6 +199,17 @@ function RunState() {
       <Link href={R.billing}>Usage and plans</Link>
     </p>
   );
+  // A busy server: the one calm state, counting down to the next try, then "Still busy" with Try again.
+  // Not an interruption, not about usage or the file.
+  const bv = busyView(p.session);
+  if (bv && (p.checking || p.interrupted || p.costOff || p.session?.costRetrying)) {
+    const retry = bv.phase === "still" ? (bv.still.step === "cost" ? p.retryPrices : () => p.recheck()) : undefined;
+    return (
+      <div className="swap" style={{ marginTop: 8 }}>
+        <BusyNotice view={bv} onRetry={retry} />
+      </div>
+    );
+  }
   if (p.interrupted) {
     return (
       <div className="swap" style={{ marginTop: 8 }}>

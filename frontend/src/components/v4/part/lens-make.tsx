@@ -37,6 +37,7 @@ import { useUnits } from "../units/use-units";
 import { AtMachine } from "./at-machine-section";
 import { useMachineViews } from "./lens-shop";
 import { shortWhy } from "./machine-rank";
+import { WAITING_FOR_ROOM, busyView } from "./busy-state";
 
 function chipTone(m: Method): string {
   return m.verdict === "out" ? "c-bad" : m.verdict === "unk" ? "c-unk" : `c-${m.verdict}`;
@@ -230,6 +231,10 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
   const v = p.data.validation;
   // With no price back (it didn't finish), the material the check was asked for, not the default (me-12).
   const cls = p.data.cost?.material_class ?? p.session?.materialClass ?? null;
+  // Busy is the server's, not the file's: "waiting for room", never a warning (capacity D1–D3).
+  const bv = busyView(p.session);
+  const busyCheck = bv && (bv.phase === "waiting" ? bv.step : bv.still.step) !== "cost" && (bv.phase === "waiting" ? bv.step : bv.still.step) !== "preview";
+  if (p.interrupted && bv?.phase === "still") return { title: "Not checked yet", meta: "ScaleCAD was busy · the file is kept", figs: [{ k: "Processes", v: WAITING_FOR_ROOM }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   if (p.interrupted) return { title: "Check interrupted", meta: "Nothing computed · the file is kept", figs: [{ k: "Processes", v: "Not checked", tone: "warn" }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   const singles = p.methods;
   if (p.checking) {
@@ -241,7 +246,7 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
         // The design-rule best so far, not a pick: ScaleCAD's pick comes with the prices.
         v && gp
           ? { k: "Highest design score", v: gp.name, s: `${gp.short} · DFM ${gp.dfm ?? "—"} · the pick comes with prices` }
-          : { k: "Highest design score", v: "Measuring…" },
+          : { k: "Highest design score", v: busyCheck && !v ? WAITING_FOR_ROOM : "Measuring…" },
         { k: "Processes checked", v: v ? `${v.process_scores.length} of ${v.process_scores.length}` : "Waiting" },
         { k: "Priced", v: "Pricing…", s: "arrives with the record" },
       ],
@@ -280,7 +285,8 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
     }
     return { title: "Ways to make it", meta, figs };
   }
-  if (p.costOff) figs.push({ k: "Prices", v: "Didn’t finish", s: "processes are ready", tone: "warn" });
+  if (p.costOff && bv) figs.push({ k: "Prices", v: WAITING_FOR_ROOM, s: "processes are ready" });
+  else if (p.costOff) figs.push({ k: "Prices", v: "Didn’t finish", s: "processes are ready", tone: "warn" });
   else if (c) figs.push({ k: `Cheapest at ${qtyWord(p.q)}`, v: money(priceAt(c, p.q)), s: `${c.name} · ${c.short}` });
   else if (!p.data.cost) figs.push({ k: "Prices", v: "Not priced yet", s: "this part has an analysis only" });
   const ih = p.methods.find((m) => m.inHouse && m.prices.has(p.q));
