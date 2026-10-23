@@ -18,6 +18,7 @@ import { partCheckHeaders } from "./check-id.ts";
  */
 import { API_BASE } from "@/lib/api-base";
 import { apiQuotaMessage } from "../api-recovery.ts";
+import { busySignal, type BusySignal } from "./busy.ts";
 
 export interface PreviewMesh {
   /** object URL for the GLB blob (caller revokes via `revoke`). */
@@ -44,9 +45,11 @@ function readNum(res: Response, header: string): number | null {
 }
 
 type PreviewData = Omit<PreviewMesh, "url" | "revoke"> & { blob: Blob };
+/** The server had no room for the preview (429/503 server_busy): ask again later. */
+export type PreviewBusy = { busy: BusySignal };
 // Keep completed previews and join concurrent viewers. A remount must not spend
 // another operation; each consumer owns its URL, while File lifetime bounds memory.
-const previews = new WeakMap<File, Map<string, Promise<PreviewData | null>>>();
+const previews = new WeakMap<File, Map<string, Promise<PreviewData | PreviewBusy | null>>>();
 
 export type PreviewOptions = { forAnalysis?: boolean; forFit?: boolean; units?: "mm" | "inch" };
 
@@ -61,21 +64,27 @@ export function previewQuery(options?: PreviewOptions): string {
 }
 
 export async function fetchPreviewMesh(file: File, options?: PreviewOptions): Promise<PreviewMesh | null> {
+  const out = await fetchPreviewMeshOrBusy(file, options);
+  return out && "busy" in out ? null : out;
+}
+
+/** fetchPreviewMesh, telling a busy server (ask again later) from a preview that can't be built (null). */
+export async function fetchPreviewMeshOrBusy(file: File, options?: PreviewOptions): Promise<PreviewMesh | PreviewBusy | null> {
   const query = previewQuery(options);
   let byQuery = previews.get(file);
   if (!byQuery) { byQuery = new Map(); previews.set(file, byQuery); }
   let pending = byQuery.get(query);
   if (!pending) { pending = fetchPreviewData(file, query); byQuery.set(query, pending); }
-  let data: PreviewData | null;
+  let data: PreviewData | PreviewBusy | null;
   try { data = await pending; }
   catch (error) { byQuery.delete(query); throw error; }
-  if (!data) { byQuery.delete(query); return null; }
+  if (!data || "busy" in data) { byQuery.delete(query); return data; }
   const { blob, ...metadata } = data;
   const url = URL.createObjectURL(blob);
   return { ...metadata, url, revoke: () => URL.revokeObjectURL(url) };
 }
 
-async function fetchPreviewData(file: File, query: string): Promise<PreviewData | null> {
+async function fetchPreviewData(file: File, query: string): Promise<PreviewData | PreviewBusy | null> {
   const form = new FormData();
   form.append("file", file);
 
@@ -90,9 +99,12 @@ async function fetchPreviewData(file: File, query: string): Promise<PreviewData 
     return null;
   }
   if (!res.ok) {
-    if (res.status === 403 || res.status === 429) {
-      const quota = apiQuotaMessage(await res.json().catch(() => null));
+    if (res.status === 403 || res.status === 429 || res.status === 503) {
+      const body = await res.json().catch(() => null);
+      const quota = res.status === 503 ? null : apiQuotaMessage(body);
       if (quota) throw new Error(quota);
+      const busy = busySignal(res.status, body, res.headers.get("retry-after"));
+      if (busy) return { busy };
     }
     return null;
   }

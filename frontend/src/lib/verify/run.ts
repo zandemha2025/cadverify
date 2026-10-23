@@ -35,6 +35,7 @@ import {
 import { readJsonOrNull, validationAllowsCost } from "./run-gates";
 import { resolvedAnnualVolume } from "./program-rollup";
 import { quantityLadderFor } from "./qty-ladder";
+import { BUSY_BOUND_MS, busySignal, retryWhileBusy, type BusyAttempt, type BusyKind, type BusySignal, type BusyWait } from "./busy";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -76,6 +77,17 @@ export interface RunVerificationOptions {
   /** Read when pricing starts, after routing + DFM return: the material the
    *  user picked while the geometry check ran. Unset: `input.materialClass`. */
   materialClass?: () => string;
+  /** Set: a busy server (429/503 server_busy) is waited out and asked again, for up
+   *  to about three minutes per request, and each wait is reported here (null when
+   *  it's over) so the page can say "ScaleCAD is busy. Checking again in 8 s…".
+   *  Unset: one try, and busy is the refusal it always was. */
+  onBusy?: (step: "validate" | "cost", wait: BusyWait | null) => void;
+}
+
+/** A request still refused as busy after the waiting: who was full and for how long it asked. */
+export interface StillBusy {
+  kind: BusyKind;
+  waitedMs: number;
 }
 
 /** Engine process ids the cost endpoint accepts in `owned_processes` — passing an
@@ -105,6 +117,10 @@ export interface VerifyResult {
   /** set when /validate/cost refused broken geometry (the walk stops at G1). */
   costGeometryInvalid: CostGeometryInvalid | null;
   costError: string | null;
+  /** Set when /validate (`validationBusy`) or /validate/cost (`costBusy`) was still
+   *  busy after the waiting: the page offers "try again", never a file problem. */
+  validationBusy?: StillBusy | null;
+  costBusy?: StillBusy | null;
   machines: OwnedMachine[];
   machinesError: string | null;
   /** the makeability lattice block IF the engine surfaced one (else null →
@@ -142,7 +158,7 @@ async function postCost(
   input: VerifyInput,
   ownedProcesses: string[],
   quantities: number[]
-): Promise<{ cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null }> {
+): Promise<CostOut> {
   const form = new FormData();
   form.append("file", input.file);
   form.append("qty", quantities.join(","));
@@ -174,6 +190,7 @@ async function postCost(
   }
 
   const body: Record<string, unknown> = await res.json().catch(() => ({}));
+  const busy = busySignal(res.status, body, res.headers.get("retry-after"));
   if (res.status === 400 && body.code === "GEOMETRY_INVALID") {
     return {
       cost: null,
@@ -192,31 +209,56 @@ async function postCost(
       resource: "verification",
       retryAfter: res.headers.get("retry-after"),
     });
-  return { cost: null, invalid: null, error: detail };
+  return { cost: null, invalid: null, error: detail, busy };
+}
+
+type CostOut = { cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null; busy?: BusySignal | null };
+
+/** postCost, waiting out a busy server when `onWait` is given (else one try). The
+ *  input is read on each try, so a material picked while it waited is the one priced. */
+async function postCostWhileBusy(
+  input: () => VerifyInput,
+  ownedProcesses: string[],
+  quantities: number[],
+  onWait?: (wait: BusyWait | null) => void,
+): Promise<CostOut & { stillBusy: StillBusy | null }> {
+  const out = await retryWhileBusy<CostOut>(
+    async (): Promise<BusyAttempt<CostOut>> => {
+      const o = await postCost(input(), ownedProcesses, quantities);
+      return o.busy ? { busy: o.busy, value: o } : { value: o };
+    },
+    { boundMs: onWait ? BUSY_BOUND_MS : 0, onWait },
+  );
+  if (out.ok) return { ...out.value, stillBusy: null };
+  return { ...(out.value ?? { cost: null, invalid: null, error: null }), stillBusy: { kind: out.busy.kind, waitedMs: Date.now() - out.since } };
 }
 
 export interface CostRetryResult {
   cost: CostReport | null;
   costGeometryInvalid: CostGeometryInvalid | null;
   costError: string | null;
+  costBusy?: StillBusy | null;
   verification: VerificationBlock | null;
   quantities: number[];
 }
 
 /** Retry only the failed costing subsystem. Successful routing + DFM stays on
- *  screen and is not recomputed or replaced while a transient cost outage clears. */
+ *  screen and is not recomputed or replaced while a transient cost outage clears.
+ *  `onBusy`: wait out a busy server, as `runVerification` does. */
 export async function retryVerificationCost(
   input: VerifyInput,
   machines: OwnedMachine[],
-  annualVolume?: number | null
+  annualVolume?: number | null,
+  onBusy?: (wait: BusyWait | null) => void
 ): Promise<CostRetryResult> {
   const owned = ownedProcessesFrom(machines).filter((p) => KNOWN_ENGINE_PROCESSES.has(p));
   const quantities = quantityLadderFor([annualVolume, input.quantity]);
-  const costOut = await postCost(input, owned, quantities);
+  const costOut = await postCostWhileBusy(() => input, owned, quantities, onBusy);
   return {
     cost: costOut.cost,
     costGeometryInvalid: costOut.invalid,
     costError: costOut.error,
+    costBusy: costOut.stillBusy,
     verification: readVerification(costOut.cost) ?? null,
     quantities: costOut.cost?.quantities ?? quantities,
   };
@@ -246,6 +288,7 @@ async function validateOriented(file: File, orientation: string, partCheckId?: s
       ),
       res.status,
       body,
+      res.headers.get("retry-after"),
     );
   }
   if (!body) throw new Error("Unexpected server response");
@@ -263,16 +306,33 @@ export async function runVerification(
   // and runs beside it; the second geometry-heavy call (cost) still waits until
   // validation has released its worker memory.
   const checkId = partCheckHeaders(input.file)["x-part-check-id"];
-  const validationPromise = (input.orientation
-    ? validateOriented(input.file, input.orientation, checkId)
-    : validateFile(input.file, undefined, undefined, undefined, undefined, checkId)).then(
-    (v) => ({ v, err: null as string | null, status: null as number | null, code: null as string | null }),
-    (e) => ({
-      v: null as ValidationResult | null,
-      err: e instanceof Error ? e.message : "Validation failed",
-      status: (e as HttpError)?.status ?? null,
-      code: (e as HttpError)?.code ?? null,
-    })
+  type ValidationOut = { v: ValidationResult | null; err: string | null; status: number | null; code: string | null };
+  const waiting = !!options.onBusy;
+  const validateOnce = (): Promise<BusyAttempt<ValidationOut>> =>
+    (input.orientation
+      ? validateOriented(input.file, input.orientation, checkId)
+      : validateFile(input.file, undefined, undefined, undefined, undefined, checkId, { quietBusy: waiting })).then(
+      (v) => ({ value: { v, err: null, status: null, code: null } }),
+      (e) => {
+        const he = e as HttpError;
+        const value: ValidationOut = {
+          v: null,
+          err: e instanceof Error ? e.message : "Validation failed",
+          status: he?.status ?? null,
+          code: he?.code ?? null,
+        };
+        const busy = he?.status ? busySignal(he.status, { code: he.code, message: he.message }, he.retryAfter) : null;
+        return busy ? { busy, value } : { value };
+      },
+    );
+  // Busy is waited out (when the caller shows the wait); the last answer is kept either way.
+  const validationPromise = retryWhileBusy(validateOnce, {
+    boundMs: waiting ? BUSY_BOUND_MS : 0,
+    onWait: waiting ? (w) => options.onBusy?.("validate", w) : undefined,
+  }).then((o) =>
+    o.ok
+      ? { ...o.value, stillBusy: null as StillBusy | null }
+      : { ...(o.value ?? { v: null, err: null, status: null, code: null }), stillBusy: { kind: o.busy.kind, waitedMs: Date.now() - o.since } as StillBusy | null },
   );
 
   const machinesPromise = listMachines().then(
@@ -347,6 +407,7 @@ export async function runVerification(
       validationError: validationOut.err,
       validationStatus: validationOut.status,
       validationCode: validationOut.code,
+      validationBusy: validationOut.stillBusy,
       cost: null,
       costGeometryInvalid: null,
       costError: null,
@@ -370,10 +431,11 @@ export async function runVerification(
   // The geometry check doesn't depend on the material; the price does. Price in
   // the material answered while the check ran (the same file and check id, so
   // the server reuses the geometry it just analysed and uses no extra check).
-  const costOut = await postCost(
-    options.materialClass ? { ...input, materialClass: options.materialClass() } : input,
+  const costOut = await postCostWhileBusy(
+    () => (options.materialClass ? { ...input, materialClass: options.materialClass() } : input),
     owned,
-    quantities
+    quantities,
+    options.onBusy ? (w) => options.onBusy?.("cost", w) : undefined,
   );
 
   // The verification block rides the cost response when the org declared machines
@@ -388,6 +450,7 @@ export async function runVerification(
     cost: costOut.cost,
     costGeometryInvalid: costOut.invalid,
     costError: costOut.error,
+    costBusy: costOut.stillBusy,
     machines: floor.machines,
     machinesError: floor.error,
     verification,

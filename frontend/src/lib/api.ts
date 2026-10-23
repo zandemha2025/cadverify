@@ -8,6 +8,7 @@ import {
   networkRecoveryMessage,
 } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
+import { busySignal } from "./verify/busy.ts";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
 import type { PartType } from "./verify/bodies";
@@ -410,11 +411,12 @@ export function getLatestRateLimits(): RateLimits | undefined {
 /** An API refusal's HTTP status and code, kept on the thrown Error (the message stays the
  *  user-facing text), so a caller can act on it: a web check refused as too heavy
  *  for the web process (413 CHECK_TOO_LARGE) goes to the worker instead. */
-export type HttpError = Error & { status?: number; code?: string | null };
+export type HttpError = Error & { status?: number; code?: string | null; retryAfter?: string | null };
 
-export function withHttpStatus(error: Error, status: number, payload: unknown): HttpError {
+export function withHttpStatus(error: Error, status: number, payload: unknown, retryAfter?: string | null): HttpError {
   const e = error as HttpError;
   e.status = status;
+  if (retryAfter !== undefined) e.retryAfter = retryAfter;
   const p = payload as { code?: unknown; detail?: { code?: unknown } } | null;
   const code = typeof p?.detail === "object" && p?.detail ? p.detail.code : p?.code;
   e.code = typeof code === "string" ? code : null;
@@ -425,7 +427,18 @@ const apiClient = {
   async fetch(
     url: string,
     options: RequestInit = {},
-    { retries = 0, retryDelayMs = 1000 }: { retries?: number; retryDelayMs?: number } = {}
+    {
+      retries = 0,
+      retryDelayMs = 1000,
+      quietBusy = false,
+    }: {
+      retries?: number;
+      retryDelayMs?: number;
+      /** The caller waits and asks again by itself when the server is busy (busy.ts): a
+       *  busy refusal (429 or 503 server_busy) is thrown with its status, code and
+       *  Retry-After, and no error toast. Other refusals are unchanged. */
+      quietBusy?: boolean;
+    } = {}
   ): Promise<Response> {
     // Same-origin → the httpOnly session cookie is sent automatically and the
     // Next proxy forwards it to the backend. No Authorization header needed.
@@ -474,6 +487,7 @@ const apiClient = {
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
         const message = apiRecoveryMessage({ status: 429, payload: err, resource,
           retryAfter: res.headers.get("Retry-After") });
+        if (quietBusy && busySignal(429, err)) throw withHttpStatus(new Error(message), 429, err, res.headers.get("Retry-After"));
         toast.error(message);
         throw new Error(message);
       }
@@ -489,6 +503,7 @@ const apiClient = {
             retryAfter: res.headers.get("retry-after"),
           }),
         );
+        if (quietBusy && busySignal(res.status, problem)) throw withHttpStatus(lastError, res.status, problem, res.headers.get("retry-after"));
         if (attempt === retries) {
           toast.error(lastError.message);
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
@@ -515,8 +530,8 @@ const apiClient = {
     throw lastError || new Error("Request failed");
   },
 
-  async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
-    const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000 });
+  async fetchJson<T>(url: string, options: RequestInit = {}, extra: { quietBusy?: boolean } = {}): Promise<T> {
+    const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000, ...extra });
     try {
       return await res.json();
     } catch {
@@ -539,7 +554,9 @@ export async function validateFile(
    *  Off by default → no query param → response is byte-identical to before. */
   includeThickness?: boolean,
   sourceUnits?: "mm" | "inch",
-  partCheckId?: string
+  partCheckId?: string,
+  /** quietBusy: the caller waits out a busy server itself (apiClient.fetch). */
+  opts: { quietBusy?: boolean } = {}
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -564,7 +581,7 @@ export async function validateFile(
     url += `?${qs}`;
   }
 
-  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined });
+  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined }, opts);
 }
 
 export async function validateQuick(file: File): Promise<{

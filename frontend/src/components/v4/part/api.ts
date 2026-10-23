@@ -24,6 +24,7 @@ import { listMachines, type OwnedMachine } from "@/lib/verify/machine-api";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
 import { partCheckHeaders } from "@/lib/verify/check-id";
 import { KNOWN_ENGINE_PROCESSES } from "@/lib/verify/run";
+import { busySignal, type BusySignal } from "@/lib/verify/busy";
 import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
 import type { Disposition } from "./model";
 import { getCachedMesh, putCachedMesh } from "./mesh-cache";
@@ -283,7 +284,8 @@ async function fetchStoredMesh(key: string, filename: string | null, kept: boole
 export type AssemblyProbeV4 =
   | { kind: "single" }
   | { kind: "assembly"; model: AssemblyModel; glbUrl: string | null; gate: "pilot" | null; glbError: string | null }
-  | { kind: "refused"; title: string; detail: string; retry: boolean; status: number | null };
+  /** `busy`: the server had no room (429/503 server_busy); ask again, it says nothing about the file. */
+  | { kind: "refused"; title: string; detail: string; retry: boolean; status: number | null; busy?: BusySignal | null };
 
 async function post(file: File, format: "json" | "glb" | "analysis"): Promise<Response | null> {
   const form = new FormData();
@@ -316,6 +318,7 @@ export async function probeAssemblyV4(file: File): Promise<AssemblyProbeV4> {
       detail: refusalDetail(json.status, body, "verification"),
       retry: json.status >= 500 || json.status === 429,
       status: json.status,
+      busy: busySignal(json.status, body, json.headers.get("retry-after")),
     };
   }
   const model = body as AssemblyModel | null;
