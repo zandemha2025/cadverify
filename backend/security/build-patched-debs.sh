@@ -2,7 +2,7 @@
 # Actual upstream remediation, not a vulnerability waiver. See native-fixes.vex.json.
 set -eu
 mkdir -p /patched
-for spec in expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1; do
+for spec in expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1 brotli=1.1.0-2; do
     name=${spec%%=*}
     version=${spec#*=}
     mkdir -p "/build/$name"
@@ -12,6 +12,7 @@ for spec in expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1; do
     case "$name" in
         libx11) patch --fuzz=0 -p1 < /patches/x11.patch ;;
         libxrender) patch --fuzz=0 -p1 < /patches/xrender.patch ;;
+        brotli) patch --fuzz=0 -p1 < /patches/brotli.patch ;;
     esac
     # The local revision identifies exactly these patched binaries in the SBOM.
     python - "$name" "$version" <<'PY'
@@ -34,3 +35,4 @@ cp /build/expat/libexpat1_*_*.deb /patched/
 cp /build/libx11/libx11-6_*_*.deb /build/libx11/libx11-data_*_all.deb \
     /build/libx11/libx11-xcb1_*_*.deb /patched/
 cp /build/libxrender/libxrender1_*_*.deb /patched/
+cp /build/brotli/libbrotli1_*_*.deb /patched/
