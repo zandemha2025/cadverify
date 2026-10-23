@@ -214,6 +214,38 @@ test("a try that throws ends the waiting and the error reaches the caller", asyn
   assert.equal(waits.at(-1), null);
 });
 
+test("stop ends the asking: no further try once the check it serves has stopped", async () => {
+  const c = clock();
+  let tries = 0;
+  let stopped = false;
+  const waits: (BusyWait | null)[] = [];
+  const out = await retryWhileBusy(
+    async () => {
+      tries += 1;
+      if (tries === 2) stopped = true; // the check gave up while this try was out
+      return { busy: { kind: "server", retryAfterS: 5 } };
+    },
+    { now: c.now, sleep: c.sleep, random: () => 0, stop: () => stopped, onWait: (w) => waits.push(w) },
+  );
+  assert.equal(out.ok, false);
+  assert.equal(!out.ok && out.stopped, true);
+  assert.equal(tries, 2);
+  assert.equal(waits.at(-1), null);
+  // Stopped during a wait: the next try never goes out.
+  let n = 0;
+  let stopNow = false;
+  const c2 = clock();
+  const out2 = await retryWhileBusy(
+    async () => {
+      n += 1;
+      return { busy: { kind: "server", retryAfterS: 5 } };
+    },
+    { now: c2.now, sleep: async (ms) => { await c2.sleep(ms); stopNow = true; }, random: () => 0, stop: () => stopNow },
+  );
+  assert.equal(n, 1);
+  assert.equal(!out2.ok && out2.stopped, true);
+});
+
 test("the countdown is whole seconds, rounded up, and 0 once the try is out", () => {
   assert.equal(secondsUntil(10_000, 2_000), 8);
   assert.equal(secondsUntil(10_000, 2_001), 8);

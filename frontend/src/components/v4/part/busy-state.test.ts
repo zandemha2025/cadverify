@@ -51,6 +51,8 @@ test("waiting, then still busy: the check's, and the prices' after the process c
   // Priced after all, or being retried: not "still busy" any more.
   assert.equal(busyView({ busy: {}, result: { cost: { ok: 1 }, costBusy: { kind: "server", waitedMs: 1 } } }), null);
   assert.equal(busyView({ busy: {}, costRetrying: true, result: { cost: null, costBusy: { kind: "server", waitedMs: 1 } } }), null);
+  // The check gave up: that's the state, not its 3D view's last wait.
+  assert.equal(busyView({ busy: { preview: wait(3) }, failure: { kind: "busy", step: "validate", busy: "server", waitedMs: 170_000 } })?.phase, "still");
   // A wait that's open wins over an older "still busy".
   assert.equal(busyView({ busy: { cost: wait(5) }, result: { cost: null, costBusy: { kind: "server", waitedMs: 1 } } })?.phase, "waiting");
   // Not busy: nothing to show (an interruption or a file problem has its own words).

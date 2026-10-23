@@ -123,8 +123,8 @@ export type BusyAttempt<T> = { busy: BusySignal; value?: T } | { busy?: undefine
 
 export type BusyOutcome<T> =
   | { ok: true; value: T; attempts: number }
-  /** Still busy after the bound; `value` is the last try's own answer when it had one. */
-  | { ok: false; busy: BusySignal; value: T | undefined; since: number; attempts: number };
+  /** Still busy after the bound (or `stop` said so); `value` is the last try's own answer when it had one. */
+  | { ok: false; busy: BusySignal; value: T | undefined; since: number; attempts: number; stopped?: boolean };
 
 export interface RetryWhileBusyOptions {
   /** Each wait as it starts, and null once the waiting is over (answered, or given up). */
@@ -134,6 +134,8 @@ export interface RetryWhileBusyOptions {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
+  /** Checked before each wait and each try again: true stops asking (the check this request serves has stopped). */
+  stop?: () => boolean;
 }
 
 /**
@@ -158,9 +160,11 @@ export async function retryWhileBusy<T>(attempt: () => Promise<BusyAttempt<T>>, 
       const t = now();
       since = first;
       const delay = busyDelayMs(r.busy, opts.random, attempts);
+      if (opts.stop?.()) return { ok: false, busy: r.busy, value: r.value, since, attempts, stopped: true };
       if (t + delay - since > bound) return { ok: false, busy: r.busy, value: r.value, since, attempts };
       opts.onWait?.({ kind: r.busy.kind, attempt: attempts, since, until: t + delay });
       await sleep(delay);
+      if (opts.stop?.()) return { ok: false, busy: r.busy, value: r.value, since, attempts, stopped: true };
     }
   } finally {
     if (since != null) opts.onWait?.(null);

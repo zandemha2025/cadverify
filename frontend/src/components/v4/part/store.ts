@@ -225,7 +225,8 @@ async function loadPreview(id: number) {
         const r = await fetchPreviewMeshOrBusy(s.file, { forAnalysis: true, units: "mm" });
         return r && "busy" in r ? { busy: r.busy } : { value: r };
       },
-      { onWait: (w) => setWait(id, "preview", w) },
+      // The check stopped (still busy, or it couldn't run): stop asking for its picture too.
+      { onWait: (w) => setWait(id, "preview", w), stop: () => sessions.get(id)?.status === "failed" },
     );
     if (!out.ok) {
       patch(id, { preview: { status: "failed", url: null, faceHash: null, faceSpace: "preview", error: null, busy: true } });

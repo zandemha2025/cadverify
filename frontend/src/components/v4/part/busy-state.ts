@@ -47,9 +47,11 @@ export function shownWait(waits: BusyWaits | null | undefined): (BusyWait & { st
 export function busyView(s: BusySessionLike | null | undefined): BusyView | null {
   if (!s) return null;
   const w = shownWait(s.busy);
-  if (w) return { phase: "waiting", step: w.step, wait: w };
   const f = s.failure;
-  if (f?.kind === "busy" && f.step && f.busy) return { phase: "still", still: { step: f.step, kind: f.busy, waitedMs: f.waitedMs ?? 0 } };
+  const still = f?.kind === "busy" && f.step && f.busy ? ({ phase: "still", still: { step: f.step, kind: f.busy, waitedMs: f.waitedMs ?? 0 } } as const) : null;
+  // The check itself gave up: that is the state, even while its 3D view is still finishing its last wait.
+  if (w && !(still && w.step === "preview")) return { phase: "waiting", step: w.step, wait: w };
+  if (still) return still;
   const cb = s.result?.costBusy;
   if (cb && !s.result?.cost && !s.costRetrying) return { phase: "still", still: { step: "cost", kind: cb.kind, waitedMs: cb.waitedMs } };
   return null;
