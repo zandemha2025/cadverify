@@ -6,16 +6,13 @@
  * analytics recordings (data-private, ph-no-capture), as today's frame does.
  */
 import Link from "next/link";
-import { Instrument_Sans, Sora } from "next/font/google";
+import { v4AuthSans, v4AuthDisp } from "@/components/v4/fonts";
 import "../v4.css";
 import "./moments.css";
 
-const sans = Instrument_Sans({ variable: "--font-v4-sans", subsets: ["latin"], display: "swap", preload: false });
-const disp = Sora({ variable: "--font-v4-disp", subsets: ["latin"], weight: ["500", "600"], display: "swap", preload: false });
-
 export function V4AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div data-private data-ui="v4" className={`ob mo-auth ph-no-capture ${sans.variable} ${disp.variable}`}>
+    <div data-private data-ui="v4" className={`ob mo-auth ph-no-capture ${v4AuthSans.variable} ${v4AuthDisp.variable}`}>
       <header className="bar">
         <Link className="brand" href="/">
           <svg width="20" height="20" viewBox="0 0 26 26" fill="none" aria-hidden="true">

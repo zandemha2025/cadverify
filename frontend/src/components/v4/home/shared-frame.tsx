@@ -6,19 +6,16 @@
  * (buyer-14).
  */
 import type * as React from "react";
-import { Instrument_Sans, Sora } from "next/font/google";
+import { v4Sans, v4Disp } from "@/components/v4/fonts";
 import { PartGlyph } from "./thumb";
 import { LinkOff, type LinkOffReason } from "./states";
 import "../v4.css";
 import "./home.css";
 import "./supplier.css";
 
-const sans = Instrument_Sans({ variable: "--font-v4-sans", subsets: ["latin"], display: "swap" });
-const disp = Sora({ variable: "--font-v4-disp", subsets: ["latin"], weight: ["500", "600"], display: "swap" });
-
 export function SharedFrame({ kind, children }: { kind: string | null; children: React.ReactNode }) {
   return (
-    <div className={`${sans.variable} ${disp.variable}`}>
+    <div className={`${v4Sans.variable} ${v4Disp.variable}`}>
       <div className="ob" data-ui="v4">
         <header className="bar">
           {kind ? <span className="h-ro">{kind} · view only</span> : null}
