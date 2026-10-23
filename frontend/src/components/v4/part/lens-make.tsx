@@ -233,7 +233,7 @@ export function makeTop(p: ReturnType<typeof usePart>, problems: { severity: str
   const cls = p.data.cost?.material_class ?? p.session?.materialClass ?? null;
   // Busy is the server's, not the file's: "waiting for room", never a warning (capacity D1–D3).
   const bv = busyView(p.session);
-  const busyCheck = bv?.phase === "waiting" && viewStep(bv) !== "cost" && viewStep(bv) !== "preview";
+  const busyCheck = bv?.phase === "waiting" && (viewStep(bv) === "probe" || viewStep(bv) === "validate");
   if (p.interrupted && bv?.phase === "still") return { title: "Not checked yet", meta: "ScaleCAD was busy · the file is kept", figs: [{ k: "Processes", v: WAITING_FOR_ROOM }, { k: "File", v: "Kept", s: "no re-export needed" }] };
   // Stopped on ScaleCAD's side: not the file's doing, said plainly (no warning tone).
   if (p.interrupted && bv?.phase === "server") return { title: "Not checked yet", meta: "Stopped on our side · the file is kept", figs: [{ k: "Processes", v: "Not checked", s: serverStepText(bv.status).toLowerCase() }, { k: "File", v: "Kept", s: "no re-export needed" }] };

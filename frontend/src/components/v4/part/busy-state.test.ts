@@ -80,7 +80,7 @@ test("still busy: the brief's words, how long it asked, what didn't run", () => 
 test("busy never reads as a file problem or an error (D1, D2)", () => {
   const FILE_OR_ERROR = /can.?t read|couldn.?t read|no surfaces|fix in cad|re-?export|corrupt|invalid|unsupported|tessellat|didn.?t finish|interrupted|error|failed|usage and plans|allowance/i;
   const lines: string[] = [STILL_BUSY_TITLE, WAITING_FOR_ROOM];
-  for (const step of ["probe", "validate", "cost", "preview"] as BusyStep[]) {
+  for (const step of ["probe", "validate", "cost", "preview", "assembly", "assembly3d"] as BusyStep[]) {
     for (const kind of ["server", "org"] as BusyKind[]) {
       lines.push(busyTitle({ step, wait: wait(5, kind) }, T), busyTitle({ step, wait: wait(5, kind) }, T + 9000), busyMeta({ step, wait: wait(5, kind) }));
       lines.push(stillBusyMeta({ step, kind, waitedMs: 180_000 }));
@@ -167,7 +167,7 @@ test("a gateway timeout or other 5xx is ScaleCAD's side: plain words, one Try ag
   const FILE = /can.?t read|couldn.?t read|no surfaces|fix in cad|re-?export|corrupt|invalid|unsupported|tessellat|interrupted|error|failed|usage and plans|allowance|file problem/i;
   for (const status of [500, 502, 503, 504, 0]) {
     const lines = [serverTitle(status), serverStepText(status), busyReopenLabel({ phase: "server", step: "validate", status }, T), busyReopenBar({ phase: "server", step: "validate", status }, T)];
-    for (const step of ["probe", "validate", "cost", "preview"] as BusyStep[]) lines.push(serverMeta(step, status));
+    for (const step of ["probe", "validate", "cost", "preview", "assembly", "assembly3d"] as BusyStep[]) lines.push(serverMeta(step, status));
     for (const line of lines) assert.doesNotMatch(line, FILE, line);
   }
   // The sheet shows it (or the panel does), never "Check interrupted" or "Cost didn't finish".

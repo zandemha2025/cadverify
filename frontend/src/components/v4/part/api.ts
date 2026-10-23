@@ -25,7 +25,8 @@ import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-re
 import { partCheckHeaders } from "@/lib/verify/check-id";
 import { KNOWN_ENGINE_PROCESSES } from "@/lib/verify/run";
 import { busySignal, type BusySignal } from "@/lib/verify/busy";
-import type { AssemblyAnalysis, AssemblyModel } from "@/lib/verify/assembly";
+import { assemblyAnalysis, assemblyGlb, paidGate, type AssemblyAnalysisOut, type AssemblyGlbOut, type AssemblyWaitOptions } from "./assembly-calls";
+import type { AssemblyModel } from "@/lib/verify/assembly";
 import type { Disposition } from "./model";
 import { getCachedMesh, putCachedMesh } from "./mesh-cache";
 import { plainError } from "./plain-errors";
@@ -283,7 +284,8 @@ async function fetchStoredMesh(key: string, filename: string | null, kept: boole
 
 export type AssemblyProbeV4 =
   | { kind: "single" }
-  | { kind: "assembly"; model: AssemblyModel; glbUrl: string | null; gate: "pilot" | null; glbError: string | null }
+  /** Several bodies: the product tree. Its 3D view and analysis follow (fetchAssemblyGlbV4, fetchAssemblyAnalysisV4). */
+  | { kind: "assembly"; model: AssemblyModel }
   /** `busy`: the server had no room (429/503 server_busy); ask again, it says nothing about the file. */
   | { kind: "refused"; title: string; detail: string; retry: boolean; status: number | null; busy?: BusySignal | null };
 
@@ -295,11 +297,6 @@ async function post(file: File, format: "json" | "glb" | "analysis"): Promise<Re
   } catch {
     return null;
   }
-}
-
-function paidGate(body: unknown): boolean {
-  const b = body as { code?: unknown; detail?: { code?: unknown } } | null;
-  return b?.code === "paid_access_required" || b?.detail?.code === "paid_access_required";
 }
 
 /** Is this STEP/IGES file several bodies? Keeps the product tree even when the 3D view is gated. */
@@ -324,26 +321,17 @@ export async function probeAssemblyV4(file: File): Promise<AssemblyProbeV4> {
   const model = body as AssemblyModel | null;
   if (!model || !Array.isArray(model.parts)) return { kind: "refused", title: "Can't read this file", detail: "The assembly reader returned nothing usable. Try again.", retry: true, status: json.status };
   if (model.kind !== "assembly" || model.part_count < 2) return { kind: "single" };
-  const glb = await post(file, "glb");
-  if (!glb) return { kind: "assembly", model, glbUrl: null, gate: null, glbError: "The 3D view couldn't reach the server." };
-  if (!glb.ok) {
-    const gb = await glb.json().catch(() => null);
-    return { kind: "assembly", model, glbUrl: null, gate: paidGate(gb) ? "pilot" : null, glbError: paidGate(gb) ? null : apiProblemDetail(gb) ?? "The 3D view couldn't be built." };
-  }
-  const blob = await glb.blob().catch(() => null);
-  if (!blob || !blob.size) return { kind: "assembly", model, glbUrl: null, gate: null, glbError: "The 3D view came back empty." };
-  return { kind: "assembly", model, glbUrl: URL.createObjectURL(blob), gate: null, glbError: null };
+  return { kind: "assembly", model };
 }
 
-export async function fetchAssemblyAnalysisV4(file: File): Promise<{ analysis: AssemblyAnalysis | null; gate: "pilot" | null; error: string | null }> {
-  const res = await post(file, "analysis");
-  if (!res) return { analysis: null, gate: null, error: "The analysis couldn't reach the server." };
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    if (paidGate(body)) return { analysis: null, gate: "pilot", error: null };
-    return { analysis: null, gate: null, error: apiProblemDetail(body) ?? apiRecoveryMessage({ status: res.status, payload: body, resource: "assembly analysis" }) };
-  }
-  return { analysis: (body as { analysis?: AssemblyAnalysis } | null)?.analysis ?? null, gate: null, error: null };
+/** The assembly's 3D view, waiting out a busy server (assembly-calls.ts). */
+export function fetchAssemblyGlbV4(file: File, opts: AssemblyWaitOptions = {}): Promise<AssemblyGlbOut> {
+  return assemblyGlb((format) => post(file, format), opts);
+}
+
+/** The assembly's per-part analysis, waiting out a busy server (assembly-calls.ts). */
+export function fetchAssemblyAnalysisV4(file: File, opts: AssemblyWaitOptions = {}): Promise<AssemblyAnalysisOut> {
+  return assemblyAnalysis((format) => post(file, format), opts);
 }
 
 /* ── revisions: a fixed file uploaded from a problem card ───────────────── */

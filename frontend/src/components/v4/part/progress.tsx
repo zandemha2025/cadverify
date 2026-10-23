@@ -84,7 +84,8 @@ function onePick(s: CheckSession, steps: Step[]): Step[] {
 function busyStep(bv: BusyView | null): { step: "measure" | "price"; live: boolean; text?: string } | null {
   if (!bv) return null;
   const step = viewStep(bv);
-  if (step === "preview") return null;
+  // A part's progress steps: the probe and /validate measure, /validate/cost prices; a 3D view is neither.
+  if (step !== "probe" && step !== "validate" && step !== "cost") return null;
   return { step: step === "cost" ? "price" : "measure", live: bv.phase === "waiting", text: bv.phase === "server" ? serverStepText(bv.status) : undefined };
 }
 

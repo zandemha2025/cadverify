@@ -19,8 +19,9 @@
 /** Whose room ran out: the whole server's, or this organization's share of it. */
 export type BusyKind = "server" | "org";
 
-/** The request of a check that was refused as busy. */
-export type BusyStep = "probe" | "preview" | "validate" | "cost";
+/** The request of a check that was refused as busy: the single-part calls, and an
+ *  assembly's 3D view (`assembly3d`) and per-part analysis (`assembly`). */
+export type BusyStep = "probe" | "preview" | "validate" | "cost" | "assembly3d" | "assembly";
 
 export interface BusySignal {
   kind: BusyKind;

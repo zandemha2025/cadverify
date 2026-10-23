@@ -7,7 +7,9 @@ import Link from "next/link";
 import type { InterferencePair, PartAnalysis, PartEstimate, PartInstance } from "@/lib/verify/assembly";
 import { R } from "../routes";
 import { cx } from "../ui";
-import { retryAssemblyAnalysis, type CheckSession } from "./store";
+import { retryAssemblyAnalysis, retryAssemblyView, type CheckSession } from "./store";
+import { assemblyViews, serverStepText } from "./busy-state";
+import { BusyNotice } from "./busy-notice";
 import { MATERIAL_CLASS_LABEL, methodName, money, qtyWord, trimNum } from "./model";
 import { SheetTop, type FigItem } from "./sheet-bits";
 import "./part.css";
@@ -45,6 +47,9 @@ export function AssemblyView({ session, onPick }: { session: CheckSession; onPic
   const model = a.model;
   const analysis = a.analysis;
   const ready = !!analysis;
+  // Busy, or stopped on ScaleCAD's side: the analysis (sheet) and the 3D view (stage), as a part's are.
+  const av = assemblyViews(session.busy, a);
+  const sheetHeld = av.sheet ? (av.sheet.phase === "server" ? serverStepText(av.sheet.status).toLowerCase() : "waiting for room") : null;
   const [pick, setPick] = React.useState<string | null>(null);
   const [xray, setXray] = React.useState(false);
   const input = React.useRef<HTMLInputElement>(null);
@@ -78,10 +83,12 @@ export function AssemblyView({ session, onPick }: { session: CheckSession; onPic
       ]
     : [
         { k: "Parts", v: String(model.part_count), s: `${designs.length} designs` },
-        { k: "Analysed", v: `0 of ${model.part_count}`, s: a.analysisGate ? "pilot tool" : a.analyzing ? "analysing now" : "needs a retry", tone: "warn" },
+        sheetHeld
+          ? { k: "Analysed", v: `0 of ${model.part_count}`, s: sheetHeld }
+          : { k: "Analysed", v: `0 of ${model.part_count}`, s: a.analysisGate ? "pilot tool" : a.analyzing ? "analysing now" : a.glbLoading ? "after the 3D view" : "needs a retry", tone: "warn" },
       ];
   const s = analysis?.analysis_summary;
-  const smeta = ready && s ? `${s.parts_analyzed} of ${s.parts_total} costed · ${s.interference_pairs} touching pairs · ${trimNum(s.elapsed_sec, 1)} s` : `${model.part_count} parts in the tree · ${a.analyzing ? "analysing…" : "not analysed"}`;
+  const smeta = ready && s ? `${s.parts_analyzed} of ${s.parts_total} costed · ${s.interference_pairs} touching pairs · ${trimNum(s.elapsed_sec, 1)} s` : `${model.part_count} parts in the tree · ${sheetHeld ?? (a.analyzing ? "analysing…" : "not analysed")}`;
   const size = model.assembly ? model.assembly.bbox_max.map((v, i) => v - model.assembly.bbox_min[i]) : null;
   const bounds: [string, string, string, string][] = [
     ["Quantity", analysis?.boundaries.quantity ?? "True instance count of each design, counted from the product tree", "Fact", "s-file"],
@@ -124,6 +131,17 @@ export function AssemblyView({ session, onPick }: { session: CheckSession; onPic
             <span className="shade" />
             <StageCanvas renderUrl={null} renderKind={null} assemblyUrl={a.glbUrl} assemblySelectedId={inst?.id ?? null} bbox={null} xray={xray} hostile={false} autoOrbit={false} />
           </div>
+        ) : av.stage ? (
+          <div className="no3d">
+            <b>No 3D view of the assembly yet</b>
+            <BusyNotice view={av.stage} onRetry={av.stage.phase !== "waiting" ? () => retryAssemblyView(session.id) : undefined} />
+            <span>The product tree is on the right.</span>
+          </div>
+        ) : a.glbLoading ? (
+          <div className="no3d">
+            <b>3D view loading…</b>
+            <span>The product tree is on the right.</span>
+          </div>
         ) : (
           <div className="no3d">
             <b>No 3D view of the assembly</b>
@@ -147,7 +165,11 @@ export function AssemblyView({ session, onPick }: { session: CheckSession; onPic
       <aside className="sheet" aria-label="The assembly, part by part">
         <SheetTop title="Assembly" meta={smeta} figs={figs} />
         <div className="scroll">
-          {a.analysisGate === "pilot" ? (
+          {av.sheet ? (
+            <div className="swap" style={{ marginTop: 8 }}>
+              <BusyNotice view={av.sheet} onRetry={av.sheet.phase !== "waiting" ? () => retryAssemblyAnalysis(session.id) : undefined} />
+            </div>
+          ) : a.analysisGate === "pilot" ? (
             <div className="note swap" role="alert" style={{ marginTop: 8 }}>
               <b>Assembly analysis is a pilot tool</b>
               <span>This plan covers single-part checks. The tree is here; per-part DFM, cost and interference come with a pilot or Enterprise plan.</span>

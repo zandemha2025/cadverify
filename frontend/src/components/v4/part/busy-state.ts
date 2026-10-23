@@ -40,18 +40,54 @@ export function viewStep(view: BusyView): BusyStep {
   return view.phase === "still" ? view.still.step : view.step;
 }
 
-/** The check's own requests come before its 3D view; of those, the one that tries next. */
-const ORDER: BusyStep[] = ["probe", "validate", "cost", "preview"];
+/** The check's own requests come before its 3D views; of those, the one that tries next. */
+const ORDER: BusyStep[] = ["probe", "validate", "cost", "assembly", "preview", "assembly3d"];
+const PICTURE = new Set<BusyStep>(["preview", "assembly3d"]);
 
 export function shownWait(waits: BusyWaits | null | undefined): (BusyWait & { step: BusyStep }) | null {
   let best: (BusyWait & { step: BusyStep }) | null = null;
   for (const step of ORDER) {
     const w = waits?.[step];
     if (!w) continue;
-    if (step === "preview" && best) break;
+    if (PICTURE.has(step) && best && !PICTURE.has(best.step)) break;
     if (!best || w.until < best.until) best = { ...w, step };
   }
   return best;
+}
+
+/** The parts of an assembly's state this reads (store.ts `AssemblyState`). */
+export interface AssemblyLike {
+  glbUrl?: string | null;
+  glbBusy?: { kind: BusyKind; waitedMs: number } | null;
+  glbServer?: number | null;
+  analysis?: unknown;
+  analyzing?: boolean;
+  analysisBusy?: { kind: BusyKind; waitedMs: number } | null;
+  analysisStatus?: number | null;
+  analysisError?: string | null;
+}
+
+/**
+ * An assembly's two busy states, the same as a part's: the per-part analysis (the
+ * sheet) and its 3D view (the stage), each waiting with a countdown, still busy after
+ * the bound, or stopped on ScaleCAD's side.
+ */
+export function assemblyViews(waits: BusyWaits | null | undefined, a: AssemblyLike | null | undefined): { sheet: BusyView | null; stage: BusyView | null } {
+  const at = (step: "assembly" | "assembly3d"): BusyView | null => {
+    const w = waits?.[step];
+    return w ? { phase: "waiting", step, wait: w } : null;
+  };
+  let sheet = at("assembly");
+  if (!sheet && a && !a.analysis && !a.analyzing) {
+    if (a.analysisBusy) sheet = { phase: "still", still: { step: "assembly", kind: a.analysisBusy.kind, waitedMs: a.analysisBusy.waitedMs } };
+    else if (a.analysisError && serverTrouble(a.analysisStatus)) sheet = { phase: "server", step: "assembly", status: a.analysisStatus! };
+  }
+  let stage = at("assembly3d");
+  if (!stage && a && !a.glbUrl) {
+    if (a.glbBusy) stage = { phase: "still", still: { step: "assembly3d", kind: a.glbBusy.kind, waitedMs: a.glbBusy.waitedMs } };
+    else if (a.glbServer != null && serverTrouble(a.glbServer)) stage = { phase: "server", step: "assembly3d", status: a.glbServer };
+  }
+  return { sheet, stage };
 }
 
 /** The busy state to show for a session, or null when it isn't waiting on a busy server. */
@@ -63,7 +99,7 @@ export function busyView(s: BusySessionLike | null | undefined): BusyView | null
   const server = f?.kind === "server" && f.step && f.status != null ? ({ phase: "server", step: f.step, status: f.status } as const) : null;
   const stopped = still ?? server;
   // The check itself stopped: that is the state, even while its 3D view is still finishing its last wait.
-  if (w && !(stopped && w.step === "preview")) return { phase: "waiting", step: w.step, wait: w };
+  if (w && !(stopped && PICTURE.has(w.step))) return { phase: "waiting", step: w.step, wait: w };
   if (stopped) return stopped;
   const r = s.result;
   const cb = r?.costBusy;
@@ -92,7 +128,7 @@ export const STILL_BUSY_TITLE = "Still busy. Your file is kept; try again in a m
 export function busyTitle(view: { step: BusyStep; wait: BusyWait }, now: number): string {
   const s = secondsUntil(view.wait.until, now);
   const when = s > 0 ? `in ${s} s…` : "now…";
-  return view.step === "preview" ? `The 3D view is waiting for room. Trying again ${when}` : `ScaleCAD is busy. Checking again ${when}`;
+  return PICTURE.has(view.step) ? `The 3D view is waiting for room. Trying again ${when}` : `ScaleCAD is busy. Checking again ${when}`;
 }
 
 function roomLine(kind: BusyKind): string {
@@ -104,7 +140,8 @@ function roomLine(kind: BusyKind): string {
 /** The fact line under the countdown: whose room ran out, what waits, and that the file is fine to keep. */
 export function busyMeta(view: { step: BusyStep; wait: BusyWait }): string {
   const room = roomLine(view.wait.kind);
-  if (view.step === "preview") return `${room}. It's drawn from your file once there's room.`;
+  if (PICTURE.has(view.step)) return `${room}. It's drawn from your file once there's room.`;
+  if (view.step === "assembly") return `${room}. The product tree is ready; the per-part analysis starts once there's room. This isn't about your file.`;
   if (view.step === "cost") return `${room}. The process checks are ready; prices start once there's room. This isn't about your file.`;
   return `${room}. This isn't about your file: it stays here and is checked once there's room.`;
 }
@@ -114,7 +151,8 @@ export function stillBusyMeta(still: StillBusyState): string {
   const mins = Math.max(1, Math.round(still.waitedMs / 60000));
   const asked = `ScaleCAD asked again for ${mins} ${mins === 1 ? "minute" : "minutes"} and had no room.`;
   if (still.step === "cost") return `${asked} The process checks are ready; prices haven't run.`;
-  if (still.step === "preview") return `${asked} The 3D view wasn't drawn.`;
+  if (PICTURE.has(still.step)) return `${asked} The 3D view wasn't drawn.`;
+  if (still.step === "assembly") return `${asked} The product tree is ready; the per-part analysis hasn't run.`;
   return `${asked} Nothing was checked.`;
 }
 
@@ -129,7 +167,8 @@ export function serverTitle(status: number): string {
 export function serverMeta(step: BusyStep, status: number): string {
   const what = status === 0 ? "No answer came back; check the connection." : `ScaleCAD stopped before answering (${status}).`;
   if (step === "cost") return `${what} The process checks are ready; prices haven't run. Try again prices it once more.`;
-  if (step === "preview") return `${what} The 3D view wasn't drawn. Try again asks for it once more.`;
+  if (PICTURE.has(step)) return `${what} The 3D view wasn't drawn. Try again asks for it once more.`;
+  if (step === "assembly") return `${what} The product tree is ready; the per-part analysis hasn't run. Try again runs it once more.`;
   return `${what} Nothing was checked. Try again runs the check once more.`;
 }
 

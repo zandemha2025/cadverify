@@ -32,6 +32,8 @@
 .ob .pv .no3d b{color:var(--ink);font-size:16px}
 .ob .pv .no3d.over{border-color:var(--file);background:rgba(232,238,251,.75)}
 .ob .pv .no3d .err{color:var(--bad);font-size:13px}
+.ob .pv .no3d .mo-bn{max-width:100%}
+.ob .pv .no3d .mo-bn .tx b{font-size:14px}
 
 /* O1: the plinth and setup steps */
 .ob .pv .plinth{position:absolute;left:calc(33% - 300px);top:200px;width:600px;height:400px;border-radius:28px;border:2px dashed rgba(20,24,31,.18);background:rgba(255,255,255,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:16px;transition:border-color 150ms ease,background-color 150ms ease;z-index:1}

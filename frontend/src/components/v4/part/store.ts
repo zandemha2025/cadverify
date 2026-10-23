@@ -23,7 +23,8 @@ import { quantityLadderFor, retryVerificationCost, runVerification, type VerifyR
 import { readVerification } from "@/lib/verify/verification";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 import { putCachedMesh } from "./mesh-cache";
-import { fetchAssemblyAnalysisV4, fetchSourceKept, probeAssemblyV4, recheckStored } from "./api";
+import { fetchAssemblyAnalysisV4, fetchAssemblyGlbV4, fetchSourceKept, probeAssemblyV4, recheckStored } from "./api";
+import type { StillBusyLike } from "./assembly-calls";
 import { ownedProcessesFrom } from "@/lib/verify/machine-api";
 import { markWorkSeen, registerWork } from "../work/work-bar";
 import { startStoredCheck } from "./stored-check";
@@ -60,10 +61,18 @@ export interface AssemblyState {
   glbUrl: string | null;
   gate: "pilot" | null;
   glbError: string | null;
+  /** The 3D view is on its way (it follows the product tree). */
+  glbLoading: boolean;
+  /** The 3D view was still busy after the waiting, or stopped on ScaleCAD's side (its status; 0: no answer). */
+  glbBusy: StillBusyLike | null;
+  glbServer: number | null;
   analysis: AssemblyAnalysis | null;
   analyzing: boolean;
   analysisGate: "pilot" | null;
   analysisError: string | null;
+  /** The analysis was still busy after the waiting; or the status it failed with (0: no answer). */
+  analysisBusy: StillBusyLike | null;
+  analysisStatus: number | null;
 }
 
 export interface CheckSession {
@@ -260,9 +269,28 @@ async function loadPreview(id: number) {
 async function runAssembly(id: number) {
   const s = sessions.get(id);
   if (!s?.assembly) return;
-  patch(id, (x) => ({ assembly: x.assembly && { ...x.assembly, analyzing: true, analysisError: null } }));
-  const out = await fetchAssemblyAnalysisV4(s.file);
-  patch(id, (x) => ({ assembly: x.assembly && { ...x.assembly, analyzing: false, analysis: out.analysis, analysisGate: out.gate, analysisError: out.error } }));
+  patch(id, (x) => ({ assembly: x.assembly && { ...x.assembly, analyzing: true, analysisError: null, analysisBusy: null, analysisStatus: null } }));
+  // A busy server is asked again by itself (Retry-After), counted down on the sheet, for about three minutes.
+  const out = await fetchAssemblyAnalysisV4(s.file, { onWait: (w) => setWait(id, "assembly", w) });
+  patch(id, (x) => ({
+    assembly: x.assembly && { ...x.assembly, analyzing: false, analysis: out.analysis, analysisGate: out.gate, analysisError: out.error, analysisBusy: out.stillBusy, analysisStatus: out.status },
+  }));
+}
+
+/** The assembly's 3D view, after its product tree is on screen; busy is waited out and counted down on the stage. */
+async function loadAssemblyGlb(id: number) {
+  const s = sessions.get(id);
+  if (!s?.assembly) return;
+  patch(id, (x) => ({ assembly: x.assembly && { ...x.assembly, glbLoading: true, glbError: null, glbBusy: null, glbServer: null } }));
+  const out = await fetchAssemblyGlbV4(s.file, { onWait: (w) => setWait(id, "assembly3d", w) });
+  patch(id, (x) => ({
+    assembly: x.assembly && { ...x.assembly, glbLoading: false, glbUrl: out.glbUrl, gate: out.gate, glbError: out.glbError, glbBusy: out.stillBusy, glbServer: out.server },
+  }));
+}
+
+/** Ask for the assembly's 3D view again (after it stayed busy or stopped on ScaleCAD's side). */
+export function retryAssemblyView(id: number) {
+  void loadAssemblyGlb(id);
 }
 
 export function setPanel(id: number, open: boolean) {
@@ -355,13 +383,32 @@ async function run(id: number) {
       return;
     }
     if (probe.kind === "assembly") {
+      // The product tree shows now; the 3D view, then the analysis, follow (in that order, as before).
       patch(id, {
         status: "assembly",
         finishedAt: Date.now(),
-        assembly: { model: probe.model, glbUrl: probe.glbUrl, gate: probe.gate, glbError: probe.glbError, analysis: null, analyzing: false, analysisGate: null, analysisError: null },
+        assembly: {
+          model: probe.model,
+          glbUrl: null,
+          gate: null,
+          glbError: null,
+          glbLoading: true,
+          glbBusy: null,
+          glbServer: null,
+          analysis: null,
+          analyzing: false,
+          analysisGate: null,
+          analysisError: null,
+          analysisBusy: null,
+          analysisStatus: null,
+        },
       });
-      if (!probe.gate) void runAssembly(id);
-      else patch(id, (x) => ({ assembly: x.assembly && { ...x.assembly, analysisGate: "pilot" } }));
+      void (async () => {
+        await loadAssemblyGlb(id);
+        // The assembly view is a pilot tool; so is its analysis, which isn't asked for then.
+        if (sessions.get(id)?.assembly?.gate === "pilot") patch(id, (x) => ({ assembly: x.assembly && { ...x.assembly, analysisGate: "pilot" } }));
+        else void runAssembly(id);
+      })();
       return;
     }
   }
