@@ -254,17 +254,102 @@ What the numbers say:
 - Some parts are over-reserved, and that is kept: nist's periodic part needs
   189 MB (its faces come from a coarse recovery rung), STL is sized by its exact
   triangle count and the small STLs need far less than the model's 150 MB base.
-- **Multi-body files are outside the model.** A file that splits into bodies
+- **Multi-body files were outside the model.** A file that splits into bodies
   is checked body by body (`catalog_bodies.check_file_bodies`), and
   `part_types.describe` measures contact between every pair of bodies:
-  `contact_between` calls `trimesh.proximity.closest_point` with up to 3,000
+  `contact_between` called `trimesh.proximity.closest_point` with up to 3,000
   sample points against the other body's faces in the shared box, and on big
   open sheets every point's candidates are most of the sheet. bracket-assembly
   needed 1.7 GB; unsewn-box's main process grew about 100 MB a second until the
   harness stopped it at 6.1 GB (its parse worker stayed at 230 MB). No
-  file-size model can size that; its fix (bounding that call's memory) is
-  separate work. Until then a run with such a file can use more than its
-  reservation.
+  file-size model can size that, so the body path is now bounded for any input
+  (next section).
+
+### Multi-body files: bounded contacts and stock boxes (2026-10-23)
+
+Two calls in `part_types.describe` grew with the input, not with the file:
+
+- `contact_between`: trimesh's `closest_point` takes every triangle out to a
+  sample point's nearest vertex, all at once. On a big open sheet that is most
+  of the sheet for every point. Now each point looks only as far as a contact
+  can be (`NEAR_TOL_MM`, 0.5 mm, or its nearest vertex when that is closer),
+  so every distance that matters is still exact. Distances are computed
+  `_CONTACT_BATCH` (100,000, about 35 MB) at a time, at most
+  `_CONTACT_WORK_PER_PAIR` (2 M) per pair of bodies and
+  `_CONTACT_WORK_PER_FILE` (12 M) per file. Past a pair's cap the sample is
+  cut and the contact is marked `coarse`. Pairs left unmeasured by these caps,
+  the 400-pair limit or the time budget are counted in `contacts_unchecked`
+  and said in the summary ("Contacts weren't checked between 7 of the 11
+  pairs of bodies that sit close (...)").
+- `stock_of`: trimesh's oriented box projects each candidate direction's
+  silhouette edges against its silhouette vertices. One of
+  bracket-assembly's pins is an 8,288-sided cylinder, which needed 1.4 GB and
+  13 s. Hulls whose silhouettes fit `_OBB_MAX_CELLS` (4 M cells, about
+  100 MB) keep trimesh's answer exactly. Past that, each direction's outline
+  is measured by rotating calipers in linear memory, and a hull past
+  `_OBB_MAX_POINTS` reads as no stock.
+
+The body path alone (`resolve_bodies` and `describe`, as
+`catalog_bodies.check_file_bodies` runs them, from the parsed mesh and
+product tree) was measured in a fresh process, one part at a time. The figure
+is the peak resident set above that process's baseline (the peak was reset
+with `/proc/self/clear_refs`). Before is the committed code before the change,
+after is with it. Harness: `d2/measure.py` in the session scratchpad.
+
+| Part | Faces | Bodies | Before MB | Before s | After MB | After s | Reading |
+|---|---|---|---|---|---|---|---|
+| broken/unsewn-box.step | 158,541 (open) | 3 | stopped past 2,504, still growing | 24+ | 97 | 1.8 | 3 open bodies touching at their edges (never finished before) |
+| assemblies/bracket-assembly.step | 129,928 | 3 | 1,447 | 9.8 | 79 | 0.5 | identical |
+| AS1 assembly (18 parts, `as1-tu-203.stp`) | 205,926 | 18 | 567 | 5.8 | 136 | 4.4 | identical (32 contacts) |
+| welded frame (STL, 4 tubes) | 128 | 4 | 7 | 0.1 | 7 | 0.1 | identical |
+| cube in its fixture (STL) | 40 | 2 | 12 | 0.1 | 7 | 0.1 | identical |
+| T joint, welded L (STL) | 24 | 2 | 8 | 0.04 | 7 | 0.04 | identical |
+| open tray of 146,640 faces and a sheet through it (synthetic, `contact_between` alone) | 146,642 | 2 | stopped past 2,507 at 18 s | 18+ | 44 | 1.3 | touching |
+
+"Identical" means the whole `describe` result, every body's stock shape and
+every contact, is equal to before (timing aside).
+`tests/test_part_types_bounds.py` holds the synthetic sheet (under 250 MB)
+and an 8,288-sided round bar (under 100 MB), each measured in a subprocess.
+It also checks that the bounded distances equal trimesh's `closest_point`,
+and it tests the fallbacks that are said.
+
+With the body path bounded, the largest step left in bracket-assembly's run
+was its pin checked as a part of its own. In the DFM analysis,
+`GeometryContext.maximum_inscribed_diameter` asks how far interior points are
+from the surface with trimesh's `closest_point`, 48 points at a time. From
+inside the 8,288-sided pin that is the whole pin for every point: 193 MB.
+`context._closest_points_bounded` makes the same trimesh query on groups of
+points whose candidate triangles total at most `_NEAREST_PAIRS_PER_CALL`
+(200,000 pairs, about 70 MB). Every closest point, distance and triangle is
+trimesh's own, bit for bit, and the pin's reading is the same 15.996 mm in
+58 MB (`tests/test_nearest_surface_bound.py`).
+
+The whole catalog item path, measured as in the catalog-parts table above
+(M1's harness, one part at a time, the process tree's peak above the warmed
+worker), on committed code before and after each change:
+
+| Part | Before, MB | Contacts and stock bounded (db86ee7), MB | Also the nearest-surface query (dd4e52fe), MB | Outcome |
+|---|---|---|---|---|
+| broken/unsewn-box.step | stopped at 3,000 (main 2,768, still growing) | 470-504 | 512 | completes in 54-57 s: 3 open bodies that touch, each "isn't a closed solid on its own" |
+| assemblies/bracket-assembly.step | 1,742 | 628 | 489 | priced body by body, 36 s |
+| AS1 assembly (18 parts) | 1,062 | 816 | 772-828 | priced body by body, 106 s |
+| welded frame (STL) | 18 | 19 | 18 | checked body by body: a weldment, its members as stock, welding not priced |
+| cube in its fixture (STL) | 27 | 23 | 23 | priced body by body |
+
+What the numbers say:
+
+- A file's contacts and stock shapes now cost what its faces cost, whatever
+  their shape. unsewn-box's remaining 500 MB is the file's own work, within
+  the model's 902 MB reservation: the parse worker's tessellation and its
+  failed product-tree reading (up to 500 MB in the child), then the file's
+  analysis, which takes the main process to 280 MB. The body path comes on
+  top of the heap that analysis kept. Alone it needs 97-123 MB.
+- AS1's peak comes late, in one of its five designs' analyses, on top of
+  heap kept from the ones before: the main process climbs from 480 to
+  820 MB over those analyses, and at the peak it was in one bounded
+  nearest-surface group (at most 200,000 pairs). That is
+  inside its 902 MB reservation. The harness runs without
+  `MALLOC_ARENA_MAX=2`, which the backend image sets.
 
 ### What a long-running process keeps
 
