@@ -16,11 +16,22 @@ import csv
 import hashlib
 import io
 import os
+import re
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
+
+def shows(word: bytes, body: bytes) -> bool:
+    """Whether ``body`` carries ``word``. A number counts only as a value of its
+    own: our 241 (the crossover quantity) is caught as ``:241,``, but the same
+    digits inside a ULID or a timestamp's microseconds are not a leak."""
+    if word.replace(b".", b"").isdigit():
+        return re.search(rb"(?<![0-9A-Za-z.])" + re.escape(word) + rb"(?![0-9A-Za-z])", body) is not None
+    return word in body
+
 
 _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not _PG, reason="requires live Postgres")]
@@ -165,6 +176,6 @@ async def test_a_package_carries_the_kept_cad_of_a_single_check_and_of_a_recheck
         assert "- Requested by: Marcus Bell, Kestrel Contract Manufacturing, buyer-" in brief
         for name, body in files.items():
             for word in (b"193.18", b"241", b"approval", b"unreviewed", b"Unvalidated", b"should-cost"):
-                assert word not in body, (name, word)
+                assert not shows(word, body), (name, word)
     finally:
         await _cleanup(w)

@@ -20,7 +20,7 @@ import pytest
 _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not _PG, reason="requires live Postgres")]
 
-from tests.test_rfq_supplier_copy_pg import PLATE, SINGLE, _cleanup, _seed  # noqa: E402
+from tests.test_rfq_supplier_copy_pg import PLATE, SINGLE, _cleanup, _seed, shows  # noqa: E402
 
 OUR_COST = (b"193.18", b"241", b"estimates", b"recommendation", b"crossover", b"approval", b"unreviewed")
 
@@ -83,7 +83,7 @@ async def test_a_record_link_shows_the_part_and_our_cost_only_when_turned_on(kep
                 "single.stl", "Aluminum", 1200, 1200)
             assert "Inspection: First article inspection, AS9102" in body["specs"] and body["must_hold"] == ["AS9100"]
             for word in OUR_COST:
-                assert word not in page.content, word
+                assert not shows(word, page.content), word
             assert (await client.get(f"{link['share_url']}/cad")).status_code == 404
 
             # A supplier's link: the CAD, a note, 250 and a date of the buyer's own.
@@ -119,7 +119,7 @@ async def test_a_record_link_shows_the_part_and_our_cost_only_when_turned_on(kep
             legacy = await client.get(priced["share_url"])
             assert legacy.status_code == 200 and "cost" not in legacy.json()
             for word in OUR_COST:
-                assert word not in legacy.content, word
+                assert not shows(word, legacy.content), word
 
             # Out-of-range choices are refused in words.
             bad = await client.post(f"/api/v1/cost-decisions/{w['single']}/share", json={"expires_in_days": 14})
@@ -152,7 +152,7 @@ async def test_a_package_is_shared_as_one_link_until_it_is_switched_off(kept):
             assert view["requested_by"]["name"] == "Marcus Bell" and view["includes_cost_estimate"] is False
             assert [(p["name"], p["quantity"]) for p in view["parts"]] == [("single.stl", 1200), ("plate-with-boss.step", 250)]
             for word in OUR_COST:
-                assert word not in page.content, word
+                assert not shows(word, page.content), word
             plate = view["parts"][1]["cad"]
             assert plate["url"] == f"{link['share_url']}/cad/2"
             assert (await client.get(plate["url"])).content == PLATE
@@ -252,7 +252,7 @@ async def test_a_links_downloads_end_with_it_and_hand_out_only_what_the_buyer_in
                     body = zf.read(name)
                     assert SINGLE not in body and PLATE not in body, name
                     for word in OUR_COST:
-                        assert word not in body, (name, word)
+                        assert not shows(word, body), (name, word)
 
             # A package with CAD: only its own lines, and all three routes end with the link.
             pkg = (await client.post("/api/v1/rfq-packages", json={
