@@ -1,0 +1,478 @@
+"use client";
+
+/**
+ * The cost breakdown session: one part at a time, held in memory for this
+ * browser tab so switching tabs, or leaving and coming back, keeps the file,
+ * the results, overrides and scenarios. Nothing here is written to disk; a
+ * reload starts from the part's saved records (/app/part/{key}/cost), which
+ * carry the cost decision and DFM analysis but not the CAD bytes. A re-cost
+ * then runs on the file the organization kept with the record (POST
+ * /parts/{key}/recheck, no upload, no check); only a part whose file wasn't
+ * kept asks for the same file again.
+ *
+ * Every number comes from the API: POST /validate/cost (each re-cost is a real
+ * engine run), POST /validate, and the saved cost-decision and analysis records.
+ */
+import * as React from "react";
+import {
+  CostGeometryInvalidError,
+  costEstimate,
+  fetchAnalysis,
+  fetchCatalog,
+  fetchCostDecision,
+  fetchCostDecisions,
+  fetchRfqPackage,
+  fetchRfqPackages,
+  getShops,
+  validateFile,
+  type CostDecisionSummary,
+  type CostGeometry,
+  type CostOptions,
+  type CostReport,
+  type RateBasis,
+  type ShopProfileInfo,
+  type ValidationResult,
+} from "@/lib/api";
+import { API_BASE } from "@/lib/api-base";
+import { fetchSourceKept, recheckStored } from "../part/api";
+import { partCheckHeaders } from "@/lib/verify/check-id";
+import { computeMeshHash } from "@/lib/verify/part-context";
+import { fetchPartContext } from "@/lib/verify/part-context-read";
+import { environmentLabel } from "./words";
+import { currentRecord, optionsFromReport, whatIfOf } from "./derive";
+
+export type Phase = "idle" | "running" | "done" | "error";
+
+export interface Scenario {
+  id: string;
+  label: string;
+  unit: number | null;
+  qty: number | null;
+  process: string | null;
+  opts: CostOptions;
+}
+
+export interface RunSlot {
+  phase: Phase;
+  report: CostReport | null;
+  error: string | null;
+}
+
+export interface WbState {
+  /** SHA-256 of the CAD bytes (the part key the records use). */
+  key: string | null;
+  filename: string | null;
+  file: File | null;
+  /** "session": costed in this tab; "saved": opened from the part's records. */
+  source: "none" | "session" | "saved";
+  load: { phase: Phase; error: string | null };
+  decisions: CostDecisionSummary[] | null;
+  decisionsError: string | null;
+  decision: { id: string; created_at: string | null; approval_status?: string | null; is_public: boolean; share_url: string | null; rates?: RateBasis | null; whatIf?: string | null } | null;
+  /** Is the part's file kept with its record in this organization? null until known. Re-costs use it when this tab has no file. */
+  kept: boolean | null;
+  /** The inputs behind `report` (never the editable draft). */
+  opts: CostOptions;
+  report: CostReport | null;
+  /** The last report with no overrides, for "vs no overrides". */
+  baseline: CostReport | null;
+  cost: { phase: Phase; error: string | null; geom: { reason: string | null; geometry: CostGeometry | null } | null; pending: CostOptions | null };
+  validation: ValidationResult | null;
+  dfm: { phase: Phase; error: string | null };
+  env: string | null;
+  scenarios: Scenario[];
+  /** Compare by rates: one engine run per rate set, keyed "base" or a shop id. */
+  runs: Record<string, RunSlot>;
+  runsSig: string | null;
+  pkgId: string | null;
+}
+
+export const DEFAULT_OPTIONS: CostOptions = {
+  qty: "50,5000",
+  region: "auto",
+  cavities: 1,
+  complexity: "moderate",
+  material_class: "polymer",
+  units: "mm",
+  shop: null,
+  overrides: {},
+};
+
+function empty(): WbState {
+  return {
+    key: null,
+    filename: null,
+    file: null,
+    source: "none",
+    load: { phase: "idle", error: null },
+    decisions: null,
+    decisionsError: null,
+    decision: null,
+    kept: null,
+    opts: DEFAULT_OPTIONS,
+    report: null,
+    baseline: null,
+    cost: { phase: "idle", error: null, geom: null, pending: null },
+    validation: null,
+    dfm: { phase: "idle", error: null },
+    env: null,
+    scenarios: [],
+    runs: {},
+    runsSig: null,
+    pkgId: null,
+  };
+}
+
+let state: WbState = empty();
+let gen = 0;
+let costSeq = 0;
+let dfmSeq = 0;
+let lastRunFile: File | null = null;
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const l of listeners) l();
+}
+
+function set(patch: Partial<WbState> | ((s: WbState) => Partial<WbState>)) {
+  const p = typeof patch === "function" ? patch(state) : patch;
+  state = { ...state, ...p };
+  emit();
+}
+
+export function getWb(): WbState {
+  return state;
+}
+
+export function useWb(): WbState {
+  return React.useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => state,
+    () => state,
+  );
+}
+
+function message(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+/* ---- shared reads ------------------------------------------------ */
+
+let shopsP: Promise<ShopProfileInfo[]> | null = null;
+export function loadShops(): Promise<ShopProfileInfo[]> {
+  if (!shopsP) {
+    shopsP = getShops()
+      .then((r) => r.shops ?? [])
+      .catch((e) => {
+        shopsP = null;
+        throw e;
+      });
+  }
+  return shopsP;
+}
+
+export function useShops(): { shops: ShopProfileInfo[]; error: string | null } {
+  const [v, setV] = React.useState<{ shops: ShopProfileInfo[]; error: string | null }>({ shops: [], error: null });
+  React.useEffect(() => {
+    let live = true;
+    loadShops().then(
+      (shops) => live && setV({ shops, error: null }),
+      (e) => live && setV({ shops: [], error: message(e, "Shops didn’t load.") }),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  return v;
+}
+
+async function refreshDecisions(key: string, g: number) {
+  try {
+    const page = await fetchCostDecisions({ meshHash: key, limit: 50 });
+    if (g !== gen) return;
+    set({ decisions: page.cost_decisions ?? [], decisionsError: null });
+  } catch (e) {
+    if (g !== gen) return;
+    set({ decisionsError: message(e, "Saved decisions didn’t load.") });
+  }
+}
+
+async function loadEnv(key: string, g: number) {
+  const r = await fetchPartContext(key).catch(() => null);
+  if (g !== gen || !r?.context) return;
+  set({ env: environmentLabel(r.context.service_environment ?? null) });
+}
+
+/* ---- costing ----------------------------------------------------- */
+
+function fresh(file: File): File {
+  // A re-cost is a new run: a fresh File gets a fresh x-part-check-id. The
+  // server counts it under the same file's check, so it never uses another.
+  return new File([file], file.name, { type: file.type, lastModified: file.lastModified });
+}
+
+/** The rate card a fresh price was figured at: the one in effect now. */
+export function freshRates(report: CostReport): RateBasis {
+  const v = report.rate_card?.version ?? 0;
+  return { priced: v, current: v, out_of_date: false, text: v ? `Priced at your rates v${v}.` : "Priced at typical rates (v0)." };
+}
+
+async function runCost(runFile: File | null, opts: CostOptions, g: number): Promise<CostReport | null> {
+  const seq = ++costSeq;
+  set((s) => ({ cost: { ...s.cost, phase: "running", error: null, geom: null, pending: opts } }));
+  try {
+    const report = runFile
+      ? await costEstimate(runFile, opts, partCheckHeaders(runFile)["x-part-check-id"])
+      : await costKept(opts);
+    if (g !== gen || seq !== costSeq) return null;
+    const noOverrides = !opts.overrides || Object.keys(opts.overrides).length === 0;
+    set((s) => ({
+      report,
+      opts,
+      baseline: noOverrides ? report : s.baseline,
+      cost: { phase: "done", error: null, geom: null, pending: null },
+      decision: report.saved ? { id: report.saved.id, created_at: new Date().toISOString(), approval_status: "unreviewed", is_public: false, share_url: null, rates: freshRates(report), whatIf: whatIfOf(report as CostReport & { what_if?: unknown }) } : s.decision,
+      pkgId: report.saved && report.saved.id !== s.decision?.id ? null : s.pkgId,
+    }));
+    if (state.key) void refreshDecisions(state.key, g);
+    return report;
+  } catch (e) {
+    if (g !== gen || seq !== costSeq) return null;
+    if (e instanceof CostGeometryInvalidError) {
+      set((s) => ({ cost: { ...s.cost, phase: "error", error: e.message, geom: { reason: e.message, geometry: e.geometry } } }));
+    } else {
+      set((s) => ({ cost: { ...s.cost, phase: "error", error: message(e, "The cost didn’t finish."), geom: null } }));
+    }
+    return null;
+  } finally {
+    window.dispatchEvent(new Event("proofshape:usage-changed"));
+  }
+}
+
+async function runDfm(runFile: File, units: CostOptions["units"], g: number) {
+  const seq = ++dfmSeq;
+  set({ dfm: { phase: "running", error: null } });
+  try {
+    const v = await validateFile(runFile, undefined, undefined, undefined, units, partCheckHeaders(runFile)["x-part-check-id"]);
+    if (g !== gen || seq !== dfmSeq) return;
+    set({ validation: v, dfm: { phase: "done", error: null } });
+  } catch (e) {
+    if (g !== gen || seq !== dfmSeq) return;
+    set({ dfm: { phase: "error", error: message(e, "The DFM check didn’t finish.") } });
+  } finally {
+    window.dispatchEvent(new Event("proofshape:usage-changed"));
+  }
+}
+
+/** A re-cost from the file the organization kept with the record: the same engine run as an upload, saved the same way. */
+async function costKept(opts: CostOptions): Promise<CostReport> {
+  const key = state.key;
+  if (!key) throw new Error("This part has no key to re-cost from.");
+  const qty = opts.qty.split(",").map((x) => Math.round(Number(x.trim()))).filter((n) => Number.isFinite(n) && n > 0);
+  const r = await recheckStored(key, {
+    materialClass: opts.material_class,
+    qty,
+    region: opts.region,
+    cavities: opts.cavities,
+    complexity: opts.complexity,
+    shop: opts.shop ?? null,
+    overrides: opts.overrides ?? null,
+    units: opts.units,
+  });
+  return r.cost;
+}
+
+/** Can this tab re-cost without asking for the file? (the file is here, or kept with the record) */
+export function canRecost(): boolean {
+  return !!state.file || (state.source === "saved" && state.kept === true);
+}
+
+/** Re-cost with new inputs (a real engine run): on the file in this tab, else on the file kept with the record. */
+export async function recost(opts: CostOptions): Promise<CostReport | null> {
+  const s = state;
+  if (!s.file) {
+    if (!canRecost()) return null;
+    return runCost(null, opts, gen);
+  }
+  const g = gen;
+  const runFile = fresh(s.file);
+  lastRunFile = runFile;
+  if (opts.units !== s.opts.units) void runDfm(runFile, opts.units, g);
+  return runCost(runFile, opts, g);
+}
+
+export function retryCost(): Promise<CostReport | null> {
+  return recost(state.cost.pending ?? state.opts);
+}
+
+/** Re-run the DFM check only; the cost stays. */
+export function retryDfm(): void {
+  const f = lastRunFile ?? state.file;
+  if (!f) return;
+  void runDfm(fresh(f), state.opts.units, gen);
+}
+
+/* ---- saved records ----------------------------------------------- */
+
+/**
+ * Open a part from its records: the chosen (or latest) saved cost decision and
+ * the part's saved DFM analysis. Keeps an in-tab session for the same part.
+ */
+export async function loadSaved(key: string, decisionId: string | null): Promise<void> {
+  const s = state;
+  if (s.key === key) {
+    const same = !decisionId || s.decision?.id === decisionId;
+    if (s.source === "session" && same) return;
+    if (s.source === "saved" && same && s.load.phase !== "error") return;
+    // Otherwise a different saved decision of this part: open it, keep the file.
+  }
+  const keepFile = s.key === key ? s.file : null;
+  const keepScen = s.key === key ? s.scenarios : [];
+  const g = ++gen;
+  state = { ...empty(), key, file: keepFile, filename: keepFile?.name ?? null, source: "saved", scenarios: keepScen, load: { phase: "running", error: null } };
+  emit();
+  void loadEnv(key, g);
+  void fetchSourceKept(key).then((kept) => {
+    if (g === gen) set({ kept });
+  });
+  try {
+    const [page, catalog] = await Promise.all([
+      fetchCostDecisions({ meshHash: key, limit: 50 }),
+      fetchCatalog({ partKey: key, pageSize: 5 }).catch(() => null),
+    ]);
+    if (g !== gen) return;
+    const list = page.cost_decisions ?? [];
+    const row = catalog?.rows?.find((r) => r.part_key === key) ?? null;
+    set({ decisions: list, filename: state.filename ?? list[0]?.filename ?? row?.filename ?? null });
+    // The chosen record, else the part's current price (its newest that isn't a what-if).
+    const pick = currentRecord(list as (CostDecisionSummary & { what_if?: unknown })[], decisionId);
+    const analysisId = row?.analysis?.id ?? null;
+    const shops = await loadShops().catch(() => [] as ShopProfileInfo[]);
+    const [detail, analysis] = await Promise.all([
+      pick ? fetchCostDecision(pick.id) : Promise.resolve(null),
+      analysisId ? fetchAnalysis(analysisId).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (g !== gen) return;
+    if (!detail && !analysis && !row) {
+      set({ load: { phase: "error", error: "No saved part has this key in your organization." } });
+      return;
+    }
+    const report = detail?.result ?? null;
+    const validation = (analysis?.result_json ?? (analysis as unknown as { result?: ValidationResult } | null)?.result) ?? null;
+    const units = validation?.source_units?.declared === "inch" ? "inch" : "mm";
+    set({
+      report,
+      baseline: report,
+      opts: report ? optionsFromReport(report, shops, units) : state.opts,
+      decision: detail ? { id: detail.id, created_at: detail.created_at, approval_status: detail.approval_status ?? null, is_public: detail.is_public, share_url: detail.share_url, rates: detail.rates ?? null, whatIf: whatIfOf(detail.result as CostReport & { what_if?: unknown }) } : null,
+      validation,
+      dfm: { phase: validation ? "done" : analysisId ? "error" : "idle", error: validation ? null : analysisId ? "The saved DFM analysis didn’t load." : null },
+      cost: { phase: report ? "done" : "idle", error: null, geom: null, pending: null },
+      filename: state.filename ?? detail?.filename ?? analysis?.filename ?? row?.filename ?? null,
+      load: { phase: "done", error: null },
+    });
+  } catch (e) {
+    if (g !== gen) return;
+    set({ load: { phase: "error", error: message(e, "This part’s records didn’t load.") } });
+  }
+}
+
+/** Re-attach the CAD file to a part opened from its records. */
+export async function attachFile(file: File): Promise<"ok" | "different" | "unreadable"> {
+  const key = await computeMeshHash(file).catch(() => null);
+  if (!key) return "unreadable";
+  if (key !== state.key) return "different";
+  lastRunFile = file;
+  set({ file, filename: state.filename ?? file.name });
+  return "ok";
+}
+
+/* ---- scenarios, rate sets, packages ------------------------------ */
+
+export function addScenario(s: Omit<Scenario, "id">): void {
+  set((st) => ({ scenarios: [...st.scenarios, { ...s, id: `${Date.now()}-${st.scenarios.length}` }] }));
+}
+
+function runsSignature(opts: CostOptions): string {
+  return JSON.stringify([opts.qty, opts.region, opts.cavities, opts.complexity, opts.material_class, opts.units, opts.overrides ?? {}]);
+}
+
+/** Compare by rates: price the part once per rate set (typical, then each shop). */
+export async function runRateSets(shops: readonly ShopProfileInfo[]): Promise<void> {
+  const s = state;
+  if (!canRecost()) return;
+  const g = gen;
+  const sig = runsSignature(s.opts);
+  const ids = ["base", ...shops.map((x) => x.id)];
+  const runs: Record<string, RunSlot> = sig === s.runsSig ? { ...s.runs } : {};
+  // The current report already is one of the rate sets.
+  const curId = s.opts.shop ?? "base";
+  if (s.report && !runs[curId]) runs[curId] = { phase: "done", report: s.report, error: null };
+  for (const id of ids) if (!runs[id] || runs[id].phase === "error") runs[id] = { phase: "running", report: null, error: null };
+  set({ runs, runsSig: sig });
+  // One at a time: the API refuses too many concurrent checks for one account.
+  for (const id of ids) {
+    if (state.runs[id]?.phase !== "running") continue;
+    if (g !== gen || state.runsSig !== sig) return;
+    const f = s.file ? fresh(s.file) : null;
+    try {
+      const o = { ...s.opts, shop: id === "base" ? null : id };
+      const r = f ? await costEstimate(f, o, partCheckHeaders(f)["x-part-check-id"]) : await costKept(o);
+      if (g !== gen || state.runsSig !== sig) return;
+      set((st) => ({ runs: { ...st.runs, [id]: { phase: "done", report: r, error: null } } }));
+    } catch (e) {
+      if (g !== gen || state.runsSig !== sig) return;
+      set((st) => ({ runs: { ...st.runs, [id]: { phase: "error", report: null, error: message(e, "That run didn’t finish.") } } }));
+    } finally {
+      window.dispatchEvent(new Event("proofshape:usage-changed"));
+    }
+  }
+}
+
+export function currentRunsSig(): string {
+  return runsSignature(state.opts);
+}
+
+export function setPackage(id: string | null): void {
+  set({ pkgId: id });
+}
+
+/** Find a supplier package already built for exactly this one decision. */
+export async function findPackage(decisionId: string): Promise<string | null> {
+  const page = await fetchRfqPackages(50);
+  const singles = (page.packages ?? []).filter((p) => p.item_count === 1).slice(0, 20);
+  const details = await Promise.all(singles.map((p) => fetchRfqPackage(p.id).catch(() => null)));
+  const hit = details.find((d) => d?.items?.some((i) => i.decision?.id === decisionId));
+  return hit?.id ?? null;
+}
+
+export function markShared(url: string): void {
+  set((s) => ({ decision: s.decision ? { ...s.decision, is_public: true, share_url: url } : s.decision }));
+}
+
+/**
+ * "Use this as the part's price": the what-if on screen becomes the part's current price, as a new
+ * record (POST /cost-decisions/{id}/use-as-price); the what-if itself stays as it was (ce-17).
+ */
+export async function adoptWhatIf(): Promise<string | null> {
+  const s = state;
+  if (!s.decision?.whatIf) return null;
+  const res = await fetch(`${API_BASE}/cost-decisions/${encodeURIComponent(s.decision.id)}/use-as-price`, { method: "POST" });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => null)) as { detail?: { message?: string } | string } | null;
+    const d = b?.detail;
+    throw new Error(typeof d === "string" ? d : d?.message ?? "It wasn't saved as the part's price. Try again.");
+  }
+  const body = (await res.json()) as { id: string };
+  set((st) => ({ decision: st.decision ? { ...st.decision, id: body.id, created_at: new Date().toISOString(), approval_status: "unreviewed", is_public: false, share_url: null, whatIf: null } : st.decision }));
+  if (state.key) void refreshDecisions(state.key, gen);
+  return body.id;
+}
+
+/** Re-read this part's saved decisions (History's Retry). */
+export function reloadDecisions(): void {
+  if (state.key) void refreshDecisions(state.key, gen);
+}

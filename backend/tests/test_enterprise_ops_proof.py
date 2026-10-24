@@ -321,7 +321,10 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
     enterprise = load_yaml("cadverify-enterprise/docker-compose.yml")
 
     assert local["services"]["backend"]["build"] == "./backend"
-    assert local["services"]["frontend"]["build"] == "./frontend"
+    frontend_build = local["services"]["frontend"]["build"]
+    assert frontend_build["context"] == "./frontend"
+    # The v4 screens stay off unless .env turns them on.
+    assert frontend_build["args"]["NEXT_PUBLIC_UI_V4"] == "${NEXT_PUBLIC_UI_V4:-}"
     assert enterprise["services"]["backend"]["image"] == "cadverify-backend:latest"
     assert enterprise["services"]["frontend"]["image"] == "cadverify-frontend:latest"
 

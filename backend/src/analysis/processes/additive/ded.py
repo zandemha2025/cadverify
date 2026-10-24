@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType, Severity
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_overhangs,
@@ -24,8 +25,8 @@ class DEDAnalyzer:
                  cite="DED bead width ~2-4mm; 1.5mm min wall."))
         i.extend(check_overhangs(ctx, 60.0, self.process,
                  cite="Multi-axis DED: 60° threshold."))
-        i.extend(check_build_volume(ctx, (1500, 1500, 1500), self.process,
-                 cite="Large-format DED systems."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. Large-format DED systems."))
         i.extend(self._check_machining_allowance(ctx))
         return i
 

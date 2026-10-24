@@ -24,7 +24,7 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import trimesh
 
@@ -122,7 +122,8 @@ def seed_demo_corpus(parts_dir: Optional[Path] = None) -> int:
                 continue  # dedup by content hash (§2.3)
 
             try:
-                mesh = trimesh.load(str(stl), force="mesh")
+                # force="mesh" hands back a Trimesh; trimesh types load() as Geometry.
+                mesh = cast(trimesh.Trimesh, trimesh.load(str(stl), force="mesh"))
             except Exception as exc:
                 logger.warning("demo_seed: trimesh load failed %s: %s", stl.name, exc)
                 continue

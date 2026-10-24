@@ -1,0 +1,236 @@
+/* Part pages (check a part, the part and its five lenses, history). Ported from
+   the O1, X10, X3, X4, O10, O11, O14 and Main boards. Every rule is scoped to
+   .ob .pv (the part pages' own root), so nothing leaks to other v4 screens
+   after a client-side navigation keeps this sheet loaded. */
+
+.ob .pv .v4-pin{display:grid;place-items:center;width:26px;height:26px;border-radius:999px;background:#fff;border:2px solid currentColor;font:700 12px/1 var(--v4-sans);box-shadow:0 2px 8px rgba(20,24,31,.18);transition:opacity 140ms ease;pointer-events:none;user-select:none}
+.ob .pv .v4-pin.hid{opacity:0}
+/* The pin sits on its point; a callout (find and fix) hangs beside it. */
+.ob .pv .v4-anchor{position:relative;display:block;width:0;height:0}
+.ob .pv .v4-anchor .v4-pin{position:absolute;left:-13px;top:-13px}
+.ob .pv .obj{border:0;padding:0;background:transparent;color:inherit}
+.ob .pv .obj > canvas,.ob .pv .obj > div{border-radius:24px}
+.ob .pv .obj .hint{pointer-events:none}
+.ob .pv .obj.xray{filter:none}
+.ob .pv .obj .scan{z-index:2;pointer-events:none}
+
+/* stage tools and HUD */
+.ob .pv .ptools{position:absolute;right:492px;top:20px;display:flex;gap:4px;z-index:3;flex-wrap:wrap;justify-content:flex-end}
+.ob .pv .hud{z-index:3;max-width:calc(100% - 520px - 380px)}
+.ob .pv .hud h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob .pv .hud .chips{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.ob .pv .hud .bodies-hud{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;padding:6px 6px 6px 10px;border-radius:10px;background:rgba(46,107,230,.08);color:var(--ink);font-size:13px;line-height:1.35;max-width:440px}
+.ob .pv .hud .bodies-hud>span{flex:1 1 220px;min-width:0}
+.ob .pv .fp{font-family:var(--font-geist-mono),ui-monospace,monospace;font-size:11px}
+
+/* the "No 3D view" box */
+.ob .pv .no3d{position:absolute;left:calc(33% - 230px);top:170px;width:460px;height:420px;border:2px dashed rgba(20,24,31,.16);border-radius:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:24px;color:var(--ink3);transition:border-color 150ms ease,background-color 150ms ease;z-index:1}
+.ob .pv .no3d{transform-origin:50% 50%;transition:transform 380ms var(--sheet),border-color 150ms ease,background-color 150ms ease}
+.ob .pv .no3d.l-cost{transform:translate(85px,-205px) scale(.38)}
+.ob .pv .no3d.l-shop{transform:translate(186px,-150px) scale(.44)}
+.ob .pv .no3d.l-decide{transform:translate(-36px,-80px) scale(.7)}
+.ob .pv .no3d b{color:var(--ink);font-size:16px}
+.ob .pv .no3d.over{border-color:var(--file);background:rgba(232,238,251,.75)}
+.ob .pv .no3d .err{color:var(--bad);font-size:13px}
+.ob .pv .no3d .mo-bn{max-width:100%}
+.ob .pv .no3d .mo-bn .tx b{font-size:14px}
+
+/* O1: the plinth and setup steps */
+.ob .pv .plinth{position:absolute;left:calc(33% - 300px);top:200px;width:600px;height:400px;border-radius:28px;border:2px dashed rgba(20,24,31,.18);background:rgba(255,255,255,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:16px;transition:border-color 150ms ease,background-color 150ms ease;z-index:1}
+.ob .pv .plinth.over{border-color:var(--file);background:rgba(232,238,251,.75)}
+.ob .pv .plinth .ico{width:56px;height:56px;border-radius:16px;background:#fff;border:1px solid var(--rule);display:grid;place-items:center;box-shadow:0 6px 18px rgba(20,24,31,.06)}
+.ob .pv .plinth b{font-size:17px;font-weight:600;overflow-wrap:anywhere}
+.ob .pv .plinth span{color:var(--ink3);font-size:13.5px}
+/* An old issue link carried to Check a part: a small note, not a second headline. */
+.ob .pv .plinth .carried-issue{max-width:440px;font-size:12.5px;line-height:1.45;background:var(--warn-bg);color:var(--ink2);border-radius:10px;padding:8px 12px}
+.ob .pv .plinth .carried-issue b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
+.ob .pv .five{position:absolute;left:calc(33% - 330px);bottom:104px;width:660px;text-align:center;color:var(--ink3);font-size:13px}
+.ob .pv .dial.preview span{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;height:50px;font-weight:600;font-size:13.5px;color:var(--ink2)}
+.ob .pv .dial.preview span small{font-weight:500;font-size:11.5px;color:var(--ink3)}
+.ob .pv .setup-step{display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;padding:12px;border-radius:12px;color:inherit;text-decoration:none}
+.ob .pv .setup-step .n{width:24px;height:24px;border-radius:999px;border:1.5px solid rgba(20,24,31,.22);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--ink3)}
+.ob .pv .setup-step.now .n{border-color:var(--ink);color:var(--ink)}
+.ob .pv .setup-step.done .n{border-color:var(--ok);background:var(--ok);color:#fff}
+.ob .pv .setup-step b{display:block;font-weight:600}
+.ob .pv .setup-step span span{display:block;color:var(--ink3);font-size:13px}
+.ob .pv .tools-btn{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;padding:12px;border-radius:12px;cursor:pointer;font-weight:600}
+.ob .pv .tools-btn:focus-visible{outline:2px solid var(--file);outline-offset:-2px}
+.ob .pv .tools-btn em{font-style:normal;font-weight:500;color:var(--ink3)}
+.ob .pv .tools-btn span{margin-left:auto;color:var(--file);font-weight:600}
+.ob .pv .tg{padding:6px 12px 10px}
+.ob .pv .tg h3{margin:6px 0 2px;font-size:12.5px;font-weight:600;color:var(--ink3)}
+.ob .pv .tg a{display:flex;justify-content:space-between;padding:5px 0;text-decoration:none;font-size:14px}
+.ob .pv .tg a em{font-style:normal;color:var(--ink3);font-size:12.5px}
+
+/* X10: progress */
+.ob .pv .prog{position:absolute;right:20px;top:20px;width:452px;z-index:7;background:rgba(255,255,255,.985);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);border:1px solid rgba(255,255,255,.7);border-radius:22px;box-shadow:0 18px 50px rgba(20,24,31,.12);transition:opacity 260ms var(--sheet),transform 300ms var(--sheet)}
+@starting-style{.ob .pv .prog{opacity:0;transform:translateY(8px)}}
+.ob .pv .prog .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 12px}
+.ob .pv .btn.x{width:36px;height:36px;padding:0;flex:none}
+.ob .pv .steps{list-style:none;margin:0;padding:4px 14px 10px}
+.ob .pv .st{display:grid;grid-template-columns:26px minmax(0,1fr);gap:4px 12px;align-items:start;padding:9px 8px;border-top:1px solid rgba(20,24,31,.07)}
+.ob .pv .st:first-child{border-top:0}
+.ob .pv .st .m{width:24px;height:24px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:700;border:1.5px solid rgba(20,24,31,.18);color:var(--ink3);background:#fff}
+.ob .pv .st.done .m{background:var(--ok);border-color:var(--ok);color:#fff}
+.ob .pv .st.now .m{border-color:var(--file);color:var(--file)}
+.ob .pv .st.now .m::after{content:"";width:8px;height:8px;border-radius:999px;background:currentColor;animation:v4pulse 1.2s ease-in-out infinite}
+.ob .pv .st.bad .m{background:var(--bad);border-color:var(--bad);color:#fff}
+.ob .pv .st.skip b{font-weight:500;color:var(--ink3)}
+.ob .pv .st b{display:block;font-weight:600}
+.ob .pv .st span span{display:block;color:var(--ink3);font-size:13px;overflow-wrap:anywhere}
+.ob .pv .st.bad span span{color:var(--bad)}
+@keyframes v4pulse{0%,100%{opacity:.3}50%{opacity:1}}
+.ob .pv .prog .ft{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 22px 18px;border-top:1px solid rgba(20,24,31,.08);color:var(--ink3);font-size:12.5px}
+.ob .pv .reopen{position:absolute;right:20px;top:20px;z-index:7}
+/* Busy (capacity D1–D3): the one calm notice, under the panel's title, above the steps. */
+.ob .pv .prog .prog-busy{margin:0 22px 8px}
+.ob .pv .mo-bn .tx b .busy-count{color:inherit;font-size:inherit;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* X3: out of checks */
+.ob .pv.v4-over{position:fixed;inset:0;z-index:45;display:grid;place-items:center;padding:24px}
+.ob .pv .scrim{position:absolute;inset:0;background:rgba(237,239,242,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);transition:opacity 260ms ease;border:0;padding:0;cursor:default}
+@starting-style{.ob .pv .scrim{opacity:0}}
+.ob .pv .modal{position:relative;width:min(680px,100%);max-height:calc(100dvh - 48px);overflow:auto;background:#fff;border-radius:24px;border:1px solid rgba(20,24,31,.08);box-shadow:0 30px 80px rgba(20,24,31,.18);transition:opacity 280ms var(--sheet),transform 320ms var(--sheet)}
+@starting-style{.ob .pv .modal{opacity:0;transform:translateY(12px) scale(.98)}}
+.ob .pv .modal:focus,.ob .pv .modal:focus-visible{outline:none}
+.ob .pv .modal .hd{padding:26px 28px 16px}
+.ob .pv .meter{display:flex;flex-direction:column;gap:6px;padding:0 28px 18px}
+.ob .pv .barn{display:grid;gap:3px}
+.ob .pv .barn i{height:10px;border-radius:3px;background:var(--ink)}
+.ob .pv .barn i.free{background:rgba(20,24,31,.1)}
+.ob .pv .meter > span{color:var(--ink3);font-size:13px}
+.ob .pv .opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:center;padding:16px 28px;border-top:1px solid rgba(20,24,31,.08)}
+.ob .pv .opt b{display:block;font-size:16px;font-weight:600}
+.ob .pv .opt .p{display:block;font-family:var(--v4-disp);font-size:15px;font-weight:600;margin-top:2px}
+.ob .pv .opt p{grid-column:1 / -1;margin:0;color:var(--ink2);font-size:13.5px}
+.ob .pv .opt .honest{color:var(--ink3);font-size:12.5px}
+.ob .pv .modal .ft{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 28px 20px;border-top:1px solid rgba(20,24,31,.08);flex-wrap:wrap}
+
+/* X4: can't read this file */
+.ob .pv .legend{position:absolute;left:calc(33% - 110px);top:640px;display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:999px;background:#fff;border:1px solid rgba(20,24,31,.1);font-size:12.5px;color:var(--ink2);z-index:2}
+.ob .pv .legend i{width:18px;height:0;border-top:2px solid #D92D20}
+.ob .pv .nothing{position:absolute;left:calc(33% - 230px);top:200px;width:460px;height:360px;border:2px dashed rgba(20,24,31,.16);border-radius:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink3);text-align:center;padding:24px}
+.ob .pv .nothing b{color:var(--ink);font-size:16px}
+.ob .pv .quote{margin:4px 12px 0;padding:12px 14px;border-radius:14px;background:#FFF6F5;border:1px solid #F5D5D0;color:var(--ink2);font-size:13.5px;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.ob .pv .quote b{color:var(--bad);font-weight:600}
+.ob .pv .cr-step{display:flex;flex-direction:column;gap:8px;padding:10px 12px}
+.ob .pv .cr-step b{font-weight:600}
+.ob .pv .cr-step p{margin:0;color:var(--ink2);font-size:13.5px}
+.ob .pv .cad-tools .seg{flex-wrap:wrap;border-radius:16px}
+.ob .pv .path{padding:10px 12px;border-radius:12px;background:rgba(20,24,31,.04);font-size:13.5px;color:var(--ink)}
+.ob .pv .sep{height:1px;background:rgba(20,24,31,.08);margin:4px 12px}
+
+/* Shop lens: drawing positioned so its magnifier circle sits on the moved part */
+.ob .pv .shopdraw{position:absolute;left:calc(33% - 475px);top:0;width:948px;height:944px;pointer-events:none}
+
+/* misc sheet bits */
+.ob .pv .sheet .scroll{overscroll-behavior:contain}
+.ob .pv .ln.btnln{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto 64px;gap:10px;align-items:center;width:100%;padding:5px 0;font-size:13px;border-top:1px solid var(--rule);cursor:pointer}
+.ob .pv .ln.btnln:first-child{border-top:0}
+.ob .pv .ln.btnln:focus-visible{outline:2px solid var(--file);outline-offset:2px;border-radius:4px}
+.ob .pv .ln.btnln b{font-weight:600;text-align:right}
+.ob .pv .lnhow{display:block;padding:0 0 8px 14px;color:var(--ink2);font-size:12.5px;overflow-wrap:anywhere}
+.ob .pv .mono{font-family:var(--font-geist-mono),ui-monospace,monospace}
+.ob .pv .engnote{margin:0 12px;padding:10px 12px;border-radius:12px;background:rgba(20,24,31,.035);color:var(--ink2);font-size:12.5px;line-height:1.55;overflow-wrap:anywhere}
+.ob .pv .tick{display:flex;flex-direction:column;gap:4px}
+.ob .pv .gate{margin:6px 12px 0;color:var(--warn);font-size:12.5px}
+.ob .pv .ptoast{position:absolute;left:calc(33% - 200px);bottom:104px;width:400px;z-index:8}
+.ob .pv .chart-hit{position:absolute;left:0;top:0;width:760px;height:400px;cursor:ew-resize;touch-action:none}
+.ob .pv .chart-hit:focus-visible{outline:2px solid var(--file);outline-offset:2px;border-radius:12px}
+.ob .pv .askchips{display:flex;gap:6px;padding:0 12px 6px;overflow-x:auto;scrollbar-width:none}
+.ob .pv .askchips .btn{height:28px;padding:0 10px;font-size:12.5px;flex:none}
+.ob .pv .answer{margin:0 12px 8px;max-height:300px;overflow:auto;box-shadow:0 -8px 24px rgba(20,24,31,.06)}
+.ob .pv .answer .ar{display:grid;grid-template-columns:minmax(min-content,1fr) auto;gap:10px;font-size:13px;border-top:1px solid rgba(20,24,31,.08);padding-top:4px}
+.ob .pv .answer .ar b{min-width:0;text-align:right;overflow-wrap:anywhere}
+/* me-17: the fixed view bar covered the bottom of the answer; it scrolls clear of the bar. */
+.ob .pv .answer{scroll-margin-bottom:96px}
+.ob .pv .ask input{flex:1;min-width:0;border:0;outline-offset:4px;background:transparent;font-size:14px;color:var(--ink)}
+.ob .pv .mr[aria-disabled="true"]{cursor:default}
+.ob .pv .hist-thumb{width:180px;height:180px;border-radius:14px;background:#F4F5F7;position:relative;overflow:hidden}
+
+@media (max-width:1180px){.ob .pv .ptools{right:492px;top:auto;bottom:104px}
+.ob .pv .hud{max-width:calc(100% - 520px)}}
+@media (max-width:900px){
+.ob .pv .ptools{position:absolute;left:12px;right:12px;bottom:10px;top:auto;justify-content:center}
+.ob .pv .hud{max-width:none}
+.ob .pv .stage{height:500px}
+.ob .pv .obj{top:190px;left:calc(50% - 115px);width:230px;height:230px}
+.ob .pv .no3d{left:16px;right:16px;width:auto;top:190px;height:230px;padding:16px}
+/* A first-visit tip sits over the picture, never over the answer below it. */
+.ob .pv .nb-tip{position:absolute;top:250px;bottom:auto}
+/* No picture: a compact note, so the answer starts on the first screen. */
+.ob .pv .stage.flat{height:440px}
+.ob .pv .stage.flat .no3d{height:170px;gap:4px;padding:12px}
+.ob .pv .stage.flat .no3d svg{display:none}
+.ob .pv .no3d.l-cost,.ob .pv .no3d.l-shop,.ob .pv .no3d.l-decide{transform:none}
+.ob .pv .plinth{position:relative;left:auto;top:auto;width:auto;height:auto;min-height:300px;margin:12px 16px}
+.ob .pv .five{position:static;width:auto;margin:8px 16px}
+.ob .pv .dial.preview{position:relative;left:auto;right:auto;bottom:auto;margin:8px 16px 16px;width:auto}
+.ob .pv .prog{position:fixed;left:12px;right:12px;width:auto;top:auto;bottom:76px;max-height:70dvh;overflow:auto;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* The sheet's answer button ("Open result") stays in view above the lens bar; the steps scroll under it. */
+.ob .pv .prog .ft{position:sticky;bottom:0;z-index:1;background:#fff;border-radius:0 0 22px 22px}
+.ob .pv .reopen{position:fixed;right:12px;top:auto;bottom:76px}
+/* Busy with the panel hidden: its button is a bar across the screen above the tab bar, carrying the
+   state; the sheet's own copy would sit under the tab bar here, so the bar replaces it (capacity D2). */
+.ob .pv .reopen.busy{left:12px;justify-content:center;text-align:center;font-variant-numeric:tabular-nums}
+.ob .pv .sheet .run-busy{display:none}
+.ob .pv .legend,.ob .pv .nothing{position:relative;left:auto;top:auto;margin:12px 16px;width:auto}
+.ob .pv .ptoast{position:fixed;left:12px;right:12px;width:auto;bottom:76px}
+.ob .pv .ticket{display:none}
+.ob .pv .hist-thumb{width:120px;height:120px}
+}
+.ob .pv .on-phone{display:none}
+@media (max-width:900px){.ob .pv .on-desk{display:none}.ob .pv .on-phone{display:inline}}
+@media (prefers-reduced-motion:reduce){.ob .pv .st.now .m::after{animation:none}}
+/* Cost ranking rows move as one 56px track; keep each to its height. */
+.ob .pv .rank .mr>span:first-child{min-width:0}
+.ob .pv .rank .mr small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Ranked rows sit at fixed 56px steps, so a row may never grow: one line for the name, one for the detail. */
+.ob .pv .rank .mr{height:52px}
+.ob .pv .rank .mr b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* On phones other rows drop the chip under the name; a ranked row can't grow, so its chip keeps its own column. */
+@media (max-width:900px){.ob .pv .rank .mr{grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:7px 10px}.ob .pv .rank .mr .chip{grid-column:2;grid-row:1;justify-self:end}.ob .pv .rank .mr .c{grid-column:3;grid-row:1;min-width:56px}}
+/* Design Studio import, while the imported revision is being checked. */
+.ob .pv .design-note{position:absolute;left:24px;top:200px;width:min(440px,calc(100% - 48px));z-index:5}
+@media (max-width:900px){.ob .pv .design-note{left:16px;top:150px;width:calc(100% - 32px)}}
+/* "How sure is this?" under each view's answer: one line, the detail a click away. */
+.ob .pv .sure{margin-top:12px;border-radius:12px;background:rgba(20,24,31,.035)}
+.ob .pv .sure-h{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 8px;align-items:baseline;width:100%;padding:8px 12px;border-radius:12px;cursor:pointer;font-size:12.5px;color:var(--ink2);transition:background-color 150ms ease,transform 160ms var(--ease)}
+.ob .pv .sure-h b{font-weight:600;color:var(--ink);white-space:nowrap}
+.ob .pv .sure-h span{min-width:0}
+.ob .pv .sure-h i{font-style:normal;color:var(--ink3)}
+.ob .pv .sure-h:active{transform:scale(.97)}
+.ob .pv .sure-h:focus-visible{outline:2px solid var(--file);outline-offset:2px}
+@media (hover:hover) and (pointer:fine){.ob .pv .sure-h:hover{background:rgba(20,24,31,.04)}}
+.ob .pv .sure-d{display:flex;flex-direction:column;gap:6px;padding:0 12px 10px;font-size:12.5px;color:var(--ink2)}
+.ob .pv .sure-r{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;align-items:start}
+.ob .pv .sure-r .src{justify-content:center}
+.ob .pv .sure-r b{font-weight:600;color:var(--ink)}
+.ob .pv .sure-n{padding-left:86px}
+@media (max-width:900px){.ob .pv .sure-h{grid-template-columns:minmax(0,1fr) auto}.ob .pv .sure-h span{grid-column:1 / -1;grid-row:2}.ob .pv .sure-n{padding-left:0}}
+
+/* Decision: what you pay today for the part */
+.ob .bp{margin:4px 12px 8px;padding:10px 12px;border-radius:12px;border:1px solid var(--rule);background:#fff;display:flex;flex-direction:column;gap:6px}
+.ob .bp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.ob .bp-head span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ob .bp-head b{font-weight:600;font-size:13.5px;color:var(--ink)}
+.ob .bp-head small{font-size:12.5px;color:var(--ink2);line-height:1.4}
+.ob .bp-cmp{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.4}
+.ob .bp-form{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:8px;align-items:end}
+.ob .bp-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--ink3)}
+.ob .bp-form input{box-sizing:border-box;height:34px;padding:0 10px;border:1px solid rgba(20,24,31,.18);border-radius:9px;background:#fff;font-size:14px;color:var(--ink);width:100%}
+.ob .bp-acts{grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap}
+.ob .bp-err{grid-column:1 / -1;color:var(--bad);font-size:12.5px}
+.ob .pv .revline{font-size:12.5px;color:var(--ink2)}
+
+/* A refusal's Details: the server's own words under the plain ones (buyer-04). */
+.ob .pv .ptoast-details{margin-top:6px;font-size:12px;color:#C9CED6}
+.ob .pv .ptoast-details summary{cursor:pointer;color:#C9D6FF}
+.ob .pv .ptoast-details span{display:block;margin-top:4px;overflow-wrap:anywhere}
+
+/* The part's specs in the header, one tap from the Specs view (buyer-15). */
+.ob .pv .specline{display:block;max-width:min(560px,100%);font-size:12.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ob .pv .speclink{color:var(--file);text-decoration:none}
+.ob .pv .speclink:focus-visible{outline:2px solid var(--file);outline-offset:2px;border-radius:4px}
+@media (hover:hover) and (pointer:fine){.ob .pv .speclink:hover{text-decoration:underline}}
+@media (max-width:900px){.ob .pv .specline{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}}

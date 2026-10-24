@@ -155,6 +155,13 @@ samlSecrets:
 
 auth:
   mode: password
+  # SSO_ORG_ID: the id of the organization that owns this deployment's SAML/OIDC
+  # identity provider. Production renders require it whenever auth.mode is saml,
+  # oidc or hybrid. Only this org's IdP group mappings apply at sign-in, and SAML
+  # links an existing same-email account only when it belongs to this org.
+  # "none" states that the org does not exist yet (first install): sign-in
+  # works, no group mapping applies until it is set.
+  ssoOrgId: ""
   # Local chart users may opt in. Production overlays must keep public password
   # signup off and prove identity through magic link or the enterprise IdP.
   publicPasswordSignup: true
@@ -183,6 +190,12 @@ reconstruction:
   # state only. Remote third-party reconstruction is a separate boundary change.
   backend: local
   allowRemoteEgress: false
+
+linkImport:
+  # Import a part from a Google Drive, Dropbox, OneDrive/SharePoint or S3 share
+  # link: the worker fetches it over HTTPS from the provider's public hosts.
+  # Regulated production must keep it off (the chart refuses to render it on).
+  enabled: true
 
 observability:
   otel:

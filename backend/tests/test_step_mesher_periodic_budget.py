@@ -6,8 +6,8 @@ a watertight shell, but rung 0 (gmsh's default 2D algorithm) GRINDS for 2+ minut
 on a periodic surface before failing, and only THEN does the fast MeshAdapt rung
 run. Under the route's ``asyncio.wait_for(..., ANALYSIS_TIMEOUT_SEC)`` that means a
 504 — the recovery never reaches the user. mesh.generate is an uninterruptible
-in-thread C call, so ``parse_pool`` bounds EACH rung with a wall-clock cap by
-running it in a separately-timed, killable subprocess:
+in-thread C call, so ``parse_pool`` bounds EACH rung with a cap on its worker's
+CPU time by running it in a separately-measured, killable subprocess:
 
   * rung 0 runs on the shared warm pool with cap ``min(0.4*budget, 25s)``. A normal
     part meshes far under the cap (byte-identical, no regression); a periodic grind
@@ -15,10 +15,14 @@ running it in a separately-timed, killable subprocess:
   * the recovery rungs each run in their OWN single-worker spawn subprocess and are
     HARD-KILLED (SIGKILL) at their cap, then the next rung runs.
 
-The caps sum to < budget, so an all-rungs-fail part surfaces the honest 400 (not a
-504). These tests prove the BOUNDED-TIME property: the FAST test simulates the
-grind (a sleeping rung-0) deterministically; the SLOW tests drive the REAL gmsh
-periodic fixture through the REAL cap + kill + async-timeout path.
+The caps are CPU seconds, the part's own work, so the ladder takes the same path on
+an idle or a loaded box; wall time bounds only the whole ladder (the route's
+budget), and running out of it is "busy". The caps sum to < budget, so an
+all-rungs-fail part surfaces the honest 400 (not a 504). These tests prove the
+BOUNDED property: the FAST test simulates the grind (a sleeping rung-0)
+deterministically; the SLOW tests drive the REAL gmsh periodic fixture through the
+REAL cap + kill + async-timeout path, bounded by CPU caps and the route budget,
+never by a wall-clock target that measures the machine's load.
 
 Byte-identity of the fast/non-periodic path is covered by
 test_parse_pool.py::test_pool_matches_in_thread_byte_identical (cube, rung 0) and
@@ -151,30 +155,42 @@ async def test_real_rung0_is_bounded_or_returns_an_open_fallback():
     Depending on gmsh/platform, the primary algorithm either grinds and is killed
     at its cap, or returns quickly with a non-watertight shell. Both outcomes are
     bounded and force the full ladder to advance to the watertight recovery rung.
+    The cap is the rung worker's CPU time, so the grind is cut after the same
+    work on an idle or a loaded box; how long that takes in wall time measures
+    the load, not the part, and is not what this checks.
     """
     _require_step()
     data = _PERIODIC_FIXTURE.read_bytes()
     cap = 5.0
-    t0 = time.perf_counter()
     try:
         mesh = await parse_pool._run_rung_killable(data, ".step", 0, cap)
-    except parse_pool._RungTimeout:
+    except parse_pool._RungTimeout as exc:
+        # Killed for using its CPU budget: a bounded grind, never a multi-minute one.
+        # A grind the CPU cap failed to stop would reach the rung's own wall-clock
+        # deadline instead and raise _RungStarved, which fails this test.
+        assert "CPU" in str(exc), exc
         mesh = None
     if mesh is not None:
         assert not mesh.is_watertight, "a watertight primary shell would be a valid win"
-    dt = time.perf_counter() - t0
-    # Either returned open or was killed near cap; never a multi-minute grind.
-    assert dt < cap + 10.0, f"rung 0 must resolve near its {cap}s cap, took {dt:.1f}s"
 
 
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_real_periodic_part_returns_watertight_shell_within_budget(monkeypatch):
     """END-TO-END: the REAL periodic fixture returns a VALID watertight shell via
-    the REAL async + ANALYSIS_TIMEOUT_SEC + pool path, in WELL under the 60s route
-    budget (target < 45s on this box) — where before it 504'd after a 2-min grind."""
+    the REAL async + ANALYSIS_TIMEOUT_SEC + pool path, inside the 60 s route budget,
+    where before it 504'd after a 2-min grind.
+
+    The bound is the route's own budget. Rung 0's grind is cut at its CPU cap (24 s
+    of the worker's CPU at this budget), the same work on any load; the wall time
+    that takes depends on how busy the machine is (46 s and 58 s in two runs at
+    load average 13 on 4 CPUs), so a tighter wall-clock target would measure the
+    box, not the part. Past the budget the route answers 504, or 429 busy when the
+    ladder's worker was starved, and this test fails."""
     _require_step()
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "60")
+    budget = parse_pool._budget_sec()
+    assert budget == 60.0
     mesh_cache.get_cache().clear()  # force a real parse, no warm-hit shortcut
     data = _PERIODIC_FIXTURE.read_bytes()
 
@@ -186,4 +202,4 @@ async def test_real_periodic_part_returns_watertight_shell_within_budget(monkeyp
     assert mesh.is_watertight, "recovered periodic shell must be watertight"
     assert 100 < len(mesh.faces) < 2_000_000
     assert mesh.volume > 0
-    assert dt < 45.0, f"periodic part must return within 45s budget, took {dt:.1f}s"
+    assert dt < budget, f"periodic part must return within the {budget:.0f}s route budget, took {dt:.1f}s"

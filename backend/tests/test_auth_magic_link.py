@@ -283,7 +283,7 @@ async def test_delayed_failed_send_cannot_delete_newer_magic_link(monkeypatch):
     second = await m.magic_start(
         _request(), email=email, cf_turnstile_response="ok"
     )
-    assert second == {"status": "sent"}
+    assert second == {"status": "sent", "sent_to": email}
 
     release_first_send.set()
     with pytest.raises(HTTPException) as exc_info:
@@ -508,3 +508,42 @@ def test_legacy_magic_query_redirects_to_first_party_fragment_in_production(
         f"https://app.example.com/magic/verify#token={token}"
     )
     consume.assert_not_awaited()
+
+
+@pytest.mark.parametrize("requested,expected", [
+    ("/pricing?plan=pro", "&next=%2Fpricing%3Fplan%3Dpro"),
+    ("/verify", "&next=%2Fverify"),
+    ("https://evil.example/x", None),
+    ("//evil.example/x", None),
+    ("/\\evil.example", None),
+    ("/verify#token=stolen", None),
+    ("", None),
+])
+def test_magic_start_carries_only_a_same_site_return_path(monkeypatch, requested, expected):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_FROM", "login@example.com")
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://app.example.com")
+    fake_redis = AsyncMock()
+    with patch("src.auth.magic_link.ip_signup_limit_enabled", return_value=False), patch(
+        "src.auth.magic_link.verify_turnstile", new_callable=AsyncMock
+    ), patch(
+        "src.auth.magic_link.get_soft_flag_set", new_callable=AsyncMock, return_value=set(),
+    ), patch(
+        "src.auth.magic_link.per_email_magic_link_limit", new_callable=AsyncMock
+    ), patch(
+        "src.auth.magic_link._r", return_value=fake_redis
+    ), patch(
+        "src.auth.magic_link.resend.Emails.send", return_value={"id": "email-1"}
+    ) as send:
+        response = TestClient(_app()).post(
+            "/auth/magic/start",
+            data={"email": "alice@example.com", "cf_turnstile_response": "ok", "next": requested},
+        )
+    assert response.status_code == 200
+    text = send.call_args.args[0]["text"]
+    link = text.split(": ", 1)[1]
+    assert link.startswith("https://app.example.com/magic/verify#token=")
+    if expected:
+        assert link.endswith(expected)
+    else:
+        assert "&next=" not in link

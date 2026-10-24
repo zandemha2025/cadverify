@@ -3,17 +3,31 @@ import { Suspense } from "react";
 import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
 import { publicPasswordSignupEnabled } from "@/lib/public-signup";
 import { SignupForm } from "./signup-form";
+import { getPlans } from "@/lib/plans";
+import { UI_V4 } from "@/lib/ui-v4-flag";
+import { V4EmailLinkSignUp, V4ManagedAccess, V4SignUp } from "@/components/v4/moments/sign-up";
 
 export const dynamic = "force-dynamic";
 
-export default function SignupPage() {
+export default async function SignupPage() {
   const publicPasswordSignup = publicPasswordSignupEnabled(
     process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED,
     process.env.RELEASE,
   );
   const magicEnabled = process.env.MAGIC_LINK_UI_ENABLED === "1";
   const ssoLoginPath = (process.env.SSO_LOGIN_PATH || "").trim();
-  if (publicPasswordSignup) return <Suspense fallback={<p>Loading account form…</p>}><SignupForm /></Suspense>;
+  if (UI_V4) {
+    if (publicPasswordSignup) {
+      const { free } = await getPlans();
+      const phoneNeeded = ["1", "true", "yes", "on"].includes((process.env.SMS_VERIFICATION_REQUIRED || "").trim().toLowerCase());
+      return <Suspense fallback={null}><V4SignUp freeChecks={{ work: free.work_checks, personal: free.personal_checks }} ssoLoginPath={ssoLoginPath || undefined} phoneNeeded={phoneNeeded} /></Suspense>;
+    }
+    return magicEnabled ? <V4EmailLinkSignUp /> : <V4ManagedAccess ssoLoginPath={ssoLoginPath || undefined} />;
+  }
+  if (publicPasswordSignup) {
+    const { free } = await getPlans();
+    return <Suspense fallback={<p>Loading account form…</p>}><SignupForm freeChecks={{ work: free.work_checks, personal: free.personal_checks }} /></Suspense>;
+  }
 
   if (!magicEnabled) {
     return (

@@ -7,8 +7,12 @@ _KEY_RE = re.compile(r"cv_live_[A-Za-z0-9_]+")
 _REDACTED = "cv_live_***REDACTED***"
 _VALUE_REDACTED = "***REDACTED***"
 _BEARER_RE = re.compile(r"\bBearer\s+[^\s\"']+", re.IGNORECASE)
+# Query values that are credentials: sign-in tokens, and the secret part of a
+# share or presigned link (link import: S3 signatures, Dropbox rlkey, OneDrive
+# authkey, Drive resourcekey).
 _QUERY_SECRET_RE = re.compile(
-    r"([?&#](?:token|session|code|api_key)=)[^&#\s\"']+",
+    r"([?&#](?:token|session|code|api_key|x-amz-signature|x-amz-credential|x-amz-security-token"
+    r"|signature|rlkey|authkey|resourcekey)=)[^&#\s\"']+",
     re.IGNORECASE,
 )
 _SENSITIVE_KEY_LC = {

@@ -24,7 +24,10 @@ import hashlib
 import os
 import threading
 from collections import OrderedDict
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    import trimesh
 
 _Key = Tuple[str, str]
 
@@ -60,10 +63,15 @@ def _max_bytes() -> int:
 
 def mesh_nbytes(mesh) -> int:
     """Approximate resident size: the vertex + face arrays (the bulk of a
-    Trimesh). Robust to objects lacking those attributes (returns 0)."""
+    Trimesh) plus any arrays kept in its metadata (a STEP's per-triangle CAD
+    face ids and surface normals). Robust to objects lacking those attributes
+    (returns 0)."""
+    arrays = [getattr(mesh, attr, None) for attr in ("vertices", "faces")]
+    metadata = getattr(mesh, "metadata", None)
+    if isinstance(metadata, dict):
+        arrays.extend(metadata.values())
     total = 0
-    for attr in ("vertices", "faces"):
-        arr = getattr(mesh, attr, None)
+    for arr in arrays:
         nbytes = getattr(arr, "nbytes", None)
         if nbytes is not None:
             total += int(nbytes)
@@ -81,7 +89,7 @@ class MeshParseCache:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._store: "OrderedDict[_Key, object]" = OrderedDict()
+        self._store: "OrderedDict[_Key, trimesh.Trimesh]" = OrderedDict()
         self._bytes: Dict[_Key, int] = {}
         self._total_bytes = 0
         # process-local observability counters (not authoritative metrics)
@@ -127,6 +135,16 @@ class MeshParseCache:
             old_key, _ = self._store.popitem(last=False)
             self._total_bytes -= self._bytes.pop(old_key, 0)
 
+    def forget_hashes(self, hashes) -> int:
+        """Drop the parsed meshes of these file SHA-256s (a deleted part)."""
+        wanted = set(hashes)
+        with self._lock:
+            gone = [k for k in self._store if k[0] in wanted]
+            for k in gone:
+                del self._store[k]
+                self._total_bytes -= self._bytes.pop(k, 0)
+        return len(gone)
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
@@ -155,3 +173,13 @@ _CACHE = MeshParseCache()
 def get_cache() -> MeshParseCache:
     """The process-wide singleton cache."""
     return _CACHE
+
+
+def forget_hashes(hashes) -> int:
+    """Drop the process-wide cache's parsed meshes of these file SHA-256s, and the
+    assembly models kept for checks of them (``assembly_model_cache``)."""
+    from src.parsers import assembly_model_cache
+
+    hashes = list(hashes)
+    assembly_model_cache.forget_hashes(hashes)
+    return _CACHE.forget_hashes(hashes)

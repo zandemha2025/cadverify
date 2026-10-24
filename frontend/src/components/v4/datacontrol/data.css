@@ -1,0 +1,41 @@
+/* Data control: the delete dialog, the delete-organization panel and the share-links list. */
+.ob .dc-back{position:fixed;inset:0;z-index:60;background:rgba(20,24,31,.28);display:grid;place-items:center;padding:24px;transition:opacity 200ms var(--ease)}
+@starting-style{.ob .dc-back{opacity:0}}
+/* After a deletion the part behind is gone too: the page under the receipt is covered, not shown as if it still existed. */
+.ob .dc-back.gone{background:var(--ground,#EEF0F3)}
+.ob .dc-dlg{width:min(560px,100%);max-height:calc(100dvh - 48px);overflow:auto;background:var(--solid);border-radius:20px;border:1px solid var(--rule);box-shadow:0 18px 50px rgba(20,24,31,.18);padding:18px 20px 20px;transition:transform 240ms var(--sheet),opacity 200ms var(--ease)}
+@starting-style{.ob .dc-dlg{transform:translateY(10px);opacity:0}}
+.ob .dc-dlg h2{margin:0;font-family:var(--v4-disp);font-size:19px;font-weight:600;letter-spacing:-.01em}
+.ob .dc-meta{margin:4px 0 12px;color:var(--ink3);font-size:13px;overflow-wrap:anywhere}
+.ob .dc-list{list-style:disc;margin:6px 0 10px;padding-left:20px;color:var(--ink);font-size:14px}
+.ob .dc-p{margin:8px 0;color:var(--ink2);font-size:13.5px}
+.ob .dc-p b{color:var(--ink)}
+.ob .dc-warn{margin:10px 0;padding:10px 12px;border-radius:12px;background:var(--bad-bg);color:var(--bad);font-size:13.5px}
+.ob .dc-kept{margin:10px 0;font-size:13px;color:var(--ink2)}
+.ob .dc-kept summary{cursor:pointer;color:var(--ink);font-weight:500}
+.ob .dc-kept ul{list-style:disc;margin:6px 0 0;padding-left:20px}
+.ob .dc-list li,.ob .dc-kept li{margin:3px 0}
+.ob .dc-check{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:13.5px;color:var(--ink)}
+.ob .dc-check input{margin-top:3px}
+.ob .dc-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.ob .dc-err{margin:8px 0 0;color:var(--bad);font-size:13px}
+.ob .dc-ok{margin:8px 0;padding:10px 12px;border-radius:12px;background:var(--ok-bg);color:var(--ok);font-size:13.5px}
+.ob .dc-pad{padding:4px 16px 14px}
+.ob .dc-name{width:100%;max-width:420px}
+.ob .dc-links{display:flex;flex-direction:column}
+.ob .dc-row{display:grid;grid-template-columns:minmax(0,1.5fr) 120px minmax(0,1fr) 250px;gap:10px;align-items:center;padding:10px 16px;border-top:1px solid var(--rule)}
+.ob .dc-row.th{border-top:0;padding-top:4px;padding-bottom:4px;color:var(--ink3);font-size:12px}
+.ob .dc-row b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob .dc-row small{display:block;color:var(--ink3);font-size:12.5px;overflow-wrap:anywhere}
+.ob .dc-row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.ob .dc-seg{display:inline-flex;gap:4px;padding:3px;border-radius:999px;background:rgba(20,24,31,.05)}
+.ob .dc-seg button{all:unset;cursor:pointer;padding:4px 12px;border-radius:999px;font-size:13px;color:var(--ink2)}
+.ob .dc-seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,24,31,.1)}
+.ob .dc-seg button:focus-visible{outline:2px solid var(--file);outline-offset:1px}
+@media (max-width:720px){
+.ob .dc-back{padding:12px 12px 88px;align-items:center}
+.ob .dc-dlg{max-height:calc(100dvh - 112px)}
+.ob .dc-row{grid-template-columns:minmax(0,1fr) auto;row-gap:4px}
+.ob .dc-row.th{display:none}
+.ob .dc-row .acts{grid-column:1 / -1;justify-content:flex-start}
+}

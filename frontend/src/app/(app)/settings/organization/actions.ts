@@ -13,6 +13,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { backendUrl, backendOrigin } from "@/lib/api-base";
+import { publicApiOrigin } from "@/lib/public-api";
 import { getSessionOrganizationAccess } from "@/lib/dal";
 import type { OrganizationAccess, OrganizationRole } from "@/lib/organization-access";
 
@@ -94,6 +95,8 @@ export type HealthDeep = {
 
 export type SsoStatus = {
   backendOrigin: string;
+  /** The deployment's public API address (API_ORIGIN), or null when it has none. */
+  publicOrigin: string | null;
   saml: {
     state: "reachable" | "not_enabled" | "misconfigured" | "unknown";
     httpStatus: number | null;
@@ -165,9 +168,11 @@ export async function getHealthDeep(): Promise<HealthDeep> {
   }
 }
 
-/** SSO/SCIM read-only status. The URLs are the BACKEND's IdP-facing endpoints an
- *  admin hands to their IdP; base SSO enablement is deploy-level (AUTH_MODE + IdP
- *  env). SAML gets a genuine reachability probe via the unauthenticated SP
+/** SSO/SCIM read-only status. The URLs are the API's IdP-facing endpoints an
+ *  admin hands to their IdP, at the deployment's PUBLIC API address (API_ORIGIN,
+ *  the address the API itself uses for its callbacks), never the internal one
+ *  this server calls; with no public address they are paths only. Base SSO
+ *  enablement is deploy-level (AUTH_MODE + IdP env). SAML gets a genuine reachability probe via the unauthenticated SP
  *  metadata route (no egress, no cookies). OIDC uses its local-only status route,
  *  which validates coordinates without contacting the external IdP. */
 export async function getSsoStatus(): Promise<SsoStatus> {
@@ -200,17 +205,20 @@ export async function getSsoStatus(): Promise<SsoStatus> {
   } catch {
     oidcState = "unknown";
   }
+  const pub = publicApiOrigin();
+  const base = pub ?? "";
   return {
     backendOrigin: origin,
+    publicOrigin: pub,
     saml: { state: samlState, httpStatus: samlHttp },
     oidc: { state: oidcState, httpStatus: oidcHttp },
     urls: {
-      samlAcs: `${origin}/auth/saml/acs`,
-      samlMetadata: `${origin}/auth/saml/metadata`,
-      samlLogin: `${origin}/auth/saml/login`,
-      oidcLogin: `${origin}/auth/oidc/login`,
-      oidcCallback: `${origin}/auth/oidc/callback`,
-      scimBase: `${origin}/scim/v2`,
+      samlAcs: `${base}/auth/saml/acs`,
+      samlMetadata: `${base}/auth/saml/metadata`,
+      samlLogin: `${base}/auth/saml/login`,
+      oidcLogin: `${base}/auth/oidc/login`,
+      oidcCallback: `${base}/auth/oidc/callback`,
+      scimBase: `${base}/scim/v2`,
     },
   };
 }

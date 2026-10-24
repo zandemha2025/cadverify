@@ -191,6 +191,7 @@ def test_design_queue_api_returns_failed_design_and_exact_copy(monkeypatch):
         key_prefix="session",
         role="analyst",
     )
+    app.dependency_overrides[designs.limit_free_designs] = lambda: None
     app.dependency_overrides[get_db_session] = lambda: AsyncMock()
     response = TestClient(app).post(
         "/api/v1/designs",

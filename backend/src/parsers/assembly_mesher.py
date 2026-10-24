@@ -46,11 +46,12 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 import trimesh
 
+from src.parsers.sigpipe import ignore_sigpipe
 from src.parsers.step_mesher import (
     _CURVATURE_PTS,
     _GMSH_LOCK,
@@ -69,10 +70,13 @@ from src.parsers.step_mesher import (
 logger = logging.getLogger("cadverify.assembly_mesher")
 
 _HAS_GMSH = is_step_supported()
+gmsh: Any = None  # the gmsh module, or None without it (as step_mesher holds it)
 try:  # pragma: no cover - import guard mirrors step_mesher
-    import gmsh  # noqa: F401
+    import gmsh as _gmsh
+
+    gmsh = _gmsh
 except (ImportError, OSError):  # pragma: no cover
-    gmsh = None  # type: ignore
+    pass
 
 
 # ── Bounds (env-overridable, always finite) ─────────────────────────────────
@@ -519,12 +523,17 @@ def _solid_mesh(dim: int, tag: int, node_coords: dict) -> trimesh.Trimesh:
     return trimesh.Trimesh(vertices=verts, faces=faces, process=True)
 
 
-def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> AssemblyModel:
+def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool,
+                  mesh_single_part: bool = True) -> AssemblyModel:
     """One full gmsh cycle: import -> enumerate solids -> per-solid metadata ->
     (mesh + partition, unless over the part cap) -> build tree. MUST hold
     ``_GMSH_LOCK``. Raises ``_StepReadError`` (unreadable, non-retryable) or a
-    generic exception (mesh failure, caller advances the ladder)."""
+    generic exception (mesh failure, caller advances the ladder).
+
+    ``mesh_single_part=False`` reads a file of one solid without meshing it (its
+    position and tree come from the B-rep; its mesh fields stay empty)."""
     gmsh.initialize(interruptible=False)
+    ignore_sigpipe()  # gmsh just reset it to terminate the process
     try:
         _configure_cad_import(path)
         _configure_mesh(curvature_pts, heal)
@@ -555,7 +564,13 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> Ass
         truncated = False
         skipped: list[dict] = []
         do_mesh = num_solids <= part_cap
-        if not do_mesh:
+        # One solid is a single part, which /validate meshes (with its own capped
+        # retry ladder). A reader that only asks "how many bodies?" stops here: a
+        # periodic part's first strategy grinds 220 s before failing (nist_ctc05).
+        if num_solids == 1 and not mesh_single_part:
+            do_mesh = False
+            notes.append("Its position is read from the file; the part is not meshed here.")
+        elif not do_mesh:
             truncated = True
             notes.append(
                 f"{num_solids} solids exceeds MAX_ASSEMBLY_PARTS={part_cap}; "
@@ -661,7 +676,7 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> Ass
         gmsh.finalize()
 
 
-def _extract_with_ladder(path: str) -> AssemblyModel:
+def _extract_with_ladder(path: str, mesh_single_part: bool = True) -> AssemblyModel:
     """Assembly extraction with the SAME retry ladder as step_mesher._mesh_step_
     file: rung 0 (primary, byte-identical option set) first, then MeshAdapt-uniform,
     then +OCC-heal. Serialized on ``_GMSH_LOCK``."""
@@ -669,7 +684,7 @@ def _extract_with_ladder(path: str) -> AssemblyModel:
     for idx, (name, algo, curv, heal) in enumerate(_MESH_RUNGS):
         try:
             with _GMSH_LOCK:
-                model = _extract_once(path, algo, curv, heal)
+                model = _extract_once(path, algo, curv, heal, mesh_single_part)
         except _StepReadError as exc:
             raise ValueError(
                 "Could not read STEP/IGES geometry (not a valid/supported file)."
@@ -695,14 +710,8 @@ def _extract_with_ladder(path: str) -> AssemblyModel:
     )
 
 
-def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step") -> AssemblyModel:
-    """Parse STEP/IGES bytes -> ``AssemblyModel``. The public entry (picklable for
-    the process pool). Mirrors step_mesher's temp-file discipline (0o600, guaranteed
-    unlink). Raises ``ValueError`` (route -> 400) on any read/mesh failure; never
-    leaks gmsh internals."""
-    if not _HAS_GMSH:
-        raise RuntimeError("gmsh not installed")
-    suffix = Path(filename).suffix.lower()
+def check_assembly_suffix(suffix: str) -> None:
+    """The file kinds the assembly reader takes: ``ValueError`` (route -> 400) for others."""
     if is_native_cad_suffix(suffix):
         raise native_cad_error(suffix)
     if suffix not in ASSEMBLY_SUFFIXES:
@@ -710,6 +719,15 @@ def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step") -> A
             f"Assembly ingestion needs a STEP/IGES file (got {suffix or 'no suffix'}). "
             f"STL carries no assembly structure — upload .step/.stp/.iges/.igs."
         )
+
+
+def _on_temp_file(data: bytes, filename: str, read):
+    """``read(path)`` on the bytes written to a private temp file (0o600, always unlinked),
+    after the suffix check: step_mesher's temp-file discipline."""
+    if not _HAS_GMSH:
+        raise RuntimeError("gmsh not installed")
+    suffix = Path(filename).suffix.lower()
+    check_assembly_suffix(suffix)
     import tempfile
 
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w+b")
@@ -718,12 +736,38 @@ def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step") -> A
         tmp.write(data)
         tmp.flush()
         tmp.close()
-        return _extract_with_ladder(tmp.name)
+        return read(tmp.name)
     finally:
         try:
             os.unlink(tmp.name)
         except FileNotFoundError:
             pass
+
+
+def extract_assembly_from_bytes(data: bytes, filename: str = "upload.step", *,
+                                mesh_single_part: bool = True) -> AssemblyModel:
+    """Parse STEP/IGES bytes -> ``AssemblyModel``. The public entry (picklable for
+    the process pool). Mirrors step_mesher's temp-file discipline (0o600, guaranteed
+    unlink). Raises ``ValueError`` (route -> 400) on any read/mesh failure; never
+    leaks gmsh internals. ``mesh_single_part=False``: a file of one solid is read
+    without meshing it (see ``_extract_once``)."""
+    return _on_temp_file(data, filename, lambda path: _extract_with_ladder(path, mesh_single_part))
+
+
+def extract_assembly_rung_from_bytes(data: bytes, filename: str, idx: int, *,
+                                     mesh_single_part: bool = True) -> AssemblyModel:
+    """ONE rung of the ladder (``_MESH_RUNGS[idx]``) in this process: the parse pool
+    runs each rung in a worker whose CPU time it measures, and kills it at the rung's
+    cap (``parse_pool.submit_assembly_async``). Raises ``_StepReadError`` when OCC
+    can't read the file (no strategy will) and any other exception when this
+    strategy failed to mesh it (the next one runs), as ``_extract_with_ladder`` reads them."""
+    _name, algorithm, curvature_pts, heal = _MESH_RUNGS[idx]
+
+    def read(path: str) -> AssemblyModel:
+        with _GMSH_LOCK:
+            return _extract_once(path, algorithm, curvature_pts, heal, mesh_single_part)
+
+    return _on_temp_file(data, filename, read)
 
 
 # ── GLB export (P2 render) ──────────────────────────────────────────────────
@@ -735,13 +779,12 @@ def assembly_to_glb(model: AssemblyModel, target_faces: int = 0) -> bytes:
     heavy assembly still fits a WebGL budget."""
     from src.analysis.context import _decimate_to
 
-    meshed = [p for p in model.parts if p.mesh is not None and len(p.mesh.faces) > 0]
+    meshed = [(p, p.mesh) for p in model.parts if p.mesh is not None and len(p.mesh.faces) > 0]
     if not meshed:
         raise ValueError("No per-part meshes to export (metadata-only assembly).")
-    total = sum(len(p.mesh.faces) for p in meshed)
+    total = sum(len(mesh.faces) for _p, mesh in meshed)
     scene = trimesh.Scene()
-    for p in meshed:
-        m = p.mesh
+    for p, m in meshed:
         if target_faces and total > target_faces:
             share = max(500, int(target_faces * len(m.faces) / total))
             if len(m.faces) > share:
@@ -749,4 +792,4 @@ def assembly_to_glb(model: AssemblyModel, target_faces: int = 0) -> bytes:
                 if reduced is not None and 0 < len(reduced.faces) < len(m.faces):
                     m = reduced
         scene.add_geometry(m, geom_name=p.id, node_name=p.id)
-    return bytes(scene.export(file_type="glb"))
+    return bytes(cast(bytes, scene.export(file_type="glb")))  # GLB export: bytes

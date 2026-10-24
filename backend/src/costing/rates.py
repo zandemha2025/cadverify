@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
+from src.profiles.envelopes import COMMON_ENVELOPE_MM
 
 PT = ProcessType
 
@@ -116,13 +117,12 @@ RATE_CARD_V0: dict = {
         "shot_overhead_s": 5.0,       # s — molding non-cooling cycle overhead
         "ship_days": 3.0,             # outbound logistics
         # ── volume/learning economics (S1 fix) ──────────────────────────
-        # Wright cumulative-average learning curve on the ATTENDED CONVERSION
-        # cost (machine cycle + post-process labor) of make-now, labor-bearing
-        # families (subtractive/CNC + fabrication/sheet-metal). Per-unit
-        # conversion time drops as (cumulative_qty / first_lot)^b, b=log2(rate),
-        # capturing optimized tool-paths, dedicated fixturing, dialed-in
-        # feeds/speeds, and reduced attention at volume. Material never learns;
-        # per-lot setup already amortizes separately. This is a MODEL, tagged
+        # Learning curve on TOUCH LABOR only (post-process hand work and in-process
+        # inspection) of make-now, labor-bearing families (subtractive/CNC +
+        # fabrication/sheet-metal): past the first lot each part's time follows
+        # (x / first_lot)^b, b=log2(rate), and an order pays the lot average
+        # (src.costing.learning, ce-03). Machine-paced cycle time, tools, material,
+        # setup and programming never learn (De Jong 1957). This is a MODEL, tagged
         # DEFAULT/assumption — NOT validated against real shop quotes.
         "learning_rate": 0.90,        # 0<rate<=1 fraction per doubling of cumulative qty; 1.0 = no learning (old flat behavior)
         "learning_floor": 0.25,       # min fraction of first-lot standard time the curve can reach (practical cycle-time floor)
@@ -177,35 +177,46 @@ RATE_CARD_V0: dict = {
         PT.FDM: dict(
             machine_rate=8, setup_hr=0.25, post_hr=0.25, scrap=0.10,
             deposition=16, vert=25, finish=None, queue_days=2, post_days=1,
-            build_env_mm=(250, 250, 250), packing_density=0.10, part_spacing_mm=4.0,
-            nesting_mode="serial", post_hr_part=0.20, post_hr_build=0.10,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.FDM], packing_density=0.10, part_spacing_mm=4.0,
+            # Finishing: post_hr_part is handling a part with nothing to remove (off
+            # the plate, brim and strings, check, bag); support removal adds
+            # support_hr_per_cm2 for each cm² of surface the slicer supports (break the
+            # support away, clean the face): a clip with none is 6 min, 15 cm² of
+            # supported surface is 10 min, 100 cm² is 30 min. These keep a part's
+            # finishing inside the independent print-bureau handling band ($3–15 a part,
+            # harness R1/R1S): at 0.05 h and 0.01 h/cm² the tiny coupons fell under it and
+            # the big supported ones over it (7 of 11 sliced coupons out of band).
+            # Without a measured mesh (no slicer plan) the support is unknown: the
+            # finishing stays the typical 0.2 h that assumes some support.
+            nesting_mode="serial", post_hr_part=0.10, post_hr_build=0.10,
+            support_hr_per_cm2=0.004, post_hr_part_unmeasured=0.20,
             lot_size="build", min_charge=30,
             xy_packing_density=0.50, n_machines=12, machine_hours_per_day=22),
         PT.SLA: dict(
             machine_rate=12, setup_hr=0.30, post_hr=0.50, scrap=0.10,
             deposition=8, vert=20, finish=None, queue_days=2, post_days=1,
-            build_env_mm=(145, 145, 185), packing_density=0.10, part_spacing_mm=3.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.SLA], packing_density=0.10, part_spacing_mm=3.0,
             nesting_mode="serial", post_hr_part=0.15, post_hr_build=0.20,
             lot_size="build", min_charge=40,
             xy_packing_density=0.50, n_machines=8, machine_hours_per_day=22),
         PT.DLP: dict(
             machine_rate=12, setup_hr=0.30, post_hr=0.50, scrap=0.10,
             deposition=12, vert=30, finish=None, queue_days=2, post_days=1,
-            build_env_mm=(192, 120, 245), packing_density=0.12, part_spacing_mm=3.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.DLP], packing_density=0.12, part_spacing_mm=3.0,
             nesting_mode="build_job", post_hr_part=0.15, post_hr_build=0.20,
             lot_size="build", min_charge=40,
             n_machines=8, machine_hours_per_day=22),
         PT.SLS: dict(
             machine_rate=20, setup_hr=0.50, post_hr=0.50, scrap=0.10,
             deposition=18, vert=20, finish=None, queue_days=3, post_days=1,
-            build_env_mm=(340, 340, 600), packing_density=0.10, part_spacing_mm=5.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.SLS], packing_density=0.10, part_spacing_mm=5.0,
             nesting_mode="build_job", post_hr_part=0.08, post_hr_build=0.50,
             lot_size="build", min_charge=75,
             n_machines=6, machine_hours_per_day=22),
         PT.MJF: dict(
             machine_rate=22, setup_hr=0.50, post_hr=0.50, scrap=0.10,
             deposition=20, vert=25, finish=None, queue_days=3, post_days=1,
-            build_env_mm=(380, 284, 380), packing_density=0.10, part_spacing_mm=5.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.MJF], packing_density=0.10, part_spacing_mm=5.0,
             nesting_mode="build_job", post_hr_part=0.08, post_hr_build=0.50,
             lot_size="build", min_charge=75,
             n_machines=6, machine_hours_per_day=22),
@@ -265,32 +276,47 @@ RATE_CARD_V0: dict = {
             handling_hr=0.020),         # load/unload/locate per part
         # ── CASTING (pour + solidify) — foundry cell. Material = poured metal =
         # net part mass × (1 + yield_loss) for gating/risers. Machine cycle =
-        # pour + solidification cool (∝ poured mass). Knockout/fettle/clean is
-        # LABOR (post_hr_part). Tooling is a pattern (sand) / wax die + shell
-        # (investment), sized by the shared size-tier table × a casting multiplier
-        # (see tooling_casting_mult). EVERY constant below is a DEFAULT assumption,
-        # NOT foundry-validated. ──────────────────────────────────────────────
+        # the mould's (sand) or tree's (investment) share + solidification cool
+        # (∝ poured mass). A mould or tree holds as many castings as fit it
+        # (mould_w_mm × mould_l_mm, mould_gap_mm of sand or gating around each),
+        # and its pour_hr is shared by them. Fettling is LABOR: post_hr_part a
+        # casting (cut off, handling) + fettle_hr_kg × (casting kg)^(2/3), the
+        # grinding and blasting, which follow its surface. Published structure
+        # (Boothroyd Dewhurst, "Sand Casting Cost Estimating" and "Investment
+        # Casting Cost Estimating", dfma.com, 2026): mould sand spread over
+        # multi-cavity moulds; castings under 2 lb fettled for $0.50–2.00 (tumbled),
+        # over 50 lb 1–4 h; 3–8 castings a tree by size, shell $2–6 and pour and
+        # breakout $3–8 a casting, cut-off and finishing $4–15. Tooling is a
+        # pattern (sand) / wax die + shell (investment), sized by the shared
+        # size-tier table × a casting multiplier (see tooling_casting_mult).
+        # EVERY constant below is a DEFAULT assumption, NOT foundry-validated. ──
         PT.SAND_CASTING: dict(
             machine_rate=40.0,          # $/hr loaded sand-foundry pour cell (DEFAULT, un-validated)
             setup_hr=1.00,              # mould box / gating setup per lot (DEFAULT)
             post_hr=0.0, scrap=0.06,    # casting-defect scrap fraction (DEFAULT)
             deposition=None, vert=None, finish=None, queue_days=6, post_days=3,
-            post_hr_part=0.60,          # shakeout + knockout + fettle/grind/clean, per part (DEFAULT)
+            post_hr_part=0.01,          # cut a casting off its runner + handling, per casting (DEFAULT)
+            fettle_hr_kg=0.04,          # grind + blast: 0.04 h for a 1 kg casting, × (kg)^(2/3) (DEFAULT)
             post_hr_build=0.0, lot_size=200, min_charge=120,
             n_machines=3, machine_hours_per_day=16,
             yield_loss=0.50,            # gating+risers: poured = net × 1.50 (sand runs heavy) (DEFAULT)
-            pour_hr=0.08,               # ladle pour + handling per part (DEFAULT)
+            pour_hr=0.08,               # make, close, pour + knock out one mould (DEFAULT)
+            mould_w_mm=500.0, mould_l_mm=400.0,  # a typical flask's pattern plate (DEFAULT)
+            mould_gap_mm=25.0,          # sand + gating around each casting and to the flask (DEFAULT)
             cool_min_per_kg=1.20),      # solidification/cool minutes per kg poured (DEFAULT)
         PT.INVESTMENT_CASTING: dict(
             machine_rate=55.0,          # $/hr loaded investment (lost-wax) shell+pour cell (DEFAULT)
             setup_hr=1.50,              # tree assembly / shell prep per lot (DEFAULT)
             post_hr=0.0, scrap=0.05,    # casting-defect scrap fraction (DEFAULT)
             deposition=None, vert=None, finish=None, queue_days=10, post_days=4,
-            post_hr_part=0.35,          # near-net precision route: less fettling than sand (DEFAULT)
+            post_hr_part=0.02,          # cut a casting off the tree + handling, per casting (DEFAULT)
+            fettle_hr_kg=0.15,          # grind the gate, blast, finish: 0.15 h for 1 kg, × (kg)^(2/3) (DEFAULT)
             post_hr_build=0.0, lot_size=200, min_charge=180,
             n_machines=2, machine_hours_per_day=16,
             yield_loss=0.40,            # gating tree metal: poured = net × 1.40 (DEFAULT)
-            pour_hr=0.12,               # shell fill + handling per part (DEFAULT)
+            pour_hr=0.60,               # assemble, shell, dewax, pour + knock out one tree (DEFAULT)
+            mould_w_mm=300.0, mould_l_mm=200.0,  # room for castings on one tree (DEFAULT)
+            mould_gap_mm=30.0,          # gates + shell between castings (DEFAULT)
             cool_min_per_kg=1.50),      # ceramic shell holds heat: slower cool per kg (DEFAULT)
         # ── FORGING (heat + press/hammer a billet in a closed die) — material =
         # billet mass = net × (1 + flash/scale loss), bought as bar stock. Machine
@@ -349,7 +375,7 @@ RATE_CARD_V0: dict = {
             setup_hr=0.50, post_hr=0.0, scrap=0.15,   # 15% effective powder loss (recycled) (DEFAULT)
             deposition=None, vert=6.0,  # SLOW metal Z build rate mm/hr (DEFAULT)
             finish=None, queue_days=7, post_days=3,
-            build_env_mm=(250, 250, 325), packing_density=0.08, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.DMLS], packing_density=0.08, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=250,
             n_machines=2, machine_hours_per_day=20,
@@ -362,7 +388,7 @@ RATE_CARD_V0: dict = {
         PT.SLM: dict(
             machine_rate=180.0, setup_hr=0.50, post_hr=0.0, scrap=0.15,
             deposition=None, vert=6.0, finish=None, queue_days=7, post_days=3,
-            build_env_mm=(250, 250, 325), packing_density=0.08, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.SLM], packing_density=0.08, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=250,
             n_machines=2, machine_hours_per_day=20,
@@ -373,7 +399,7 @@ RATE_CARD_V0: dict = {
             setup_hr=0.50, post_hr=0.0, scrap=0.15,
             deposition=None, vert=9.0,  # faster Z build than laser (DEFAULT)
             finish=None, queue_days=7, post_days=3,
-            build_env_mm=(350, 380, 380), packing_density=0.08, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.EBM], packing_density=0.08, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=250,
             n_machines=2, machine_hours_per_day=20,
@@ -390,7 +416,7 @@ RATE_CARD_V0: dict = {
             setup_hr=0.50, post_hr=0.0, scrap=0.10,
             deposition=None, vert=25.0, # fast green print Z rate mm/hr (DEFAULT)
             finish=None, queue_days=7, post_days=4,
-            build_env_mm=(400, 250, 250), packing_density=0.12, part_spacing_mm=6.0,
+            build_env_mm=COMMON_ENVELOPE_MM[PT.BINDER_JET], packing_density=0.12, part_spacing_mm=6.0,
             nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
             lot_size="build", min_charge=150,
             n_machines=2, machine_hours_per_day=20,
@@ -414,7 +440,13 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=20,
             deposition_rate_kg_hr=1.0,  # feedstock deposited per hour (DEFAULT)
             feedstock_mult=1.15,        # near-net overbuild: deposited = net × 1.15 (DEFAULT)
-            finish_machining_frac=0.30),# finish-machining allowance as fraction of deposition cost (DEFAULT)
+            machining_stock_mm=2.0,     # stock left on every face to machine off: the DED analyzer's 2–5 mm, its low end (ce-07)
+            finish_machining_frac=0.30, # finish-machining allowance as fraction of deposition cost (DEFAULT)
+            # Size floor: 2–4 mm beads and 2–5 mm of machining stock on every face
+            # (the DED analyzer's citations) stop being near-net on a small part, so
+            # under this longest side the route is not priced (DEFAULT, not
+            # confirmed by a shop; overridable like every rate).
+            min_longest_side_mm=50.0),
         PT.WAAM: dict(
             machine_rate=90.0,          # $/hr loaded wire-arc cell (DEFAULT)
             setup_hr=1.00, post_hr=0.0, scrap=0.10,
@@ -423,7 +455,13 @@ RATE_CARD_V0: dict = {
             n_machines=2, machine_hours_per_day=20,
             deposition_rate_kg_hr=3.0,  # wire-arc deposits FAST (DEFAULT)
             feedstock_mult=1.15,
-            finish_machining_frac=0.30),
+            machining_stock_mm=3.0,     # the WAAM analyzer's 3–5 mm on every face, its low end (ce-07)
+            finish_machining_frac=0.30,
+            # Size floor: wire-arc is for large near-net parts; 4–8 mm beads and
+            # 3–5 mm of machining stock on every face (the WAAM analyzer's
+            # citations) leave nothing near-net on a small block (DEFAULT, not
+            # confirmed by a shop; overridable like every rate).
+            min_longest_side_mm=100.0),
     },
     # Shop-specific material lot prices ($/kg). Empty by default → fall back to
     # the material-DB cost_per_kg (a generic DEFAULT). A calibrated shop binds its
@@ -798,14 +836,14 @@ _NUMERIC_FIELDS = {
     # E-now #3+#4: CNC NRE / inspection / outsourced secondary finishing
     "nre_hr", "fai_hr", "inspect_hr_part", "finish_lot_charge", "finish_per_part",
     # CASTING / FORGING / WIRE-EDM physics constants (all DEFAULT, overridable)
-    "yield_loss", "pour_hr", "cool_min_per_kg",
+    "yield_loss", "pour_hr", "cool_min_per_kg", "fettle_hr_kg", "mould_w_mm", "mould_l_mm", "mould_gap_mm",
     "flash_loss", "heat_min_per_kg", "press_hr", "trim_hr",
     "n_threads", "thread_min", "wire_cost_per_hr",
     # METAL-AM physics constants (powder-bed / binder-jet / DED — all DEFAULT, overridable)
     "plate_removal_hr", "support_removal_hr", "stress_relief_hr_build",
     "support_vol_frac", "metal_am_powder_mult",
     "sinter_hr_build", "sinter_rate", "shrinkage_linear", "parts_per_sinter_batch",
-    "deposition_rate_kg_hr", "feedstock_mult", "finish_machining_frac",
+    "deposition_rate_kg_hr", "feedstock_mult", "finish_machining_frac", "machining_stock_mm",
 }
 
 
@@ -824,6 +862,12 @@ def _apply_override(data: dict, raw_key: str, value) -> None:
             return
         if field_name == "complexity_factor":
             data["complexity_factor"][suffix] = float(value)
+            return
+        # declared-spec op prices (finish / heat treatment / inspection):
+        # ``spec.<op>.<field>`` — see costing.part_specs.SPEC_OPS_V0
+        if field_name == "spec":
+            from src.costing.part_specs import apply_override as _spec_override
+            _spec_override(data, suffix, value)
             return
         # material lot price: suffix is a material NAME or "@<class>" sentinel
         if field_name == "material_price":

@@ -3,6 +3,11 @@
 Every read and write is scoped to the caller's organization. Generation is
 asynchronous and returns immutable STEP/STL revision artifacts; clients poll the
 design or its job rather than holding an API request open around OpenCASCADE.
+
+Design Studio is on every plan, the free trial included. Generating a design
+or a revision never uses a part check; free accounts get a per-user ceiling on
+generations (``src.auth.free_tool_limits``). Reading a prompt is a local parse,
+so it has only its route limit.
 """
 from __future__ import annotations
 
@@ -14,7 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.validation_caps import require_paid_access
+from src.auth.free_tool_limits import limit_free_designs
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.rbac import (
@@ -90,8 +95,8 @@ async def create_design(
     response: Response,
     body: CreateDesignBody,
     user: AuthedUser = Depends(require_design_mutation),
+    _free_limit: None = Depends(limit_free_designs),
     session: AsyncSession = Depends(get_db_session),
-    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)
@@ -131,7 +136,6 @@ async def interpret_design(
     response: Response,
     body: InterpretDesignBody,
     user: AuthedUser = Depends(require_design_mutation),
-    _paid_access: None = Depends(require_paid_access),
 ):
     del user
     from src.designs.interpreter import interpret_design_prompt
@@ -164,8 +168,8 @@ async def create_revision(
     response: Response,
     body: CreateRevisionBody,
     user: AuthedUser = Depends(require_design_mutation),
+    _free_limit: None = Depends(limit_free_designs),
     session: AsyncSession = Depends(get_db_session),
-    _paid_access: None = Depends(require_paid_access),
 ):
     try:
         release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)

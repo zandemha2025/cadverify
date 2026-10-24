@@ -15,6 +15,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isAppPath } from "./lib/app-routes";
 import { directUploadConnectOrigin } from "./lib/direct-upload-csp";
 
 const SESSION_COOKIE = "dash_session";
@@ -72,25 +73,6 @@ function contentSecurityPolicy(nonce: string): string {
     .trim();
 }
 
-const GATED = [
-  "/analyze",
-  "/cost",
-  "/cost-decisions",
-  "/batch",
-  "/history",
-  "/integrations",
-  "/notifications",
-  "/rfq-packages",
-  "/analyses",
-  "/label",
-  "/reconstruct",
-  "/keys",
-  "/settings",
-  "/design-system",
-  "/designs",
-  "/onboarding",
-  "/verify",
-];
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
@@ -102,9 +84,7 @@ export default function proxy(req: NextRequest) {
   const requestedPath = `${pathname}${req.nextUrl.search}`;
   requestHeaders.set("x-proofshape-request-path", requestedPath);
 
-  const gated = GATED.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
-  );
+  const gated = isAppPath(pathname);
   if (gated && !hasSession) {
     const url = new URL("/login", req.nextUrl);
     url.searchParams.set("next", requestedPath);

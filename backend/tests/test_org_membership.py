@@ -345,7 +345,7 @@ async def test_invite_lifecycle():
 
         # ---- accept: creates a membership in the TOKEN's org, not any other --
         async with eng.get_session_factory()() as s:
-            m, inv2, created = await svc.accept_invite(s, invitee, raw)
+            m, inv2, created, _signed_out = await svc.accept_invite(s, invitee, raw)
             await s.commit()
             assert created is True
             assert m.org_id == org_a          # cross-org replay is impossible:
@@ -419,10 +419,191 @@ async def test_invite_lifecycle():
             )
             inv5, raw5 = await svc.create_invite(s, org_a, "admin", f"orgm-{tag}-invitee@example.com", "member", admin)
             await s.commit()
-            m5, _, created5 = await svc.accept_invite(s, invitee, raw5)
+            m5, _, created5, _ = await svc.accept_invite(s, invitee, raw5)
             await s.commit()
             assert created5 is False
             assert m5.org_role == "admin"     # NOT downgraded to the invite's role
+    finally:
+        await _teardown(eng, users, orgs)
+        await eng.dispose_engine()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Invite preview — the confirm step before accept: read-only, same refusals.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_invite_preview_is_read_only_and_mirrors_accept_refusals():
+    import src.db.engine as eng
+    from fastapi import HTTPException
+
+    tag = uuid.uuid4().hex[:10]
+    users: list[int] = []
+    orgs: list[str] = []
+    try:
+        async with eng.get_session_factory()() as s:
+            org_a = await _mk_org(s, tag, "A")
+            orgs.append(org_a)
+            admin = await _mk_user(s, tag, "admin")
+            invitee = await _mk_user(s, tag, "invitee")
+            other = await _mk_user(s, tag, "other")
+            users += [admin, invitee, other]
+            await _mk_membership(s, org_a, admin, "admin")
+            await s.commit()
+
+        async with eng.get_session_factory()() as s:
+            inv, raw = await svc.create_invite(
+                s, org_a, "admin", f"orgm-{tag}-invitee@example.com", "member", admin
+            )
+            await s.commit()
+            inv_id = inv.id
+
+        # ---- the invitee sees what they'd join, and nothing is consumed ------
+        async with eng.get_session_factory()() as s:
+            p = await svc.preview_invite(s, invitee, raw)
+            await s.rollback()
+        assert p["org_id"] == org_a
+        assert p["org_name"] == f"Org A {tag}"
+        assert p["role"] == "member"
+        assert p["email"] == f"orgm-{tag}-invitee@example.com"
+        assert p["invited_by"] == f"orgm-{tag}-admin@example.com"
+        assert p["expires_at"]
+        assert p["already_member"] is False and p["current_role"] is None
+        assert "token" not in p and "token_hash" not in p
+        async with eng.get_session_factory()() as s:
+            row = (
+                await s.execute(
+                    text("SELECT accepted_at, accepted_by FROM org_invites WHERE id = :i"),
+                    {"i": inv_id},
+                )
+            ).first()
+            assert row[0] is None and row[1] is None      # still pending
+            assert (
+                await s.execute(
+                    text("SELECT count(*) FROM memberships WHERE user_id = :u"),
+                    {"u": invitee},
+                )
+            ).scalar_one() == 0                            # no membership yet
+
+        # ---- another account learns nothing (same 403 as accept) ------------
+        async with eng.get_session_factory()() as s:
+            with pytest.raises(HTTPException) as e:
+                await svc.preview_invite(s, other, raw)
+            assert e.value.status_code == 403
+            await s.rollback()
+
+        # ---- preview did not use it up: accept still works, once -------------
+        async with eng.get_session_factory()() as s:
+            _, _, created, _ = await svc.accept_invite(s, invitee, raw)
+            await s.commit()
+            assert created is True
+        async with eng.get_session_factory()() as s:
+            with pytest.raises(HTTPException) as e:
+                await svc.preview_invite(s, invitee, raw)
+            assert e.value.status_code == 409 and "used" in e.value.detail.lower()
+            await s.rollback()
+
+        # ---- an existing member is told their role stays ---------------------
+        async with eng.get_session_factory()() as s:
+            _, raw_again = await svc.create_invite(
+                s, org_a, "admin", f"orgm-{tag}-invitee@example.com", "viewer", admin
+            )
+            await s.commit()
+        async with eng.get_session_factory()() as s:
+            p2 = await svc.preview_invite(s, invitee, raw_again)
+            await s.rollback()
+        assert p2["role"] == "viewer"
+        assert p2["already_member"] is True and p2["current_role"] == "member"
+
+        # ---- revoked, expired, unknown and blank tokens ----------------------
+        async with eng.get_session_factory()() as s:
+            inv_r, raw_r = await svc.create_invite(s, org_a, "admin", "rev@example.com", "member", admin)
+            await s.commit()
+            await svc.revoke_invite(s, org_a, inv_r.id)
+            inv_x, raw_x = await svc.create_invite(s, org_a, "admin", "exp@example.com", "member", admin)
+            await s.execute(
+                text("UPDATE org_invites SET expires_at = now() - interval '1 hour' WHERE id = :i"),
+                {"i": inv_x.id},
+            )
+            await s.commit()
+        async with eng.get_session_factory()() as s:
+            for token, status, word in ((raw_r, 409, "revoked"), (raw_x, 409, "expired")):
+                with pytest.raises(HTTPException) as e:
+                    await svc.preview_invite(s, other, token)
+                assert e.value.status_code == status and word in e.value.detail.lower()
+            with pytest.raises(HTTPException) as e:
+                await svc.preview_invite(s, other, "totally-made-up-token")
+            assert e.value.status_code == 404
+            with pytest.raises(HTTPException) as e:
+                await svc.preview_invite(s, other, "   ")
+            assert e.value.status_code == 400
+            await s.rollback()
+    finally:
+        await _teardown(eng, users, orgs)
+        await eng.dispose_engine()
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_invite_preview_route_then_accept():
+    import src.db.engine as eng
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from src.api.org_routes import router as org_router
+    from src.auth.rate_limit import limiter
+
+    tag = uuid.uuid4().hex[:10]
+    users: list[int] = []
+    orgs: list[str] = []
+    try:
+        async with eng.get_session_factory()() as s:
+            org_a = await _mk_org(s, tag, "A")
+            orgs.append(org_a)
+            admin = await _mk_user(s, tag, "admin")
+            invitee = await _mk_user(s, tag, "invitee")
+            other = await _mk_user(s, tag, "other")
+            users += [admin, invitee, other]
+            await _mk_membership(s, org_a, admin, "admin")
+            await s.commit()
+
+        app = FastAPI()
+        app.state.limiter = limiter
+        app.include_router(org_router, prefix="/api/v1/orgs")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            _act_as(app, admin)
+            assert (await ac.post("/api/v1/orgs/switch", json={"org_id": org_a})).status_code == 200
+            r = await ac.post(
+                "/api/v1/orgs/invites",
+                json={"email": f"orgm-{tag}-invitee@example.com", "role": "admin"},
+            )
+            assert r.status_code == 201, r.text
+            raw = r.json()["accept_link"].split("token=")[1]
+
+            _act_as(app, other)
+            r = await ac.post("/api/v1/orgs/invites/preview", json={"token": raw})
+            assert r.status_code == 403
+            assert f"Org A {tag}" not in r.text            # nothing about the org leaks
+
+            _act_as(app, invitee)
+            r = await ac.post("/api/v1/orgs/invites/preview", json={"token": raw})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["org_name"] == f"Org A {tag}" and body["role"] == "admin"
+            assert body["invited_by"] == f"orgm-{tag}-admin@example.com"
+            assert body["already_member"] is False
+            assert raw not in r.text
+
+            # previewing twice changes nothing; accept then consumes it
+            assert (await ac.post("/api/v1/orgs/invites/preview", json={"token": raw})).status_code == 200
+            r = await ac.post("/api/v1/orgs/invites/accept", json={"token": raw})
+            assert r.status_code == 200 and r.json()["created"] is True
+            assert r.json()["org_role"] == "admin"
+            r = await ac.post("/api/v1/orgs/invites/preview", json={"token": raw})
+            assert r.status_code == 409
     finally:
         await _teardown(eng, users, orgs)
         await eng.dispose_engine()
@@ -589,7 +770,7 @@ async def test_invite_recipient_binding_rejects_normalize_collision():
 
         # COMPLETENESS: the genuinely-invited victim CAN still redeem it.
         async with eng.get_session_factory()() as s:
-            m, _, created = await svc.accept_invite(s, victim, raw)
+            m, _, created, _ = await svc.accept_invite(s, victim, raw)
             await s.commit()
             assert created is True
             assert m.org_role == "admin"
@@ -688,7 +869,7 @@ async def test_invite_recipient_binding_rejects_mirror_normalize_collision():
 
         # COMPLETENESS: the genuinely-invited LEGACY (dotted) victim CAN redeem it.
         async with eng.get_session_factory()() as s:
-            m, _, created = await svc.accept_invite(s, victim, raw)
+            m, _, created, _ = await svc.accept_invite(s, victim, raw)
             await s.commit()
             assert created is True
             assert m.org_role == "admin"
@@ -1385,6 +1566,63 @@ async def test_product_audit_events_persist():
         }
         seen = await _wait_for_audit(eng, expected, user_ids=[uid])
         assert expected <= seen, f"missing: {expected - seen}"
+    finally:
+        await _teardown(eng, users, orgs)
+        await eng.dispose_engine()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Renaming the org: admins only, audited, the org keeps everything else
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_rename_current_org_admin_only_with_audit():
+    import src.db.engine as eng
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from src.api.org_routes import router as org_router
+    from src.auth.rate_limit import limiter
+
+    tag = uuid.uuid4().hex[:10]
+    users: list[int] = []
+    orgs: list[str] = []
+    try:
+        async with eng.get_session_factory()() as s:
+            org = await _mk_org(s, tag, "rename")
+            orgs.append(org)
+            admin = await _mk_user(s, tag, "admin")
+            member = await _mk_user(s, tag, "member")
+            users += [admin, member]
+            await _mk_membership(s, org, admin, "admin")
+            await _mk_membership(s, org, member, "member")
+            slug = (await s.execute(text("SELECT slug FROM organizations WHERE id = :o"), {"o": org})).scalar_one()
+            await s.commit()
+
+        app = FastAPI()
+        app.state.limiter = limiter
+        app.include_router(org_router, prefix="/api/v1/orgs")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            _act_as(app, member)
+            refused = await ac.patch("/api/v1/orgs/current", json={"name": "Not Mine"})
+            assert refused.status_code == 403
+
+            _act_as(app, admin)
+            assert (await ac.patch("/api/v1/orgs/current", json={"name": "   "})).status_code == 400
+            assert (await ac.patch("/api/v1/orgs/current", json={"name": "x" * 81})).status_code == 400
+            ok = await ac.patch("/api/v1/orgs/current", json={"name": f"  Ridgeline   Fluid {tag} "})
+            assert ok.status_code == 200, ok.text
+            assert ok.json()["name"] == f"Ridgeline Fluid {tag}" and ok.json()["slug"] == slug
+            listed = (await ac.get("/api/v1/orgs")).json()
+            assert any(o["org_id"] == org and o["name"] == f"Ridgeline Fluid {tag}" for o in listed["organizations"])
+
+        async with eng.get_session_factory()() as s:
+            row = (await s.execute(text("SELECT name, slug, is_personal FROM organizations WHERE id = :o"), {"o": org})).one()
+        assert row == (f"Ridgeline Fluid {tag}", slug, False)
+        seen = await _wait_for_audit(eng, {"org.renamed"}, org_ids=[org])
+        assert "org.renamed" in seen
     finally:
         await _teardown(eng, users, orgs)
         await eng.dispose_engine()

@@ -325,8 +325,8 @@
   "page": "POST /api/v1/bom/ingest-assembly",
   "feature": "Assembly STEP/IGES BOM ingest",
   "story": "As an analyst, I upload a STEP/IGES assembly and persist its real derived parent->child edge tree (source 'assembly_step') so rollups use measured instance counts.",
-  "expected": "Analyst + kill switch + org limits; 403 no org; upload capped (BOM_ASSEMBLY_MAX_MB, default 256MB) = 413; empty upload = 400. Reuses /validate/assembly extraction (security gate + 400s); idempotent per (org, assembly_key) \u2014 re-ingest replaces the tree; assembly_key defaults to filename; single-part file persists 0 edges with an honest note, never a fabricated hierarchy. Returns {assembly_key, edges, roots, source}.",
-  "evidence": "backend/src/api/bom.py:99-135",
+  "expected": "Analyst + kill switch + org limits; 403 no org; upload capped at the web upload limit (MAX_UPLOAD_MB, default 100MB; BOM_ASSEMBLY_MAX_MB can only lower it) = 413; a STEP/IGES file needing more memory than the web process gives one check = 413 CHECK_TOO_LARGE before parsing; empty upload = 400. Reuses /validate/assembly extraction (security gate + 400s); idempotent per (org, assembly_key) \u2014 re-ingest replaces the tree; assembly_key defaults to filename; single-part file persists 0 edges with an honest note, never a fabricated hierarchy. Returns {assembly_key, edges, roots, source}.",
+  "evidence": "backend/src/api/bom.py:111-153",
   "test_via": "API"
  },
  {

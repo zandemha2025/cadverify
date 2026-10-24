@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, tuple_, union, update
+from sqlalchemy import literal, select, tuple_, union, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -272,21 +272,11 @@ async def _latest_analysis(
 async def _latest_cost(
     session: AsyncSession, org_id: str, mesh_hash: str
 ) -> Optional[CostDecision]:
-    return (
-        (
-            await session.execute(
-                select(CostDecision)
-                .where(
-                    CostDecision.org_id == org_id,
-                    CostDecision.mesh_hash == mesh_hash,
-                )
-                .order_by(CostDecision.ulid.desc())
-                .limit(1)
-            )
-        )
-        .scalars()
-        .first()
-    )
+    """The part's current price: its newest record that isn't a what-if (a price with
+    ad-hoc overrides or a sample shop's rates never becomes it by itself)."""
+    from src.services.cost_decision_service import newest_current
+
+    return await newest_current(session, org_id, mesh_hash)
 
 
 async def refresh_part_summary(
@@ -324,10 +314,16 @@ async def refresh_part_summary(
     if analysis is None and cost is None:
         return False
 
+    # The parts list prices at the quantity the part opens at: its declared yearly
+    # quantity when the record priced it (ce-19, op-08).
+    from src.services.part_context_service import get_context
+
+    ctx = await get_context(session, org_id, mesh_hash)
     row = catalog_service.derive_row(
         part_key=mesh_hash,
         analysis=_source_ref(analysis) if analysis is not None else None,
         cost=_source_ref(cost) if cost is not None else None,
+        declared_qty=getattr(ctx, "annual_volume", None) if ctx is not None else None,
     )
     fields = derive_summary_fields(row)
     makeability = derive_makeability_fields(
@@ -524,7 +520,7 @@ async def backfill_part_summaries(
     while True:
         q = select(org_col, mesh_col).order_by(org_col, mesh_col).limit(batch_size)
         if last is not None:
-            q = q.where(tuple_(org_col, mesh_col) > tuple_(last[0], last[1]))
+            q = q.where(tuple_(org_col, mesh_col) > tuple_(literal(last[0]), literal(last[1])))
         rows = (await session.execute(q)).all()
         if not rows:
             break
