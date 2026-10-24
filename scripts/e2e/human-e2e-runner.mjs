@@ -132,6 +132,8 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  // The browser cancels its own tab-icon fetch when a step navigates away first.
+  if (method === "GET" && /\/icon\.svg(?:\?|$)/.test(url)) return true;
   if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
   // The rail sweep intentionally leaves Programs after proving the surface.
   // A subsequent document navigation may cancel its still-in-flight read; only

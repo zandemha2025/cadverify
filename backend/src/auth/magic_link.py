@@ -355,7 +355,10 @@ async def magic_start(
     link = _dashboard_url(f"/magic/verify#token={token}")
     payload: resend.Emails.SendParams = {
         "from": os.environ["RESEND_FROM"],
-        "to": email_clean,
+        # The link signs into the normalized address's account, so only that
+        # address may receive it: mailing the typed "name+tag@" variant would
+        # let whoever reads that mailbox sign into "name@"'s account.
+        "to": email_norm,
         "subject": "Your ScaleCad login link",
         "html": (
             f'<a href="{html.escape(link, quote=True)}">'

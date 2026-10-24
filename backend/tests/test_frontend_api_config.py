@@ -139,7 +139,7 @@ def test_first_party_auth_proxy_and_magic_exchange_are_production_gated():
     assert 'AUTH_PROXY_CLIENT_IP_SOURCE         = "cloudfront"' in aws_ecs
     assert 'items = ["CloudFront-Viewer-Address"]' in aws_edge
     assert 'header_behavior = "allViewerAndWhitelistCloudFront"' in aws_edge
-    assert 'new Set(["fly", "nginx", "cloudfront"])' in instrumentation
+    assert 'new Set(["fly", "nginx", "cloudfront", "render"])' in instrumentation
     assert 'digest("base64url")' in auth_proxy
     assert "AUTH_PROXY_SECRET" in auth_proxy
     assert 'decoded.toString("base64") !== raw' in auth_proxy

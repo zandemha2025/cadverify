@@ -29,17 +29,34 @@ test("an explicit ingress source ignores spoofed headers for every other proxy",
     "x-real-ip": "198.51.100.2",
     "x-forwarded-for": "198.51.100.3, 10.0.0.1",
     "cloudfront-viewer-address": "198.51.100.4:51234",
+    "cf-connecting-ip": "198.51.100.5",
   });
 
   assert.equal(requestClientIp(req, "fly"), "198.51.100.1");
   assert.equal(requestClientIp(req, "nginx"), "198.51.100.2");
   assert.equal(requestClientIp(req, "cloudfront"), "198.51.100.4");
+  assert.equal(requestClientIp(req, "render"), "198.51.100.5");
   assert.equal(requestClientIp(req, "unknown"), null);
 });
 
 test("ALB X-Forwarded-For is never treated as an authenticated viewer source", () => {
   const req = request({ "x-forwarded-for": "198.51.100.8, 10.0.1.4" });
-  for (const source of ["fly", "nginx", "cloudfront", "auto"]) {
+  for (const source of ["fly", "nginx", "cloudfront", "render", "auto"]) {
     assert.equal(requestClientIp(req, source), null);
   }
 });
+
+test("on Render only Cloudflare's CF-Connecting-IP names the visitor", () => {
+  assert.equal(requestClientIp(request({ "cf-connecting-ip": "2001:db8::7" }), "render"), "2001:db8::7");
+  assert.equal(requestClientIp(request({ "cf-connecting-ip": "198.51.100.9, 10.0.0.1" }), "render"), null);
+  assert.equal(requestClientIp(request({ "cf-connecting-ip": "not-an-ip" }), "render"), null);
+  // Auto (local development) never trusts CF-Connecting-IP: off Render anyone can send it.
+  assert.equal(requestClientIp(request({ "cf-connecting-ip": "198.51.100.9" }), "auto"), null);
+});
+
+test("a released web server may name render as its client-IP source", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../../instrumentation.ts", import.meta.url), "utf8");
+  assert.match(source, /new Set\(\["fly", "nginx", "cloudfront", "render"\]\)/);
+});
+

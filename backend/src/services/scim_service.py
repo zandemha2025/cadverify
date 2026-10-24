@@ -4,6 +4,14 @@ This is the first real enterprise identity provisioning surface. It deliberately
 uses the platform's existing bearer API-key auth at the router boundary, then
 applies all writes to the caller's org membership table so deprovisioning removes
 tenant access on the next request.
+
+Tenant boundary: an org's SCIM may create a new account, or manage an account
+already in its scope (a member of the org, or holding a ScimIdentity in it).
+Accounts outside that scope read as 404 by id and as a 409 ``uniqueness`` when
+created by email; nothing about them changes. Email changes need an account this
+org's SCIM provisioned that belongs to no other org, and deprovisioning removes
+only this org's membership (it signs the person out only when the account is
+SCIM-owned by this org).
 """
 from __future__ import annotations
 
@@ -12,13 +20,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.auth.disposable import normalize_email
-from src.auth.org_context import revoke_org_api_keys
-from src.db.models import Membership, ScimIdentity, User
+from src.auth.org_context import is_personal_org, revoke_org_api_keys
+from src.db.models import Membership, Organization, ScimIdentity, User
 from src.services.org_service import VALID_ORG_ROLES
 
 CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
@@ -278,17 +286,72 @@ async def _user_by_id(session: AsyncSession, user_id: int) -> User | None:
     ).scalars().first()
 
 
-async def _user_by_email(session: AsyncSession, email: str) -> User | None:
-    return (
+async def _users_by_email(session: AsyncSession, email: str) -> list[User]:
+    """Every account the address could name: its normalized key, plus a legacy
+    row whose ``email_lower`` kept the plain lowercase form."""
+    clean = email.strip()
+    return list(
+        (
+            await session.execute(
+                select(User)
+                .where(
+                    or_(
+                        User.email_lower == normalize_email(clean),
+                        User.email_lower == clean.lower(),
+                        User.email == clean,
+                    )
+                )
+                .order_by(User.id.asc())
+            )
+        ).scalars().all()
+    )
+
+
+async def org_is_personal(session: AsyncSession, org_id: str) -> bool:
+    """True for a personal org (the one every account gets at sign-up)."""
+    row = (
         await session.execute(
-            select(User).where(User.email_lower == normalize_email(email))
+            select(Organization.name, Organization.slug).where(Organization.id == org_id)
         )
-    ).scalars().first()
+    ).first()
+    if row is None:
+        return False
+    return is_personal_org(row[0], row[1])
+
+
+async def _in_org_scope(session: AsyncSession, org_id: str, user_id: int) -> bool:
+    """An account this org's SCIM may manage: a member, or a ScimIdentity holder."""
+    if await _membership(session, org_id, user_id) is not None:
+        return True
+    return await _identity(session, org_id, user_id) is not None
+
+
+async def _belongs_to_other_org(session: AsyncSession, org_id: str, user_id: int) -> bool:
+    row = (
+        await session.execute(
+            select(Membership.id)
+            .where(Membership.user_id == user_id, Membership.org_id != org_id)
+            .limit(1)
+        )
+    ).first()
+    return row is not None
+
+
+async def _scim_owned_by_org(session: AsyncSession, org_id: str, user: User) -> bool:
+    """This org's SCIM provisioned the account and no other org holds it."""
+    if (getattr(user, "auth_provider", None) or "") != "scim":
+        return False
+    if await _identity(session, org_id, int(user.id)) is None:
+        return False
+    return not await _belongs_to_other_org(session, org_id, int(user.id))
+
+
+def _user_not_found() -> HTTPException:
+    # One message for "no such id" and "not in this org's scope".
+    return _scim_error(404, "SCIM user not found.")
 
 
 async def _admin_count(session: AsyncSession, org_id: str) -> int:
-    from sqlalchemy import func
-
     return int(
         (
             await session.execute(
@@ -323,7 +386,10 @@ async def _ensure_membership(
                     "mutability",
                 )
         membership.org_role = role
-    user.current_org_id = org_id
+    # Only an account with no active org lands here; an existing member keeps
+    # whichever org they chose.
+    if user.current_org_id is None:
+        user.current_org_id = org_id
     await session.flush()
     return membership
 
@@ -366,11 +432,16 @@ async def _deprovision_membership(
         return
     if membership.org_role == "admin" and await _admin_count(session, org_id) <= 1:
         raise _scim_error(409, "Cannot remove the last admin via SCIM.", "mutability")
+    # Ending sessions is account-wide, so it is reserved for an account this
+    # org's SCIM owns; anyone else keeps their sessions in their other orgs and
+    # loses this org on the next request (membership is re-read every time).
+    sign_out = await _scim_owned_by_org(session, org_id, user)
     await revoke_org_api_keys(session, int(user.id), org_id)
     await session.delete(membership)
     if user.current_org_id == org_id:
         user.current_org_id = None
-    user.session_version = int(user.session_version or 0) + 1
+    if sign_out:
+        user.session_version = int(user.session_version or 0) + 1
     await session.flush()
 
 
@@ -451,7 +522,14 @@ async def create_or_update_user(
     role = _role_from_payload(payload)
     active = bool(payload.get("active", True))
     external_id = str(payload.get("externalId") or "").strip() or None
-    user = await _user_by_email(session, email)
+    candidates = await _users_by_email(session, email)
+    for candidate in candidates:
+        if not await _in_org_scope(session, org_id, int(candidate.id)):
+            raise _scim_error(409, "Email already in use by another user.", "uniqueness")
+    user = next(
+        (c for c in candidates if c.email_lower == normalize_email(email)),
+        candidates[0] if candidates else None,
+    )
     if user is None:
         user = User(
             email=email,
@@ -462,9 +540,10 @@ async def create_or_update_user(
         )
         session.add(user)
         await session.flush()
-    else:
-        if user.email != email:
-            user.email = email
+    elif user.email != email and await _scim_owned_by_org(session, org_id, user):
+        # Same normalized identity, new display form: only for an account this
+        # org's SCIM owns. Anyone else keeps the address they signed up with.
+        user.email = email
 
     membership = await _membership(session, org_id, int(user.id))
     if active:
@@ -500,13 +579,13 @@ async def get_user(
     try:
         parsed = int(user_id)
     except ValueError as exc:
-        raise _scim_error(404, "SCIM user not found.") from exc
+        raise _user_not_found() from exc
     user = await _user_by_id(session, parsed)
     if user is None:
-        raise _scim_error(404, "SCIM user not found.")
+        raise _user_not_found()
     identity = await _identity(session, org_id, int(user.id))
     if identity is None:
-        raise _scim_error(404, "SCIM user not found in this organization.")
+        raise _user_not_found()
     membership = await _membership(session, org_id, int(user.id))
     return serialize_user(user, membership, identity, base_url=base_url)
 
@@ -586,13 +665,27 @@ def _apply_user_value_bag(
     return active, role, email_change
 
 
-async def _apply_email_change(session: AsyncSession, user: User, new_email: str) -> None:
+async def _apply_email_change(
+    session: AsyncSession, org_id: str, user: User, new_email: str
+) -> None:
     """Update the user's primary email from a PATCH, guarding the unique key.
 
-    A case/format-only change updates only the display ``email``. A change that
-    lands on a DIFFERENT normalized identity that another row already holds is a
-    SCIM 409 ``uniqueness`` (never an unhandled IntegrityError/500).
+    Re-sending the current address is not a change. Any real change (display
+    form included) needs an account this org's SCIM owns, else a 409
+    ``mutability``. A case/format-only change updates only the display
+    ``email``. A change that lands on a DIFFERENT normalized identity that
+    another row already holds is a SCIM 409 ``uniqueness`` (never an unhandled
+    IntegrityError/500).
     """
+    if new_email == user.email:
+        return
+    if not await _scim_owned_by_org(session, org_id, user):
+        raise _scim_error(
+            409,
+            "This account's email is managed outside this organization's SCIM "
+            "provisioning, so SCIM cannot change it.",
+            "mutability",
+        )
     new_lower = normalize_email(new_email)
     current_lower = (user.email_lower or "").lower()
     if new_lower != current_lower:
@@ -621,10 +714,10 @@ async def patch_user(
     current = await get_user(session, org_id=org_id, user_id=user_id, base_url=base_url)
     user = await _user_by_id(session, int(current["id"]))
     if user is None:  # pragma: no cover - get_user already proved existence.
-        raise _scim_error(404, "SCIM user not found.")
+        raise _user_not_found()
     identity = await _identity(session, org_id, int(user.id))
     if identity is None:  # pragma: no cover - get_user already proved existence.
-        raise _scim_error(404, "SCIM user not found in this organization.")
+        raise _user_not_found()
     membership = await _membership(session, org_id, int(user.id))
     role = identity.org_role if identity is not None else "viewer"
     active = bool(identity.active)
@@ -677,7 +770,7 @@ async def patch_user(
             raise _scim_error(400, f"Unsupported PATCH path {op.get('path')!r}.", "invalidPath")
 
     if email_change:
-        await _apply_email_change(session, user, email_change)
+        await _apply_email_change(session, org_id, user, email_change)
 
     if active:
         membership = await _ensure_membership(session, org_id=org_id, user=user, role=role)
@@ -779,9 +872,12 @@ async def patch_group(
             continue
 
         for raw_id in member_ids:
-            user = await _resolve_member_user(session, raw_id)
-            if user is None:
-                continue
+            if verb in ("add", "replace"):
+                user = await _resolve_scoped_member(session, org_id, raw_id)
+            else:
+                user = await _resolve_member_user(session, raw_id)
+                if user is None:
+                    continue
             if verb in ("add", "replace"):
                 await _ensure_membership(session, org_id=org_id, user=user, role=role)
                 await _ensure_identity(
@@ -833,6 +929,14 @@ async def _resolve_member_user(session: AsyncSession, raw_id: str) -> User | Non
     return await _user_by_id(session, parsed)
 
 
+async def _resolve_scoped_member(session: AsyncSession, org_id: str, raw_id: str) -> User:
+    """A member id a group may ADD: an account in this org's scope, else 404."""
+    user = await _resolve_member_user(session, raw_id)
+    if user is None or not await _in_org_scope(session, org_id, int(user.id)):
+        raise _user_not_found()
+    return user
+
+
 async def _current_role_member_ids(
     session: AsyncSession, org_id: str, role: str
 ) -> list[str]:
@@ -870,9 +974,8 @@ async def _replace_group_members(
     membership set of the role group — add the newcomers, remove the absent."""
     desired: set[int] = set()
     for raw_id in member_ids:
-        user = await _resolve_member_user(session, raw_id)
-        if user is not None:
-            desired.add(int(user.id))
+        user = await _resolve_scoped_member(session, org_id, raw_id)
+        desired.add(int(user.id))
     current = {
         int(uid) for uid in (await _current_role_member_ids(session, org_id, role))
     }

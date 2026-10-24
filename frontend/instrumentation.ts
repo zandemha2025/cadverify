@@ -46,9 +46,9 @@ function assertProductionRuntimeConfig() {
     const clientIpSource = (
       process.env.AUTH_PROXY_CLIENT_IP_SOURCE || ""
     ).trim().toLowerCase();
-    if (!new Set(["fly", "nginx", "cloudfront"]).has(clientIpSource)) {
+    if (!new Set(["fly", "nginx", "cloudfront", "render"]).has(clientIpSource)) {
       throw new Error(
-        "AUTH_PROXY_CLIENT_IP_SOURCE must identify fly, nginx, or cloudfront",
+        "AUTH_PROXY_CLIENT_IP_SOURCE must identify fly, nginx, cloudfront, or render",
       );
     }
   }
