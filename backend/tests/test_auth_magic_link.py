@@ -106,6 +106,58 @@ def test_magic_start_emails_fragment_link_without_blocking_event_loop(monkeypatc
     assert "alice@example.com" not in payload["html"]
 
 
+@pytest.mark.parametrize(
+    "typed, mailed",
+    [
+        ("victim+x@example.com", "victim@example.com"),
+        ("Victim+Tag@Example.com", "victim@example.com"),
+        ("vic.tim+x@gmail.com", "victim@gmail.com"),
+    ],
+)
+def test_magic_link_is_mailed_to_the_account_it_signs_into(monkeypatch, typed, mailed):
+    """A link for "name+tag@" signs into "name@"'s account, so it must go to
+    "name@" only. Mailing the typed variant let whoever reads that mailbox (a
+    catch-all, or a system where "+" is part of the name) take the account."""
+    import src.auth.magic_link as m
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_FROM", "login@example.com")
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://app.example.com")
+    fake_redis = AsyncMock()
+    fake_redis.setex = AsyncMock()
+    fake_redis.get = AsyncMock(return_value=None)
+    minted = []
+    real_mint = m._mint
+
+    def spy_mint(email_norm):
+        minted.append(email_norm)
+        return real_mint(email_norm)
+
+    with patch("src.auth.magic_link.ip_signup_limit_enabled", return_value=False), patch(
+        "src.auth.magic_link.verify_turnstile", new_callable=AsyncMock
+    ), patch(
+        "src.auth.magic_link.get_soft_flag_set",
+        new_callable=AsyncMock,
+        return_value=set(),
+    ), patch(
+        "src.auth.magic_link.per_email_magic_link_limit", new_callable=AsyncMock
+    ), patch(
+        "src.auth.magic_link._r", return_value=fake_redis
+    ), patch(
+        "src.auth.magic_link._mint", side_effect=spy_mint
+    ), patch(
+        "src.auth.magic_link.resend.Emails.send", return_value={"id": "email-1"}
+    ) as send:
+        response = TestClient(_app()).post(
+            "/auth/magic/start",
+            data={"email": typed, "cf_turnstile_response": "ok"},
+        )
+
+    assert response.status_code == 200
+    assert minted == [mailed]
+    assert send.call_args.args[0]["to"] == mailed
+
+
 class _AtomicMagicRedis:
     """Small semantic fake for the Lua state transitions used by auth."""
 
